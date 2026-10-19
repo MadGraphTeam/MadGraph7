@@ -164,7 +164,33 @@ pub struct CompleteLoopResult<T> {
     pub statuses: Vec<Vec<(u64, String)>>,
     pub r2_strategy: String,
     pub source_revision: Option<u64>,
+    pub directed: Option<DirectedCrossTerms<T>>,
     pub failures: Vec<LoopLaneFailure>,
+}
+
+/// Both integrated cross terms, retaining history/order/pole columns. Histories
+/// are never summed and the saved labels identify their exact ordered operators.
+pub struct DirectedCrossTerms<T> {
+    pub history_ids: Vec<String>,
+    pub first: T,
+    pub second: T,
+}
+
+/// Presence of directed kernels never changes ordinary evaluation semantics.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LoopObservable {
+    Inclusive,
+    Resolved,
+    Directed,
+}
+impl LoopObservable {
+    pub fn from_resolved(resolved: bool) -> Self {
+        if resolved {
+            Self::Resolved
+        } else {
+            Self::Inclusive
+        }
+    }
 }
 
 /// A scheduled numerical channel failure; source identities never come from
@@ -174,6 +200,9 @@ pub struct LoopLaneFailure {
     pub point_id: u64,
     pub helicity: Option<usize>,
     pub color_component_index: Option<usize>,
+    pub history_index: Option<usize>,
+    /// Zero denotes the first integrated cross term, one the second.
+    pub direction: Option<usize>,
     pub order_index: Option<usize>,
     pub family_index: Option<usize>,
     pub external_leg: Option<usize>,
@@ -233,6 +262,8 @@ fn check_component_finite<B: LoopBackend>(
             point_id: helicities.map_or(id, |h| id / components.unwrap_or(1) as u64 / h as u64),
             helicity: helicities.map(|h| (id / components.unwrap_or(1) as u64 % h as u64) as usize),
             color_component_index: components.map(|c| (id % c as u64) as usize),
+            history_index: None,
+            direction: None,
             external_leg: None,
             order_index: None,
             family_index,
@@ -248,6 +279,7 @@ struct FamilyWorkspace<B: LoopBackend> {
     masses: B::Evaluator,
     projector: B::Evaluator,
     helicity_projector: Option<B::Evaluator>,
+    directed_projector: Option<B::Evaluator>,
     reducer: B::Reducer,
     rational: Option<B::Reducer>,
 }
@@ -263,6 +295,14 @@ struct SourceWorkspace<B: LoopBackend> {
     counterterms: SourceScale<B>,
 }
 
+struct DirectedWorkspace<B: LoopBackend> {
+    born: B::Evaluator,
+    postprocess: B::Evaluator,
+    counterterms: B::Evaluator,
+    assemble: B::Evaluator,
+    sum_order_values: B::Evaluator,
+}
+
 /// Fresh mutable arithmetic workspaces over one immutable, validated descriptor.
 /// No graphs, symbolic optimization, or model reimport occur during binding.
 pub struct LoopExecutor<B: LoopBackend> {
@@ -276,6 +316,7 @@ pub struct LoopExecutor<B: LoopBackend> {
     fields: Vec<Option<B::Evaluator>>,
     source: Option<SourceWorkspace<B>>,
     helicity: Option<HelicityWorkspace<B>>,
+    directed: Option<DirectedWorkspace<B>>,
 }
 
 fn invalid(message: &str) -> RusticolError {
@@ -343,12 +384,6 @@ impl<B: LoopBackend> LoopExecutor<B> {
         owner: Option<Arc<SourceOwner<B>>>,
     ) -> RusticolResult<Self> {
         let plan = loaded.plan();
-        if plan.directed_projection.is_some() {
-            return Err(RusticolError::unsupported_runtime_capability(
-                "directed-complex loop evaluation",
-                "saved directed projections require the native directed scheduler",
-            ));
-        }
         if owner.is_some() && plan.r2_strategy != "model" {
             return Err(RusticolError::unsupported_runtime_capability(
                 "native source direct R2",
@@ -395,6 +430,11 @@ impl<B: LoopBackend> LoopExecutor<B> {
                     projector: eval(&item.projector_state)?,
                     helicity_projector: plan
                         .helicity_projection
+                        .as_ref()
+                        .map(|projection| eval(&projection.families[index]))
+                        .transpose()?,
+                    directed_projector: plan
+                        .directed_projection
                         .as_ref()
                         .map(|projection| eval(&projection.families[index]))
                         .transpose()?,
@@ -445,6 +485,19 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 })
             })
             .transpose()?;
+        let directed = plan
+            .directed_projection
+            .as_ref()
+            .map(|projection| {
+                Ok::<_, RusticolError>(DirectedWorkspace {
+                    born: eval(&projection.born)?,
+                    postprocess: eval(&projection.postprocess)?,
+                    counterterms: eval(&projection.counterterms)?,
+                    assemble: eval(&projection.assemble)?,
+                    sum_order_values: eval(&projection.sum_order_values)?,
+                })
+            })
+            .transpose()?;
         Ok(Self {
             loaded,
             backend,
@@ -456,6 +509,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
             fields,
             source,
             helicity,
+            directed,
         })
     }
     pub fn loaded(&self) -> &Arc<LoadedLoopRuntime> {
@@ -478,7 +532,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         input: LoopInputs,
         snapshot: Option<Arc<SourceSnapshot<B::Batch>>>,
     ) -> RusticolResult<CompleteLoopResult<B::Batch>> {
-        self.evaluate_mode(input, snapshot, false)?
+        self.evaluate_mode(input, snapshot, LoopObservable::Inclusive)?
             .require_complete()
     }
     /// Retain each helicity as a native projection/reduction row. Currents and
@@ -494,7 +548,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         input: LoopInputs,
         snapshot: Option<Arc<SourceSnapshot<B::Batch>>>,
     ) -> RusticolResult<CompleteLoopResult<B::Batch>> {
-        self.evaluate_mode(input, snapshot, true)?
+        self.evaluate_mode(input, snapshot, LoopObservable::Resolved)?
             .require_complete()
     }
     /// Compact complete physical points and retain typed state, scale and
@@ -505,14 +559,45 @@ impl<B: LoopBackend> LoopExecutor<B> {
         snapshot: Option<Arc<SourceSnapshot<B::Batch>>>,
         resolved: bool,
     ) -> RusticolResult<CompleteLoopResult<B::Batch>> {
-        self.evaluate_mode(input, snapshot, resolved)
+        self.evaluate_mode(input, snapshot, LoopObservable::from_resolved(resolved))
+    }
+    pub fn evaluate_directed(
+        &mut self,
+        input: LoopInputs,
+    ) -> RusticolResult<CompleteLoopResult<B::Batch>> {
+        self.evaluate_mode(input, None, LoopObservable::Directed)?
+            .require_complete()
+    }
+    pub fn evaluate_observable_partial_with_snapshot(
+        &mut self,
+        input: LoopInputs,
+        snapshot: Option<Arc<SourceSnapshot<B::Batch>>>,
+        observable: LoopObservable,
+    ) -> RusticolResult<CompleteLoopResult<B::Batch>> {
+        self.evaluate_mode(input, snapshot, observable)
+    }
+    pub fn evaluate_observable_with_snapshot(
+        &mut self,
+        input: LoopInputs,
+        snapshot: Option<Arc<SourceSnapshot<B::Batch>>>,
+        observable: LoopObservable,
+    ) -> RusticolResult<CompleteLoopResult<B::Batch>> {
+        self.evaluate_mode(input, snapshot, observable)?
+            .require_complete()
     }
     fn evaluate_mode(
         &mut self,
         mut input: LoopInputs,
         snapshot: Option<Arc<SourceSnapshot<B::Batch>>>,
-        resolved: bool,
+        observable: LoopObservable,
     ) -> RusticolResult<CompleteLoopResult<B::Batch>> {
+        let resolved = observable == LoopObservable::Resolved;
+        if observable == LoopObservable::Directed && self.directed.is_none() {
+            return Err(RusticolError::unsupported_runtime_capability(
+                "directed-complex loop evaluation",
+                "this artifact has no directed projection kernels",
+            ));
+        }
         if resolved && self.helicity.is_none() {
             return Err(RusticolError::unsupported_runtime_capability(
                 "helicity-resolved virtual evaluation",
@@ -544,7 +629,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         let momentum_width = count(self.loaded.plan().state_legs.len(), 4)?;
         let mut failures = Vec::new();
         loop {
-            match self.evaluate_inner(input.clone(), snapshot.clone(), resolved) {
+            match self.evaluate_inner(input.clone(), snapshot.clone(), observable) {
                 Ok(mut result) => {
                     failures.append(&mut result.failures);
                     let original_id = |ordinal: u64| {
@@ -588,6 +673,10 @@ impl<B: LoopBackend> LoopExecutor<B> {
                         *component = dense(component)?;
                     }
                     result.totals = dense(&result.totals)?;
+                    if let Some(directed) = &mut result.directed {
+                        directed.first = dense(&directed.first)?;
+                        directed.second = dense(&directed.second)?;
+                    }
                     for (&id, statuses) in row_ids.iter().zip(&mut result.statuses) {
                         for (status_id, _) in statuses {
                             *status_id = id;
@@ -623,8 +712,10 @@ impl<B: LoopBackend> LoopExecutor<B> {
         &mut self,
         input: LoopInputs,
         snapshot: Option<Arc<SourceSnapshot<B::Batch>>>,
-        resolved: bool,
+        observable: LoopObservable,
     ) -> StepResult<CompleteLoopResult<B::Batch>> {
+        let resolved = observable == LoopObservable::Resolved;
+        let directed = observable == LoopObservable::Directed;
         if snapshot.is_some() && !input.model_values.is_empty() {
             return Err(invalid(
                 "source model parameters require named owner updates, not positional model_values",
@@ -632,6 +723,16 @@ impl<B: LoopBackend> LoopExecutor<B> {
             .into());
         }
         let plan = self.loaded.plan();
+        let histories = if directed {
+            plan.directed_projection
+                .as_ref()
+                .expect("checked directed kernels")
+                .histories
+                .len()
+        } else {
+            1
+        };
+        let directions = if directed { count(2, histories)? } else { 1 };
         let points = input.point_ids.len();
         let legs = plan.state_legs.len();
         let helicities = plan.helicities.len();
@@ -801,7 +902,16 @@ impl<B: LoopBackend> LoopExecutor<B> {
             count(projection_helicities, B::columns(&born_amplitudes))?,
             projection_input_ids.clone(),
         )?;
-        let born = if resolved {
+        let born = if directed {
+            B::evaluate(
+                &mut self
+                    .directed
+                    .as_mut()
+                    .expect("checked directed kernels")
+                    .born,
+                &born_input,
+            )?
+        } else if resolved {
             B::evaluate(
                 &mut self
                     .helicity
@@ -816,7 +926,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         let born = B::reshape(
             &born,
             projection_points,
-            plan.order_layout.born.len(),
+            count(histories, plan.order_layout.born.len())?,
             projection_ids.clone(),
         )?;
         check_component_finite::<B>(
@@ -841,7 +951,12 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 count(projection_helicities, B::columns(&projection))?,
                 projection_input_ids.clone(),
             )?;
-            let projector = if resolved {
+            let projector = if directed {
+                workspace
+                    .directed_projector
+                    .as_mut()
+                    .expect("checked directed kernel")
+            } else if resolved {
                 workspace
                     .helicity_projector
                     .as_mut()
@@ -853,7 +968,10 @@ impl<B: LoopBackend> LoopExecutor<B> {
             let coefficients = B::reshape(
                 &coefficients,
                 projection_points,
-                count(family.sector_indices.len(), family.powers.len())?,
+                count(
+                    count(directions, family.sector_indices.len())?,
+                    family.powers.len(),
+                )?,
                 projection_ids.clone(),
             )?;
             check_component_finite::<B>(
@@ -921,18 +1039,24 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 &mut failures,
             )?;
             let masses = B::select(&masses, (0..n).collect())?;
-            let channels = family.sector_indices.len();
+            let channels = count(directions, family.sector_indices.len())?;
             let channel_rows = count(projection_points, channels)?;
             let mut reduction_ids = Vec::with_capacity(channel_rows);
             let mut gather = Vec::with_capacity(channel_rows);
             for (row, &id) in projection_ids.iter().enumerate() {
-                for &sector in &family.sector_indices {
-                    reduction_ids.push(lane_id(id, sector_count, sector)?);
-                    gather.push(if resolved {
-                        row / resolved_rows_per_point
-                    } else {
-                        row
-                    });
+                for direction in 0..directions {
+                    for &sector in &family.sector_indices {
+                        reduction_ids.push(lane_id(
+                            id,
+                            count(directions, sector_count)?,
+                            direction * sector_count + sector,
+                        )?);
+                        gather.push(if resolved {
+                            row / resolved_rows_per_point
+                        } else {
+                            row
+                        });
+                    }
                 }
             }
             let coefficients = B::reshape(
@@ -965,6 +1089,8 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 &projection_ids,
                 &reduction_ids,
                 &family.sector_indices,
+                directions,
+                directed,
                 helicities,
                 color_components,
                 resolved,
@@ -1008,6 +1134,8 @@ impl<B: LoopBackend> LoopExecutor<B> {
                     &projection_ids,
                     &reduction_ids,
                     &family.sector_indices,
+                    directions,
+                    directed,
                     helicities,
                     color_components,
                     resolved,
@@ -1036,11 +1164,19 @@ impl<B: LoopBackend> LoopExecutor<B> {
         for values in integrated.iter_mut().chain(&mut rational_integrated) {
             *values = select_ids::<B>(values, &accepted)?;
         }
-        let virtual_value = eval::<B>(
-            &mut self.bare,
-            "postprocess",
-            &B::concat(&integrated.iter().collect::<Vec<_>>())?,
-        )?;
+        let integrated_input = B::concat(&integrated.iter().collect::<Vec<_>>())?;
+        let virtual_value = if directed {
+            B::evaluate(
+                &mut self
+                    .directed
+                    .as_mut()
+                    .expect("checked directed kernels")
+                    .postprocess,
+                &integrated_input,
+            )?
+        } else {
+            eval::<B>(&mut self.bare, "postprocess", &integrated_input)?
+        };
         check_component_finite::<B>(
             &virtual_value,
             "bare virtual assembly",
@@ -1118,7 +1254,16 @@ impl<B: LoopBackend> LoopExecutor<B> {
             count(projection_helicities, B::columns(&projected))?,
             projection_input_ids.clone(),
         )?;
-        let counterterms = if resolved {
+        let counterterms = if directed {
+            B::evaluate(
+                &mut self
+                    .directed
+                    .as_mut()
+                    .expect("checked directed kernels")
+                    .counterterms,
+                &projected,
+            )?
+        } else if resolved {
             B::evaluate(
                 &mut self
                     .helicity
@@ -1133,7 +1278,10 @@ impl<B: LoopBackend> LoopExecutor<B> {
         let counterterms = B::reshape(
             &counterterms,
             projection_points,
-            count(9, sector_count)?,
+            count(
+                if directed { count(18, histories)? } else { 9 },
+                sector_count,
+            )?,
             projection_ids.clone(),
         )?;
         let mut counterterms = select_ids::<B>(&counterterms, &accepted)?;
@@ -1145,7 +1293,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
             None,
             &mut failures,
         )?;
-        let width = 3 * sector_count;
+        let width = count(count(3, sector_count)?, histories)?;
         if let Some(rational) = rational {
             counterterms = B::concat(&[
                 &B::select(&counterterms, (0..width).collect())?,
@@ -1153,11 +1301,23 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 &B::select(&counterterms, (2 * width..3 * width).collect())?,
             ])?;
         }
-        let assembled = eval::<B>(
-            &mut self.model,
-            "assemble",
-            &B::concat(&[&virtual_value, &counterterms])?,
-        )?;
+        let assembled = if directed {
+            let cross_terms = B::select(&virtual_value, (width..3 * width).collect())?;
+            B::evaluate(
+                &mut self
+                    .directed
+                    .as_mut()
+                    .expect("checked directed kernels")
+                    .assemble,
+                &B::concat(&[&cross_terms, &counterterms])?,
+            )?
+        } else {
+            eval::<B>(
+                &mut self.model,
+                "assemble",
+                &B::concat(&[&virtual_value, &counterterms])?,
+            )?
+        };
         check_component_finite::<B>(
             &assembled,
             "complete virtual assembly",
@@ -1166,17 +1326,57 @@ impl<B: LoopBackend> LoopExecutor<B> {
             None,
             &mut failures,
         )?;
-        let components = [
-            B::select(&assembled, (0..width).collect())?,
-            virtual_value,
-            B::select(&assembled, (width..2 * width).collect())?,
-            B::select(&counterterms, (width..2 * width).collect())?,
-            B::select(&counterterms, (0..width).collect())?,
-            B::select(&counterterms, (2 * width..3 * width).collect())?,
-        ];
+        let (components, directed_values) = if directed {
+            (
+                [
+                    B::select(&assembled, (0..width).collect())?,
+                    B::select(&virtual_value, (0..width).collect())?,
+                    B::select(&assembled, (width..2 * width).collect())?,
+                    B::select(&assembled, (2 * width..3 * width).collect())?,
+                    B::select(&assembled, (3 * width..4 * width).collect())?,
+                    B::select(&assembled, (4 * width..5 * width).collect())?,
+                ],
+                Some(DirectedCrossTerms {
+                    history_ids: plan
+                        .directed_projection
+                        .as_ref()
+                        .expect("checked directed kernels")
+                        .histories
+                        .iter()
+                        .map(|history| history.id.clone())
+                        .collect(),
+                    first: B::select(&assembled, (5 * width..6 * width).collect())?,
+                    second: B::select(&assembled, (6 * width..7 * width).collect())?,
+                }),
+            )
+        } else {
+            (
+                [
+                    B::select(&assembled, (0..width).collect())?,
+                    virtual_value,
+                    B::select(&assembled, (width..2 * width).collect())?,
+                    B::select(&counterterms, (width..2 * width).collect())?,
+                    B::select(&counterterms, (0..width).collect())?,
+                    B::select(&counterterms, (2 * width..3 * width).collect())?,
+                ],
+                None,
+            )
+        };
         let mut values = vec![&born];
         values.extend(components.iter());
-        let totals = eval::<B>(&mut self.model, "sum_order_values", &B::concat(&values)?)?;
+        let totals = if let Some(cross) = &directed_values {
+            values.extend([&cross.first, &cross.second]);
+            B::evaluate(
+                &mut self
+                    .directed
+                    .as_mut()
+                    .expect("checked directed kernels")
+                    .sum_order_values,
+                &B::concat(&values)?,
+            )?
+        } else {
+            eval::<B>(&mut self.model, "sum_order_values", &B::concat(&values)?)?
+        };
         check_component_finite::<B>(
             &totals,
             "sum over completed perturbative orders",
@@ -1207,6 +1407,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 .collect(),
             r2_strategy: plan.r2_strategy.clone(),
             source_revision: snapshot.as_ref().map(|value| value.revision()),
+            directed: directed_values,
             failures,
         })
     }
@@ -1233,6 +1434,8 @@ pub(crate) fn finite_rows<B: LoopBackend>(
             color_component_index: None,
             order_index: None,
             family_index: None,
+            history_index: None,
+            direction: None,
             external_leg: None,
             stage: stage.into(),
             detail: "nonfinite numerical value or active scalar diagnostic".into(),
@@ -1274,6 +1477,8 @@ fn complete_family_rows<B: LoopBackend>(
     projection_ids: &[u64],
     channel_ids: &[u64],
     sectors: &[usize],
+    directions: usize,
+    directed: bool,
     helicities: usize,
     color_components: usize,
     resolved: bool,
@@ -1309,7 +1514,7 @@ fn complete_family_rows<B: LoopBackend>(
     }
     let mut failed = BTreeSet::new();
     for (channel, (_, detail)) in channel_statuses.into_iter().enumerate() {
-        let row = channel / sectors.len();
+        let row = channel / count(directions, sectors.len())?;
         let projection_id = projection_ids[row];
         statuses[row].push((projection_id, detail.clone()));
         if detail != "success" {
@@ -1328,6 +1533,8 @@ fn complete_family_rows<B: LoopBackend>(
                     .then_some((projection_id % color_components as u64) as usize),
                 order_index: Some(sectors[channel % sectors.len()]),
                 family_index: Some(family),
+                history_index: directed.then_some(channel / sectors.len() % directions / 2),
+                direction: directed.then_some(channel / sectors.len() % 2),
                 external_leg: None,
                 stage: stage.into(),
                 detail,
@@ -1350,7 +1557,7 @@ fn complete_family_rows<B: LoopBackend>(
     let channels: Vec<_> = rows
         .into_iter()
         .flat_map(|row| {
-            channel_ids[row * sectors.len()..(row + 1) * sectors.len()]
+            channel_ids[row * sectors.len() * directions..(row + 1) * sectors.len() * directions]
                 .iter()
                 .copied()
         })
@@ -1358,7 +1565,7 @@ fn complete_family_rows<B: LoopBackend>(
     B::reshape(
         &select_ids::<B>(&values, &channels)?,
         ids.len(),
-        count(3, sectors.len())?,
+        count(count(3, sectors.len())?, directions)?,
         ids,
     )
 }
@@ -1500,6 +1707,8 @@ fn prepare_states<B: LoopBackend>(
                 point_id,
                 helicity: Some((id % helicity_count as u64) as usize),
                 color_component_index: None,
+                history_index: None,
+                direction: None,
                 external_leg: Some((state_id % leg_count as u64) as usize),
                 order_index: None,
                 family_index: None,

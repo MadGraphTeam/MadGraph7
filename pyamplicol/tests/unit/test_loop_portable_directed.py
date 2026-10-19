@@ -114,8 +114,9 @@ def test_cold_directed_assembly_keeps_complex_terms_without_ordinary_execution(
             assert (Decimal(real), Decimal(imaginary)) == pair
     with pytest.raises(NotImplementedError, match=r"directed.*scheduler"):
         PortableLoopPlan.open(path, backend=native).bind(**options)
-    with pytest.raises(ValueError, match="directed"):
-        native.NativeLoopProgram(str(path), **options)
+    # Native mode selection is now explicit; merely storing directed kernels
+    # must not prevent binding the ordinary observable.
+    assert native.NativeLoopProgram(str(path), **options).metadata_json()
 
     from pyamplicol.loops.prepared_correlations import _directed_order_sum_state
 

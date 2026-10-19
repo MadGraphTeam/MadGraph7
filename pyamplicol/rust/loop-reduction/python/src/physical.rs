@@ -3,7 +3,7 @@
 use crate::{batch::NativeBatch, error};
 use pyo3::prelude::*;
 use rusticol_core::loop_execution::{
-    CompleteLoopResult, LoopExecutor, LoopInputs, LoopLaneFailure,
+    CompleteLoopResult, LoopExecutor, LoopInputs, LoopLaneFailure, LoopObservable,
 };
 use rusticol_core::loop_runtime::{LoadedLoopRuntime, load_loop_runtime_pacbin};
 use rusticol_core::source_bindings::{SourceOverrides, SourceOwner, SourceSnapshot};
@@ -39,6 +39,101 @@ impl NativeLoopProgram {
             precision,
             verification: Default::default(),
         })
+    }
+    fn verified_observable(
+        &mut self,
+        py: Python<'_>,
+        momenta: Vec<Vec<[String; 4]>>,
+        scales_squared: Vec<String>,
+        higher: Vec<(String, Option<u32>)>,
+        relative_tolerance: String,
+        absolute_tolerance: String,
+        point_ids: Option<Vec<u64>>,
+        observable: LoopObservable,
+        verify_successful: bool,
+    ) -> PyResult<crate::virtual_runtime::NativeVerifiedLoopResult> {
+        if momenta
+            .iter()
+            .any(|p| p.len() != self.executor.loaded().plan().state_legs.len())
+        {
+            return Err(error("physical momentum leg shape differs"));
+        }
+        let ids = point_ids.unwrap_or_else(|| (0..momenta.len() as u64).collect());
+        if ids.len() != momenta.len() {
+            return Err(error("physical point identity count differs"));
+        }
+        let inputs = LoopInputs {
+            momenta: momenta.into_iter().flatten().flatten().collect(),
+            scales_squared,
+            point_ids: ids,
+            model_values: vec![],
+        };
+        let policy = crate::virtual_runtime::verification_policy(
+            higher,
+            relative_tolerance,
+            absolute_tolerance,
+            verify_successful,
+        );
+        let spec = rusticol_loop_reduction::verification::ArithmeticSpec {
+            arithmetic: self.arithmetic.clone(),
+            precision: self.precision,
+        };
+        let value = py
+            .detach(|| {
+                rusticol_loop_reduction::verification::evaluate_observable_verified(
+                    &mut self.executor,
+                    &mut self.verification,
+                    inputs,
+                    &spec,
+                    &policy,
+                    observable,
+                )
+            })
+            .map_err(error)?;
+        crate::virtual_runtime::NativeVerifiedLoopResult::bind(py, value)
+    }
+    fn evaluate_observable(
+        &mut self,
+        py: Python<'_>,
+        momenta: Vec<Vec<[String; 4]>>,
+        scales_squared: Vec<String>,
+        model_values: Option<Vec<String>>,
+        point_ids: Option<Vec<u64>>,
+        snapshot: Option<&NativeSourceSnapshot>,
+        observable: LoopObservable,
+        partial: bool,
+    ) -> PyResult<NativeCompleteLoopResult> {
+        if self.executor.source_owner().is_some() && model_values.is_some() {
+            return Err(error(
+                "source model parameters require named owner updates, not positional model_values",
+            ));
+        }
+        let snapshot = snapshot.map(|value| value.0.clone());
+        let legs = self.executor.loaded().plan().state_legs.len();
+        if momenta.iter().any(|point| point.len() != legs) {
+            return Err(error("physical momentum leg shape differs"));
+        }
+        let ids = point_ids.unwrap_or_else(|| (0..momenta.len() as u64).collect());
+        if ids.len() != momenta.len() {
+            return Err(error("physical point identity count differs"));
+        }
+        let input = LoopInputs {
+            momenta: momenta.into_iter().flatten().flatten().collect(),
+            scales_squared,
+            model_values: model_values.unwrap_or_default(),
+            point_ids: ids,
+        };
+        py.detach(|| {
+            if partial {
+                self.executor
+                    .evaluate_observable_partial_with_snapshot(input, snapshot, observable)
+            } else {
+                self.executor
+                    .evaluate_observable_with_snapshot(input, snapshot, observable)
+            }
+        })
+        .map(NativeCompleteLoopResult)
+        .map_err(error)
     }
 }
 #[pymethods]
@@ -135,45 +230,17 @@ impl NativeLoopProgram {
         resolved: bool,
         verify_successful: bool,
     ) -> PyResult<crate::virtual_runtime::NativeVerifiedLoopResult> {
-        if momenta
-            .iter()
-            .any(|p| p.len() != self.executor.loaded().plan().state_legs.len())
-        {
-            return Err(error("physical momentum leg shape differs"));
-        }
-        let ids = point_ids.unwrap_or_else(|| (0..momenta.len() as u64).collect());
-        if ids.len() != momenta.len() {
-            return Err(error("physical point identity count differs"));
-        }
-        let inputs = LoopInputs {
-            momenta: momenta.into_iter().flatten().flatten().collect(),
+        self.verified_observable(
+            py,
+            momenta,
             scales_squared,
-            point_ids: ids,
-            model_values: vec![],
-        };
-        let policy = crate::virtual_runtime::verification_policy(
             higher,
             relative_tolerance,
             absolute_tolerance,
+            point_ids,
+            LoopObservable::from_resolved(resolved),
             verify_successful,
-        );
-        let spec = rusticol_loop_reduction::verification::ArithmeticSpec {
-            arithmetic: self.arithmetic.clone(),
-            precision: self.precision,
-        };
-        let value = py
-            .detach(|| {
-                rusticol_loop_reduction::verification::evaluate_verified(
-                    &mut self.executor,
-                    &mut self.verification,
-                    inputs,
-                    &spec,
-                    &policy,
-                    resolved,
-                )
-            })
-            .map_err(error)?;
-        crate::virtual_runtime::NativeVerifiedLoopResult::bind(py, value)
+        )
     }
 
     #[pyo3(signature=(momenta, scales_squared, model_values=None, point_ids=None, snapshot=None, *, resolved=false, partial=false))]
@@ -188,39 +255,62 @@ impl NativeLoopProgram {
         resolved: bool,
         partial: bool,
     ) -> PyResult<NativeCompleteLoopResult> {
-        if self.executor.source_owner().is_some() && model_values.is_some() {
-            return Err(error(
-                "source model parameters require named owner updates, not positional model_values",
-            ));
-        }
-        let snapshot = snapshot.map(|value| value.0.clone());
-        let legs = self.executor.loaded().plan().state_legs.len();
-        if momenta.iter().any(|point| point.len() != legs) {
-            return Err(error("physical momentum leg shape differs"));
-        }
-        let ids = point_ids.unwrap_or_else(|| (0..momenta.len() as u64).collect());
-        if ids.len() != momenta.len() {
-            return Err(error("physical point identity count differs"));
-        }
-        let input = LoopInputs {
-            momenta: momenta.into_iter().flatten().flatten().collect(),
+        self.evaluate_observable(
+            py,
+            momenta,
             scales_squared,
-            model_values: model_values.unwrap_or_default(),
-            point_ids: ids,
-        };
-        py.detach(|| {
-            if partial {
-                self.executor
-                    .evaluate_partial_with_snapshot(input, snapshot, resolved)
-            } else if resolved {
-                self.executor
-                    .evaluate_resolved_with_snapshot(input, snapshot)
-            } else {
-                self.executor.evaluate_with_snapshot(input, snapshot)
-            }
-        })
-        .map(NativeCompleteLoopResult)
-        .map_err(error)
+            model_values,
+            point_ids,
+            snapshot,
+            LoopObservable::from_resolved(resolved),
+            partial,
+        )
+    }
+    #[pyo3(signature=(momenta, scales_squared, model_values=None, point_ids=None, snapshot=None, *, partial=false))]
+    fn evaluate_directed(
+        &mut self,
+        py: Python<'_>,
+        momenta: Vec<Vec<[String; 4]>>,
+        scales_squared: Vec<String>,
+        model_values: Option<Vec<String>>,
+        point_ids: Option<Vec<u64>>,
+        snapshot: Option<&NativeSourceSnapshot>,
+        partial: bool,
+    ) -> PyResult<NativeCompleteLoopResult> {
+        self.evaluate_observable(
+            py,
+            momenta,
+            scales_squared,
+            model_values,
+            point_ids,
+            snapshot,
+            LoopObservable::Directed,
+            partial,
+        )
+    }
+    #[pyo3(signature=(momenta, scales_squared, higher, relative_tolerance, absolute_tolerance, *, point_ids=None, verify_successful=false))]
+    fn evaluate_directed_verified(
+        &mut self,
+        py: Python<'_>,
+        momenta: Vec<Vec<[String; 4]>>,
+        scales_squared: Vec<String>,
+        higher: Vec<(String, Option<u32>)>,
+        relative_tolerance: String,
+        absolute_tolerance: String,
+        point_ids: Option<Vec<u64>>,
+        verify_successful: bool,
+    ) -> PyResult<crate::virtual_runtime::NativeVerifiedLoopResult> {
+        self.verified_observable(
+            py,
+            momenta,
+            scales_squared,
+            higher,
+            relative_tolerance,
+            absolute_tolerance,
+            point_ids,
+            LoopObservable::Directed,
+            verify_successful,
+        )
     }
 }
 
@@ -234,6 +324,8 @@ pub(super) struct NativeLoopFailure {
     family_index: Option<usize>,
     external_leg: Option<usize>,
     color_component_index: Option<usize>,
+    history_index: Option<usize>,
+    direction: Option<usize>,
     stage: String,
     detail: String,
 }
@@ -246,6 +338,8 @@ impl From<&LoopLaneFailure> for NativeLoopFailure {
             family_index: value.family_index,
             external_leg: value.external_leg,
             color_component_index: value.color_component_index,
+            history_index: value.history_index,
+            direction: value.direction,
             stage: value.stage.clone(),
             detail: value.detail.clone(),
         }
@@ -253,6 +347,36 @@ impl From<&LoopLaneFailure> for NativeLoopFailure {
 }
 #[pymethods]
 impl NativeCompleteLoopResult {
+    #[getter]
+    fn observable_kind(&self) -> &'static str {
+        if self.0.directed.is_some() {
+            "directed-complex"
+        } else {
+            "ordinary-interference"
+        }
+    }
+    #[getter]
+    fn history_ids(&self) -> Vec<String> {
+        self.0
+            .directed
+            .as_ref()
+            .map(|x| x.history_ids.clone())
+            .unwrap_or_default()
+    }
+    #[getter]
+    fn directed_first(&self) -> Option<NativeBatch> {
+        self.0
+            .directed
+            .as_ref()
+            .map(|x| NativeBatch(x.first.as_ref().clone()))
+    }
+    #[getter]
+    fn directed_second(&self) -> Option<NativeBatch> {
+        self.0
+            .directed
+            .as_ref()
+            .map(|x| NativeBatch(x.second.as_ref().clone()))
+    }
     #[getter]
     fn requested_point_ids(&self) -> Vec<u64> {
         self.0.requested_point_ids.clone()

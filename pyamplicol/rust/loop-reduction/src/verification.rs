@@ -3,7 +3,8 @@
 //! Comparisons/conversions use the shared dependency-backed Batch primitives.
 use crate::runtime::{Batch, ExecutionError, arithmetic_mode, physical::PhysicalBackend};
 use rusticol_core::loop_execution::{
-    CompleteLoopResult, LoopExecutor, LoopInputs, LoopLaneFailure,
+    CompleteLoopResult, DirectedCrossTerms, LoopExecutor, LoopInputs, LoopLaneFailure,
+    LoopObservable,
 };
 use rusticol_core::{RusticolError, RusticolResult};
 use serde::Serialize;
@@ -119,6 +120,9 @@ fn select(batch: &Batch, ids: &[u64]) -> RusticolResult<Batch> {
 fn packet(result: &Complete, rows_per_point: usize) -> RusticolResult<Batch> {
     let mut batches = vec![result.born.as_ref()];
     batches.extend(result.components.iter().map(AsRef::as_ref));
+    if let Some(directed) = &result.directed {
+        batches.extend([directed.first.as_ref(), directed.second.as_ref()]);
+    }
     batches.push(result.totals.as_ref());
     let joined = Batch::concat_columns(&batches).map_err(execution)?;
     if rows_per_point == 0
@@ -179,6 +183,26 @@ pub fn evaluate_verified(
     policy: &VerificationPolicy,
     resolved: bool,
 ) -> RusticolResult<VerifiedLoopResult> {
+    evaluate_observable_verified(
+        executor,
+        workspace,
+        inputs,
+        primary_spec,
+        policy,
+        LoopObservable::from_resolved(resolved),
+    )
+}
+
+/// Verify the explicitly selected observable, including both complex directed
+/// cross terms. No cancellation in their sum can conceal an unstable term.
+pub fn evaluate_observable_verified(
+    executor: &mut LoopExecutor<PhysicalBackend>,
+    workspace: &mut VerificationWorkspace,
+    inputs: LoopInputs,
+    primary_spec: &ArithmeticSpec,
+    policy: &VerificationPolicy,
+    observable: LoopObservable,
+) -> RusticolResult<VerifiedLoopResult> {
     policy.validate(primary_spec)?;
     if !inputs.model_values.is_empty() {
         return Err(invalid("verification requires named source parameters"));
@@ -189,7 +213,7 @@ pub fn evaluate_verified(
         .cloned()
         .ok_or_else(|| invalid("verification requires source-owned exact parameters"))?;
     let snapshot = owner.snapshot()?;
-    let rows_per_point = if resolved {
+    let rows_per_point = if observable == LoopObservable::Resolved {
         loaded.plan().resolved_rows_per_point()?
     } else {
         1
@@ -200,10 +224,10 @@ pub fn evaluate_verified(
         .len()
         .checked_mul(4)
         .ok_or_else(|| invalid("input width overflows"))?;
-    let primary = executor.evaluate_partial_with_snapshot(
+    let primary = executor.evaluate_observable_partial_with_snapshot(
         inputs.clone(),
         Some(snapshot.clone()),
-        resolved,
+        observable,
     )?;
     let initial = packet(&primary, rows_per_point)?;
     let mut diagnostics: HashMap<_, _> = inputs
@@ -279,10 +303,10 @@ pub fn evaluate_verified(
         let target_owner = target.source_owner().expect("source owner");
         let reconstructed =
             target_owner.reconstruct_snapshot(target.backend(), &owner, &snapshot)?;
-        let attempt = target.evaluate_partial_with_snapshot(
+        let attempt = target.evaluate_observable_partial_with_snapshot(
             inputs.select_points(&pending, width)?,
             Some(reconstructed),
-            resolved,
+            observable,
         )?;
         record(&mut diagnostics, &attempt, spec)?;
         let current = packet(&attempt, rows_per_point)?;
@@ -424,6 +448,12 @@ pub fn evaluate_verified(
         .map_err(execution)?;
     let widths: Vec<_> = std::iter::once(primary.born.columns())
         .chain(primary.components.iter().map(|b| b.columns()))
+        .chain(
+            primary
+                .directed
+                .iter()
+                .flat_map(|d| [d.first.columns(), d.second.columns()]),
+        )
         .chain(std::iter::once(primary.totals.columns()))
         .collect();
     let mut start = 0;
@@ -437,6 +467,15 @@ pub fn evaluate_verified(
     }
     let born = blocks.remove(0);
     let totals = blocks.pop().expect("totals");
+    let directed = primary.directed.as_ref().map(|metadata| {
+        let second = blocks.pop().expect("directed second term");
+        let first = blocks.pop().expect("directed first term");
+        DirectedCrossTerms {
+            history_ids: metadata.history_ids.clone(),
+            first,
+            second,
+        }
+    });
     let components = blocks
         .try_into()
         .map_err(|_| invalid("component count differs"))?;
@@ -456,6 +495,8 @@ pub fn evaluate_verified(
             order_index: None,
             family_index: None,
             external_leg: None,
+            history_index: None,
+            direction: None,
             color_component_index: None,
             stage: "precision verification".into(),
             detail: d.detail.clone(),
@@ -488,6 +529,7 @@ pub fn evaluate_verified(
             statuses,
             r2_strategy: primary.r2_strategy,
             source_revision: Some(snapshot.revision()),
+            directed,
             failures,
         },
         diagnostics: inputs
