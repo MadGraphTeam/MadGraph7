@@ -1,7 +1,8 @@
 # Public virtual spin sources
 
-The existing correlated API accepts declared singleton or joint photon/gluon
-source classes for QCD, with complete model-rule R2 and UV. Full-colour fixed-Nc
+The existing correlated API accepts declared singleton or joint vector source
+classes for QCD, with complete model-rule R2 and UV. Validated cases include
+photons/gluons and the stable real-mass W+ controls described below. Full-colour fixed-Nc
 kernels support the admitted ordered colour histories. Formally projected LC/NLC
 kernels support identity histories as described below. Generation
 uses `CorrelatorConfig(spin_correlations=((3,), (4,), (3, 4)))`; the labels are the
@@ -34,8 +35,8 @@ workspaces and preserves them. Empty event batches accept empty per-event vector
 lists without losing their joint class identity.
 
 The actual compiled model supplies each vector's `SourceIR`. Preparation checks
-it against the physical port, identity, representation and structurally massless
-two-state domain. Tree-adapter binary64 mass defaults do not decide loop mass
+it against the physical port, actual particle/antiparticle identity and structural
+two-state massless or three-state massive vector layout. Tree-adapter binary64 mass defaults do not decide loop mass
 classification or enter its exact scalar owner. Raw internal producers supply
 explicit contracts. The immutable source class retains its bare-plan owner,
 contracts and compiled phases; the writer consumes these rather than rebuilding
@@ -58,8 +59,9 @@ returns complex values; DoubleFloat and arbitrary precision preserve decimal
 real/imaginary components. `inspect()["spin_correlations"]` lists the actual saved
 classes. Ordinary `evaluate` is independent of the spin setter.
 
-Resolved correlated output, nonidentity LC/NLC colour histories, massive vectors
-and general EW source kernels remain unvalidated follow-ups. The independently
+Resolved correlated output, nonidentity LC/NLC colour histories, charge-conjugate
+W− controls, neutral massive/chiral source cases and general EW corrections remain
+unvalidated follow-ups. The independently
 proved full-colour identity-order d/s flavour reuse is described in
 `LOOP_FLAVOR_TRANSPORT.md`; formal-colour flavour reuse is a separate requirement.
 No additional execution engine or fixed capacity limit is introduced.
@@ -87,8 +89,43 @@ source-versus-saved recurrence comparison and exact homogeneity/replay, with no
 implicit projection or conjugation. The reference uses `aEWM1=132.50698`, while
 the supplied source default is `132.507`; the runtime binds the matched exact
 value. Reference data, driver and conventions are in
-`tools/loop_reference/PHOTON_SOURCES.md`. No new performance measurement or massive
-vector/EW-source certification is implied.
+`tools/loop_reference/PHOTON_SOURCES.md`. These photon controls do not imply
+additional massive-vector or EW-correction certification.
+
+## Stable charged massive-vector controls
+
+The actual model-owned W+ SourceIR now passes through the same source preparation
+and saved-runtime path. No vector wavefunction formula was added: dependency
+wavefunctions supply all three states, including the longitudinal state. Saved
+loading also reuses the existing canonical and reciprocal antiparticle identity
+checks across source classes. A three-state contract cannot be relabelled as a
+massless state space; contradictory identities are rejected.
+
+Complete full-colour QCD controls cover `u d~ -> W+ g` and crossed `d W+ -> u g`,
+with zero W width and matched exact input parameters. Ordinary Born and all three
+loop coefficients agree with MadLoop. Independent Recola coherent projections
+use its own massive wavefunctions and three-state amplitude columns, rather than
+its two-state public spin-projection helper. The outgoing/incoming maximum
+relative differences are approximately `2.9e-13` and `3.2e-9`; these are binary64
+physics comparisons. Fixed-helicity MadLoop/Recola controls also agree, with the
+incoming spin average translated explicitly.
+
+Native double, DoubleFloat and AP70 controls reconstruct every complete component
+from the three W states and the six joint W/gluon states, retaining both directed
+interference terms and ordered histories. They exercise exact source changes
+below binary64 resolution, arbitrary literal complex vectors, parameter snapshots,
+empty/tail batches and original point IDs. Public saved artifacts pass coherent
+reference checks, AP60/AP80 subset rescue and `clear`. An unchanged standalone
+Rust source API loads the fresh artifact and checks the longitudinal result and
+owned source labels.
+
+This certifies the exercised stable W+ QCD cases. It does not certify W− physics,
+Z axial closed-loop sums, electroweak corrections, complex external masses or
+massive-vector LC/NLC composition. Recola only supplies an independent oracle for
+the physical three-state subspace. Arbitrary nontransverse source behavior is
+checked by literal recurrence transport and exact homogeneity. These tests are
+not generation/runtime measurements. Driver and convention details are in
+`tools/loop_reference/MASSIVE_VECTOR_SOURCES.md`.
 
 ## Projected identity histories
 
