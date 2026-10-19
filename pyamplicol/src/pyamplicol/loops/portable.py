@@ -119,9 +119,8 @@ def write_loop_pacbin(
             raise ValueError("duplicate saved joint spin class")
         spin_sources = NativeSpinSourcePlan(bare, classes)
         for item in spin_directed:
-            if (
-                item.bare.spin_layout
-                != spin_sources.layouts[item.bare.spin_layout.legs]
+            if item.bare.spin_layout != spin_sources.layouts.get(
+                item.bare.spin_layout.legs
             ):
                 raise ValueError("spin projection spectator helicities differ")
     components = None

@@ -46,8 +46,8 @@ def spin_plan(tmp_path_factory):
     )
     legs = directed_color_legs(source.virtual.bare)
     identity = ColorConnection(legs)
-    alpha = ColorConnection(legs, (EmitGluon(0, -1),))
-    beta = ColorConnection(legs, (EmitGluon(1, -1),))
+    alpha = ColorConnection(legs, (EmitGluon(0, -1), EmitGluon(0, -2)))
+    beta = ColorConnection(legs, (EmitGluon(1, -1), EmitGluon(2, -2)))
     histories = ((identity, identity), (alpha, beta), (beta, alpha))
     ordinary = NativeDirectedModelProgram(source, histories).prepared
     sources = NativeSpinSourcePlan(source.virtual.bare, ((3,), (4,), (3, 4)))
@@ -207,6 +207,7 @@ def test_native_spin_classes_literal_sources_and_exact_owner(
         assert abs(change - expected) < abs(expected) * Decimal("1e-4")
         values = _values(result.component_batches[0], (6, 3, 1, 3))
         _close(values[:, 2], _conjugate(values[:, 1]), tolerance)
+        assert abs(values[0, 1, 0, 0, 1]) > Decimal("1e-8")
         joint = runtime.evaluate_directed(
             [p, p],
             ["1000000"] * 2,
@@ -352,3 +353,24 @@ def test_spin_partial_compaction_and_exact_source_replay(spin_plan):
         [], [], [("arbitrary", 60)], "1e-8", "1e-9", spin_vectors={3: [], 4: [vector]}
     )
     assert empty.result.spin_legs == [3, 4] and empty.result.point_ids == []
+
+
+def test_joint_sources_reconstruct_the_full_polarization_sum(spin_plan):
+    import _loop_reduction as native
+
+    path, _, _, points = spin_plan
+    runtime = native.NativeLoopProgram(str(path), reduction_engine="fast")
+    a = [["0", "0"], ["0.8", "0"], ["0", "0"], ["-0.6", "0"]]
+    b = [["0", "0"], ["0", "0"], ["1", "0"], ["0", "0"]]
+    joint = runtime.evaluate_directed(
+        [points[0]] * 4,
+        ["1000000"] * 4,
+        spin_vectors={3: [a, a, b, b], 4: [a, b, a, b]},
+    )
+    ordinary = runtime.evaluate_directed(points[:1], ["1000000"])
+    for actual, expected in zip(_blocks(joint), _blocks(ordinary), strict=True):
+        _close(
+            _values(actual, (4, actual.columns)).sum(axis=0),
+            _values(expected, (1, expected.columns))[0],
+            Decimal("3e-9"),
+        )

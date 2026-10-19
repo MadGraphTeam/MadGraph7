@@ -216,6 +216,7 @@ impl Runtime {
             return Err(invalid("mu_r2 requires one scale or one per point"));
         }
         Ok(LoopInputs {
+            spin_sources: Default::default(),
             momenta,
             point_ids,
             scales_squared: scales,
