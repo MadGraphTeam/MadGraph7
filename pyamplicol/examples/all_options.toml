@@ -227,6 +227,9 @@ resolved = true
 # evaluation.on_failure: Virtual evaluate numerical failures: raise or return.
 # Returned failures are whole-point null rows with diagnostics. Default raise.
 on_failure = "raise"
+# evaluation.correlated_requests: Optional evaluate-only labelled colour/spin
+# request JSON. Default null; cannot combine with resolved or colour-flow axes.
+# correlated_requests = "data/requests.json"
 # evaluation.arithmetic: Virtual carrier selected before binding parameters.
 # Default null; explicit choices double, double-double, arbitrary.
 # arithmetic = "arbitrary"

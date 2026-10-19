@@ -3168,6 +3168,34 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
 
         return virtual_evaluation_summary(value, prettytable=prettytable)
 
+    if isinstance(value, Mapping) and value:
+        from pyamplicol.correlators import CorrelatedValue
+
+        has_correlated_value = any(
+            isinstance(result, VirtualEvaluation)
+            or (
+                isinstance(result, tuple)
+                and any(isinstance(item, CorrelatedValue) for item in result)
+            )
+            for result in value.values()
+        )
+        if has_correlated_value and all(
+            isinstance(label, str)
+            and (
+                (isinstance(result, VirtualEvaluation) and result.correlated)
+                or (
+                    isinstance(result, tuple)
+                    and all(isinstance(item, CorrelatedValue) for item in result)
+                )
+            )
+            for label, result in value.items()
+        ):
+            return "\n\n".join(
+                f"{_paint(f'Correlated request: {label}', 'CYAN', enabled=color)}\n"
+                f"{render_summary(result, color=color)}"
+                for label, result in value.items()
+            )
+
     if isinstance(value, GenerationResult):
         return _generation_summary(value, prettytable=prettytable, color=color)
     if isinstance(value, ResolvedEvaluation):

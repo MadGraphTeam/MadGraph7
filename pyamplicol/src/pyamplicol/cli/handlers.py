@@ -70,11 +70,13 @@ def dispatch(
     """Dispatch a typed config without importing a concrete domain backend."""
 
     if config.action != "evaluate" and (
-        config.evaluation.stability.higher or config.evaluation.on_failure != "raise"
+        config.evaluation.stability.higher
+        or config.evaluation.on_failure != "raise"
+        or config.evaluation.correlated_requests is not None
     ):
         raise ConfigurationError(
-            "evaluation.stability and evaluation.on_failure options "
-            "require the evaluate action"
+            "evaluation.stability, evaluation.on_failure and correlated_requests "
+            "options require the evaluate action"
         )
     if config.action == "generate":
         return (
@@ -125,7 +127,17 @@ def _process_set(config: RunConfig) -> ProcessSet:
         raise ConfigurationError(str(exc)) from exc
 
 
-def _read_json(path: Path, *, exact: bool = False) -> object:
+def _read_json(
+    path: Path, *, exact: bool = False, reject_duplicates: bool = False
+) -> object:
+    def unique_fields(items: list[tuple[str, object]]) -> dict[str, object]:
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError(f"duplicate JSON object field {key!r}")
+            result[key] = value
+        return result
+
     try:
         if exact:
 
@@ -136,8 +148,12 @@ def _read_json(path: Path, *, exact: bool = False) -> object:
                 path.read_text(encoding="utf-8"),
                 parse_float=Decimal,
                 parse_constant=reject_constant,
+                object_pairs_hook=unique_fields if reject_duplicates else None,
             )
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=unique_fields if reject_duplicates else None,
+        )
     except OSError as exc:
         raise ConfigurationError(f"cannot read {path}: {exc}") from exc
     except ValueError as exc:
@@ -402,8 +418,18 @@ class DefaultCliServices:
         virtual = _virtual_artifact_hint(artifact)
         evaluation = config.evaluation
         stability = evaluation.stability.to_policy()
+        requests = None
+        if evaluation.correlated_requests is not None:
+            from .correlated_requests import correlated_requests_from_json
+
+            requests = correlated_requests_from_json(
+                _read_json(
+                    evaluation.correlated_requests, exact=True, reject_duplicates=True
+                )
+            )
+        exact_inputs = virtual or requests is not None
         if not virtual and (
-            evaluation.arithmetic is not None
+            (evaluation.arithmetic is not None and requests is None)
             or evaluation.mu_r2 is not None
             or evaluation.mu_r2_file is not None
             or config.loop.r2_strategy != "auto"
@@ -418,12 +444,12 @@ class DefaultCliServices:
         parameters: ModelParameters | None = None
         if config.evaluation.model_parameters is not None:
             raw_parameters = _read_json(
-                config.evaluation.model_parameters, exact=virtual
+                config.evaluation.model_parameters, exact=exact_inputs
             )
             if not isinstance(raw_parameters, Mapping):
                 raise ConfigurationError("model parameter JSON must be an object")
             parameters = cast("ModelParameters", raw_parameters)
-        momenta = _read_json(config.evaluation.momenta, exact=virtual)
+        momenta = _read_json(config.evaluation.momenta, exact=exact_inputs)
         if not isinstance(momenta, list):
             raise ConfigurationError("momenta JSON must be a point list")
         scales: ScalarInput | list[ScalarInput] | None = evaluation.mu_r2
@@ -455,6 +481,23 @@ class DefaultCliServices:
             )
 
         runtime = _load_process_output(artifact, progress, load_runtime)
+        if requests is not None:
+            if virtual:
+                return runtime.evaluate_correlated_many(
+                    cast("Momenta", momenta),
+                    requests,
+                    precision=evaluation.precision,
+                    helicities=evaluation.helicity_ids or None,
+                    mu_r2=scales,
+                    on_failure=evaluation.on_failure,
+                )
+            return runtime.evaluate_correlated_many(
+                cast("Momenta", momenta),
+                requests,
+                precision=evaluation.precision,
+                helicities=evaluation.helicity_ids or None,
+                arithmetic=evaluation.arithmetic,
+            )
         operation = (
             runtime.evaluate_resolved if evaluation.resolved else runtime.evaluate
         )

@@ -1052,6 +1052,9 @@ class EvaluationConfig:
         default=None, metadata=_setting("path", nullable=True)
     )
     resolved: bool = field(default=False, metadata=_setting("bool"))
+    correlated_requests: Path | None = field(
+        default=None, metadata=_setting("path", nullable=True)
+    )
     on_failure: Literal["raise", "return"] = field(
         default="raise", metadata=_setting("str", choices=("raise", "return"))
     )
@@ -1092,6 +1095,11 @@ class EvaluationConfig:
             )
         if not isinstance(self.resolved, bool):
             raise ConfigurationError("evaluation.resolved must be a boolean")
+        object.__setattr__(
+            self,
+            "correlated_requests",
+            _path(self.correlated_requests, "evaluation.correlated_requests"),
+        )
         if self.on_failure not in ("raise", "return"):
             raise ConfigurationError(
                 "evaluation.on_failure must be 'raise' or 'return'"
@@ -1110,6 +1118,13 @@ class EvaluationConfig:
             "color_flow_ids",
             _tuple_of_strings(self.color_flow_ids, "evaluation.color_flow_ids"),
         )
+        if self.correlated_requests is not None and (
+            self.resolved or self.color_flow_ids
+        ):
+            raise ConfigurationError(
+                "evaluation.correlated_requests cannot combine with resolved "
+                "or color_flow_ids"
+            )
         object.__setattr__(
             self,
             "model_parameters",

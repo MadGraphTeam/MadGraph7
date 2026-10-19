@@ -513,6 +513,16 @@ inputs and unsupported features still raise errors. These settings apply only to
 virtual `evaluate`, including resolved output, and are not silently used by
 profiling or generation.
 
+To evaluate numerical colour/spin requests, set
+`evaluation.correlated_requests = "data/requests.json"`. The file maps output
+labels to the existing `color_correlation` and `spin_vectors` fields described
+in [correlated CLI requests](command-line-interface.md#correlated-requests).
+It works for tree and virtual artifacts and cannot combine with `resolved = true`
+or nonempty `color_flow_ids`. Tree correlated arithmetic follows its existing
+API default (arbitrary precision); virtual arithmetic and optional stability are
+still bound before parameter evaluation. Request JSON preserves exact decimal
+components and rejects duplicate fields or colliding integer leg keys.
+
 The model-parameter card is a flat JSON object:
 
 ```json

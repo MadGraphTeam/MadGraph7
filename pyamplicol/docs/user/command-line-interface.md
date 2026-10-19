@@ -464,9 +464,56 @@ resolved axes follow the artifact's retained layout. The policy and failure
 options require virtual evaluation and are rejected on other commands, including
 `profile`; configuration inspection can still display them.
 
-Only strategies and observables present in the artifact may be selected. This
-CLI path covers ordinary and resolved evaluation; directed/grouped correlation
-commands remain a separate integration requirement.
+Only strategies and observables present in the artifact may be selected.
+
+### Correlated requests
+
+Supply a JSON object of labelled numerical requests to evaluate colour and spin
+correlations together over the entire point batch:
+
+```console
+pyamplicol evaluate artifacts/virtual --momenta points.json --mu-r2 1000000 \
+  --correlated-requests requests.json --on-failure return --json
+```
+
+```json
+{
+  "physical": {"color_correlation": "born", "spin_vectors": {}},
+  "joint": {
+    "color_correlation": "born",
+    "spin_vectors": {
+      "3": ["0", ["0.8", "-0.16"], "0", ["-0.6", "0.12"]],
+      "4": ["0", "0", ["1", "0.2"], "0"]
+    }
+  }
+}
+```
+
+Request labels become output keys. `color_correlation` defaults to `born`; use
+stored colour-history IDs for other operators. The supplied vector-leg set must
+be a class declared in the artifact. Leg keys use public one-based labels, and
+each value is a four-vector or one four-vector per point. Components may be
+exact real numbers, strings, or `[real, imaginary]` pairs. Vectors are used
+literally, without normalization or projection. Unknown fields, duplicate JSON
+keys and colliding leg spellings such as `"3"` and `"03"` are errors.
+
+Missing or null `spin_vectors` inherits the runtime's default; a fresh CLI
+runtime has no replacement sources. `{}` explicitly selects physical helicities.
+One entry requests one observable; multiple entries use the existing grouped
+runtime call, preserving each label and its independent failure mask. Human
+output prints each result under its label; virtual JSON retains every coupling
+order, Laurent coefficient and diagnostic, including unavailable rows.
+
+Tree artifacts use the same request file, without virtual scales, R2, stability
+or partial-return options. Their correlated API defaults to arbitrary precision;
+`--arithmetic double-double` selects its existing DoubleFloat path. `--precision`
+and `--helicity` follow the underlying correlated API. Virtual requests inherit
+the arithmetic and stability policy selected at load time.
+
+`--resolved` and `--color-flow` cannot be combined with correlated requests:
+the grouped API returns contracted observables. Generation-time `--correlators`
+declares capabilities; evaluation-time `--correlated-requests` supplies numerical
+values and selects among those capabilities.
 
 ## Profile
 

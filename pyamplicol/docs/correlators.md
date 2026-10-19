@@ -376,9 +376,11 @@ pyamplicol generate 'g g > g g' artifacts/gg_correlated_cli \
 
 `CorrelatorConfig.to_json_dict()` and `from_json_dict()` use this same schema.
 A splitting step uses `{"kind": "split-gluon", "parent": -1,
-"quark": -2, "antiquark": -3}`. The CLI option prepares the artifact;
-numerical vector setting and correlated evaluation use Python or the native
-SDKs rather than the CLI `evaluate` command.
+"quark": -2, "antiquark": -3}`. The generation CLI option prepares the artifact.
+Numerical evaluation uses `evaluate --correlated-requests requests.json`, the
+Python API or the native SDKs. The request file maps labels to colour IDs and
+exact spin vectors and evaluates all named requests over one batch; see
+[correlated CLI requests](user/command-line-interface.md#correlated-requests).
 
 ## Native correlated evaluations
 

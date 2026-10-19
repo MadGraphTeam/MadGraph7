@@ -558,6 +558,14 @@ def _add_evaluation_options(
     if include_artifact:
         parser.add_argument("artifact", type=Path, nargs="?", default=None)
     parser.add_argument(
+        "--correlated-requests",
+        dest="evaluation.correlated_requests",
+        type=Path,
+        default=argparse.SUPPRESS,
+        metavar="JSON",
+        help="named colour/spin requests evaluated together over the point batch",
+    )
+    parser.add_argument(
         "--on-failure",
         dest="evaluation.on_failure",
         choices=("raise", "return"),
@@ -617,7 +625,10 @@ def _add_evaluation_options(
         dest="evaluation.arithmetic",
         choices=("double", "double-double", "arbitrary"),
         default=argparse.SUPPRESS,
-        help="virtual numerical carrier, selected before model parameter binding",
+        help=(
+            "virtual carrier selected before parameter binding, or tree "
+            "correlated arithmetic (arbitrary or double-double)"
+        ),
     )
     scales = parser.add_mutually_exclusive_group()
     scales.add_argument(
