@@ -108,7 +108,8 @@ def retained_source_process():
     path = os.environ.get("PYAMPLICOL_NATIVE_SOURCE_PACBIN")
     if not path:
         pytest.skip(
-            "retained source PACBIN required; do not regenerate numerical physics for transport tests"
+            "retained source PACBIN required; do not regenerate numerical physics "
+            "for transport tests"
         )
     return source_process(Path(path))
 

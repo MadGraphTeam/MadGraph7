@@ -619,6 +619,7 @@ impl Drop for TemporaryNativeLibrary {
 
 impl EvaluatorPayloadSource {
     /// Snapshot a PACBIN through the same confined, checked payload handle.
+    #[cfg(feature = "symbolica-runtime")]
     pub(crate) fn pacbin(&self) -> RusticolResult<PacbinReader> {
         match self {
             Self::File(path) => PacbinReader::open(path),

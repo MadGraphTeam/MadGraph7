@@ -9,6 +9,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 static TEST_ARTIFACT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[test]
+fn virtual_capability_is_known_without_admitting_scalar_tree_execution() {
+    let capability = RuntimeCapability::LoopRuntimeV3.as_str();
+    assert!(
+        validate_runtime_capabilities(&[capability.to_owned()], "loop transport").is_ok()
+    );
+    assert!(!crate::supported_runtime_capabilities().contains(&capability));
+}
+
+#[test]
 fn walsh_color_contraction_is_a_known_artifact_capability() {
     let capability = crate::engine::COMPILED_COLOR_CONTRACTION_WALSH_CAPABILITY.to_string();
     let validated =

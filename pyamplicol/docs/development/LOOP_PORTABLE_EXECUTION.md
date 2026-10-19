@@ -201,3 +201,29 @@ external fields against the saved-plan Python consumer in all three carriers,
 including point IDs, distinct scales, exact parameter changes and retained output
 lifetimes. `PYAMPLICOL_NATIVE_SOURCE_PACBIN` can select an already generated
 ordinary source gg fixture for these integration checks.
+
+## Ordinary artifact boundary
+
+`generation.loop_artifact.LoopProcessArtifact` publishes a retained source plan
+through the existing transactional schema-v3 writer. Its execution capability is
+`rusticol.loop-runtime.v3`, with contribution kind `virtual` and execution mode
+`loop_recurrence`. The ordinary physics payload carries the order catalogue,
+Laurent convention and explicit scheme declaration. A declaration is not a new
+physics certification. Source model-rule R2 plus UV, full colour and the three
+arithmetic carriers form the initial admitted boundary; aliases, correlated or
+resolved output, mixed tree/virtual artifacts and direct R2 are rejected there.
+Internal bounded direct controls remain available through their existing API.
+
+`rusticol_core::loop_artifact::open_loop_artifact` (or `load_loop_artifact` with an
+already verified artifact) resolves the normal execution-set envelope and opens
+the declared PACBIN through its checked file handle. The loader compares order,
+state, normalization and strategy metadata against the validated execution plan.
+It keeps no producer graphs or source-model import. Existing scalar tree runtime
+loads reject the virtual capability. The additive loop consumer owns execution;
+the core does not acquire a dependency on the reducer.
+
+Transport checks reuse the saved complete source gg fixture rather than repeat
+its physics generation. `PYAMPLICOL_PUBLIC_SOURCE_ARTIFACT` selects the resulting
+ordinary two-process artifact for standalone Rust checks of metadata rejection,
+process selection, payload replacement and scalar-tree rejection. Public process
+generation and the complete SDK/API surface remain separate integration gates.

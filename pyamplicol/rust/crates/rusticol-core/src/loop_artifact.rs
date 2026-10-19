@@ -133,6 +133,10 @@ pub fn load_loop_artifact(
         .into_iter()
         .find(|(p, _, _)| p.id == selection.process.id)
         .ok_or_else(|| RusticolError::integrity("execution set omits selected virtual process"))?;
+    let bytes = match bytes {
+        Some(bytes) => bytes,
+        None => artifact.read_payload(&path)?,
+    };
     let execution: Execution = parse(&bytes)?;
     require(
         execution.schema_version == 3

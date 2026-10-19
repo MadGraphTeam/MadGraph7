@@ -100,7 +100,7 @@ impl LoadedExecutionManifest {
 /// VerifiedArtifact used by every execution lane.
 pub(crate) fn verified_execution_payloads(
     artifact: &VerifiedArtifact,
-) -> RusticolResult<Vec<(crate::ArtifactProcess, String, Vec<u8>)>> {
+) -> RusticolResult<Vec<(crate::ArtifactProcess, String, Option<Vec<u8>>)>> {
     let root_manifest_path = &artifact.manifest().runtime.evaluator_manifest_path;
     if artifact.payload(root_manifest_path)?.role != PayloadRole::EvaluatorManifest {
         return Err(RusticolError::security(format!(
@@ -137,7 +137,7 @@ pub(crate) fn verified_execution_payloads(
             &outer.required_runtime_capabilities,
             "outer runtime and direct process",
         )?;
-        return Ok(vec![(outer, root_manifest_path.clone(), bytes)]);
+        return Ok(vec![(outer, root_manifest_path.clone(), Some(bytes))]);
     }
     let process_set: ExecutionSetManifest = serde_json::from_slice(&bytes).map_err(|error| {
         RusticolError::serialization(format!(
@@ -224,7 +224,7 @@ pub(crate) fn verified_execution_payloads(
                 &entry.required_runtime_capabilities,
                 "outer process and execution-set entry",
             )?;
-            Ok((outer.clone(), path.clone(), artifact.read_payload(&path)?))
+            Ok((outer.clone(), path, None))
         })
         .collect()
 }
@@ -235,6 +235,10 @@ pub(super) fn load_verified_evaluator(
 ) -> RusticolResult<(LoadedExecutionManifest, PathBuf)> {
     let mut selected = None;
     for (outer, manifest_path, bytes) in verified_execution_payloads(artifact)? {
+        let bytes = match bytes {
+            Some(bytes) => bytes,
+            None => artifact.read_payload(&manifest_path)?,
+        };
         let manifest = parse_execution_payload_variant(&bytes, &manifest_path, &outer)?;
         if manifest.key() != outer.id
             || manifest.process() != outer.expression
