@@ -128,7 +128,10 @@ def _check_source_tensor(entries, catalogue, terms, nc, coupling):
             raise ValueError(
                 "four-gluon R2 source contains non-finite epsilon coefficients"
             )
-        coefficient = (entry.scalar_value(0) / prefactor).together()
+        # This is symbolic conformance, not value-only numerical evaluation.
+        # Keep the paired diagnostic on the original entry in the returned
+        # record; the consumer must bind it along with the replacement rule.
+        coefficient = (entry.scalar_expression(0).value / prefactor).together()
         kernel = catalogue.lower(entry)
         for index, component in enumerate(_metric_components(kernel)):
             if component != 0:

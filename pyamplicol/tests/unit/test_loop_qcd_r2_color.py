@@ -212,3 +212,48 @@ def test_source_names_do_not_certify_or_block_rule(source, replacements):
     )
     assert actual.key == rule.key
     assert actual.loop_particles == rule.loop_particles
+
+
+def test_symbolic_conformance_preserves_active_source_diagnostic(source, replacements):
+    from symbolica import S
+
+    from pyamplicol.loops.model import CovariantKernelCatalogue
+    from pyamplicol.loops.qcd_r2_color import prepare_qcd_four_gluon_r2
+    from pyamplicol.loops.scalar_frontend import SourceScalarDefinition
+
+    model, catalogue = source
+    rule = replacements[0]
+    first = rule.source_entries[0]
+    definition = first.coupling
+    diagnostic = S("qcd_r2_test::active_source_diagnostic")
+    changed = replace(
+        first,
+        coupling=SourceScalarDefinition(
+            definition.collection,
+            definition.id,
+            definition.name,
+            definition.value,
+            diagnostic,
+        ),
+    )
+    entries = tuple(
+        changed if entry is first else entry for entry in rule.source_entries
+    )
+    owner = replace(
+        model, kernels=tuple(changed if e is first else e for e in model.kernels)
+    )
+    updated = CovariantKernelCatalogue(owner, catalogue._template)
+    actual = prepare_qcd_four_gluon_r2(
+        owner,
+        updated,
+        entries,
+        rule.nc,
+        gauge_coupling=rule.gauge_coupling,
+        contribution="fundamental-dirac",
+        scheme="HV",
+    )
+    assert actual.source_entries[0] is changed
+    assert actual.source_entries[0].scalar_expression(0).diagnostic == diagnostic
+    # The record retains the guard; it does not make value-only ingress legal.
+    with pytest.raises(NotImplementedError, match="paired scalar value and diagnostic"):
+        actual.source_entries[0].scalar_value(0)
