@@ -408,18 +408,23 @@ class PreparedModelProcess:
             )
         return cls(
             bare,
-            _metadata(
-                program,
-                (
-                    "r2_strategy",
-                    "color_accuracy",
-                    "color_projection",
-                    "source_bindings",
-                    "sector_pairs",
-                    "matched_insertions",
-                    "insertions",
-                    "external_fields",
+            (
+                *_metadata(
+                    program,
+                    (
+                        "r2_strategy",
+                        "color_accuracy",
+                        "color_projection",
+                        "source_bindings",
+                        "sector_pairs",
+                        "matched_insertions",
+                        "insertions",
+                        "external_fields",
+                    ),
                 ),
+                # Saved numerical plans have no cold source-model owner. Only
+                # the checked producer constructor can supply this reference.
+                ("source_color", getattr(program, "source_color", None)),
             ),
             tuple(map(PreparedCountertermCurrent.from_current, program.currents)),
             tuple(map(PreparedCountertermCurrent.from_current, program.field_currents)),

@@ -4,7 +4,8 @@
 This is separate from the species-only proof. Admission uses two actual
 source-generated programs and never trusts numerical tree profiles or mutable
 process-group records. Literal vector-source composition retains both actual
-prepared catalogs. Crossing and projected colour require separate proofs.
+prepared catalogs. Projected colour also retains its actual formal owner and
+proves the semantic signed component axes. Crossing needs a separate proof.
 """
 
 from __future__ import annotations
@@ -17,6 +18,92 @@ from pyamplicol.generation.process_grouping import GroupMember, LegMapping
 from .flavor_mappings import FlavorSymmetry
 from .physical_source import NativeSourceModelProgram
 from .request import LoopExternalRequest, prepare_loop_external_request
+
+
+def _color_owner(proof, source):
+    """Retain the actual projection and declaration, never an Nc=3 inference."""
+    model, bare = source.virtual, source.virtual.bare
+    captured = source.prepared
+    metadata, bare_metadata = dict(captured.metadata), dict(captured.bare.metadata)
+    continuation = proof.plan.source_color
+    if (
+        getattr(model, "source_color", None) is not continuation
+        or metadata.get("source_color") is not continuation
+    ):
+        raise ValueError("flavour transport has a different source colour owner")
+    projection = model.color_projection
+    if projection is None:
+        if (
+            continuation is not None
+            or model.color_accuracy != "full"
+            or getattr(bare, "_formal_color_projected", False)
+        ):
+            raise ValueError("flavour transport requires its actual formal projection")
+        return None
+    formal = getattr(bare, "formal_color_metrics", None)
+    if (
+        continuation is None
+        or formal is None
+        or projection.formal_metrics is not formal
+        or metadata.get("color_projection") is not projection
+        or bare_metadata.get("formal_color_metrics") is not formal
+        or model.color_accuracy != projection.accuracy
+        or projection.accuracy != formal.accuracy
+        or projection.born_degrees != formal.born_degrees
+        or projection.virtual_degrees != formal.virtual_degrees
+        or formal.nc != continuation.nc
+    ):
+        raise ValueError("flavour transport requires its actual formal projection")
+    formal.require_owner(bare)
+    return formal
+
+
+def _component_axes(source):
+    """Recompute the signed anchors from exact tensors and absolute orders."""
+    from collections import Counter
+
+    from .color_components import prepare_born_color_components
+    from .color_orbits import _canonical_with_ports
+
+    bare = source.virtual.bare
+    components = bare.born_color_components
+    captured = dict(source.prepared.bare.metadata).get("born_color_components")
+    if source.virtual.color_accuracy != "lc":
+        if components is not None or captured is not None:
+            raise ValueError("contracted flavour colour axis has unexpected anchors")
+        return None
+    expected = prepare_born_color_components(bare.born_color_tensors)
+    if components != expected or captured != expected:
+        raise ValueError("flavour signed colour components differ from actual tensors")
+    canonical = []
+    for tensor in bare.born_color_tensors:
+        expression, reason = _canonical_with_ports(tensor)
+        if reason is not None:
+            raise NotImplementedError(f"flavour colour component is unproved: {reason}")
+        canonical.append((expression, frozenset(tensor.axes)))
+    # Raw columns may be ordered differently in independently generated graphs.
+    # Keep multiplicities and absolute orders within each public signed anchor.
+    return components.ids, tuple(
+        Counter((canonical[index], bare.born_term_orders[index]) for index in members)
+        for members in components.members
+    )
+
+
+def _paired_color(representative, member, left, right):
+    if (left is None) != (right is None):
+        raise ValueError("flavour transport changes formal colour convention")
+    if left is not None and (
+        left.accuracy != right.accuracy
+        or left.nc != right.nc
+        or left.initial_average != right.initial_average
+        or left.born_degrees != right.born_degrees
+        or left.virtual_degrees != right.virtual_degrees
+        or left.born_pairs != right.born_pairs
+        or left.virtual_pairs != right.virtual_pairs
+    ):
+        raise ValueError("flavour transport changes formal colour sectors or degrees")
+    if _component_axes(representative) != _component_axes(member):
+        raise ValueError("flavour transport changes signed colour component axes")
 
 
 def _request(proof, source):
@@ -35,14 +122,8 @@ def _request(proof, source):
         or scalar.plan.fixed_parameters != structure.fixed_parameters
     ):
         raise ValueError("flavour transport requires the retained source/scalar owner")
-    if (
-        source.virtual.r2_strategy != "model"
-        or source.virtual.color_accuracy != "full"
-        or source.virtual.color_projection is not None
-        or bare.dimensional_numerators
-        or getattr(bare, "_formal_color_projected", False)
-    ):
-        raise NotImplementedError("flavour transport requires full colour and model R2")
+    if source.virtual.r2_strategy != "model" or bare.dimensional_numerators:
+        raise NotImplementedError("flavour transport requires model R2")
     # Prove the full local generation allow-list, never the vertices observed in
     # these diagrams. The existing request scope admits the retained CT entries.
     if set(plan.ordinary_rules) != {
@@ -80,7 +161,7 @@ def _request(proof, source):
         or bare.initial_average != request.initial_average
     ):
         raise ValueError("flavour transport request differs from its actual currents")
-    return request
+    return request, _color_owner(proof, source)
 
 
 def _directed_pair(representative, member, left, right):
@@ -100,6 +181,12 @@ def _directed_pair(representative, member, left, right):
         raise ValueError("flavour transport changes directed history or colour ports")
     if a.helicities != b.helicities:
         raise ValueError("flavour transport changes spectator helicity layouts")
+    if representative.virtual.color_projection is not None and any(
+        connection.emissions for pair in a.histories for connection in pair
+    ):
+        raise NotImplementedError(
+            "projected flavour transport requires identity colour histories"
+        )
 
 
 def _spin_catalog(source, ordinary, prepared):
@@ -219,7 +306,8 @@ class IdentityFlavorTransport:
             )
         if not isinstance(mapping, LegMapping):
             raise TypeError("flavour transport requires an existing LegMapping")
-        left, right = _request(symmetry, representative), _request(symmetry, member)
+        left, left_color = _request(symmetry, representative)
+        right, right_color = _request(symmetry, member)
         if mapping.conjugated or mapping.permutation != tuple(
             range(len(left.external_pdgs))
         ):
@@ -244,6 +332,12 @@ class IdentityFlavorTransport:
             or a.helicities != b.helicities
         ):
             raise ValueError("flavour transport changes orders, pairing or conventions")
+        _paired_color(
+            representative,
+            member,
+            left_color,
+            right_color,
+        )
         left_spin, right_spin = _admit_sources(
             representative,
             member,

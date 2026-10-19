@@ -182,6 +182,7 @@ class NativeModelVirtualProgram:
         if r2_strategy == "direct":
             bare.require_single_order("direct model counterterm assembly")
         self.bare = bare
+        self.source_color = source_color
         self._evaluator_states = {}
         self._prepared_model = None
         if r2_strategy not in {"model", "direct"}:

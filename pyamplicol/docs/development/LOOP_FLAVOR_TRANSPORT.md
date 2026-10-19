@@ -16,8 +16,8 @@ The species proof remains species-only, with
 prepared identities, actual requests and the existing `LegMapping`. Its first
 supported relation is orientation-preserving species substitution with unchanged
 external port order and unit factor. This imposes no bound on the number of legs,
-orders, histories or related members. Nonidentity permutations, charge
-conjugation and projected-colour components need separate transport proofs.
+orders, histories or related members. Nonidentity permutations and charge
+conjugation need separate transport proofs.
 Literal vector sources additionally require the paired source admission below.
 Ordinary full-colour resolved helicity axes are checked for equality during
 admission and preserved by identity-port transport.
@@ -66,6 +66,28 @@ continuations with equal Nc=3 values, hidden positive-epsilon coefficients and
 different active diagnostics. Projected process transport remains a separate
 gate: actual common degrees, signed LC component axes and source catalogs must
 be proved for the independently generated members before public reuse.
+
+The producer admission now checks that formal LC/NLC/full owners retain the
+exact continuation in both their model constructor and immutable prepared
+record. It validates the actual formal metric owner, order domains,
+normalization and common degrees. Full colour does not bypass this check when
+it was constructed through a formal continuation.
+
+For LC, admission reconstructs the canonical Born-tensor partition using the
+dependency and verifies its complete typed open ports. Each signed component
+must have the same exact tensors and absolute coupling orders, including
+multiplicities, in the same public axis position. The independent d/s controls
+have different raw Born-column memberships but identical semantic component
+axes. Matching IDs or numerical Nc=3 weights alone cannot certify this relation.
+The existing partition must be prepared before capturing the model and directed
+source plans; it cannot be attached afterward to a different prepared owner.
+
+Actual LC/NLC/formal-full owner controls cover absent/foreign continuation,
+paired mutable metadata substitution, changed components, typed ports, formal
+records and degrees. Paired identity source catalogues retain the same model
+and source ownership checks. Nonempty colour histories remain rejected for
+this projected transport slice. Public saved-artifact admission is a separate
+integration gate; these cold checks do not enable it by themselves.
 
 ## Saved artifacts and public selection
 
