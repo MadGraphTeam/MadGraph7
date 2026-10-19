@@ -24,6 +24,8 @@ LOOP_RUNTIME_KIND = "pyamplicol-runtime-loop-execution"
 LOOP_PHYSICS_KIND = "pyamplicol-loop-physics"
 LOOP_RUNTIME_PATH = "loop-runtime.pacbin"
 EPSILON_CONVENTION = "Cepsilon=(4*pi)^epsilon/Gamma(1-epsilon)"
+ORDINARY_INTERFERENCE = "2*Re(conj(Born)*loop)"
+DIRECTED_INTERFERENCE = "Bdagger K_BL L + Ldagger K_LB B"
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,7 +41,7 @@ class LoopExecutionMetadata:
     epsilon_powers: tuple[int, ...] = (0, -1, -2)
     epsilon_convention: str = EPSILON_CONVENTION
     dimension: str = "D=4-2*epsilon"
-    interference: str = "2*Re(conj(Born)*loop)"
+    interference: str | None = None
     color_accuracy: str = "full"
     scheme_status: str = "declared-not-certified"
     correlations: bool = False
@@ -61,19 +63,27 @@ class LoopExecutionMetadata:
             raise ValueError("loop artifact must declare its three supported carriers")
         if self.source_owned is not True:
             raise TypeError("public loop artifacts require source-owned scalar data")
+        if type(self.resolved) is not bool or type(self.correlations) is not bool:
+            raise TypeError("loop resolved/correlation capabilities must be booleans")
+        interference = (
+            DIRECTED_INTERFERENCE if self.correlations else ORDINARY_INTERFERENCE
+        )
+        if self.interference is None:
+            object.__setattr__(self, "interference", interference)
+        elif self.interference != interference:
+            raise ValueError(
+                "loop interference declaration must match correlation capability"
+            )
         if (
             self.contribution_kind != "virtual"
             or self.execution_mode != "loop_recurrence"
             or self.epsilon_powers != (0, -1, -2)
             or self.epsilon_convention != EPSILON_CONVENTION
             or self.dimension != "D=4-2*epsilon"
-            or self.interference != "2*Re(conj(Born)*loop)"
             or self.color_accuracy not in ("lc", "nlc", "full")
             or self.scheme_status != "declared-not-certified"
         ):
             raise ValueError("unsupported loop contribution or convention declaration")
-        if type(self.resolved) is not bool or type(self.correlations) is not bool:
-            raise TypeError("loop resolved/correlation capabilities must be booleans")
         if self.partial_results is not False:
             raise ValueError("loop artifact public partial results are unavailable")
         if self.correlations and self.resolved:

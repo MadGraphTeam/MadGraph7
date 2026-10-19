@@ -239,21 +239,37 @@ squared coupling order and every Laurent coefficient. The two integrated virtual
 cross terms are kept distinct until their final sum. Grouped evaluation runs all
 saved histories in one native batch and selects named outputs afterward.
 
+The authenticated `interference` declaration describes this actual execution
+lane. Ordinary artifacts retain `2*Re(conj(Born)*loop)`; directed artifacts use
+`Bdagger K_BL L + Ldagger K_LB B`, with the two ordered operators and integrated
+terms kept distinct. Unequal histories can give complex values. The writer
+derives a missing declaration from the typed correlation capability and rejects
+an inconsistent explicit declaration; the native loader checks it against the
+saved plan. Existing correlated artifacts with the earlier ordinary-only label
+must be republished through the normal writer around their unchanged PACBIN.
+No numerical kernel or automatic artifact migration is involved.
+
 The same declaration serializes with `declarations.to_json_dict()` and is accepted
 by `pyamplicol generate --card virtual.toml --correlators correlators.json`.
 `inspect --process uudd --full-physics --json` includes the authenticated virtual
-scheme, order catalogue and public colour histories under `virtual`. The ordinary
-CLI `evaluate` continues to evaluate the ordinary interference; neither the tree
-nor virtual CLI currently exposes the Python grouped-correlated evaluation
-surface. The existing shared CLI restriction also disallows combining
+scheme, order catalogue and public colour histories under `virtual`. Numerical
+grouped CLI evaluation uses `evaluate --correlated-requests` with the existing
+named request-file format; exact sources and per-request diagnostics are
+preserved. Generation declarations remain separate. The shared CLI restriction disallows combining
 `--correlators` with `--dry-run`.
 
-The initial public correlated domain is full colour, QCD corrections, model R2
-plus UV and inclusive physical helicities. Cold preparation and the retained
+The validated public correlated domain uses QCD corrections, model R2 plus UV
+and inclusive physical helicities. Full colour and certified formal LC/NLC
+complete-family projections are supported, with prepared singleton/joint spin
+sources. Cold preparation and the retained
 producer share one completion-scope check, including when staged validation is
 disabled. EW correlation validation is an unmet extension; QCD coverage does not
-imply that EW histories are fundamentally incompatible. Spin sources, resolved
-correlated output and LC/NLC correlations fail explicitly. Ordinary evaluation remains
+imply that EW histories are fundamentally incompatible. Resolved correlated
+output remains unsupported; inclusive LC correlations have a contracted colour
+axis, while ordinary LC resolved output retains signed canonical anchors. See
+`LOOP_ORDERED_COLOR_PROJECTION.md`, `LOOP_PUBLIC_SPIN.md` and
+`LOOP_FLAVOR_TRANSPORT.md` for the independently tested physical and mapping
+domains. Ordinary evaluation remains
 available on the same artifact. Transactional validation checks both ordinary
 and every prepared correlated output before publication when enabled; these are
 source-versus-saved execution checks, not independent physics certification.

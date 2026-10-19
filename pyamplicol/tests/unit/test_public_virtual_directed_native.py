@@ -41,7 +41,7 @@ def artifact(tmp_path_factory):
         process,
         process_id="uudd",
         expression="u u~ > d d~",
-        metadata=replace(process.metadata, correlations=True),
+        metadata=replace(process.metadata, correlations=True, interference=None),
         validation_point=replace(
             process.validation_point, process_id="uudd", process="u u~ > d d~"
         ),
@@ -91,7 +91,10 @@ def artifact(tmp_path_factory):
                 configuration=configuration,
                 processes=(
                     replace(
-                        process, metadata=replace(process.metadata, correlations=False)
+                        process,
+                        metadata=replace(
+                            process.metadata, correlations=False, interference=None
+                        ),
                     ),
                 ),
                 timings={"total": 0.0},

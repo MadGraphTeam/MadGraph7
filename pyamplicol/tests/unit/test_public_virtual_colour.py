@@ -435,7 +435,11 @@ def test_artifact_colour_declaration_requires_matching_native_partition():
     }
     for accuracy in ("lc", "nlc", "full"):
         inclusive = replace(
-            metadata, color_accuracy=accuracy, resolved=False, correlations=True
+            metadata,
+            color_accuracy=accuracy,
+            resolved=False,
+            correlations=True,
+            interference=None,
         )
         projected = {
             **plan,

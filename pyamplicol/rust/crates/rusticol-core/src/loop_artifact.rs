@@ -15,6 +15,8 @@ use std::sync::Arc;
 pub const LOOP_RUNTIME_CAPABILITY: &str = "rusticol.loop-runtime.v3";
 pub const LOOP_RUNTIME_KIND: &str = "pyamplicol-runtime-loop-execution";
 pub const EPSILON_CONVENTION: &str = "Cepsilon=(4*pi)^epsilon/Gamma(1-epsilon)";
+pub const ORDINARY_INTERFERENCE: &str = "2*Re(conj(Born)*loop)";
+pub const DIRECTED_INTERFERENCE: &str = "Bdagger K_BL L + Ldagger K_LB B";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -222,7 +224,12 @@ pub fn load_loop_artifact(
             && metadata.epsilon_powers == [0, -1, -2]
             && metadata.epsilon_convention == EPSILON_CONVENTION
             && metadata.dimension == "D=4-2*epsilon"
-            && metadata.interference == "2*Re(conj(Born)*loop)"
+            && metadata.interference
+                == if metadata.correlations {
+                    DIRECTED_INTERFERENCE
+                } else {
+                    ORDINARY_INTERFERENCE
+                }
             && matches!(metadata.color_accuracy.as_str(), "full" | "nlc" | "lc")
             && (metadata.color_accuracy != "lc"
                 || (metadata.resolved && plan.born_color_components.is_some())
