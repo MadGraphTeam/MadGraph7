@@ -112,7 +112,9 @@ def write_loop_pacbin(
             )
         from .physical_correlations import directed_color_convention
 
-        convention = directed_color_convention(bare, directed.bare.histories)
+        convention = directed_color_convention(
+            bare, directed.bare.histories, color_bank=directed.bare.color_bank
+        )
     if spin_directed:
         classes = []
         for item in spin_directed:
@@ -127,6 +129,10 @@ def write_loop_pacbin(
             layout.require_owner(bare)
             if item.bare.histories != directed.bare.histories:
                 raise ValueError("spin and ordinary directed history columns differ")
+            if item.bare.color_bank is not directed.bare.color_bank:
+                raise ValueError(
+                    "spin and ordinary directed colour family owners differ"
+                )
             classes.append(layout.legs)
         if len(set(classes)) != len(classes):
             raise ValueError("duplicate saved joint spin class")
@@ -379,9 +385,31 @@ def write_loop_pacbin(
     if directed is not None:
 
         def directed_data(value):
+            bank = value.bare.color_bank
+            family_projection = None
+            if bank is not None:
+                projection = bank.projection
+                family_projection = {
+                    "kind": "complete-typed-history-families-v1",
+                    "accuracy": projection.accuracy,
+                    "families": [
+                        {
+                            "order": family.order,
+                            "output_legs": [
+                                (leg.label, leg.representation)
+                                for leg in family.output_legs
+                            ],
+                            "born_degrees": family.born_degrees,
+                            "virtual_degrees": family.virtual_degrees,
+                        }
+                        for family in projection.families
+                    ],
+                    "history_families": projection.history_families,
+                }
             return {
                 "kind": "directed-complex",
                 "convention": convention,
+                "color_family_projection": family_projection,
                 "color_legs": [
                     (leg.label, leg.representation) for leg in value.bare.color_legs
                 ],

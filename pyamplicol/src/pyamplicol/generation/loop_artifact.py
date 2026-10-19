@@ -91,24 +91,38 @@ class LoopExecutionMetadata:
                 "loop artifact colour accuracy differs from the validated plan"
             )
         from pyamplicol.loops.physical_correlations import (
+            PROJECTED_FAMILY_CONVENTION,
             PROJECTED_IDENTITY_CONVENTION,
         )
 
         directed = plan.get("directed_projection")
-        projected_identity = (
+        projected_directed = (
             self.correlations
             and projection is not None
             and directed["kind"] == "directed-complex"
-            and directed["convention"] == PROJECTED_IDENTITY_CONVENTION
             and bool(directed["histories"])
-            and all(
-                not item["bra"] and not item["ket"] for item in directed["histories"]
+            and (
+                (
+                    directed["convention"] == PROJECTED_IDENTITY_CONVENTION
+                    and directed.get("color_family_projection") is None
+                    and all(
+                        not item["bra"] and not item["ket"]
+                        for item in directed["histories"]
+                    )
+                )
+                or (
+                    directed["convention"] == PROJECTED_FAMILY_CONVENTION
+                    and directed.get("color_family_projection") is not None
+                    and directed["color_family_projection"]["kind"]
+                    == "complete-typed-history-families-v1"
+                    and directed["color_family_projection"]["accuracy"] == accuracy
+                )
             )
         )
-        if self.correlations and projection is not None and not projected_identity:
-            raise ValueError("projected correlation requires an identity descriptor")
+        if self.correlations and projection is not None and not projected_directed:
+            raise ValueError("projected correlation requires a certified descriptor")
         partition = plan.get("born_color_components")
-        if self.color_accuracy == "lc" and not projected_identity:
+        if self.color_accuracy == "lc" and not projected_directed:
             if partition is None or not self.resolved:
                 raise ValueError(
                     "LC loop artifacts require resolved canonical Born components"

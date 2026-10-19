@@ -11,6 +11,7 @@ use std::path::Path;
 
 pub const LOOP_RUNTIME_MEMBER: &str = "schedule/loop-runtime-v3.json";
 pub const PROJECTED_IDENTITY_CONVENTION: &str = "sun-graded-identity-all-outgoing-v1";
+pub const PROJECTED_FAMILY_CONVENTION: &str = "sun-graded-complete-history-family-all-outgoing-v1";
 type Order = Vec<(String, u32)>;
 
 macro_rules! record {
@@ -225,11 +226,28 @@ record!(HelicityProjection {
 record!(DirectedHistory {
     id: String, bra: Vec<serde_json::Value>, ket: Vec<serde_json::Value>
 });
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct DirectedColorFamily {
+    pub order: usize,
+    pub output_legs: Vec<(i128, i32)>,
+    pub born_degrees: Vec<Option<i64>>,
+    pub virtual_degrees: Vec<Option<i64>>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct DirectedColorProjection {
+    pub kind: String,
+    pub accuracy: String,
+    pub families: Vec<DirectedColorFamily>,
+    pub history_families: Vec<usize>,
+}
 record!(DirectedProjection {
     kind: String, convention: String, color_legs: Vec<(usize, i32)>,
     histories: Vec<DirectedHistory>, born: String, families: Vec<String>,
     postprocess: String, counterterms: String, assemble: String, sum_order_values: String,
-    dual_born_weights: Option<DualBornWeights>
+    dual_born_weights: Option<DualBornWeights>,
+    color_family_projection: Option<DirectedColorProjection>
 });
 record!(SpinProjection {
     legs: Vec<usize>, helicities: Vec<Vec<i32>>, phases: Vec<String>,
@@ -240,6 +258,167 @@ record!(SpinProjection {
 record!(ColorProjection {
     accuracy: String, born_degrees: Vec<Option<i64>>, virtual_degrees: Vec<Option<i64>>
 });
+
+// This checks only serialized operation types and role transport. Complete
+// history enumeration, tensor algebra and structural degree proofs belong to
+// the existing cold producer, never to the native evaluation path.
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
+enum DirectedColorOperation {
+    EmitGluon {
+        emitter: serde_json::Number,
+        emitted: serde_json::Number,
+    },
+    SplitGluon {
+        parent: serde_json::Number,
+        quark: serde_json::Number,
+        antiquark: serde_json::Number,
+    },
+}
+
+fn directed_label(value: serde_json::Number) -> RusticolResult<i128> {
+    value
+        .as_i64()
+        .map(i128::from)
+        .or_else(|| value.as_u64().map(i128::from))
+        .ok_or_else(|| invalid("directed colour labels must be integers"))
+}
+
+fn directed_output_legs(
+    initial: &[(usize, i32)],
+    operations: &[serde_json::Value],
+) -> RusticolResult<Vec<(i128, i32)>> {
+    let mut active = initial
+        .iter()
+        .map(|&(label, rep)| (label as i128, rep))
+        .collect::<BTreeMap<_, _>>();
+    let mut seen = active.keys().copied().collect::<BTreeSet<_>>();
+    for operation in operations {
+        let operation: DirectedColorOperation = serde_json::from_value(operation.clone())
+            .map_err(|e| invalid(format!("invalid directed colour operation: {e}")))?;
+        let additions = match operation {
+            DirectedColorOperation::EmitGluon { emitter, emitted } => {
+                let (emitter, emitted) = (directed_label(emitter)?, directed_label(emitted)?);
+                require(
+                    matches!(active.get(&emitter), Some(3 | -3 | 8)),
+                    "directed gluon emitter is not an active coloured leg",
+                )?;
+                vec![(emitted, 8)]
+            }
+            DirectedColorOperation::SplitGluon {
+                parent,
+                quark,
+                antiquark,
+            } => {
+                let (parent, quark, antiquark) = (
+                    directed_label(parent)?,
+                    directed_label(quark)?,
+                    directed_label(antiquark)?,
+                );
+                require(
+                    active.get(&parent) == Some(&8),
+                    "directed splitting parent is not an active gluon",
+                )?;
+                active.remove(&parent);
+                vec![(quark, 3), (antiquark, -3)]
+            }
+        };
+        for (label, representation) in additions {
+            require(
+                seen.insert(label),
+                "directed created labels must remain fresh",
+            )?;
+            active.insert(label, representation);
+        }
+    }
+    Ok(active.into_iter().collect())
+}
+
+fn canonical_directed_output(initial: &[(usize, i32)], output: &[(i128, i32)]) -> Vec<(i128, i32)> {
+    let initial = initial
+        .iter()
+        .map(|&(label, _)| label as i128)
+        .collect::<BTreeSet<_>>();
+    let mut next = 0_i128;
+    let mut result = output
+        .iter()
+        .map(|&(label, representation)| {
+            let canonical = if initial.contains(&label) {
+                label
+            } else {
+                next -= 1;
+                next
+            };
+            (canonical, representation)
+        })
+        .collect::<Vec<_>>();
+    result.sort_unstable();
+    result
+}
+
+impl DirectedColorProjection {
+    fn validate(
+        &self,
+        directed: &DirectedProjection,
+        ordinary: &ColorProjection,
+        born_sectors: usize,
+        virtual_sectors: usize,
+    ) -> RusticolResult<()> {
+        require(
+            self.kind == "complete-typed-history-families-v1"
+                && self.accuracy == ordinary.accuracy
+                && !self.families.is_empty()
+                && self.history_families.len() == directed.histories.len()
+                && indices(&self.history_families, self.families.len()),
+            "invalid complete directed colour family descriptor",
+        )?;
+        let keys = self
+            .families
+            .iter()
+            .map(|f| (f.order, f.output_legs.clone()))
+            .collect::<Vec<_>>();
+        require(
+            unique(&keys)
+                && self
+                    .history_families
+                    .iter()
+                    .copied()
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    == self.families.len(),
+            "directed colour families must be unique and referenced",
+        )?;
+        for family in &self.families {
+            require(
+                family.born_degrees.len() == born_sectors
+                    && family.virtual_degrees.len() == virtual_sectors,
+                "directed colour family degree axes differ",
+            )?;
+            if family.order == 0 {
+                require(
+                    family.born_degrees == ordinary.born_degrees
+                        && family.virtual_degrees == ordinary.virtual_degrees,
+                    "identity family degrees differ from ordinary projection",
+                )?;
+            }
+        }
+        for (history, &index) in directed.histories.iter().zip(&self.history_families) {
+            let family = &self.families[index];
+            require(
+                history.bra.len() == family.order && history.ket.len() == family.order,
+                "directed history order differs from its complete family",
+            )?;
+            let bra = directed_output_legs(&directed.color_legs, &history.bra)?;
+            let ket = directed_output_legs(&directed.color_legs, &history.ket)?;
+            require(
+                bra == ket
+                    && canonical_directed_output(&directed.color_legs, &bra) == family.output_legs,
+                "directed typed output roles differ from their complete family",
+            )?;
+        }
+        Ok(())
+    }
+}
 record!(BornColorComponents {
     kind: String, ids: Vec<String>, members: Vec<Vec<usize>>
 });
@@ -1008,6 +1187,9 @@ impl LoopRuntimePlan {
                 }
                 require(
                     class.directed.color_legs == ordinary.color_legs
+                        && class.directed.convention == ordinary.convention
+                        && class.directed.color_family_projection
+                            == ordinary.color_family_projection
                         && class.directed.histories.len() == ordinary.histories.len()
                         && class
                             .directed
@@ -1033,14 +1215,18 @@ impl LoopRuntimePlan {
             }
             let colour_scope = match projection.convention.as_str() {
                 "su3-literal-tau-physical-charge-all-outgoing-v1" => {
-                    self.color_projection.is_none()
+                    self.color_projection.is_none() && projection.color_family_projection.is_none()
                 }
                 PROJECTED_IDENTITY_CONVENTION => {
                     self.color_projection.is_some()
+                        && projection.color_family_projection.is_none()
                         && projection
                             .histories
                             .iter()
                             .all(|h| h.bra.is_empty() && h.ket.is_empty())
+                }
+                PROJECTED_FAMILY_CONVENTION => {
+                    self.color_projection.is_some() && projection.color_family_projection.is_some()
                 }
                 _ => false,
             };
@@ -1076,6 +1262,16 @@ impl LoopRuntimePlan {
                     && projection.families.len() == self.families.len(),
                 "directed history/family column layout differs",
             )?;
+            if let Some(families) = &projection.color_family_projection {
+                families.validate(
+                    projection,
+                    self.color_projection
+                        .as_ref()
+                        .expect("validated formal scope"),
+                    b,
+                    v,
+                )?;
+            }
             shape(
                 &projection.born,
                 product(projection_h, born_width)?,

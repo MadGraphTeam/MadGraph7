@@ -76,21 +76,24 @@ def test_fixed_full_colour_and_unsupported_incomplete_projection_are_distinct():
 
 
 @pytest.mark.parametrize("accuracy", ["lc", "nlc"])
-def test_public_preflight_accepts_identity_sources_without_operator_banks(accuracy):
-    from pyamplicol.api.errors import GenerationError
+def test_public_preflight_defers_projected_history_proof_to_actual_owner(accuracy):
     from pyamplicol.color.correlator_matrices import ColorCorrelator
     from pyamplicol.correlators import CorrelatorConfig
     from pyamplicol.generation.loop_service import _check_correlators
 
     backend = SimpleNamespace(
-        _run_config=SimpleNamespace(color=SimpleNamespace(accuracy=accuracy))
+        _run_config=SimpleNamespace(
+            color=SimpleNamespace(accuracy=accuracy, contraction="direct")
+        )
     )
     _check_correlators(backend, CorrelatorConfig(spin_correlations=((3,), (3, 4))))
     _check_correlators(
         backend, CorrelatorConfig(color_correlations=(ColorCorrelator("identity"),))
     )
-    with pytest.raises(GenerationError, match="identity histories"):
-        _check_correlators(
-            backend,
-            CorrelatorConfig(color_correlations=(ColorCorrelator.dipole("T", 1, 2),)),
-        )
+    _check_correlators(
+        backend,
+        CorrelatorConfig(color_correlations=(ColorCorrelator.dipole("T", 1, 2),)),
+    )
+    _check_correlators(backend, CorrelatorConfig(all_color_through_order=1))
+    with pytest.raises(TypeError, match="CorrelatorConfig"):
+        _check_correlators(backend, object())

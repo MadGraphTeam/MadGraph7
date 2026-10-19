@@ -171,8 +171,8 @@ def _prepare(backend, processes, source, *, planning, phase, consider_fft=True):
             projected or run.color.contraction == "symmetric-group-fft"
         ):
             raise GenerationError(
-                "LC/NLC or forced FFT loop generation requires explicit source colour data in "
-                "the prepared model; attach a LoopColorDeclaration with "
+                "LC/NLC or forced FFT loop generation requires explicit source colour "
+                "data in the prepared model; attach a LoopColorDeclaration with "
                 "with_loop_color_declaration. Model names or numerical CA/CF "
                 "values do not define a formal-colour continuation"
             )
@@ -337,14 +337,6 @@ def _check_correlators(backend, correlators):
             "forced rectangular FFT requires certified ordinary/resolved banks; "
             "inserted colour/spin source banks currently use exact direct contraction"
         )
-    if backend._run_config.color.accuracy != "full" and (
-        correlators.all_color_through_order is not None
-        or any(item.bra or item.ket for item in correlators.color_correlations)
-    ):
-        raise GenerationError(
-            "projected virtual colour currently supports identity histories only; "
-            "ordered LC/NLC operator banks remain unsupported"
-        )
 
 
 def _prepare_directed(program, declarations):
@@ -352,10 +344,7 @@ def _prepare_directed(program, declarations):
     from pyamplicol.color.connections import ColorConnection, ColorLeg
     from pyamplicol.loops.correlation_labels import native_color_history
     from pyamplicol.loops.physical_correlations import directed_color_legs
-    from pyamplicol.loops.prepared_correlations import (
-        prepare_directed_bare,
-        prepare_directed_model,
-    )
+    from pyamplicol.loops.prepared_correlations import prepare_directed_complete
 
     legs = directed_color_legs(program.bare)
     public_legs = tuple(ColorLeg(leg.label + 1, leg.representation) for leg in legs)
@@ -365,20 +354,18 @@ def _prepare_directed(program, declarations):
         (ColorConnection(legs, request.bra), ColorConnection(legs, request.ket))
         for request in native_requests
     )
-    prepared = prepare_directed_model(
-        program, prepare_directed_bare(program.bare, histories)
-    )
+    prepared = prepare_directed_complete(program, histories)
     if not declarations.spin_correlations:
         return prepared, native_requests, ()
     from pyamplicol.loops.spin_sources import NativeSpinSourcePlan
 
     sources = NativeSpinSourcePlan(program.bare, declarations.spin_correlations)
     spin = tuple(
-        prepare_directed_model(
+        prepare_directed_complete(
             program,
-            prepare_directed_bare(
-                program.bare, histories, spin_layout=sources.layouts[legs]
-            ),
+            histories,
+            spin_layout=sources.layouts[legs],
+            color_bank=prepared.bare.color_bank,
         )
         for legs in declarations.spin_correlations
     )

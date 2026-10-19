@@ -423,7 +423,10 @@ def test_artifact_colour_declaration_requires_matching_native_partition():
             metadata.validate_plan(bad)
     with pytest.raises(ValueError, match="resolved canonical Born"):
         replace(metadata, resolved=False).validate_plan(plan)
-    from pyamplicol.loops.physical_correlations import PROJECTED_IDENTITY_CONVENTION
+    from pyamplicol.loops.physical_correlations import (
+        PROJECTED_FAMILY_CONVENTION,
+        PROJECTED_IDENTITY_CONVENTION,
+    )
 
     directed = {
         "kind": "directed-complex",
@@ -442,6 +445,18 @@ def test_artifact_colour_declaration_requires_matching_native_partition():
             "directed_projection": directed,
         }
         inclusive.validate_plan(projected)
+        family = {
+            "kind": "complete-typed-history-families-v1",
+            "accuracy": accuracy,
+            "families": [],  # Native validation owns actual family axes/operations.
+            "history_families": [],
+        }
+        family_directed = {
+            **directed,
+            "convention": PROJECTED_FAMILY_CONVENTION,
+            "color_family_projection": family,
+        }
+        inclusive.validate_plan({**projected, "directed_projection": family_directed})
         for invalid in (
             {**projected, "born_color_components": plan["born_color_components"]},
             {**projected, "helicity_projection": {}},
@@ -459,6 +474,24 @@ def test_artifact_colour_declaration_requires_matching_native_partition():
                     "histories": [
                         {"id": "T", "bra": [{"emitter": 1}], "ket": [{"emitter": 1}]}
                     ],
+                },
+            },
+            {
+                **projected,
+                "directed_projection": {**directed, "color_family_projection": family},
+            },
+            {
+                **projected,
+                "directed_projection": {
+                    **family_directed,
+                    "color_family_projection": None,
+                },
+            },
+            {
+                **projected,
+                "directed_projection": {
+                    **family_directed,
+                    "color_family_projection": {**family, "accuracy": "unknown"},
                 },
             },
         ):
