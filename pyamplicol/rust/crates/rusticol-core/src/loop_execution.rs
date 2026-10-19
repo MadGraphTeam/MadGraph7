@@ -61,12 +61,12 @@ pub trait LoopBackend {
         input: &Self::Batch,
     ) -> RusticolResult<Self::Batch>;
     fn execute(schedule: &mut Self::Schedule, input: &Self::Batch) -> RusticolResult<Self::Batch>;
-    fn states(
+    fn states_partial(
         momenta: &Self::Batch,
         helicities: Vec<i32>,
         kinds: Vec<String>,
         components: usize,
-    ) -> RusticolResult<Self::Batch>;
+    ) -> RusticolResult<(Self::Batch, Vec<(u64, String)>)>;
     fn reduce(
         reducer: &mut Self::Reducer,
         shifts: &Self::Batch,
@@ -76,6 +76,7 @@ pub trait LoopBackend {
         matrix: &Self::Batch,
     ) -> RusticolResult<(Self::Batch, Vec<(u64, String)>)>;
     fn rows(batch: &Self::Batch) -> usize;
+    fn nonfinite_rows(batch: &Self::Batch) -> Vec<u64>;
     fn row_ids(batch: &Self::Batch) -> &[u64];
     fn columns(batch: &Self::Batch) -> usize;
     fn select(batch: &Self::Batch, columns: Vec<usize>) -> RusticolResult<Self::Batch>;
@@ -96,11 +97,55 @@ pub trait LoopBackend {
 
 /// Original decimal inputs remain available for exact family invariants. The
 /// legacy model has one global real input row; source-owned states are separate.
+#[derive(Clone)]
 pub struct LoopInputs {
     pub momenta: Vec<String>,
     pub scales_squared: Vec<String>,
     pub model_values: Vec<String>,
     pub point_ids: Vec<u64>,
+}
+
+impl LoopInputs {
+    pub fn select_points(&self, ids: &[u64], momentum_width: usize) -> RusticolResult<Self> {
+        let positions: BTreeMap<_, _> = self
+            .point_ids
+            .iter()
+            .enumerate()
+            .map(|(row, &id)| (id, row))
+            .collect();
+        if positions.len() != self.point_ids.len()
+            || ids.iter().collect::<BTreeSet<_>>().len() != ids.len()
+            || self.momenta.len() != count(self.point_ids.len(), momentum_width)?
+            || self.scales_squared.len() != self.point_ids.len()
+        {
+            return Err(invalid("original exact input layout differs"));
+        }
+        let rows = ids
+            .iter()
+            .map(|id| {
+                positions
+                    .get(id)
+                    .copied()
+                    .ok_or_else(|| invalid("selected original point is absent"))
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        Ok(Self {
+            momenta: rows
+                .iter()
+                .flat_map(|&row| {
+                    self.momenta[row * momentum_width..(row + 1) * momentum_width]
+                        .iter()
+                        .cloned()
+                })
+                .collect(),
+            scales_squared: rows
+                .iter()
+                .map(|&row| self.scales_squared[row].clone())
+                .collect(),
+            model_values: self.model_values.clone(),
+            point_ids: ids.to_vec(),
+        })
+    }
 }
 
 /// Columns retain the validated order layout. Each virtual sector is ordered
@@ -124,8 +169,9 @@ pub struct CompleteLoopResult<T> {
 pub struct LoopLaneFailure {
     pub point_id: u64,
     pub helicity: Option<usize>,
-    pub order_index: usize,
-    pub family_index: usize,
+    pub order_index: Option<usize>,
+    pub family_index: Option<usize>,
+    pub external_leg: Option<usize>,
     pub stage: String,
     pub detail: String,
 }
@@ -141,6 +187,43 @@ impl<T> CompleteLoopResult<T> {
             )))
         }
     }
+}
+
+enum LoopStepError {
+    Invalid(RusticolError),
+    Numerical(Vec<LoopLaneFailure>),
+}
+impl From<RusticolError> for LoopStepError {
+    fn from(error: RusticolError) -> Self {
+        Self::Invalid(error)
+    }
+}
+type StepResult<T> = Result<T, LoopStepError>;
+
+/// Collect every bad row in a numerical stage before dropping whole points.
+fn check_finite<B: LoopBackend>(
+    values: &B::Batch,
+    stage: &str,
+    helicities: Option<usize>,
+    family_index: Option<usize>,
+    failures: &mut Vec<LoopLaneFailure>,
+) -> StepResult<()> {
+    let bad = B::nonfinite_rows(values);
+    if bad.is_empty() {
+        return Ok(());
+    }
+    for id in bad {
+        failures.push(LoopLaneFailure {
+            point_id: helicities.map_or(id, |h| id / h as u64),
+            helicity: helicities.map(|h| (id % h as u64) as usize),
+            external_leg: None,
+            order_index: None,
+            family_index,
+            stage: stage.into(),
+            detail: "nonfinite numerical value".into(),
+        });
+    }
+    Err(LoopStepError::Numerical(std::mem::take(failures)))
 }
 
 struct FamilyWorkspace<B: LoopBackend> {
@@ -391,8 +474,8 @@ impl<B: LoopBackend> LoopExecutor<B> {
         self.evaluate_mode(input, snapshot, true)?
             .require_complete()
     }
-    /// Compact complete physical points and retain typed reduction failures.
-    /// Early state, scale and nonfinite-stage checks retain their strict errors.
+    /// Compact complete physical points and retain typed state, scale and
+    /// reduction failures. Invalid original inputs and global formulas still fail.
     pub fn evaluate_partial_with_snapshot(
         &mut self,
         input: LoopInputs,
@@ -403,7 +486,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
     }
     fn evaluate_mode(
         &mut self,
-        input: LoopInputs,
+        mut input: LoopInputs,
         snapshot: Option<Arc<SourceSnapshot<B::Batch>>>,
         resolved: bool,
     ) -> RusticolResult<CompleteLoopResult<B::Batch>> {
@@ -422,10 +505,49 @@ impl<B: LoopBackend> LoopExecutor<B> {
             (None, Some(_)) => return Err(invalid("a source snapshot requires its source owner")),
             (None, None) => None,
         };
+        let requested = input.point_ids.clone();
+        let momentum_width = count(self.loaded.plan().state_legs.len(), 4)?;
+        let mut failures = Vec::new();
+        loop {
+            match self.evaluate_inner(input.clone(), snapshot.clone(), resolved) {
+                Ok(mut result) => {
+                    failures.append(&mut result.failures);
+                    result.requested_point_ids = requested;
+                    result.failures = failures;
+                    return Ok(result);
+                }
+                Err(LoopStepError::Invalid(error)) => return Err(error),
+                Err(LoopStepError::Numerical(mut bad)) => {
+                    let failed: BTreeSet<_> = bad.iter().map(|failure| failure.point_id).collect();
+                    let retained: Vec<_> = input
+                        .point_ids
+                        .iter()
+                        .copied()
+                        .filter(|id| !failed.contains(id))
+                        .collect();
+                    if retained.len() == input.point_ids.len() {
+                        return Err(invalid(
+                            "numerical stage failure made no physical-point progress",
+                        ));
+                    }
+                    failures.append(&mut bad);
+                    input = input.select_points(&retained, momentum_width)?;
+                }
+            }
+        }
+    }
+
+    fn evaluate_inner(
+        &mut self,
+        input: LoopInputs,
+        snapshot: Option<Arc<SourceSnapshot<B::Batch>>>,
+        resolved: bool,
+    ) -> StepResult<CompleteLoopResult<B::Batch>> {
         if snapshot.is_some() && !input.model_values.is_empty() {
             return Err(invalid(
                 "source model parameters require named owner updates, not positional model_values",
-            ));
+            )
+            .into());
         }
         let plan = self.loaded.plan();
         let points = input.point_ids.len();
@@ -438,10 +560,22 @@ impl<B: LoopBackend> LoopExecutor<B> {
             || (snapshot.is_none() && input.model_values.len() != plan.model_inputs.len())
             || input.point_ids.iter().collect::<BTreeSet<_>>().len() != points
         {
-            return Err(invalid(
-                "loop original input shapes or unique point identities differ",
-            ));
+            return Err(
+                invalid("loop original input shapes or unique point identities differ").into(),
+            );
         }
+        // Exact ingress below validates every original momentum literal before
+        // any row is removed. Scales must also be positive before rounding.
+        for value in &input.scales_squared {
+            if crate::source_scalar::decimal_rational(value).map_err(|error| invalid(&error))?
+                <= symbolica::domains::rational::Rational::from(0)
+            {
+                return Err(
+                    invalid("renormalization scales must be positive exact real values").into(),
+                );
+            }
+        }
+        let requested_point_ids = input.point_ids.clone();
         let mut ids = Vec::with_capacity(rows);
         let mut point_rows = Vec::with_capacity(rows);
         for (row, &id) in input.point_ids.iter().enumerate() {
@@ -450,43 +584,51 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 point_rows.push(row);
             }
         }
-        let projection_points = if resolved { rows } else { points };
-        let projection_helicities = if resolved { 1 } else { helicities };
-        let projection_rows_per_point = if resolved { helicities } else { 1 };
-        let projection_ids = if resolved {
-            ids.clone()
-        } else {
-            input.point_ids.clone()
-        };
         let physical = self.backend.ingress(
             &input.momenta,
             points,
             momentum_width,
             input.point_ids.clone(),
         )?;
-        let lanes = B::gather(&physical, point_rows.clone(), ids.clone())?;
+        let lanes = B::gather(&physical, point_rows, ids.clone())?;
         let scales =
             self.backend
                 .ingress(&input.scales_squared, points, 1, input.point_ids.clone())?;
-        let states = prepare_states::<B>(&lanes, &ids, plan)?;
-        let (model_arguments, model, pointwise_model) = if let Some(snapshot) = &snapshot {
+        let mut failures = Vec::new();
+        let states = prepare_states::<B>(&lanes, &ids, plan, &mut failures)?;
+        let scales = finite_rows::<B>(&scales, "renormalization scales", &mut failures)?;
+        let (model_arguments, model, pointwise_model, source_values) = if let Some(snapshot) =
+            &snapshot
+        {
             let source = self.source.as_mut().expect("captured source owner");
             let ModelBinding::Source {
                 model_output_indices,
                 ..
             } = &plan.model_binding
             else {
-                unreachable!("validated source binding")
+                unreachable!("validated source binding");
             };
             let selected = if let Some(view) = &mut source.ordinary {
-                view.evaluate(snapshot, &scales)?
+                let (values, mut bad) = view.evaluate_partial(snapshot, &scales)?;
+                for failure in &mut bad {
+                    failure.stage = format!("ordinary {}", failure.stage);
+                }
+                failures.extend(bad);
+                values
             } else {
                 snapshot.values().clone()
             };
+            let (counterterms, mut bad) =
+                source.counterterms.evaluate_partial(snapshot, &scales)?;
+            for failure in &mut bad {
+                failure.stage = format!("counterterm {}", failure.stage);
+            }
+            failures.extend(bad);
             (
                 snapshot.arguments().clone(),
                 B::select(&selected, model_output_indices.clone())?,
                 source.ordinary.is_some(),
+                Some(counterterms),
             )
         } else {
             let arguments =
@@ -494,7 +636,44 @@ impl<B: LoopBackend> LoopExecutor<B> {
                     .ingress(&input.model_values, 1, input.model_values.len(), vec![0])?;
             let model = eval::<B>(&mut self.bare, "model_evaluator", &arguments)?;
             B::require_finite(&model, "global model formulas", 1)?;
-            (arguments, model, false)
+            (arguments, model, false, None)
+        };
+        let failed: BTreeSet<_> = failures.iter().map(|f| f.point_id).collect();
+        let accepted: Vec<_> = input
+            .point_ids
+            .iter()
+            .copied()
+            .filter(|id| !failed.contains(id))
+            .collect();
+        let input = input.select_points(&accepted, momentum_width)?;
+        let points = input.point_ids.len();
+        let rows = count(points, helicities)?;
+        let mut ids = Vec::with_capacity(rows);
+        let mut point_rows = Vec::with_capacity(rows);
+        for (row, &id) in input.point_ids.iter().enumerate() {
+            for h in 0..helicities {
+                ids.push(lane_id(id, helicities, h)?);
+                point_rows.push(row);
+            }
+        }
+        let lanes = select_ids::<B>(&lanes, &ids)?;
+        let states = select_ids::<B>(&states, &ids)?;
+        let scales = select_ids::<B>(&scales, &accepted)?;
+        let model = if pointwise_model {
+            select_ids::<B>(&model, &accepted)?
+        } else {
+            model
+        };
+        let source_values = source_values
+            .as_ref()
+            .map(|values| select_ids::<B>(values, &accepted))
+            .transpose()?;
+        let projection_points = if resolved { rows } else { points };
+        let projection_helicities = if resolved { 1 } else { helicities };
+        let projection_ids = if resolved {
+            ids.clone()
+        } else {
+            input.point_ids.clone()
         };
         let model_rows = if pointwise_model {
             point_rows.clone()
@@ -506,9 +685,21 @@ impl<B: LoopBackend> LoopExecutor<B> {
             &states,
             &B::gather(&model, model_rows, ids.clone())?,
         ])?;
-        let born_outputs = evaluate_group::<B>(&mut self.schedules, &plan.born, &bound)?;
+        let born_outputs = evaluate_group::<B>(
+            &mut self.schedules,
+            &plan.born,
+            &bound,
+            helicities,
+            &mut failures,
+        )?;
         let born_amplitudes = B::concat(&born_outputs.iter().collect::<Vec<_>>())?;
-        let loop_outputs = evaluate_group::<B>(&mut self.schedules, &plan.loops, &bound)?;
+        let loop_outputs = evaluate_group::<B>(
+            &mut self.schedules,
+            &plan.loops,
+            &bound,
+            helicities,
+            &mut failures,
+        )?;
         let born_input = B::reshape(
             &born_amplitudes,
             projection_points,
@@ -527,12 +718,17 @@ impl<B: LoopBackend> LoopExecutor<B> {
         } else {
             eval::<B>(&mut self.bare, "born_projector", &born_input)?
         };
-        B::require_finite(&born, "Born projection", projection_rows_per_point)?;
+        check_finite::<B>(
+            &born,
+            "Born projection",
+            resolved.then_some(helicities),
+            None,
+            &mut failures,
+        )?;
         let sector_count = plan.order_layout.r#virtual.len();
         let mut integrated = Vec::new();
         let mut rational_integrated = Vec::new();
         let mut statuses = vec![Vec::new(); projection_points];
-        let mut failures = Vec::new();
         for (family, workspace) in plan.families.iter().zip(&mut self.families) {
             let mut parts = vec![&born_amplitudes];
             parts.extend(family.graph_indices.iter().map(|&i| &loop_outputs[i]));
@@ -552,6 +748,13 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 &mut workspace.projector
             };
             let coefficients = B::evaluate(projector, &projection)?;
+            check_finite::<B>(
+                &coefficients,
+                "family numerator projection",
+                resolved.then_some(helicities),
+                Some(family.index),
+                &mut failures,
+            )?;
             let exact = self.backend.exact(
                 &mut workspace.exact,
                 &input.momenta,
@@ -564,6 +767,18 @@ impl<B: LoopBackend> LoopExecutor<B> {
             let masses = B::evaluate(
                 &mut workspace.masses,
                 &B::select(&model, family.mass_columns.clone())?,
+            )?;
+            let mass_check = if pointwise_model {
+                masses.clone()
+            } else {
+                B::gather(&masses, vec![0; points], input.point_ids.clone())?
+            };
+            check_finite::<B>(
+                &mass_check,
+                "propagator masses",
+                None,
+                Some(family.index),
+                &mut failures,
             )?;
             if let Some(kinematics) = &family.kinematics {
                 if !kinematics.on_shell.is_empty() {
@@ -580,6 +795,22 @@ impl<B: LoopBackend> LoopExecutor<B> {
                     matrix = B::select(&B::concat(&[&matrix, &point_masses])?, columns)?;
                 }
             }
+            // Test only the physical matrix after structural on-shell bindings;
+            // discarded raw entries must not cause a false numerical failure.
+            check_finite::<B>(
+                &shifts,
+                "family momentum shifts",
+                None,
+                Some(family.index),
+                &mut failures,
+            )?;
+            check_finite::<B>(
+                &matrix,
+                "physical family invariant matrix",
+                None,
+                Some(family.index),
+                &mut failures,
+            )?;
             let masses = B::select(&masses, (0..n).collect())?;
             let channels = family.sector_indices.len();
             let channel_rows = count(projection_points, channels)?;
@@ -689,10 +920,12 @@ impl<B: LoopBackend> LoopExecutor<B> {
             "postprocess",
             &B::concat(&integrated.iter().collect::<Vec<_>>())?,
         )?;
-        B::require_finite(
+        check_finite::<B>(
             &virtual_value,
             "bare virtual assembly",
-            projection_rows_per_point,
+            resolved.then_some(helicities),
+            None,
+            &mut failures,
         )?;
         let rational = if plan.dimensional_numerators {
             let value = eval::<B>(
@@ -700,23 +933,14 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 "postprocess",
                 &B::concat(&rational_integrated.iter().collect::<Vec<_>>())?,
             )?;
-            B::require_finite(
+            check_finite::<B>(
                 &value,
                 "direct rational assembly",
-                projection_rows_per_point,
+                resolved.then_some(helicities),
+                None,
+                &mut failures,
             )?;
             Some(value)
-        } else {
-            None
-        };
-        let source_values = if let Some(snapshot) = &snapshot {
-            Some(
-                self.source
-                    .as_mut()
-                    .expect("captured source owner")
-                    .counterterms
-                    .evaluate(snapshot, &scales)?,
-            )
         } else {
             None
         };
@@ -736,6 +960,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 coefficient_inputs.as_ref(),
                 source_values.as_ref(),
                 "counterterm scalar coefficients and active diagnostics",
+                &mut failures,
             )?;
             let coefficients = B::gather(&coefficients, point_rows.clone(), ids.clone())?;
             let combined = B::concat(&[&bound, &coefficients])?;
@@ -743,7 +968,13 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 &mut self.schedules[current.schedule],
                 &B::select(&combined, current.input_columns.clone())?,
             )?;
-            B::require_finite(&amplitude, "counterterm current", helicities)?;
+            check_finite::<B>(
+                &amplitude,
+                "counterterm current",
+                Some(helicities),
+                None,
+                &mut failures,
+            )?;
             amplitudes.push(amplitude);
         }
         for (field, evaluator) in plan.fields.iter().zip(&mut self.fields) {
@@ -753,6 +984,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 coefficient_inputs.as_ref(),
                 source_values.as_ref(),
                 "external-field scalar coefficients and active diagnostics",
+                &mut failures,
             )?;
             amplitudes.push(B::gather(&value, point_rows.clone(), ids.clone())?);
         }
@@ -776,10 +1008,12 @@ impl<B: LoopBackend> LoopExecutor<B> {
             eval::<B>(&mut self.model, "projector", &projected)?
         };
         let mut counterterms = select_ids::<B>(&counterterms, &accepted)?;
-        B::require_finite(
+        check_finite::<B>(
             &counterterms,
             "counterterm projection",
-            projection_rows_per_point,
+            resolved.then_some(helicities),
+            None,
+            &mut failures,
         )?;
         let width = 3 * sector_count;
         if let Some(rational) = rational {
@@ -794,10 +1028,12 @@ impl<B: LoopBackend> LoopExecutor<B> {
             "assemble",
             &B::concat(&[&virtual_value, &counterterms])?,
         )?;
-        B::require_finite(
+        check_finite::<B>(
             &assembled,
             "complete virtual assembly",
-            projection_rows_per_point,
+            resolved.then_some(helicities),
+            None,
+            &mut failures,
         )?;
         let components = [
             B::select(&assembled, (0..width).collect())?,
@@ -810,13 +1046,15 @@ impl<B: LoopBackend> LoopExecutor<B> {
         let mut values = vec![&born];
         values.extend(components.iter());
         let totals = eval::<B>(&mut self.model, "sum_order_values", &B::concat(&values)?)?;
-        B::require_finite(
+        check_finite::<B>(
             &totals,
             "sum over completed perturbative orders",
-            projection_rows_per_point,
+            resolved.then_some(helicities),
+            None,
+            &mut failures,
         )?;
         Ok(CompleteLoopResult {
-            requested_point_ids: input.point_ids,
+            requested_point_ids,
             point_ids: accepted,
             born,
             components,
@@ -834,6 +1072,33 @@ impl<B: LoopBackend> LoopExecutor<B> {
             failures,
         })
     }
+}
+
+/// Keep successful rows without numeric placeholders. Callers aggregate failures
+/// at the physical-point boundary before combining independently compacted data.
+pub(crate) fn finite_rows<B: LoopBackend>(
+    values: &B::Batch,
+    stage: &str,
+    failures: &mut Vec<LoopLaneFailure>,
+) -> RusticolResult<B::Batch> {
+    let failed: BTreeSet<_> = B::nonfinite_rows(values).into_iter().collect();
+    for &point_id in &failed {
+        failures.push(LoopLaneFailure {
+            point_id,
+            helicity: None,
+            order_index: None,
+            family_index: None,
+            external_leg: None,
+            stage: stage.into(),
+            detail: "nonfinite numerical value or active scalar diagnostic".into(),
+        });
+    }
+    let ids: Vec<_> = B::row_ids(values)
+        .iter()
+        .copied()
+        .filter(|id| !failed.contains(id))
+        .collect();
+    select_ids::<B>(values, &ids)
 }
 
 fn select_ids<B: LoopBackend>(values: &B::Batch, ids: &[u64]) -> RusticolResult<B::Batch> {
@@ -860,7 +1125,7 @@ fn select_ids<B: LoopBackend>(values: &B::Batch, ids: &[u64]) -> RusticolResult<
 #[allow(clippy::too_many_arguments)]
 fn complete_family_rows<B: LoopBackend>(
     values: B::Batch,
-    channel_statuses: Vec<(u64, String)>,
+    mut channel_statuses: Vec<(u64, String)>,
     projection_ids: &[u64],
     channel_ids: &[u64],
     sectors: &[usize],
@@ -890,6 +1155,12 @@ fn complete_family_rows<B: LoopBackend>(
             "compact reducer values differ from successful statuses",
         ));
     }
+    let nonfinite: BTreeSet<_> = B::nonfinite_rows(&values).into_iter().collect();
+    for (id, state) in &mut channel_statuses {
+        if state == "success" && nonfinite.contains(id) {
+            *state = "nonfinite reduced Laurent coefficients".into();
+        }
+    }
     let mut failed = BTreeSet::new();
     for (channel, (_, detail)) in channel_statuses.into_iter().enumerate() {
         let row = channel / sectors.len();
@@ -905,8 +1176,9 @@ fn complete_family_rows<B: LoopBackend>(
             failures.push(LoopLaneFailure {
                 point_id,
                 helicity: resolved.then_some((projection_id % helicities as u64) as usize),
-                order_index: sectors[channel % sectors.len()],
-                family_index: family,
+                order_index: Some(sectors[channel % sectors.len()]),
+                family_index: Some(family),
+                external_leg: None,
                 stage: stage.into(),
                 detail,
             });
@@ -943,20 +1215,24 @@ fn scalar_values<B: LoopBackend>(
     arguments: Option<&B::Batch>,
     source: Option<&B::Batch>,
     stage: &str,
-) -> RusticolResult<B::Batch> {
+    failures: &mut Vec<LoopLaneFailure>,
+) -> StepResult<B::Batch> {
     match binding {
         ScalarBinding::Evaluator { .. } => {
             let values = B::evaluate(
                 evaluator.expect("validated scalar evaluator"),
                 arguments.expect("legacy scalar inputs"),
             )?;
-            B::require_finite(&values, stage, 1)?;
-            B::select(&values, (0..B::columns(&values)).step_by(2).collect())
+            check_finite::<B>(&values, stage, None, None, failures)?;
+            Ok(B::select(
+                &values,
+                (0..B::columns(&values)).step_by(2).collect(),
+            )?)
         }
-        ScalarBinding::SourceColumns { columns } => B::select(
+        ScalarBinding::SourceColumns { columns } => Ok(B::select(
             source.expect("checked source scale outputs"),
             columns.clone(),
-        ),
+        )?),
     }
 }
 
@@ -976,16 +1252,23 @@ fn evaluate_group<B: LoopBackend>(
     schedules: &mut [B::Schedule],
     group: &ScheduleGroup,
     input: &B::Batch,
-) -> RusticolResult<Vec<B::Batch>> {
+    helicities: usize,
+    failures: &mut Vec<LoopLaneFailure>,
+) -> StepResult<Vec<B::Batch>> {
     let mut evaluated = BTreeMap::new();
     for &index in &group.representatives {
-        evaluated.insert(
-            index,
-            B::execute(
-                &mut schedules[group.schedules[index]],
-                &B::select(input, group.input_columns[index].clone())?,
-            )?,
-        );
+        let values = B::execute(
+            &mut schedules[group.schedules[index]],
+            &B::select(input, group.input_columns[index].clone())?,
+        )?;
+        check_finite::<B>(
+            &values,
+            "coefficient current",
+            Some(helicities),
+            None,
+            failures,
+        )?;
+        evaluated.insert(index, values);
     }
     Ok(group
         .representative_for
@@ -997,11 +1280,14 @@ fn prepare_states<B: LoopBackend>(
     lanes: &B::Batch,
     ids: &[u64],
     plan: &crate::loop_runtime::LoopRuntimePlan,
+    failures: &mut Vec<LoopLaneFailure>,
 ) -> RusticolResult<B::Batch> {
     let mut blocks = Vec::new();
     let mut original_columns = Vec::new();
     let leg_count = plan.state_legs.len();
+    let helicity_count = plan.helicities.len();
     let mut offset = 0;
+    let mut failed_points = BTreeSet::new();
     for components in [1usize, 4] {
         let legs = plan
             .state_legs
@@ -1020,21 +1306,61 @@ fn prepare_states<B: LoopBackend>(
         let mut state_ids = Vec::new();
         let mut kinds = Vec::new();
         let mut helicities = Vec::new();
-        for (row, &id) in ids.iter().enumerate() {
+        for &id in ids {
             for leg in &legs {
                 state_ids.push(lane_id(id, leg_count, leg.index)?);
                 kinds.push(leg.kind.clone());
-                helicities.push(plan.helicities[row % plan.helicities.len()][leg.index]);
+                helicities.push(plan.helicities[(id % helicity_count as u64) as usize][leg.index]);
             }
         }
-        let momenta = B::reshape(&momenta, count(ids.len(), legs.len())?, 4, state_ids)?;
-        let states = B::states(&momenta, helicities, kinds, components)?;
-        blocks.push(B::reshape(
-            &states,
-            ids.len(),
-            components * legs.len(),
-            ids.to_vec(),
-        )?);
+        let momenta = B::reshape(
+            &momenta,
+            count(ids.len(), legs.len())?,
+            4,
+            state_ids.clone(),
+        )?;
+        let (states, statuses) = B::states_partial(&momenta, helicities, kinds, components)?;
+        if statuses.iter().map(|(id, _)| id).ne(state_ids.iter()) {
+            return Err(invalid(
+                "state status identities differ from scheduled rows",
+            ));
+        }
+        let successful: Vec<_> = statuses
+            .iter()
+            .filter_map(|(id, state)| (state == "success").then_some(*id))
+            .collect();
+        if B::row_ids(&states) != successful {
+            return Err(invalid(
+                "compact state values differ from successful statuses",
+            ));
+        }
+        let nonfinite: BTreeSet<_> = B::nonfinite_rows(&states).into_iter().collect();
+        for (state_id, detail) in statuses {
+            if detail == "success" && !nonfinite.contains(&state_id) {
+                continue;
+            }
+            let id = state_id / leg_count as u64;
+            let point_id = id / helicity_count as u64;
+            failed_points.insert(point_id);
+            failures.push(LoopLaneFailure {
+                point_id,
+                helicity: Some((id % helicity_count as u64) as usize),
+                external_leg: Some((state_id % leg_count as u64) as usize),
+                order_index: None,
+                family_index: None,
+                stage: "external state preparation".into(),
+                detail: if detail == "success" {
+                    "nonfinite external state".into()
+                } else {
+                    detail
+                },
+            });
+        }
+        blocks.push((
+            states,
+            legs.iter().map(|leg| leg.index).collect::<Vec<_>>(),
+            components,
+        ));
         for (index, leg) in legs.iter().enumerate() {
             for component in 0..components {
                 original_columns.push((
@@ -1045,6 +1371,26 @@ fn prepare_states<B: LoopBackend>(
         }
         offset += components * legs.len();
     }
+    let accepted: Vec<_> = ids
+        .iter()
+        .copied()
+        .filter(|id| !failed_points.contains(&(id / helicity_count as u64)))
+        .collect();
+    let blocks = blocks
+        .into_iter()
+        .map(|(states, legs, components)| {
+            let state_ids = accepted
+                .iter()
+                .flat_map(|&id| legs.iter().map(move |&leg| lane_id(id, leg_count, leg)))
+                .collect::<RusticolResult<Vec<_>>>()?;
+            B::reshape(
+                &select_ids::<B>(&states, &state_ids)?,
+                accepted.len(),
+                components * legs.len(),
+                accepted.clone(),
+            )
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
     original_columns.sort_unstable();
     B::select(
         &B::concat(&blocks.iter().collect::<Vec<_>>())?,

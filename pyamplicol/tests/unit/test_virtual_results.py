@@ -191,7 +191,13 @@ def test_failure_channels_are_immutable_and_keep_physical_identity():
     assert EvaluationError("ordinary failure").failures == ()
     with pytest.raises(FrozenInstanceError):
         failure.point_id = 2
-    for field in ("point_id", "helicity", "order_index", "family_index"):
+    for field in (
+        "point_id",
+        "helicity",
+        "order_index",
+        "family_index",
+        "external_leg",
+    ):
         with pytest.raises(ValueError):
             replace(failure, **{field: -1})
         with pytest.raises(ValueError):

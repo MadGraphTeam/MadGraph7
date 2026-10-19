@@ -249,17 +249,34 @@ retain their typed Born/component columns.
 
 Public `Runtime.evaluate` and `evaluate_resolved` continue to raise by default.
 Their `EvaluationError.failures` tuple contains immutable
-`VirtualFailureDiagnostic` records for native reduction failures; point IDs in
+`VirtualFailureDiagnostic` records for native numerical failures; point IDs in
 this facade are the original input row indices. Successful public result shapes
 and all coupling/Laurent axes are unchanged. There is no public partial-result
 policy or hidden precision retry in this slice.
 
-The partial boundary currently starts at reduction. Parameter, scale,
-wavefunction/current and nonfinite-assembly errors retain strict whole-call
-rejection. Invalid structure and global dependency errors also remain errors.
-Extending those early stages to typed lane outcomes and recomputing only failed
-points from the original exact inputs are separate requirements for rescue.
-Finite output and a successful reducer status still do not certify accuracy.
+The same boundary includes external-state preparation, per-point scale-dependent
+scalar evaluation, nonfinite currents, family projections/kinematics and final
+assembly. State failures also carry `external_leg`; order/family fields are
+absent when a stage has no corresponding identity. Exact original input literals
+and positive scales are validated before removing any point. Active scalar
+value/diagnostic pairs are checked together, including their imaginary parts.
+
+State and scale blocks compact before current construction. A later nonfinite
+stage returns a typed loop-local outcome with all failures observed so far. The
+same executor removes those whole physical points and replays the surviving
+batch from its original exact inputs. This correctness-first rare-failure path
+can repeat work for survivors. Each replay must strictly reduce the active
+physical-point set, and there is no arbitrary retry cap. All-failed execution
+finishes with a typed empty result. One source snapshot is captured before the
+first attempt and reused for every replay; parameter updates cannot change the
+calculation between stages. Unexpected structural/dependency errors still raise.
+
+Global source-owner construction and parameter updates retain whole-handle
+checks. They can reject a numerically overflowing lower-carrier scalar even
+when its exact model expression is valid; this is distinct from a malformed
+model. Recovery from a failed global binding is not supplied by this boundary.
+Precision retries and empirical agreement certification remain separate work;
+finite output and successful reducer status alone do not certify accuracy.
 
 The focused saved-source test uses exactly on-shell near-forward gluon
 scattering where the generic reducer reports a degenerate Gram determinant,
@@ -267,3 +284,10 @@ with ordinary points on either side. It checks inclusive/resolved compaction,
 sparse original IDs, successful-row agreement, default rejection, all-failed
 and empty buffers, and typed public DoubleFloat errors. The binary64 fast
 engine succeeds on this particular control; that is not treated as a failure.
+
+The stage tests combine distinct sparse-ID failures at state construction,
+scale ingress, real Gram reduction and an explicitly injected late counterterm
+current. They compare the surviving output with a separate run and ensure the
+late replay retains earlier failure records. An injected resolved Born
+projection also checks all-failed point/helicity diagnostics. These injected
+controls test execution transport, not physics accuracy.

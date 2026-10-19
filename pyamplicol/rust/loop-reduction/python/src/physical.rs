@@ -172,8 +172,9 @@ pub(super) struct NativeCompleteLoopResult(pub(super) CompleteLoopResult<Arc<Bat
 pub(super) struct NativeLoopFailure {
     point_id: u64,
     helicity: Option<usize>,
-    order_index: usize,
-    family_index: usize,
+    order_index: Option<usize>,
+    family_index: Option<usize>,
+    external_leg: Option<usize>,
     stage: String,
     detail: String,
 }
@@ -184,6 +185,7 @@ impl From<&LoopLaneFailure> for NativeLoopFailure {
             helicity: value.helicity,
             order_index: value.order_index,
             family_index: value.family_index,
+            external_leg: value.external_leg,
             stage: value.stage.clone(),
             detail: value.detail.clone(),
         }

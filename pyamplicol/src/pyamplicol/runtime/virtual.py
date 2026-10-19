@@ -424,15 +424,17 @@ class VirtualRuntimeBackend:
                     item.family_index,
                     item.stage,
                     item.detail,
+                    item.external_leg,
                 )
                 for item in result.failures
             )
             if failures:
                 failed_points = sorted({item.point_id for item in failures})
                 raise EvaluationError(
-                    "unrecovered virtual reduction failures at points "
+                    "unrecovered virtual numerical failures at points "
                     f"{failed_points}; "
-                    "inspect error.failures for helicity, order and family details",
+                    "inspect error.failures for stage, helicity, "
+                    "order and family details",
                     failures=failures,
                 )
             helicity_count = len(self._metadata["plan"]["helicities"])

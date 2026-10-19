@@ -51,9 +51,16 @@ class VirtualFailureDiagnostic:
     family_index: int | None
     stage: str
     detail: str
+    external_leg: int | None = None
 
     def __post_init__(self) -> None:
-        for name in ("point_id", "helicity", "order_index", "family_index"):
+        for name in (
+            "point_id",
+            "helicity",
+            "order_index",
+            "family_index",
+            "external_leg",
+        ):
             value = getattr(self, name)
             if value is None and name != "point_id":
                 continue

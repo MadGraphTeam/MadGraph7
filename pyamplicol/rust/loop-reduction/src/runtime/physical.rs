@@ -152,14 +152,14 @@ impl LoopBackend for PhysicalBackend {
             .map(Arc::new)
             .map_err(runtime_error)
     }
-    fn states(
+    fn states_partial(
         momenta: &Arc<Batch>,
         helicities: Vec<i32>,
         kinds: Vec<String>,
         components: usize,
-    ) -> RusticolResult<Arc<Batch>> {
-        wavefunctions_batch(momenta, helicities, kinds, Some(components))
-            .map(Arc::new)
+    ) -> RusticolResult<(Arc<Batch>, Vec<(u64, String)>)> {
+        wavefunctions_partial_batch(momenta, helicities, kinds, Some(components))
+            .map(|(values, statuses)| (Arc::new(values), statuses))
             .map_err(runtime_error)
     }
     fn reduce(
@@ -177,6 +177,9 @@ impl LoopBackend for PhysicalBackend {
             Arc::new(result.successful_values()),
             result.statuses().to_vec(),
         ))
+    }
+    fn nonfinite_rows(batch: &Arc<Batch>) -> Vec<u64> {
+        batch.nonfinite_rows()
     }
     fn rows(batch: &Arc<Batch>) -> usize {
         batch.rows()

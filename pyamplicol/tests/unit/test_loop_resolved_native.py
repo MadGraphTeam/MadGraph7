@@ -338,7 +338,14 @@ def test_native_nonfinite_resolved_projection_retains_physical_id(
     runtime = native.NativeLoopProgram(
         str(destination), reduction_engine="fast", parameters={"aS": ["0", "0"]}
     )
-    with pytest.raises(
-        ValueError, match=r"Born projection.*original points \{91\}.*point, helicity"
-    ):
+    result = runtime.evaluate(
+        points[:1], ["1000000"], point_ids=[91], resolved=True, partial=True
+    )
+    assert result.point_ids == [] and result.born.rows == 0
+    assert result.failures and {f.point_id for f in result.failures} == {91}
+    assert all(
+        f.stage == "Born projection" and f.helicity in range(16)
+        for f in result.failures
+    )
+    with pytest.raises(ValueError, match="point_id: 91"):
         runtime.evaluate(points[:1], ["1000000"], point_ids=[91], resolved=True)

@@ -4,7 +4,7 @@
 //! supplies no scalar algebra or renormalization prescription: exact defaults,
 //! value/diagnostic pairs and scale substitution are the validated saved programs.
 
-use crate::loop_execution::LoopBackend;
+use crate::loop_execution::{LoopBackend, LoopLaneFailure, finite_rows};
 use crate::loop_runtime::{LoadedLoopRuntime, ModelBinding, ScalarOwner, ScalarScaleView};
 use crate::source_scalar::decimal_rational;
 use crate::{RusticolError, RusticolResult};
@@ -310,6 +310,22 @@ impl<B: LoopBackend> SourceScale<B> {
         snapshot: &SourceSnapshot<B::Batch>,
         mu_r2: &B::Batch,
     ) -> RusticolResult<B::Batch> {
+        let (values, failures) = self.evaluate_partial(snapshot, mu_r2)?;
+        if !failures.is_empty() {
+            return Err(crate::RusticolError::evaluation(format!(
+                "source scale evaluation failed: {failures:?}"
+            )));
+        }
+        Ok(values)
+    }
+
+    /// Preserve numerical row failures while keeping invalid structure and
+    /// foreign snapshots as errors. The caller retains original exact scales.
+    pub fn evaluate_partial(
+        &mut self,
+        snapshot: &SourceSnapshot<B::Batch>,
+        mu_r2: &B::Batch,
+    ) -> RusticolResult<(B::Batch, Vec<LoopLaneFailure>)> {
         if !Arc::ptr_eq(&self.identity, &snapshot.identity) {
             return Err(invalid(
                 "scale snapshot belongs to a different global state",
@@ -318,10 +334,15 @@ impl<B: LoopBackend> SourceScale<B> {
         if B::columns(mu_r2) != 1 {
             return Err(invalid("scales require one mu_r2 column"));
         }
-        B::require_finite(mu_r2, "renormalization scales", 1)?;
+        let mut failures = Vec::new();
+        let mu_r2 = finite_rows::<B>(mu_r2, "renormalization scales", &mut failures)?;
         // Even an empty evaluation checks carrier and precision compatibility.
-        let scale = B::evaluate(&mut self.scale, mu_r2)?;
-        B::require_finite(&scale, "positive real renormalization scales", 1)?;
+        let scale = B::evaluate(&mut self.scale, &mu_r2)?;
+        let scale = finite_rows::<B>(
+            &scale,
+            "positive real renormalization scales",
+            &mut failures,
+        )?;
         let arguments = B::gather(
             &snapshot.arguments,
             vec![0; B::rows(&scale)],
@@ -340,11 +361,14 @@ impl<B: LoopBackend> SourceScale<B> {
             &mut self.values,
             &B::concat(&columns.iter().collect::<Vec<_>>())?,
         )?;
-        B::require_finite(
+        let values = finite_rows::<B>(
             &values,
             "scale-dependent scalar values and active diagnostics",
-            1,
+            &mut failures,
         )?;
-        B::select(&values, (0..self.output_count).map(|i| 2 * i).collect())
+        Ok((
+            B::select(&values, (0..self.output_count).map(|i| 2 * i).collect())?,
+            failures,
+        ))
     }
 }
