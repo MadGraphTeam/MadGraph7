@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: 0BSD
 """Canonical Born anchors are coherent, signed and distinct from tree flows."""
 
+import json
+import subprocess
+import sys
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -71,6 +74,40 @@ def test_partition_and_port_errors(tensors):
         prepare_born_color_components(
             (direct, crossed.rename_indices({"leg0": "other"}))
         )
+
+
+def test_component_ids_ignore_symbol_registration_order():
+    # The symbol registry is process-global, so reversing construction in this
+    # pytest process cannot test registration independence. Adjoint metrics keep
+    # this ordering control separate from the open-fundamental duality control.
+    script = """
+import json, sys
+from symbolica import S
+from symbolica.community import tensor as t
+from pyamplicol.loops.color_components import prepare_born_color_components
+names = ['anchor_order_a', 'anchor_order_z']
+for name in names[::int(sys.argv[1])]:
+    S(name)
+a, z = map(S, names)
+r = t.Representation.coad(8)
+g = t.TensorExpression.g(r, r)
+metric = g('leg0', 'leg1') * g('leg2', 'leg3')
+tensors = (metric * (a + 2*z), metric * (2*a + z), metric * (a + 2*z))
+print(json.dumps(prepare_born_color_components(tensors).as_dict()))
+"""
+    results = [
+        json.loads(
+            subprocess.run(
+                [sys.executable, "-c", script, direction],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+        )
+        for direction in ("1", "-1")
+    ]
+    assert results[0] == results[1]
+    assert {tuple(group) for group in results[0]["members"]} == {(0, 2), (1,)}
 
 
 @pytest.mark.parametrize(

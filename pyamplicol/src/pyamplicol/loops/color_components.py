@@ -101,10 +101,10 @@ def prepare_born_color_components(tensors: Sequence[Any]) -> BornColorComponents
         canonical = tensor.canonize().to_expression()
         require_exact_numbers(canonical)
         groups.setdefault(canonical, []).append(index)
-    # Symbolica's canonical expressions retain their exact tensor names and
-    # external labels. Ordering their printed normal forms avoids graph-order
-    # dependence without introducing a separate canonicalization algorithm.
-    ordered = sorted(groups, key=str)
+    # The dependency's canonical printer fixes symbol-name ordering, including
+    # antisymmetric signs, independently of session registration order. Ordinary
+    # display follows internal symbol IDs and does not provide that contract.
+    ordered = sorted(groups, key=lambda value: value.to_canonical_string())
     return BornColorComponents(
         tuple(f"born-{index}" for index in range(len(ordered))),
         tuple(tuple(groups[tensor]) for tensor in ordered),
