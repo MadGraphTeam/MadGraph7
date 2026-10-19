@@ -195,6 +195,25 @@ def test_source_artifact_rejects_metadata_mismatch_transactionally(
         replace(retained_source_process.metadata.scheme, gamma5="")
 
 
+@pytest.mark.parametrize("accuracy", ["lc", "nlc"])
+def test_full_colour_declaration_cannot_hide_saved_projection(
+    retained_source_process, accuracy
+):
+    backend = pytest.importorskip("_loop_reduction")
+    plan = json.loads(
+        backend.PortableLoopPlan(
+            str(retained_source_process.loop_runtime_path)
+        ).metadata_json()
+    )
+    plan["color_projection"] = {
+        "accuracy": accuracy,
+        "born_degrees": [2] * len(plan["order_layout"]["born"]),
+        "virtual_degrees": [3] * len(plan["order_layout"]["virtual"]),
+    }
+    with pytest.raises(ValueError, match="colour accuracy differs"):
+        retained_source_process.metadata.validate_plan(plan)
+
+
 def test_failed_staged_validation_preserves_existing_artifact(
     retained_source_process, tmp_path
 ):

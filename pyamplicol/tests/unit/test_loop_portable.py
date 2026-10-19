@@ -232,6 +232,57 @@ def _rewrite(path, destination, mutate, *, wrong_kind=False):
         (lambda d: d["families"][0].update(sector_indices=[999]), "sectors"),
         (lambda d: d["order_layout"]["born"][0]["order"][0].__setitem__(1, -1), "u32"),
         (lambda d: d.update(producer_graph={}), "unknown field"),
+        (
+            lambda d: d.update(
+                color_projection={
+                    "accuracy": "lc",
+                    "born_degrees": [],
+                    "virtual_degrees": [3],
+                }
+            ),
+            "colour projection",
+        ),
+        (
+            lambda d: d.update(
+                color_projection={
+                    "accuracy": "nlc",
+                    "born_degrees": [2],
+                    "virtual_degrees": [],
+                }
+            ),
+            "colour projection",
+        ),
+        (
+            lambda d: d.update(
+                color_projection={
+                    "accuracy": "guess",
+                    "born_degrees": [2],
+                    "virtual_degrees": [3],
+                }
+            ),
+            "colour projection",
+        ),
+        (
+            lambda d: d.update(
+                color_projection={
+                    "accuracy": "lc",
+                    "born_degrees": [True],
+                    "virtual_degrees": [3],
+                }
+            ),
+            "i64",
+        ),
+        (
+            lambda d: d.update(
+                color_projection={
+                    "accuracy": "lc",
+                    "born_degrees": [2],
+                    "virtual_degrees": [3],
+                    "nc": 5,
+                }
+            ),
+            "unknown field",
+        ),
     ],
 )
 def test_native_portable_boundary_rejects_corrupt_layouts(

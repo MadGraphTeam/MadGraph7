@@ -84,6 +84,11 @@ record!(Counterterm { kind: String, schedule: usize, scalar: ScalarBinding, inpu
 record!(HelicityProjection {
     born: String, families: Vec<String>, counterterms: String
 });
+// Projector instructions already contain this fixed-Nf projection evaluated at Nc=3.
+// Degrees are aligned with the corresponding squared coupling order catalogue.
+record!(ColorProjection {
+    accuracy: String, born_degrees: Vec<Option<i64>>, virtual_degrees: Vec<Option<i64>>
+});
 record!(LoopRuntimePlan {
     schema: u32, r2_strategy: String, dimensional_numerators: bool,
     external_pdgs: Vec<i32>, state_legs: Vec<StateLeg>, helicities: Vec<Vec<i32>>, initial_average: u64,
@@ -92,7 +97,7 @@ record!(LoopRuntimePlan {
     order_layout: OrderLayout, schedules: Vec<Schedule>, born: ScheduleGroup, loops: ScheduleGroup,
     families: Vec<Family>, bare_evaluators: BTreeMap<String, String>,
     currents: Vec<Counterterm>, fields: Vec<ScalarBinding>, model_evaluators: BTreeMap<String, String>,
-    helicity_projection: Option<HelicityProjection>
+    helicity_projection: Option<HelicityProjection>, color_projection: Option<ColorProjection>
 });
 
 /// Keeps authenticated immutable payload ownership independent of any evaluator workspace.
@@ -313,6 +318,15 @@ impl LoopRuntimePlan {
             used.insert(name.to_owned());
             Ok(())
         };
+        if let Some(projection) = &self.color_projection {
+            require(
+                self.r2_strategy == "model"
+                    && matches!(projection.accuracy.as_str(), "full" | "lc" | "nlc")
+                    && projection.born_degrees.len() == self.order_layout.born.len()
+                    && projection.virtual_degrees.len() == self.order_layout.r#virtual.len(),
+                "colour projection accuracy/order layout differs or strategy is unsupported",
+            )?;
+        }
         let legs = self.state_legs.len();
         require(
             legs > 1 && !self.helicities.is_empty() && self.initial_average > 0,
@@ -650,7 +664,8 @@ impl LoopRuntimePlan {
                 let mut assignments = BTreeMap::new();
                 for &[entry, mass] in &kinematics.on_shell {
                     require(
-                        entry < product(n, n)? && entry / n != entry % n
+                        entry < product(n, n)?
+                            && entry / n != entry % n
                             && mass < kinematics.mass_output_count
                             && assignments.insert(entry, mass).is_none(),
                         "invalid/duplicate on-shell matrix assignment",

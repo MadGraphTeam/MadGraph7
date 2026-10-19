@@ -28,6 +28,56 @@ class PhysicalColorProjection:
     virtual_degrees: tuple[int | None, ...] = ()
 
 
+def color_projection_metadata(bare):
+    """Describe the already compiled fixed-Nf, Nc=3 projection, if present."""
+    accuracy = ColorAccuracy(getattr(bare, "color_accuracy", "full")).value
+    if not getattr(bare, "_formal_color_projected", False):
+        if accuracy != "full":
+            raise ValueError("projected colour accuracy has no formal projection")
+        return None
+    born = tuple(bare.born_color_degrees)
+    virtual = tuple(bare.virtual_color_degrees)
+    if (
+        len(born) != len(bare.order_layout.born)
+        or len(virtual) != len(bare.order_layout.virtual)
+        or any(
+            value is not None and type(value) is not int for value in (*born, *virtual)
+        )
+    ):
+        raise ValueError("colour projection degrees differ from order catalogue")
+    return {"accuracy": accuracy, "born_degrees": born, "virtual_degrees": virtual}
+
+
+def restore_color_projection(bare, metadata):
+    """Restore descriptive state only; projector bytecode owns the numerics."""
+    bare._formal_color_projected = metadata is not None
+    bare.color_accuracy = "full" if metadata is None else metadata["accuracy"]
+    bare.born_color_degrees = (
+        () if metadata is None else tuple(metadata["born_degrees"])
+    )
+    bare.virtual_color_degrees = (
+        () if metadata is None else tuple(metadata["virtual_degrees"])
+    )
+    bare.born_color_degree = (
+        bare.born_color_degrees[0] if len(bare.born_color_degrees) == 1 else None
+    )
+    bare.virtual_color_degree = (
+        bare.virtual_color_degrees[0] if len(bare.virtual_color_degrees) == 1 else None
+    )
+    return (
+        None
+        if metadata is None
+        else PhysicalColorProjection(
+            bare.color_accuracy,
+            bare.born_color_degree,
+            bare.virtual_color_degree,
+            (),
+            bare.born_color_degrees,
+            bare.virtual_color_degrees,
+        )
+    )
+
+
 def expand_color_conditionals(expression, nc):
     """Collect native Laurent coefficients through Nc-independent ``if``.
 

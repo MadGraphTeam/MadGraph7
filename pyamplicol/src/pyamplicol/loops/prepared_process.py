@@ -168,26 +168,27 @@ class PreparedBareProcess:
     source_scale: PreparedScaleBindings | None
     source_producer_plan: Any
     source_scale_producer_plan: Any
+    color_projection: tuple[tuple[str, Any], ...] | None
 
     @classmethod
     def from_program(cls, program):
+        from .physical_color import color_projection_metadata
+
         if (
-            (
-                program.model_state is not None
-                and (
-                    not isinstance(program.model_state, NativeScalarBindings)
-                    or program.dimensional_numerators
-                )
+            program.model_state is not None
+            and (
+                not isinstance(program.model_state, NativeScalarBindings)
+                or program.dimensional_numerators
             )
-            or getattr(program, "_formal_color_projected", False)
-            or getattr(program, "color_accuracy", "full") != "full"
-            or getattr(program, "born_color_degree", None) is not None
-            or getattr(program, "virtual_color_degree", None) is not None
+        ) or (
+            program.dimensional_numerators
+            and getattr(program, "_formal_color_projected", False)
         ):
             raise NotImplementedError(
-                "retained process views currently require unprojected "
-                "legacy bindings or four-dimensional source bindings"
+                "retained process views require legacy or four-dimensional source "
+                "bindings; projected dimensional numerators remain unsupported"
             )
+        projection = color_projection_metadata(program)
         owner, scale = program.model_state, program.model_scale_view
         if scale is not None and (owner is None or scale.global_state is not owner):
             raise ValueError(
@@ -207,6 +208,7 @@ class PreparedBareProcess:
             scale.prepared if scale is not None else None,
             owner.plan if owner is not None else None,
             scale.plan if scale is not None else None,
+            None if projection is None else tuple(projection.items()),
         )
 
     def bind(
@@ -221,6 +223,7 @@ class PreparedBareProcess:
         parameters=None,
     ):
         from .color_bilinears import PhysicalColorSpace
+        from .physical_color import restore_color_projection
         from .physical_process import NativeBareProcessProgram
 
         if self.source_scalars is None and parameters is not None:
@@ -307,6 +310,9 @@ class PreparedBareProcess:
             view.model_state.plan = self.source_producer_plan
             if view.model_scale_view is not None:
                 view.model_scale_view.plan = self.source_scale_producer_plan
+        restore_color_projection(
+            view, None if self.color_projection is None else dict(self.color_projection)
+        )
         view.color_space = PhysicalColorSpace()
         view._color_metrics_revision = self.color_metrics_revision
         view._prepared_process = self
@@ -371,14 +377,8 @@ class PreparedModelProcess:
 
     @classmethod
     def from_program(cls, program):
-        if (
-            program.r2_strategy not in {"model", "direct"}
-            or program.color_projection is not None
-        ):
-            raise NotImplementedError(
-                "retained model views currently require full-colour "
-                "model or direct-R2 bindings"
-            )
+        if program.r2_strategy not in {"model", "direct"}:
+            raise NotImplementedError("retained model views require model or direct R2")
         if program.r2_strategy == "direct":
             if not program.bare.dimensional_numerators:
                 raise ValueError("retained direct R2 requires dimensional numerators")
@@ -444,6 +444,5 @@ class PreparedModelProcess:
         if view.source_scale_view is not None:
             view.source_scale_view.plan = self.source_scale_producer_plan
         view.bare._model_color_metrics_bound = True
-        view.bare._formal_color_projected = False
         view._prepared_model = self
         return view

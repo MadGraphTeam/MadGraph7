@@ -2,7 +2,8 @@
 """Bounded graph-free loop plans in the existing authenticated PACBIN envelope.
 
 This internal bridge does not activate public loop artifacts or SDK execution.
-Full-colour source/legacy model-R2 and certified direct gg execution are admitted.
+Source/legacy model-R2 and certified direct gg execution are admitted.
+Exact projected model-R2 weights retain their declared colour accuracy.
 Producer graphs, symbolic objects and numerical buffers are never persisted.
 The shared Rust core owns the single descriptor/member validation boundary;
 Symbolica owns its exact bytecode.
@@ -40,6 +41,8 @@ _BARE_EVALUATORS = (
 
 def write_loop_pacbin(program, destination, *, resolved=False):
     """Lower one checked retained control into plain execution data and bytecode."""
+    from .physical_color import color_projection_metadata
+
     prepared = program.prepared  # Existing scope/strategy checks remain authoritative.
     bare = program.bare
     payloads, payload_ids, schedules, schedule_ids = {}, {}, [], {}
@@ -150,6 +153,9 @@ def write_loop_pacbin(program, destination, *, resolved=False):
             name: state(value) for name, value in prepared.evaluator_states
         },
     }
+    projection = color_projection_metadata(bare)
+    if projection is not None:
+        data["color_projection"] = projection
     for family in prepared.bare.families:
         metadata = dict(family.metadata)
         data["families"].append(
@@ -182,7 +188,7 @@ def write_loop_pacbin(program, destination, *, resolved=False):
             raise ValueError("resolved projection requires model R2")
         # Only local projection changes: currents are still executed once for
         # every point/helicity in a single native batch. The colour axis remains
-        # one explicitly contracted full-colour component.
+        # one explicitly contracted component in the declared colour accuracy.
         bare._make_born_projector(
             (bare.born_metric,),
             helicities=bare.helicities[:1],
@@ -533,11 +539,13 @@ class PortableLoopPlan:
             (sector, f.index) for f in bare.families for sector in f.sector_indices
         )
         model.bare, model.r2_strategy = bare, data["r2_strategy"]
-        model.color_accuracy, model.color_projection, model.source_scale_view = (
-            "full",
-            None,
-            source_scale,
+        from .physical_color import restore_color_projection
+
+        model.color_projection = restore_color_projection(
+            bare, data.get("color_projection")
         )
+        model.color_accuracy = bare.color_accuracy
+        model.source_scale_view = source_scale
         model.currents = [
             SimpleNamespace(
                 coefficient_evaluator=(

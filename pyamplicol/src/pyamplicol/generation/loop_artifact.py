@@ -82,6 +82,12 @@ class LoopExecutionMetadata:
             )
 
     def validate_plan(self, plan):
+        projection = plan.get("color_projection")
+        accuracy = "full" if projection is None else projection["accuracy"]
+        if self.color_accuracy != accuracy:
+            raise ValueError(
+                "loop artifact colour accuracy differs from the validated plan"
+            )
         if type(self.resolved) is not bool or self.resolved != (
             plan.get("helicity_projection") is not None
         ):

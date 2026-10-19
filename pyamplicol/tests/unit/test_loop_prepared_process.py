@@ -253,8 +253,13 @@ def test_standalone_formal_projection_cannot_lose_its_scope_in_a_view(
     assert bare.prepared is controls[0][0].prepared.bare
     project_physical_color(bare, S("prepared_scope::Nc"), [], accuracy)
     assert bare.born_color_degree is not None
-    with pytest.raises(NotImplementedError, match="unprojected"):
-        bare.rebind(arithmetic="double-double")
+    view = bare.rebind(arithmetic="double-double")
+    assert view.color_accuracy == accuracy
+    assert view._formal_color_projected
+    assert view.born_color_degrees == bare.born_color_degrees
+    assert view.virtual_color_degrees == bare.virtual_color_degrees
+    assert view.born_metric == bare.born_metric
+    assert view.loop_metric == bare.loop_metric
 
 
 @pytest.fixture(scope="module")
@@ -448,7 +453,7 @@ def test_direct_retained_scope_rejects_incomplete_or_mixed_completion(direct_con
     program, model, _, _ = direct_control
     for override in ({"model_state": object()}, {"_formal_color_projected": True}):
         copy = SimpleNamespace(**(vars(program.bare) | override))
-        with pytest.raises(NotImplementedError, match="unprojected"):
+        with pytest.raises(NotImplementedError, match="retained process views"):
             PreparedBareProcess.from_program(copy)
     bare = SimpleNamespace(**(vars(program.bare) | {"dimensional_numerators": False}))
     incomplete = SimpleNamespace(**(vars(program) | {"bare": bare}))

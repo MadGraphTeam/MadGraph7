@@ -187,6 +187,14 @@ pub fn load_loop_artifact(
     let plan = runtime.plan();
     let metadata = &physics.metadata;
     require(
+        metadata.color_accuracy
+            == plan
+                .color_projection
+                .as_ref()
+                .map_or("full", |p| p.accuracy.as_str()),
+        "declared colour accuracy differs from the saved projection",
+    )?;
+    require(
         metadata.contribution_kind == "virtual"
             && metadata.execution_mode == "loop_recurrence"
             && metadata.epsilon_powers == [0, -1, -2]

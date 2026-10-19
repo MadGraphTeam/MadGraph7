@@ -1550,6 +1550,24 @@ Projection reassembles the same rectangular matrices and recompiles the existing
 weight evaluators. It does not duplicate coherent currents or create another
 numerical engine. `PhysicalColorProjection.born_degrees` and `virtual_degrees`
 retain the catalogue-aligned degree vectors; the older singular degree fields
-are set only for a single corresponding sector. Retained/artifact transport of
-these projected states and source-model continuation remain separate integration
-requirements before public source LC/NLC can be enabled.
+are set only for a single corresponding sector.
+
+Retained model-rule views now preserve these exact projected weights, their
+catalogue-aligned degree vectors and their declared accuracy while rebinding
+arithmetic. The PACBIN plan has an optional `color_projection` descriptor with
+the same accuracy and degree vectors; its numerical evaluator states already
+contain the fixed-Nf projection evaluated at Nc=3. Core loading checks the
+accuracy and order-axis lengths. An absent descriptor describes existing
+unprojected full-colour plans. Portable binding restores the saved accuracy,
+instead of labelling every loaded plan as full colour. Projected dimensional
+numerator/direct-R2 transport remains explicitly unsupported in this slice.
+
+Complete model-rule Drell–Yan controls cover full/LC/NLC PACBIN reload and
+rebinding in double, DoubleFloat and arbitrary precision, including exact
+parameter changes and native helicity-row reconstruction of every inclusive
+component and Laurent coefficient. Mixed-order bare controls separately retain
+all Born and virtual degree axes through rebinding. Publication checks compare
+declared accuracy with the saved descriptor: the current full-only public
+boundary cannot hide an LC/NLC projection. Source-model continuation and public
+resolved LC's signed Born-component contract remain integration requirements
+before public source LC/NLC can be enabled.

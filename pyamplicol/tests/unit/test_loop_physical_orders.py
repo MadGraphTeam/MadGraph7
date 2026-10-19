@@ -346,10 +346,17 @@ def test_formal_full_colour_preserves_every_bare_mixed_order(setup, native):
     expected = program.evaluate_ordered_decimal(points, scales, model_values=parameters)
     projection = project_physical_color(program, S("order_test::Nc"), (), "full")
     actual = program.evaluate_ordered_decimal(points, scales, model_values=parameters)
+    rebound = program.rebind(arithmetic="double", reduction_engine="fast")
+    assert rebound.born_color_degrees == projection.born_degrees
+    assert rebound.virtual_color_degrees == projection.virtual_degrees
+    replay = rebound.evaluate_ordered_decimal(points, scales, model_values=parameters)
     assert len(projection.born_degrees) == len(actual.orders.born) == 3
     assert len(projection.virtual_degrees) == len(actual.orders.virtual) == 4
     assert len(set(projection.virtual_degrees)) > 1
     for component in ("born", "virtual"):
+        np.testing.assert_array_equal(
+            getattr(replay, component), getattr(actual, component)
+        )
         np.testing.assert_allclose(
             getattr(actual, component).astype(float),
             getattr(expected, component).astype(float),
