@@ -93,7 +93,11 @@ def prepare_directed_bare(bare, histories, *, spin_layout=None):
 
     from .color_bilinears import SUNColorSpace
     from .color_connections import directed_color_bilinears
-    from .physical_correlations import _physical_color_ports
+    from .physical_correlations import (
+        PROJECTED_IDENTITY_CONVENTION,
+        _physical_color_ports,
+        directed_color_convention,
+    )
 
     if spin_layout is not None:
         spin_layout.require_owner(bare)
@@ -125,22 +129,31 @@ def prepare_directed_bare(bare, histories, *, spin_layout=None):
         )
 
     born_metrics, loop_metrics = [], []
-    for bra, ket in histories:
-        kernels = directed_color_bilinears(space, born, loop, bra, ket)
-        born_metrics.append(
-            fixed(directed_color_bilinears(space, born, born, bra, ket).born_loop)
-        )
-        loop_metrics.extend(
-            (
-                fixed(kernels.born_loop),
-                fixed(
-                    tuple(
-                        tuple(kernels.loop_born[j][i].conj() for j in range(len(loop)))
-                        for i in range(len(born))
-                    )
-                ),
+    if directed_color_convention(bare, histories) == PROJECTED_IDENTITY_CONVENTION:
+        # The model has already projected bare+UV+R2+fields with one structural
+        # degree per sector. Source replacement cannot choose a new degree.
+        # For identity history, the adjoint swapped metric equals the forward one.
+        born_metrics = [bare.born_metric] * len(histories)
+        loop_metrics = [bare.loop_metric] * (2 * len(histories))
+    else:
+        for bra, ket in histories:
+            kernels = directed_color_bilinears(space, born, loop, bra, ket)
+            born_metrics.append(
+                fixed(directed_color_bilinears(space, born, born, bra, ket).born_loop)
             )
-        )
+            loop_metrics.extend(
+                (
+                    fixed(kernels.born_loop),
+                    fixed(
+                        tuple(
+                            tuple(
+                                kernels.loop_born[j][i].conj() for j in range(len(loop))
+                            )
+                            for i in range(len(born))
+                        )
+                    ),
+                )
+            )
     born_state = bare._born_projection_state(born_metrics, **helicity_options)
     from .dual_weights import family_weight_projection_state, prepare_dual_born_weights
 
@@ -217,7 +230,7 @@ def prepare_directed_bare(bare, histories, *, spin_layout=None):
 def prepare_directed_model(model, prepared):
     from .physical_model_correlations import require_directed_model_scope
 
-    require_directed_model_scope(model)
+    require_directed_model_scope(model, () if prepared is None else prepared.histories)
     from symbolica import E, S
 
     from .color_bilinears import SUNColorSpace
@@ -257,20 +270,32 @@ def prepare_directed_model(model, prepared):
             color_cache[key] = tuple(values)
         return color_cache[key]
 
-    current_weights = tuple(
-        matrices(
-            _rename_physical_color_tensors(current.color_tensors),
-            ("ct", id(current.color_tensors)),
+    if model.color_projection is not None:
+        # These weights already include each current's scalar colour grade,
+        # active tensor mask, the common sector degree and initial averaging.
+        current_weights = tuple(
+            (current.color_weights,) * (2 * len(prepared.histories))
+            for current in model.currents
         )
-        for current in model.currents
-    )
-    field_weights = tuple(
-        matrices(
-            tuple(born_colors[index] for index in current.born_indices),
-            ("field", current.born_indices),
+        field_weights = tuple(
+            (current.color_weights,) * (2 * len(prepared.histories))
+            for current in model.field_currents
         )
-        for current in model.field_currents
-    )
+    else:
+        current_weights = tuple(
+            matrices(
+                _rename_physical_color_tensors(current.color_tensors),
+                ("ct", id(current.color_tensors)),
+            )
+            for current in model.currents
+        )
+        field_weights = tuple(
+            matrices(
+                tuple(born_colors[index] for index in current.born_indices),
+                ("field", current.born_indices),
+            )
+            for current in model.field_currents
+        )
     sectors = len(bare.order_layout.virtual)
     width = len(prepared.histories) * sectors * 3
     # Components are local UV, R2, external fields; each retains two terms.

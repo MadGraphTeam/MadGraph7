@@ -18,6 +18,30 @@ from pyamplicol.color.connections import ColorConnection, ColorLeg
 from .kernels import require_finite_batch
 from .orders import canonical_order
 
+# Empty colour histories use the already projected common-degree model metrics.
+PROJECTED_IDENTITY_CONVENTION = "sun-graded-identity-all-outgoing-v1"
+
+
+def directed_color_convention(bare, histories):
+    """Admit exact ordinary metrics or an actual projected identity observable."""
+    from pyamplicol.color.connections import COLOR_CONNECTION_CONVENTION
+
+    from .physical_color import color_projection_metadata
+
+    projection = color_projection_metadata(bare)
+    if projection is not None:
+        if not histories or any(
+            connection.emissions for pair in histories for connection in pair
+        ):
+            raise NotImplementedError(
+                "projected colour correlations currently require identity histories; "
+                "ordered LC/NLC operator banks remain unsupported"
+            )
+        return PROJECTED_IDENTITY_CONVENTION
+    if getattr(bare, "_color_metrics_revision", 0):
+        raise NotImplementedError("directed diagnostics require unmodified full colour")
+    return COLOR_CONNECTION_CONVENTION
+
 
 def _physical_color_ports(bare):
     from symbolica.community import tensor as t
@@ -147,6 +171,7 @@ class NativeDirectedBareProgram:
     def __init__(self, bare, histories, *, spin_layout=None, _prepared=None):
         histories = tuple(tuple(pair) for pair in histories)
         self.bare = bare
+        self.histories = histories
         self.spin_layout = spin_layout
         self.helicities = (
             bare.helicities if spin_layout is None else spin_layout.helicities
@@ -198,12 +223,7 @@ class NativeDirectedBareProgram:
         bare = self.bare
         if bare.dimensional_numerators:
             raise NotImplementedError("directed diagnostics require N4 without R2")
-        if getattr(bare, "color_accuracy", "full") != "full" or getattr(
-            bare, "_color_metrics_revision", 0
-        ):
-            raise NotImplementedError(
-                "directed diagnostics require unmodified full colour"
-            )
+        directed_color_convention(bare, self.histories)
         if (
             hasattr(self, "_metrics")
             and (bare.born_metric, bare.loop_metric) != self._metrics

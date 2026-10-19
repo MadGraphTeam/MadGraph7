@@ -42,26 +42,26 @@ class DirectedModelResult(DirectedBareResult):
             getattr(self, name).setflags(write=False)
 
 
-def require_directed_model_scope(model):
+def require_directed_model_scope(model, histories=()):
     """One current producer admission boundary, including cold preparation.
 
     QCD is the validated completion domain today. EW correlation coverage is a
     pending extension, not a claim that electroweak histories are incompatible.
     """
-    if (
-        model.r2_strategy != "model"
-        or model.color_accuracy != "full"
-        or model.color_projection is not None
-        or getattr(model.bare, "_formal_color_projected", False)
-    ):
-        raise NotImplementedError(
-            "directed completion requires fixed full colour and model R2"
-        )
+    if model.r2_strategy != "model":
+        raise NotImplementedError("directed completion requires model R2")
     if model.bare.order_layout.correction_names != ("QCD",):
         raise NotImplementedError(
             "directed model completion is currently validated for QCD corrections; "
             "EW correlation coverage is a pending extension"
         )
+    from .physical_correlations import directed_color_convention
+
+    if (model.color_projection is not None) != bool(
+        getattr(model.bare, "_formal_color_projected", False)
+    ) or model.color_accuracy != getattr(model.bare, "color_accuracy", "full"):
+        raise ValueError("directed model and bare colour projection owners differ")
+    directed_color_convention(model.bare, histories)
 
 
 class NativeDirectedModelProgram(NativeDirectedBareProgram):
@@ -108,7 +108,7 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
 
     def _check_scope(self):
         model = self.model
-        require_directed_model_scope(model)
+        require_directed_model_scope(model, self.histories)
         if (
             tuple(id(current) for current in model.currents) != self._current_ids
             or tuple(id(current) for current in model.field_currents) != self._field_ids
