@@ -40,6 +40,8 @@ def test_exact_input_transport_and_rejection():
         _inputs([], ["1"], 1)
     with pytest.raises(ValueError, match="four-vectors"):
         _inputs([[[1, 2, 3]]], "1", 1)
+    with pytest.raises(TypeError, match="mapping"):
+        _inputs([[[1, 0, 0, 1]]], {1: "1000000"}, 1)
 
 
 @pytest.fixture(scope="module")

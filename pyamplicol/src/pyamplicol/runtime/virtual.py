@@ -99,6 +99,8 @@ def _inputs(
             "virtual evaluation currently requires explicit positive mu_r2 "
             "(the renormalization scale squared)"
         )
+    if isinstance(mu_r2, Mapping):
+        raise TypeError("mu_r2 must be a scalar or ordered sequence, not a mapping")
     if not isinstance(mu_r2, (str, Integral, Real, Decimal)):
         try:
             scales: list[object] = list(cast(Iterable[object], mu_r2))
@@ -269,6 +271,7 @@ class VirtualRuntimeBackend:
                     **metadata["physics"],
                     "source_revision": self._native.source_revision,
                     "arithmetic": self._native.arithmetic,
+                    "supported_arithmetics": metadata["physics"]["arithmetic"],
                     "precision_bits": self._native.precision_bits,
                     "requested_r2_strategy": self._last_requested.value,
                     "effective_r2_strategy": self._native.r2_strategy,
