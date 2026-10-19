@@ -226,6 +226,7 @@ class PreparedBareProcess:
         coefficient_engine="interpreted",
         projector_engine="interpreted",
         parameters=None,
+        stability=None,
     ):
         from .color_bilinears import PhysicalColorSpace
         from .physical_color import restore_color_projection
@@ -233,6 +234,8 @@ class PreparedBareProcess:
 
         if self.source_scalars is None and parameters is not None:
             raise ValueError("retained source parameters require a source scalar owner")
+        if self.source_scalars is None and stability is not None:
+            raise ValueError("retained source stability requires a source scalar owner")
         view = NativeBareProcessProgram.__new__(NativeBareProcessProgram)
         for name, value in self.metadata:
             setattr(view, name, value)
@@ -303,7 +306,10 @@ class PreparedBareProcess:
         else:
             view.model_evaluator = None
             view.model_state = self.source_scalars.bind(
-                backend=backend, parameters=parameters, **view.options
+                backend=backend,
+                parameters=parameters,
+                stability=stability,
+                **view.options,
             )
             view.model_scale_view = (
                 self.source_scale.bind(view.model_state)

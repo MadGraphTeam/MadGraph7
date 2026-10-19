@@ -26,6 +26,36 @@ class ArithmeticSpec:
         return {"arithmetic": self.arithmetic, "precision": self.precision}
 
 
+def _validate_precision_sequence(
+    backend, specs, relative_tolerance, absolute_tolerance
+):
+    previous_bits = 0
+    for spec in specs:
+        empty = backend.NativeBatch.from_decimal(
+            [], 0, 1, arithmetic=spec.arithmetic, precision=spec.precision
+        )
+        if empty.precision_bits <= previous_bits:
+            raise ValueError("verification arithmetic precision must strictly increase")
+        previous_bits = empty.precision_bits
+        empty.agreement_rows(empty, relative_tolerance, absolute_tolerance)
+
+
+def validate_source_stability(backend, arithmetic, precision, policy):
+    """Validate the existing public policy before a producer source is bound."""
+    if policy is None:
+        return
+    from pyamplicol.api.virtual_results import VirtualStabilityPolicy
+
+    if not isinstance(policy, VirtualStabilityPolicy):
+        raise TypeError("source stability requires a VirtualStabilityPolicy")
+    _validate_precision_sequence(
+        backend,
+        (ArithmeticSpec(arithmetic, precision), *policy.higher),
+        policy.relative_tolerance,
+        policy.absolute_tolerance,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class NativeStabilityDiagnostic:
     point_id: int
@@ -114,18 +144,15 @@ class NativeModelStabilityProgram:
         self.relative_tolerance = relative_tolerance
         self.absolute_tolerance = absolute_tolerance
         self._views = {self.requested: program}
-        previous_bits = 0
         for spec in (self.requested, *self.higher_arithmetics):
             if not isinstance(spec, ArithmeticSpec):
                 raise TypeError("verification arithmetic must be an ArithmeticSpec")
-            empty = self.backend.NativeBatch.from_decimal([], 0, 1, **spec.options)
-            if empty.precision_bits <= previous_bits:
-                raise ValueError(
-                    "verification arithmetic precision must strictly increase"
-                )
-            previous_bits = empty.precision_bits
-            # The existing native exact decimal parser validates the bound once.
-            empty.agreement_rows(empty, relative_tolerance, absolute_tolerance)
+        _validate_precision_sequence(
+            self.backend,
+            (self.requested, *self.higher_arithmetics),
+            relative_tolerance,
+            absolute_tolerance,
+        )
 
     def _view(self, spec, source_snapshot=None):
         if spec not in self._views and self.program.bare.model_state is None:
@@ -135,60 +162,16 @@ class NativeModelStabilityProgram:
                 coefficient_engine="interpreted",
             )
         if spec not in self._views:
-            from .physical_counterterms import NativeModelVirtualProgram
-            from .physical_process import NativeBareProcessProgram
-
-            original = self.program.bare
-            if original.model_state is None:
-                bindings = dict(
-                    model_expressions=original.model_expressions,
-                    model_inputs=original.model_inputs,
-                )
-            else:
-                from .scalar_bindings import NativeScalarBindings, NativeScaleBindings
-
-                original.model_state.require_snapshot(source_snapshot)
-                state = NativeScalarBindings(
-                    original.model_state.plan,
-                    backend=self.backend,
-                    parameters=source_snapshot.overrides,
-                    **spec.options,
-                )
-                bindings = dict(
-                    model_state=state,
-                    model_output_indices=dict(
-                        zip(
-                            original.model_names,
-                            original.model_output_indices,
-                            strict=True,
-                        )
-                    ),
-                    model_scale_view=NativeScaleBindings(
-                        state,
-                        original.model_scale_view.plan,
-                        scale_parameter=original.model_scale_view.scale_parameter,
-                    ),
-                )
-            bare = NativeBareProcessProgram(
-                original.process,
-                state_kinds=original.state_kinds,
-                initial_average=original.initial_average,
-                **bindings,
-                vertex_spinor_frame=original.vertex_spinor_frame,
-                backend=original.backend,
+            original = self.program.bare.model_state
+            original.require_snapshot(source_snapshot)
+            # Bind the exact retained source record, including its guards, rather
+            # than reconstructing it from optional producer inspection metadata.
+            self._views[spec] = self.program.prepared.bind(
+                backend=self.backend,
+                parameters=source_snapshot.overrides,
                 reduction_engine="generic",
                 coefficient_engine="interpreted",
-                dimensional_numerators=self.dimensional_numerators,
-                cache_coefficient_kernels=original.cache_coefficient_kernels,
-                share_coefficient_schedules=original.share_coefficient_schedules,
                 **spec.options,
-            )
-            self._views[spec] = NativeModelVirtualProgram(
-                bare,
-                self.program.matched_insertions,
-                source_bindings=self.program.source_bindings,
-                external_fields=self.program.external_fields,
-                r2_strategy=self.r2_strategy,
             )
         return self._views[spec]
 
@@ -244,15 +227,29 @@ class NativeModelStabilityProgram:
         reduction_statuses = {point: [] for point in ids}
         selected_specs, pairs, details = {}, {}, {}
         accepted = []
+        primary = None
 
         def attempt(spec, selected):
+            from .numerical_lanes import NumericalLaneFailure
+            from .scalar_bindings import SourceBindingFailure
+
             rows = [positions[point] for point in selected]
-            view = self._view(spec, source_snapshot)
-            snapshot = source_snapshot
-            if source_state is not None and spec != self.requested:
-                snapshot = view.bare.model_state.reconstruct_snapshot(
-                    source_state, source_snapshot
-                )
+            try:
+                view = self._view(spec, source_snapshot)
+                snapshot = source_snapshot
+                if source_state is not None and spec != self.requested:
+                    snapshot = view.bare.model_state.reconstruct_snapshot(
+                        source_state, source_snapshot
+                    )
+            except SourceBindingFailure as error:
+                if primary is None:
+                    raise
+                for point in selected:
+                    attempts[point].append(spec)
+                    failures[point].append(
+                        (spec, NumericalLaneFailure(point, error.stage, error.detail))
+                    )
+                return primary.take_rows([]).convert_arithmetic(**spec.options)
             result = view.evaluate_ordered_partial_native(
                 momenta[rows],
                 scales[rows],

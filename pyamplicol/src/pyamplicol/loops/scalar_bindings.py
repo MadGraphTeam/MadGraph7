@@ -122,7 +122,13 @@ class PreparedScalarBindings:
         )
 
     def bind(
-        self, *, arithmetic="double", precision=None, backend=None, parameters=None
+        self,
+        *,
+        arithmetic="double",
+        precision=None,
+        backend=None,
+        parameters=None,
+        stability=None,
     ):
         return NativeScalarBindings(
             self,
@@ -130,6 +136,7 @@ class PreparedScalarBindings:
             precision=precision,
             backend=backend,
             parameters=parameters,
+            stability=stability,
         )
 
 
@@ -361,15 +368,55 @@ def prepare_scalar_bindings(
     )
 
 
+class SourceBindingFailure(ArithmeticError):
+    """A numerical source realization failed at a known native scalar stage."""
+
+    def __init__(self, stage, detail):
+        self.stage, self.detail = stage, detail
+        super().__init__(f"{stage}: {detail}")
+
+
+@dataclass(frozen=True, slots=True)
+class _SourceFailure:
+    stage: str
+    detail: str
+
+    def exception(self):
+        return SourceBindingFailure(self.stage, self.detail)
+
+
+def _require_source_finite(values, stage):
+    rows = values.nonfinite_rows()
+    if rows:
+        raise SourceBindingFailure(stage, f"nonfinite native rows {rows}")
+
+
 @dataclass(frozen=True, slots=True)
 class NativeScalarSnapshot:
-    """One checked global state; native buffers remain valid after updates."""
+    """Exact admitted global state, with either checked buffers or a failure."""
 
-    arguments: Any
-    values: Any
+    _arguments: Any = field(repr=False)
+    _values: Any = field(repr=False)
     overrides: Mapping[str, tuple[str, str]]
     revision: int
     _owner: object = field(repr=False, compare=False)
+    _failure: _SourceFailure | None = field(default=None, repr=False)
+
+    @property
+    def binding_failure_stage(self):
+        return None if self._failure is None else self._failure.stage
+
+    @property
+    def arguments(self):
+        if self._failure is not None:
+            raise self._failure.exception()
+        return self._arguments
+
+    @property
+    def values(self):
+        if self._failure is not None:
+            raise self._failure.exception()
+        return self._values
 
 
 class NativeScalarBindings:
@@ -390,6 +437,7 @@ class NativeScalarBindings:
         precision=None,
         backend=None,
         parameters=None,
+        stability=None,
     ):
         if backend is None:
             from .native import load_loop_native
@@ -404,6 +452,10 @@ class NativeScalarBindings:
         self.options = MappingProxyType(
             {"arithmetic": arithmetic, "precision": precision}
         )
+        from .stability import validate_source_stability
+
+        validate_source_stability(backend, arithmetic, precision, stability)
+        self.stability = stability
         self._update_lock = Lock()
         self._identity = object()
         self._evaluator = backend.CoefficientEvaluator(
@@ -420,9 +472,38 @@ class NativeScalarBindings:
             else None
         )
         overrides = self._normalize({} if parameters is None else parameters)
-        arguments, values = self._evaluate(overrides)
-        self._state = NativeScalarSnapshot(
-            arguments, values, MappingProxyType(overrides), 0, self._identity
+        self._state = self._realize_snapshot(overrides, 0)
+
+    def _realize_snapshot(self, overrides, revision):
+        failure = None
+        try:
+            arguments, values = self._evaluate(overrides)
+        except SourceBindingFailure as error:
+            if self.stability is None:
+                raise
+            for higher in self.stability.higher:
+                try:
+                    NativeScalarBindings(
+                        self.prepared,
+                        backend=self.backend,
+                        parameters=overrides,
+                        arithmetic=higher.arithmetic,
+                        precision=higher.precision,
+                    )
+                except SourceBindingFailure:
+                    continue
+                break
+            else:
+                raise error
+            arguments, values = None, None
+            failure = _SourceFailure(error.stage, error.detail)
+        return NativeScalarSnapshot(
+            arguments,
+            values,
+            MappingProxyType(dict(overrides)),
+            revision,
+            self._identity,
+            failure,
         )
 
     def snapshot(self) -> NativeScalarSnapshot:
@@ -496,7 +577,7 @@ class NativeScalarBindings:
             ]
             default = self._defaults.evaluate_batch(empty) if missing else None
             if default is not None:
-                require_finite_batch(
+                _require_source_finite(
                     default.take_columns(
                         [
                             column
@@ -514,13 +595,13 @@ class NativeScalarBindings:
                     else default.take_columns([2 * index])
                 )
             arguments = batch.concat_columns(columns)
-        require_finite_batch(arguments, "model external inputs")
+        _require_source_finite(arguments, "model external inputs")
         if self._guards is not None:
-            require_finite_batch(
+            _require_source_finite(
                 self._guards.evaluate_batch(arguments), "real model input type"
             )
         computed = self._evaluator.evaluate_batch(arguments)
-        require_finite_batch(computed, "model scalar values and active diagnostics")
+        _require_source_finite(computed, "model scalar values and active diagnostics")
         return arguments, computed.take_columns(
             list(range(0, 2 * len(self.prepared.outputs), 2))
         )
@@ -531,15 +612,9 @@ class NativeScalarBindings:
         with self._update_lock:
             previous = self._state
             candidate = {**previous.overrides, **self._normalize(changes)}
-            arguments, values = self._evaluate(candidate)
-            self._state = NativeScalarSnapshot(
-                arguments,
-                values,
-                MappingProxyType(candidate),
-                previous.revision + 1,
-                self._identity,
-            )
-            return values.take_columns(list(range(len(self.prepared.outputs))))
+            snapshot = self._realize_snapshot(candidate, previous.revision + 1)
+            self._state = snapshot
+            return snapshot
 
 
 class NativeScaleBindings:
@@ -636,6 +711,7 @@ class NativeScaleBindings:
             raise TypeError("scales require a NativeBatch")
         if mu_r2.columns != 1:
             raise ValueError("scales require one mu_r2 column")
+        original_ids = tuple(mu_r2.row_ids)
 
         def checked(values, stage):
             if failures is None:
@@ -650,6 +726,20 @@ class NativeScaleBindings:
             self._scale.evaluate_batch(mu_r2),
             "positive real renormalization scales",
         )
+        if snapshot._failure is not None:
+            if failures is None:
+                raise snapshot._failure.exception()
+            for point in original_ids:
+                failures.record(
+                    point, snapshot._failure.stage, snapshot._failure.detail
+                )
+            return self.backend.NativeBatch.from_decimal(
+                [],
+                0,
+                len(self.prepared.outputs),
+                row_ids=[],
+                **self.global_state.options,
+            )
         arguments = snapshot.arguments.take_rows(
             [0] * scales.rows, row_ids=scales.row_ids
         )

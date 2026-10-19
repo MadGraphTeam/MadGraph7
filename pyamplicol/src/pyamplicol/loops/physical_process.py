@@ -696,6 +696,7 @@ class NativeBareProcessProgram:
         reduction_engine="generic",
         coefficient_engine="interpreted",
         projector_engine="interpreted",
+        stability=None,
     ):
         """Bind retained cold instructions to fresh numerical workspaces."""
         return self.prepared.bind(
@@ -705,6 +706,13 @@ class NativeBareProcessProgram:
             reduction_engine=reduction_engine,
             coefficient_engine=coefficient_engine,
             projector_engine=projector_engine,
+            stability=(
+                stability
+                if stability is not None
+                else (
+                    self.model_state.stability if self.model_state is not None else None
+                )
+            ),
             parameters=(
                 self.model_state.snapshot().overrides
                 if self.model_state is not None
@@ -1086,6 +1094,27 @@ class NativeBareProcessProgram:
             # Validate all original scale literals before dropping any point.
             native_scales = native(scales, size, 1, row_ids=point_ids)
             _failures.require_finite(native_scales, "renormalization scale ingress")
+        source_failed = snapshot is not None and snapshot._failure is not None
+        if source_failed:
+            if _failures is None:
+                raise snapshot._failure.exception()
+            # Validate every original scale before global source failure removes
+            # all points. No failed source arguments or values are read here.
+            if self.model_scale_view is not None:
+                _, source_failures = self.model_scale_view.evaluate_partial_native(
+                    native_scales, snapshot=snapshot
+                )
+                _failures.entries.extend(source_failures)
+                _failures.point_ids.update(f.point_id for f in source_failures)
+            else:
+                for point in point_ids:
+                    _failures.record(
+                        point, snapshot._failure.stage, snapshot._failure.detail
+                    )
+            size = rows = 0
+            point_ids, lane_ids, momenta_pairs = [], [], []
+            lanes = lanes.take_rows([])
+            native_scales = native_scales.take_rows([])
         state_blocks = self.state_layout.prepare_native(
             self.backend, lanes, helicity_states, partial=_failures is not None
         )
@@ -1132,7 +1161,11 @@ class NativeBareProcessProgram:
             model = self.model_evaluator.evaluate_batch(model_arguments)
             require_finite_batch(model, "global model formulas")
         else:
-            model_arguments = snapshot.arguments
+            model_arguments = (
+                native([], 0, len(self.model_state.prepared.external_names))
+                if source_failed
+                else snapshot.arguments
+            )
             if self.model_scale_view is not None and _failures is not None:
                 selected, source_failures = (
                     self.model_scale_view.evaluate_partial_native(
@@ -1166,7 +1199,11 @@ class NativeBareProcessProgram:
                 selected = (
                     self.model_scale_view.evaluate_native(scales, snapshot=snapshot)
                     if self.model_scale_view is not None
-                    else snapshot.values
+                    else (
+                        native([], 0, len(self.model_state.prepared.outputs))
+                        if source_failed
+                        else snapshot.values
+                    )
                 )
             model = selected.take_columns(self.model_output_indices)
         model_rows = (

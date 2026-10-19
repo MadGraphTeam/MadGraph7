@@ -935,6 +935,7 @@ class NativeModelVirtualProgram:
         reduction_engine="generic",
         coefficient_engine="interpreted",
         projector_engine="interpreted",
+        stability=None,
     ):
         """Create a fresh complete numerical view without preparing physics again."""
         return self.prepared.bind(
@@ -944,6 +945,15 @@ class NativeModelVirtualProgram:
             reduction_engine=reduction_engine,
             coefficient_engine=coefficient_engine,
             projector_engine=projector_engine,
+            stability=(
+                stability
+                if stability is not None
+                else (
+                    self.bare.model_state.stability
+                    if self.bare.model_state is not None
+                    else None
+                )
+            ),
             parameters=(
                 self.bare.model_state.snapshot().overrides
                 if self.bare.model_state is not None
@@ -1052,11 +1062,9 @@ class NativeModelVirtualProgram:
         if (
             self.r2_strategy not in {"model", "direct"}
             or self.color_projection is not None
-            or (self.bare.model_state is not None and self.external_fields)
         ):
             raise NotImplementedError(
-                "partial completion requires a certified full-colour R2 strategy "
-                "without source fields"
+                "partial completion requires a certified full-colour R2 strategy"
             )
         native = self.bare.evaluate_ordered_partial_native(
             momenta,

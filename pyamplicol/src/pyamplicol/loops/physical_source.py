@@ -60,6 +60,7 @@ def source_bare_program(
     loop_order_bounds=None,
     allowed_pairs=None,
     parameters=None,
+    stability=None,
     arithmetic="double",
     precision=None,
     backend=None,
@@ -164,6 +165,7 @@ def source_bare_program(
         arithmetic=arithmetic,
         precision=precision,
         parameters=parameters,
+        stability=stability,
         backend=backend,
     )
     scale_view = NativeScaleBindings(state) if "MU_R" in plan.external_names else None

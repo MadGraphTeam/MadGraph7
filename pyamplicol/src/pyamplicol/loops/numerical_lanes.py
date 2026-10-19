@@ -122,14 +122,10 @@ def require_partial_domain(bare):
             bare.vertex_spinor_frame != "native-physical"
             or bare.model_scale_view is None
             or any(not leg.massless for leg in bare.state_layout.legs)
-            or any(
-                abs(edge.particle.pdg_code) not in {11, 13, 15}
-                for edge in bare.process.born[0].native.external_edges
-            )
         ):
             raise NotImplementedError(
-                "partial source evaluation requires the massless "
-                "charged-lepton neutral-current control domain"
+                "partial source evaluation requires massless external states, "
+                "the native physical frame and a shared source scale owner"
             )
 
 

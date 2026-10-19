@@ -108,7 +108,7 @@ def test_exact_defaults_derived_complex_values_and_laurent(
             for value, reference in zip(actual, target, strict=True):
                 assert abs(Decimal(value) - reference) < Decimal(tolerance)
     # Independent source-language oracle for the complex continuation.
-    changed = runtime.update({"x": "4", "z": ("-1", "1")}).to_decimal()
+    changed = runtime.update({"x": "4", "z": ("-1", "1")}).values.to_decimal()
     expected = 6 + cmath.log(-1 + 1j) - 2j * cmath.pi
     assert abs(complex(*map(float, changed[5])) - expected) < 3e-15
     assert retained.to_decimal() == values and runtime.revision == 1

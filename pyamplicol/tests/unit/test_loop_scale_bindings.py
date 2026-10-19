@@ -127,7 +127,7 @@ def test_scale_view_laurent_complex_globals_updates_and_tails(
         assert state.snapshot().revision == 1
         assert original.revision == 0 and original.overrides == {}
         assert tuple(map(Decimal, original.values.to_decimal()[1])) == (5, 0)
-        assert tuple(map(Decimal, changed.to_decimal()[1])) == (7, 0)
+        assert tuple(map(Decimal, changed.values.to_decimal()[1])) == (7, 0)
         assert tuple(map(Decimal, state.inputs.to_decimal()[0])) == (7, 0)
         scales = backend.NativeBatch.from_decimal(
             [("16", "0")], 1, 1, row_ids=[99], **options

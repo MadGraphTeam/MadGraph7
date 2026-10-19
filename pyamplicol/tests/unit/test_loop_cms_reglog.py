@@ -135,7 +135,7 @@ def test_complex_charge_ct_anchor_width_limit_and_active_local_shifts(
                 for name in ("WZ", "WW", "WT", "WH")
             }
         values[factor] = {
-            name: complex(*map(float, state.update(widths).to_decimal()[0]))
+            name: complex(*map(float, state.update(widths).values.to_decimal()[0]))
             for name, state in states.items()
         }
     assert abs(values["1"]["ufo-standard"] - finite_anchor) < 3e-14

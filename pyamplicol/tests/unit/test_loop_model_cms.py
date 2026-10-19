@@ -184,5 +184,5 @@ def test_native_pole_masses_weak_angle_and_source_ct_continuation(
     with pytest.raises(ValueError, match="unknown external"):
         runtime.update({"ymt": "190"})
     # No current-width specialization: zero-width updates reuse the same plan.
-    zero = runtime.update({"WW": "0", "WZ": "0", "WT": "0"}).to_decimal()
+    zero = runtime.update({"WW": "0", "WZ": "0", "WT": "0"}).values.to_decimal()
     assert all(Decimal(zero[i][1]) == 0 for i in (0, 1, 2, 3, 4, 5, 6))
