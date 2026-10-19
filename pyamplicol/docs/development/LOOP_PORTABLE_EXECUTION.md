@@ -376,7 +376,7 @@ use it unless the call supplies an explicit replacement. Without either policy,
 evaluation performs no extra precision work. For example:
 
 ```python
-from pyamplicol import VirtualArithmeticSpec, VirtualStabilityPolicy
+from pyamplicol import Runtime, VirtualArithmeticSpec, VirtualStabilityPolicy
 
 policy = VirtualStabilityPolicy(
     higher=(VirtualArithmeticSpec("arbitrary", 60),
