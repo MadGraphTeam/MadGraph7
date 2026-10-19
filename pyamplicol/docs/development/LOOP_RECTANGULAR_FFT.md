@@ -156,6 +156,9 @@ maps, changing batches and all three carriers. A retained source photon process
 also compares every complete component and both integrated directed terms for
 ordinary, singleton and joint sources. The saved/native checks cover transport,
 weight-stage lane failures and separate higher-precision subset rescue.
+An actual declared-model gluon LC owner additionally passes its six signed Born
+components and 16 helicities through weighted and original saved native schedules
+in all three carriers, with empty/singleton/tail rows and inclusive reconstruction.
 
 This establishes the shared scheduling seam. Actual process certificate
 attachment, rectangular Fourier execution and truthful public policy selection

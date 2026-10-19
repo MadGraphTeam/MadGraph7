@@ -117,6 +117,68 @@ def test_python_portable_binding_uses_saved_weight_schedule(
 
 
 @pytest.mark.parametrize(
+    "arithmetic,precision,engine,tolerance",
+    [
+        ("double", None, "fast", "3e-10"),
+        ("double-double", None, "generic", "3e-24"),
+        ("arbitrary", 70, "generic", "3e-55"),
+    ],
+)
+def test_actual_signed_lc_weights_preserve_resolved_axes(
+    weight_artifacts, arithmetic, precision, engine, tolerance
+):
+    from decimal import Decimal, localcontext
+
+    from .test_loop_color_components_native import _close
+
+    native, root, points = weight_artifacts
+    if not (root / "gg-lc-weighted.pacbin").exists():
+        pytest.skip("retain the actual gg LC weighted and original schedules")
+    options = dict(arithmetic=arithmetic, precision=precision, reduction_engine=engine)
+    weighted = native.NativeLoopProgram(str(root / "gg-lc-weighted.pacbin"), **options)
+    original = native.NativeLoopProgram(str(root / "gg-lc-original.pacbin"), **options)
+    plan = json.loads(weighted.metadata_json())
+    helicities = len(plan["helicities"])
+    components = len(plan["born_color_components"]["ids"])
+    assert components > 1 and helicities > 1
+    assert plan["helicity_projection"]["dual_born_weights"]["columns"]
+    for size in (0, 1, 3):
+        chosen = [points[index % len(points)] for index in range(size)]
+        scales = [str(1000000 + 100000 * index) for index in range(size)]
+        ids = [91, 7, 30][:size]
+        actual = weighted.evaluate(chosen, scales, point_ids=ids, resolved=True)
+        expected = original.evaluate(chosen, scales, point_ids=ids, resolved=True)
+        assert actual.point_ids == expected.point_ids == ids
+        assert actual.born.rows == size * helicities * components
+        for a, b in zip(
+            (actual.born, *actual.component_batches, actual.totals),
+            (expected.born, *expected.component_batches, expected.totals),
+            strict=True,
+        ):
+            assert all(ok for _, ok in a.agreement_rows(b, tolerance, tolerance))
+        if size == 1:
+            inclusive = weighted.evaluate(chosen, scales, point_ids=ids)
+            with localcontext() as context:
+                context.prec = 100
+                for rows, summed in zip(
+                    (actual.born, *actual.component_batches),
+                    (inclusive.born, *inclusive.component_batches),
+                    strict=True,
+                ):
+                    values, total = rows.to_decimal(), summed.to_decimal()
+                    for column in range(rows.columns):
+                        for part in range(2):
+                            _close(
+                                sum(
+                                    Decimal(values[row * rows.columns + column][part])
+                                    for row in range(helicities * components)
+                                ),
+                                total[column][part],
+                                tolerance,
+                            )
+
+
+@pytest.mark.parametrize(
     "mutate,message",
     [
         (lambda w: w.update(kind="unknown"), "unsupported dual Born"),
