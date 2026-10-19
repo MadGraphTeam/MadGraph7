@@ -190,6 +190,33 @@ def test_closed_quartic_network_signed_canonicalization_and_complex_factors(alge
     assert space.overlap(right * network, left * unit) == weighted.conj()
 
 
+def test_closed_seven_leg_color_network_exact_components_and_conjugation(algebra):
+    s, t = algebra
+    generator = t.TensorExpression.color_t(8, 3)
+
+    def trace(labels):
+        return t.trace(
+            t.Representation.cof(3),
+            *(generator(label, t.AUTO, t.AUTO) for label in labels),
+        )
+
+    # The independent Born-loop color contraction from uubar->ddbarssbarg.
+    # Native structural contraction yields these three ordered traces; ordinary
+    # symbolic reduction retains higher symmetric invariants. Exact SU3 matrix
+    # components supply an oracle without a private trace/Fierz identity.
+    network = trace("abc") * trace("ecdf") * trace("eabdf")
+    assert not network.axes
+    expected = network.to_tensor(t.TensorLibrary.hep_lib_atom())[0]
+    assert expected == s.E("-1/9")
+    unit = t.TensorExpression(s.E("1"))
+    physical = PhysicalColorSpace()
+    assert physical.overlap(unit, network) == expected
+    left, right = s.E("2+3i"), s.E("4-5i")
+    weighted = physical.overlap(left * unit, right * network)
+    assert weighted == left.conj() * right * expected
+    assert physical.overlap(right * network, left * unit) == weighted.conj()
+
+
 @pytest.mark.parametrize(
     "incoming,outgoing,born_count",
     [

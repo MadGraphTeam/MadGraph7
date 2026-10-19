@@ -50,6 +50,7 @@ class PhysicalColorSpace:
     def overlap(self, left: Any, right: Any) -> Any:
         """Return exact left† right, without averaging or formal continuation."""
         from symbolica import E, S
+        from symbolica.community import tensor as t
 
         if left.to_expression() == 0 or right.to_expression() == 0:
             return E("0")
@@ -104,10 +105,27 @@ class PhysicalColorSpace:
                 )
                 result = overlap.to_expression().together()
             if overlap.axes or result.get_all_symbols():
-                raise NotImplementedError(
-                    "physical color overlap retained unsupported tensors "
-                    "or scalar symbols"
-                )
+                # Algebraic saturation need not reduce every closed invariant
+                # network to a scalar. The dependency's physical representation
+                # library supplies exact components for its supported spaces.
+                # Evaluate the original independently scoped network: opening a
+                # residual compact trace is neither necessary nor assumed safe.
+                try:
+                    components = original.to_tensor(t.TensorLibrary.hep_lib_atom())
+                except (ValueError, TypeError, RuntimeError) as error:
+                    raise NotImplementedError(
+                        "physical color overlap retained unsupported tensors; "
+                        "the native component library cannot evaluate this network"
+                    ) from error
+                if components.axes:
+                    raise NotImplementedError(
+                        "physical color overlap retained unsupported open ports"
+                    )
+                result = components[0].together()
+                if result.get_all_symbols():
+                    raise NotImplementedError(
+                        "physical color overlap retained unsupported scalar symbols"
+                    )
             require_exact_numbers(result)
             self._overlaps[key] = result
         return self._overlaps[key]
