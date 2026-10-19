@@ -294,4 +294,7 @@ def test_portable_python_view_binds_shared_operation_without_producer_work(
     reference = expected.evaluate(points[:1], ["1000000"], point_ids=[91])
     assert actual.batch.point_ids == reference.point_ids == [91]
     for left, right in zip(_blocks(actual), _blocks(reference), strict=True):
+        # The native complete-result layout uses dense observable rows and keeps
+        # physical IDs separately; the producer view keeps physical IDs here.
+        right = right.take_rows(list(range(right.rows)), left.row_ids)
         assert all(ok for _, ok in left.agreement_rows(right, tolerance, tolerance))
