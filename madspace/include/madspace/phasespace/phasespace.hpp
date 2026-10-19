@@ -109,10 +109,12 @@ public:
      *                         beams that is a rotation of the lab event too.
      * @param s_hat_power      Exponent of the `1/s_hat^p` sampling of the
      *                         partonic invariant s_hat in the PDF convolution
-     *                         (see @ref Luminosity), in every mode; unset,
-     *                         @p invariant_power. AmpliCol uses 1.2. A resonant
-     *                         s_hat is sampled with its Breit-Wigner either
-     *                         way.
+     *                         (see @ref Luminosity), in every mode. Unset, it is
+     *                         1.2 for @ref TChannelMode::color_ordered when
+     *                         masses or cuts bound s_hat from below (as
+     *                         AmpliCol), and @p invariant_power otherwise. A
+     *                         resonant s_hat is sampled with its Breit-Wigner
+     *                         either way.
      */
     PhaseSpaceMapping(
         const Topology& topology,
@@ -161,10 +163,12 @@ public:
      *                         beams that is a rotation of the lab event too.
      * @param s_hat_power      Exponent of the `1/s_hat^p` sampling of the
      *                         partonic invariant s_hat in the PDF convolution
-     *                         (see @ref Luminosity), in every mode; unset,
-     *                         @p invariant_power. AmpliCol uses 1.2. A resonant
-     *                         s_hat is sampled with its Breit-Wigner either
-     *                         way.
+     *                         (see @ref Luminosity), in every mode. Unset, it is
+     *                         1.2 for @ref TChannelMode::color_ordered when
+     *                         masses or cuts bound s_hat from below (as
+     *                         AmpliCol), and @p invariant_power otherwise. A
+     *                         resonant s_hat is sampled with its Breit-Wigner
+     *                         either way.
      */
     PhaseSpaceMapping(
         const std::vector<double>& external_masses,

@@ -673,9 +673,17 @@ PhaseSpaceMapping::PhaseSpaceMapping(
         if (!is_com_decay || _map_luminosity) {
             double mass = decay.width == 0. ? 0. : decay.mass;
             double width = decay.width;
-            // the root is s_hat, which the PDF convolution samples
+            // The root is s_hat, which the PDF convolution samples. A
+            // color-ordered chain samples it as AmpliCol does, with
+            // 1/s_hat^1.2, when masses or cuts bound it from below; without a
+            // bound that density piles the points up at the regulator of
+            // Invariant (and AmpliCol falls back to a flat one).
+            double s_hat_default =
+                t_channel_mode == PhaseSpaceMapping::color_ordered && info.m_min > 0.
+                ? 1.2
+                : invariant_power;
             double power =
-                is_com_decay ? s_hat_power.value_or(invariant_power) : invariant_power;
+                is_com_decay ? s_hat_power.value_or(s_hat_default) : invariant_power;
             info.invariant = Invariant(power, mass, width, decay.flat_window);
         }
     }

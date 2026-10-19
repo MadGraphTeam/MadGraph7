@@ -1,6 +1,7 @@
 """The power of the s_hat sampling of PhaseSpaceMapping, separate from the
-invariant_power of the propagators (unset it is invariant_power), and the
-options of a color-ordered PhaseSpaceMapping."""
+invariant_power of the propagators, and the options of a color-ordered
+PhaseSpaceMapping. Unset, the s_hat power is invariant_power, except for a
+color-ordered chain with a lower bound on s_hat, where it is AmpliCol's 1.2."""
 
 import math
 
@@ -43,8 +44,8 @@ def run(mode, color_ordered, seed, n, cuts=None, **kwargs):
 
 @pytest.mark.parametrize("mode, color_ordered", MODES, ids=IDS)
 def test_unset_is_invariant_power(mode, color_ordered):
-    """Without s_hat_power, s_hat is sampled with invariant_power, in every
-    mode."""
+    """Without s_hat_power and without a lower bound on s_hat (massless, no
+    cuts), s_hat is sampled with invariant_power, in every mode."""
     p0, tau0, det0 = run(mode, color_ordered, 1, 1000)
     p1, tau1, det1 = run(mode, color_ordered, 1, 1000, s_hat_power=0.8)
     assert torch.equal(p0, p1) and torch.equal(tau0, tau1) and torch.equal(det0, det1)
@@ -67,6 +68,37 @@ def test_only_s_hat_changes(mode, color_ordered):
         w_b.std(correction=0).item() / math.sqrt(n),
     )
     assert abs(w_a.mean() - w_b.mean()).item() < 4.0 * err
+
+
+@pytest.mark.parametrize(
+    "masses",
+    [[0.0, 0.0, 173.0, 173.0, 0.0, 0.0], [0.0] * 6],
+    ids=["top masses", "jet cuts"],
+)
+def test_unset_color_ordered_bounded(masses):
+    """With masses or cuts bounding s_hat from below, a color-ordered chain
+    samples s_hat as 1/s_hat^1.2, like AmpliCol, unless told otherwise."""
+    cuts = None if masses[2] > 0.0 else jet_cuts()
+    options = ms.ColorOrderedMapping.Options(ORDER)
+    tau = {}
+    for power in (None, 1.2, 0.8):
+        kwargs = {} if power is None else dict(s_hat_power=power)
+        mapping = ms.PhaseSpaceMapping(
+            masses,
+            CM_ENERGY,
+            mode=ms.PhaseSpaceMapping.color_ordered,
+            color_ordered=options,
+            cuts=cuts,
+            **kwargs,
+        )
+        g = generator(4)
+        r = rand((1000, mapping.random_dim()), generator=g)
+        d = randint(
+            0, 2, (1000, mapping.discrete_dim()), generator=g, dtype=torch.int32
+        )
+        tau[power] = mapping.map_forward([r, d])[1]
+    assert torch.equal(tau[None], tau[1.2])
+    assert not torch.equal(tau[None], tau[0.8])
 
 
 def jet_cuts():
