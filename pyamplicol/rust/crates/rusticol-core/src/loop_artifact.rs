@@ -196,7 +196,7 @@ pub fn load_loop_artifact(
             && metadata.color_accuracy == "full"
             && metadata.scheme_status == "declared-not-certified"
             && !metadata.correlations
-            && !metadata.resolved
+            && metadata.resolved == plan.helicity_projection.is_some()
             && !metadata.partial_results,
         "unsupported contribution, convention or feature declaration",
     )?;

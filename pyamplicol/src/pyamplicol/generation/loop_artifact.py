@@ -72,15 +72,22 @@ class LoopExecutionMetadata:
             or self.scheme_status != "declared-not-certified"
         ):
             raise ValueError("unsupported loop contribution or convention declaration")
+        if type(self.resolved) is not bool:
+            raise TypeError("loop resolved capability must be a boolean")
         if any(
-            value is not False
-            for value in (self.correlations, self.resolved, self.partial_results)
+            value is not False for value in (self.correlations, self.partial_results)
         ):
             raise ValueError(
-                "loop artifact correlations/resolved/partial results are unavailable"
+                "loop artifact correlations/partial results are unavailable"
             )
 
     def validate_plan(self, plan):
+        if type(self.resolved) is not bool or self.resolved != (
+            plan.get("helicity_projection") is not None
+        ):
+            raise ValueError(
+                "loop artifact resolved capability differs from the validated plan"
+            )
         # JSON normalization only removes tuple/list representation differences.
         orders = json.loads(json.dumps(asdict(self.orders)))
         if orders != plan["order_layout"]:

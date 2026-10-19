@@ -297,6 +297,13 @@ class VirtualRuntimeBackend:
                     "process_id": metadata["process_id"],
                     "process": metadata["expression"],
                     **metadata["physics"],
+                    "initial_average": metadata["initial_average"],
+                    "resolved_color_components": ["full"]
+                    if metadata["physics"].get("resolved")
+                    else [],
+                    "resolved_normalization": (
+                        "each helicity retains the inclusive incoming spin average"
+                    ),
                     "source_revision": self._native.source_revision,
                     "arithmetic": self._native.arithmetic,
                     "supported_arithmetics": metadata["physics"]["arithmetic"],
@@ -334,6 +341,36 @@ class VirtualRuntimeBackend:
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: str | None = None,
     ) -> VirtualEvaluation:
+        return cast(
+            VirtualEvaluation,
+            self._evaluate(
+                momenta,
+                helicities=helicities,
+                color_flows=color_flows,
+                precision=precision,
+                arithmetic=arithmetic,
+                mu_r2=mu_r2,
+                r2_strategy=r2_strategy,
+                resolved=False,
+            ),
+        )
+
+    def _evaluate(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str] | None = None,
+        color_flows: Sequence[str] | None = None,
+        precision: int | None = None,
+        arithmetic: str | None = None,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        r2_strategy: str | None = None,
+        resolved: bool,
+    ) -> VirtualEvaluation | ResolvedVirtualEvaluation:
+        if resolved and not self._metadata["physics"].get("resolved", False):
+            raise CompatibilityError(
+                "this artifact has no resolved virtual projection kernels"
+            )
         if helicities or color_flows:
             raise CompatibilityError("virtual artifact selectors are not yet available")
         precision = self.default_precision if precision is None else precision
@@ -372,12 +409,13 @@ class VirtualRuntimeBackend:
                 self._native = candidate
             result = _invoke(
                 self._module,
-                self._native.evaluate,
+                self._native.evaluate_resolved if resolved else self._native.evaluate,
                 points,
                 scales,
                 r2_strategy=requested.value,
             )
-            count = len(points)
+            helicity_count = len(self._metadata["plan"]["helicities"])
+            count = len(points) * (helicity_count if resolved else 1)
             if (
                 list(result.point_ids) != list(range(count))
                 or result.r2_strategy != "model"
@@ -386,7 +424,15 @@ class VirtualRuntimeBackend:
                     "native virtual result has inconsistent lane or strategy metadata"
                 )
             failed = [
-                (lane, statuses)
+                (
+                    {
+                        "point": lane // helicity_count,
+                        "helicity": f"h{lane % helicity_count}",
+                    }
+                    if resolved
+                    else {"point": lane},
+                    statuses,
+                )
                 for lane, statuses in enumerate(result.statuses)
                 if any(status != "success" for _, status in statuses)
             ]
@@ -416,28 +462,63 @@ class VirtualRuntimeBackend:
                 )
                 for _ in points
             )
-            output = VirtualEvaluation(
-                born,
-                values,
-                self._born_orders,
-                self._sectors,
-                diagnostics,
-                R2Selection(
-                    requested,
-                    R2Strategy.MODEL,
-                    "explicit strategy"
-                    if requested is R2Strategy.MODEL
-                    else "only complete eligible strategy",
-                ),
+            selection = R2Selection(
+                requested,
+                R2Strategy.MODEL,
+                "explicit strategy"
+                if requested is R2Strategy.MODEL
+                else "only complete eligible strategy",
             )
+            if resolved:
+                output: VirtualEvaluation | ResolvedVirtualEvaluation = (
+                    ResolvedVirtualEvaluation(
+                        tuple(
+                            tuple(
+                                tuple(
+                                    (born[p * helicity_count + h][order],)
+                                    for h in range(helicity_count)
+                                )
+                                for order in range(len(self._born_orders))
+                            )
+                            for p in range(len(points))
+                        ),
+                        tuple(
+                            tuple(
+                                tuple(
+                                    (values[p * helicity_count + h][order],)
+                                    for h in range(helicity_count)
+                                )
+                                for order in range(len(self._sectors))
+                            )
+                            for p in range(len(points))
+                        ),
+                        self._born_orders,
+                        self._sectors,
+                        diagnostics,
+                        selection,
+                        tuple(f"h{i}" for i in range(helicity_count)),
+                        ("full",),
+                        ("full",),
+                        "full",
+                    )
+                )
+            else:
+                output = VirtualEvaluation(
+                    born,
+                    values,
+                    self._born_orders,
+                    self._sectors,
+                    diagnostics,
+                    selection,
+                )
             self._last_requested = requested
             return output
 
     def evaluate_resolved(
         self, momenta: Momenta, **kwargs: Any
     ) -> ResolvedVirtualEvaluation:
-        raise CompatibilityError(
-            "resolved virtual evaluation is not yet available for source artifacts"
+        return cast(
+            ResolvedVirtualEvaluation, self._evaluate(momenta, resolved=True, **kwargs)
         )
 
     def set_model_parameters(self, mapping: ModelParameters) -> None:

@@ -77,6 +77,9 @@ impl ScalarBinding {
     }
 }
 record!(Counterterm { kind: String, schedule: usize, scalar: ScalarBinding, input_columns: Vec<usize> });
+record!(HelicityProjection {
+    born: String, families: Vec<String>, counterterms: String
+});
 record!(LoopRuntimePlan {
     schema: u32, r2_strategy: String, dimensional_numerators: bool,
     external_pdgs: Vec<i32>, state_legs: Vec<StateLeg>, helicities: Vec<Vec<i32>>, initial_average: u64,
@@ -84,7 +87,8 @@ record!(LoopRuntimePlan {
     bound_positions: BTreeMap<String, usize>,
     order_layout: OrderLayout, schedules: Vec<Schedule>, born: ScheduleGroup, loops: ScheduleGroup,
     families: Vec<Family>, bare_evaluators: BTreeMap<String, String>,
-    currents: Vec<Counterterm>, fields: Vec<ScalarBinding>, model_evaluators: BTreeMap<String, String>
+    currents: Vec<Counterterm>, fields: Vec<ScalarBinding>, model_evaluators: BTreeMap<String, String>,
+    helicity_projection: Option<HelicityProjection>
 });
 
 /// Keeps authenticated immutable payload ownership independent of any evaluator workspace.
@@ -585,7 +589,14 @@ impl LoopRuntimePlan {
             "empty/duplicate family indices",
         )?;
         let mut integral_width = 0;
-        for family in &self.families {
+        if let Some(projection) = &self.helicity_projection {
+            require(
+                projection.families.len() == self.families.len(),
+                "helicity family count differs",
+            )?;
+            shape(&projection.born, born_width, b)?;
+        }
+        for (family_index, family) in self.families.iter().enumerate() {
             let n = family.propagators;
             require(
                 n > 0
@@ -629,6 +640,13 @@ impl LoopRuntimePlan {
                 product(h, sum([born_width, loops].into_iter())?)?,
                 product(family.sector_indices.len(), family.powers.len())?,
             )?;
+            if let Some(projection) = &self.helicity_projection {
+                shape(
+                    &projection.families[family_index],
+                    sum([born_width, loops].into_iter())?,
+                    product(family.sector_indices.len(), family.powers.len())?,
+                )?;
+            }
             integral_width =
                 sum([integral_width, product(3, family.sector_indices.len())?].into_iter())?;
         }
@@ -704,6 +722,13 @@ impl LoopRuntimePlan {
             product(h, amplitude_width)?,
             product(9, v)?,
         )?;
+        if let Some(projection) = &self.helicity_projection {
+            require(
+                self.r2_strategy == "model",
+                "helicity projection requires model R2",
+            )?;
+            shape(&projection.counterterms, amplitude_width, product(9, v)?)?;
+        }
         shape(
             &lookup(&self.model_evaluators, "assemble")?,
             product(12, v)?,

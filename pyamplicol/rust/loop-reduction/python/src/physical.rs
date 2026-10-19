@@ -116,7 +116,7 @@ impl NativeLoopProgram {
             backend: self.executor.backend().clone(),
         })
     }
-    #[pyo3(signature=(momenta, scales_squared, model_values=None, point_ids=None, snapshot=None))]
+    #[pyo3(signature=(momenta, scales_squared, model_values=None, point_ids=None, snapshot=None, *, resolved=false))]
     fn evaluate(
         &mut self,
         py: Python<'_>,
@@ -125,6 +125,7 @@ impl NativeLoopProgram {
         model_values: Option<Vec<String>>,
         point_ids: Option<Vec<u64>>,
         snapshot: Option<&NativeSourceSnapshot>,
+        resolved: bool,
     ) -> PyResult<NativeCompleteLoopResult> {
         if self.executor.source_owner().is_some() && model_values.is_some() {
             return Err(error(
@@ -146,7 +147,11 @@ impl NativeLoopProgram {
             model_values: model_values.unwrap_or_default(),
             point_ids: ids,
         };
-        py.detach(|| self.executor.evaluate_with_snapshot(input, snapshot))
+        py.detach(|| if resolved {
+            self.executor.evaluate_resolved_with_snapshot(input, snapshot)
+        } else {
+            self.executor.evaluate_with_snapshot(input, snapshot)
+        })
             .map(NativeCompleteLoopResult)
             .map_err(error)
     }

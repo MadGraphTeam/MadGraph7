@@ -590,13 +590,68 @@ class NativeModelVirtualProgram:
                 **options,
             )
         width = 3 * len(sectors)
+        self.projector = self._make_projector()
+        poles = [S(f"loop_counterterm::pole{i}") for i in range(4 * width)]
+        self.assemble = self._record_evaluator(
+            "assemble",
+            _saved(
+                [
+                    *[
+                        sum((poles[i + k * width] for k in range(4)), E("0"))
+                        for i in range(width)
+                    ],
+                    *[poles[i + width] + poles[i + 3 * width] for i in range(width)],
+                ],
+                poles,
+            ),
+        )
+        # Sum every returned component in the selected carrier, before strings.
+        born_count = len(bare.order_layout.born)
+        sum_parameters = [
+            S(f"loop_counterterm::sum{i}") for i in range(born_count + 6 * width)
+        ]
+        self.sum_order_values = self._record_evaluator(
+            "sum_order_values",
+            _saved(
+                [
+                    sum(sum_parameters[:born_count], E("0")),
+                    *[
+                        sum(
+                            (
+                                sum_parameters[
+                                    born_count + component * width + 3 * sector + pole
+                                ]
+                                for sector in range(len(sectors))
+                            ),
+                            E("0"),
+                        )
+                        for component in range(6)
+                        for pole in range(3)
+                    ],
+                ],
+                sum_parameters,
+            ),
+        )
+        # Dense wrappers can share immutable full-color metrics. A formal
+        # projection must own its metrics, since its CT weights use the same P.
+        bare._model_color_metrics_bound = True
+        bare._formal_color_projected = space is not None
+
+    def _make_projector(self, helicities=None, *, _record_name="projector"):
+        """Compile the same complete interference for the requested helicity axis."""
+        from symbolica import E, S
+
+        bare = self.bare
+        width = 3 * len(self.sector_pairs)
         parameters, ultraviolet, rational, fields = (
             [],
             [E("0")] * width,
             [E("0")] * width,
             [E("0")] * width,
         )
-        for helicity in range(len(bare.helicities)):
+        for helicity in range(
+            len(bare.helicities) if helicities is None else len(helicities)
+        ):
             born = [
                 S(f"loop_counterterm::born{helicity}_{i}")
                 for i in range(len(bare.born_colors))
@@ -652,54 +707,9 @@ class NativeModelVirtualProgram:
                         E("0"),
                     )
                     fields[3 * sector - current.epsilon_power] += value + value.conj()
-        self.projector = self._record_evaluator(
-            "projector", _saved([*ultraviolet, *rational, *fields], parameters)
+        return self._record_evaluator(
+            _record_name, _saved([*ultraviolet, *rational, *fields], parameters)
         )
-        poles = [S(f"loop_counterterm::pole{i}") for i in range(4 * width)]
-        self.assemble = self._record_evaluator(
-            "assemble",
-            _saved(
-                [
-                    *[
-                        sum((poles[i + k * width] for k in range(4)), E("0"))
-                        for i in range(width)
-                    ],
-                    *[poles[i + width] + poles[i + 3 * width] for i in range(width)],
-                ],
-                poles,
-            ),
-        )
-        # Sum every returned component in the selected carrier, before strings.
-        born_count = len(bare.order_layout.born)
-        sum_parameters = [
-            S(f"loop_counterterm::sum{i}") for i in range(born_count + 6 * width)
-        ]
-        self.sum_order_values = self._record_evaluator(
-            "sum_order_values",
-            _saved(
-                [
-                    sum(sum_parameters[:born_count], E("0")),
-                    *[
-                        sum(
-                            (
-                                sum_parameters[
-                                    born_count + component * width + 3 * sector + pole
-                                ]
-                                for sector in range(len(sectors))
-                            ),
-                            E("0"),
-                        )
-                        for component in range(6)
-                        for pole in range(3)
-                    ],
-                ],
-                sum_parameters,
-            ),
-        )
-        # Dense wrappers can share immutable full-color metrics. A formal
-        # projection must own its metrics, since its CT weights use the same P.
-        bare._model_color_metrics_bound = True
-        bare._formal_color_projected = space is not None
 
     def _record_evaluator(self, name, state):
         self._evaluator_states[name] = state

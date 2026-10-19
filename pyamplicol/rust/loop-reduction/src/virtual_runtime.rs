@@ -167,6 +167,21 @@ impl VirtualRuntime {
         inputs: LoopInputs,
         r2_strategy: Option<&str>,
     ) -> RusticolResult<CompleteLoopResult<Arc<Batch>>> {
+        self.evaluate_mode(inputs, r2_strategy, false)
+    }
+    pub fn evaluate_resolved(
+        &mut self,
+        inputs: LoopInputs,
+        r2_strategy: Option<&str>,
+    ) -> RusticolResult<CompleteLoopResult<Arc<Batch>>> {
+        self.evaluate_mode(inputs, r2_strategy, true)
+    }
+    fn evaluate_mode(
+        &mut self,
+        inputs: LoopInputs,
+        r2_strategy: Option<&str>,
+        resolved: bool,
+    ) -> RusticolResult<CompleteLoopResult<Arc<Batch>>> {
         strategy(r2_strategy.unwrap_or(&self.requested_strategy))?;
         if !inputs.model_values.is_empty() {
             return Err(RusticolError::invalid_argument(
@@ -179,9 +194,11 @@ impl VirtualRuntime {
                 self.backend.clone(),
             )?);
         }
-        self.executor
-            .as_mut()
-            .expect("workspaces bound")
-            .evaluate(inputs)
+        let executor = self.executor.as_mut().expect("workspaces bound");
+        if resolved {
+            executor.evaluate_resolved(inputs)
+        } else {
+            executor.evaluate(inputs)
+        }
     }
 }

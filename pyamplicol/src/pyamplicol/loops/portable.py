@@ -38,7 +38,7 @@ _BARE_EVALUATORS = (
 )
 
 
-def write_loop_pacbin(program, destination):
+def write_loop_pacbin(program, destination, *, resolved=False):
     """Lower one checked retained control into plain execution data and bytecode."""
     prepared = program.prepared  # Existing scope/strategy checks remain authoritative.
     bare = program.bare
@@ -172,6 +172,35 @@ def write_loop_pacbin(program, destination):
                 "rational_numerators": family.rational_numerators,
             }
         )
+    if resolved:
+        if program.r2_strategy != "model":
+            raise ValueError("resolved projection requires model R2")
+        # Only local projection changes: currents are still executed once for
+        # every point/helicity in a single native batch. The colour axis remains
+        # one explicitly contracted full-colour component.
+        bare._make_born_projector(
+            (bare.born_metric,),
+            helicities=bare.helicities[:1],
+            _record_name="helicity_born_projector",
+        )
+        family_projectors = []
+        for family in prepared.bare.families:
+            metadata = dict(family.metadata)
+            name = f"helicity_family_projector_{metadata['index']}"
+            bare._compile_family_projection(
+                metadata["graph_indices"],
+                metadata["powers"],
+                metadata["sector_indices"],
+                helicities=bare.helicities[:1],
+                _record_name=name,
+            )
+            family_projectors.append(state(bare._evaluator_states[name]))
+        program._make_projector(bare.helicities[:1], _record_name="helicity_projector")
+        data["helicity_projection"] = {
+            "born": state(bare._evaluator_states["helicity_born_projector"]),
+            "families": family_projectors,
+            "counterterms": state(program._evaluator_states["helicity_projector"]),
+        }
     for item in prepared.currents:
         data["currents"].append(
             {
