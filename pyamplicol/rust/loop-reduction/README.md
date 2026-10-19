@@ -49,10 +49,10 @@ cargo test --locked --test anchors -- --test-threads=1
 Supply a valid `SYMBOLICA_LICENSE` in the process environment when needed;
 never persist it in this crate. Cargo's lockfile covers Git and registry
 dependencies. Upstream sources remain read-only to this consumer. Generic
-reduction accepts more than six propagators in every carrier. Physical source
-admission remains at its independently validated rank n+1 boundary; the owner's
-new rank-n+2 interfaces are forwarded by the profiling adapter, without certifying
-that larger physical model domain. Explicit-μ² polynomial containers do not
+reduction accepts more than six propagators in every carrier. Source construction
+delegates weighted-rank admission to the selected reducer, which supports n+2;
+the profiling adapter forwards its rank-n+2 interfaces. This does not certify
+every higher-rank physical model. Explicit-μ² polynomial containers do not
 invoke the owner's optional graph-level FDH numerator transformation.
 
 The owner revision adds native B1/B11/B111 and B1111 master families, along with
@@ -81,6 +81,16 @@ all 94 emitted family/order statuses succeed, and analytic poles, empty/permuted
 batches and exact alpha_s updates pass. The DoubleFloat/AP80 update checks retain
 their 3e-25/1e-60 cancellation-aware tolerances. These controls establish this
 consumer's validated domain, not general high-rank or complex-mass accuracy.
+
+The independent rank-four massless bubble control
+`python/integration_rank_n2.py` checks the new bubble integration boundary in
+generic double/DoubleFloat/AP80 and both fast adapters. With metric (+---),
+`p=(0,1,0,0)` and null `n=(1,1,0,0)`, its numerator is `(q.n)^4`. Feynman
+parameters give `I/B0=1/5+29*epsilon/300+O(epsilon²)`, fixing the finite rational
+term as well as every pole. Exact scales, native batch identities, empty/tail
+calls and authoritative rejection of rank n+3 are checked. Passing this algebraic
+control removes the obsolete source n+1 ceiling without asserting general-model
+physics certification.
 
 The analytic tests exercise A0 with real and complex squared masses, massless
 B0, the divergent massless C0, μ² C0, and a four-dimensional q² numerator

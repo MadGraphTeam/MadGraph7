@@ -566,8 +566,6 @@ class NativeBareProcessProgram:
                     }
                 )
             )
-            if max(sum(p[:4]) + 2 * p[4] for p in powers) > plan.propagators + 1:
-                raise NotImplementedError("numerator rank exceeds the reducer domain")
             names = [f"c{i}" for i in range(len(powers))]
             rational_numerators = _reduction_numerators(powers, names, rational=True)
             mass_parameters = tuple(
