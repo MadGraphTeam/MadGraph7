@@ -19,7 +19,9 @@ def dependencies():
         pytest.skip("licensed dependency graph generation required")
     from symbolica.community import hepkit
 
-    return symbolica, hepkit, pytest.importorskip("_loop_reduction")
+    from pyamplicol.loops.native import load_loop_native
+
+    return symbolica, hepkit, load_loop_native()
 
 
 @pytest.fixture(scope="module")
@@ -182,8 +184,8 @@ def test_layout_named_fixed_zero_ports_and_spin_kind_checks(dependencies, catalo
 
 
 def test_literal_source_column_packing_around_scalar_slots(dependencies, catalogues):
-    # Exercise only the column-packing helper; this does not admit massive
-    # vectors through the separately restricted public source plan.
+    # Exercise only the column-packing helper; the raw control lacks the
+    # model-owned SourceIR required by the source plan.
     from pyamplicol.loops.spin_sources import (
         NativeSpinSourcePlan,
         replace_vector_sources,
@@ -218,7 +220,7 @@ def test_literal_source_column_packing_around_scalar_slots(dependencies, catalog
             replaced[10 * row + 1 : 10 * row + 5]
             == source.to_decimal()[4 * (1 - row) : 4 * (2 - row)]
         )
-    with pytest.raises(NotImplementedError, match="massless external vector"):
+    with pytest.raises(ValueError, match="model-owned SourceIR"):
         NativeSpinSourcePlan(program, ((2,),))
 
 
