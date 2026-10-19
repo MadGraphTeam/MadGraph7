@@ -14,6 +14,7 @@ pub mod physical;
 mod predicates;
 mod reduction;
 mod schedule;
+mod stability;
 mod states;
 pub use batch::{Batch, BatchCarrier, Data, shape};
 pub use coefficients::{CoefficientEvaluator, exact_state};
