@@ -938,6 +938,14 @@ def capture_raw_loop_model(
         and not callable(value)
         and type(value).__module__ != "__future__"
     }
+    # This reserved provider declaration has a typed plain-data contract. Keep
+    # it in the existing model metadata rather than creating another sidecar.
+    from .loop_declaration import LOOP_DECLARATION_KEY, LoopModelDeclaration
+
+    if hasattr(module, LOOP_DECLARATION_KEY):
+        metadata[LOOP_DECLARATION_KEY] = LoopModelDeclaration.from_dict(
+            getattr(module, LOOP_DECLARATION_KEY)
+        ).to_dict()
     function_namespace = getattr(module, "function_library", None)
     metadata["function_bindings"] = {
         name: references[id(value)][1]

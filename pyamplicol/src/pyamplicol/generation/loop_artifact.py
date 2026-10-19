@@ -14,6 +14,9 @@ from typing import Literal
 
 from pyamplicol._internal.versions import LOOP_RUNTIME_CAPABILITY
 from pyamplicol.loops.physical_orders import PhysicalOrderLayout
+from pyamplicol.models.loop_declaration import (
+    LoopSchemeDeclaration as LoopSchemeDeclaration,
+)
 
 from .validation import ValidationPointRecord
 
@@ -21,22 +24,6 @@ LOOP_RUNTIME_KIND = "pyamplicol-runtime-loop-execution"
 LOOP_PHYSICS_KIND = "pyamplicol-loop-physics"
 LOOP_RUNTIME_PATH = "loop-runtime.pacbin"
 EPSILON_CONVENTION = "Cepsilon=(4*pi)^epsilon/Gamma(1-epsilon)"
-
-
-@dataclass(frozen=True, slots=True)
-class LoopSchemeDeclaration:
-    dimensional_regularization: str
-    external_states: str
-    gamma5: str
-    renormalization: str
-    mass_scheme: str
-    finite_restoration: str
-    model_convention: str
-
-    def __post_init__(self):
-        for name, value in asdict(self).items():
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"loop scheme {name} must be explicitly supplied")
 
 
 @dataclass(frozen=True, slots=True)

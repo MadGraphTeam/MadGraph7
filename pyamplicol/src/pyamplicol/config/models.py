@@ -9,7 +9,13 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Literal, TypeAlias, TypeVar
+from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar
+
+if TYPE_CHECKING:
+    from pyamplicol.models.loop_declaration import (
+        LoopModelDeclaration,
+        LoopSchemeDeclaration,
+    )
 
 from .errors import ConfigurationError
 
@@ -1094,12 +1100,132 @@ class SymbolicaConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class LoopSchemeConfig:
+    dimensional_regularization: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    external_states: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    gamma5: str | None = field(default=None, metadata=_setting("str", nullable=True))
+    renormalization: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    mass_scheme: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    finite_restoration: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    model_convention: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ConfigurationError(
+                    f"loop.model.scheme.{name} must be a nonempty string or null"
+                )
+
+    @property
+    def supplied(self) -> bool:
+        return any(
+            getattr(self, name) is not None for name in self.__dataclass_fields__
+        )
+
+    def to_declaration(self) -> LoopSchemeDeclaration:
+        from pyamplicol.models.loop_declaration import LoopSchemeDeclaration
+
+        values = {name: getattr(self, name) for name in self.__dataclass_fields__}
+        missing = [name for name, value in values.items() if value is None]
+        if missing:
+            raise ConfigurationError(
+                "loop.model.scheme requires explicit " + ", ".join(missing)
+            )
+        return LoopSchemeDeclaration.from_dict(values)
+
+
+@dataclass(frozen=True, slots=True)
+class LoopModelConfig:
+    """A complete explicit override of the model's NLO declaration, if supplied."""
+
+    loop_coupling_orders: tuple[str, ...] | None = field(
+        default=None, metadata=_setting("list_str", nullable=True)
+    )
+    uv_complete: bool | None = field(
+        default=None, metadata=_setting("bool", nullable=True)
+    )
+    model_r2_complete: bool | None = field(
+        default=None, metadata=_setting("bool", nullable=True)
+    )
+    scheme: LoopSchemeConfig = field(
+        default_factory=LoopSchemeConfig, metadata=_section()
+    )
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.scheme, LoopSchemeConfig):
+            raise ConfigurationError("loop.model.scheme must be a LoopSchemeConfig")
+        if self.loop_coupling_orders is not None:
+            values = self.loop_coupling_orders
+            if (
+                isinstance(values, (str, bytes))
+                or not isinstance(values, Sequence)
+                or not values
+                or any(
+                    not isinstance(value, str) or not value.strip() for value in values
+                )
+            ):
+                raise ConfigurationError(
+                    "loop.model.loop_coupling_orders must be a nonempty string sequence"
+                )
+            object.__setattr__(self, "loop_coupling_orders", tuple(sorted(set(values))))
+        for name in ("uv_complete", "model_r2_complete"):
+            if getattr(self, name) is not None and not isinstance(
+                getattr(self, name), bool
+            ):
+                raise ConfigurationError(f"loop.model.{name} must be a boolean or null")
+        self.to_declaration()
+
+    def to_declaration(self) -> LoopModelDeclaration | None:
+        from pyamplicol.models.loop_declaration import LoopModelDeclaration
+
+        if (
+            self.loop_coupling_orders is None
+            and self.uv_complete is None
+            and self.model_r2_complete is None
+            and not self.scheme.supplied
+        ):
+            return None
+        if (
+            self.loop_coupling_orders is None
+            or self.uv_complete is None
+            or self.model_r2_complete is None
+        ):
+            raise ConfigurationError(
+                "loop.model requires explicit loop_coupling_orders, uv_complete "
+                "and model_r2_complete; partial declarations are not merged "
+                "with source metadata"
+            )
+        return LoopModelDeclaration(
+            scheme=self.scheme.to_declaration(),
+            loop_coupling_orders=self.loop_coupling_orders,
+            uv_complete=self.uv_complete,
+            model_r2_complete=self.model_r2_complete,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class LoopConfig:
     r2_strategy: R2Strategy = field(
         default=R2Strategy.AUTO, metadata=_setting("str", choices=tuple(R2Strategy))
     )
+    model: LoopModelConfig = field(default_factory=LoopModelConfig, metadata=_section())
 
     def __post_init__(self) -> None:
+        if not isinstance(self.model, LoopModelConfig):
+            raise ConfigurationError("loop.model must be a LoopModelConfig")
         object.__setattr__(
             self, "r2_strategy", _enum(self.r2_strategy, R2Strategy, "loop.r2_strategy")
         )
@@ -1247,6 +1373,8 @@ __all__ = [
     "LCFlowLayout",
     "LogLevel",
     "LoopConfig",
+    "LoopModelConfig",
+    "LoopSchemeConfig",
     "ModelConfig",
     "OutputConfig",
     "OutputFormat",
