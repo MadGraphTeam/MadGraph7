@@ -222,7 +222,6 @@ def _rewrite(path, destination, mutate, *, wrong_kind=False):
         (lambda d: d.update(schema=99), "schema"),
         (lambda d: d.update(r2_strategy="direct"), "strategy/dimensional"),
         (lambda d: d["state_legs"][1].update(offset=999), "offset"),
-        (lambda d: d["families"][0]["powers"][0].__setitem__(0, 999), "rank"),
         (lambda d: d["schedules"][0]["output_slots"].append(2**40), "output"),
         (
             lambda d: d["born"]["representative_for"].__setitem__(0, 999),
@@ -584,8 +583,7 @@ def test_native_direct_metadata_rejects_mixed_or_uncertified_sectors(
         (
             (lambda d: d["external_pdgs"].__setitem__(0, 1), "four-gluon"),
             (lambda d: d["currents"][0].update(kind="R2"), "counterterm"),
-            (lambda d: d["families"][0]["powers"][0].__setitem__(4, 3), "rank/sector"),
-            (lambda d: d["families"][0]["powers"][0].__setitem__(5, 3), "rank/sector"),
+            (lambda d: d["families"][0]["powers"][0].__setitem__(5, 3), "sector"),
             (lambda d: d.update(r2_strategy="model"), "strategy/dimensional"),
             (change_squared_order, "four-gluon"),
         )

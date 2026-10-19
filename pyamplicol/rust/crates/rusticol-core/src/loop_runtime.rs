@@ -675,12 +675,9 @@ impl LoopRuntimePlan {
             )?;
             require(
                 family.powers.iter().all(|p| {
-                    (self.dimensional_numerators || (p[4] == 0 && p[5] == 0))
-                        && p[5] <= 2
-                        && p[..4].iter().map(|&x| u64::from(x)).sum::<u64>() + 2 * u64::from(p[4])
-                            <= n as u64 + 1
+                    (self.dimensional_numerators || (p[4] == 0 && p[5] == 0)) && p[5] <= 2
                 }),
-                "unsupported numerator rank/sector",
+                "unsupported numerator epsilon/dimensional sector",
             )?;
             require(
                 self.dimensional_numerators || family.rational_numerators.iter().all(|p| p == "0"),

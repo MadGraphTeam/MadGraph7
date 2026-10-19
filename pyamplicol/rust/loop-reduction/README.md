@@ -317,7 +317,10 @@ dependency, so its normal builds do not require the `upstream` symlink.
 
 - Higher-multiplicity physical controls and complex-master accuracy still need
   process-level validation despite the generic coordinator's new any-n support.
-- Rank is limited to n+1 by NinjaRS. No numerator term may be truncated to fit.
+- The selected NinjaRS constructor owns weighted-rank admission (the current
+  revision supports its n+2 domain). Saved layouts retain every term and may not
+  truncate to fit a backend. The rank-four bubble is an independent normalized
+  control; it does not certify arbitrary higher-rank physical models.
 - The binary64 native master provider fixes its on-shell snapping threshold
   at 1e-9. The generic constructor requires an explicit threshold policy;
   `None` disables snapping. These policies can differ for small invariants.
