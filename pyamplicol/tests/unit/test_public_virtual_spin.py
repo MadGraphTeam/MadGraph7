@@ -75,5 +75,10 @@ def test_spin_requests_validate_atomically_and_empty_keeps_class(monkeypatch):
     result = runtime.evaluate_correlated([], mu_r2=[])
     assert result.shape == (0, 3, 3)
     assert observed == [{1: []}]
+    explicit = runtime.evaluate_correlated_many(
+        [], {"empty": CorrelatedRequest("born", {1: []})}, mu_r2=[]
+    )
+    assert explicit["empty"].shape == (0, 3, 3)
+    assert observed[-1] == {1: []}
     runtime.evaluate_correlated([[[1, 0, 0, 1]]], mu_r2=1)
     assert observed[-1][1] == [[["0", "0"], ["1", "0"], ["0", "0"], ["0", "0"]]]

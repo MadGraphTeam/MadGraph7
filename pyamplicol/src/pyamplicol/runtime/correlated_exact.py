@@ -182,6 +182,8 @@ def _prepare_spin_vectors(
 def _copy_spin_vectors(
     vectors: Mapping[int, object] | None,
     spin_correlations: Sequence[Sequence[int]],
+    *,
+    point_count: int | None = None,
 ) -> dict[int, object]:
     """Copy and validate setter inputs without rounding or mutating prior state."""
     spin_legs = tuple(sorted({leg for group in spin_correlations for leg in group}))
@@ -206,6 +208,9 @@ def _copy_spin_vectors(
             raise EvaluationError("spin vectors must be four-vectors or a batch")
         vector = tuple(freeze(item) for item in value)
         if not vector:
+            if point_count == 0:
+                frozen[leg] = vector
+                continue
             raise EvaluationError("a spin-vector batch must contain at least one point")
         broadcast = _is_spin_vector(vector)
         # Validate before replacing the old state; a failed setter is atomic.

@@ -344,11 +344,13 @@ class VirtualRuntimeBackend:
             self._spin_vectors = copied
 
     def _copy_spin_vectors(
-        self, vectors: Mapping[int, object] | None
+        self, vectors: Mapping[int, object] | None, *, point_count: int | None = None
     ) -> dict[int, object]:
         if vectors and not self._spin_classes():
             raise CompatibilityError("this artifact has no saved joint spin sources")
-        return _copy_spin_vectors(vectors, self._spin_classes())
+        return _copy_spin_vectors(
+            vectors, self._spin_classes(), point_count=point_count
+        )
 
     def evaluate_correlated(
         self, momenta: Momenta, *, color_correlation: str = "born", **kwargs: Any
@@ -382,6 +384,7 @@ class VirtualRuntimeBackend:
                 )
             vectors = self._copy_spin_vectors(
                 snapshot if request.spin_vectors is None else request.spin_vectors,
+                point_count=len(momenta),
             )
             prepared = _prepare_spin_vectors(
                 vectors, allowed_legs=allowed, point_count=len(momenta)
