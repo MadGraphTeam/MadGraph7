@@ -70,6 +70,10 @@ opaque=Parameter(name='opaque',nature='internal',type='real',value='helper(CA)')
 A=CTParameter(name='A',value={-1:'CF*a',0:'CA*helper(MU_R)'})
 B=CTParameter(name='B',value={0:'A**2'})
 GC=Coupling(name='GC',value='B+TF*safe',order={'QCD':2})
+GCplain=Coupling(name='GCplain',value='a',order={'QCD':2})
+GCfixed=Coupling(name='GCfixed',value='a-1',order={'QCD':2})
+GCformal=Coupling(name='GCformal',value='CA-3',order={'QCD':2})
+GCguard=Coupling(name='GCguard',value='zero',order={'QCD':2})
 """)
     return load_raw_loop_model(path, restriction="full")
 
@@ -153,6 +157,52 @@ def test_continuation_rejects_unowned_or_undeclared_structures(source):
     other = prepare_scalar_bindings(copied, (("a", 0),))
     with pytest.raises(ValueError, match="source owners differ"):
         declared.require_ordinary_scalars(other)
+
+
+def test_partial_ordinary_rule_mapping_requires_every_nonzero_entry(source):
+    from dataclasses import replace
+
+    from pyamplicol.loops.model import KernelBasisEntry
+
+    declared = continuation(source)
+    program = declared.model.scalar_program
+    order = (("QCD", 2),)
+
+    def entry(index, name):
+        record = source.record("couplings", name)
+        return KernelBasisEntry(
+            "vertices", 0, "two_term_rule", "tree", index, 0, None,
+            (), (), "1", 0, "scalar", "1", None,
+            program.definitions["couplings", record["id"]], order, program,
+        )
+
+    first = entry(0, "GCplain")
+    for omitted_name, fixed, allowed in (
+        ("GCfixed", {}, False),
+        ("GCfixed", {"a": "1"}, True),
+        # A physical-Nc3 zero cannot hide a formally nonzero colour term.
+        ("GCformal", {}, False),
+        # A zero value with an active diagnostic is also not removable.
+        ("GCguard", {}, False),
+    ):
+        second = entry(1, omitted_name)
+        current = replace(
+            declared,
+            model=replace(declared.model, kernels=(first, second)),
+            kernel_keys=frozenset((first.key,)),
+        )
+        plan = prepare_scalar_bindings(
+            source, (("GCplain", 0),), program=program, fixed_parameters=fixed
+        )
+        if allowed:
+            current.require_ordinary_kernels(
+                (("two_term_rule", order),), ("GCplain",), scalar_plan=plan
+            )
+        else:
+            with pytest.raises(ValueError, match=r"kernel.*exact-zero proof"):
+                current.require_ordinary_kernels(
+                    (("two_term_rule", order),), ("GCplain",), scalar_plan=plan
+                )
 
 
 def test_exact_grades_keep_laurent_axes_and_owning_program(source):

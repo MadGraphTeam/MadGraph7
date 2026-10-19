@@ -87,7 +87,7 @@ class SourceColorContinuation:
                     "formal-colour continuation"
                 )
 
-    def require_ordinary_kernels(self, rules, bound_names):
+    def require_ordinary_kernels(self, rules, bound_names, *, scalar_plan=None):
         """Use the structural loader's unchanged source rule/coupling names.
 
         Its native graph boundary also checks homogeneous coupling orders. A
@@ -100,7 +100,6 @@ class SourceColorContinuation:
             for entry in self.model.kernels
             if entry.kind == "tree"
             and (entry.vertex_name, entry.order) in rules
-            and entry.coupling.name in bound_names
         )
         missing = rules - {(entry.vertex_name, entry.order) for entry in selected}
         if missing:
@@ -108,7 +107,35 @@ class SourceColorContinuation:
                 "selected ordinary rules have no exact source kernel mapping: "
                 + repr(sorted(missing))
             )
-        self.require_kernels(entry.key for entry in selected)
+        omitted = tuple(
+            entry for entry in selected if entry.coupling.name not in bound_names
+        )
+        if omitted:
+            # The structural loader may remove exact fixed-parameter zeros.
+            # Prove every such omission in this same formal source view; one
+            # surviving entry must not conceal an unbound nonzero tensor term.
+            outputs = tuple(dict.fromkeys((e.coupling.name, 0) for e in omitted))
+            if scalar_plan is None:
+                raise ValueError(
+                    f"selected ordinary source kernel {omitted[0].key!r} "
+                    "has no bound coupling or exact-zero proof"
+                )
+            formal = self.scalars(
+                outputs,
+                program=scalar_plan.program,
+                fixed_parameters=scalar_plan.fixed_parameters,
+            ).formal
+            values = dict(zip(formal.outputs, formal.expressions, strict=True))
+            for entry in omitted:
+                value = values[entry.coupling.name, 0]
+                if value.value != 0 or value.diagnostic != 0:
+                    raise ValueError(
+                        f"selected ordinary source kernel {entry.key!r} "
+                        "has no bound coupling or exact-zero proof"
+                    )
+        self.require_kernels(
+            entry.key for entry in selected if entry.coupling.name in bound_names
+        )
 
     def scalars(
         self, outputs, *, program, fixed_parameters=None, anonymous_definitions=None

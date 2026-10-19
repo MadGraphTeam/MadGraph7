@@ -279,7 +279,9 @@ class NativeModelVirtualProgram:
                     if vertex.id != item.vertex_id
                 }
                 source_color.require_ordinary_kernels(
-                    ordinary_rules, {name for name, _ in source_state.plan.outputs}
+                    ordinary_rules,
+                    {name for name, _ in source_state.plan.outputs},
+                    scalar_plan=source_state.plan,
                 )
                 source_color.require_kernels(
                     entry.key for item in self.insertions for entry in item.rule.entries
