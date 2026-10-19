@@ -144,6 +144,7 @@ class _FamilyProgram:
     reducer: Any
     rational_reducer: Any = None
     exact_state: bytes = b""
+    weight_columns: tuple[int, ...] = ()
 
 
 def _reduction_numerators(powers, names, *, rational=False):
@@ -228,8 +229,6 @@ class NativeBareProcessProgram:
             )
         require_exact_numbers(initial_average)
         self.model_state = model_state
-        from types import MappingProxyType
-
         self.source_contracts = MappingProxyType(dict(source_contracts or {}))
         self.vertex_spinor_frame = vertex_spinor_frame
         self.model_scale_view = model_scale_view
@@ -514,6 +513,7 @@ class NativeBareProcessProgram:
             )
         )
         self._compile_born_projection()
+        self._compile_dual_born_weights()
         self.families = []
         for family in process.families:
             indices = tuple(
@@ -600,7 +600,7 @@ class NativeBareProcessProgram:
                     ),
                     mass_parameters,
                     tuple(self.model_positions[p.get_name()] for p in mass_parameters),
-                    self._compile_family_projection(
+                    self._compile_weighted_family_projection(
                         indices,
                         powers,
                         sector_indices,
@@ -623,6 +623,7 @@ class NativeBareProcessProgram:
                     if rational_numerators != ["0", "0", "0"]
                     else None,
                     exact_state,
+                    self.weight_plan.family_columns(self, indices, sector_indices),
                 )
             )
         self.order_channels = tuple(
@@ -789,6 +790,44 @@ class NativeBareProcessProgram:
             engine=self.projector_engine,
         )
 
+    def _compile_dual_born_weights(self):
+        from .dual_weights import prepare_dual_born_weights
+
+        self.weight_plan = prepare_dual_born_weights(self)
+        self.dual_born_weights = self.weight_plan.bind(self)
+        self._evaluator_states["dual_born_weights"] = self.weight_plan.state
+
+    def _compile_weighted_family_projection(
+        self,
+        indices,
+        powers,
+        sector_indices,
+        *,
+        weights=None,
+        helicities=None,
+        _record_name=None,
+    ):
+        from .dual_weights import family_weight_projection_state
+
+        state, inputs, outputs = family_weight_projection_state(
+            self,
+            self.weight_plan if weights is None else weights,
+            indices,
+            powers,
+            sector_indices,
+            helicities=helicities,
+        )
+        if _record_name is not None:
+            self._evaluator_states[_record_name] = state
+        return bind_family_projector(
+            state,
+            inputs,
+            outputs,
+            backend=self.backend,
+            options=self.options,
+            engine=self.projector_engine,
+        )
+
     def _family_projection_state(
         self, indices, powers, sector_indices, *, metrics=None, helicities=None
     ):
@@ -876,8 +915,12 @@ class NativeBareProcessProgram:
             tuple(map(tuple, loop_metric)),
         )
         self._compile_born_projection()
+        self._compile_dual_born_weights()
         for family in self.families:
-            family.projector = self._compile_family_projection(
+            family.weight_columns = self.weight_plan.family_columns(
+                self, family.graph_indices, family.sector_indices
+            )
+            family.projector = self._compile_weighted_family_projection(
                 family.graph_indices,
                 family.powers,
                 family.sector_indices,
@@ -1194,9 +1237,21 @@ class NativeBareProcessProgram:
             matrix,
         )
 
-    def family_projection_arguments(self, currents, family):
+    def family_projection_arguments(
+        self, currents, family, *, weights=None, weight_columns=None
+    ):
+        # Omitting weights retains the original direct projector oracle.
+        left = (
+            currents.born
+            if weights is None
+            else weights.take_columns(
+                list(
+                    family.weight_columns if weight_columns is None else weight_columns
+                )
+            )
+        )
         inputs = self.backend.NativeBatch.concat_columns(
-            [currents.born, *(currents.loops[i] for i in family.graph_indices)]
+            [left, *(currents.loops[i] for i in family.graph_indices)]
         )
         return inputs.reshape_rows(
             currents.batch.size,
@@ -1257,17 +1312,26 @@ class NativeBareProcessProgram:
             )
         )
         integrated, rational_integrated, status_maps = [], [], []
+        dual_weights = None
         guard = require_finite_batch if failures is None else failures.require_finite
         guard(born_squared, "Born projection")
 
         def compact(*point_buffers):
-            nonlocal currents, born_squared, size, point_ids
+            nonlocal currents, born_squared, size, point_ids, dual_weights
             if failures is None:
                 return point_buffers
             indices = failures.successful_indices(point_ids)
             if len(indices) == size:
                 return point_buffers
             currents = select_bare_currents(currents, indices)
+            if dual_weights is not None:
+                dual_weights = dual_weights.take_rows(
+                    [
+                        point * helicities + h
+                        for point in indices
+                        for h in range(helicities)
+                    ]
+                )
             born_squared = born_squared.take_rows(indices)
             integrated[:] = [value.take_rows(indices) for value in integrated]
             rational_integrated[:] = [
@@ -1314,9 +1378,14 @@ class NativeBareProcessProgram:
             for index, current in enumerate(currents.loops):
                 guard(current, f"loop current {index}", rows_per_point=helicities)
             compact()
+        weight_evaluator = getattr(self, "dual_born_weights", None)
+        if weight_evaluator is not None:
+            dual_weights = weight_evaluator.evaluate_batch(currents.born)
+            guard(dual_weights, "dual Born weights", rows_per_point=helicities)
+            compact()
         for family in self.families:
             coefficients = family.projector.evaluate_batch(
-                self.family_projection_arguments(currents, family)
+                self.family_projection_arguments(currents, family, weights=dual_weights)
             )
             if failures is not None:
                 guard(coefficients, f"family {family.index} numerator projection")

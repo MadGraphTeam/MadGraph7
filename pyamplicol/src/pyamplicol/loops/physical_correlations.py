@@ -175,6 +175,10 @@ class NativeDirectedBareProgram:
             prepared.born_state, **bare.options
         )
         self.projectors = tuple(family.bind(bare) for family in prepared.families)
+        self.family_weight_columns = tuple(
+            family.weight_columns for family in prepared.families
+        )
+        self.dual_born_weights = prepared.weight_plan.bind(bare)
         self.directions, self.channels = 2 * len(self.histories), prepared.channels
         self.postprocess = bare.backend.CoefficientEvaluator(
             prepared.postprocess_state, **bare.options
@@ -286,8 +290,14 @@ class NativeDirectedBareProgram:
             )
         )
         require_finite_batch(born, "directed Born contraction")
+        weights = self.dual_born_weights.evaluate_batch(currents.born)
+        require_finite_batch(
+            weights, "directed dual Born weights", rows_per_point=len(self.helicities)
+        )
         integrated, statuses = [], []
-        for family, projector in zip(bare.families, self.projectors, strict=True):
+        for family, weight_columns, projector in zip(
+            bare.families, self.family_weight_columns, self.projectors, strict=True
+        ):
             channels = tuple(
                 (direction, sector)
                 for direction in range(self.directions)
@@ -297,7 +307,12 @@ class NativeDirectedBareProgram:
             row_ids = list(range(size * count))
             point_rows = np.repeat(np.arange(size), count).tolist()
             coefficients = projector.evaluate_batch(
-                bare.family_projection_arguments(currents, family)
+                bare.family_projection_arguments(
+                    currents,
+                    family,
+                    weights=weights,
+                    weight_columns=weight_columns,
+                )
             ).reshape_rows(size * count, len(family.powers), row_ids)
             shifts, masses, matrix = bare.family_kinematics_native(currents, family)
             reduced = family.reducer.evaluate_batch(

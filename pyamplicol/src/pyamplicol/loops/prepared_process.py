@@ -63,6 +63,7 @@ class PreparedFamily:
                     "kinematics",
                     "mass_parameters",
                     "mass_columns",
+                    "weight_columns",
                 ),
             ),
             family.exact_state,
@@ -155,6 +156,7 @@ _BARE_METADATA = (
     "born_metric",
     "loop_metric",
     "order_channels",
+    "weight_plan",
 )
 
 
@@ -256,14 +258,13 @@ class PreparedBareProcess:
         view.born_executors = tuple(map(bind, self.born))
         view.loop_executors = tuple(map(bind, self.loops))
         view.coefficient_engine = view.born_executors[0].coefficient_engine
-        born_widths = tuple(len(item.instructions.output_slots) for item in self.born)
         loop_widths = tuple(len(item.instructions.output_slots) for item in self.loops)
         view.families = []
         for family in self.families:
             metadata = dict(family.metadata)
             shape = family_projector_shape(
                 len(view.helicities),
-                born_widths,
+                (len(metadata["weight_columns"]),),
                 loop_widths,
                 metadata["graph_indices"],
                 len(metadata["sector_indices"]),
@@ -281,6 +282,7 @@ class PreparedBareProcess:
         view._evaluator_states = dict(self.evaluator_states)
         for name in (
             "born_projector",
+            "dual_born_weights",
             "postprocess",
             "zero_poles",
             "sum_order_values",

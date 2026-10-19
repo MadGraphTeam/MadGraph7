@@ -81,8 +81,13 @@ impl ScalarBinding {
     }
 }
 record!(Counterterm { kind: String, schedule: usize, scalar: ScalarBinding, input_columns: Vec<usize> });
+record!(DualBornWeights {
+    kind: String, state: String, columns: Vec<[usize; 3]>,
+    term_graphs: Vec<usize>, family_columns: Vec<Vec<usize>>
+});
 record!(HelicityProjection {
-    born: String, families: Vec<String>, counterterms: String
+    born: String, families: Vec<String>, counterterms: String,
+    dual_born_weights: Option<DualBornWeights>
 });
 // The existing ColorCorrelator JSON is retained as column metadata. Its
 // operations are compiled into the dependency evaluator states at generation.
@@ -92,7 +97,8 @@ record!(DirectedHistory {
 record!(DirectedProjection {
     kind: String, convention: String, color_legs: Vec<(usize, i32)>,
     histories: Vec<DirectedHistory>, born: String, families: Vec<String>,
-    postprocess: String, counterterms: String, assemble: String, sum_order_values: String
+    postprocess: String, counterterms: String, assemble: String, sum_order_values: String,
+    dual_born_weights: Option<DualBornWeights>
 });
 record!(SpinProjection {
     legs: Vec<usize>, helicities: Vec<Vec<i32>>, phases: Vec<String>,
@@ -120,8 +126,64 @@ record!(LoopRuntimePlan {
     helicity_projection: Option<HelicityProjection>, color_projection: Option<ColorProjection>,
     born_color_components: Option<BornColorComponents>,
     directed_projection: Option<DirectedProjection>, spin_projections: Option<Vec<SpinProjection>>,
-    admitted_flavor_members: Option<Vec<AdmittedFlavorMember>>
+    admitted_flavor_members: Option<Vec<AdmittedFlavorMember>>,
+    dual_born_weights: Option<DualBornWeights>
 });
+
+impl DualBornWeights {
+    fn validate(
+        &self,
+        directions: usize,
+        born_width: usize,
+        loop_widths: &[usize],
+        sectors: usize,
+        families: &[Family],
+        shape: &mut impl FnMut(&str, usize, usize) -> RusticolResult<()>,
+    ) -> RusticolResult<()> {
+        require(
+            self.kind == "exact-dual-born-v1",
+            "unsupported dual Born weight schedule",
+        )?;
+        require(
+            !self.columns.is_empty()
+                && unique(&self.columns)
+                && !self.term_graphs.is_empty()
+                && indices(&self.term_graphs, loop_widths.len())
+                && self.family_columns.len() == families.len(),
+            "invalid dual Born weight column/family layout",
+        )?;
+        for (graph, &width) in loop_widths.iter().enumerate() {
+            require(
+                self.term_graphs.iter().filter(|&&g| g == graph).count() <= width,
+                "dual Born term count exceeds graph outputs",
+            )?;
+        }
+        require(
+            self.columns.iter().all(|&[direction, sector, term]| {
+                direction < directions && sector < sectors && term < self.term_graphs.len()
+            }),
+            "dual Born weight key out of range",
+        )?;
+        shape(&self.state, born_width, self.columns.len())?;
+        for (family, selected) in families.iter().zip(&self.family_columns) {
+            let expected = self
+                .columns
+                .iter()
+                .enumerate()
+                .filter_map(|(column, &[_, sector, term])| {
+                    (family.sector_indices.contains(&sector)
+                        && family.graph_indices.contains(&self.term_graphs[term]))
+                    .then_some(column)
+                })
+                .collect::<Vec<_>>();
+            require(
+                *selected == expected,
+                "dual Born family selection differs from exact keys",
+            )?;
+        }
+        Ok(())
+    }
+}
 
 impl LoopRuntimePlan {
     pub fn directed_projections(&self) -> impl Iterator<Item = (&DirectedProjection, usize)> {
@@ -613,6 +675,9 @@ impl LoopRuntimePlan {
         let h = self.helicities.len();
         let b = self.order_layout.born.len();
         let v = self.order_layout.r#virtual.len();
+        if let Some(weights) = &self.dual_born_weights {
+            weights.validate(1, born_width, &loop_widths, v, &self.families, &mut shape)?;
+        }
         if let Some(classes) = &self.spin_projections {
             let ordinary = self
                 .directed_projection
@@ -699,6 +764,16 @@ impl LoopRuntimePlan {
             }
         }
         for (projection, projection_h) in self.directed_projections() {
+            if let Some(weights) = &projection.dual_born_weights {
+                weights.validate(
+                    product(2, projection.histories.len())?,
+                    born_width,
+                    &loop_widths,
+                    v,
+                    &self.families,
+                    &mut shape,
+                )?;
+            }
             require(
                 projection.kind == "directed-complex"
                     && projection.convention == "su3-literal-tau-physical-charge-all-outgoing-v1"
@@ -853,6 +928,16 @@ impl LoopRuntimePlan {
             )?;
         }
         if let Some(projection) = &self.helicity_projection {
+            if let Some(weights) = &projection.dual_born_weights {
+                weights.validate(
+                    components,
+                    born_width,
+                    &loop_widths,
+                    v,
+                    &self.families,
+                    &mut shape,
+                )?;
+            }
             require(
                 projection.families.len() == self.families.len(),
                 "helicity family count differs",
@@ -927,13 +1012,32 @@ impl LoopRuntimePlan {
             let loops = sum(family.graph_indices.iter().map(|&i| loop_widths[i]))?;
             shape(
                 &family.projector_state,
-                product(h, sum([born_width, loops].into_iter())?)?,
+                product(
+                    h,
+                    sum([
+                        self.dual_born_weights
+                            .as_ref()
+                            .map_or(born_width, |w| w.family_columns[family_index].len()),
+                        loops,
+                    ]
+                    .into_iter())?,
+                )?,
                 product(family.sector_indices.len(), family.powers.len())?,
             )?;
             for (projection, projection_h) in self.directed_projections() {
                 shape(
                     &projection.families[family_index],
-                    product(projection_h, sum([born_width, loops].into_iter())?)?,
+                    product(
+                        projection_h,
+                        sum([
+                            projection
+                                .dual_born_weights
+                                .as_ref()
+                                .map_or(born_width, |w| w.family_columns[family_index].len()),
+                            loops,
+                        ]
+                        .into_iter())?,
+                    )?,
                     product(
                         product(2, projection.histories.len())?,
                         product(family.sector_indices.len(), family.powers.len())?,
@@ -943,7 +1047,14 @@ impl LoopRuntimePlan {
             if let Some(projection) = &self.helicity_projection {
                 shape(
                     &projection.families[family_index],
-                    sum([born_width, loops].into_iter())?,
+                    sum([
+                        projection
+                            .dual_born_weights
+                            .as_ref()
+                            .map_or(born_width, |w| w.family_columns[family_index].len()),
+                        loops,
+                    ]
+                    .into_iter())?,
                     product(
                         components,
                         product(family.sector_indices.len(), family.powers.len())?,

@@ -20,6 +20,7 @@ class PreparedDirectedFamily:
     state: bytes
     inputs: int
     outputs: int
+    weight_columns: tuple[int, ...]
 
     def bind(self, bare):
         return bind_family_projector(
@@ -40,6 +41,7 @@ class PreparedDirectedBare:
     helicities: tuple
     color_legs: tuple
     born_state: bytes
+    weight_plan: Any
     families: tuple[PreparedDirectedFamily, ...]
     postprocess_state: bytes
     channels: tuple
@@ -140,15 +142,22 @@ def prepare_directed_bare(bare, histories, *, spin_layout=None):
             )
         )
     born_state = bare._born_projection_state(born_metrics, **helicity_options)
+    from .dual_weights import family_weight_projection_state, prepare_dual_born_weights
+
+    weight_plan = prepare_dual_born_weights(bare, loop_metrics)
     families = tuple(
         PreparedDirectedFamily(
-            *bare._family_projection_state(
+            *family_weight_projection_state(
+                bare,
+                weight_plan,
                 family.graph_indices,
                 family.powers,
                 family.sector_indices,
-                metrics=loop_metrics,
                 **helicity_options,
-            )
+            ),
+            weight_plan.family_columns(
+                bare, family.graph_indices, family.sector_indices
+            ),
         )
         for family in bare.families
     )
@@ -198,6 +207,7 @@ def prepare_directed_bare(bare, histories, *, spin_layout=None):
         tuple(helicities),
         color_legs,
         born_state,
+        weight_plan,
         families,
         postprocess_state,
         channels,

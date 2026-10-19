@@ -310,6 +310,7 @@ struct FamilyWorkspace<B: LoopBackend> {
 struct HelicityWorkspace<B: LoopBackend> {
     born: B::Evaluator,
     counterterms: B::Evaluator,
+    dual_born_weights: Option<B::Evaluator>,
 }
 
 struct SourceWorkspace<B: LoopBackend> {
@@ -320,6 +321,7 @@ struct SourceWorkspace<B: LoopBackend> {
 
 struct DirectedWorkspace<B: LoopBackend> {
     born: B::Evaluator,
+    dual_born_weights: Option<B::Evaluator>,
     postprocess: B::Evaluator,
     counterterms: B::Evaluator,
     assemble: B::Evaluator,
@@ -339,6 +341,7 @@ pub struct LoopExecutor<B: LoopBackend> {
     schedules: Vec<B::Schedule>,
     families: Vec<FamilyWorkspace<B>>,
     bare: BTreeMap<String, B::Evaluator>,
+    dual_born_weights: Option<B::Evaluator>,
     model: BTreeMap<String, B::Evaluator>,
     counterterms: Vec<Option<B::Evaluator>>,
     fields: Vec<Option<B::Evaluator>>,
@@ -517,12 +520,22 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 Ok::<_, RusticolError>(HelicityWorkspace {
                     born: eval(&projection.born)?,
                     counterterms: eval(&projection.counterterms)?,
+                    dual_born_weights: projection
+                        .dual_born_weights
+                        .as_ref()
+                        .map(|w| eval(&w.state))
+                        .transpose()?,
                 })
             })
             .transpose()?;
         let bind_directed = |projection: &crate::loop_runtime::DirectedProjection| {
             Ok::<_, RusticolError>(DirectedWorkspace {
                 born: eval(&projection.born)?,
+                dual_born_weights: projection
+                    .dual_born_weights
+                    .as_ref()
+                    .map(|w| eval(&w.state))
+                    .transpose()?,
                 postprocess: eval(&projection.postprocess)?,
                 counterterms: eval(&projection.counterterms)?,
                 assemble: eval(&projection.assemble)?,
@@ -549,12 +562,18 @@ impl<B: LoopBackend> LoopExecutor<B> {
                 })
             })
             .collect::<RusticolResult<_>>()?;
+        let dual_born_weights = plan
+            .dual_born_weights
+            .as_ref()
+            .map(|w| eval(&w.state))
+            .transpose()?;
         Ok(Self {
             loaded,
             backend,
             schedules,
             families,
             bare,
+            dual_born_weights,
             model,
             counterterms,
             fields,
@@ -1053,11 +1072,70 @@ impl<B: LoopBackend> LoopExecutor<B> {
             &mut failures,
         )?;
         let sector_count = plan.order_layout.r#virtual.len();
+        let weight_plan = if directed {
+            if let Some(index) = spin_index {
+                plan.spin_projections.as_ref().expect("checked spin class")[index]
+                    .directed
+                    .dual_born_weights
+                    .as_ref()
+            } else {
+                plan.directed_projection
+                    .as_ref()
+                    .expect("checked directed kernels")
+                    .dual_born_weights
+                    .as_ref()
+            }
+        } else if resolved {
+            plan.helicity_projection
+                .as_ref()
+                .expect("checked helicity kernels")
+                .dual_born_weights
+                .as_ref()
+        } else {
+            plan.dual_born_weights.as_ref()
+        };
+        let weight_evaluator = if directed {
+            directed_workspace
+                .as_mut()
+                .expect("checked directed kernels")
+                .dual_born_weights
+                .as_mut()
+        } else if resolved {
+            self.helicity
+                .as_mut()
+                .expect("checked helicity kernels")
+                .dual_born_weights
+                .as_mut()
+        } else {
+            self.dual_born_weights.as_mut()
+        };
+        let dual_weights = weight_evaluator
+            .map(|evaluator| B::evaluate(evaluator, &born_amplitudes))
+            .transpose()?;
+        if let Some(weights) = &dual_weights {
+            check_finite::<B>(
+                weights,
+                "dual Born weights",
+                Some(helicities),
+                None,
+                &mut failures,
+            )?;
+        }
         let mut integrated = Vec::new();
         let mut rational_integrated = Vec::new();
         let mut statuses = vec![Vec::new(); projection_points];
-        for (family, workspace) in plan.families.iter().zip(&mut self.families) {
-            let mut parts = vec![&born_amplitudes];
+        for (family_index, (family, workspace)) in
+            plan.families.iter().zip(&mut self.families).enumerate()
+        {
+            let selected = match (&dual_weights, weight_plan) {
+                (Some(weights), Some(plan)) => Some(B::select(
+                    weights,
+                    plan.family_columns[family_index].clone(),
+                )?),
+                (None, None) => None,
+                _ => return Err(invalid("dual Born weight workspace differs from its plan").into()),
+            };
+            let mut parts = vec![selected.as_ref().unwrap_or(&born_amplitudes)];
             parts.extend(family.graph_indices.iter().map(|&i| &loop_outputs[i]));
             let projection = B::concat(&parts)?;
             let projection = B::reshape(

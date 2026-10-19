@@ -212,6 +212,19 @@ def write_loop_pacbin(
         )
         return {"kind": "source_columns", "columns": columns}
 
+    def dual_weights(value, selections):
+        return {
+            "kind": "exact-dual-born-v1",
+            "state": state(value.state),
+            "columns": value.columns,
+            "term_graphs": [
+                index
+                for index, terms in enumerate(bare.loop_reduction_powers)
+                for _ in terms
+            ],
+            "family_columns": selections,
+        }
+
     data = {
         "schema": 3,
         "r2_strategy": program.r2_strategy,
@@ -245,6 +258,10 @@ def write_loop_pacbin(
         "model_evaluators": {
             name: state(value) for name, value in prepared.evaluator_states
         },
+        "dual_born_weights": dual_weights(
+            bare.weight_plan,
+            [dict(f.metadata)["weight_columns"] for f in prepared.bare.families],
+        ),
     }
     if flavor_members:
         data["admitted_flavor_members"] = [
@@ -296,20 +313,29 @@ def write_loop_pacbin(
             _record_name="helicity_born_projector",
         )
         family_projectors = []
+        from .dual_weights import prepare_dual_born_weights
+
+        resolved_weights = prepare_dual_born_weights(
+            bare, None if components is None else components.mask_bra(bare.loop_metric)
+        )
+        selections = []
         for family in prepared.bare.families:
             metadata = dict(family.metadata)
             name = f"helicity_family_projector_{metadata['index']}"
-            bare._compile_family_projection(
+            bare._compile_weighted_family_projection(
                 metadata["graph_indices"],
                 metadata["powers"],
                 metadata["sector_indices"],
-                metrics=None
-                if components is None
-                else components.mask_bra(bare.loop_metric),
+                weights=resolved_weights,
                 helicities=bare.helicities[:1],
                 _record_name=name,
             )
             family_projectors.append(state(bare._evaluator_states[name]))
+            selections.append(
+                resolved_weights.family_columns(
+                    bare, metadata["graph_indices"], metadata["sector_indices"]
+                )
+            )
         program._make_projector(
             bare.helicities[:1],
             color_components=components,
@@ -319,6 +345,7 @@ def write_loop_pacbin(
             "born": state(bare._evaluator_states["helicity_born_projector"]),
             "families": family_projectors,
             "counterterms": state(program._evaluator_states["helicity_projector"]),
+            "dual_born_weights": dual_weights(resolved_weights, selections),
         }
         if components is not None:
             data["born_color_components"] = components.as_dict()
@@ -348,6 +375,10 @@ def write_loop_pacbin(
                 "counterterms": state(value.counterterm_state),
                 "assemble": state(value.assembly_state),
                 "sum_order_values": state(value.sum_order_state),
+                "dual_born_weights": dual_weights(
+                    value.bare.weight_plan,
+                    [f.weight_columns for f in value.bare.families],
+                ),
             }
 
         data["directed_projection"] = directed_data(directed)
@@ -360,7 +391,8 @@ def write_loop_pacbin(
                         state(phase) for phase in item.bare.spin_layout.phase_states
                     ],
                     "source_contracts": [
-                        source.to_json_dict() for source in item.bare.spin_layout.contracts
+                        source.to_json_dict()
+                        for source in item.bare.spin_layout.contracts
                     ],
                     "directed": directed_data(item),
                 }
@@ -622,6 +654,10 @@ class PortableLoopPlan:
 
         for name, reference in data["bare_evaluators"].items():
             setattr(bare, name, evaluator(reference))
+        weights = data.get("dual_born_weights")
+        bare.dual_born_weights = (
+            None if weights is None else evaluator(weights["state"])
+        )
         born_widths = tuple(
             len(data["schedules"][i]["output_slots"]) for i in data["born"]["schedules"]
         )
@@ -630,10 +666,15 @@ class PortableLoopPlan:
             for i in data["loops"]["schedules"]
         )
         bare.families = []
-        for item in data["families"]:
+        for family_index, item in enumerate(data["families"]):
+            columns = (
+                ()
+                if weights is None
+                else tuple(weights["family_columns"][family_index])
+            )
             shape = family_projector_shape(
                 len(bare.helicities),
-                born_widths,
+                born_widths if weights is None else (len(columns),),
                 loop_widths,
                 item["graph_indices"],
                 len(item["sector_indices"]),
@@ -645,6 +686,7 @@ class PortableLoopPlan:
                     graph_indices=tuple(item["graph_indices"]),
                     sector_indices=tuple(item["sector_indices"]),
                     powers=tuple(map(tuple, item["powers"])),
+                    weight_columns=columns,
                     kinematics=SimpleNamespace(
                         propagators=item["propagators"],
                         on_shell_bindings=tuple(
