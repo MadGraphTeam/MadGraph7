@@ -19,6 +19,24 @@ module rusticol_virtual
     integer(c_int32_t) :: resolved=0
     type(virtual_shape) :: axes
   end type
+  type, bind(C), public :: virtual_correlated_shape
+    integer(c_size_t) :: histories=0, born_orders=0, virtual_orders=0, epsilon_count=0
+  end type
+  type, bind(C), public :: virtual_correlated_result_shape
+    integer(c_size_t) :: requested_points=0, successful_points=0, born_values=0, virtual_values=0
+    type(virtual_correlated_shape) :: axes
+  end type
+  type, bind(C) :: complex_pair
+    real(c_double) :: real, imag
+  end type
+  type, public :: virtual_correlated_evaluation
+    type(virtual_correlated_result_shape) :: shape
+    complex(c_double), allocatable :: born(:,:,:) ! order, history, point
+    complex(c_double), allocatable :: virtual_values(:,:,:,:) ! epsilon, order, history, point
+    integer(c_int64_t), allocatable :: requested_ids(:), successful_ids(:)
+    integer(c_int32_t), allocatable :: statuses(:)
+    character(:), allocatable :: diagnostics_json, histories_json
+  end type
   type, bind(C) :: c_batch_request
     type(c_ptr) :: momenta
     integer(c_size_t) :: momentum_count, point_count
@@ -59,6 +77,8 @@ module rusticol_virtual
     procedure :: capabilities_json
     procedure :: update_parameters
     procedure :: evaluate
+    procedure :: evaluate_correlated
+    procedure :: correlation_histories_json
   end type
   public :: virtual_last_error
   interface
@@ -160,6 +180,84 @@ module rusticol_virtual
       import
       type(c_ptr), value :: handle, output
       integer(c_size_t), value :: capacity
+      integer(c_int) :: value
+    end function
+    function c_correlated_evaluate(handle, request, output) &
+        bind(C, name="rusticol_virtual_evaluate_correlated") result(value)
+      import
+      type(c_ptr), value :: handle
+      type(c_batch_request), intent(in) :: request
+      type(c_ptr) :: output
+      integer(c_int) :: value
+    end function
+    function c_correlated_shape(handle, output) bind(C, name="rusticol_virtual_correlated_result_shape") result(value)
+      import
+      type(c_ptr), value :: handle
+      type(virtual_correlated_result_shape) :: output
+      integer(c_int) :: value
+    end function
+    function c_correlated_free(handle) bind(C, name="rusticol_virtual_correlated_result_free") result(value)
+      import
+      type(c_ptr), value :: handle
+      integer(c_int) :: value
+    end function
+    function c_correlated_born(handle, output, capacity) &
+        bind(C, name="rusticol_virtual_correlated_result_copy_born") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_int) :: value
+    end function
+    function c_correlated_virtual(handle, output, capacity) &
+        bind(C, name="rusticol_virtual_correlated_result_copy_virtual") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_int) :: value
+    end function
+    function c_correlated_requested_ids(handle, output, capacity) &
+        bind(C, name="rusticol_virtual_correlated_result_copy_requested_ids") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_int) :: value
+    end function
+    function c_correlated_successful_ids(handle, output, capacity) &
+        bind(C, name="rusticol_virtual_correlated_result_copy_successful_ids") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_int) :: value
+    end function
+    function c_correlated_statuses(handle, output, capacity) &
+        bind(C, name="rusticol_virtual_correlated_result_copy_statuses") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_int) :: value
+    end function
+    function c_correlation_histories(handle, output, capacity, needed) &
+        bind(C, name="rusticol_virtual_correlation_histories_json") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_size_t) :: needed
+      integer(c_int) :: value
+    end function
+    function c_correlated_histories(handle, output, capacity, needed) &
+        bind(C, name="rusticol_virtual_correlated_result_histories_json") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_size_t) :: needed
+      integer(c_int) :: value
+    end function
+    function c_correlated_diagnostics(handle, output, capacity, needed) &
+        bind(C, name="rusticol_virtual_correlated_result_diagnostics_json") result(value)
+      import
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_size_t) :: needed
       integer(c_int) :: value
     end function
     function c_last_error_message() bind(C, name="rusticol_virtual_last_error_message") result(value)
@@ -328,6 +426,12 @@ contains
       status=c_capabilities_json(handle,c_null_ptr,0_c_size_t,n)
     case(3)
       status=c_result_diagnostics_json(handle,c_null_ptr,0_c_size_t,n)
+    case(4)
+      status=c_correlation_histories(handle,c_null_ptr,0_c_size_t,n)
+    case(5)
+      status=c_correlated_histories(handle,c_null_ptr,0_c_size_t,n)
+    case(6)
+      status=c_correlated_diagnostics(handle,c_null_ptr,0_c_size_t,n)
     end select
     if (status/=VIRTUAL_OK) return
     allocate(buffer(n))
@@ -338,6 +442,12 @@ contains
       status=c_capabilities_json(handle,c_loc(buffer),n,n)
     case(3)
       status=c_result_diagnostics_json(handle,c_loc(buffer),n,n)
+    case(4)
+      status=c_correlation_histories(handle,c_loc(buffer),n,n)
+    case(5)
+      status=c_correlated_histories(handle,c_loc(buffer),n,n)
+    case(6)
+      status=c_correlated_diagnostics(handle,c_loc(buffer),n,n)
     end select
     if (status/=VIRTUAL_OK) return
     deallocate(text)
@@ -362,6 +472,15 @@ contains
     character(:), allocatable :: text
     integer(c_int) :: status
     text=read_json(handle_of(self),2,status)
+    call finish(status,ierr)
+  end function
+
+  function correlation_histories_json(self,ierr) result(text)
+    class(virtual_runtime), intent(in) :: self
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable :: text
+    integer(c_int) :: status
+    text=read_json(handle_of(self),4,status)
     call finish(status,ierr)
   end function
 
@@ -479,6 +598,108 @@ contains
       call move_alloc(value%successful_ids,output%successful_ids)
       call move_alloc(value%statuses,output%statuses)
       call move_alloc(value%diagnostics_json,output%diagnostics_json)
+    end if
+    call finish(status,ierr,error_message=error_message)
+  end subroutine
+  subroutine evaluate_correlated(self,momenta,mu_r2,output,point_ids,r2_strategy,verification_json,ierr,error_message)
+    class(virtual_runtime), intent(inout) :: self
+    real(c_double), contiguous, target, intent(in) :: momenta(:,:,:), mu_r2(:)
+    type(virtual_correlated_evaluation), intent(out) :: output
+    integer(c_int64_t), contiguous, target, optional, intent(in) :: point_ids(:)
+    character(*), optional, intent(in) :: r2_strategy, verification_json
+    integer(c_int), optional, intent(out) :: ierr
+    character(:), allocatable, optional, intent(out) :: error_message
+    type(c_batch_request) :: request
+    type(c_ptr) :: result_handle, destination
+    type(virtual_shape) :: axes
+    type(virtual_correlated_evaluation), target :: value
+    character(c_char), allocatable, target :: strategy(:), verification(:)
+    integer(c_int) :: status, ignored
+    integer(c_size_t) :: points
+    type(virtual_correlated_shape) :: correlated_axes
+    type(complex_pair), allocatable, target :: born_pairs(:,:,:), virtual_pairs(:,:,:,:)
+    axes=self%shape(status)
+    if (status/=VIRTUAL_OK) then
+      call finish(status,ierr,error_message=error_message); return
+    end if
+    points=size(momenta,3,kind=c_size_t)
+    if (size(momenta,1,kind=c_size_t)/=4 .or. size(momenta,2,kind=c_size_t)/=axes%external_count) then
+      call finish(VIRTUAL_INVALID_ARGUMENT,ierr,'momenta must have shape (4,external_leg,point)',error_message)
+      return
+    end if
+    if (present(point_ids)) then
+      if (size(point_ids,kind=c_size_t)/=points) then
+        call finish(VIRTUAL_INVALID_ARGUMENT,ierr,'point_ids must have one entry per input point',error_message)
+        return
+      end if
+    end if
+    request%momenta=c_null_ptr; request%point_ids=c_null_ptr; request%mu_r2=c_null_ptr
+    request%momentum_count=size(momenta,kind=c_size_t); request%point_count=points
+    request%scale_count=size(mu_r2,kind=c_size_t)
+    if (size(momenta,kind=c_size_t)>0) request%momenta=c_loc(momenta)
+    if (present(point_ids)) then
+      if (size(point_ids,kind=c_size_t)>0) request%point_ids=c_loc(point_ids)
+    end if
+    if (size(mu_r2,kind=c_size_t)>0) request%mu_r2=c_loc(mu_r2)
+    request%resolved=0
+    request%r2_strategy=c_null_ptr; request%verification_json=c_null_ptr
+    if (present(r2_strategy)) then
+      strategy=cstring(r2_strategy); request%r2_strategy=c_loc(strategy)
+    end if
+    if (present(verification_json)) then
+      verification=cstring(verification_json); request%verification_json=c_loc(verification)
+    end if
+    status=c_correlated_evaluate(handle_of(self),request,result_handle)
+    if (status/=VIRTUAL_OK) then
+      call finish(status,ierr,error_message=error_message); return
+    end if
+    status=c_correlated_shape(result_handle,value%shape)
+    if (status==VIRTUAL_OK) then
+      correlated_axes=value%shape%axes; points=value%shape%successful_points
+      allocate(born_pairs(correlated_axes%born_orders,correlated_axes%histories,points))
+      allocate(virtual_pairs(correlated_axes%epsilon_count,correlated_axes%virtual_orders, &
+          correlated_axes%histories,points))
+      allocate(value%requested_ids(value%shape%requested_points),value%successful_ids(points))
+      allocate(value%statuses(value%shape%requested_points))
+      if (status==VIRTUAL_OK) then
+        destination=c_null_ptr
+        if (size(born_pairs,kind=c_size_t)>0) destination=c_loc(born_pairs)
+        status=c_correlated_born(result_handle,destination,size(born_pairs,kind=c_size_t))
+      end if
+      if (status==VIRTUAL_OK) then
+        destination=c_null_ptr
+        if (size(virtual_pairs,kind=c_size_t)>0) destination=c_loc(virtual_pairs)
+        status=c_correlated_virtual(result_handle,destination,size(virtual_pairs,kind=c_size_t))
+      end if
+      if (status==VIRTUAL_OK) then
+        destination=c_null_ptr
+        if (size(value%requested_ids,kind=c_size_t)>0) destination=c_loc(value%requested_ids)
+        status=c_correlated_requested_ids(result_handle,destination,size(value%requested_ids,kind=c_size_t))
+      end if
+      if (status==VIRTUAL_OK) then
+        destination=c_null_ptr
+        if (size(value%successful_ids,kind=c_size_t)>0) destination=c_loc(value%successful_ids)
+        status=c_correlated_successful_ids(result_handle,destination,size(value%successful_ids,kind=c_size_t))
+      end if
+      if (status==VIRTUAL_OK) then
+        destination=c_null_ptr
+        if (size(value%statuses,kind=c_size_t)>0) destination=c_loc(value%statuses)
+        status=c_correlated_statuses(result_handle,destination,size(value%statuses,kind=c_size_t))
+      end if
+      if (status==VIRTUAL_OK) value%diagnostics_json=read_json(result_handle,6,status)
+      if (status==VIRTUAL_OK) value%histories_json=read_json(result_handle,5,status)
+    end if
+    ! Free regardless of copy/query failures; report the original function status.
+    ignored=c_correlated_free(result_handle)
+    if (status==VIRTUAL_OK) then
+      output%shape=value%shape
+      output%born=cmplx(born_pairs%real,born_pairs%imag,kind=c_double)
+      output%virtual_values=cmplx(virtual_pairs%real,virtual_pairs%imag,kind=c_double)
+      call move_alloc(value%requested_ids,output%requested_ids)
+      call move_alloc(value%successful_ids,output%successful_ids)
+      call move_alloc(value%statuses,output%statuses)
+      call move_alloc(value%diagnostics_json,output%diagnostics_json)
+      call move_alloc(value%histories_json,output%histories_json)
     end if
     call finish(status,ierr,error_message=error_message)
   end subroutine

@@ -12,7 +12,8 @@ JSON, atomic updates, strategy selection, clear/free, shape and metadata queries
 The metadata gives separate Born and virtual squared-order catalogues, their
 contributing order pairs, declared scheme, normalization, external states and
 actual capabilities. Each call evaluates one saved process; channels, flavour
-mappings, correlations and per-event coupling overrides are not exposed here.
+mappings and per-event coupling overrides are not exposed here. Saved directed
+colour histories use the separate complex operation below.
 No model or process names are used to infer support.
 
 The extension accepts standard `UMAMI_IN_MOMENTA` and its own namespaced keys:
@@ -116,3 +117,32 @@ artifact for a separate one-order control. These are correctness tests, not new
 benchmark timings. The same control accepts a saved LC gg plan and checks every
 signed component through the strided layout, inclusive reconstruction and
 whole-point failure/verification statuses.
+
+## Additive grouped complex operation
+
+`pyamplicol_umami_virtual_v1_evaluate_correlated` reuses the same handle, inputs,
+scale/policy options and offset/count/stride contract. `resolved` must be zero.
+It evaluates all saved full-colour physical-helicity histories in one native
+bulk call and accepts these separate output keys:
+
+| Output | Element type | Address |
+|---|---|---|
+| `PYAMPLICOL_UMAMI_V1_OUT_CORRELATED_BORN` | `rusticol_virtual_complex64` | `event + stride * (order + born_orders * history)` |
+| `PYAMPLICOL_UMAMI_V1_OUT_CORRELATED_VIRTUAL` | `rusticol_virtual_complex64` | `event + stride * (order + virtual_orders * (history + J * epsilon))` |
+| `PYAMPLICOL_UMAMI_V1_OUT_STATUS` | `uint32_t` | `event` |
+
+`J` is the saved history count. Ordered history IDs come from
+`rusticol_virtual_correlation_histories_json`; Born and virtual order catalogues
+remain independent. Complex capacities count pairs, each with explicit `real`
+and `imag` doubles. No positive-weight interpretation or implicit history sum is
+introduced. Ordinary real keys are rejected by this operation, and complex keys
+are rejected by ordinary evaluation.
+
+The optional result is a `rusticol_virtual_correlated_result`, freed with
+`rusticol_virtual_correlated_result_free`. Failure statuses, exact input rescue,
+untouched failed/outside-slice numerical slots and preflight-before-write rules
+are shared with ordinary transport. `examples/client_correlated.c` validates
+both complex components, nonzero offsets, sparse maximum uint64 IDs, failed
+rows, padding sentinels and independent owned diagnostics against the same
+standalone result. Spin and resolved/projected-colour correlation composition
+remain separate capabilities.

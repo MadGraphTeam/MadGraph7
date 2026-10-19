@@ -25,7 +25,9 @@ enum pyamplicol_umami_virtual_v1_input_key {
 enum pyamplicol_umami_virtual_v1_output_key {
     PYAMPLICOL_UMAMI_V1_OUT_BORN = 0x50410001, /* double, all Born squared orders */
     PYAMPLICOL_UMAMI_V1_OUT_VIRTUAL = 0x50410002, /* double, all virtual orders/poles */
-    PYAMPLICOL_UMAMI_V1_OUT_STATUS = 0x50410003 /* uint32_t[stride], REQUIRED */
+    PYAMPLICOL_UMAMI_V1_OUT_STATUS = 0x50410003, /* uint32_t[stride], REQUIRED */
+    PYAMPLICOL_UMAMI_V1_OUT_CORRELATED_BORN = 0x50410004, /* complex pair, history x Born order */
+    PYAMPLICOL_UMAMI_V1_OUT_CORRELATED_VIRTUAL = 0x50410005 /* complex pair, history x virtual order x poles */
 };
 typedef struct {
     uint32_t resolved; /* 0 inclusive; 1 all saved helicities/colour components */
@@ -79,6 +81,25 @@ UmamiStatus pyamplicol_umami_virtual_v1_evaluate(
     const size_t *output_capacities,
     const pyamplicol_umami_virtual_v1_options *options,
     rusticol_virtual_result **diagnostic_result);
+/* Additive complex grouped operation, with the same input and slice rules.
+ * Only *_CORRELATED_BORN/VIRTUAL and STATUS output keys are accepted.
+ * Each complex element is rusticol_virtual_complex64 (real,imag), never a
+ * probability. Query ordered history IDs with the standalone SDK.
+ * Born: out[event + stride*(order + born_orders*history)].
+ * Loop: out[event + stride*(order + virtual_orders*(history + J*epsilon))].
+ * All saved histories are evaluated in one native call. options.resolved=0.
+ * Empty/failed/outside-slice slots obey the same rules as ordinary evaluation.
+ * The optional owned diagnostic result uses the correlated SDK free function.
+ */
+UmamiStatus pyamplicol_umami_virtual_v1_supported_correlated_outputs(const int **keys, size_t *count);
+UmamiStatus pyamplicol_umami_virtual_v1_evaluate_correlated(
+    rusticol_virtual_handle *handle, size_t count, size_t stride, size_t offset,
+    size_t input_count, const int *input_keys, const void *const *inputs,
+    const size_t *input_capacities,
+    size_t output_count, const int *output_keys, void *const *outputs,
+    const size_t *output_capacities,
+    const pyamplicol_umami_virtual_v1_options *options,
+    rusticol_virtual_correlated_result **diagnostic_result);
 #ifdef __cplusplus
 }
 #endif

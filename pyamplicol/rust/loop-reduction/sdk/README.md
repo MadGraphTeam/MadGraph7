@@ -40,7 +40,8 @@ cc -std=c11 examples/client.c -Iinclude /path/to/librusticol_capi.a \
 Those system libraries describe this tested host; use the installed SDK link
 metadata on another platform. The archive includes the required GMP/MPFR code
 and the existing Symbolica/NinjaRS/master providers. It does not link PyO3 or
-require a Python interpreter. Correlation and mapped-process calls remain
+require a Python interpreter. Saved full-colour directed histories are available
+through the additive grouped complex interface below; mapped-process calls remain
 unavailable. A prepared, explicitly continued source-colour plan can be loaded
 with LC/NLC metadata; generation requires its declared model continuation.
 
@@ -152,3 +153,45 @@ The [versioned pyAmpliCol UMAMI virtual extension](umami/README.md) transports
 these same outputs using UMAMI's bulk offset/count/stride layout. Its separate
 keys expose every squared order and Laurent coefficient, with mandatory lane
 statuses and no probability or finite-only tree fallback.
+
+## Grouped complex colour correlations
+
+`evaluate_correlated` evaluates every saved directed colour history in one native
+call. It returns a separate `CorrelatedEvaluation`, leaving ordinary real-valued
+ABI structures and scalar semantics unchanged. Its Born axes are
+`[successful_point, history, born_order]`; virtual axes are
+`[successful_point, history, virtual_order, epsilon]`. Histories and squared orders
+are never summed implicitly. Query ordered history IDs before interpreting this
+axis; the SDK query returns IDs, not a second convention for colour-leg labels.
+The native saved plan remains the authority for the exact ordered operations.
+
+The active scope is inclusive physical helicities, full colour and model-rule
+R2. Correlated resolved output, spin sources, LC/NLC composition and mappings
+remain unavailable. Capability inspection reports whether the artifact actually
+contains directed kernels. The same handle still supports ordinary evaluation.
+
+C uses the explicit pair `rusticol_virtual_complex64 { real, imag }` and a separate
+owned `rusticol_virtual_correlated_result`. Element counts refer to pairs. C++
+returns `std::complex<double>` vectors. The dependency-free Rust wrapper returns
+its existing `Complex64 { re, im }` values. Neither relies on a language complex
+ABI matching the C pair. Fortran `evaluate_correlated` returns
+`virtual_correlated_evaluation` with `complex(c_double)` arrays:
+
+| Array | Fortran dimensions |
+|---|---|
+| `born` | `(born_order, history, successful_point)` |
+| `virtual_values` | `(epsilon, virtual_order, history, successful_point)` |
+
+All wrappers preserve compact successful IDs, all-input statuses and owned
+history/diagnostic JSON. Explicit higher-precision verification uses the shared
+native coordinator and checks both separately integrated cross terms as well as
+complete outputs. No imaginary part is discarded. Result ownership survives
+runtime clear/free, and short C buffers remain untouched.
+
+`PYAMPLICOL_VIRTUAL_DIRECTED_ARTIFACT` runs the retained source control in
+`tests/correlated_runtime.rs`, including maximum uint64 IDs, empty/all-failed
+batches, complex swapped histories, ordinary identity reconstruction and subset
+AP60/AP80 rescue. `examples/client_correlated.{c,cpp,f90,rs}` exercise the
+standalone wrappers; the C client also validates UMAMI offset/stride transport,
+failed-row sentinels and short-buffer rejection. These are correctness controls,
+not benchmark timing measurements.

@@ -56,6 +56,42 @@ pub mod virtual_amplitudes {
         pub virtual_values: Vec<f64>,
         pub diagnostics_json: String,
     }
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct CorrelatedShape {
+        pub histories: usize,
+        pub born_orders: usize,
+        pub virtual_orders: usize,
+        pub epsilon_count: usize,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct CorrelatedResultShape {
+        pub requested_points: usize,
+        pub successful_points: usize,
+        pub born_values: usize,
+        pub virtual_values: usize,
+        pub axes: CorrelatedShape,
+    }
+    pub use super::Complex64;
+    /// Complex point/history/order/(epsilon) buffers; all saved histories remain
+    /// separate. JSON history IDs preserve the output axis order.
+    pub struct CorrelatedEvaluation {
+        pub shape: CorrelatedResultShape,
+        pub requested_point_ids: Vec<u64>,
+        pub successful_point_ids: Vec<u64>,
+        pub statuses: Vec<PointStatus>,
+        pub born: Vec<Complex64>,
+        pub virtual_values: Vec<Complex64>,
+        pub diagnostics_json: String,
+        pub histories_json: String,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy, Default)]
+    struct ComplexPair {
+        real: f64,
+        imag: f64,
+    }
     /// Exclusive runtime; it is neither Send nor Sync and cannot be cloned.
     pub struct Runtime {
         handle: NonNull<c_void>,
@@ -172,21 +208,7 @@ pub mod virtual_amplitudes {
             strategy: Option<&str>,
             verification_json: Option<&str>,
         ) -> Result<Evaluation> {
-            let expected = point_count
-                .checked_mul(self.shape.external_count)
-                .and_then(|n| n.checked_mul(4))
-                .ok_or_else(|| {
-                    Error::new(
-                        ErrorKind::SizeOverflow,
-                        "virtual momentum dimensions overflow",
-                    )
-                })?;
-            if momenta.len() != expected || point_ids.is_some_and(|ids| ids.len() != point_count) {
-                return Err(Error::new(
-                    ErrorKind::InvalidInput,
-                    "virtual point/momentum dimensions differ",
-                ));
-            }
+            self.validate_inputs(momenta, point_count, point_ids)?;
             let strategy = optional_cstring(strategy, "R2 strategy")?;
             let verification = optional_cstring(verification_json, "verification JSON")?;
             let request = ffi::BatchRequest {
@@ -209,6 +231,92 @@ pub mod virtual_amplitudes {
                 Error::new(
                     ErrorKind::InvalidResponse,
                     "virtual evaluation returned null",
+                )
+            })?);
+            result.copy()
+        }
+        fn validate_inputs(
+            &self,
+            momenta: &[f64],
+            point_count: usize,
+            point_ids: Option<&[u64]>,
+        ) -> Result<()> {
+            let expected = point_count
+                .checked_mul(self.shape.external_count)
+                .and_then(|n| n.checked_mul(4))
+                .ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::SizeOverflow,
+                        "virtual momentum dimensions overflow",
+                    )
+                })?;
+            if momenta.len() != expected || point_ids.is_some_and(|ids| ids.len() != point_count) {
+                return Err(Error::new(
+                    ErrorKind::InvalidInput,
+                    "virtual point/momentum dimensions differ",
+                ));
+            }
+            Ok(())
+        }
+        pub fn correlation_histories_json(&self) -> Result<String> {
+            read_string_checked(
+                |out, len, needed| unsafe {
+                    // SAFETY: shared helper owns the writable queried buffer.
+                    ffi::rusticol_virtual_correlation_histories_json(
+                        self.handle.as_ptr(),
+                        out,
+                        len,
+                        needed,
+                    )
+                },
+                check,
+            )
+        }
+        pub fn correlated_shape(&self) -> Result<CorrelatedShape> {
+            let mut value = CorrelatedShape::default();
+            // SAFETY: live handle and a writable ABI shape.
+            check(unsafe {
+                ffi::rusticol_virtual_correlated_shape(self.handle.as_ptr(), &mut value)
+            })?;
+            Ok(value)
+        }
+        /// One native grouped call; history IDs and both complex components survive.
+        pub fn evaluate_correlated(
+            &mut self,
+            momenta: &[f64],
+            point_count: usize,
+            point_ids: Option<&[u64]>,
+            mu_r2: &[f64],
+            strategy: Option<&str>,
+            verification_json: Option<&str>,
+        ) -> Result<CorrelatedEvaluation> {
+            self.validate_inputs(momenta, point_count, point_ids)?;
+            let strategy = optional_cstring(strategy, "R2 strategy")?;
+            let verification = optional_cstring(verification_json, "verification JSON")?;
+            let request = ffi::BatchRequest {
+                momenta: momenta.as_ptr(),
+                momentum_count: momenta.len(),
+                point_count,
+                point_ids: point_ids.map_or(ptr::null(), |ids| ids.as_ptr()),
+                mu_r2: mu_r2.as_ptr(),
+                scale_count: mu_r2.len(),
+                resolved: 0,
+                r2_strategy: optional_pointer(&strategy),
+                verification_json: optional_pointer(&verification),
+            };
+            let mut result = ptr::null_mut();
+            // SAFETY: inputs stay borrowed, output is initialized by the native call.
+            check(unsafe {
+                ffi::rusticol_virtual_evaluate_correlated(
+                    self.handle.as_ptr(),
+                    &request,
+                    &mut result,
+                )
+            })?;
+            let result = OwnedCorrelatedResult(NonNull::new(result).ok_or_else(|| {
+                Error::new(
+                    ErrorKind::InvalidResponse,
+                    "correlated evaluation returned null",
                 )
             })?);
             result.copy()
@@ -239,17 +347,7 @@ pub mod virtual_amplitudes {
                 // SAFETY: helper allocates len correctly typed writable elements.
                 unsafe { ffi::rusticol_virtual_result_copy_statuses(handle, out, len) })?
             .into_iter()
-            .map(|status| match status {
-                0 => Ok(PointStatus::Success),
-                1 => Ok(PointStatus::Verified),
-                2 => Ok(PointStatus::Rescued),
-                3 => Ok(PointStatus::Failed),
-                4 => Ok(PointStatus::AccuracyNotEstablished),
-                _ => Err(Error::new(
-                    ErrorKind::InvalidResponse,
-                    "unknown virtual point status",
-                )),
-            })
+            .map(point_status)
             .collect::<Result<Vec<_>>>()?;
             let born = copy_values(shape.born_values, |out, len|
                 // SAFETY: helper allocates len correctly typed writable elements.
@@ -280,6 +378,85 @@ pub mod virtual_amplitudes {
             unsafe {
                 ffi::rusticol_virtual_result_free(self.0.as_ptr());
             }
+        }
+    }
+    struct OwnedCorrelatedResult(NonNull<c_void>);
+    impl OwnedCorrelatedResult {
+        fn copy(&self) -> Result<CorrelatedEvaluation> {
+            let handle = self.0.as_ptr();
+            let mut shape = CorrelatedResultShape::default();
+            // SAFETY: owned live result with writable shape.
+            check(unsafe { ffi::rusticol_virtual_correlated_result_shape(handle, &mut shape) })?;
+            let requested_point_ids = copy_values(shape.requested_points, |out, len|
+                // SAFETY: helper allocates len correctly typed writable elements.
+                unsafe { ffi::rusticol_virtual_correlated_result_copy_requested_ids(handle, out, len) })?;
+            let successful_point_ids = copy_values(shape.successful_points, |out, len|
+                // SAFETY: helper allocates len correctly typed writable elements.
+                unsafe { ffi::rusticol_virtual_correlated_result_copy_successful_ids(handle, out, len) })?;
+            let statuses = copy_values(shape.requested_points, |out, len|
+                // SAFETY: helper allocates len correctly typed writable elements.
+                unsafe { ffi::rusticol_virtual_correlated_result_copy_statuses(handle, out, len) })?
+            .into_iter()
+            .map(point_status)
+            .collect::<Result<Vec<_>>>()?;
+            let born = copy_values(shape.born_values, |out, len|
+                // SAFETY: helper allocates len correctly typed writable elements.
+                unsafe { ffi::rusticol_virtual_correlated_result_copy_born(handle, out, len) })?;
+            let virtual_values = copy_values(shape.virtual_values, |out, len|
+                // SAFETY: helper allocates len correctly typed writable elements.
+                unsafe { ffi::rusticol_virtual_correlated_result_copy_virtual(handle, out, len) })?;
+            let born = born
+                .into_iter()
+                .map(|v: ComplexPair| Complex64::new(v.real, v.imag))
+                .collect();
+            let virtual_values = virtual_values
+                .into_iter()
+                .map(|v: ComplexPair| Complex64::new(v.real, v.imag))
+                .collect();
+            let histories_json = read_string_checked(
+                |out, len, needed| unsafe {
+                    // SAFETY: helper owns the queried string buffer, handle is live.
+                    ffi::rusticol_virtual_correlated_result_histories_json(handle, out, len, needed)
+                },
+                check,
+            )?;
+            let diagnostics_json = read_string_checked(
+                |out, len, needed|
+                // SAFETY: helper allocates the queried writable string buffer.
+                unsafe { ffi::rusticol_virtual_correlated_result_diagnostics_json(handle, out, len, needed) },
+                check,
+            )?;
+            Ok(CorrelatedEvaluation {
+                shape,
+                requested_point_ids,
+                successful_point_ids,
+                statuses,
+                born,
+                virtual_values,
+                diagnostics_json,
+                histories_json,
+            })
+        }
+    }
+    impl Drop for OwnedCorrelatedResult {
+        fn drop(&mut self) {
+            // SAFETY: evaluation copied values out; this is the sole C result owner.
+            unsafe {
+                ffi::rusticol_virtual_correlated_result_free(self.0.as_ptr());
+            }
+        }
+    }
+    fn point_status(status: u32) -> Result<PointStatus> {
+        match status {
+            0 => Ok(PointStatus::Success),
+            1 => Ok(PointStatus::Verified),
+            2 => Ok(PointStatus::Rescued),
+            3 => Ok(PointStatus::Failed),
+            4 => Ok(PointStatus::AccuracyNotEstablished),
+            _ => Err(Error::new(
+                ErrorKind::InvalidResponse,
+                "unknown virtual point status",
+            )),
         }
     }
     fn copy_values<T: Default + Clone>(
@@ -313,7 +490,10 @@ pub mod virtual_amplitudes {
         Err(Error::new(kind, message))
     }
     mod ffi {
-        use super::{c_char, c_int, c_void, ResultShape, Shape};
+        use super::{
+            c_char, c_int, c_void, ComplexPair, CorrelatedResultShape, CorrelatedShape,
+            ResultShape, Shape,
+        };
         #[repr(C)]
         pub(super) struct BatchRequest {
             pub momenta: *const f64,
@@ -327,6 +507,63 @@ pub mod virtual_amplitudes {
             pub verification_json: *const c_char,
         }
         extern "C" {
+            pub(super) fn rusticol_virtual_correlated_shape(
+                handle: *const c_void,
+                output: *mut CorrelatedShape,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_evaluate_correlated(
+                handle: *mut c_void,
+                request: *const BatchRequest,
+                output: *mut *mut c_void,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_correlated_result_free(handle: *mut c_void) -> c_int;
+            pub(super) fn rusticol_virtual_correlated_result_shape(
+                handle: *const c_void,
+                output: *mut CorrelatedResultShape,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_correlated_result_copy_born(
+                handle: *const c_void,
+                out: *mut ComplexPair,
+                len: usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_correlated_result_copy_virtual(
+                handle: *const c_void,
+                out: *mut ComplexPair,
+                len: usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_correlated_result_copy_requested_ids(
+                handle: *const c_void,
+                out: *mut u64,
+                len: usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_correlated_result_copy_successful_ids(
+                handle: *const c_void,
+                out: *mut u64,
+                len: usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_correlated_result_copy_statuses(
+                handle: *const c_void,
+                out: *mut u32,
+                len: usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_correlation_histories_json(
+                handle: *const c_void,
+                out: *mut c_char,
+                len: usize,
+                needed: *mut usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_correlated_result_histories_json(
+                handle: *const c_void,
+                out: *mut c_char,
+                len: usize,
+                needed: *mut usize,
+            ) -> c_int;
+            pub(super) fn rusticol_virtual_correlated_result_diagnostics_json(
+                handle: *const c_void,
+                out: *mut c_char,
+                len: usize,
+                needed: *mut usize,
+            ) -> c_int;
             pub(super) fn rusticol_virtual_abi_version() -> u32;
             pub(super) fn rusticol_virtual_last_error_message() -> *const c_char;
             pub(super) fn rusticol_virtual_open(
