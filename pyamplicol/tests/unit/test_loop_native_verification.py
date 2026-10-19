@@ -48,7 +48,9 @@ def test_exact_scale_subset_rescue_and_snapshot_updates(source_plan):
     ):
         assert all(
             ok
-            for _, ok in batch.take_rows([1]).agreement_rows(reference, "1e-8", "1e-9")
+            for _, ok in batch.take_rows([1], [0]).agreement_rows(
+                reference, "1e-8", "1e-9"
+            )
         )
     # The same cached higher owner must recompute changed/reverted exact inputs;
     # its own previous mutable snapshot must never supply stale overrides.
@@ -107,7 +109,8 @@ def test_verification_empty_all_failed_and_unattainable_output(source_plan, reso
             resolved=True,
         )
         h = len(json.loads(runtime.metadata_json())["helicities"])
-        assert accepted.result.point_ids == [91 * h + i for i in range(h)]
+        assert accepted.result.point_ids == [91]
+        assert accepted.result.born.row_ids == list(range(h))
         assert accepted.result.failures == []
         assert json.loads(accepted.diagnostics_json)[0]["status"] == "rescued"
 

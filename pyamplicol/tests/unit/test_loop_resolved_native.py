@@ -125,10 +125,11 @@ def test_native_sparse_point_ids_and_capability_boundary(resolved_artifact):
     data = json.loads(runtime.metadata_json())
     assert data["physics"]["resolved"] is True
     result = runtime.evaluate_resolved(points[:1], ["1000000"], point_ids=[91])
-    assert result.point_ids == list(range(91 * 16, 92 * 16))
+    assert result.point_ids == [91]
+    assert result.born.row_ids == list(range(16))
     assert all(
         lane == point_id and status == "success"
-        for point_id, statuses in zip(result.point_ids, result.statuses, strict=True)
+        for point_id, statuses in enumerate(result.statuses)
         for lane, status in statuses
     )
     assert data["plan"]["helicity_projection"]["born"]
@@ -219,7 +220,8 @@ def test_native_mixed_order_helicity_axes(mixed_plan):
     inclusive = runtime.evaluate(points, **options)
     resolved = runtime.evaluate(points, resolved=True, **options)
     helicities = len(plan["helicities"])
-    assert resolved.point_ids == list(range(len(points) * helicities))
+    assert resolved.point_ids == list(range(len(points)))
+    assert resolved.born.row_ids == list(range(len(points) * helicities))
     with localcontext() as context:
         context.prec = 70
         for single, summed in zip(
@@ -259,7 +261,7 @@ def test_resolved_failure_names_physical_point_and_helicity(resolved_artifact):
         arithmetic="double",
         precision=None,
         evaluate_partial=lambda *args, **kwargs: SimpleNamespace(
-            point_ids=list(range(32)),
+            point_ids=list(range(2)),
             r2_strategy="model",
             failures=[],
             statuses=statuses,

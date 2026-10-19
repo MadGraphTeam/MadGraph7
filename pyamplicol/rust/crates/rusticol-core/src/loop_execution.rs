@@ -153,10 +153,14 @@ impl LoopInputs {
 /// and external fields. Values remain in their requested native arithmetic.
 pub struct CompleteLoopResult<T> {
     pub requested_point_ids: Vec<u64>,
+    /// Successful original physical IDs, one per point in both inclusive and
+    /// resolved output. Numerical batches use dense rows in point/helicity/colour
+    /// order; opaque caller IDs never encode those additional axes.
     pub point_ids: Vec<u64>,
     pub born: T,
     pub components: [T; 6],
     pub totals: T,
+    /// Per-numerical-row reducer statuses, labelled by the final dense row ID.
     pub statuses: Vec<Vec<(u64, String)>>,
     pub r2_strategy: String,
     pub source_revision: Option<u64>,
@@ -525,12 +529,71 @@ impl<B: LoopBackend> LoopExecutor<B> {
             (None, None) => None,
         };
         let requested = input.point_ids.clone();
+        if requested.iter().collect::<BTreeSet<_>>().len() != requested.len() {
+            return Err(invalid("loop original point identities are not unique"));
+        }
+        // Use buffer ordinals for every scheduled PH/PHC/order channel. Original
+        // u64 identities are opaque and may use their complete representable
+        // range, independently of the number of generated channels.
+        input.point_ids = dense_ids(requested.len())?;
+        let rows_per_point = if resolved {
+            self.loaded.plan().resolved_rows_per_point()?
+        } else {
+            1
+        };
         let momentum_width = count(self.loaded.plan().state_legs.len(), 4)?;
         let mut failures = Vec::new();
         loop {
             match self.evaluate_inner(input.clone(), snapshot.clone(), resolved) {
                 Ok(mut result) => {
                     failures.append(&mut result.failures);
+                    let original_id = |ordinal: u64| {
+                        usize::try_from(ordinal)
+                            .ok()
+                            .and_then(|index| requested.get(index))
+                            .copied()
+                            .ok_or_else(|| invalid("foreign internal loop point identity"))
+                    };
+                    for failure in &mut failures {
+                        failure.point_id = original_id(failure.point_id)?;
+                    }
+                    let rows = result.point_ids.len();
+                    if rows % rows_per_point != 0 || result.statuses.len() != rows {
+                        return Err(invalid("completed loop point/row layout differs"));
+                    }
+                    let physical_ids = result
+                        .point_ids
+                        .chunks(rows_per_point)
+                        .map(|group| {
+                            let ordinal = group[0] / rows_per_point as u64;
+                            for (row, &id) in group.iter().enumerate() {
+                                if id != lane_id(ordinal, rows_per_point, row)? {
+                                    return Err(invalid("completed loop channel order differs"));
+                                }
+                            }
+                            original_id(ordinal)
+                        })
+                        .collect::<RusticolResult<Vec<_>>>()?;
+                    let row_ids = dense_ids(rows)?;
+                    let dense = |batch: &B::Batch| {
+                        if B::rows(batch) != rows
+                            || B::row_ids(batch) != result.point_ids.as_slice()
+                        {
+                            return Err(invalid("completed loop numerical rows differ"));
+                        }
+                        B::reshape(batch, rows, B::columns(batch), row_ids.clone())
+                    };
+                    result.born = dense(&result.born)?;
+                    for component in &mut result.components {
+                        *component = dense(component)?;
+                    }
+                    result.totals = dense(&result.totals)?;
+                    for (&id, statuses) in row_ids.iter().zip(&mut result.statuses) {
+                        for (status_id, _) in statuses {
+                            *status_id = id;
+                        }
+                    }
+                    result.point_ids = physical_ids;
                     result.requested_point_ids = requested;
                     result.failures = failures;
                     return Ok(result);
@@ -1147,6 +1210,12 @@ impl<B: LoopBackend> LoopExecutor<B> {
             failures,
         })
     }
+}
+
+fn dense_ids(rows: usize) -> RusticolResult<Vec<u64>> {
+    (0..rows)
+        .map(|row| u64::try_from(row).map_err(|_| invalid("loop row dimension exceeds u64")))
+        .collect()
 }
 
 /// Keep successful rows without numeric placeholders. Callers aggregate failures

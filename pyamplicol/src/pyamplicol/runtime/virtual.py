@@ -531,7 +531,7 @@ class VirtualRuntimeBackend:
             color_count = len(self._color_ids)
             count = len(points) * (helicity_count * color_count if resolved else 1)
             if (
-                list(result.point_ids) != list(range(count))
+                list(result.point_ids) != list(range(len(points)))
                 or result.r2_strategy != "model"
             ):
                 raise EvaluationError(

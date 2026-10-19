@@ -121,40 +121,31 @@ fn packet(result: &Complete, rows_per_point: usize) -> RusticolResult<Batch> {
     batches.extend(result.components.iter().map(AsRef::as_ref));
     batches.push(result.totals.as_ref());
     let joined = Batch::concat_columns(&batches).map_err(execution)?;
-    if joined.rows() % rows_per_point != 0 {
-        return Err(invalid("incomplete resolved point"));
-    }
-    let mut ids = Vec::new();
-    for group in joined.ids().chunks(rows_per_point) {
-        let point = group[0] / rows_per_point as u64;
-        if group
+    if rows_per_point == 0
+        || result.point_ids.len().checked_mul(rows_per_point) != Some(joined.rows())
+        || result.statuses.len() != joined.rows()
+        || joined
+            .ids()
             .iter()
             .enumerate()
-            .any(|(h, &id)| id != point * rows_per_point as u64 + h as u64)
-        {
-            return Err(invalid("resolved point/helicity/colour ordering differs"));
-        }
-        ids.push(point);
+            .any(|(row, &id)| id != row as u64)
+    {
+        return Err(invalid("incomplete resolved point"));
     }
     let columns = joined
         .columns()
         .checked_mul(rows_per_point)
         .ok_or_else(|| invalid("verification dimensions overflow"))?;
     joined
-        .reshape_rows(ids.len(), columns, ids)
+        .reshape_rows(result.point_ids.len(), columns, result.point_ids.clone())
         .map_err(execution)
 }
 fn record(
     diagnostics: &mut HashMap<u64, VerificationDiagnostic>,
     result: &Complete,
     spec: &ArithmeticSpec,
-    rows_per_point: usize,
 ) -> RusticolResult<()> {
-    let successful: HashSet<_> = result
-        .point_ids
-        .iter()
-        .map(|id| id / rows_per_point as u64)
-        .collect();
+    let successful: HashSet<_> = result.point_ids.iter().copied().collect();
     for id in &result.requested_point_ids {
         diagnostics
             .get_mut(id)
@@ -232,7 +223,7 @@ pub fn evaluate_verified(
             )
         })
         .collect();
-    record(&mut diagnostics, &primary, primary_spec, rows_per_point)?;
+    record(&mut diagnostics, &primary, primary_spec)?;
     let primary_ids: HashSet<_> = initial.ids().iter().copied().collect();
     let mut accepted = Vec::<Batch>::new();
     let mut status_rows = HashMap::new();
@@ -242,8 +233,12 @@ pub fn evaluate_verified(
         .copied()
         .filter(|id| policy.verify_successful || !primary_ids.contains(id))
         .collect();
-    for (&id, statuses) in primary.point_ids.iter().zip(&primary.statuses) {
-        status_rows.insert(id, statuses.clone());
+    for (&id, statuses) in primary
+        .point_ids
+        .iter()
+        .zip(primary.statuses.chunks(rows_per_point))
+    {
+        status_rows.insert(id, statuses.to_vec());
     }
     if !policy.verify_successful {
         accepted.push(initial.clone());
@@ -289,7 +284,7 @@ pub fn evaluate_verified(
             Some(reconstructed),
             resolved,
         )?;
-        record(&mut diagnostics, &attempt, spec, rows_per_point)?;
+        record(&mut diagnostics, &attempt, spec)?;
         let current = packet(&attempt, rows_per_point)?;
         let current_ids: HashSet<_> = current.ids().iter().copied().collect();
         let mut now_accepted = HashSet::new();
@@ -376,15 +371,14 @@ pub fn evaluate_verified(
                 d.agreeing_bits = Some([prior.precision_bits(), current.precision_bits()]);
                 d.detail = "empirical cross-precision agreement, including requested-carrier conversion; not an independent physics proof".into();
                 if *prior_level != 0 {
-                    for h in 0..rows_per_point {
-                        let row_id = id * rows_per_point as u64 + h as u64;
-                        let row = attempt
-                            .point_ids
-                            .iter()
-                            .position(|&x| x == row_id)
-                            .expect("successful point");
-                        status_rows.insert(row_id, attempt.statuses[row].clone());
-                    }
+                    let point = attempt
+                        .point_ids
+                        .iter()
+                        .position(|&x| x == id)
+                        .expect("successful point");
+                    let start = point * rows_per_point;
+                    status_rows
+                        .insert(id, attempt.statuses[start..start + rows_per_point].to_vec());
                 }
             }
         }
@@ -420,11 +414,11 @@ pub fn evaluate_verified(
         &accepted.iter().collect::<Vec<_>>(),
     )
     .map_err(execution)?;
-    let ids: Vec<_> = merged
-        .ids()
-        .iter()
-        .flat_map(|id| (0..rows_per_point).map(move |h| id * rows_per_point as u64 + h as u64))
-        .collect();
+    let rows = merged
+        .rows()
+        .checked_mul(rows_per_point)
+        .ok_or_else(|| invalid("verification row dimensions overflow"))?;
+    let ids: Vec<_> = (0..rows).map(|row| row as u64).collect();
     let flat = merged
         .reshape_rows(ids.len(), merged.columns() / rows_per_point, ids.clone())
         .map_err(execution)?;
@@ -467,18 +461,27 @@ pub fn evaluate_verified(
             detail: d.detail.clone(),
         });
     }
-    let statuses = ids
+    let mut statuses: Vec<Vec<(u64, String)>> = merged
+        .ids()
         .iter()
         .map(|id| {
             status_rows
                 .remove(id)
                 .ok_or_else(|| invalid("accepted point has no reduction status"))
         })
-        .collect::<RusticolResult<Vec<_>>>()?;
+        .collect::<RusticolResult<Vec<_>>>()?
+        .into_iter()
+        .flatten()
+        .collect();
+    for (&id, row) in ids.iter().zip(&mut statuses) {
+        for (status_id, _) in row {
+            *status_id = id;
+        }
+    }
     Ok(VerifiedLoopResult {
         result: CompleteLoopResult {
             requested_point_ids: inputs.point_ids.clone(),
-            point_ids: ids,
+            point_ids: merged.ids().to_vec(),
             born,
             components,
             totals,

@@ -59,10 +59,18 @@ def test_native_source_complete_snapshot_and_rebind(
     assert actual.source_revision == initial.revision
     assert actual.r2_strategy == "model"
     assert actual.point_ids == ids
-    assert actual.statuses == [list(row) for row in expected.statuses]
+    assert actual.statuses == [
+        [(row, status) for _, status in statuses]
+        for row, statuses in enumerate(expected.statuses)
+    ]
     for value, reference in zip(_batches(actual), _batches(expected), strict=True):
         assert all(
-            ok for _, ok in value.agreement_rows(reference, tolerance, tolerance)
+            ok
+            for _, ok in value.agreement_rows(
+                reference.take_rows(list(range(reference.rows)), value.row_ids),
+                tolerance,
+                tolerance,
+            )
         )
     assert any(
         Decimal(value[0]) != 0 for value in actual.component_batches[5].to_decimal()
@@ -103,7 +111,12 @@ def test_native_source_complete_snapshot_and_rebind(
         assert abs(ratio - exact) < Decimal(tolerance)
     for value, reference in zip(_batches(changed), _batches(target), strict=True):
         assert all(
-            ok for _, ok in value.agreement_rows(reference, tolerance, tolerance)
+            ok
+            for _, ok in value.agreement_rows(
+                reference.take_rows(list(range(reference.rows)), value.row_ids),
+                tolerance,
+                tolerance,
+            )
         )
     assert [value.to_decimal() for value in _batches(actual)] == retained
 

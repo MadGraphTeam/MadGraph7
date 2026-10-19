@@ -36,6 +36,68 @@ fn lc_source_anchors_preserve_statuses_and_subset_rescue() {
     check_saved_gluon_source(&path, true);
 }
 
+#[test]
+fn opaque_ids_preserve_sdk_resolved_partial_axes() {
+    let Ok(path) = std::env::var("PYAMPLICOL_VIRTUAL_LC_ARTIFACT") else {
+        eprintln!("set PYAMPLICOL_VIRTUAL_LC_ARTIFACT for signed source anchors");
+        return;
+    };
+    let mut runtime = Runtime::open(&path, Some("gg"), None, "model").unwrap();
+    let shape = runtime.shape();
+    assert!(shape.virtual_color_components > 1);
+    assert_eq!((shape.born_orders, shape.virtual_orders), (1, 1));
+    let ids = vec![u64::MAX, u64::MAX - 1, 0];
+    let exact: Vec<_> = [point(), point(), point()]
+        .concat()
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    let scales = vec!["1000000".into(), "1e-400".into(), "1000000".into()];
+    let inclusive = runtime
+        .evaluate_decimal(
+            exact.clone(),
+            ids.clone(),
+            scales.clone(),
+            false,
+            None,
+            None,
+        )
+        .unwrap();
+    let resolved = runtime
+        .evaluate_decimal(exact, ids.clone(), scales, true, None, None)
+        .unwrap();
+    assert_eq!(resolved.requested_point_ids, ids);
+    assert_eq!(resolved.successful_point_ids, [u64::MAX, 0]);
+    assert_eq!(
+        resolved.statuses,
+        [
+            PointStatus::Success,
+            PointStatus::Failed,
+            PointStatus::Success
+        ]
+    );
+    let rows = shape.helicities * shape.virtual_color_components;
+    assert_eq!(resolved.virtual_values.len(), 2 * rows * 3);
+    for point in 0..2 {
+        for pole in 0..3 {
+            close(
+                (0..rows)
+                    .map(|row| resolved.virtual_values[(point * rows + row) * 3 + pole])
+                    .sum(),
+                inclusive.virtual_values[point * 3 + pole],
+            );
+        }
+    }
+    let diagnostics: serde_json::Value = serde_json::from_str(&resolved.diagnostics_json).unwrap();
+    let failures = diagnostics["failures"].as_array().unwrap();
+    assert!(!failures.is_empty());
+    assert!(
+        failures
+            .iter()
+            .all(|f| f["point_id"].as_u64() == Some(u64::MAX - 1))
+    );
+}
+
 fn check_saved_gluon_source(path: &str, lc: bool) {
     let mut runtime = Runtime::open(path, Some("gg"), None, "model").unwrap();
     let shape = runtime.shape();
@@ -57,7 +119,7 @@ fn check_saved_gluon_source(path: &str, lc: bool) {
         6
     );
     let inclusive = runtime
-        .evaluate(&point(), &[91], &[1e6], false, None, None)
+        .evaluate(&point(), &[u64::MAX], &[1e6], false, None, None)
         .unwrap();
     let alpha = 0.118_f64;
     let s = 1e6_f64;
@@ -83,9 +145,9 @@ fn check_saved_gluon_source(path: &str, lc: bool) {
         components
     );
     let resolved = runtime
-        .evaluate(&point(), &[91], &[1e6], true, None, None)
+        .evaluate(&point(), &[u64::MAX], &[1e6], true, None, None)
         .unwrap();
-    assert_eq!(resolved.successful_point_ids, [91]);
+    assert_eq!(resolved.successful_point_ids, [u64::MAX]);
     close(resolved.born.iter().sum(), inclusive.born[0]);
     for pole in 0..3 {
         close(
@@ -101,15 +163,15 @@ fn check_saved_gluon_source(path: &str, lc: bool) {
     let partial = runtime
         .evaluate_decimal(
             exact.clone(),
-            vec![91, 4, 70],
+            vec![u64::MAX, u64::MAX - 1, 0],
             scales.clone(),
             true,
             None,
             None,
         )
         .unwrap();
-    assert_eq!(partial.requested_point_ids, [91, 4, 70]);
-    assert_eq!(partial.successful_point_ids, [91, 70]);
+    assert_eq!(partial.requested_point_ids, [u64::MAX, u64::MAX - 1, 0]);
+    assert_eq!(partial.successful_point_ids, [u64::MAX, 0]);
     assert_eq!(
         partial.statuses,
         [
@@ -134,9 +196,16 @@ fn check_saved_gluon_source(path: &str, lc: bool) {
         verify_successful: false,
     };
     let rescued = runtime
-        .evaluate_decimal(exact, vec![91, 4, 70], scales, true, None, Some(&policy))
+        .evaluate_decimal(
+            exact,
+            vec![u64::MAX, u64::MAX - 1, 0],
+            scales,
+            true,
+            None,
+            Some(&policy),
+        )
         .unwrap();
-    assert_eq!(rescued.successful_point_ids, [91, 4, 70]);
+    assert_eq!(rescued.successful_point_ids, [u64::MAX, u64::MAX - 1, 0]);
     assert_eq!(
         rescued.statuses,
         [
@@ -206,7 +275,7 @@ fn check_saved_gluon_source(path: &str, lc: bool) {
     );
     assert!(
         runtime
-            .evaluate(&point(), &[91], &[0.], false, None, None)
+            .evaluate(&point(), &[u64::MAX], &[0.], false, None, None)
             .is_err()
     );
     assert!(Runtime::open(&path, Some("absent"), None, "model").is_err());

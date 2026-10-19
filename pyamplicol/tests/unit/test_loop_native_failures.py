@@ -50,9 +50,8 @@ def test_actual_reduction_failure_compacts_whole_points(source_plan, resolved):
         batch, ["1000000"] * 3, point_ids=[7, 91, 4], resolved=resolved, partial=True
     )
     assert result.requested_point_ids == [7, 91, 4]
-    assert result.point_ids == [
-        point * h + helicity for point in (7, 4) for helicity in range(h)
-    ]
+    assert result.point_ids == [7, 4]
+    assert result.born.row_ids == list(range(2 * h))
     assert result.failures
     for failure in result.failures:
         assert failure.point_id == 91
@@ -139,7 +138,8 @@ def test_early_state_and_scale_failures_keep_exact_original_ids(
             batch, scales, point_ids=[7, 91, 4], resolved=resolved, partial=True
         )
         assert result.requested_point_ids == [7, 91, 4]
-        assert result.point_ids == [p * h + hi for p in (7, 4) for hi in range(h)]
+        assert result.point_ids == [7, 4]
+        assert result.born.row_ids == list(range(2 * h))
         assert result.failures and {f.point_id for f in result.failures} == {91}
         assert all(stage in f.stage for f in result.failures)
         assert all(
@@ -244,25 +244,31 @@ def test_native_replay_preserves_failures_from_distinct_stages(
     result = runtime.evaluate(
         [points[0], NEAR, points[1], huge, points[0]],
         ["1000000"] * 4 + ["1e400"],
-        point_ids=[7, 91, 4, 70, 5],
+        point_ids=[2**64 - 1, 2**63, 2**64 - 2, 0, 91],
         resolved=resolved,
         partial=True,
         snapshot=snapshot,
     )
     assert result.source_revision == snapshot.revision == 0
     assert runtime.source_state.snapshot().revision == 1
-    assert result.requested_point_ids == [7, 91, 4, 70, 5]
+    assert result.requested_point_ids == [2**64 - 1, 2**63, 2**64 - 2, 0, 91]
     h = len(plan["helicities"]) if resolved else 1
-    assert result.point_ids == [4 * h + hi for hi in range(h)]
+    assert result.point_ids == [2**64 - 2]
+    assert result.born.row_ids == list(range(h))
     by_point = {
-        p: {f.stage for f in result.failures if f.point_id == p} for p in (7, 91, 70, 5)
+        p: {f.stage for f in result.failures if f.point_id == p}
+        for p in (2**64 - 1, 2**63, 0, 91)
     }
-    assert "counterterm current" in by_point[7]
-    assert "ordinary numerator reduction" in by_point[91]
-    assert "external state preparation" in by_point[70]
-    assert "renormalization scales" in by_point[5]
+    assert "counterterm current" in by_point[2**64 - 1]
+    assert "ordinary numerator reduction" in by_point[2**63]
+    assert "external state preparation" in by_point[0]
+    assert "renormalization scales" in by_point[91]
     expected = runtime.evaluate(
-        [points[1]], ["1000000"], point_ids=[4], resolved=resolved, snapshot=snapshot
+        [points[1]],
+        ["1000000"],
+        point_ids=[2**64 - 2],
+        resolved=resolved,
+        snapshot=snapshot,
     )
     for a, b in zip(
         [result.born, *result.component_batches],

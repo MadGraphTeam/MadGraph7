@@ -98,9 +98,8 @@ def test_saved_charged_orders_reference_resolved_and_exact_inputs(
     inclusive = runtime.evaluate(points, scales, point_ids=[91, 7, 30])
     resolved = runtime.evaluate(points, scales, point_ids=[91, 7, 30], resolved=True)
     assert inclusive.point_ids == [91, 7, 30]
-    assert resolved.point_ids == [
-        p * nhelicity + h for p in (91, 7, 30) for h in range(nhelicity)
-    ]
+    assert resolved.point_ids == [91, 7, 30]
+    assert resolved.born.row_ids == list(range(3 * nhelicity))
     for result in (inclusive, resolved):
         assert all(
             status == "success"

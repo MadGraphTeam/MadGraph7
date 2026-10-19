@@ -281,27 +281,11 @@ impl Evaluation {
         let rows_per_point = product(&[helicities, born_colors])?;
         if born_colors != virtual_colors
             || rows_per_point == 0
-            || result.point_ids.len() % rows_per_point != 0
+            || result.born.rows() != product(&[result.point_ids.len(), rows_per_point])?
         {
             return Err(invalid("native resolved point identity shape differs"));
         }
-        let successful_point_ids = result
-            .point_ids
-            .chunks(rows_per_point)
-            .map(|chunk| {
-                let point = chunk[0] / rows_per_point as u64;
-                if chunk
-                    .iter()
-                    .enumerate()
-                    .any(|(row, id)| *id != point * rows_per_point as u64 + row as u64)
-                {
-                    return Err(invalid(
-                        "native resolved point/helicity/colour identities differ",
-                    ));
-                }
-                Ok(point)
-            })
-            .collect::<RusticolResult<Vec<_>>>()?;
+        let successful_point_ids = result.point_ids.clone();
         let successes: std::collections::BTreeSet<_> =
             successful_point_ids.iter().copied().collect();
         let statuses = result

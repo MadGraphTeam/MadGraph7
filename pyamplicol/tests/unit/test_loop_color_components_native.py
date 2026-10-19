@@ -65,9 +65,8 @@ def test_actual_component_axes_and_all_laurent_sums(
     points, scales = control["points"], control["scales"]
     inclusive = runtime.evaluate(points, scales, point_ids=[7, 4])
     resolved = runtime.evaluate(points, scales, point_ids=[7, 4], resolved=True)
-    assert resolved.point_ids == [
-        (p * h + hi) * c + ci for p in (7, 4) for hi in range(h) for ci in range(c)
-    ]
+    assert resolved.point_ids == [7, 4]
+    assert resolved.born.row_ids == list(range(2 * h * c))
     assert resolved.requested_point_ids == [7, 4]
     with localcontext() as context:
         context.prec = 100
@@ -116,9 +115,11 @@ def test_component_reduction_and_early_state_failure_ids(component_plan):
     plan = json.loads(runtime.metadata_json())
     h, c = len(plan["helicities"]), len(plan["born_color_components"]["ids"])
     points = control["points"]
+    success_ids = [2**64 - 1, 4]
+    failed_id = 2**64 - 2
     huge = [[str(int(x) * 10**400) for x in leg] for leg in points[0]]
     expected = runtime.evaluate(
-        points, ["1000000"] * 2, point_ids=[7, 4], resolved=True
+        points, ["1000000"] * 2, point_ids=success_ids, resolved=True
     )
     for bad, stage in (
         (NEAR, "ordinary numerator reduction"),
@@ -127,13 +128,19 @@ def test_component_reduction_and_early_state_failure_ids(component_plan):
         result = runtime.evaluate(
             [points[0], bad, points[1]],
             ["1000000"] * 3,
-            point_ids=[7, 91, 4],
+            point_ids=[success_ids[0], failed_id, success_ids[1]],
             resolved=True,
             partial=True,
         )
-        assert result.requested_point_ids == [7, 91, 4]
-        assert result.point_ids == expected.point_ids
-        assert result.failures and {f.point_id for f in result.failures} == {91}
+        assert result.requested_point_ids == [success_ids[0], failed_id, success_ids[1]]
+        assert result.point_ids == expected.point_ids == success_ids
+        assert result.born.row_ids == list(range(2 * h * c))
+        assert all(
+            status_id == row
+            for row, statuses in enumerate(result.statuses)
+            for status_id, _ in statuses
+        )
+        assert result.failures and {f.point_id for f in result.failures} == {failed_id}
         for failure in result.failures:
             assert failure.stage == stage
             assert failure.helicity in range(h)
@@ -152,12 +159,61 @@ def test_component_reduction_and_early_state_failure_ids(component_plan):
                 ok for _, ok in actual.agreement_rows(reference, "1e-10", "1e-12")
             )
         failed = runtime.evaluate(
-            [bad], ["1000000"], point_ids=[91], resolved=True, partial=True
+            [bad], ["1000000"], point_ids=[failed_id], resolved=True, partial=True
         )
-        assert failed.requested_point_ids == [91] and failed.point_ids == []
+        assert failed.requested_point_ids == [failed_id] and failed.point_ids == []
         assert failed.born.rows == failed.totals.rows == 0 and failed.failures
-        with pytest.raises(ValueError, match="point_id: 91"):
-            runtime.evaluate([bad], ["1000000"], point_ids=[91], resolved=True)
+        with pytest.raises(ValueError, match=f"point_id: {failed_id}"):
+            runtime.evaluate([bad], ["1000000"], point_ids=[failed_id], resolved=True)
+
+    with pytest.raises(ValueError, match="identities are not unique"):
+        runtime.evaluate(points, ["1000000"] * 2, point_ids=[failed_id] * 2)
+
+
+def test_component_subset_rescue_preserves_opaque_ids(component_plan):
+    import _loop_reduction as native
+
+    path, control = component_plan
+    runtime = native.NativeLoopProgram(str(path), reduction_engine="fast")
+    ids = [2**64 - 1, 0]
+    scales = ["1e-400", "1000000"]
+    verified = runtime.evaluate_verified(
+        control["points"],
+        scales,
+        [("arbitrary", 60), ("arbitrary", 80)],
+        "1e-8",
+        "1e-9",
+        point_ids=ids,
+        resolved=True,
+    )
+    result = verified.result
+    assert result.point_ids == result.requested_point_ids == ids
+    assert not result.failures
+    diagnostics = json.loads(verified.diagnostics_json)
+    assert [entry["point_id"] for entry in diagnostics] == ids
+    assert [entry["status"] for entry in diagnostics] == ["rescued", "success"]
+    assert {
+        entry["point_id"] for entry in diagnostics[0]["attempts"][0]["failures"]
+    } == {ids[0]}
+    reference = runtime.rebind(arithmetic="arbitrary", precision=80).evaluate(
+        control["points"][:1], scales[:1], point_ids=ids[:1], resolved=True
+    )
+    rows = reference.born.rows
+    assert result.born.row_ids == list(range(2 * rows))
+    assert len(result.statuses) == 2 * rows
+    assert all(
+        status_id == row
+        for row, statuses in enumerate(result.statuses)
+        for status_id, _ in statuses
+    )
+    assert all(status == "success" for row in result.statuses for _, status in row)
+    for actual, expected in zip(_batches(result), _batches(reference), strict=True):
+        assert all(
+            ok
+            for _, ok in actual.take_rows(list(range(rows))).agreement_rows(
+                expected, "1e-8", "1e-9"
+            )
+        )
 
 
 def test_one_component_projection_failure_keeps_component_identity(
@@ -204,10 +260,14 @@ def test_one_component_projection_failure_keeps_component_identity(
         str(destination), reduction_engine="fast", parameters={"aS": ["0", "0"]}
     )
     result = runtime.evaluate(
-        control["points"][:1], ["1000000"], point_ids=[91], resolved=True, partial=True
+        control["points"][:1],
+        ["1000000"],
+        point_ids=[2**64 - 1],
+        resolved=True,
+        partial=True,
     )
     assert result.point_ids == [] and result.born.rows == 0
-    assert result.failures and {f.point_id for f in result.failures} == {91}
+    assert result.failures and {f.point_id for f in result.failures} == {2**64 - 1}
     assert all(
         f.stage == "Born projection"
         and f.helicity in range(len(plan["helicities"]))

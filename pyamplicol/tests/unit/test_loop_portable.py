@@ -704,11 +704,19 @@ def test_shared_core_complete_coordinator(
     )
     assert result.r2_strategy == native.r2_strategy == "model"
     assert result.point_ids == [91, 4, 70]
-    assert result.statuses == [list(row) for row in expected.statuses]
+    assert result.statuses == [
+        [(row, status) for _, status in statuses]
+        for row, statuses in enumerate(expected.statuses)
+    ]
     assert native.precision_bits == result.born.precision_bits
     for actual, reference in zip(_batches(result), _batches(expected), strict=True):
         assert all(
-            ok for _, ok in actual.agreement_rows(reference, tolerance, tolerance)
+            ok
+            for _, ok in actual.agreement_rows(
+                reference.take_rows(list(range(reference.rows)), actual.row_ids),
+                tolerance,
+                tolerance,
+            )
         )
     retained = [value.to_decimal() for value in _batches(result)]
     rebound = native.rebind(**options)
@@ -749,7 +757,6 @@ def test_shared_core_complete_coordinator(
             (points.tolist(), ["1"] * 3, [1]),
             (points.tolist(), ["1"] * 4, [1, 2, 3]),
             (points.tolist(), ["1"] * 3, [1, 1, 3]),
-            (points.tolist(), ["1"] * 3, [2**64 - 1, 2, 3]),
         ):
             with pytest.raises(ValueError, match=r"identit|shape|overflow"):
                 native.evaluate(momenta, scales, ["0.118", "173"], point_ids=ids)
@@ -796,10 +803,15 @@ def test_shared_core_direct_and_nonzero_fields(extended_control, monkeypatch):
         )
         assert actual.r2_strategy == ("direct" if direct else "model")
         assert actual.point_ids == [63]
-        assert actual.statuses == [list(expected.statuses[0])]
+        assert actual.statuses == [[(0, status) for _, status in expected.statuses[0]]]
         for value, reference in zip(_batches(actual), _batches(expected), strict=True):
             assert all(
-                ok for _, ok in value.agreement_rows(reference, tolerance, tolerance)
+                ok
+                for _, ok in value.agreement_rows(
+                    reference.take_rows(list(range(reference.rows)), value.row_ids),
+                    tolerance,
+                    tolerance,
+                )
             )
         # Both controls have nonzero field terms; direct also keeps an explicit
         # nonzero dimensional remainder distinct from the N4 result.

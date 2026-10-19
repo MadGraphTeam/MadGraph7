@@ -266,6 +266,8 @@ impl NativeCompleteLoopResult {
             .collect()
     }
     #[getter]
+    /// Successful original physical point IDs. Numerical batch rows are dense;
+    /// resolved helicity/colour axes are not encoded in these opaque IDs.
     fn point_ids(&self) -> Vec<u64> {
         self.0.point_ids.clone()
     }
