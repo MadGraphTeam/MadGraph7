@@ -3,10 +3,15 @@
 
 import json
 import os
+from decimal import Decimal, localcontext
 from pathlib import Path
 
+import numpy as np
 import pytest
 
+from .test_loop_native_directed import _blocks, _values
+from .test_loop_ordered_projection_physical import _close_component
+from .test_loop_physical_correlations import _decimals
 from .test_loop_portable import _rewrite
 
 
@@ -187,3 +192,141 @@ def test_native_rejects_matching_changed_spin_metadata(ordered_runtime, tmp_path
     _rewrite(root / "w-lc-ordered.pacbin", destination, change)
     with pytest.raises(ValueError, match="history columns differ"):
         native.PortableLoopPlan(str(destination))
+
+
+@pytest.mark.parametrize("accuracy", ("full", "lc", "nlc"))
+@pytest.mark.parametrize(
+    "arithmetic,precision,tolerance",
+    (
+        ("double", None, "1e-8"),
+        ("double-double", None, "1e-24"),
+        ("arbitrary", 70, "1e-60"),
+    ),
+)
+def test_saved_complete_components_match_actual_family_producer(
+    ordered_runtime, accuracy, arithmetic, precision, tolerance
+):
+    root, native = ordered_runtime
+    data = json.loads((root / "producer.json").read_text())
+    records = [
+        r
+        for r in data["records"]
+        if r["accuracy"] == accuracy and r["arithmetic"] == arithmetic
+    ]
+    assert len(records) == 4
+    runtime = native.NativeLoopProgram(
+        str(root / f"w-{accuracy}-ordered.pacbin"),
+        arithmetic=arithmetic,
+        precision=precision,
+        reduction_engine="fast" if arithmetic == "double" else "generic",
+    )
+    runtime.source_state.update(records[0]["parameters"])
+    snapshot = runtime.source_state.snapshot()
+    with localcontext() as context:
+        context.prec = 120
+        for record in records:
+            sources = {int(leg): values for leg, values in record["sources"].items()}
+            result = runtime.evaluate_directed(
+                [data["point"]],
+                ["1000000"],
+                point_ids=[2**64 - 1],
+                spin_vectors=sources,
+            )
+            assert result.point_ids == [2**64 - 1]
+            assert result.spin_legs == record["spin_legs"]
+            names = (
+                "born",
+                "virtual",
+                "bare",
+                "uv",
+                "r2",
+                "uv_local",
+                "uv_external_fields",
+                "first",
+                "second",
+            )
+            for name, block in zip(names, _blocks(result)[:-1], strict=True):
+                expected = _decimals(np.asarray(record["blocks"][name], dtype=object))
+                actual = _values(block, expected.shape[:-1])
+                _close_component(actual, expected, Decimal(tolerance))
+        assert runtime.source_state.snapshot().overrides == snapshot.overrides
+        empty = runtime.evaluate_directed(
+            [], [], point_ids=[], spin_vectors={3: [], 4: []}
+        )
+        assert empty.point_ids == [] and empty.spin_legs == [3, 4]
+        assert all(block.rows == 0 for block in _blocks(empty))
+        again = runtime.evaluate_directed([data["point"]], ["1000000"], point_ids=[42])
+        ordinary = next(r for r in records if not r["spin_legs"])
+        expected = _decimals(np.asarray(ordinary["blocks"]["virtual"], dtype=object))
+        _close_component(
+            _values(again.component_batches[0], expected.shape[:-1]),
+            expected,
+            Decimal(tolerance),
+        )
+
+
+@pytest.mark.parametrize("accuracy", ("lc", "nlc"))
+def test_public_ordered_families_grouped_sources_and_subset_rescue(
+    ordered_runtime, accuracy
+):
+    from pyamplicol import CorrelatedRequest, Runtime
+    from pyamplicol.api import VirtualArithmeticSpec, VirtualStabilityPolicy
+    from pyamplicol.api.errors import EvaluationError
+
+    root, _ = ordered_runtime
+    point = json.loads((root / "producer.json").read_text())["point"]
+    runtime = Runtime.load(root / f"{accuracy}-artifact")
+    assert runtime.physics.reduction.kind == "contracted-color"
+    assert not runtime.physics.born_anchored_color_components
+    assert runtime.inspect()["spin_correlations"] == ((3,), (3, 4), (4,))
+    history_ids = {item.id for item in runtime.available_color_correlations()}
+    assert {"born", *(f"history-{i}" for i in range(11))} <= history_ids
+    w = [("2", "3"), ("5", "-7"), ("11", "13"), ("-17", "19")]
+    g = [("0", "0"), ("0.8", "0"), ("0", "1"), ("-0.6", "0")]
+    request = {
+        "identity": CorrelatedRequest("born", {3: w, 4: g}),
+        "qg": CorrelatedRequest("history-3", {3: w, 4: g}),
+        "gq": CorrelatedRequest("history-7", {3: w, 4: g}),
+        "split": CorrelatedRequest("history-10", {3: w, 4: g}),
+    }
+    points, scales = [point] * 3, ["1000000", "1e-400", "1000000"]
+    with pytest.raises(EvaluationError) as failure:
+        runtime.evaluate_correlated_many(points, request, mu_r2=scales)
+    assert {item.point_id for item in failure.value.failures} == {1}
+    rescued = runtime.evaluate_correlated_many(
+        points,
+        request,
+        mu_r2=scales,
+        stability=VirtualStabilityPolicy(
+            (
+                VirtualArithmeticSpec("arbitrary", 60),
+                VirtualArithmeticSpec("arbitrary", 80),
+            ),
+            "1e-8",
+            "1e-9",
+        ),
+    )
+    assert set(rescued) == set(request)
+    for result in rescued.values():
+        assert result.shape == (3, 1, 3)
+        assert result.epsilon_powers == (0, -1, -2)
+        assert [row.status for row in result.diagnostics] == [
+            "success",
+            "rescued",
+            "success",
+        ]
+        assert result.values[0] == result.values[2]
+    runtime.set_spin_correlation_vectors({3: w, 4: g})
+    before = runtime.evaluate_correlated(
+        points[:1], color_correlation="history-3", mu_r2=scales[:1]
+    )
+    runtime.clear()
+    assert (
+        runtime.evaluate_correlated(
+            points[:1], color_correlation="history-3", mu_r2=scales[:1]
+        ).values
+        == before.values
+    )
+    assert runtime.evaluate_correlated(
+        [], color_correlation="history-10", mu_r2=[]
+    ).shape == (0, 1, 3)
