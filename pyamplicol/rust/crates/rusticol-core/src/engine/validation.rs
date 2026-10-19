@@ -917,6 +917,44 @@ fn validate_antiparticle_identity_pair(
     Ok(())
 }
 
+pub(crate) fn validate_loop_vector_source(
+    leg: usize,
+    value: &Value,
+    pdg: i32,
+) -> RusticolResult<()> {
+    let source: GenericSourceIrManifest = serde_json::from_value(value.clone())
+        .map_err(|error| RusticolError::artifact(format!("loop source {leg} SourceIR: {error}")))?;
+    validate_crossing_ir(leg, "declared", &source.crossing)?;
+    let identity = &source.identity;
+    if source.wavefunction_family != GenericWavefunctionFamilyManifest::Vector
+        || source.statistics != GenericParticleStatisticsManifest::Boson
+        || source.component_dimension != 4
+        || source.basis != "lorentz-vector"
+        || identity.pdg_label != pdg
+        || identity.anti_pdg_label != pdg
+        || !identity.self_conjugate
+        || identity.orientation != GenericSourceOrientationManifest::SelfConjugate
+        || identity.canonical_id.is_empty()
+        || identity.species_id.is_empty()
+        || identity.canonical_id != identity.anti_canonical_id
+        || identity.display_name.is_empty()
+        || identity.display_name != identity.anti_display_name
+        || source.states.len() != 2
+        || ![-1, 1].iter().all(|&helicity| {
+            source.states.iter().any(|state| {
+                state.helicity == helicity
+                    && state.chirality == 0
+                    && state.spin_state == GenericSourceSpinStateManifest::Scalar(helicity)
+            })
+        })
+    {
+        return Err(RusticolError::artifact(format!(
+            "loop source {leg} differs from its neutral massless-vector SourceIR"
+        )));
+    }
+    Ok(())
+}
+
 pub(super) fn validate_source_wavefunction_metadata(
     index: usize,
     source: &GenericSourceRecordManifest,

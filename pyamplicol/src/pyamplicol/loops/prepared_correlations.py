@@ -93,6 +93,8 @@ def prepare_directed_bare(bare, histories, *, spin_layout=None):
     from .color_connections import directed_color_bilinears
     from .physical_correlations import _physical_color_ports
 
+    if spin_layout is not None:
+        spin_layout.require_owner(bare)
     helicities = bare.helicities if spin_layout is None else spin_layout.helicities
     helicity_options = {} if spin_layout is None else {"helicities": helicities}
     histories = tuple(tuple(pair) for pair in histories)

@@ -115,8 +115,6 @@ def write_loop_pacbin(
                 "transport remain unsupported"
             )
     if spin_directed:
-        from .spin_sources import NativeSpinSourcePlan
-
         classes = []
         for item in spin_directed:
             if not isinstance(item, PreparedDirectedModel):
@@ -127,17 +125,12 @@ def write_loop_pacbin(
                 raise ValueError(
                     "saved spin projection requires a nonempty joint class"
                 )
+            layout.require_owner(bare)
             if item.bare.histories != directed.bare.histories:
                 raise ValueError("spin and ordinary directed history columns differ")
             classes.append(layout.legs)
         if len(set(classes)) != len(classes):
             raise ValueError("duplicate saved joint spin class")
-        spin_sources = NativeSpinSourcePlan(bare, classes)
-        for item in spin_directed:
-            if item.bare.spin_layout != spin_sources.layouts.get(
-                item.bare.spin_layout.legs
-            ):
-                raise ValueError("spin projection spectator helicities differ")
     components = None
     if resolved and getattr(bare, "color_accuracy", "full") == "lc":
         from .color_components import prepare_born_color_components
@@ -367,8 +360,10 @@ def write_loop_pacbin(
                     "legs": item.bare.spin_layout.legs,
                     "helicities": item.bare.helicities,
                     "phases": [
-                        state(spin_sources.phase_states[leg])
-                        for leg in item.bare.spin_layout.legs
+                        state(phase) for phase in item.bare.spin_layout.phase_states
+                    ],
+                    "source_contracts": [
+                        source.to_json_dict() for source in item.bare.spin_layout.contracts
                     ],
                     "directed": directed_data(item),
                 }

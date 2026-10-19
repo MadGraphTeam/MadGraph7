@@ -43,6 +43,38 @@ class PreparedLoopRequestModel:
         born = options.pop("born_order_bounds", self.scope.born_order_bounds)
         loop = options.pop("loop_order_bounds", self.scope.loop_order_bounds)
         self.scope.require_bounds(born, loop)
+        if self.compiled_model is not None:
+            if "source_contracts" in options:
+                raise ValueError(
+                    "compiled source contracts are owned by the compiled model"
+                )
+            from pyamplicol.models import CompiledUFOModel
+            from .request import prepare_loop_external_request
+
+            source_model = CompiledUFOModel(self.compiled_model)
+            contracts = {}
+            external = prepare_loop_external_request(
+                self.structure.native, incoming, outgoing
+            )
+            particles = {p.pdg_code: p for p in self.compiled_model.ir.particles}
+            for pdg in dict.fromkeys(external.external_pdgs):
+                native = self.structure.native.particle_by_pdg(pdg)
+                if native.spin != 3:
+                    continue
+                particle = particles[pdg]
+                if (
+                    native.spin != particle.spin
+                    or native.color != source_model.color_rep(particle.pdg_code)
+                    or native.antiparticle.pdg_code
+                    != source_model.anti_particle(particle.pdg_code)
+                ):
+                    raise ValueError(
+                        "loop and compiled source particle contracts differ"
+                    )
+                contracts[particle.pdg_code] = source_model._source_ir(
+                    particle.pdg_code
+                )
+            options["source_contracts"] = contracts
         return source_model_program(
             self.structure,
             self.counterterms,

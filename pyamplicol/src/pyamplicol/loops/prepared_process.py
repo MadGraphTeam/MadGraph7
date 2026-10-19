@@ -113,6 +113,7 @@ class PreparedFamily:
 _BARE_METADATA = (
     "order_layout",
     "vertex_spinor_frame",
+    "source_contracts",
     "model_expressions",
     "loop_graphs",
     "process",

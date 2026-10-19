@@ -27,10 +27,12 @@ def spin_plan(tmp_path_factory):
     from pyamplicol.loops.physical_model_correlations import NativeDirectedModelProgram
     from pyamplicol.loops.portable import write_loop_pacbin
     from pyamplicol.loops.spin_sources import NativeSpinSourcePlan
-    from pyamplicol.models.loop_import import load_raw_loop_model
+    from pyamplicol.models.loading import compile_model_source
 
     prepared = prepare_loop_request_model(
-        load_raw_loop_model(path),
+        compile_model_source(
+            path, cache_dir=tmp_path_factory.mktemp("spin-model-cache")
+        ),
         born_order_bounds={"QCD": 2, "QED": 0},
         loop_order_bounds={"QCD": 4, "QED": 0},
         fixed_parameters={"MB": "0"},
@@ -102,6 +104,9 @@ def test_spin_descriptor_classes_and_saved_source_phases(spin_plan, tmp_path):
     assert [len(entry["helicities"]) for entry in data["spin_projections"]] == [8, 8, 4]
     assert len(data["helicities"]) == 16
     for entry, prepared in zip(data["spin_projections"], classes, strict=True):
+        assert entry["source_contracts"] == [
+            source.to_json_dict() for source in prepared.bare.spin_layout.contracts
+        ]
         assert (
             loaded.evaluator_state(entry["directed"]["born"])
             == prepared.bare.born_state
@@ -120,9 +125,19 @@ def test_spin_descriptor_classes_and_saved_source_phases(spin_plan, tmp_path):
                 lambda d: d["spin_projections"].append(d["spin_projections"][0]),
                 "duplicate",
             ),
-            (lambda d: d["spin_projections"][0].update(legs=[1]), "gluon"),
+            (lambda d: d["spin_projections"][0].update(legs=[1]), "vector"),
             (lambda d: d["spin_projections"][0]["helicities"].pop(), "spectator"),
             (lambda d: d["spin_projections"][0]["phases"].clear(), "phase"),
+            (
+                lambda d: d["spin_projections"][0]["source_contracts"].clear(),
+                "contract",
+            ),
+            (
+                lambda d: d["spin_projections"][0]["source_contracts"][0][
+                    "identity"
+                ].update(pdg_label=22),
+                "SourceIR",
+            ),
             (
                 lambda d: d["spin_projections"][0]["directed"]["histories"][0].update(
                     id="wrong"

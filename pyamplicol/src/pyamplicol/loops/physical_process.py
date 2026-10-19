@@ -199,6 +199,7 @@ class NativeBareProcessProgram:
         model_state: Any = None,
         model_output_indices: dict[str, int] | None = None,
         model_scale_view: Any = None,
+        source_contracts: Any = None,
         vertex_spinor_frame: str | None = None,
         arithmetic: str = "double",
         precision: int | None = None,
@@ -227,6 +228,9 @@ class NativeBareProcessProgram:
             )
         require_exact_numbers(initial_average)
         self.model_state = model_state
+        from types import MappingProxyType
+
+        self.source_contracts = MappingProxyType(dict(source_contracts or {}))
         self.vertex_spinor_frame = vertex_spinor_frame
         self.model_scale_view = model_scale_view
         if model_scale_view is not None and (

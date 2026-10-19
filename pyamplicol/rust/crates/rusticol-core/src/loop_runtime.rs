@@ -95,7 +95,8 @@ record!(DirectedProjection {
     postprocess: String, counterterms: String, assemble: String, sum_order_values: String
 });
 record!(SpinProjection {
-    legs: Vec<usize>, helicities: Vec<Vec<i32>>, phases: Vec<String>, directed: DirectedProjection
+    legs: Vec<usize>, helicities: Vec<Vec<i32>>, phases: Vec<String>,
+    source_contracts: Vec<serde_json::Value>, directed: DirectedProjection
 });
 // Projector instructions already contain this fixed-Nf projection evaluated at Nc=3.
 // Degrees are aligned with the corresponding squared coupling order catalogue.
@@ -620,15 +621,34 @@ impl LoopRuntimePlan {
                         && class.legs.iter().all(|&leg| {
                             leg > 0
                                 && leg <= legs
-                                && self.external_pdgs[leg - 1] == 21
                                 && self.state_legs[leg - 1].massless
                                 && matches!(
                                     self.state_legs[leg - 1].kind.as_str(),
                                     "epsilon" | "epsilon_bar"
                                 )
                         }),
-                    "saved spin class requires ordered physical massless gluon ports",
+                    "saved spin class requires ordered physical massless vector ports",
                 )?;
+                require(
+                    class.source_contracts.len() == class.legs.len(),
+                    "spin source contract count differs",
+                )?;
+                for (&leg, source) in class.legs.iter().zip(&class.source_contracts) {
+                    crate::engine::validate_loop_vector_source(
+                        leg,
+                        source,
+                        self.external_pdgs[leg - 1],
+                    )?;
+                    require(
+                        self.state_legs[leg - 1].kind
+                            == if self.state_legs[leg - 1].incoming {
+                                "epsilon"
+                            } else {
+                                "epsilon_bar"
+                            },
+                        "spin source orientation differs from physical state port",
+                    )?;
+                }
                 let mut seen = BTreeSet::new();
                 let spectators = self
                     .helicities

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Literal gluon source plans using the existing tree correlation contract."""
+"""Literal massless-vector sources using the model-owned tree source contract."""
 
 from __future__ import annotations
 
@@ -20,10 +20,17 @@ class SpinSourceLayout:
 
     legs: tuple[int, ...]
     helicities: tuple[tuple[int, ...], ...]
+    owner: object
+    contracts: tuple
+    phase_states: tuple[bytes, ...]
+
+    def require_owner(self, bare):
+        if self.owner is not bare.prepared:
+            raise ValueError("spin source layout belongs to a different bare plan")
 
 
 class NativeSpinSourcePlan:
-    """Validate exact source rows and reuse cold QCD SourceIR crossing phases.
+    """Validate exact source rows and reuse model-owned SourceIR crossing phases.
 
     Public source labels are one-based, as in tree correlations. Declared keys
     must form one joint class. Every supplied vector has four literal complex
@@ -31,11 +38,10 @@ class NativeSpinSourcePlan:
     cause conjugation, momentum replacement, normalization or projection.
     """
 
-    def __init__(self, bare, spin_correlations):
+    def __init__(self, bare, spin_correlations, *, source_contracts=None):
         from symbolica import E, S
 
-        from pyamplicol.models import BuiltinSMModel
-        from pyamplicol.models._physics_ir import CrossingIR
+        from pyamplicol.models._physics_ir import CrossingIR, SourceIR
 
         declarations = CorrelatorConfig(spin_correlations=spin_correlations)
         self.bare, self.backend = bare, bare.backend
@@ -44,12 +50,10 @@ class NativeSpinSourcePlan:
             edge.external_index + 1: edge
             for edge in bare.process.born[0].native.external_edges
         }
-        # This bounded bridge uses the existing model-owned gluon SourceIR.
-        # It does not assign these conventions to arbitrary external vectors.
-        source = BuiltinSMModel()._source_ir(21)
-        if source.wavefunction_family != "vector" or source.component_dimension != 4:
-            raise ValueError("QCD source contract lacks four vector components")
-        self.source_ir = source
+        contracts = (
+            bare.source_contracts if source_contracts is None else source_contracts
+        )
+        source_irs = {}
         phase_evaluators = {}
         phase_states = {}
         components = tuple(
@@ -58,20 +62,50 @@ class NativeSpinSourcePlan:
         for leg in declarations.spin_legs:
             if (
                 leg not in edges
-                or edges[leg].particle_pdg != 21
                 or bare.state_kinds[leg - 1] not in {"epsilon", "epsilon_bar"}
-                or edges[leg].particle.mass != 0
+                or not bare.state_layout.legs[leg - 1].massless
             ):
                 raise NotImplementedError(
-                    "spin source bridge requires a massless external gluon"
+                    "spin source bridge requires a massless external vector"
                 )
+            pdg = edges[leg].particle_pdg
+            expected_kind = (
+                "epsilon" if bare.state_layout.legs[leg - 1].incoming else "epsilon_bar"
+            )
+            if bare.state_kinds[leg - 1] != expected_kind:
+                raise ValueError(
+                    "spin source orientation differs from physical state port"
+                )
+            source = contracts.get(pdg)
+            if not isinstance(source, SourceIR):
+                raise ValueError(
+                    "spin sources require explicit model-owned SourceIR contracts"
+                )
+            if (
+                source.identity.pdg_label != pdg
+                or not source.identity.self_conjugate
+                or source.statistics != "boson"
+                or source.wavefunction_family != "vector"
+                or source.component_dimension != 4
+                or source.basis != "lorentz-vector"
+                or len(source.states) != 2
+                or {state.helicity for state in source.states} != {-1, 1}
+                or any(
+                    state.chirality != 0 or state.spin_state != state.helicity
+                    for state in source.states
+                )
+            ):
+                raise ValueError(
+                    "source contract differs from the neutral massless-vector ports"
+                )
+            source_irs[leg] = source
             crossing = (
                 source.crossing
                 if bare.state_kinds[leg - 1] == "epsilon"
                 else CrossingIR.identity()
             )
-            # SourceIR's exact QCD phase is (1,0); converting its literal
-            # metadata does not touch any supplied numerical source component.
+            # Compile only the source's declared phase; numerical model defaults
+            # and supplied vector values never enter this structural preparation.
             phase = E(str(crossing.phase[0])) + E("1i") * E(str(crossing.phase[1]))
             phase_states[leg] = _saved(
                 [phase * value for value in components], components
@@ -82,6 +116,7 @@ class NativeSpinSourcePlan:
             )
         self._phase_evaluators = MappingProxyType(phase_evaluators)
         self.phase_states = MappingProxyType(phase_states)
+        self.source_irs = MappingProxyType(source_irs)
         layouts = {}
         for legs in ((), *declarations.spin_correlations):
             representatives = {}
@@ -92,7 +127,13 @@ class NativeSpinSourcePlan:
                     if index not in legs
                 )
                 representatives.setdefault(spectator, helicities)
-            layouts[legs] = SpinSourceLayout(legs, tuple(representatives.values()))
+            layouts[legs] = SpinSourceLayout(
+                legs,
+                tuple(representatives.values()),
+                bare.prepared,
+                tuple(source_irs[leg] for leg in legs),
+                tuple(phase_states[leg] for leg in legs),
+            )
         self.layouts = MappingProxyType(layouts)
 
     def layout(self, vectors=None):
@@ -160,7 +201,7 @@ class NativeSpinSourcePlan:
 
 
 class NativeSpinSourceProgram:
-    """Complete QCD model-rule views with literal gluon and directed colour sources.
+    """Complete QCD model-rule views with literal vector and directed colour sources.
 
     A joint class compiles an immutable spectator-helicity layout. The underlying
     model's ordinary helicities and initial-state average remain unchanged. The

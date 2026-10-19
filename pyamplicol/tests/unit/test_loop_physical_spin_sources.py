@@ -64,9 +64,11 @@ def test_complete_joint_sources_polarization_sum_complex_scaling_and_ward(
     from pyamplicol.loops.physical_correlations import directed_color_legs
     from pyamplicol.loops.physical_counterterms import quark_gluon_model_virtual_program
     from pyamplicol.loops.spin_sources import NativeSpinSourceProgram
+    from pyamplicol.models import BuiltinSMModel
 
     model = quark_gluon_model_virtual_program(
         source,
+        source_contracts={21: BuiltinSMModel()._source_ir(21)},
         arithmetic=arithmetic,
         precision=precision,
         reduction_engine=engine,

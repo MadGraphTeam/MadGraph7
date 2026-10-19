@@ -15,8 +15,11 @@ def bare(request):
     if not symbolica.is_licensed():
         pytest.skip("licensed dependency generation required")
     backend = pytest.importorskip("_loop_reduction")
+    from pyamplicol.models import BuiltinSMModel
+
     return quark_gluon_qcd_program(
         backend=backend,
+        source_contracts={21: BuiltinSMModel()._source_ir(21)},
         arithmetic=request.param,
         precision=80 if request.param == "arbitrary" else None,
         reduction_engine="fast" if request.param == "double" else "generic",
@@ -57,7 +60,7 @@ def test_native_compact_views_reject_different_source_classes(bare):
 
 def test_native_literal_components_joint_layout_and_original_bits(bare):
     plan = NativeSpinSourcePlan(bare, ((3,), (3, 4)))
-    assert plan.source_ir.crossing.phase == (1, 0)
+    assert plan.source_irs[3].crossing.phase == (1, 0)
     assert len(plan.layouts[()].helicities) == 16
     assert len(plan.layouts[(3,)].helicities) == 8
     assert len(plan.layouts[(3, 4)].helicities) == 4
@@ -138,7 +141,7 @@ def test_spin_source_declarations_shape_precision_and_failure_ids(bare):
         plan.prepare_native({3: foreign}, [0])
     with pytest.raises(ValueError):
         plan.prepare_native({3: foreign}, [])
-    with pytest.raises(NotImplementedError, match="massless external gluon"):
+    with pytest.raises(NotImplementedError, match="massless external vector"):
         NativeSpinSourcePlan(bare, ((1,),))
     # Create nonfinite values through a native dependency evaluator so every
     # arithmetic carrier exercises the same checked source boundary.
@@ -157,3 +160,50 @@ def test_spin_source_declarations_shape_precision_and_failure_ids(bare):
     )
     with pytest.raises(ArithmeticError, match="74"):
         plan.prepare_native({3: bad}, [51, 74])
+
+
+def test_model_source_contract_owner_states_and_crossing_phase(bare):
+    from copy import copy
+    from dataclasses import replace
+
+    source = bare.source_contracts[21]
+    with pytest.raises(ValueError, match="model-owned SourceIR"):
+        NativeSpinSourcePlan(bare, ((3,),), source_contracts={})
+    with pytest.raises(ValueError, match="neutral massless-vector"):
+        NativeSpinSourcePlan(
+            bare,
+            ((3,),),
+            source_contracts={21: replace(source, states=source.states * 2)},
+        )
+    plan = NativeSpinSourcePlan(bare, ((3,),))
+    foreign = copy(bare)
+    foreign._prepared_process = object()
+    with pytest.raises(ValueError, match="different bare plan"):
+        plan.layouts[(3,)].require_owner(foreign)
+    assert plan.layouts[(3,)].contracts == (source,)
+    assert plan.layouts[(3,)].phase_states == (plan.phase_states[3],)
+
+    # A nontrivial declared incoming phase must survive preparation literally.
+    # Only this ingress unit control changes the port direction; the separate
+    # crossed physical photon control supplies an actual incoming process.
+    incoming = copy(bare)
+    incoming.state_kinds = (*bare.state_kinds[:2], "epsilon", bare.state_kinds[3])
+    incoming.state_layout = replace(
+        bare.state_layout,
+        legs=(
+            *bare.state_layout.legs[:2],
+            replace(bare.state_layout.legs[2], kind="epsilon", incoming=True),
+            bare.state_layout.legs[3],
+        ),
+    )
+    incoming.source_contracts = {
+        21: replace(source, crossing=replace(source.crossing, phase=(0, 1)))
+    }
+    crossed = NativeSpinSourcePlan(incoming, ((3,),))
+    values = crossed.prepare_decimal({3: [(2, 3), 5, 7, 11]}, [49])[3]
+    assert [tuple(map(Decimal, pair)) for pair in values.to_decimal()] == [
+        (-3, 2),
+        (0, 5),
+        (0, 7),
+        (0, 11),
+    ]

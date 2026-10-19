@@ -218,7 +218,7 @@ def test_literal_source_column_packing_around_scalar_slots(dependencies, catalog
             replaced[10 * row + 1 : 10 * row + 5]
             == source.to_decimal()[4 * (1 - row) : 4 * (2 - row)]
         )
-    with pytest.raises(NotImplementedError, match="massless external gluon"):
+    with pytest.raises(NotImplementedError, match="massless external vector"):
         NativeSpinSourcePlan(program, ((2,),))
 
 
