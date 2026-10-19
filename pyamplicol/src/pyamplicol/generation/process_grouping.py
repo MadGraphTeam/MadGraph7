@@ -48,9 +48,9 @@ class GroupingBasis(StrEnum):
 # The least verified link decides the basis of a composed relation.
 _BASIS_STRENGTH = {
     GroupingBasis.IDENTITY: 0,
-    GroupingBasis.EXACT_LOOP_FLAVOR: 0,
-    GroupingBasis.NUMERICAL: 1,
-    GroupingBasis.FLAVOR_BLIND: 2,
+    GroupingBasis.EXACT_LOOP_FLAVOR: 1,
+    GroupingBasis.NUMERICAL: 2,
+    GroupingBasis.FLAVOR_BLIND: 3,
 }
 
 

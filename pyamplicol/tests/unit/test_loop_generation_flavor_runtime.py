@@ -47,6 +47,17 @@ def test_identity_species_candidates_preserve_signed_bijections_without_caps():
     assert identity_species_candidate((21,), (21,)) == {}
 
 
+def test_exact_group_basis_is_weaker_than_identity_and_stronger_than_numerical():
+    from pyamplicol.generation.process_grouping import GroupingBasis, GroupMember
+
+    item = GroupMember("a", "a a > b b", (1, -1, 3, -3), 2, permutation=(0, 1, 2, 3))
+    exact = replace(item, basis=GroupingBasis.EXACT_LOOP_FLAVOR)
+    numerical = replace(item, basis=GroupingBasis.NUMERICAL)
+    assert item.through(exact).basis == exact.basis
+    assert exact.through(item).basis == exact.basis
+    assert exact.through(numerical).basis == numerical.basis
+
+
 @pytest.fixture(scope="module")
 def model_path(tmp_path_factory):
     source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
