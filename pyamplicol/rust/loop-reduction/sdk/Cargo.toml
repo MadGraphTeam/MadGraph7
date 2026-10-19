@@ -1,0 +1,20 @@
+[package]
+name = "rusticol-loop-sdk"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "0BSD"
+publish = false
+
+[lib]
+name = "rusticol_loop_sdk"
+crate-type = ["rlib", "staticlib", "cdylib"]
+
+[dependencies]
+rusticol-loop-reduction = { path = ".." }
+rusticol-core = { path = "../../crates/rusticol-core", features = ["symbolica-runtime", "python-generation-bridge"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+symbolica = { version = "=3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr"] }
