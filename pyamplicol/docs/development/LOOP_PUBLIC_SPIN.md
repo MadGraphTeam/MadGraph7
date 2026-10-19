@@ -1,7 +1,9 @@
 # Public virtual spin sources
 
 The existing correlated API accepts declared singleton or joint photon/gluon
-source classes for full-colour QCD, with complete model-rule R2 and UV. Generation
+source classes for QCD, with complete model-rule R2 and UV. Full-colour fixed-Nc
+kernels support the admitted ordered colour histories. Formally projected LC/NLC
+kernels support identity histories as described below. Generation
 uses `CorrelatorConfig(spin_correlations=((3,), (4,), (3, 4)))`; the labels are the
 same one-based physical external legs used by tree correlations. The saved plan
 contains each requested class and the ordinary physical-helicity projection.
@@ -56,9 +58,11 @@ returns complex values; DoubleFloat and arbitrary precision preserve decimal
 real/imaginary components. `inspect()["spin_correlations"]` lists the actual saved
 classes. Ordinary `evaluate` is independent of the spin setter.
 
-Resolved correlated output, LC/NLC source composition, public flavour mapping of
-spin classes, massive vectors and general EW source kernels remain unvalidated
-follow-ups. No additional execution engine or fixed capacity limit is introduced.
+Resolved correlated output, nonidentity LC/NLC colour histories, massive vectors
+and general EW source kernels remain unvalidated follow-ups. The independently
+proved full-colour identity-order d/s flavour reuse is described in
+`LOOP_FLAVOR_TRANSPORT.md`; formal-colour flavour reuse is a separate requirement.
+No additional execution engine or fixed capacity limit is introduced.
 
 Validation includes independent Recola singleton-gluon Born/all-pole projections
 at two points/scales, and a joint linear-polarization sum reconstructing the
@@ -85,3 +89,39 @@ the supplied source default is `132.507`; the runtime binds the matched exact
 value. Reference data, driver and conventions are in
 `tools/loop_reference/PHOTON_SOURCES.md`. No new performance measurement or massive
 vector/EW-source certification is implied.
+
+## Projected identity histories
+
+LC/NLC source classes reuse the complete model's already projected Born/loop
+matrices and local/field counterterm weights. The common structural leading
+colour degree remains the one established across each complete squared-order
+sector, including UV and model R2. Source replacement and spectator helicity sums
+do not recompute that degree. Both integrated interference directions remain
+present, even for the identity observable.
+
+Generation admits empty bra/ket histories, including named identity aliases,
+and any actually supported declared joint source classes. It rejects requested
+nonidentity histories and automatic colour-insertion catalogs before preparation.
+Formal full-colour preparations also use this identity path until the graded
+ordered-operator banks are available; fixed-Nc full-colour histories retain their
+existing implementation. No guard is relaxed around an unprojected metric.
+
+The saved descriptor convention is `sun-graded-identity-all-outgoing-v1`.
+The native validator requires an actual colour projection and empty histories in
+every ordinary/source descriptor. Correlated projected artifacts are inclusive:
+they expose one contracted colour component, no resolved axes and no signed Born
+anchors. Ordinary LC artifacts still require their canonical Born-component
+partition and resolved payload. Python and standalone shape/capability queries
+follow that actual partition; virtual contributions are never probabilities.
+
+Actual retained four-gluon LC and independently generated public NLC controls
+exercise singleton and joint polarization completeness against each ordinary
+complete component, both interference directions, literal complex scaling, zero
+sources and exact source changes in double, DoubleFloat and AP70. Original point
+IDs, irregular source batches, empty classes and scalar rebinding are retained.
+Public LC additionally checks AP60/AP80 subset rescue and `clear`; a packaged
+Rust client loads the saved projected artifact and checks the contracted shape,
+source ingress and owned output labels. NLC publication uses the ordinary public
+generator's source-versus-saved checks, with its actual owner retained separately
+from LC. These are correctness controls, not new timing measurements or an
+independent 70-digit external-provider reference.

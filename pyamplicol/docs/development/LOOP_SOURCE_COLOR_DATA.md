@@ -90,7 +90,8 @@ order-scope owner; source entries from different preparations are never mixed.
 The compiler checks selected ordinary, UV/R2 and field coverage, then saves the
 actual projected instructions and accuracy in the existing artifact. LC resolved
 outputs carry signed canonical Born-tensor components; NLC uses a contracted
-component. The leading degree is shared across the complete squared-order sector
+component. Inclusive identity-history spin/correlation artifacts use a single
+contracted component at either accuracy; see `LOOP_PUBLIC_SPIN.md`. The leading degree is shared across the complete squared-order sector
 before those Born rows are partitioned.
 
 Dry-run reports the requested accuracy and whether source colour data are present.
