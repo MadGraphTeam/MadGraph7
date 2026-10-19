@@ -607,6 +607,7 @@ class NativeScalarBindings:
         )
 
     def update(self, changes: Mapping[str, str | tuple[str, str]]):
+        """Atomically publish and return the admitted immutable source snapshot."""
         # Native evaluation releases the GIL. Serialize writers, then publish
         # all state fields with one assignment; readers retain either snapshot.
         with self._update_lock:

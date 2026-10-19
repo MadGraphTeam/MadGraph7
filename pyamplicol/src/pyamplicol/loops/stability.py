@@ -120,8 +120,8 @@ class NativeModelStabilityProgram:
     retain one exact snapshot across attempts. The certified direct-R2 gg control
     preserves its strategy and dimensional sectors. Projected-colour, CMS and
     correlated views remain outside this boundary.
-    Malformed original inputs and global model formula errors still propagate.
-    Numerical external-state failures retain sparse original point identities.
+    Malformed original inputs and metadata errors still propagate. Numerical
+    source-realization and external-state failures retain original point IDs.
     """
 
     def __init__(

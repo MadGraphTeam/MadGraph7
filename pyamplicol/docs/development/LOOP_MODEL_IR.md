@@ -1389,10 +1389,59 @@ These are internal in-memory records. Existing producer graph references remain
 available for diagnostics; they are neither serialized nor used to regenerate
 physics during rebinding. Optional source plan references likewise support
 existing inspection/capability checks; ordinary binding and evaluation work
-without those references. Source-owned PACBIN output remains explicitly rejected
-until its descriptor integration. Formal-colour retained views, source direct-R2
-and new source partial/rescue domains remain separate work; this checkpoint does
-not widen those capability gates.
+without those references. The saved source descriptor and public runtime policy
+are described in [the portable execution notes](LOOP_PORTABLE_EXECUTION.md).
+Source direct-R2 and broader producer partial/rescue domains remain separate
+work; the retained-instruction boundary alone does not widen those capability
+gates.
+
+### Live-producer source-binding rescue
+
+Source-owned prepared records accept the existing `VirtualStabilityPolicy`
+before realizing parameters in the requested arithmetic. Without a policy,
+source binding and updates still reject numerical failures eagerly. With a
+policy, a typed nonfinite realization may retain exact defaults and overrides
+when a configured higher arithmetic can realize them. This admission does not
+certify the amplitude: complete-result agreement and conversion checks remain
+necessary. Malformed literals, nonreal real parameters, ownership mismatches and
+unsupported settings remain hard errors.
+
+An admitted failed snapshot holds immutable failure stage/detail and no numeric
+buffers. Reading `arguments` or `values` raises a fresh typed exception rather
+than retaining a traceback in shared state. Internal `NativeScalarBindings.update`
+returns the newly admitted snapshot, and validates before publishing its revision;
+a rejected update leaves the old snapshot intact. Source `rebind` inherits the
+existing policy unless explicitly replaced. Changing the primary arithmetic must
+still leave the configured higher sequence strictly increasing.
+
+The live stability helper captures one exact source snapshot per call and
+reconstructs it through the same retained prepared owner for every higher
+attempt. A concurrent update belongs to the next call, including when higher
+views are already cached. No failed numerical values, producer graph lowering or
+instruction saving participate in that reconstruction. Global source failures
+return actual zero-row component buffers and a failure for every original point
+ID; original momentum and positive-scale validation still runs. The complete
+model path includes source-derived UV, R2 and external-field columns, with later
+point failures removing only their original lanes.
+
+The admitted producer partial domain is structural: full colour, real masses,
+massless external states, the native physical frame, and coherent ordinary and
+counterterm source-scale owners. It no longer requires a particular external-PDG
+list or excludes every process with source-derived field contributions. CMS,
+formal-colour projected, massive-external and broader correlated producer rescue
+remain outside this admission.
+
+The retained QCD photon control contains 23 loop graphs and six external-field
+insertions. Complete Born, bare, UV, R2, field and total results in double,
+DoubleFloat and arbitrary precision agree with the unchanged original-projector
+control. An overflowing exponential added only to an existing real-input
+diagnostic exercises double/DD failure followed by AP60/AP80 agreement, while
+physical instructions and scalar values stay unchanged. Additional controls
+cover original IDs, empty inputs, higher-policy replacement, captured-snapshot
+updates, cached higher views and an injected late field-column failure. The
+original producer owners, prepared caches, Python module dictionaries and native
+module are preserved. These are correctness checks, not generation or runtime
+measurements, and do not extend CMS or direct-R2 certification.
 
 ### Explicit loop_sm scalar declaration compatibility
 

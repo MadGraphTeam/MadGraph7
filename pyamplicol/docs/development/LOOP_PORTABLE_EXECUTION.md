@@ -454,8 +454,10 @@ policy replacement; a standalone Rust control checks the ordinary physical
 result and owned rescue diagnostics. Focused C, C++, Fortran and installed Rust
 clients exercise the new policy-bearing open operation and empty-result lifetime.
 These are correctness controls, not performance measurements or new physics
-certification. The separate live-producer stability helper retains its existing
-scope pending its own source-binding integration.
+certification. The live-producer stability helper also preserves exact source
+bindings through numerical failures in its full-colour, real-mass, massless
+external-state domain; its complete six-field photon control and remaining
+limits are described in [the model implementation notes](LOOP_MODEL_IR.md#live-producer-source-binding-rescue).
 
 ## Explicit partial-value returns
 
