@@ -292,3 +292,53 @@ def test_resolved_parameter_update_clear_and_retained_results(resolved_artifact)
                 first.values[0][0][h][0][pole] * ratio**3,
                 "3e-11",
             )
+
+
+def test_native_nonfinite_resolved_projection_retains_physical_id(
+    resolved_plan, tmp_path
+):
+    import io
+
+    import _loop_reduction as native
+    from symbolica import E, S
+
+    from pyamplicol.generation.evaluator_container import (
+        PacbinMemberSource,
+        PacbinReader,
+        write_pacbin_atomic,
+    )
+    from pyamplicol.loops.physical import _saved
+
+    path, points = resolved_plan
+    plan = json.loads(native.PortableLoopPlan(str(path)).metadata_json())
+    width = sum(
+        len(plan["schedules"][i]["output_slots"]) for i in plan["born"]["schedules"]
+    )
+    parameters = [S(f"resolved_nonfinite_test::born{i}") for i in range(width)]
+    # A real native projection fault at zero strong coupling. The descriptor
+    # remains well-shaped; only execution can expose division by a zero Born
+    # current. This avoids depending on roundoff in structural helicity zeros.
+    faulty = _saved([E("1") / parameters[0]], parameters)
+    state = plan["helicity_projection"]["born"]
+    destination = tmp_path / "nonfinite-projection.pacbin"
+    with PacbinReader.open(path) as reader:
+        members = [
+            PacbinMemberSource(
+                member.logical_path,
+                member.kind,
+                io.BytesIO(
+                    faulty
+                    if member.logical_path == state
+                    else reader.read_member(member.logical_path, length=member.length)
+                ),
+            )
+            for member in reader.members
+        ]
+    write_pacbin_atomic(destination, members)
+    runtime = native.NativeLoopProgram(
+        str(destination), reduction_engine="fast", parameters={"aS": ["0", "0"]}
+    )
+    with pytest.raises(
+        ValueError, match=r"Born projection.*original points \{91\}.*point, helicity"
+    ):
+        runtime.evaluate(points[:1], ["1000000"], point_ids=[91], resolved=True)

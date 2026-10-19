@@ -397,6 +397,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         }
         let projection_points = if resolved { rows } else { points };
         let projection_helicities = if resolved { 1 } else { helicities };
+        let projection_rows_per_point = if resolved { helicities } else { 1 };
         let projection_ids = if resolved {
             ids.clone()
         } else {
@@ -467,7 +468,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         } else {
             eval::<B>(&mut self.bare, "born_projector", &born_input)?
         };
-        B::require_finite(&born, "Born projection", 1)?;
+        B::require_finite(&born, "Born projection", projection_rows_per_point)?;
         let sector_count = plan.order_layout.r#virtual.len();
         let mut integrated = Vec::new();
         let mut rational_integrated = Vec::new();
@@ -584,14 +585,14 @@ impl<B: LoopBackend> LoopExecutor<B> {
             "postprocess",
             &B::concat(&integrated.iter().collect::<Vec<_>>())?,
         )?;
-        B::require_finite(&virtual_value, "bare virtual assembly", 1)?;
+        B::require_finite(&virtual_value, "bare virtual assembly", projection_rows_per_point)?;
         let rational = if plan.dimensional_numerators {
             let value = eval::<B>(
                 &mut self.bare,
                 "postprocess",
                 &B::concat(&rational_integrated.iter().collect::<Vec<_>>())?,
             )?;
-            B::require_finite(&value, "direct rational assembly", 1)?;
+            B::require_finite(&value, "direct rational assembly", projection_rows_per_point)?;
             Some(value)
         } else {
             None
@@ -658,7 +659,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         } else {
             eval::<B>(&mut self.model, "projector", &projected)?
         };
-        B::require_finite(&counterterms, "counterterm projection", 1)?;
+        B::require_finite(&counterterms, "counterterm projection", projection_rows_per_point)?;
         let width = 3 * sector_count;
         if let Some(rational) = rational {
             counterterms = B::concat(&[
@@ -672,7 +673,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
             "assemble",
             &B::concat(&[&virtual_value, &counterterms])?,
         )?;
-        B::require_finite(&assembled, "complete virtual assembly", 1)?;
+        B::require_finite(&assembled, "complete virtual assembly", projection_rows_per_point)?;
         let components = [
             B::select(&assembled, (0..width).collect())?,
             virtual_value,
@@ -684,7 +685,7 @@ impl<B: LoopBackend> LoopExecutor<B> {
         let mut values = vec![&born];
         values.extend(components.iter());
         let totals = eval::<B>(&mut self.model, "sum_order_values", &B::concat(&values)?)?;
-        B::require_finite(&totals, "sum over completed perturbative orders", 1)?;
+        B::require_finite(&totals, "sum over completed perturbative orders", projection_rows_per_point)?;
         Ok(CompleteLoopResult {
             point_ids: projection_ids,
             born,

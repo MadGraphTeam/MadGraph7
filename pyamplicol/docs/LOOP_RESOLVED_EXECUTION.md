@@ -29,8 +29,13 @@ precision retain their native carriers through projection, reduction and the
 final sums.
 
 Native row identities combine the caller's physical point identity and the
-helicity index with checked integer arithmetic. Public reduction failures name
-the original point index and helicity. Empty batches, irregular tails and lane
+helicity index with checked integer arithmetic. Nonfinite projection failures and
+returned per-lane statuses name the original
+point and helicity. Early reducer exceptions still retain their original encoded
+channel ID: the backend currently raises before returning statuses and the shared
+error type carries no structured row context. Decoding that path is part of the
+pending failure/rescue interface work; exceptions are never parsed as strings or
+converted into successful output. Empty batches, irregular tails and lane
 permutations use the same schedule. Success still means the reducer completed;
 automatic accuracy certification and rescue remain separate unfinished work.
 

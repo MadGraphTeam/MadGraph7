@@ -235,11 +235,20 @@ impl LoopBackend for PhysicalBackend {
             return Ok(());
         }
         let points = failed
-            .into_iter()
+            .iter()
             .map(|id| id / rows_per_point as u64)
             .collect::<std::collections::BTreeSet<_>>();
+        let helicities = if rows_per_point > 1 {
+            let lanes = failed.iter().map(|id| (
+                id / rows_per_point as u64,
+                id % rows_per_point as u64,
+            )).collect::<Vec<_>>();
+            format!("; (point, helicity) {lanes:?}")
+        } else {
+            String::new()
+        };
         Err(RusticolError::evaluation(format!(
-            "{stage} has nonfinite values at original points {points:?}"
+            "{stage} has nonfinite values at original points {points:?}{helicities}"
         )))
     }
 }
