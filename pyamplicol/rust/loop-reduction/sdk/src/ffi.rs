@@ -122,6 +122,7 @@ unsafe fn json_string(
 /// Opaque handles must not be called concurrently. Results are immutable.
 pub struct VirtualHandle(Runtime);
 pub struct VirtualResult(Evaluation);
+pub struct CorrelatedResult(CorrelatedEvaluation);
 
 #[repr(C)]
 pub struct BatchRequest {
@@ -145,6 +146,16 @@ pub struct ResultShape {
     pub virtual_values: usize,
     pub resolved: u32,
     pub axes: Shape,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CorrelatedResultShape {
+    pub requested_points: usize,
+    pub successful_points: usize,
+    pub born_values: usize,
+    pub virtual_values: usize,
+    pub axes: CorrelatedShape,
 }
 
 #[derive(Deserialize)]
@@ -270,23 +281,19 @@ macro_rules! runtime_json {
 }
 runtime_json!(rusticol_virtual_metadata_json, metadata_json);
 runtime_json!(rusticol_virtual_capabilities_json, capabilities_json);
+runtime_json!(
+    rusticol_virtual_correlation_histories_json,
+    correlation_histories_json
+);
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rusticol_virtual_evaluate(
-    handle: *mut VirtualHandle,
-    request: *const BatchRequest,
-    output: *mut *mut VirtualResult,
-) -> c_int {
-    guard(|| unsafe {
-        let output = mutable(output)?;
-        *output = ptr::null_mut();
-        let request = reference(request)?;
-        if request.resolved > 1 {
-            return Err(bad("resolved must be zero or one"));
-        }
-        let handle = mutable(handle)?;
+// Common batch shape, opaque point identities and verification policy ingress.
+unsafe fn request_arguments(
+    runtime: &Runtime,
+    request: &BatchRequest,
+) -> Result<(Vec<u64>, Option<VerificationPolicy>)> {
+    unsafe {
         if request.momentum_count
-            != product(&[request.point_count, handle.0.shape().external_count, 4])?
+            != product(&[request.point_count, runtime.shape().external_count, 4])?
         {
             return Err(bad("momentum count differs from point/leg shape"));
         }
@@ -302,6 +309,25 @@ pub unsafe extern "C" fn rusticol_virtual_evaluate(
             .transpose()
             .map_err(bad)?
             .map(VerificationPolicy::from);
+        Ok((ids, policy))
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_evaluate(
+    handle: *mut VirtualHandle,
+    request: *const BatchRequest,
+    output: *mut *mut VirtualResult,
+) -> c_int {
+    guard(|| unsafe {
+        let output = mutable(output)?;
+        *output = ptr::null_mut();
+        let request = reference(request)?;
+        if request.resolved > 1 {
+            return Err(bad("resolved must be zero or one"));
+        }
+        let handle = mutable(handle)?;
+        let (ids, policy) = request_arguments(&handle.0, request)?;
         let result = handle.0.evaluate(
             values(request.momenta, request.momentum_count)?,
             &ids,
@@ -344,10 +370,10 @@ pub unsafe extern "C" fn rusticol_virtual_result_shape(
     })
 }
 macro_rules! copy_result {
-    ($name:ident, $field:ident, $ty:ty) => {
+    ($name:ident, $result:ty, $field:ident, $ty:ty) => {
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn $name(
-            result: *const VirtualResult,
+            result: *const $result,
             output: *mut $ty,
             capacity: usize,
         ) -> c_int {
@@ -355,15 +381,22 @@ macro_rules! copy_result {
         }
     };
 }
-copy_result!(rusticol_virtual_result_copy_born, born, f64);
-copy_result!(rusticol_virtual_result_copy_virtual, virtual_values, f64);
+copy_result!(rusticol_virtual_result_copy_born, VirtualResult, born, f64);
+copy_result!(
+    rusticol_virtual_result_copy_virtual,
+    VirtualResult,
+    virtual_values,
+    f64
+);
 copy_result!(
     rusticol_virtual_result_copy_requested_ids,
+    VirtualResult,
     requested_point_ids,
     u64
 );
 copy_result!(
     rusticol_virtual_result_copy_successful_ids,
+    VirtualResult,
     successful_point_ids,
     u64
 );
@@ -421,4 +454,148 @@ mod tests {
             STATUS_INVALID_ARGUMENT
         );
     }
+}
+
+/// Grouped complex correlations have their own opaque result type. The input
+/// structure is shared, but resolved=1 is rejected before numerical work.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_evaluate_correlated(
+    handle: *mut VirtualHandle,
+    request: *const BatchRequest,
+    output: *mut *mut CorrelatedResult,
+) -> c_int {
+    guard(|| unsafe {
+        let output = mutable(output)?;
+        *output = ptr::null_mut();
+        let request = reference(request)?;
+        if request.resolved != 0 {
+            return Err(bad("resolved directed correlations are unavailable"));
+        }
+        let handle = mutable(handle)?;
+        let (ids, policy) = request_arguments(&handle.0, request)?;
+        let result = handle.0.evaluate_correlated(
+            values(request.momenta, request.momentum_count)?,
+            &ids,
+            values(request.mu_r2, request.scale_count)?,
+            text(request.r2_strategy)?,
+            policy.as_ref(),
+        )?;
+        *output = Box::into_raw(Box::new(CorrelatedResult(result)));
+        Ok(())
+    })
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_correlated_shape(
+    handle: *const VirtualHandle,
+    output: *mut CorrelatedShape,
+) -> c_int {
+    guard(|| unsafe {
+        *mutable(output)? = reference(handle)?.0.correlated_shape();
+        Ok(())
+    })
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_correlated_result_free(
+    result: *mut CorrelatedResult,
+) -> c_int {
+    guard(|| {
+        if !result.is_null() {
+            unsafe {
+                drop(Box::from_raw(result));
+            }
+        }
+        Ok(())
+    })
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_correlated_result_shape(
+    result: *const CorrelatedResult,
+    output: *mut CorrelatedResultShape,
+) -> c_int {
+    guard(|| unsafe {
+        let result = &reference(result)?.0;
+        *mutable(output)? = CorrelatedResultShape {
+            requested_points: result.requested_point_ids.len(),
+            successful_points: result.successful_point_ids.len(),
+            born_values: result.born.len(),
+            virtual_values: result.virtual_values.len(),
+            axes: result.shape,
+        };
+        Ok(())
+    })
+}
+copy_result!(
+    rusticol_virtual_correlated_result_copy_born,
+    CorrelatedResult,
+    born,
+    Complex64
+);
+copy_result!(
+    rusticol_virtual_correlated_result_copy_virtual,
+    CorrelatedResult,
+    virtual_values,
+    Complex64
+);
+copy_result!(
+    rusticol_virtual_correlated_result_copy_requested_ids,
+    CorrelatedResult,
+    requested_point_ids,
+    u64
+);
+copy_result!(
+    rusticol_virtual_correlated_result_copy_successful_ids,
+    CorrelatedResult,
+    successful_point_ids,
+    u64
+);
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_correlated_result_copy_statuses(
+    result: *const CorrelatedResult,
+    output: *mut u32,
+    capacity: usize,
+) -> c_int {
+    guard(|| unsafe {
+        copy(
+            &reference(result)?
+                .0
+                .statuses
+                .iter()
+                .map(|s| *s as u32)
+                .collect::<Vec<_>>(),
+            output,
+            capacity,
+        )
+    })
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_correlated_result_diagnostics_json(
+    result: *const CorrelatedResult,
+    output: *mut c_char,
+    capacity: usize,
+    needed: *mut usize,
+) -> c_int {
+    guard(|| unsafe {
+        json_string(
+            &reference(result)?.0.diagnostics_json,
+            output,
+            capacity,
+            needed,
+        )
+    })
+}
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_correlated_result_histories_json(
+    result: *const CorrelatedResult,
+    output: *mut c_char,
+    capacity: usize,
+    needed: *mut usize,
+) -> c_int {
+    guard(|| unsafe {
+        json_string(
+            &reference(result)?.0.histories_json()?,
+            output,
+            capacity,
+            needed,
+        )
+    })
 }

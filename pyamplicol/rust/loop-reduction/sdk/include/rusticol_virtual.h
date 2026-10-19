@@ -103,6 +103,38 @@ int rusticol_virtual_result_copy_requested_ids(const rusticol_virtual_result *, 
 int rusticol_virtual_result_copy_successful_ids(const rusticol_virtual_result *, uint64_t *, size_t);
 int rusticol_virtual_result_copy_statuses(const rusticol_virtual_result *, uint32_t *, size_t);
 int rusticol_virtual_result_diagnostics_json(const rusticol_virtual_result *, char *, size_t, size_t *);
+/* Additive grouped complex interface. Ordinary v1 structures and functions are
+ * unchanged. Every saved history is evaluated once in the recorded ID order;
+ * request.resolved must be zero. Histories are never summed implicitly.
+ * Shape counts below count complex pairs, not individual real components.
+ */
+typedef struct CorrelatedResult rusticol_virtual_correlated_result;
+typedef struct { double real, imag; } rusticol_virtual_complex64;
+typedef struct {
+  size_t histories, born_orders, virtual_orders, epsilon_count;
+} rusticol_virtual_correlated_shape_info;
+typedef struct {
+  size_t requested_points, successful_points, born_values, virtual_values;
+  rusticol_virtual_correlated_shape_info axes;
+} rusticol_virtual_correlated_result_shape_info;
+int rusticol_virtual_correlated_shape(const rusticol_virtual_handle *, rusticol_virtual_correlated_shape_info *);
+/* Ordered history IDs only; no second colour-operation label convention. */
+int rusticol_virtual_correlation_histories_json(const rusticol_virtual_handle *, char *, size_t, size_t *);
+int rusticol_virtual_evaluate_correlated(rusticol_virtual_handle *, const rusticol_virtual_batch_request *, rusticol_virtual_correlated_result **);
+int rusticol_virtual_correlated_result_free(rusticol_virtual_correlated_result *);
+int rusticol_virtual_correlated_result_shape(const rusticol_virtual_correlated_result *, rusticol_virtual_correlated_result_shape_info *);
+/* Born [successful_point,history,born_order]; loop
+ * [successful_point,history,virtual_order,epsilon] with epsilon=(0,-1,-2).
+ * Both real and imaginary components are physical signed interference outputs.
+ * Failure/status/ownership/short-buffer rules are identical to ordinary calls.
+ */
+int rusticol_virtual_correlated_result_copy_born(const rusticol_virtual_correlated_result *, rusticol_virtual_complex64 *, size_t);
+int rusticol_virtual_correlated_result_copy_virtual(const rusticol_virtual_correlated_result *, rusticol_virtual_complex64 *, size_t);
+int rusticol_virtual_correlated_result_copy_requested_ids(const rusticol_virtual_correlated_result *, uint64_t *, size_t);
+int rusticol_virtual_correlated_result_copy_successful_ids(const rusticol_virtual_correlated_result *, uint64_t *, size_t);
+int rusticol_virtual_correlated_result_copy_statuses(const rusticol_virtual_correlated_result *, uint32_t *, size_t);
+int rusticol_virtual_correlated_result_diagnostics_json(const rusticol_virtual_correlated_result *, char *, size_t, size_t *);
+int rusticol_virtual_correlated_result_histories_json(const rusticol_virtual_correlated_result *, char *, size_t, size_t *);
 #ifdef __cplusplus
 }
 #endif

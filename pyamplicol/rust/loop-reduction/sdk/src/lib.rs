@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: 0BSD
 //! Source-only standalone virtual SDK. The safe Rust and C interfaces share the
 //! existing native executor; neither links Python or implements loop reduction.
+mod correlated;
 mod ffi;
+pub use correlated::{Complex64, CorrelatedEvaluation, CorrelatedShape};
 pub use ffi::*;
 use rusticol_core::loop_execution::{CompleteLoopResult, LoopInputs};
 use rusticol_core::loop_runtime::LoopRuntimePlan;
@@ -69,6 +71,7 @@ pub struct Runtime {
     native: VirtualRuntime,
     shape: Shape,
     color_components: Vec<String>,
+    history_ids: Vec<String>,
 }
 
 impl Runtime {
@@ -95,10 +98,17 @@ impl Runtime {
             || vec![native.metadata().color_accuracy.clone()],
             |partition| partition.ids.clone(),
         );
+        let history_ids = plan
+            .directed_projection
+            .as_ref()
+            .map_or_else(Vec::new, |p| {
+                p.histories.iter().map(|h| h.id.clone()).collect()
+            });
         Ok(Self {
             native,
             shape,
             color_components,
+            history_ids,
         })
     }
     pub fn shape(&self) -> Shape {
@@ -112,7 +122,10 @@ impl Runtime {
         serde_json::to_string(&serde_json::json!({
             "contribution_kind":"virtual", "execution_mode":"loop_recurrence",
             "arithmetic":["double"], "epsilon_powers":[0,-1,-2],
-            "resolved": self.native.metadata().resolved, "correlations":false,
+            "resolved": self.native.metadata().resolved, "correlations":self.native.metadata().correlations,
+            "correlation_histories":self.history_ids,
+            "correlated_resolved":false,
+            "correlated_layout":"point/history/order/epsilon; complex binary64",
             "color_accuracy":self.native.metadata().color_accuracy,
             "color_components":self.color_components,
             "color_component_semantics":if self.native.metadata().color_accuracy == "lc" {
@@ -165,28 +178,12 @@ impl Runtime {
         &mut self,
         momenta: Vec<String>,
         point_ids: Vec<u64>,
-        mut scales: Vec<String>,
+        scales: Vec<String>,
         resolved: bool,
         strategy: Option<&str>,
         policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<Evaluation> {
-        if momenta.len() != product(&[point_ids.len(), self.shape.external_count, 4])? {
-            return Err(invalid(
-                "momentum count must equal point_count * external_count * 4",
-            ));
-        }
-        if scales.len() == 1 {
-            scales = vec![scales[0].clone(); point_ids.len()];
-        }
-        if scales.len() != point_ids.len() {
-            return Err(invalid("mu_r2 requires one scale or one per point"));
-        }
-        let inputs = LoopInputs {
-            momenta,
-            point_ids,
-            scales_squared: scales,
-            model_values: vec![],
-        };
+        let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
         let (result, verification) = match policy {
             Some(policy) => {
                 let output = self
@@ -200,6 +197,30 @@ impl Runtime {
             ),
         };
         Evaluation::from_native(result, verification, self.shape, resolved)
+    }
+    fn prepare_inputs(
+        &self,
+        momenta: Vec<String>,
+        point_ids: Vec<u64>,
+        mut scales: Vec<String>,
+    ) -> RusticolResult<LoopInputs> {
+        if momenta.len() != product(&[point_ids.len(), self.shape.external_count, 4])? {
+            return Err(invalid(
+                "momentum count must equal point_count * external_count * 4",
+            ));
+        }
+        if scales.len() == 1 {
+            scales = vec![scales[0].clone(); point_ids.len()];
+        }
+        if scales.len() != point_ids.len() {
+            return Err(invalid("mu_r2 requires one scale or one per point"));
+        }
+        Ok(LoopInputs {
+            momenta,
+            point_ids,
+            scales_squared: scales,
+            model_values: vec![],
+        })
     }
 }
 
@@ -266,7 +287,6 @@ impl Evaluation {
         shape: Shape,
         resolved: bool,
     ) -> RusticolResult<Self> {
-        let verified: BTreeMap<_, _> = verification.iter().map(|v| (v.point_id, v)).collect();
         let helicities = if resolved { shape.helicities } else { 1 };
         let born_colors = if resolved {
             shape.born_color_components
@@ -286,21 +306,7 @@ impl Evaluation {
             return Err(invalid("native resolved point identity shape differs"));
         }
         let successful_point_ids = result.point_ids.clone();
-        let successes: std::collections::BTreeSet<_> =
-            successful_point_ids.iter().copied().collect();
-        let statuses = result
-            .requested_point_ids
-            .iter()
-            .map(|id| match verified.get(id) {
-                Some(v) if v.status == "accuracy-not-established" => {
-                    PointStatus::AccuracyNotEstablished
-                }
-                Some(v) if v.status == "rescued" => PointStatus::Rescued,
-                Some(v) if v.accuracy_established => PointStatus::Verified,
-                _ if successes.contains(id) => PointStatus::Success,
-                _ => PointStatus::Failed,
-            })
-            .collect();
+        let (statuses, diagnostics_json) = diagnostics(&result, &verification)?;
         let born = pack(
             &result.born,
             successful_point_ids.len(),
@@ -317,14 +323,6 @@ impl Evaluation {
             virtual_colors,
             3,
         )?;
-        let diagnostics_json = serde_json::to_string(&serde_json::json!({
-            "requested_point_ids":result.requested_point_ids,
-            "successful_point_ids":successful_point_ids,
-            "failures":result.failures, "verification":verification,
-            "reduction_statuses":result.statuses,
-            "source_revision":result.source_revision, "r2_strategy":result.r2_strategy,
-        }))
-        .map_err(serialization)?;
         Ok(Self {
             requested_point_ids: result.requested_point_ids,
             successful_point_ids,
@@ -336,6 +334,37 @@ impl Evaluation {
             diagnostics_json,
         })
     }
+}
+
+fn diagnostics(
+    result: &CompleteLoopResult<Arc<Batch>>,
+    verification: &[VerificationDiagnostic],
+) -> RusticolResult<(Vec<PointStatus>, String)> {
+    let verified: BTreeMap<_, _> = verification.iter().map(|v| (v.point_id, v)).collect();
+    let successful_point_ids = &result.point_ids;
+    let successes: std::collections::BTreeSet<_> = successful_point_ids.iter().copied().collect();
+    let statuses = result
+        .requested_point_ids
+        .iter()
+        .map(|id| match verified.get(id) {
+            Some(v) if v.status == "accuracy-not-established" => {
+                PointStatus::AccuracyNotEstablished
+            }
+            Some(v) if v.status == "rescued" => PointStatus::Rescued,
+            Some(v) if v.accuracy_established => PointStatus::Verified,
+            _ if successes.contains(id) => PointStatus::Success,
+            _ => PointStatus::Failed,
+        })
+        .collect();
+    let diagnostics_json = serde_json::to_string(&serde_json::json!({
+        "requested_point_ids":result.requested_point_ids,
+        "successful_point_ids":successful_point_ids,
+        "failures":result.failures, "verification":verification,
+        "reduction_statuses":result.statuses,
+        "source_revision":result.source_revision, "r2_strategy":result.r2_strategy,
+    }))
+    .map_err(serialization)?;
+    Ok((statuses, diagnostics_json))
 }
 
 #[cfg(test)]
