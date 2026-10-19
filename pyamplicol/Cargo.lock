@@ -2340,6 +2340,7 @@ dependencies = [
  "pyo3",
  "rusticol-core",
  "rusticol-loop-reduction",
+ "serde_json",
  "symbolica",
 ]
 

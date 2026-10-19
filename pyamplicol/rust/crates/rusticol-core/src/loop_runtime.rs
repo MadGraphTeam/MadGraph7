@@ -95,8 +95,8 @@ record!(RectangularDualWeights {
     born_orbits: Vec<Vec<usize>>, loop_orbits: Vec<Vec<usize>>,
     banks: Vec<[usize; 2]>, kernels: Vec<[usize; 3]>, residuals: Vec<[usize; 3]>
 });
-/// Selected bare-loop dual-weight operation. Born-square and UV/R2/field
-/// contractions remain direct; failed lanes need not reach the selected stage.
+// Selected bare-loop dual-weight operation. Born-square and UV/R2/field
+// contractions remain direct; failed lanes need not reach the selected stage.
 record!(ColorWeightExecution {
     requested: String,
     algorithm: String,
