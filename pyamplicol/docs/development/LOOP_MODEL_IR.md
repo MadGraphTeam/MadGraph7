@@ -1425,10 +1425,10 @@ model path includes source-derived UV, R2 and external-field columns, with later
 point failures removing only their original lanes.
 
 The admitted producer partial domain is structural: full colour, real masses,
-massless external states, the native physical frame, and coherent ordinary and
+the native physical frame, and coherent ordinary and
 counterterm source-scale owners. It no longer requires a particular external-PDG
-list or excludes every process with source-derived field contributions. CMS,
-formal-colour projected, massive-external and broader correlated producer rescue
+list, massless external states or the absence of source-derived field contributions. CMS,
+formal-colour projected and broader correlated producer rescue
 remain outside this admission.
 
 The retained QCD photon control contains 23 loop graphs and six external-field
@@ -1442,6 +1442,21 @@ updates, cached higher views and an injected late field-column failure. The
 original producer owners, prepared caches, Python module dictionaries and native
 module are preserved. These are correctness checks, not generation or runtime
 measurements, and do not extend CMS or direct-R2 certification.
+
+The retained stable `u d~ -> W+ g` owner adds 11 loop graphs and six field
+insertions. Copied prepared records preserve the original modules, owner,
+snapshots, caches and native backend while exercising all complete components in
+double, DoubleFloat and AP80. Guarded source failures, captured-snapshot updates,
+AP60/AP80 complete-result rescue, empty/invalid inputs and late field failures
+pass. A real FeynKit longitudinal-rest-state failure removes its whole original
+point in every carrier; the surviving point agrees with the unchanged AP80
+ordinary control. No wavefunction formula or new execution path was introduced.
+
+A separate producer ID defect remains open: its arithmetic `point_id * h` lane
+packing can overflow for a valid maximum-u64 caller ID. No smaller ID bound has
+been imposed. The saved native runtime already uses opaque point IDs and is not
+affected; the live producer needs the same separation of physical IDs and dense
+internal lanes.
 
 ### Explicit loop_sm scalar declaration compatibility
 

@@ -455,8 +455,8 @@ result and owned rescue diagnostics. Focused C, C++, Fortran and installed Rust
 clients exercise the new policy-bearing open operation and empty-result lifetime.
 These are correctness controls, not performance measurements or new physics
 certification. The live-producer stability helper also preserves exact source
-bindings through numerical failures in its full-colour, real-mass, massless
-external-state domain; its complete six-field photon control and remaining
+bindings through numerical failures in its full-colour, real-mass domain,
+including the retained massive-W control; its complete six-field controls and remaining
 limits are described in [the model implementation notes](LOOP_MODEL_IR.md#live-producer-source-binding-rescue).
 
 ## Explicit partial-value returns

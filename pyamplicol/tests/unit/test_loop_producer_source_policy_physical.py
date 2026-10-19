@@ -211,3 +211,41 @@ def test_late_source_field_column_failure_keeps_other_original_points(retained):
         "scale-dependent scalar values and active diagnostics"
     }
     _compare(result, retained["reference"], retained["ids"][:1], "1e-8", "1e-12")
+
+
+@pytest.mark.parametrize(
+    "arithmetic,precision,rtol,atol",
+    [
+        ("double", None, "1e-8", "1e-12"),
+        ("double-double", None, "1e-22", "1e-26"),
+        ("arbitrary", 80, "1e-58", "1e-62"),
+    ],
+)
+def test_dependency_massive_state_failure_compacts_whole_point(
+    retained, arithmetic, precision, rtol, atol
+):
+    leg = retained.get("massive_vector_leg")
+    if leg is None:
+        pytest.skip("requires the retained massive-vector control")
+    program = retained["ordinary"].bind(
+        backend=retained["backend"],
+        arithmetic=arithmetic,
+        precision=precision,
+        parameters=retained["parameters"],
+    )
+    assert program.bare.state_layout.legs[leg].helicities == (-1, 0, 1)
+    points = np.array(retained["points"], dtype=object, copy=True)
+    # FeynKit deliberately has no longitudinal rest-state convention. This
+    # diagnostic point exercises that real dependency failure before reduction;
+    # it is not another physical scattering/reference configuration.
+    points[1, leg, 1:] = "0"
+    result = program.evaluate_ordered_partial_native(
+        points, retained["scales"], point_ids=retained["ids"]
+    )
+    assert result.batch.point_ids == retained["ids"][:1]
+    assert {failure.point_id for failure in result.failures} == {retained["ids"][1]}
+    assert {failure.stage for failure in result.failures} == {
+        "external state preparation"
+    }
+    assert all("longitudinal" in failure.detail.lower() for failure in result.failures)
+    _compare(result, retained["reference"], retained["ids"][:1], rtol, atol)

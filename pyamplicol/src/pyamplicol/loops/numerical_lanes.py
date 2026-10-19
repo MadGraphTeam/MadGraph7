@@ -121,11 +121,10 @@ def require_partial_domain(bare):
         if (
             bare.vertex_spinor_frame != "native-physical"
             or bare.model_scale_view is None
-            or any(not leg.massless for leg in bare.state_layout.legs)
         ):
             raise NotImplementedError(
-                "partial source evaluation requires massless external states, "
-                "the native physical frame and a shared source scale owner"
+                "partial source evaluation requires the native physical frame "
+                "and a shared source scale owner"
             )
 
 
