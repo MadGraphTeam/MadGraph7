@@ -82,6 +82,31 @@ def test_virtual_manifest_selection_and_explicit_failures(source_artifact, monke
         Runtime.load(path, process="unknown-process")
 
 
+def test_load_arithmetic_preserves_values_outside_binary64(source_artifact):
+    from pyamplicol import Runtime
+
+    path, _ = source_artifact
+    runtime = Runtime.load(
+        path,
+        process="gg",
+        model_parameters={"aS": "1e400"},
+        arithmetic="arbitrary",
+        precision=70,
+        r2_strategy="model",
+    )
+    info = runtime.inspect()
+    assert info["arithmetic"] == "arbitrary"
+    assert info["parameter_overrides"]["aS"] == ["1E+400", "0"]
+    assert info["default_precision"] == 70
+    # Omitting evaluation options retains the configured load defaults, without
+    # attempting a binary64 rebind. This is an ingress test, not a physics point.
+    empty = runtime.evaluate([], mu_r2=[])
+    assert empty.shape == (0, 1, 3)
+    assert empty.r2.requested.value == "model"
+    assert runtime.inspect()["arithmetic"] == "arbitrary"
+    assert runtime.inspect()["precision_bits"] > 200
+
+
 @pytest.mark.parametrize(
     "arithmetic,precision,tolerance,bits",
     [

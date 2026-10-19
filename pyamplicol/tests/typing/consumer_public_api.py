@@ -138,7 +138,12 @@ def exercise_runtime(artifact: Path) -> None:
 
 
 def exercise_virtual_runtime(artifact: Path) -> None:
-    runtime = Runtime.load(artifact, model_parameters={"aS": Decimal("0.118")})
+    runtime = Runtime.load(
+        artifact,
+        model_parameters={"aS": Decimal("0.118")},
+        arithmetic="arbitrary",
+        precision=70,
+    )
     result = runtime.evaluate(
         MOMENTA,
         arithmetic="arbitrary",

@@ -177,7 +177,30 @@ class VirtualRuntimeBackend:
         process: str | None = None,
         model_parameters: ModelParameters | None = None,
         mute_warnings: bool = False,
+        arithmetic: str | None = None,
+        precision: int | None = None,
+        r2_strategy: str | None = None,
     ) -> None:
+        if precision is not None and (
+            isinstance(precision, bool)
+            or not isinstance(precision, int)
+            or precision < 1
+        ):
+            raise ValueError("precision must be a positive decimal digit count")
+        if arithmetic is not None and arithmetic not in {
+            "double",
+            "double-double",
+            "arbitrary",
+        }:
+            raise ValueError("unknown virtual arithmetic")
+        self.default_precision = precision if precision is not None else 16
+        self.default_arithmetic = arithmetic
+        self._default_r2 = (
+            R2Strategy.AUTO if r2_strategy is None else R2Strategy(r2_strategy)
+        )
+        initial_arithmetic = arithmetic or (
+            "double" if self.default_precision == 16 else "arbitrary"
+        )
         try:
             module = importlib.import_module("_loop_reduction")
         except ImportError as error:
@@ -198,10 +221,15 @@ class VirtualRuntimeBackend:
             str(path),
             process=process,
             parameters=_parameters(model_parameters),
+            arithmetic=initial_arithmetic,
+            precision=self.default_precision
+            if initial_arithmetic == "arbitrary"
+            else None,
+            r2_strategy=self._default_r2.value,
         )
         self._metadata: dict[str, Any] = json.loads(self._native.metadata_json())
         self._muted = bool(mute_warnings)
-        self._last_requested = R2Strategy.AUTO
+        self._last_requested = self._default_r2
         orders = self._metadata["physics"]["orders"]
         self._born_orders = tuple(
             canonical_order(item["order"]) for item in orders["born"]
@@ -272,6 +300,8 @@ class VirtualRuntimeBackend:
                     "source_revision": self._native.source_revision,
                     "arithmetic": self._native.arithmetic,
                     "supported_arithmetics": metadata["physics"]["arithmetic"],
+                    "default_arithmetic": self.default_arithmetic,
+                    "default_precision": self.default_precision,
                     "precision_bits": self._native.precision_bits,
                     "requested_r2_strategy": self._last_requested.value,
                     "effective_r2_strategy": self._native.r2_strategy,
@@ -299,23 +329,28 @@ class VirtualRuntimeBackend:
         *,
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
-        precision: int = 16,
+        precision: int | None = None,
         arithmetic: str | None = None,
         mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
         r2_strategy: str | None = None,
     ) -> VirtualEvaluation:
         if helicities or color_flows:
             raise CompatibilityError("virtual artifact selectors are not yet available")
+        precision = self.default_precision if precision is None else precision
         if (
             isinstance(precision, bool)
             or not isinstance(precision, int)
             or precision < 1
         ):
             raise ValueError("precision must be a positive decimal digit count")
-        arithmetic = arithmetic or ("double" if precision == 16 else "arbitrary")
+        arithmetic = (
+            arithmetic
+            or self.default_arithmetic
+            or ("double" if precision == 16 else "arbitrary")
+        )
         if arithmetic not in {"double", "double-double", "arbitrary"}:
             raise ValueError("unknown virtual arithmetic")
-        requested = R2Strategy.AUTO if r2_strategy is None else R2Strategy(r2_strategy)
+        requested = self._default_r2 if r2_strategy is None else R2Strategy(r2_strategy)
         if requested is R2Strategy.DIRECT:
             raise CompatibilityError(
                 "this virtual artifact only contains model-supplied R2"

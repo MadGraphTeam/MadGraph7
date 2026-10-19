@@ -730,6 +730,13 @@ numerical workspaces while preserving parameters. `mu_r2` is currently required
 explicitly; it is the renormalization scale squared, not the extra-dimensional
 loop-momentum variable.
 
+Arithmetic and precision can also be chosen at load time. For example,
+`Runtime.load(path, arithmetic="arbitrary", precision=70, model_parameters=params)`
+initializes the source parameter state directly in that carrier and uses it as
+the evaluation default. This is necessary when exact inputs are outside the
+binary64 range. Explicit evaluation options override the loaded defaults;
+loading without these options preserves the usual double/16-digit default.
+
 This delivery path currently admits full-colour, inclusive source artifacts
 with model-supplied R2 and UV. `auto` therefore chooses `model`; requesting an
 absent direct branch raises. Resolved output, selectors, correlations, mappings
