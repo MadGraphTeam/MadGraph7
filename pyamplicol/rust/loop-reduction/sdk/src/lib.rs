@@ -83,7 +83,26 @@ impl Runtime {
         parameters: Option<&SourceOverrides>,
         r2_strategy: &str,
     ) -> RusticolResult<Self> {
-        let native = VirtualRuntime::open(path, process, "double", None, parameters, r2_strategy)?;
+        Self::open_with_policy(path, process, parameters, r2_strategy, None)
+    }
+    /// Retain an explicit policy before exact source parameters are realized.
+    /// A per-call policy replaces this default only for that evaluation.
+    pub fn open_with_policy(
+        path: impl AsRef<Path>,
+        process: Option<&str>,
+        parameters: Option<&SourceOverrides>,
+        r2_strategy: &str,
+        policy: Option<&VerificationPolicy>,
+    ) -> RusticolResult<Self> {
+        let native = VirtualRuntime::open_with_policy(
+            path,
+            process,
+            "double",
+            None,
+            parameters,
+            r2_strategy,
+            policy,
+        )?;
         let plan: LoopRuntimePlan =
             serde_json::from_str(&native.plan_metadata_json()?).map_err(serialization)?;
         let shape = Shape {
@@ -123,6 +142,9 @@ impl Runtime {
     pub fn shape(&self) -> Shape {
         self.shape
     }
+    pub fn verification_policy(&self) -> Option<&VerificationPolicy> {
+        self.native.verification_policy()
+    }
     /// Existing artifact metadata includes exact order pairings and schemes.
     pub fn metadata_json(&self) -> RusticolResult<String> {
         self.native.metadata_json()
@@ -144,7 +166,11 @@ impl Runtime {
             "available_r2_strategies": self.native.metadata().available_r2_strategies,
             "r2_strategy":"model", "explicit_verification":true,
             "source_only":true,
-            "verification_limitations":"source-global parameter binding errors precede subset rescue",
+            "retained_verification_policy":self.verification_policy().map(|p| serde_json::json!({
+                "higher":p.higher, "relative_tolerance":p.relative_tolerance,
+                "absolute_tolerance":p.absolute_tolerance, "verify_successful":p.verify_successful
+            })),
+            "source_binding_rescue":"configured policy retains exact inputs after a numerical primary failure; complete-result agreement remains required",
             "normalization":"physical couplings and inclusive initial spin/color average; resolved helicities retain that average"
         })).map_err(serialization)
     }
@@ -194,7 +220,8 @@ impl Runtime {
         policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<Evaluation> {
         let inputs = self.prepare_inputs(momenta, point_ids, scales)?;
-        let (result, verification) = match policy {
+        let effective = policy.or_else(|| self.verification_policy()).cloned();
+        let (result, verification) = match effective.as_ref() {
             Some(policy) => {
                 let output = self
                     .native

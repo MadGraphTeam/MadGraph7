@@ -71,8 +71,10 @@ products fail without changing any output array. Zero-count calls accept absent
 buffers but still validate supplied keys and native strategy/policy choices.
 `UmamiStatus` reports function errors, while the output status array reports
 per-point numerical outcomes. The extension's error getter provides its local
-or forwarded SDK diagnostic. Early global source-parameter binding failures
-remain function errors, as in the shared SDK.
+or forwarded SDK diagnostic. A handle opened with an explicit verification
+policy can retain numerical global source-binding failures for complete-result
+rescue; malformed or unrecoverable parameters remain function errors. A NULL
+batch policy inherits that handle policy, as in the shared SDK.
 
 An optional `rusticol_virtual_result **diagnostic_result` receives the ordinary
 owned SDK result. It contains compact successful rows, original point IDs,

@@ -59,6 +59,13 @@ const char *rusticol_virtual_last_error_message(void);
 int rusticol_virtual_open(const char *path, const char *process,
   const char *parameters_json, const char *r2_strategy,
   rusticol_virtual_handle **output);
+/* Optional retained verification policy uses the batch-request JSON schema.
+ * It is configured before exact source realization. Per-call policy overrides
+ * this default; NULL per-call policy inherits it, including after clear.
+ */
+int rusticol_virtual_open_with_policy(const char *path, const char *process,
+  const char *parameters_json, const char *r2_strategy,
+  const char *verification_json, rusticol_virtual_handle **output);
 int rusticol_virtual_free(rusticol_virtual_handle *handle); /* NULL is accepted */
 int rusticol_virtual_clear(rusticol_virtual_handle *handle);
 int rusticol_virtual_update_parameters(rusticol_virtual_handle *handle,

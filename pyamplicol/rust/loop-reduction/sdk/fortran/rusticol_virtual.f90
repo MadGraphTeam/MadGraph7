@@ -95,6 +95,13 @@ module rusticol_virtual
       type(c_ptr) :: output
       integer(c_int) :: value
     end function
+    function c_open_policy(path, process, parameters, strategy, policy, output) &
+        bind(C, name="rusticol_virtual_open_with_policy") result(value)
+      import
+      type(c_ptr), value :: path, process, parameters, strategy, policy
+      type(c_ptr) :: output
+      integer(c_int) :: value
+    end function
     function c_free(handle) bind(C, name="rusticol_virtual_free") result(value)
       import
       type(c_ptr), value :: handle
@@ -402,13 +409,14 @@ contains
     is_loaded=c_associated(handle_of(self))
   end function
 
-  subroutine load(self,path,process,parameters_json,r2_strategy,ierr)
+  subroutine load(self,path,process,parameters_json,r2_strategy,ierr,verification_json)
     class(virtual_runtime), intent(inout) :: self
     character(*), intent(in) :: path
-    character(*), optional, intent(in) :: process, parameters_json, r2_strategy
+    character(*), optional, intent(in) :: process, parameters_json, r2_strategy, verification_json
     integer(c_int), optional, intent(out) :: ierr
     character(c_char), allocatable, target :: p(:), process_c(:), parameters_c(:), strategy_c(:)
-    type(c_ptr) :: process_p, parameters_p, strategy_p, new_handle
+    character(c_char), allocatable, target :: policy_c(:)
+    type(c_ptr) :: process_p, parameters_p, strategy_p, policy_p, new_handle
     integer(c_int) :: status
     p=cstring(path)
     process_p=c_null_ptr; parameters_p=c_null_ptr; strategy_p=c_null_ptr
@@ -421,7 +429,11 @@ contains
     if (present(r2_strategy)) then
       strategy_c=cstring(r2_strategy); strategy_p=c_loc(strategy_c)
     end if
-    status=c_open(c_loc(p),process_p,parameters_p,strategy_p,new_handle)
+    policy_p=c_null_ptr
+    if (present(verification_json)) then
+      policy_c=cstring(verification_json); policy_p=c_loc(policy_c)
+    end if
+    status=c_open_policy(c_loc(p),process_p,parameters_p,strategy_p,policy_p,new_handle)
     if (status==VIRTUAL_OK) then
       call release(self)
       allocate(self%owner)

@@ -199,6 +199,14 @@ impl From<Policy> for VerificationPolicy {
     }
 }
 
+unsafe fn read_policy(value: *const c_char) -> Result<Option<VerificationPolicy>> {
+    unsafe { text(value)? }
+        .map(serde_json::from_str::<Policy>)
+        .transpose()
+        .map_err(bad)
+        .map(|policy| policy.map(VerificationPolicy::from))
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn rusticol_virtual_abi_version() -> u32 {
     1
@@ -215,6 +223,27 @@ pub unsafe extern "C" fn rusticol_virtual_open(
     strategy: *const c_char,
     output: *mut *mut VirtualHandle,
 ) -> c_int {
+    unsafe {
+        rusticol_virtual_open_with_policy(
+            path,
+            process,
+            parameters_json,
+            strategy,
+            ptr::null(),
+            output,
+        )
+    }
+}
+/// Additive entry point; the original open call retains eager binding semantics.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_virtual_open_with_policy(
+    path: *const c_char,
+    process: *const c_char,
+    parameters_json: *const c_char,
+    strategy: *const c_char,
+    verification_json: *const c_char,
+    output: *mut *mut VirtualHandle,
+) -> c_int {
     guard(|| unsafe {
         let output = mutable(output)?;
         *output = ptr::null_mut();
@@ -222,11 +251,13 @@ pub unsafe extern "C" fn rusticol_virtual_open(
             .map(serde_json::from_str::<SourceOverrides>)
             .transpose()
             .map_err(bad)?;
-        let runtime = Runtime::open(
+        let policy = read_policy(verification_json)?;
+        let runtime = Runtime::open_with_policy(
             required_text(path)?,
             text(process)?,
             parameters.as_ref(),
             text(strategy)?.unwrap_or("auto"),
+            policy.as_ref(),
         )?;
         *output = Box::into_raw(Box::new(VirtualHandle(runtime)));
         Ok(())
@@ -318,11 +349,7 @@ unsafe fn request_arguments(
         } else {
             values(request.point_ids, request.point_count)?.to_vec()
         };
-        let policy = text(request.verification_json)?
-            .map(serde_json::from_str::<Policy>)
-            .transpose()
-            .map_err(bad)?
-            .map(VerificationPolicy::from);
+        let policy = read_policy(request.verification_json)?;
         Ok((ids, policy))
     }
 }

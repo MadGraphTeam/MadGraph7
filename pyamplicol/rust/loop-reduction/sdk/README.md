@@ -51,15 +51,32 @@ verification. Standard fixed decimal formatting uses 1074 fractional places,
 the maximum denominator exponent of IEEE binary64, then removes redundant
 fractional zeros. This ingress cost belongs outside numerator/reducer/master
 timings. `evaluate_decimal` accepts original exact decimal strings directly.
-Neither method silently requests verification or rescue.
+Neither method silently requests verification or rescue. `Runtime::open_with_policy`
+retains an explicit default before exact source parameters are evaluated.
+An evaluation-level policy replaces that default only for that call; omission
+inherits it, including after `clear()`.
 
 Results store compact successful IDs alongside statuses for **all** requested
 IDs. Failed points have no numerical row. An ordinary success reports accuracy
 not established; explicit verification delegates the existing native policy,
 including exact source snapshots, increasing actual precision, subset retries,
 comparison of all components/axes and output-conversion checks. Detailed JSON
-records retain failures and attempt history. Global source-parameter binding
-failures can still precede this subset rescue and remain function errors.
+records retain failures and attempt history. With a configured policy, a numerical
+global source-binding failure retains the original exact overrides/defaults and
+its failed primary stage when a configured higher carrier can realize them.
+That admission is not an accuracy claim: rescue still requires agreement of
+complete results at two successful levels and checked conversion to binary64.
+Malformed parameters and unrecoverable formula errors remain atomic function
+errors. Without a load-time policy, source binding keeps its eager behavior.
+
+The additive C entry point is `rusticol_virtual_open_with_policy`, with the same
+verification JSON accepted by batch requests. The installed dependency-free Rust
+wrapper has `open_with_policy(..., verification_json)`. C++ accepts the optional
+policy JSON as the final constructor argument; Fortran accepts it as the optional
+trailing `verification_json=` argument of `load`. Existing open signatures and
+positional Fortran calls remain valid. Capability JSON reports the retained
+policy; all ordinary, resolved, directed and spin-source evaluations preserve
+their full verification diagnostics.
 
 Inclusive output axes are `[point,order,epsilon]`. Resolved output adds helicity
 and colour-component axes before epsilon. Resolved LC components are signed

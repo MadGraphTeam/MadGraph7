@@ -141,11 +141,12 @@ public:
     explicit VirtualRuntime(const std::string &path,
                             const std::optional<std::string> &process = std::nullopt,
                             const std::optional<std::string> &parameters_json = std::nullopt,
-                            const std::string &r2_strategy = "auto") {
+                            const std::string &r2_strategy = "auto",
+                            const std::optional<std::string> &verification_json = std::nullopt) {
         rusticol_virtual_handle *p = nullptr;
-        virtual_detail::check(rusticol_virtual_open(path.c_str(),
+        virtual_detail::check(rusticol_virtual_open_with_policy(path.c_str(),
             virtual_detail::optional_string(process), virtual_detail::optional_string(parameters_json),
-            r2_strategy.c_str(), &p));
+            r2_strategy.c_str(), virtual_detail::optional_string(verification_json), &p));
         handle_.reset(p);
     }
     VirtualRuntime(VirtualRuntime &&) noexcept = default;

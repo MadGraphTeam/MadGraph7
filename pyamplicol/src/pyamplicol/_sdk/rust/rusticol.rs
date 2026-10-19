@@ -106,6 +106,17 @@ pub mod virtual_amplitudes {
             parameters_json: Option<&str>,
             strategy: Option<&str>,
         ) -> Result<Self> {
+            Self::open_with_policy(path, process, parameters_json, strategy, None)
+        }
+        /// Configure exact source binding and later verification together.
+        /// A per-call policy overrides this default only for that call.
+        pub fn open_with_policy(
+            path: impl AsRef<Path>,
+            process: Option<&str>,
+            parameters_json: Option<&str>,
+            strategy: Option<&str>,
+            verification_json: Option<&str>,
+        ) -> Result<Self> {
             // SAFETY: no borrowed inputs are involved in this version query.
             if unsafe { ffi::rusticol_virtual_abi_version() } != 1 {
                 return Err(Error::new(
@@ -117,14 +128,16 @@ pub mod virtual_amplitudes {
             let process = optional_cstring(process, "process")?;
             let parameters = optional_cstring(parameters_json, "exact parameters JSON")?;
             let strategy = optional_cstring(strategy, "R2 strategy")?;
+            let verification = optional_cstring(verification_json, "verification JSON")?;
             let mut handle = ptr::null_mut();
             // SAFETY: owned strings and handle output live for the full call.
             check(unsafe {
-                ffi::rusticol_virtual_open(
+                ffi::rusticol_virtual_open_with_policy(
                     path.as_ptr(),
                     optional_pointer(&process),
                     optional_pointer(&parameters),
                     optional_pointer(&strategy),
+                    optional_pointer(&verification),
                     &mut handle,
                 )
             })?;
@@ -197,7 +210,7 @@ pub mod virtual_amplitudes {
             check(unsafe { ffi::rusticol_virtual_clear(self.handle.as_ptr()) })
         }
         /// One native bulk call. Binary64 inputs retain exact values in retries.
-        /// No verification runs unless its exact JSON policy is explicitly supplied.
+        /// Omitted verification inherits the policy explicitly configured at open.
         #[allow(clippy::too_many_arguments)]
         pub fn evaluate(
             &mut self,
@@ -644,11 +657,12 @@ pub mod virtual_amplitudes {
             ) -> c_int;
             pub(super) fn rusticol_virtual_abi_version() -> u32;
             pub(super) fn rusticol_virtual_last_error_message() -> *const c_char;
-            pub(super) fn rusticol_virtual_open(
+            pub(super) fn rusticol_virtual_open_with_policy(
                 path: *const c_char,
                 process: *const c_char,
                 parameters: *const c_char,
                 strategy: *const c_char,
+                verification: *const c_char,
                 output: *mut *mut c_void,
             ) -> c_int;
             pub(super) fn rusticol_virtual_free(handle: *mut c_void) -> c_int;

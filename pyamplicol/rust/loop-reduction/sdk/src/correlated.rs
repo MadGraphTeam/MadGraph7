@@ -180,7 +180,8 @@ impl Runtime {
         strategy: Option<&str>,
         policy: Option<&VerificationPolicy>,
     ) -> RusticolResult<CorrelatedEvaluation> {
-        let (result, verification) = match policy {
+        let effective = policy.or_else(|| self.verification_policy()).cloned();
+        let (result, verification) = match effective.as_ref() {
             Some(policy) => {
                 let output = self
                     .native

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from copy import deepcopy
+from dataclasses import asdict
 from decimal import Decimal, InvalidOperation
 from numbers import Integral, Real
 from pathlib import Path
@@ -78,6 +79,19 @@ def _verification_diagnostic(value: dict[str, Any]) -> VirtualVerificationDiagno
             for attempt in value["attempts"]
         ),
         detail=value["detail"],
+    )
+
+
+def _stability_input(policy: VirtualStabilityPolicy | None):
+    if policy is None:
+        return None
+    if not isinstance(policy, VirtualStabilityPolicy):
+        raise TypeError("stability requires a VirtualStabilityPolicy")
+    return (
+        [(item.arithmetic, item.precision) for item in policy.higher],
+        policy.relative_tolerance,
+        policy.absolute_tolerance,
+        policy.verify_successful,
     )
 
 
@@ -228,6 +242,7 @@ class VirtualRuntimeBackend:
         arithmetic: str | None = None,
         precision: int | None = None,
         r2_strategy: str | None = None,
+        stability: VirtualStabilityPolicy | None = None,
     ) -> None:
         if precision is not None and (
             isinstance(precision, bool)
@@ -243,6 +258,8 @@ class VirtualRuntimeBackend:
             raise ValueError("unknown virtual arithmetic")
         self.default_precision = precision if precision is not None else 16
         self.default_arithmetic = arithmetic
+        policy_input = _stability_input(stability)
+        self._default_stability = stability
         self._default_r2 = (
             R2Strategy.AUTO if r2_strategy is None else R2Strategy(r2_strategy)
         )
@@ -263,6 +280,7 @@ class VirtualRuntimeBackend:
             if initial_arithmetic == "arbitrary"
             else None,
             r2_strategy=self._default_r2.value,
+            **({"stability": policy_input} if policy_input is not None else {}),
         )
         self._metadata: dict[str, Any] = json.loads(self._native.metadata_json())
         self._color_accuracy = cast(
@@ -548,6 +566,9 @@ class VirtualRuntimeBackend:
                     "supported_arithmetics": metadata["physics"]["arithmetic"],
                     "default_arithmetic": self.default_arithmetic,
                     "default_precision": self.default_precision,
+                    "stability": asdict(self._default_stability)
+                    if self._default_stability is not None
+                    else None,
                     "precision_bits": self._native.precision_bits,
                     "requested_r2_strategy": self._last_requested.value,
                     "effective_r2_strategy": self._native.r2_strategy,
@@ -567,7 +588,8 @@ class VirtualRuntimeBackend:
                     "rescue_available": True,
                     "rescue_policy": "explicit higher-precision agreement",
                     "rescue_limitation": (
-                        "source-global binding must succeed in the requested carrier"
+                        "numerical source-binding rescue requires a load-time policy; "
+                        "successful source admission alone does not establish accuracy"
                     ),
                     "accuracy_established": False,
                 }
@@ -644,27 +666,34 @@ class VirtualRuntimeBackend:
                 "this virtual artifact only contains model-supplied R2"
             )
         digits = precision if arithmetic == "arbitrary" else None
+        effective_policy = self._default_stability if stability is None else stability
+        policy_input = _stability_input(effective_policy)
         points, scales = _inputs(momenta, mu_r2, len(self._metadata["external_pdgs"]))
         with self._lock:
+            native = self._native
             if (arithmetic, digits) != (
-                self._native.arithmetic,
-                self._native.precision,
+                native.arithmetic,
+                native.precision,
             ):
                 candidate = _invoke(
                     self._module,
-                    self._native.rebind,
+                    native.rebind,
                     arithmetic=arithmetic,
                     precision=digits,
                     r2_strategy=requested.value,
+                    **({"stability": policy_input} if stability is not None else {}),
                 )
-                self._native = candidate
+                native = candidate
+                # A call-level replacement policy stays local to this call.
+                # Pass it before rebinding so an incompatible retained policy
+                # cannot obstruct a valid new primary/verification pair.
+                if stability is None:
+                    self._native = candidate
             verification: tuple[VirtualVerificationDiagnostic, ...] = ()
-            if stability is None:
+            if effective_policy is None:
                 result = _invoke(
                     self._module,
-                    self._native.evaluate_directed
-                    if directed
-                    else self._native.evaluate_partial,
+                    native.evaluate_directed if directed else native.evaluate_partial,
                     points,
                     scales,
                     r2_strategy=requested.value,
@@ -675,25 +704,23 @@ class VirtualRuntimeBackend:
                     ),
                 )
             else:
-                if not isinstance(stability, VirtualStabilityPolicy):
-                    raise TypeError("stability requires a VirtualStabilityPolicy")
                 verified = _invoke(
                     self._module,
-                    self._native.evaluate_directed_verified
+                    native.evaluate_directed_verified
                     if directed
-                    else self._native.evaluate_verified,
+                    else native.evaluate_verified,
                     points,
                     scales,
-                    [(x.arithmetic, x.precision) for x in stability.higher],
-                    stability.relative_tolerance,
-                    stability.absolute_tolerance,
+                    policy_input[0],
+                    policy_input[1],
+                    policy_input[2],
                     r2_strategy=requested.value,
                     **(
                         {"spin_vectors": spin_vectors}
                         if directed
                         else {"resolved": resolved}
                     ),
-                    verify_successful=stability.verify_successful,
+                    verify_successful=policy_input[3],
                 )
                 result = verified.result
                 verification = tuple(
@@ -791,7 +818,7 @@ class VirtualRuntimeBackend:
                     if verification
                     else "success",
                     cast(Literal["double", "double-double", "arbitrary"], arithmetic),
-                    self._native.precision_bits,
+                    native.precision_bits,
                     verification[i].accuracy_established if verification else False,
                     verification[i].detail
                     if verification

@@ -402,6 +402,7 @@ class Runtime:
         arithmetic: str | None = None,
         precision: int | None = None,
         r2_strategy: R2Strategy | str | None = None,
+        stability: VirtualStabilityPolicy | None = None,
     ) -> Runtime:
         """Load one process by stable ID, alias ID, or exact expression.
 
@@ -410,7 +411,8 @@ class Runtime:
         the artifact's declared default.
 
         Virtual runtimes accept initial ``arithmetic``, ``precision`` and
-        ``r2_strategy`` defaults. Arithmetic is selected before exact model
+        ``r2_strategy`` and ``stability`` defaults. Arithmetic and the optional
+        verification policy are selected before exact model
         parameters are evaluated. Omitted evaluation options retain these
         defaults; tree runtimes select precision at evaluation time instead.
         """
@@ -424,6 +426,10 @@ class Runtime:
             options["precision"] = _validate_precision(precision)
         if r2_strategy is not None:
             options["r2_strategy"] = r2_strategy
+        if stability is not None:
+            if not isinstance(stability, VirtualStabilityPolicy):
+                raise TypeError("stability requires a VirtualStabilityPolicy")
+            options["stability"] = stability
         loader = _get_runtime_loader()
         if options and not _accepts_keyword_arguments(loader, *options):
             raise CompatibilityError(
