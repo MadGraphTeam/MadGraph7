@@ -64,6 +64,25 @@ impl EvaluatorGroup {
     }
 
     #[cfg(feature = "symbolica-runtime")]
+    pub(crate) fn has_exact_plane_state(
+        stage: &GenericSerializedStageEvaluatorManifest,
+    ) -> RusticolResult<bool> {
+        Ok(stage.evaluator.leaf_layout()?.iter().all(|leaf| {
+            matches!(
+                leaf.evaluator,
+                EvaluatorManifest::SymjitApplication {
+                    evaluator_state_path: Some(_),
+                    ..
+                } | EvaluatorManifest::CompiledComplex {
+                    evaluator_state_path: Some(_),
+                    native_direct_application: Some(_),
+                    ..
+                }
+            )
+        }))
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
     pub(crate) fn load_exact_from_plane(
         stage: &GenericSerializedStageEvaluatorManifest,
         payloads: &EvaluatorPayloadStore,
@@ -2628,8 +2647,7 @@ pub(crate) fn decode_exact_evaluator_state(
     bytes: &[u8],
 ) -> RusticolResult<ExpressionEvaluator<Complex<Rational>>> {
     crate::source_scalar::register_scalar_primitives();
-    load_evaluator_state_bytes(bytes, "Python Evaluator.save()")
-        .map(|(_, evaluator, _)| evaluator)
+    load_evaluator_state_bytes(bytes, "Python Evaluator.save()").map(|(_, evaluator, _)| evaluator)
 }
 
 #[cfg(feature = "symbolica-runtime")]

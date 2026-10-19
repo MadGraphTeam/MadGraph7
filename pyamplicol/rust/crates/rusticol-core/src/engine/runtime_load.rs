@@ -3598,6 +3598,15 @@ impl ExecutionRuntime {
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             if compiled_plane_arena {
                 #[cfg(feature = "symbolica-runtime")]
+                let has_exact_states = stage_evaluators
+                    .stages
+                    .iter()
+                    .chain(std::iter::once(&stage_evaluators.amplitude_stage))
+                    .try_fold(true, |available, stage| {
+                        EvaluatorGroup::has_exact_plane_state(stage)
+                            .map(|has_state| available && has_state)
+                    })?;
+                #[cfg(feature = "symbolica-runtime")]
                 let (stages, mut amplitude) = match compiled_color_contraction.take() {
                     Some(color) => (
                         Vec::new(),
@@ -3607,7 +3616,7 @@ impl ExecutionRuntime {
                             Some(color),
                         )?,
                     ),
-                    None => {
+                    None if has_exact_states => {
                         // Preserve the public exact-precision API for ordinary
                         // compiled artifacts without instantiating a second f64
                         // evaluator representation. The selected-helicity SG
@@ -3626,6 +3635,13 @@ impl ExecutionRuntime {
                             )?,
                         )
                     }
+                    None => (
+                        Vec::new(),
+                        AmplitudeRuntime::load_reducer_only(
+                            &amplitude_stage_manifest,
+                            &stage_evaluators.amplitude_stage,
+                        )?,
+                    ),
                 };
                 #[cfg(not(feature = "symbolica-runtime"))]
                 let (stages, mut amplitude) = (

@@ -3701,8 +3701,8 @@ impl AmplitudeRuntime {
         Complex<T>: Real + EvaluationDomain,
     {
         let evaluator = self.evaluator.as_mut().ok_or_else(|| {
-            RusticolError::integrity(
-                "compiled plane-arena reducer cannot execute an exact dense amplitude evaluator",
+            RusticolError::unsupported_precision(
+                "this compiled artifact has no exact amplitude evaluator; use binary64",
             )
         })?;
         let mut input_pack_elapsed = Duration::ZERO;
