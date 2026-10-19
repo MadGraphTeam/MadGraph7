@@ -11,8 +11,8 @@
 #![forbid(unsafe_code)]
 
 pub mod runtime;
-pub mod virtual_runtime;
 pub mod verification;
+pub mod virtual_runtime;
 
 use std::ops::Add;
 use std::time::{Duration, Instant};
@@ -150,6 +150,20 @@ impl<N: FastNumerator> FastNumerator for ProfiledNumerator<'_, N> {
         self.record(started, lanes.len());
         result
     }
+    fn mu_expansion_x2(
+        &mut self,
+        cut: &[usize],
+        lanes: &[usize],
+        v0: &[CMom],
+        v1: &[CMom],
+        beta: &[C64],
+        out: &mut [C64],
+    ) -> Result<()> {
+        let started = Instant::now();
+        let result = self.inner.mu_expansion_x2(cut, lanes, v0, v1, beta, out);
+        self.record(started, lanes.len());
+        result
+    }
     fn t3_expansion(
         &mut self,
         cut: &[usize],
@@ -184,6 +198,41 @@ impl<N: FastNumerator> FastNumerator for ProfiledNumerator<'_, N> {
         let result = self
             .inner
             .t2_expansion(cut, lanes, a0, a1, e3, e4, param, mindeg, out);
+        self.record(started, lanes.len());
+        result
+    }
+    fn t3_expansion_x2(
+        &mut self,
+        cut: &[usize],
+        lanes: &[usize],
+        a: &[CMom],
+        e3: &[CMom],
+        e4: &[CMom],
+        param: &[C64],
+        out: &mut [C64],
+    ) -> Result<()> {
+        let started = Instant::now();
+        let result = self
+            .inner
+            .t3_expansion_x2(cut, lanes, a, e3, e4, param, out);
+        self.record(started, lanes.len());
+        result
+    }
+    fn t2_expansion_x2(
+        &mut self,
+        cut: &[usize],
+        lanes: &[usize],
+        a0: &[CMom],
+        a1: &[CMom],
+        e3: &[CMom],
+        e4: &[CMom],
+        param: &[[C64; 3]],
+        out: &mut [C64],
+    ) -> Result<()> {
+        let started = Instant::now();
+        let result = self
+            .inner
+            .t2_expansion_x2(cut, lanes, a0, a1, e3, e4, param, out);
         self.record(started, lanes.len());
         result
     }

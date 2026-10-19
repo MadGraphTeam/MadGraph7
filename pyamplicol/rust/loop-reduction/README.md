@@ -27,57 +27,60 @@ diagnostic is already included in the finite coefficient.
 
 ## Dependency setup and checks
 
-The ignored `upstream` symlink points to a NinjaRS checkout with its own
-dependency references populated. This temporary standalone layout keeps the
-application's ordinary checkout buildable while upstream packaging is pending.
-Its Symbolica version is aligned with the application's shared core.
-The implementation workspace uses:
+Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
+reference directory or `upstream` symlink is needed. The standalone workspace
+aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `e4c16a7a4ef3a05268939ccdb66b7bc3dadcd6d3`.
+- NinjaRS `0d0d7e7a8033431b60a8580731084742e0655cda`.
 - Symbolica `e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8`, the owner's integration
-  revision published on `https://github.com/ValentinHirschi/symbolica`.
-- FeynKit `474478a7a80bc9f9f21bead0e1cde6acbcffbe93`, the owner's patched
-  dependency revision recorded by NinjaRS (not asserted merged upstream).
-- oneloopmaster `264a6ced74e3c7a5de000b93dddf1330826cd3e9`.
+  revision published on `https://github.com/alphal00p/symbolica`.
+- FeynKit `1e8063a763d3aa515749c33616ee59aa827705be`, the owner's coherent
+  dependency revision recorded by NinjaRS.
+- oneloopmaster `09b2c7497743db875ed446da95123175dd00b1c8`.
 
 From this crate's directory, using the shared workspace environment:
 
 ```sh
-ln -s "$PYLOOP_WORKSPACE/references/ninjars-consumer" upstream
 export CARGO_TARGET_DIR="$PYLOOP_WORKSPACE/builds/loop-reduction"
 export RUST_MIN_STACK=134217728
 cargo test --locked --test anchors -- --test-threads=1
 ```
 
 Supply a valid `SYMBOLICA_LICENSE` in the process environment when needed;
-never persist it in this crate. Cargo's lockfile covers registry dependencies.
-The upstream sources are read-only to this consumer. NinjaRS revision e4c16a7
-removes the generic coordinator's former six-propagator limit in every carrier;
-rank remains bounded by n+1. The native Python consumer no longer imposes the
-obsolete six-propagator cap on the fast engines. The preceding owner update
-added an explicit-μ² dense tensor numerator and optional graph-level FDH
-preparation. This consumer uses the scheme-independent polynomial
-container; it does not invoke the owner's global FDH numerator transformation.
-The ordinary lockfile includes the owner's `ninjars-graph` coefficient/layout
-dependency and its existing FeynKit graph.
+never persist it in this crate. Cargo's lockfile covers Git and registry
+dependencies. Upstream sources remain read-only to this consumer. Generic
+reduction accepts more than six propagators in every carrier. Physical source
+admission remains at its independently validated rank n+1 boundary; the owner's
+new rank-n+2 interfaces are forwarded by the profiling adapter, without certifying
+that larger physical model domain. Explicit-μ² polynomial containers do not
+invoke the owner's optional graph-level FDH numerator transformation.
 
-The owner's final report is narrower than a universal accuracy guarantee.
-At revision 5f35b07, `docs/benchmark/sections.typ:99-123` records two
-ill-conditioned synthetic lanes whose native stability checks report success:
-`syn-gghhh-ggHHH-n5-r5` has a finite-part error of about 3.4e-4, while
-`syn-n6-r6` loses about 24% after cancellation by roughly 1e12. In the latter,
-most excess error comes from a nearly coincident-root triangle master
-(`sections.typ:113-120`); high-precision reduction supplied the reference.
-Consequently this adapter's `success` means that upstream computation
-completed, not that an accuracy target was established. Independent numerator
-reconstruction checks, cross-precision comparisons and a validated rescue policy
-remain required for process-level accuracy certification. The owner's
-new higher-multiplicity tests in `crates/ninjars-symbolica/tests/any_n.rs` compare
-seven/eight propagators through rank n+1. Their DD/AP reduction-only comparisons
-deliberately use smooth stand-in masters, because the owner records
-DoubleFloat/interpreted-Float D0 branch differences from OneLOop for some real
-masses. Removing the coordinator limit is
-not universal scalar-master accuracy certification.
+The owner revision adds native B1/B11/B111 and B1111 master families, along with
+real-mass box relabelling and continuation repairs. Its report still records
+conditioning and continuation limitations: ill-conditioned high-rank binary64
+reductions, small-invariant rank-four bubbles, near-Gram boxes and a wide-complex-
+mass box discrepancy requiring an independent reference. See the pinned owner's
+`docs/rank-n2.md` and `docs/benchmark/sections.typ`. `success` therefore means
+upstream computation completed, not that an accuracy target was established.
+Cross-precision agreement and independent physical controls remain necessary;
+removing a coordinator multiplicity limit is not universal master certification.
+
+The existing `tools/loop_reference/reproduce_cms_zero_box.py` still reproduces
+the AP80 zero-width box boundary on this pin: numerically equal sqrt-square and
+decimal-reparsed masses yield opposite finite imaginary signs, both with
+`success` status. The coherent packaging update does not resolve that separate
+CMS acceptance gate. No numerical snapping or local master replacement is used.
+
+Focused consumer adoption checks pass on these pins: the seven existing analytic
+and adapter anchors, profiling on/off for a screened rank-n+2 A0-cancellation
+control, and the seven-line rank-eight C0 control below in generic double,
+DoubleFloat, AP80 and binary64 fast-tensor evaluation. The existing saved complete
+six-fermion QCD plan also passes all three carriers at three exact points/scales:
+all Born/bare/UV/R2/full components agree with the independent binary64 references,
+all 94 emitted family/order statuses succeed, and analytic poles, empty/permuted
+batches and exact alpha_s updates pass. The DoubleFloat/AP80 update checks retain
+their 3e-25/1e-60 cancellation-aware tolerances. These controls establish this
+consumer's validated domain, not general high-rank or complex-mass accuracy.
 
 The analytic tests exercise A0 with real and complex squared masses, massless
 B0, the divergent massless C0, μ² C0, and a four-dimensional q² numerator
@@ -101,7 +104,7 @@ PYTHONPATH="$PYLOOP_WORKSPACE/builds/loop-python-module" \
 
 This is deliberately outside default test collection. Its dense polynomial has
 501 monomials, compared with 60 in the owner's sparse rank-eight `any_n.rs`
-fixture. In one development run, the generic binary64 test, including plan
+fixture. In an earlier e4c16a7 run, the generic binary64 test, including plan
 construction, first-use setup and all batch checks, took 620 seconds; the dense
 fast-tensor check took 0.11 seconds. The DoubleFloat and 80-digit generic tests
 both passed in a combined 1,313 seconds, with absolute Laurent-entry tolerances

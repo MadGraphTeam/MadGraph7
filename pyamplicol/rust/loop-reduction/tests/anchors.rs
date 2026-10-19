@@ -503,3 +503,75 @@ fn fast_four_dimensional_tensor_retains_rational_part() {
         assert!(actual.single_pole.re.abs() < 1e-10 && actual.double_pole.re.abs() < 1e-10);
     }
 }
+
+#[test]
+fn profiling_forwards_owner_rank_n2_callbacks() {
+    use rusticol_loop_reduction::{FastPolynomialReducer, FastTensorPolynomialReducer};
+    // Three exact denominator factors cancel a rank-six, four-propagator
+    // numerator to A0(1). The new x2 callbacks must survive instrumentation;
+    // this is an adapter contract, not general rank-n+2 physics certification.
+    // The owner's rn2-int-complex-n4-r6 fixture supplies these screened
+    // Lorentzian cut planes, here uniformly scaled by an exact power of two.
+    // Purely spatial orthogonal shifts do not satisfy that real-basis domain.
+    let one_point = [
+        [0., 0., 0., 0.],
+        [341. / 128., 86. / 128., -115. / 128., 83. / 128.],
+        [180. / 128., 118. / 128., -44. / 128., 191. / 128.],
+        [521. / 128., 104. / 128., 34. / 128., 257. / 128.],
+    ];
+    let numerator = one_point[..3].iter().fold(parse!("a"), |value, shift| {
+        value
+            * symbolica::parse!(&format!(
+                "(q0+({}))^2-(q1+({}))^2-(q2+({}))^2-(q3+({}))^2-1-mu2",
+                shift[0], shift[1], shift[2], shift[3]
+            ))
+    });
+    let shifts = one_point.repeat(2);
+    let masses = [C64::real(1.); 8];
+    let scales = [1.; 2];
+    let parameters = [Complex::new(1., 0.), Complex::new(2., 0.)];
+    macro_rules! check {
+        ($reducer:ty) => {{
+            let mut reducer =
+                <$reducer>::new(4, numerator.clone(), variables(), vec![parse!("a")]).unwrap();
+            let mut previous = None;
+            for profile in [false, true] {
+                reducer.set_profiling(profile);
+                let result = reducer
+                    .evaluate(
+                        &[19, 3],
+                        FastInput {
+                            lanes: 2,
+                            shifts: &shifts,
+                            masses_squared: &masses,
+                            scales_squared: &scales,
+                            s_matrix: None,
+                        },
+                        &parameters,
+                    )
+                    .unwrap();
+                let mut values = Vec::new();
+                for (index, row) in result.iter().enumerate() {
+                    assert_eq!(row.status, FastStatus::Success);
+                    assert_eq!(row.id, [19, 3][index]);
+                    let value = row.value.as_ref().unwrap();
+                    let expected = (index + 1) as f64;
+                    for coefficient in [&value.finite, &value.single_pole] {
+                        assert!((coefficient.re - expected).abs() < 1e-7);
+                        assert!(coefficient.im.abs() < 1e-7);
+                    }
+                    assert!(value.double_pole.re.abs() < 1e-7);
+                    assert!(value.double_pole.im.abs() < 1e-7);
+                    values.push(value.clone());
+                }
+                if let Some(previous) = previous {
+                    assert_eq!(values, previous);
+                    assert!(reducer.take_profile().numerator_calls > 0);
+                }
+                previous = Some(values);
+            }
+        }};
+    }
+    check!(FastPolynomialReducer);
+    check!(FastTensorPolynomialReducer);
+}
