@@ -3194,6 +3194,26 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
             prettytable=prettytable,
             color=color,
         )
+    if isinstance(plain, Mapping) and isinstance(plain.get("virtual"), Mapping):
+        details = cast(Mapping[str, object], plain["virtual"])
+        sections = [
+            _mapping_summary(value, plain, prettytable=prettytable, color=color)
+        ]
+        histories = details.get("color_correlations")
+        if (
+            isinstance(histories, Sequence)
+            and not isinstance(histories, (str, bytes))
+            and histories
+        ):
+            sections.append(
+                _record_sequence_summary(
+                    histories,
+                    prettytable=prettytable,
+                    color=color,
+                    title="Virtual Colour Histories (directed interference)",
+                )
+            )
+        return "\n\n".join(sections)
     if isinstance(plain, Mapping) and isinstance(plain.get("process_group"), Mapping):
         # `inspect --process MEMBER --full-physics` of a grouped process
         physics = {key: entry for key, entry in plain.items() if key != "process_group"}

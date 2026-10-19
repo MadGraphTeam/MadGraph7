@@ -111,7 +111,7 @@ def _emission_from_json(value: object) -> EmitGluon | SplitGluon:
 
 @dataclass(frozen=True)
 class CorrelatorConfig:
-    """The correlations to prepare alongside a complete tree amplitude.
+    """The correlations to prepare alongside a tree or virtual contribution.
 
     ``color_correlations`` contains the requested ``bra† ket`` connections,
     keyed by unique IDs. Each side has the same number of ordered operations.
@@ -120,9 +120,12 @@ class CorrelatorConfig:
     helicity sum. Each replaced leg contributes one vector state; the usual
     initial-state averaging and identical-particle factors are retained.
 
-    The first correlated executor uses the generic compiled amplitude and
-    direct exact colour algebra. It does not use FFT or helicity-specific
-    current recycling. Uncorrelated generation does not construct this object.
+    Tree generation uses the generic compiled amplitude and direct exact
+    colour algebra. Virtual QCD generation prepares the same colour histories
+    over the shared loop recurrence, with complex Born interference and all
+    Laurent coefficients. Its current public domain is full colour, model R2
+    and inclusive helicities; spin-source declarations are not yet supported.
+    Uncorrelated generation does not construct this object.
     """
 
     color_correlations: tuple[ColorCorrelator, ...] = ()

@@ -321,10 +321,60 @@ def plan_loop_generation(backend, processes, *, model=None):
     )
 
 
+def _check_correlators(backend, correlators):
+    if correlators is None:
+        return
+    from pyamplicol.correlators import CorrelatorConfig
+
+    if not isinstance(correlators, CorrelatorConfig):
+        raise TypeError("correlators must be a CorrelatorConfig")
+    if correlators.spin_correlations:
+        raise GenerationError(
+            "public virtual spin-source generation is not yet supported"
+        )
+    if backend._run_config.color.accuracy != "full":
+        raise GenerationError("virtual colour histories currently require full colour")
+    if tuple(backend._run_config.process.loop_coupling_orders) != ("QCD",):
+        raise GenerationError(
+            "virtual colour-history completion currently requires QCD corrections"
+        )
+
+
+def _prepare_directed(program, declarations):
+    """Compile existing typed histories over the same retained source currents."""
+    from pyamplicol.color.connections import ColorConnection, ColorLeg
+    from pyamplicol.loops.correlation_labels import native_color_history
+    from pyamplicol.loops.physical_correlations import directed_color_legs
+    from pyamplicol.loops.prepared_correlations import (
+        prepare_directed_bare,
+        prepare_directed_model,
+    )
+
+    legs = directed_color_legs(program.bare)
+    public_legs = tuple(ColorLeg(leg.label + 1, leg.representation) for leg in legs)
+    requests = declarations._resolve_color(public_legs).color_requests
+    native_requests = tuple(native_color_history(request) for request in requests)
+    histories = tuple(
+        (ColorConnection(legs, request.bra), ColorConnection(legs, request.ket))
+        for request in native_requests
+    )
+    prepared = prepare_directed_model(
+        program, prepare_directed_bare(program.bare, histories)
+    )
+    return prepared, native_requests
+
+
 def generate_loop_artifact(
-    backend, processes, output: os.PathLike[str] | str, *, model=None, mode="error"
+    backend,
+    processes,
+    output: os.PathLike[str] | str,
+    *,
+    model=None,
+    mode="error",
+    correlators=None,
 ):
     """Compile source-owned complete model-R2 instructions and publish atomically."""
+    _check_correlators(backend, correlators)
     blockers = _feature_blockers(backend, processes)
     if blockers:
         raise GenerationError("; ".join(blockers))
@@ -372,7 +422,18 @@ def generate_loop_artifact(
                         color_accuracy=backend._run_config.color.accuracy,
                     )
                     path = Path(temporary) / f"{entry.request.name}.pacbin"
-                    write_loop_pacbin(program.virtual, path, resolved=True)
+                    directed, histories = (
+                        (None, ())
+                        if correlators is None
+                        else _prepare_directed(program.virtual, correlators)
+                    )
+                    write_loop_pacbin(
+                        program.virtual,
+                        path,
+                        resolved=directed is None,
+                        directed=directed,
+                        directed_histories=histories or None,
+                    )
                     validation = backend._generation_config.validation
                     point = build_process_validation_point(
                         entry.process_ir,
@@ -382,7 +443,12 @@ def generate_loop_artifact(
                     )
                     if validation.post_build_validation and validation.enabled:
                         validation_values[entry.request.name] = _validation_values(
-                            backend, context, entry, program.virtual
+                            backend,
+                            context,
+                            entry,
+                            program.virtual,
+                            directed=directed,
+                            histories=histories,
                         )
                     artifacts.append(
                         LoopProcessArtifact(
@@ -398,7 +464,8 @@ def generate_loop_artifact(
                                 available_r2_strategies=("model",),
                                 arithmetic=("double", "double-double", "arbitrary"),
                                 source_owned=True,
-                                resolved=True,
+                                resolved=directed is None,
+                                correlations=directed is not None,
                                 color_accuracy=backend._run_config.color.accuracy,
                             ),
                             validation_point=point,
@@ -407,6 +474,11 @@ def generate_loop_artifact(
                                 "born_order_bounds": prepared.scope.born_order_bounds,
                                 "loop_order_bounds": prepared.scope.loop_order_bounds,
                                 "model_declaration": context.declaration.to_dict(),
+                                **(
+                                    {"correlators": correlators.to_json_dict()}
+                                    if correlators is not None
+                                    else {}
+                                ),
                             },
                         )
                     )
@@ -459,9 +531,12 @@ class _ValidationValues:
     scales: tuple[str, ...]
     born: tuple[complex, ...]
     virtual: tuple[complex, ...]
+    directed: tuple = ()
 
 
-def _validation_values(backend, context, entry, program):
+def _validation_values(
+    backend, context, entry, program, *, directed=None, histories=()
+):
     validation = backend._generation_config.validation
     points = tuple(
         build_process_validation_point(
@@ -499,6 +574,31 @@ def _validation_values(backend, context, entry, program):
         for point in points
     )
     expected = program.evaluate_ordered_native(momenta, scales)
+    directed_values = ()
+    if directed is not None:
+        projected = directed.bind(program).evaluate_native(momenta, scales)
+        # Slicing validation buffers only: each producer evaluation above is a
+        # native batch, and the public consumer below evaluates all histories once.
+        widths = (
+            len(program.bare.order_layout.born),
+            len(program.bare.order_layout.virtual) * 3,
+        )
+        columns = (projected.born, projected.virtual)
+        directed_values = tuple(
+            (
+                history.id,
+                *(
+                    tuple(
+                        complex(float(re), float(im))
+                        for re, im in column.take_columns(
+                            range(index * width, (index + 1) * width)
+                        ).to_decimal()
+                    )
+                    for column, width in zip(columns, widths, strict=True)
+                ),
+            )
+            for index, history in enumerate(histories)
+        )
     return _ValidationValues(
         momenta,
         tuple(scales),
@@ -506,6 +606,7 @@ def _validation_values(backend, context, entry, program):
         tuple(
             complex(float(re), float(im)) for re, im in expected.virtual.to_decimal()
         ),
+        directed_values,
     )
 
 
@@ -543,29 +644,58 @@ def _validate_artifact(backend, output, context, artifacts, validation_values):
             raise GenerationError(
                 "virtual validation returned incompatible Laurent/order axes"
             )
-        actual_born = tuple(value for row in result.born_values for value in row)
-        actual_virtual = tuple(
-            value for row in result.values for sector in row for value in sector
+        _compare_validation_result(
+            entry.request.name, result, expected.born, expected.virtual, validation
         )
-        for label, actual, reference in (
-            ("Born", actual_born, expected.born),
-            ("virtual", actual_virtual, expected.virtual),
-        ):
-            if len(actual) != len(reference):
-                raise GenerationError(
-                    f"virtual validation returned incompatible {label} axes"
-                )
-            for index, (value, target) in enumerate(
-                zip(actual, reference, strict=True)
-            ):
-                if not cmath.isclose(
-                    complex(value),
-                    target,
-                    rel_tol=validation.relative_tolerance,
-                    abs_tol=validation.absolute_tolerance,
+        if expected.directed:
+            from pyamplicol.correlators import CorrelatedRequest
+
+            grouped = runtime.evaluate_correlated_many(
+                expected.momenta,
+                {label: CorrelatedRequest(label) for label, _, _ in expected.directed},
+                mu_r2=expected.scales,
+            )
+            for label, born, virtual in expected.directed:
+                current = grouped[label]
+                if (
+                    not current.correlated
+                    or current.shape != result.shape
+                    or current.born_shape != result.born_shape
+                    or current.sectors != result.sectors
+                    or current.born_orders != result.born_orders
                 ):
                     raise GenerationError(
-                        f"saved virtual execution differs from source execution for "
-                        f"{entry.request.name!r}, {label} coefficient {index} "
-                        f"(absolute difference {abs(complex(value) - target):.3e})"
+                        "directed validation returned incompatible axes"
                     )
+                _compare_validation_result(
+                    f"{entry.request.name}/{label}", current, born, virtual, validation
+                )
+
+
+def _compare_validation_result(
+    name, result, expected_born, expected_virtual, validation
+):
+    actual_born = tuple(value for row in result.born_values for value in row)
+    actual_virtual = tuple(
+        value for row in result.values for sector in row for value in sector
+    )
+    for label, actual, reference in (
+        ("Born", actual_born, expected_born),
+        ("virtual", actual_virtual, expected_virtual),
+    ):
+        if len(actual) != len(reference):
+            raise GenerationError(
+                f"virtual validation returned incompatible {label} axes"
+            )
+        for index, (value, target) in enumerate(zip(actual, reference, strict=True)):
+            if not cmath.isclose(
+                complex(value),
+                target,
+                rel_tol=validation.relative_tolerance,
+                abs_tol=validation.absolute_tolerance,
+            ):
+                raise GenerationError(
+                    f"saved virtual execution differs from source execution for "
+                    f"{name!r}, {label} coefficient {index} "
+                    f"(absolute difference {abs(complex(value) - target):.3e})"
+                )

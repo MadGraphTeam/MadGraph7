@@ -3414,6 +3414,7 @@ class GenerationBackend:
         *,
         model: ModelSource | CompiledModel | None = None,
         mode: str = "error",
+        correlators=None,
     ) -> GenerationResult:
         if mode not in ("error", "append", "replace"):
             raise ValueError("generation mode must be 'error', 'append', or 'replace'")
@@ -3421,7 +3422,16 @@ class GenerationBackend:
             from .loop_service import generate_loop_artifact
 
             return generate_loop_artifact(
-                self, processes, output, model=model, mode=mode
+                self,
+                processes,
+                output,
+                model=model,
+                mode=mode,
+                correlators=correlators,
+            )
+        if correlators is not None:
+            raise GenerationError(
+                "tree correlators require the tree correlated service"
             )
         write_mode = cast(Literal["error", "append", "replace"], mode)
         reporter = GenerationPhaseReporter(self._progress)

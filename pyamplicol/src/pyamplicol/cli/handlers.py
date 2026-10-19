@@ -273,6 +273,11 @@ def _full_physics_inspection(artifact: Path, selector: str | None) -> object:
     physics = runtime.physics
     if not isinstance(physics, ProcessPhysics):
         return physics
+    if physics.contribution_kind == "virtual":
+        return {
+            **{item.name: getattr(physics, item.name) for item in fields(physics)},
+            "virtual": runtime.inspect(),
+        }
     group = process_group_selection(
         artifact,
         physics.process_id,

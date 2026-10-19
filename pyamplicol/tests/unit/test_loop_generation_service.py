@@ -58,11 +58,24 @@ def test_virtual_correlators_never_enter_tree_compiled_generation(
     monkeypatch.setattr(
         "pyamplicol.generation.correlated.generate_correlated", wrong_route
     )
-    with pytest.raises(GenerationError, match="virtual correlated generation"):
-        Generator(config).generate(
-            "u u~ > e- e+", tmp_path / "correlated", correlators=CorrelatorConfig()
-        )
-    assert not (tmp_path / "correlated").exists()
+    from pyamplicol.api.results import GenerationResult
+
+    calls = []
+
+    def loop_route(
+        self, processes, output, *, model=None, mode="error", correlators=None
+    ):
+        calls.append(correlators)
+        return GenerationResult(output=output, processes=processes, mode=mode, files=())
+
+    monkeypatch.setattr(GenerationBackend, "generate", loop_route)
+    declarations = CorrelatorConfig()
+    result = Generator(config).generate(
+        "u u~ > e- e+", tmp_path / "correlated", correlators=declarations
+    )
+    assert calls == [declarations]
+    assert result.output == tmp_path / "correlated"
+    assert not result.output.exists()
 
 
 @pytest.mark.parametrize(
@@ -427,3 +440,52 @@ def test_colour_required_constant_cannot_undo_an_actual_restriction_card(
     assert plan.unsupported_features == (
         "fixed parameter 'M' contradicts the source restriction",
     )
+
+
+@pytest.mark.parametrize(
+    "sections,declarations,message",
+    [
+        ({}, CorrelatorConfig(spin_correlations=((1,),)), "spin-source"),
+        ({"color": {"accuracy": "lc"}}, CorrelatorConfig(), "full colour"),
+        (
+            {"process": {"loop_coupling_orders": ["QED"]}},
+            CorrelatorConfig(),
+            "QCD corrections",
+        ),
+        ({}, object(), "CorrelatorConfig"),
+    ],
+)
+def test_virtual_correlator_preflight_precedes_model_generation(
+    tmp_path, monkeypatch, sections, declarations, message
+):
+    backend = GenerationBackend(loop_config(**sections), None)
+    monkeypatch.setattr(
+        backend, "_resolve_model", lambda *_: pytest.fail("reached model compilation")
+    )
+    with pytest.raises((GenerationError, TypeError), match=message):
+        backend.generate(
+            ProcessSet((ProcessRequest.parse("g g > g g"),)),
+            tmp_path / "unsupported",
+            correlators=declarations,
+        )
+    assert not (tmp_path / "unsupported").exists()
+
+
+def test_virtual_full_physics_summary_retains_saved_history_labels():
+    from pyamplicol.reporting.summary import render_summary
+
+    text = render_summary(
+        {
+            "process_id": "uudd",
+            "contribution_kind": "virtual",
+            "virtual": {
+                "correlations": True,
+                "color_correlations": [
+                    {"id": "born", "bra": [], "ket": []},
+                    {"id": "T12", "bra": [{"emitter": 1}], "ket": [{"emitter": 2}]},
+                ],
+            },
+        }
+    )
+    assert text is not None and "T12" in text and "born" in text
+    assert "directed interference" in text

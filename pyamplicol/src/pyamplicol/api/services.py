@@ -331,10 +331,24 @@ class Generator:
                 isinstance(run, RunConfig)
                 and run.process.loop_coupling_orders is not None
             ):
-                raise GenerationError(
-                    "virtual correlated generation is not integrated; loop corrections "
-                    "cannot use the tree coherent generation path"
+                operation = self._implementation().generate
+                if not _accepts_keyword_arguments(operation, "correlators"):
+                    raise GenerationError(
+                        "generator backend does not support virtual "
+                        "correlator declarations"
+                    )
+                result = cast(Any, operation)(
+                    process_set,
+                    destination,
+                    model=model,
+                    mode=mode,
+                    correlators=correlators,
                 )
+                if not isinstance(result, GenerationResult):
+                    raise GenerationError(
+                        "generator backend returned an invalid GenerationResult"
+                    )
+                return result
             from pyamplicol.generation.correlated import generate_correlated
 
             return generate_correlated(

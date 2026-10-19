@@ -485,6 +485,9 @@ both complex cross terms as well as their complete sum.
 This initial saved-public domain is full colour, model R2 plus UV and inclusive
 physical helicities. Spin replacement, selected helicities, resolved directed
 outputs, LC/NLC composition, FFT and mapped processes are rejected. Public
-source-generation admission is a subsequent integration step; these saved
-artifact tests do not claim fresh generation or installed-wheel coverage of the
-new directed methods. Tree correlated execution and its defaults are unchanged.
+source generation now accepts the existing `CorrelatorConfig`, with staged
+ordinary and directed validation; see `LOOP_PUBLIC_GENERATION.md`. Fresh CLI
+quark-scattering generation additionally checks the nontrivial T12 dipole against
+Recola at two points/scales in all three carriers. This current developer-runtime
+proof is distinct from the earlier installed-wheel ordinary/LC/NLC milestone.
+Tree correlated execution and its defaults are unchanged.

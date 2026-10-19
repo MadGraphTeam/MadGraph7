@@ -13,8 +13,9 @@ helicities, and JIT coefficient kernels. Double, DoubleFloat and arbitrary
 precision use the saved exact source expressions. Full colour needs no formal
 continuation. LC/NLC requests require explicit source colour data in the model
 bundle, as described in `LOOP_SOURCE_COLOR_DATA.md`; missing coverage fails.
-Rectangular FFT, correlations and flavour aliases remain separate integration
-work. The compiler has no
+Full-colour QCD colour histories use the grouped complex virtual path described
+below. Rectangular FFT, spin-source admission and flavour aliases remain separate
+integration work. The compiler has no
 process-name dispatch or artificial multiplicity limit; actual tensor, scalar,
 rank and reducer domain checks can still reject a request.
 
@@ -184,6 +185,58 @@ target. These are transport/execution checks, not an independent physics oracle;
 provider, scheme, precision and physical identity comparisons remain separate.
 
 All model, graph, tensor and reducer failures retain their explicit diagnostics.
-Unsupported virtual correlations fail at the public dispatch boundary instead
-of being routed into the tree correlated compiler. Production `auto` R2 currently
+Unsupported virtual correlation compositions fail at the public dispatch
+boundary instead of being routed into the tree correlated compiler. Production `auto` R2 currently
 selects the only complete published branch, model rules; forcing direct R2 fails.
+
+
+## Directed colour correlations
+
+Pass the existing `CorrelatorConfig` to `Generator.generate`. For example, with a
+full-colour QCD card and a compatible declared loop model:
+
+```python
+from pyamplicol import CorrelatedRequest, CorrelatorConfig
+from pyamplicol.color.correlator_matrices import ColorCorrelator
+
+declarations = CorrelatorConfig(color_correlations=(
+    ColorCorrelator.dipole("T12", 1, 2),
+))
+artifact = generator.generate(
+    "u u~ > d d~", "artifacts/uudd-correlated", correlators=declarations,
+)
+runtime = Runtime.load(artifact.output, arithmetic="arbitrary", precision=70)
+values = runtime.evaluate_correlated_many(
+    points, {"dipole": CorrelatedRequest("T12"), "identity": CorrelatedRequest("born")},
+    mu_r2="1000000",
+)
+print(values["dipole"].finite, values["dipole"].single_pole,
+      values["dipole"].double_pole)
+```
+
+Physical legs use the existing one-based public labels. Negative auxiliary labels
+are preserved. The implicit `born` history is the identity operator; ordered
+multi-emission histories and `CorrelatorConfig.all_color` use the same existing
+catalogue, without a fixed order cap. Results retain complex values, every
+squared coupling order and every Laurent coefficient. The two integrated virtual
+cross terms are kept distinct until their final sum. Grouped evaluation runs all
+saved histories in one native batch and selects named outputs afterward.
+
+The same declaration serializes with `declarations.to_json_dict()` and is accepted
+by `pyamplicol generate --card virtual.toml --correlators correlators.json`.
+`inspect --process uudd --full-physics --json` includes the authenticated virtual
+scheme, order catalogue and public colour histories under `virtual`. The ordinary
+CLI `evaluate` continues to evaluate the ordinary interference; neither the tree
+nor virtual CLI currently exposes the Python grouped-correlated evaluation
+surface. The existing shared CLI restriction also disallows combining
+`--correlators` with `--dry-run`.
+
+The initial public correlated domain is full colour, QCD corrections, model R2
+plus UV and inclusive physical helicities. Spin sources, resolved correlated
+output and LC/NLC correlations fail explicitly. Ordinary evaluation remains
+available on the same artifact. Transactional validation checks both ordinary
+and every prepared correlated output before publication when enabled; these are
+source-versus-saved execution checks, not independent physics certification.
+The fresh quark-scattering dipole control additionally compares the Born and all
+three poles/finite coefficients with Recola under matched conventions. It does
+not use Recola to certify non-Hermitian multi-emission imaginary contributions.
