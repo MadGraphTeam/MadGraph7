@@ -45,12 +45,17 @@ class PreparedDirectedBare:
     families: tuple[PreparedDirectedFamily, ...]
     postprocess_state: bytes
     channels: tuple
+    color_bank: Any = None
 
     def require_owner(self, bare):
         if bare.prepared is not self.plan:
             raise ValueError(
                 "directed preparation belongs to a different retained bare plan"
             )
+        if self.color_bank is not None:
+            self.color_bank.require_bare(bare)
+            if self.color_bank.histories != self.histories:
+                raise ValueError("directed colour bank has different history requests")
 
     def bind(self, bare):
         from .physical_correlations import NativeDirectedBareProgram
@@ -74,6 +79,8 @@ class PreparedDirectedModel:
                 "directed preparation belongs to a different retained model plan"
             )
         self.bare.require_owner(model.bare)
+        if self.bare.color_bank is not None:
+            self.bare.color_bank.require_owner(model)
 
     def bind(self, model):
         from .physical_model_correlations import NativeDirectedModelProgram
@@ -86,7 +93,7 @@ class PreparedDirectedModel:
         )
 
 
-def prepare_directed_bare(bare, histories, *, spin_layout=None):
+def prepare_directed_bare(bare, histories, *, spin_layout=None, color_bank=None):
     from symbolica import E, S
 
     from pyamplicol.color.connections import ColorConnection
@@ -109,6 +116,10 @@ def prepare_directed_bare(bare, histories, *, spin_layout=None):
         for pair in histories
     ):
         raise ValueError("expected nonempty ordered colour-history pairs")
+    if color_bank is not None:
+        color_bank.require_bare(bare)
+        if color_bank.histories != histories:
+            raise ValueError("directed colour bank has different history requests")
     color_legs, born, loop = _physical_color_ports(bare)
     if any(
         connection.initial_legs != color_legs
@@ -129,7 +140,10 @@ def prepare_directed_bare(bare, histories, *, spin_layout=None):
         )
 
     born_metrics, loop_metrics = [], []
-    if directed_color_convention(bare, histories) == PROJECTED_IDENTITY_CONVENTION:
+    convention = directed_color_convention(bare, histories, color_bank=color_bank)
+    if color_bank is not None:
+        born_metrics, loop_metrics, _, _ = color_bank.bound()
+    elif convention == PROJECTED_IDENTITY_CONVENTION:
         # The model has already projected bare+UV+R2+fields with one structural
         # degree per sector. Source replacement cannot choose a new degree.
         # For identity history, the adjoint swapped metric equals the forward one.
@@ -224,13 +238,18 @@ def prepare_directed_bare(bare, histories, *, spin_layout=None):
         families,
         postprocess_state,
         channels,
+        color_bank,
     )
 
 
 def prepare_directed_model(model, prepared):
     from .physical_model_correlations import require_directed_model_scope
 
-    require_directed_model_scope(model, () if prepared is None else prepared.histories)
+    require_directed_model_scope(
+        model,
+        () if prepared is None else prepared.histories,
+        color_bank=None if prepared is None else prepared.color_bank,
+    )
     from symbolica import E, S
 
     from .color_bilinears import SUNColorSpace
@@ -270,7 +289,10 @@ def prepare_directed_model(model, prepared):
             color_cache[key] = tuple(values)
         return color_cache[key]
 
-    if model.color_projection is not None:
+    if prepared.color_bank is not None:
+        prepared.color_bank.require_owner(model)
+        _, _, current_weights, field_weights = prepared.color_bank.bound()
+    elif model.color_projection is not None:
         # These weights already include each current's scalar colour grade,
         # active tensor mask, the common sector degree and initial averaging.
         current_weights = tuple(
@@ -381,6 +403,33 @@ def prepare_directed_model(model, prepared):
         assembly_state,
         _directed_order_sum_state(len(prepared.histories), bare.order_layout),
     )
+
+
+def prepare_directed_complete(model, histories, *, spin_layout=None, color_bank=None):
+    """Choose complete family degrees before compiling bare or effective terms.
+
+    The returned bank may be passed to further source preparations for this same
+    model and history catalogue. Source values and spectator helicities cannot
+    select a different leading degree.
+    """
+    from .physical_model_correlations import require_directed_model_components
+
+    require_directed_model_components(model)
+    histories = tuple(tuple(pair) for pair in histories)
+    if (
+        color_bank is None
+        and model.color_projection is not None
+        and any(item.emissions for pair in histories for item in pair)
+    ):
+        from .directed_color_projection import prepare_directed_color_bank
+
+        color_bank = prepare_directed_color_bank(model, histories)
+    if color_bank is not None:
+        color_bank.require_owner(model)
+    prepared = prepare_directed_bare(
+        model.bare, histories, spin_layout=spin_layout, color_bank=color_bank
+    )
+    return prepare_directed_model(model, prepared)
 
 
 def _directed_order_sum_state(histories, order_layout):

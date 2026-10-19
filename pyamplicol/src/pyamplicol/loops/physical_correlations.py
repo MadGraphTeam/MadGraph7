@@ -20,15 +20,29 @@ from .orders import canonical_order
 
 # Empty colour histories use the already projected common-degree model metrics.
 PROJECTED_IDENTITY_CONVENTION = "sun-graded-identity-all-outgoing-v1"
+PROJECTED_FAMILY_CONVENTION = "sun-graded-complete-history-family-all-outgoing-v1"
 
 
-def directed_color_convention(bare, histories):
+def directed_color_convention(bare, histories, *, color_bank=None):
     """Admit exact ordinary metrics or an actual projected identity observable."""
     from pyamplicol.color.connections import COLOR_CONNECTION_CONVENTION
 
     from .physical_color import color_projection_metadata
 
     projection = color_projection_metadata(bare)
+    if color_bank is not None:
+        from .directed_color_projection import PreparedDirectedColorBank
+
+        if not isinstance(color_bank, PreparedDirectedColorBank):
+            raise TypeError("expected an actual complete directed colour bank")
+        color_bank.require_bare(bare)
+        if color_bank.histories != tuple(tuple(pair) for pair in histories):
+            raise ValueError("directed colour bank has different history requests")
+        if projection is None:
+            raise ValueError(
+                "directed colour bank requires an actual formal projection"
+            )
+        return PROJECTED_FAMILY_CONVENTION
     if projection is not None:
         if not histories or any(
             connection.emissions for pair in histories for connection in pair
@@ -173,6 +187,7 @@ class NativeDirectedBareProgram:
         self.bare = bare
         self.histories = histories
         self.spin_layout = spin_layout
+        self._color_bank = None if _prepared is None else _prepared.color_bank
         self.helicities = (
             bare.helicities if spin_layout is None else spin_layout.helicities
         )
@@ -223,7 +238,7 @@ class NativeDirectedBareProgram:
         bare = self.bare
         if bare.dimensional_numerators:
             raise NotImplementedError("directed diagnostics require N4 without R2")
-        directed_color_convention(bare, self.histories)
+        directed_color_convention(bare, self.histories, color_bank=self._color_bank)
         if (
             hasattr(self, "_metrics")
             and (bare.born_metric, bare.loop_metric) != self._metrics

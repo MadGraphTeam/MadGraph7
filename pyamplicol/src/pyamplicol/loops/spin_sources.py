@@ -60,10 +60,10 @@ class NativeSpinSourcePlan:
             S(f"loop_spin_source::component_{index}") for index in range(4)
         )
         for leg in declarations.spin_legs:
-            if (
-                leg not in edges
-                or bare.state_kinds[leg - 1] not in {"epsilon", "epsilon_bar"}
-            ):
+            if leg not in edges or bare.state_kinds[leg - 1] not in {
+                "epsilon",
+                "epsilon_bar",
+            }:
                 raise NotImplementedError(
                     "spin source bridge requires an external vector"
                 )
@@ -72,7 +72,9 @@ class NativeSpinSourcePlan:
             orientation = (
                 "self-conjugate"
                 if particle.is_self_antiparticle
-                else "antiparticle" if particle.is_antiparticle else "particle"
+                else "antiparticle"
+                if particle.is_antiparticle
+                else "particle"
             )
             helicities = bare.state_layout.legs[leg - 1].helicities
             expected_kind = (
@@ -226,13 +228,17 @@ class NativeSpinSourceProgram:
         self._views = {(): NativeDirectedModelProgram(model, self.histories)}
 
     def _view(self, vectors):
-        from .physical_model_correlations import NativeDirectedModelProgram
+        from .prepared_correlations import prepare_directed_complete
 
         layout = self.sources.layout(vectors)
         if layout.legs not in self._views:
-            self._views[layout.legs] = NativeDirectedModelProgram(
-                self.model, self.histories, spin_layout=layout
+            prepared = prepare_directed_complete(
+                self.model,
+                self.histories,
+                spin_layout=layout,
+                color_bank=self._views[()].prepared.bare.color_bank,
             )
+            self._views[layout.legs] = prepared.bind(self.model)
         return self._views[layout.legs]
 
     def evaluate_native(

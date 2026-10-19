@@ -67,8 +67,8 @@ class FormalColorMetrics:
             for matrix in (self.born, self.loop)
         )
 
-    def require_binding(self, bare, born, loop):
-        """Check the actual columns, order domains and declared normalization."""
+    def require_columns(self, bare):
+        """Check actual column/order identities without repeating tensor algebra."""
         domains = (
             self.born_orders,
             self.loop_orders,
@@ -87,6 +87,8 @@ class FormalColorMetrics:
                 raise ValueError("formal colour tensor columns differ from owner")
         if self.initial_average != bare.initial_average:
             raise ValueError("formal colour normalization differs from owner")
+
+    def _require_bound_weights(self, born, loop):
         for formal, numerical in zip(self.bound(), (born, loop), strict=True):
             if len(formal) != len(numerical) or any(
                 len(left) != len(right)
@@ -99,7 +101,13 @@ class FormalColorMetrics:
                     "formal colour projection differs from execution weights"
                 )
 
-    def require_owner(self, bare):
+    def require_binding(self, bare, born, loop):
+        """Check actual columns and their exact numerical binding."""
+        self.require_columns(bare)
+        self._require_bound_weights(born, loop)
+
+    def require_owner_layout(self, bare):
+        """Validate retained metadata/columns without rebuilding bound weights."""
         if (
             getattr(bare, "formal_color_metrics", None) is not self
             or self.revision != getattr(bare, "_color_metrics_revision", 0)
@@ -108,7 +116,11 @@ class FormalColorMetrics:
             or self.virtual_degrees != tuple(getattr(bare, "virtual_color_degrees", ()))
         ):
             raise ValueError("formal colour metrics have a different projection owner")
-        self.require_binding(bare, bare.born_metric, bare.loop_metric)
+        self.require_columns(bare)
+
+    def require_owner(self, bare):
+        self.require_owner_layout(bare)
+        self._require_bound_weights(bare.born_metric, bare.loop_metric)
 
 
 @dataclass(frozen=True, slots=True)

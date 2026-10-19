@@ -42,8 +42,8 @@ class DirectedModelResult(DirectedBareResult):
             getattr(self, name).setflags(write=False)
 
 
-def require_directed_model_scope(model, histories=()):
-    """One current producer admission boundary, including cold preparation.
+def require_directed_model_components(model):
+    """Check completion/colour ownership before any operator algebra.
 
     QCD is the validated completion domain today. EW correlation coverage is a
     pending extension, not a claim that electroweak histories are incompatible.
@@ -55,13 +55,20 @@ def require_directed_model_scope(model, histories=()):
             "directed model completion is currently validated for QCD corrections; "
             "EW correlation coverage is a pending extension"
         )
-    from .physical_correlations import directed_color_convention
-
     if (model.color_projection is not None) != bool(
         getattr(model.bare, "_formal_color_projected", False)
     ) or model.color_accuracy != getattr(model.bare, "color_accuracy", "full"):
         raise ValueError("directed model and bare colour projection owners differ")
-    directed_color_convention(model.bare, histories)
+
+
+def require_directed_model_scope(model, histories=(), *, color_bank=None):
+    """One producer admission boundary for the actual prepared observable."""
+    from .physical_correlations import directed_color_convention
+
+    require_directed_model_components(model)
+    if color_bank is not None:
+        color_bank.require_owner(model)
+    directed_color_convention(model.bare, histories, color_bank=color_bank)
 
 
 class NativeDirectedModelProgram(NativeDirectedBareProgram):
@@ -77,7 +84,10 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
     def __init__(self, model, histories, *, spin_layout=None, _prepared=None):
         from .physical_counterterms import NativeModelVirtualProgram
         from .physical_source import NativeSourceModelProgram
-        from .prepared_correlations import PreparedDirectedModel, prepare_directed_model
+        from .prepared_correlations import (
+            PreparedDirectedModel,
+            prepare_directed_complete,
+        )
 
         if isinstance(model, NativeSourceModelProgram):
             model = model.virtual
@@ -87,6 +97,9 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
             raise TypeError("expected immutable directed model preparation")
         if _prepared is not None:
             _prepared.require_owner(model)
+        prepared = _prepared or prepare_directed_complete(
+            model, histories, spin_layout=spin_layout
+        )
         self.model = model
         self._current_ids = tuple(id(current) for current in model.currents)
         self._field_ids = tuple(id(current) for current in model.field_currents)
@@ -94,9 +107,8 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
             model.bare,
             histories,
             spin_layout=spin_layout,
-            _prepared=None if _prepared is None else _prepared.bare,
+            _prepared=prepared.bare,
         )
-        prepared = _prepared or prepare_directed_model(model, self.prepared)
         prepared.require_owner(model)
         self.prepared = prepared
         self.counterterm_projector = self.bare.backend.CoefficientEvaluator(
@@ -108,7 +120,7 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
 
     def _check_scope(self):
         model = self.model
-        require_directed_model_scope(model, self.histories)
+        require_directed_model_scope(model, self.histories, color_bank=self._color_bank)
         if (
             tuple(id(current) for current in model.currents) != self._current_ids
             or tuple(id(current) for current in model.field_currents) != self._field_ids
