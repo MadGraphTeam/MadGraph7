@@ -88,3 +88,41 @@ The dependency audit found the required index renaming, canonicalization,
 conjugation and formal colour operations in FeynKit/Community. Their source,
 documentation and examples/tests were checked. Fourier work reuses pyAmpliCol's
 existing implementation; no second group representation algebra is introduced.
+
+## Cold tensor certificate
+
+`loops/color_orbits.py` now prepares a separate, internal certificate from actual
+Born and loop dependency tensors, absolute coupling orders, a common adjoint-port
+action and exact rectangular metric banks. Bank names retain the owning
+observable's sector/operator/source signature; physical admission remains with
+that owner. This module neither sums amplitudes nor evaluates an FFT.
+
+The two sides have independent alias partitions. Equal canonical tensors only
+share an alias when their absolute orders agree, and every original current
+column is retained. Relabellings and canonicalization use the dependency.
+Every typed external port is checked before and after canonicalization,
+including fixed fundamental/dual ports. A dependency failure or changed interface
+leaves the tensor unproved and direct; the open-duality defect cannot provide a
+false orbit certificate.
+
+A regular orbit contains each lexicographic group element once. Incomplete and
+stabilized actions remain residual. If the group order exceeds the number of
+actual classes, a regular orbit is mathematically impossible, so preparation
+does not enumerate that group. This permits large action domains with no
+arbitrary degree or column cap.
+
+Each metric bank separately proves equivariance for every ordered Born/loop
+orbit pair. A failing pair is kept wholly direct. Every alias pair is represented
+exactly once by a relative kernel or a direct entry, including both residual
+cross directions. Alias metric entries must agree exactly; formal Nc comparisons
+never substitute a numerical colour value. The certificate does not alter the
+existing structural LC/NLC projection.
+
+Focused controls reconstruct a complex rectangular physical overlap with
+independent aliases and residuals, separate absolute-order banks, a symbolic
+`Nc-3` counterexample, incomplete/stabilized/trivial/empty actions and a
+12-adjoint-port domain. An actual S3 tensor action with a complex unequal loop
+superposition produces noncentral kernels through the existing formal full/LC/NLC
+projector. An independent explicit SU3 component sum fixes a complex
+overlap, and a corrupted typed canonicalization is rejected. These are cold
+mathematical controls, not public loop FFT or scheduling acceptance.
