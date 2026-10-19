@@ -138,8 +138,8 @@ pub use relation::{
     recurrence_numerical_source_semantics_sha256, relation_certificate_algorithm,
 };
 pub use symmetric_group_fft::{
-    MAX_SYMMETRIC_GROUP_FFT_DEGREE, SymmetricGroupComplex64, SymmetricGroupFftBlock,
-    SymmetricGroupFftPlan, SymmetricGroupFftWorkspace,
+    SymmetricGroupComplex64, SymmetricGroupFftBlock, SymmetricGroupFftPlan,
+    SymmetricGroupFftWorkspace,
 };
 /// Semantic prepared-model companion ABI.
 pub const RECURRENCE_TEMPLATE_ABI: &str = "pyamplicol-recurrence-template-v1";
