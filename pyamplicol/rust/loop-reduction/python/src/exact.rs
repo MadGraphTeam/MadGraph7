@@ -3,10 +3,6 @@
 //! Python ownership of shared exact decimal ingress and rational evaluation.
 use super::*;
 
-pub(super) fn decimal_rational(value: &str) -> PyResult<Rational> {
-    runtime::decimal_rational(value).map_err(error)
-}
-
 #[pymethods]
 impl NativeBatch {
     #[staticmethod]

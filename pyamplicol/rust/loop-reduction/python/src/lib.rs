@@ -11,7 +11,7 @@ mod portable;
 mod stability;
 mod states;
 mod virtual_runtime;
-use batch::{Data, NativeBatch};
+use batch::NativeBatch;
 
 use pyo3::{exceptions::PyValueError, prelude::*};
 use rusticol_loop_reduction::Complex;

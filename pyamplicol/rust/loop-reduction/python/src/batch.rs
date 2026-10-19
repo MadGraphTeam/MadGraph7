@@ -24,9 +24,6 @@ impl NativeBatch {
             .map(Self)
             .map_err(error)
     }
-    pub fn compatible(&self, other: &Self) -> PyResult<()> {
-        self.0.compatible(&other.0).map_err(error)
-    }
 }
 #[pymethods]
 impl NativeBatch {
