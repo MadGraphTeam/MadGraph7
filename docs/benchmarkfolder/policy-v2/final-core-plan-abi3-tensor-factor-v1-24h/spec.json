@@ -1,0 +1,36 @@
+{
+  "run_id": "core-abi3-tensor-factor-v1-24h-20261020",
+  "configuration": "docs/benchmarkfolder/policy-v2/cases.json",
+  "report": "docs/benchmarkfolder/policy-v2/timing-runs/core-abi3-tensor-factor-v1-24h-20261020",
+  "work": ".benchmark-work/policy-v2/timing-runs/core-abi3-tensor-factor-v1-24h-20261020",
+  "output_roots": {
+    "baseline": ".benchmark-work/outputs/baseline",
+    "candidate": ".benchmark-work/policy-v2/generation-abi3-tensor-factor-v1/outputs/candidate"
+  },
+  "points_root": "docs/benchmarkfolder/points",
+  "cases": [
+    "qcd-1",
+    "ew-1",
+    "qcd-2",
+    "ew-2",
+    "qcd-3",
+    "ew-3",
+    "qcd-4",
+    "ew-4"
+  ],
+  "sources": [
+    "baseline",
+    "candidate"
+  ],
+  "backends": [
+    1,
+    6,
+    7,
+    8
+  ],
+  "cpu": 207,
+  "representative": false,
+  "fresh_parity": false,
+  "minimum_seconds": 1.0,
+  "timeout": 86400
+}

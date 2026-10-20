@@ -1,0 +1,191 @@
+{
+  "schema": "held-refresh-copy-provenance-v1",
+  "namespace_mapping": {
+    "generation-abi3-terminal-fixed": "generation-abi3-tensor-factor-v1",
+    "final-runtime-audit-fixed": "final-runtime-audit-abi3-tensor-factor-v1",
+    "final-candidate-plan-fixed": "final-candidate-plan-abi3-tensor-factor-v1",
+    "final-controls-plan-fixed": "final-controls-plan-abi3-tensor-factor-v1",
+    "final-variant-controls-both-precision": "final-variant-controls-abi3-tensor-factor-v1",
+    "final-core-plan-fixed-24h": "final-core-plan-abi3-tensor-factor-v1-24h"
+  },
+  "old_runtime": "abi3-terminal-fixed",
+  "new_runtime": "abi3-tensor-factor-v1",
+  "copies": [
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/regenerate.py",
+        "sha256": "40b81e4513dbb8476ec4a74e81844b547784a92559d814b196a37056eba26ca7"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/generation-abi3-tensor-factor-v1/regenerate.py",
+        "sha256": "11c7d0d86b022673ee7ee45af55566a94449d4c104b2413bbcfb6a187e33c078"
+      },
+      "transformation": "namespace-only"
+    },
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/summarize.py",
+        "sha256": "afd7c91b7ccbc7c59fac50d6e3d4f51f00138f42a960902a39a888d1530e9baf"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/generation-abi3-tensor-factor-v1/summarize.py",
+        "sha256": "afd7c91b7ccbc7c59fac50d6e3d4f51f00138f42a960902a39a888d1530e9baf"
+      },
+      "transformation": "namespace-only"
+    },
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/final-runtime-audit-fixed/audit.py",
+        "sha256": "155ee55d2d949db99052a2f14547183eee6bc50f1de680877801233ba47a12e6"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/final-runtime-audit-abi3-tensor-factor-v1/audit.py",
+        "sha256": "81f5832abf2f4e71ce6f0f392063ce5f79855f5ee3d324dffc003c65b3afa60f"
+      },
+      "transformation": "namespace-only"
+    },
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/final-candidate-plan-fixed/commands.sh",
+        "sha256": "af87077376b5a0f96a6abe6d9e609f745ac34ef8b60773cd79c08345efaac355"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/final-candidate-plan-abi3-tensor-factor-v1/commands.sh",
+        "sha256": "dfd85ed6474a8fbbb1b5ce7f3746ad1240d5033ee3d9f085a9dd9d6f06c6e38a"
+      },
+      "transformation": "namespace-only"
+    },
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/final-candidate-plan-fixed/assemble-proof.py",
+        "sha256": "663b5eb730a44052ac317bed6b43a8858d9bc0c8c6d0c85da5b3c4f0e1a6b39e"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/final-candidate-plan-abi3-tensor-factor-v1/assemble-proof.py",
+        "sha256": "173a3c1cef27a9db1113932322c9bb72310cbd3505b5be4e146a9207ceba22db"
+      },
+      "transformation": "namespace-only"
+    },
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/final-candidate-plan-fixed/specs/ggh.json",
+        "sha256": "c6d8ef95f40cff6409ffc225f444dd1e41c909572004dbc605ac9dca6afbc988"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/final-candidate-plan-abi3-tensor-factor-v1/specs/ggh.json",
+        "sha256": "15740239b041717a00963def28a0d9d0225722f4f283ba1f06e2fb4f4409c399"
+      },
+      "transformation": "namespace-and-diagnostic-cpu"
+    },
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/final-candidate-plan-fixed/specs/mixed.json",
+        "sha256": "115f3309c57ff3053cb42b019a0111964e769ab43ad6a311c0df6cfb7e84d1e7"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/final-candidate-plan-abi3-tensor-factor-v1/specs/mixed.json",
+        "sha256": "af9735fa806c1d802bca5902681f8882f7f78f68faeca7066d44295d6f7198c8"
+      },
+      "transformation": "namespace-and-diagnostic-cpu"
+    },
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/final-candidate-plan-fixed/specs/forced-qp.json",
+        "sha256": "3f1b393eb753103c5ce41b561265b3d75174119255db2914eb0eecf3cd5d0432"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/final-candidate-plan-abi3-tensor-factor-v1/specs/forced-qp.json",
+        "sha256": "0375743953d930881c26395096830d4a9db50f54afdc496205fc538dae5732cf"
+      },
+      "transformation": "namespace-and-diagnostic-cpu"
+    },
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/final-candidate-plan-fixed/specs/ninja-near-singular.json",
+        "sha256": "b39d53d5cbb1b7e850d286d5862edb5121e2338621f0ee5644d6f828f753caea"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/final-candidate-plan-abi3-tensor-factor-v1/specs/ninja-near-singular.json",
+        "sha256": "ab3c3b2aa4f0eb7462da5cc2df99c49db271884562f30f6b7d9e0cf71556c117"
+      },
+      "transformation": "namespace-and-diagnostic-cpu"
+    },
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/final-controls-plan-fixed/compare.py",
+        "sha256": "f75338597c5a52b1aa7d54089cdf1e9c2db2d6c24b3fc38098313f7f56c8f52d"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/final-controls-plan-abi3-tensor-factor-v1/compare.py",
+        "sha256": "f75338597c5a52b1aa7d54089cdf1e9c2db2d6c24b3fc38098313f7f56c8f52d"
+      },
+      "transformation": "namespace-only"
+    },
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/final-controls-plan-fixed/specs/hh-complex.json",
+        "sha256": "4a9e6d89fefb451c2b8bfd930d760315079b9b138c79b99165a19a48ee25799f"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/final-controls-plan-abi3-tensor-factor-v1/specs/hh-complex.json",
+        "sha256": "d424a58212081a610e19bdf10d38823dd0329dac0057436ab62594e4105b7731"
+      },
+      "transformation": "namespace-and-diagnostic-cpu"
+    },
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/final-controls-plan-fixed/specs/mixed-legacy.json",
+        "sha256": "8008a26be2c750b9a2742ef1f21502d55b3d9f0ae90a4ed11ee1c46e131df010"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/final-controls-plan-abi3-tensor-factor-v1/specs/mixed-legacy.json",
+        "sha256": "f5eab025a8efe97c3b0c597628d24d234746646cbccd331822b5f418ce03fe5f"
+      },
+      "transformation": "namespace-and-diagnostic-cpu"
+    },
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-both-precision/execute.py",
+        "sha256": "a881e1fef7b7ff7676c73ba0ef93323e268e45a678062291bf6ab8f369150bfa"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-abi3-tensor-factor-v1/execute.py",
+        "sha256": "b07cb0b1848d58140f430c0a849cc71f6da81d3aecdb1a5949ef233b574f1cfc"
+      },
+      "transformation": "variant-namespace-and-default-cpu"
+    },
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-both-precision/controls_driver.py",
+        "sha256": "93e41b821058e89c04d01f72070406ede09a55cb37021b5995cb27635897ff9c"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-abi3-tensor-factor-v1/controls_driver.py",
+        "sha256": "93e41b821058e89c04d01f72070406ede09a55cb37021b5995cb27635897ff9c"
+      },
+      "transformation": "byte-identical"
+    },
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/final-core-plan-fixed-24h/commands.sh",
+        "sha256": "7e83c0549b7e3928a4bb3bb8b2bcd2578a9ce4e2722c3e446d310e81cfd2fcd3"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/final-core-plan-abi3-tensor-factor-v1-24h/commands.sh",
+        "sha256": "b2547e333b404fa76c14242fbda14061959cdf3f020fd77e529bee7b117d9ff0"
+      },
+      "transformation": "namespace-only"
+    },
+    {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/final-core-plan-fixed-24h/spec.json",
+        "sha256": "150212b43b056a8a2288255e3dc769ab1d4f957cd1ec69bddfb8cfc4e4c336c5"
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/final-core-plan-abi3-tensor-factor-v1-24h/spec.json",
+        "sha256": "d9d999d7c1285fa9052276293d1d1e2fcfb941ca984d5eea8e25f91b37a2d07d"
+      },
+      "transformation": "namespace-only"
+    }
+  ]
+}

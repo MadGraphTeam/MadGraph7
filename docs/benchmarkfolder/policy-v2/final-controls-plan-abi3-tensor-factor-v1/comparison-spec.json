@@ -1,0 +1,156 @@
+{
+  "schema": "held-generated-control-comparison-spec-v2",
+  "policy": "docs/benchmarkfolder/policy-v2/policy-runtime-groups.json",
+  "proof": "docs/benchmarkfolder/policy-v2/representative-proof-abi3-tensor-factor-v1.json",
+  "configuration": "docs/benchmarkfolder/policy-v2/controls.json",
+  "cases": {
+    "control-gg-h": [
+      {
+        "role": "candidate_corrected",
+        "backend": 1,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/representative-candidate-abi3-tensor-factor-v1-ggh-20261020.json"
+      },
+      {
+        "role": "candidate_corrected",
+        "backend": 6,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/representative-candidate-abi3-tensor-factor-v1-ggh-20261020.json"
+      },
+      {
+        "role": "candidate_corrected",
+        "backend": 7,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/representative-candidate-abi3-tensor-factor-v1-ggh-20261020.json"
+      },
+      {
+        "role": "candidate_corrected",
+        "backend": 8,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/representative-candidate-abi3-tensor-factor-v1-ggh-20261020.json"
+      },
+      {
+        "role": "original_helper_corrected",
+        "backend": 1,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-reference-controls-20261020.json"
+      },
+      {
+        "role": "original_helper_corrected",
+        "backend": 6,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-reference-controls-20261020.json"
+      },
+      {
+        "role": "original_helper_corrected",
+        "backend": 7,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-reference-controls-20261020.json"
+      }
+    ],
+    "control-gg-hh": [
+      {
+        "role": "candidate_corrected",
+        "backend": 1,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020.json"
+      },
+      {
+        "role": "candidate_corrected",
+        "backend": 6,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020.json"
+      },
+      {
+        "role": "candidate_corrected",
+        "backend": 7,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020.json"
+      },
+      {
+        "role": "candidate_corrected",
+        "backend": 8,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020.json"
+      },
+      {
+        "role": "original_helper_corrected",
+        "backend": 1,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/controls-reference-hh-complex-20261020.json"
+      },
+      {
+        "role": "original_helper_corrected",
+        "backend": 6,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/controls-reference-hh-complex-20261020.json"
+      },
+      {
+        "role": "original_helper_corrected",
+        "backend": 7,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/controls-reference-hh-complex-20261020.json"
+      }
+    ],
+    "control-mixed": [
+      {
+        "role": "candidate_corrected",
+        "backend": 1,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/controls-candidate-abi3-tensor-factor-v1-mixed-legacy-20261020.json"
+      },
+      {
+        "role": "candidate_corrected",
+        "backend": 6,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/controls-candidate-abi3-tensor-factor-v1-mixed-legacy-20261020.json"
+      },
+      {
+        "role": "candidate_corrected",
+        "backend": 7,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/controls-candidate-abi3-tensor-factor-v1-mixed-legacy-20261020.json"
+      },
+      {
+        "role": "candidate_corrected",
+        "backend": 8,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/representative-candidate-abi3-tensor-factor-v1-mixed-20261020.json"
+      },
+      {
+        "role": "original_helper_corrected",
+        "backend": 1,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-reference-controls-20261020.json"
+      },
+      {
+        "role": "original_helper_corrected",
+        "backend": 6,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-reference-controls-20261020.json"
+      },
+      {
+        "role": "original_helper_corrected",
+        "backend": 7,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-reference-controls-20261020.json"
+      }
+    ],
+    "control-complex": [
+      {
+        "role": "candidate_corrected",
+        "backend": 1,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020.json"
+      },
+      {
+        "role": "candidate_corrected",
+        "backend": 6,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020.json"
+      },
+      {
+        "role": "candidate_corrected",
+        "backend": 7,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020.json"
+      },
+      {
+        "role": "candidate_corrected",
+        "backend": 8,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020.json"
+      },
+      {
+        "role": "original_helper_corrected",
+        "backend": 1,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/controls-reference-hh-complex-20261020.json"
+      },
+      {
+        "role": "original_helper_corrected",
+        "backend": 6,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/controls-reference-hh-complex-20261020.json"
+      },
+      {
+        "role": "original_helper_corrected",
+        "backend": 7,
+        "binding": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/controls-reference-hh-complex-20261020.json"
+      }
+    ]
+  }
+}

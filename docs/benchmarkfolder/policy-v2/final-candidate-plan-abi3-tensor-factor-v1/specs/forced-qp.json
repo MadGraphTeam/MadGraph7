@@ -1,0 +1,26 @@
+{
+  "run_id": "representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020",
+  "configuration": "docs/benchmarkfolder/policy-v2/controls.json",
+  "report": "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020",
+  "work": ".benchmark-work/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020",
+  "output_roots": {
+    "baseline": ".benchmark-work/outputs/baseline",
+    "candidate": ".benchmark-work/policy-v2/generation-abi3-tensor-factor-v1/outputs/candidate"
+  },
+  "points_root": "docs/benchmarkfolder/points",
+  "cases": [
+    "control-forced-qp"
+  ],
+  "sources": [
+    "candidate"
+  ],
+  "backends": [
+    1,
+    8
+  ],
+  "cpu": 5,
+  "representative": true,
+  "fresh_parity": true,
+  "timeout": 7200,
+  "minimum_seconds": 1e-12
+}

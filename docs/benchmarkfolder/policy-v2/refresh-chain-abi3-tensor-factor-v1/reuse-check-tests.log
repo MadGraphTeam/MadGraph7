@@ -1,0 +1,9 @@
+test_all_thirteen_existing_postimages_and_runtimes_are_eligible (__main__.ReuseGuardTests.test_all_thirteen_existing_postimages_and_runtimes_are_eligible) ... ok
+test_changed_exact_model_postimage_rejects_reuse (__main__.ReuseGuardTests.test_changed_exact_model_postimage_rejects_reuse) ... ok
+test_changed_module_metadata_rejects_reuse (__main__.ReuseGuardTests.test_changed_module_metadata_rejects_reuse) ... ok
+test_changed_runtime_signature_rejects_reuse (__main__.ReuseGuardTests.test_changed_runtime_signature_rejects_reuse) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 2.551s
+
+OK

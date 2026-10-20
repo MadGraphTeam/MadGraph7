@@ -1,0 +1,26 @@
+{
+  "schema": "held-tensor-factor-refresh-phase-v1",
+  "state": "HELD-source-commit-dev-NLO-and-resource-coordination-required-not-launched",
+  "phase": "final-runtime-audit-abi3-tensor-factor-v1",
+  "historical_preparation": "docs/benchmarkfolder/policy-v2/final-runtime-audit-fixed",
+  "policy": {
+    "path": "docs/benchmarkfolder/policy-v2/policy-runtime-groups.json",
+    "sha256": "d31d7e5c02c3c128891f8a60c656238b1b45dc0619efd13a7d9ab05c982100dd"
+  },
+  "correction": {
+    "path": "docs/benchmarkfolder/policy-v2/model-correction.json",
+    "sha256": "20d24a3f19c03b6f7c6c3eda4ef209e2e46cd69ab67990504602028ae3dfb526"
+  },
+  "configuration": {
+    "path": "docs/benchmarkfolder/policy-v2/controls.json",
+    "sha256": "e623e89f58e048efdc9b6f79075cb12b61fb5c8d3abc432b8e37f9cbc51602cb"
+  },
+  "numerical_launch": false,
+  "acceptance_claim": false,
+  "files": {
+    "docs/benchmarkfolder/policy-v2/final-runtime-audit-abi3-tensor-factor-v1/README.md": "d73d7e5de3b33a72d8d6017d279ebbca4d2a15ec925c43333008111e7ef26a5a",
+    "docs/benchmarkfolder/policy-v2/final-runtime-audit-abi3-tensor-factor-v1/audit.py": "81f5832abf2f4e71ce6f0f392063ce5f79855f5ee3d324dffc003c65b3afa60f",
+    "docs/benchmarkfolder/policy-v2/final-runtime-audit-abi3-tensor-factor-v1/check-reuse.py": "da59b9833e47ec863e680f3c31e3c45bed49f1e4a395e6003f79b89f9862057f"
+  },
+  "identity_sha256": "41d5f6c4dcb8a9ffb2f4b89ef9b8230038cb0178a4e9079ab08657e85e7f14b6"
+}
