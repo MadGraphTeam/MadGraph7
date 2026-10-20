@@ -65,7 +65,6 @@ def test_actual_species_and_bose_components_all_carriers(
     original_snapshots = tuple(item.source_bare.state.snapshot() for item in original)
     bound = tuple(
         item.rebind(
-            backend=item.virtual.bare.backend,
             arithmetic=arithmetic,
             precision=precision,
             reduction_engine=engine,
@@ -74,6 +73,7 @@ def test_actual_species_and_bose_components_all_carriers(
     )
     for source, old, snapshot in zip(bound, original, original_snapshots, strict=True):
         assert source.prepared is old.prepared
+        assert source.virtual.bare.backend is old.virtual.bare.backend
         assert source.source_bare.state is not old.source_bare.state
         assert old.source_bare.state.snapshot() is snapshot
         source.update_parameters({"aS": "0.118", "MT": "173", "MU_R": "1000"})
