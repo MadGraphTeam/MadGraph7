@@ -43,11 +43,8 @@ namespace
   // __host__ __device__ decoration in GPU builds. DBL_MIN is used rather than
   // std::numeric_limits<double>::min(), which is a host function and cannot be
   // called from device code.
-#ifdef MADMATRIX_GPUIMPL
-  __host__ __device__
-#endif
-    inline double
-    channel_amp2( double numerator, double denominator )
+  inline double
+  channel_amp2( double numerator, double denominator )
   {
     return numerator / ( denominator + DBL_MIN );
   }

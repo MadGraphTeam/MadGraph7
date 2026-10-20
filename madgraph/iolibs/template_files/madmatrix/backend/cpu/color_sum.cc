@@ -59,9 +59,6 @@ namespace madmatrix
     };
     static constexpr auto cf2 = TriangularNormalizedColorMatrix();
     fptype_sv deltaMEs = { 0 };
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
-    fptype_sv deltaMEs_next = { 0 };
-#endif
     // Gather the color flows the sum runs over, for each amplitude split order.
     // The order index strides by ncolor, exactly as calculate_jamps wrote them.
     // NB in mixed mode the two neppV vectors of allJamp_sv, at ijamp and at
@@ -73,13 +70,8 @@ namespace madmatrix
       for( int icol = 0; icol < ncolor; icol++ )
       {
         const int ijamp = iao * ncolor + icol;
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
-        jampR_sv[iao][icol] = fpvmerge( cxreal( allJamp_sv[ijamp] ), cxreal( allJamp_sv[njampso + ijamp] ) );
-        jampI_sv[iao][icol] = fpvmerge( cximag( allJamp_sv[ijamp] ), cximag( allJamp_sv[njampso + ijamp] ) );
-#else
         jampR_sv[iao][icol] = (fptype_colour_sv)( cxreal( allJamp_sv[ijamp] ) );
         jampI_sv[iao][icol] = (fptype_colour_sv)( cximag( allJamp_sv[ijamp] ) );
-#endif
       }
     }
     // Loop over ORDERED pairs of amplitude split orders (see the note above:
@@ -105,12 +97,7 @@ namespace madmatrix
           // ztemp comes from the jamps of order iao, and is contracted with those
           // of order jao (Fortran: ZTEMP from JAMP(:,M), times DCONJG(JAMP(I,N)))
           fptype_colour_sv deltaMEs2 = ( jampR_sv[jao][icol] * ztempR_sv + jampI_sv[jao][icol] * ztempI_sv ); // may underflow #831
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
-          deltaMEs += fpvsplit0( deltaMEs2 );
-          deltaMEs_next += fpvsplit1( deltaMEs2 );
-#else
           deltaMEs += deltaMEs2;
-#endif
         }
       }
     }
@@ -120,11 +107,6 @@ namespace madmatrix
     // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
     fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
     MEs_sv += deltaMEs; // fix #435
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
-    fptype* MEs_next = E_ACCESS::ieventAccessRecord( allMEs, ievt0 + neppV );
-    fptype_sv& MEs_sv_next = E_ACCESS::kernelAccess( MEs_next );
-    MEs_sv_next += deltaMEs_next;
-#endif
   }
 
   //--------------------------------------------------------------------------
@@ -166,9 +148,6 @@ namespace madmatrix
     // we gain (not a factor 2...) in speed here as we only loop over the up diagonal part of the matrix.
     // Strangely, CUDA is slower instead, so keep the old implementation for the moment.
     fptype_sv deltaMEs = { 0 };
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
-    fptype_sv deltaMEs_next = { 0 };
-#endif
     // NB in mixed mode the two neppV vectors of allJamp_sv, at icol and at ncolor+icol, are
     // two halves of the event page and not two colors: it is the color index inside each of
     // them which is gathered, and the two are merged into one neppV2 vector.
@@ -176,13 +155,8 @@ namespace madmatrix
     fptype_colour_sv jampI_sv[ncolor];
     for( int icol = 0; icol < ncolor; icol++ )
     {
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
-      jampR_sv[icol] = fpvmerge( cxreal( allJamp_sv[icol] ), cxreal( allJamp_sv[ncolor + icol] ) );
-      jampI_sv[icol] = fpvmerge( cximag( allJamp_sv[icol] ), cximag( allJamp_sv[ncolor + icol] ) );
-#else
       jampR_sv[icol] = (fptype_colour_sv)( cxreal( allJamp_sv[icol] ) );
       jampI_sv[icol] = (fptype_colour_sv)( cximag( allJamp_sv[icol] ) );
-#endif
     }
     for( int icol = 0; icol < ncolor; icol++ )
     {
@@ -200,12 +174,7 @@ namespace madmatrix
         ztempI_sv += cf2.value[icol][jcol] * jampIj_sv;
       }
       fptype_colour_sv deltaMEs2 = ( jampRi_sv * ztempR_sv + jampIi_sv * ztempI_sv ); // may underflow #831
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
-      deltaMEs += fpvsplit0( deltaMEs2 );
-      deltaMEs_next += fpvsplit1( deltaMEs2 );
-#else
       deltaMEs += deltaMEs2;
-#endif
     }
     // *** STORE THE RESULTS ***
     using E_ACCESS = HostAccessMatrixElements; // non-trivial access: buffer includes all events
@@ -213,23 +182,13 @@ namespace madmatrix
     // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
     fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
     MEs_sv += deltaMEs; // fix #435
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
-    fptype* MEs_next = E_ACCESS::ieventAccessRecord( allMEs, ievt0 + neppV );
-    fptype_sv& MEs_sv_next = E_ACCESS::kernelAccess( MEs_next );
-    MEs_sv_next += deltaMEs_next;
-#endif
   }
 
   //--------------------------------------------------------------------------
 
-#ifndef MADMATRIX_GPUIMPL
 #ifdef MADMATRIX_CPP_HAS_BLAS
 
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
-  constexpr int nParityCS = 2; // mixed mode merges two neppV pages into one call
-#else
   constexpr int nParityCS = 1;
-#endif
 
   // The color matrix does not depend on the helicity, so the jamps of every
   // good helicity (and of every event in the SIMD page) are columns of one
@@ -321,13 +280,8 @@ namespace madmatrix
           const size_t off = (size_t)( ighel * nevtB + ip * neppV + ieppV ) * ncolor;
           for( int icol = 0; icol < ncolor; icol++ )
           {
-#ifdef MADMATRIX_SIMD
-            JR[off + icol] = cxreal( jamp_sv[ip * ncolor + icol] )[ieppV];
-            JI[off + icol] = cximag( jamp_sv[ip * ncolor + icol] )[ieppV];
-#else
             JR[off + icol] = cxreal( jamp_sv[ip * ncolor + icol] );
             JI[off + icol] = cximag( jamp_sv[ip * ncolor + icol] );
-#endif
           }
         }
     }
@@ -356,26 +310,16 @@ namespace madmatrix
       fptype_sv& MEsp_sv = E_ACCESS::kernelAccess( MEsp );
       for( int ieppV = 0; ieppV < neppV; ieppV++ )
       {
-#ifdef MADMATRIX_SIMD
-        fptype sum = MEsp_sv[ieppV];
-        for( int ighel = 0; ighel < nGoodHel; ighel++ )
-        {
-          sum += MEcol[ighel * nevtB + ip * neppV + ieppV];
-          running[ighel][ieppV] = sum;
-        }
-#else
         fptype sum = MEsp_sv;
         for( int ighel = 0; ighel < nGoodHel; ighel++ )
         {
           sum += MEcol[ighel * nevtB + ip * neppV + ieppV];
           running[ighel] = sum;
         }
-#endif
       }
       MEsp_sv = running[nGoodHel - 1];
     }
   }
-#endif
 #endif
 
   //--------------------------------------------------------------------------

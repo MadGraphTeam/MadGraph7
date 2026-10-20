@@ -289,11 +289,6 @@ using madmatrix::fptype_colour;
 // C++ SIMD vectorization width (this will be used to set neppV)
 #undef MADMATRIX_SIMD
 
-// macro for computing denom twice to fill rest of SIMD lane for rest
-#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_FLOAT and defined MADMATRIX_FPTYPE_MOMENTA_DOUBLE
-#define MADMATRIX_SIMD_DENOM64 1
-#endif
-
 /* clang-format off */
 // Debug hooks: no-ops
 #define mgDebugDeclare() /*noop*/

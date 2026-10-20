@@ -211,9 +211,6 @@ namespace madmatrix
                           const int ix2 )
     {
       const fptype& out = kernelAccessIx2Const_s( buffer, ix2 );
-#ifndef MADMATRIX_SIMD
-      return out;
-#else
       // NB: derived from MemoryAccessMomenta, restricting the implementation to contiguous aligned arrays
       constexpr int neppC = MemoryAccessCouplingsBase::neppC;
       static_assert( neppC >= neppV ); // ASSUME CONTIGUOUS ARRAYS
@@ -221,7 +218,6 @@ namespace madmatrix
       static_assert( madmatrix::HostBufferCouplings::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
       //assert( (size_t)( buffer ) % madmatrix::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
       return madmatrix::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
-#endif
     }
     */
 
