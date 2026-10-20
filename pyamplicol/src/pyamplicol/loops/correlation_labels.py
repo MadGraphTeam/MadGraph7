@@ -45,12 +45,16 @@ def native_color_history(history: ColorCorrelator) -> ColorCorrelator:
 
 
 def permute_native_color_history(
-    history: ColorCorrelator, permutation: tuple[int, ...]
+    history: ColorCorrelator,
+    permutation: tuple[int, ...],
+    *,
+    physical_labels: tuple[int, ...],
 ) -> ColorCorrelator:
     """Relabel native physical ports; auxiliary identities never move.
 
     A physical label remains physical when a split retires its initial gluon.
-    Positive auxiliary labels outside the initial port set also remain fixed.
+    Only actual initial coloured ports identify physical colour labels. An
+    auxiliary may equal a colourless external slot and must still remain fixed.
     The caller's existing ColorConnection validates the resulting typed ports
     and creation history.
     """
@@ -59,7 +63,16 @@ def permute_native_color_history(
         sorted(permutation)
     ) != tuple(range(len(permutation))):
         raise ValueError("colour history permutation must cover physical ports")
+    labels = tuple(physical_labels)
+    if (
+        any(
+            type(value) is not int or not 0 <= value < len(permutation)
+            for value in labels
+        )
+        or len(set(labels)) != len(labels)
+    ):
+        raise ValueError("colour history requires unique actual physical colour ports")
+    physical = frozenset(labels)
     return _map(
-        history,
-        lambda value: permutation[value] if 0 <= value < len(permutation) else value,
+        history, lambda value: permutation[value] if value in physical else value
     )

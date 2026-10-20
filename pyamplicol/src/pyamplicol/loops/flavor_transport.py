@@ -316,7 +316,11 @@ def _bose_history_routes(
         request = b[name][1]
         if a[name][1] != request:
             raise ValueError("common named history changes its member definition")
-        wanted = permute_native_color_history(request, inverse)
+        wanted = permute_native_color_history(
+            request,
+            inverse,
+            physical_labels=tuple(leg.label for leg in right.bare.color_legs),
+        )
         route = next(
             (
                 index
