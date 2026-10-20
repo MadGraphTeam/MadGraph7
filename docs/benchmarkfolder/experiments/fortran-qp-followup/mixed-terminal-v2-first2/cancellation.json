@@ -1,0 +1,9 @@
+{
+  "canceled_utc": "2026-10-20T16:51:16.875964+00:00",
+  "pid": 2239533,
+  "parent_pid": 2234220,
+  "reason": "Forced CTModeRun4 returns unknown stability; the generic FORCE_STABILITY_CHECK(TRUE) driver remaps it to initialization T=4 forever, so warm traversal cannot finish. This isolated diagnostic driver will use FALSE and retain explicit unchecked QP status.",
+  "observed_status": 140,
+  "numerical_failure_observed": false,
+  "acceptance_eligible": false
+}

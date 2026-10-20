@@ -1,0 +1,8 @@
+{
+  "stage": "compile-classifier",
+  "numerical_runs": 0,
+  "cause": "fixed-form reconstruction removes indentation; preparation regex stopped at inner ENDIF instead of full block",
+  "prototype_sha256": "959bad5370566bc31fcf9d1139ccc130a6b9891e9088298c49dfa472a50ee6e8",
+  "build_log": "build-classifier.log",
+  "source_snapshot": "source-1-prototype.py"
+}

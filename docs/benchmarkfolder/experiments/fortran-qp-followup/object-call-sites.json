@@ -1,0 +1,336 @@
+{
+  "original": {
+    "mp_ml5_0_update_wl_3_1_dense_": {
+      "memset": 1,
+      "__eqtf2": 2,
+      "__multf3": 4,
+      "__addtf3": 3,
+      "__subtf3": 1
+    },
+    "mp_ml5_0_update_wl_3_0_dense_": {
+      "__multf3": 140,
+      "__addtf3": 105,
+      "__subtf3": 35
+    },
+    "mp_ml5_0_update_wl_2_1_dense_": {
+      "memset": 1,
+      "__eqtf2": 2,
+      "__multf3": 4,
+      "__addtf3": 3,
+      "__subtf3": 1
+    },
+    "mp_ml5_0_update_wl_2_0_dense_": {
+      "__multf3": 60,
+      "__addtf3": 45,
+      "__subtf3": 15
+    },
+    "mp_ml5_0_update_wl_1_1_dense_": {
+      "__multf3": 100,
+      "__addtf3": 75,
+      "__subtf3": 25
+    },
+    "mp_ml5_0_update_wl_1_0_dense_": {
+      "__multf3": 20,
+      "__addtf3": 15,
+      "__subtf3": 5
+    },
+    "mp_ml5_0_update_wl_0_1_dense_": {
+      "__multf3": 20,
+      "__addtf3": 15,
+      "__subtf3": 5
+    },
+    "mp_ml5_0_update_wl_0_0_dense_": {
+      "__multf3": 4,
+      "__addtf3": 3,
+      "__subtf3": 1
+    },
+    "mp_ml5_0_merge_wl_": {
+      "__multf3": 4,
+      "__addtf3": 3,
+      "__subtf3": 1
+    },
+    "mp_ml5_0_create_loop_coefs_": {
+      "__floatsitf": 5,
+      "__divtf3": 4,
+      "__multf3": 16,
+      "__addtf3": 8,
+      "ml5_0_ml5soindex_for_born_amp_": 2,
+      "__subtf3": 4,
+      "__netf2": 2,
+      "ml5_0_ml5soindex_for_loop_amp_": 1,
+      "ml5_0_ml5sqsoindex_": 1,
+      "mp_ml5_0_merge_wl_": 1,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_eval_poly_": {
+      "__multf3": 896,
+      "__subtf3": 224,
+      "__addtf3": 362
+    },
+    "mp_ml5_0_add_coefs_": {
+      "__addtf3": 2
+    },
+    "mp_ml5_0_update_wl_0_0_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_0_0_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "__multf3": 4,
+      "__addtf3": 3,
+      "__subtf3": 1,
+      "__eqtf2": 2,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_update_wl_0_1_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_0_1_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "__netf2": 8,
+      "__multf3": 20,
+      "__addtf3": 15,
+      "__subtf3": 5,
+      "__eqtf2": 2,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_update_wl_1_0_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_1_0_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "__multf3": 20,
+      "__addtf3": 15,
+      "__subtf3": 5,
+      "__eqtf2": 2,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_update_wl_1_1_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_1_1_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "__netf2": 8,
+      "__eqtf2": 2,
+      "__multf3": 100,
+      "__addtf3": 75,
+      "__subtf3": 25,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_update_wl_2_0_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_2_0_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "__multf3": 60,
+      "__addtf3": 45,
+      "__subtf3": 15,
+      "__eqtf2": 2,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_update_wl_2_1_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_2_1_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "memset": 3,
+      "__eqtf2": 32,
+      "__multf3": 8,
+      "__addtf3": 6,
+      "__subtf3": 2,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_update_wl_3_0_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_3_0_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "__multf3": 140,
+      "__addtf3": 105,
+      "__subtf3": 35,
+      "__eqtf2": 2,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_update_wl_3_1_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_3_1_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "memset": 3,
+      "__eqtf2": 4,
+      "__multf3": 8,
+      "__addtf3": 6,
+      "__subtf3": 2,
+      "__stack_chk_fail": 1
+    }
+  },
+  "classifier": {
+    "mp_ml5_0_update_wl_3_1_dense_": {
+      "memset": 1,
+      "__eqtf2": 2,
+      "__multf3": 4,
+      "__addtf3": 3,
+      "__subtf3": 1
+    },
+    "mp_ml5_0_update_wl_3_0_dense_": {
+      "__multf3": 140,
+      "__addtf3": 105,
+      "__subtf3": 35
+    },
+    "mp_ml5_0_update_wl_2_1_dense_": {
+      "memset": 1,
+      "__eqtf2": 2,
+      "__multf3": 4,
+      "__addtf3": 3,
+      "__subtf3": 1
+    },
+    "mp_ml5_0_update_wl_2_0_dense_": {
+      "__multf3": 60,
+      "__addtf3": 45,
+      "__subtf3": 15
+    },
+    "mp_ml5_0_update_wl_1_1_dense_": {
+      "__multf3": 100,
+      "__addtf3": 75,
+      "__subtf3": 25
+    },
+    "mp_ml5_0_update_wl_1_0_dense_": {
+      "__multf3": 20,
+      "__addtf3": 15,
+      "__subtf3": 5
+    },
+    "mp_ml5_0_update_wl_0_1_dense_": {
+      "__multf3": 20,
+      "__addtf3": 15,
+      "__subtf3": 5
+    },
+    "mp_ml5_0_update_wl_0_0_dense_": {
+      "__multf3": 4,
+      "__addtf3": 3,
+      "__subtf3": 1
+    },
+    "mp_ml5_0_merge_wl_": {
+      "__multf3": 4,
+      "__addtf3": 3,
+      "__subtf3": 1
+    },
+    "mp_ml5_0_create_loop_coefs_": {
+      "__floatsitf": 5,
+      "__divtf3": 4,
+      "__multf3": 16,
+      "__addtf3": 8,
+      "ml5_0_ml5soindex_for_born_amp_": 2,
+      "__subtf3": 4,
+      "__netf2": 2,
+      "ml5_0_ml5soindex_for_loop_amp_": 1,
+      "ml5_0_ml5sqsoindex_": 1,
+      "mp_ml5_0_merge_wl_": 1,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_eval_poly_": {
+      "__multf3": 896,
+      "__subtf3": 224,
+      "__addtf3": 362
+    },
+    "mp_ml5_0_add_coefs_": {
+      "__addtf3": 2
+    },
+    "mp_ml5_0_update_wl_0_0_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_0_0_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "__multf3": 4,
+      "__addtf3": 3,
+      "__subtf3": 1,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_update_wl_0_1_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_0_1_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "__multf3": 20,
+      "__addtf3": 15,
+      "__subtf3": 5,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_update_wl_1_0_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_1_0_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "__multf3": 20,
+      "__addtf3": 15,
+      "__subtf3": 5,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_update_wl_1_1_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_1_1_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "__multf3": 100,
+      "__addtf3": 75,
+      "__subtf3": 25,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_update_wl_2_0_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_2_0_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "__multf3": 60,
+      "__addtf3": 45,
+      "__subtf3": 15,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_update_wl_2_1_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_2_1_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "memset": 2,
+      "__multf3": 4,
+      "__addtf3": 3,
+      "__subtf3": 1,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_update_wl_3_0_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_3_0_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "__multf3": 140,
+      "__addtf3": 105,
+      "__subtf3": 35,
+      "__stack_chk_fail": 1
+    },
+    "mp_ml5_0_update_wl_3_1_": {
+      "_gfortran_ieee_procedure_entry": 1,
+      "__ieee_arithmetic_MOD_ieee_get_rounding_mode": 1,
+      "__ieee_arithmetic_MOD_ieee_round_type_eq": 1,
+      "mp_ml5_0_update_wl_3_1_dense_": 1,
+      "_gfortran_ieee_procedure_exit": 2,
+      "memset": 2,
+      "__multf3": 4,
+      "__addtf3": 3,
+      "__subtf3": 1,
+      "__stack_chk_fail": 1
+    }
+  }
+}

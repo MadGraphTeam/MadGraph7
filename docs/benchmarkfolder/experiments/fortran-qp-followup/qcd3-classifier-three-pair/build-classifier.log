@@ -1,0 +1,62 @@
+gfortran -w -fPIC -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -O3  -c polynomial.f -o polynomial.o -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/include -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/include -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/HEPTools/ninjars/lib
+polynomial.f:534:9:
+
+  534 |       ENDDO
+      |         1
+Error: Expecting END SUBROUTINE statement at (1)
+polynomial.f:535:9:
+
+  535 |       ENDIF
+      |         1
+Error: Expecting END SUBROUTINE statement at (1)
+polynomial.f:656:9:
+
+  656 |       ENDDO
+      |         1
+Error: Expecting END SUBROUTINE statement at (1)
+polynomial.f:657:9:
+
+  657 |       ENDIF
+      |         1
+Error: Expecting END SUBROUTINE statement at (1)
+polynomial.f:786:9:
+
+  786 |       ENDDO
+      |         1
+Error: Expecting END SUBROUTINE statement at (1)
+polynomial.f:787:9:
+
+  787 |       ENDIF
+      |         1
+Error: Expecting END SUBROUTINE statement at (1)
+polynomial.f:926:9:
+
+  926 |       ENDDO
+      |         1
+Error: Expecting END SUBROUTINE statement at (1)
+polynomial.f:927:9:
+
+  927 |       ENDIF
+      |         1
+Error: Expecting END SUBROUTINE statement at (1)
+polynomial.f:1086:9:
+
+ 1086 |       ENDDO
+      |         1
+Error: Expecting END SUBROUTINE statement at (1)
+polynomial.f:1087:9:
+
+ 1087 |       ENDIF
+      |         1
+Error: Expecting END SUBROUTINE statement at (1)
+polynomial.f:1411:9:
+
+ 1411 |       ENDDO
+      |         1
+Error: Expecting END SUBROUTINE statement at (1)
+polynomial.f:1412:9:
+
+ 1412 |       ENDIF
+      |         1
+Error: Expecting END SUBROUTINE statement at (1)
+make: *** [makefile:97: polynomial.o] Error 1

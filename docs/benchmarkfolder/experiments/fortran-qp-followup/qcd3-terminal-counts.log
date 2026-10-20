@@ -1,0 +1,19 @@
+{
+  "complete": false,
+  "acceptance_eligible": false,
+  "case": "qcd-3",
+  "cpu": 2,
+  "scope": "Integer trace counters in a separate executable. Counts cover exactly the last 100-point traversal; no runtime claims are made from this instrumented run.",
+  "reference_values_sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5",
+  "reference_status_sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0",
+  "points_sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41",
+  "script_sha256": "06b3c5ee62cd2f29f8d199b7c51d146fa9ac4a3cb27e6afecfb38d546ffa9f00",
+  "error": "RuntimeError('Not all private helpers received both trace counters')"
+}
+Traceback (most recent call last):
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/fortran-qp-followup/check_terminal_counts.py", line 125, in <module>
+    main()
+    ~~~~^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/fortran-qp-followup/check_terminal_counts.py", line 72, in main
+    raise RuntimeError("Not all private helpers received both trace counters")
+RuntimeError: Not all private helpers received both trace counters

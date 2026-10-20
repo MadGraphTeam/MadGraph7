@@ -1,0 +1,17 @@
+{
+  "complete": true,
+  "acceptance_eligible": false,
+  "case": "qcd-3",
+  "cpu": 2,
+  "scope": "Integer trace counters in a separate executable. Counts cover exactly the last 100-point traversal; no runtime claims are made from this instrumented run.",
+  "reference_values_sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5",
+  "reference_status_sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0",
+  "points_sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41",
+  "script_sha256": "8ac7d165ae698b25de71b146de352d0d37354abb6c7c40623065ae1b1c02522f",
+  "all_rows_and_statuses_exact": true,
+  "terminal_fast_calls": 10752,
+  "terminal_fallback_calls": 0,
+  "fast_fraction": 1.0,
+  "private_helpers_instrumented": 7,
+  "executable_sha256": "4961e447aea6aa8a4de2b85770820efd68475dba0da29005a9d85f7d5768e326"
+}
