@@ -25,6 +25,8 @@ pub mod loop_execution;
 pub mod loop_artifact;
 #[cfg(feature = "symbolica-runtime")]
 pub mod loop_runtime;
+#[cfg(feature = "loop-v2")]
+pub mod loop_v2;
 mod metadata;
 pub mod pacbin;
 pub mod recurrence;

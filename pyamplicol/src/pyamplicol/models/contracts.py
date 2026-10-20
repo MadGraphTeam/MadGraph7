@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Literal, TypeAlias, cast
 
 from .._internal.physics.symbols import symbols
 from ._physics_ir import (
@@ -35,6 +35,15 @@ DEFAULT_FEYNMAN_PROPAGATOR_SOURCE = "default-feynman"
 MODEL_SUPPLIED_PROPAGATOR_SOURCE = "model-supplied"
 
 SUPPORTED_COLOR_REPRESENTATIONS = frozenset({-3, 1, 3, 8})
+
+# Tree kernels exist in two variants. ``transverse`` is the compile-time
+# default: proven massless Yang-Mills vertices drop the terms proportional to
+# each input current's self-contraction p_i.J_i, which is exact for conserved
+# Berends-Giele currents. ``full`` keeps the complete Feynman rule; it is needed
+# wherever an input current is not conserved (CT=1 currents, Ward or
+# non-transverse spin sources).
+TreeKernelVariant: TypeAlias = Literal["transverse", "full"]
+TREE_KERNEL_VARIANTS: tuple[TreeKernelVariant, ...] = ("transverse", "full")
 
 _CANONICAL_COMPONENT_DIMENSIONS = {-1: 1, 1: 1, 2: 4, 3: 4, 5: 16}
 
@@ -1074,8 +1083,13 @@ class CompiledModelIR:
     tensor_orderings: tuple[TensorOrderingIR, ...] = ()
     current_orderings: tuple[CompiledCurrentOrderingRecord, ...] = ()
     goldstone_partners: tuple[CompiledGoldstonePartnerRecord, ...] = ()
+    tree_kernel_variant: TreeKernelVariant = "transverse"
 
     def __post_init__(self) -> None:
+        if self.tree_kernel_variant not in TREE_KERNEL_VARIANTS:
+            raise ValueError(
+                f"unsupported tree kernel variant {self.tree_kernel_variant!r}"
+            )
         self._validate_particle_identities()
         self._validate_goldstone_partners()
         self._validate_contractions()
@@ -1777,6 +1791,12 @@ class CompiledModelIR:
             ],
             "goldstone_partners": [item.to_dict() for item in self.goldstone_partners],
             "max_vertex_valence": self.max_vertex_valence,
+            # Written only off the default so transverse artifacts are unchanged.
+            **(
+                {}
+                if self.tree_kernel_variant == "transverse"
+                else {"tree_kernel_variant": self.tree_kernel_variant}
+            ),
         }
 
     @staticmethod
@@ -2048,6 +2068,10 @@ class CompiledModelIR:
             goldstone_partners=tuple(
                 CompiledGoldstonePartnerRecord.from_dict(item)
                 for item in _required_mappings(payload, "goldstone_partners")
+            ),
+            tree_kernel_variant=cast(
+                TreeKernelVariant,
+                str(payload.get("tree_kernel_variant", "transverse")),
             ),
         )
 
@@ -2327,6 +2351,7 @@ def _compiled_lc_color_closure_terms(
 __all__ = [
     "SUPPORTED_COLOR_REPRESENTATIONS",
     "TENSOR_ORDERING_CONTRACT_VERSION",
+    "TREE_KERNEL_VARIANTS",
     "CompiledClosureContractionRecord",
     "CompiledContactDecompositionProof",
     "CompiledContactDecompositionSplit",
@@ -2347,6 +2372,7 @@ __all__ = [
     "TensorAxisIR",
     "TensorIndexBindingIR",
     "TensorOrderingIR",
+    "TreeKernelVariant",
     "compiled_current_dimension",
     "compiled_particle_component_dimension",
     "compiled_particle_is_chiral_eligible",

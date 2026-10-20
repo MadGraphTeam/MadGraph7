@@ -62,12 +62,14 @@ from .contact_decomposition import (
     compiled_contact_orbit_step,
 )
 from .contracts import (
+    TREE_KERNEL_VARIANTS,
     CompiledModelIR,
     CompiledOrientedKernel,
     CompiledParameterRecord,
     CompiledParticleRecord,
     CompiledPropagatorRecord,
     CompiledVertexTerm,
+    TreeKernelVariant,
     compiled_particle_component_dimension,
 )
 from .tensors import (
@@ -87,7 +89,20 @@ _SUPPORTED_TRILINEAR_COLOR_PROJECTIONS = frozenset(
 )
 
 
-def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
+def compile_ufo_model_ir(
+    model: Mapping[str, object],
+    *,
+    tree_kernel_variant: TreeKernelVariant = "transverse",
+) -> CompiledModelIR:
+    """Compile one UFO payload; ``tree_kernel_variant`` selects YM lowering.
+
+    The variant changes only the component expressions of oriented kernels
+    proven eligible for the transverse massless Yang-Mills replacement. Kernel
+    kinds, particles and every other record are identical in both variants.
+    """
+
+    if tree_kernel_variant not in TREE_KERNEL_VARIANTS:
+        raise ValueError(f"unsupported tree kernel variant {tree_kernel_variant!r}")
     _sym._ensure_symbolica()
     model_name = str(model.get("name", "unnamed-model"))
     model_symbols = symbols.model(model_name)
@@ -214,6 +229,7 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         parameter_records,
         propagators,
         model_symbols,
+        transverse_massless_yang_mills=tree_kernel_variant == "transverse",
     )
     contact_particles, contact_kernels = _compile_four_point_contact_kernels(
         terms,
@@ -325,6 +341,7 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         tensor_orderings=tensor_orderings,
         current_orderings=current_orderings,
         goldstone_partners=goldstone_partners,
+        tree_kernel_variant=tree_kernel_variant,
     )
 
 
@@ -683,6 +700,8 @@ def _compile_oriented_kernels(
     parameters: Sequence[CompiledParameterRecord],
     propagators: Sequence[CompiledPropagatorRecord],
     model_symbols: ModelSymbolRegistry,
+    *,
+    transverse_massless_yang_mills: bool,
 ) -> tuple[CompiledOrientedKernel, ...]:
     particle_by_name = {particle.name: particle for particle in particles}
     parameter_by_name = {parameter.name: parameter for parameter in parameters}
@@ -724,7 +743,8 @@ def _compile_oriented_kernels(
                     kind=len(kernels),
                     model_symbols=model_symbols,
                     use_transverse_massless_yang_mills=(
-                        _term_supports_transverse_massless_yang_mills(
+                        transverse_massless_yang_mills
+                        and _term_supports_transverse_massless_yang_mills(
                             term,
                             particle_by_name,
                             parameter_by_name,
