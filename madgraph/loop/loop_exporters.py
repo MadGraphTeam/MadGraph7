@@ -1573,12 +1573,19 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
         in the replace_dict dictionary under the entry entry_name.
         The context specified will be forwarded to the the fileWriter."""
         helascalls_replace_dict=copy.copy(replace_dict)
+        helascalls_replace_dict.setdefault('terminal_ieee_use', '')
+        helascalls_replace_dict.setdefault('terminal_ieee_declarations', '')
         helascalls_replace_dict['bunch_name']=bunch_name
         helascalls_files=[]
         for i, k in enumerate(range(0, len(helas_calls), n_helas)):
             helascalls_replace_dict['bunch_number']=i+1                
             helascalls_replace_dict['helas_calls']=\
                                            '\n'.join(helas_calls[k:k + n_helas])
+            if replace_dict.get('terminal_ieee_use'):
+                has_private = re.search(r'\bCALL MP_\w+TERMINAL_WL_\d+_\d+\(',
+                    helascalls_replace_dict['helas_calls'])
+                for key in ('terminal_ieee_use', 'terminal_ieee_declarations'):
+                    helascalls_replace_dict[key] = replace_dict[key] if has_private else ''
             helascalls_replace_dict['required_so_broadcaster']=\
                                                          required_so_broadcaster
             helascalls_replace_dict['continue_label']=continue_label
@@ -2369,6 +2376,16 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             filename = 'tir_cache_size.inc'
             self.write_tir_cache_size_include(writers.FortranWriter(filename))
 
+        # The object graph is necessary but not sufficient: a custom template
+        # or writer may introduce another COMMON consumer. Fail closed by
+        # regenerating the ordinary MP batches if the rendered proof fails.
+        terminal = OptimizedFortranModel.get_terminal_wavefunctions(matrix_element)
+        if terminal and not self.validate_terminal_wavefunctions(
+                '.', matrix_element.rep_dict['proc_prefix'], terminal):
+            logger.debug("Keeping full MP updaters: generated terminal proof unavailable")
+            self.write_mp_compute_loop_coefs(writers.FortranWriter('mp_compute_loop_coefs.f'),
+                matrix_element, OptimizedFortranModel, _terminal=False)
+
         return calls
 
     def set_optimized_output_specific_replace_dict_entries(self, matrix_element):
@@ -2661,10 +2678,117 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 subroutines.append(mp_poly_writer.write_compact_wl_updater(\
                   wl_update[0],wl_update[1],loop_over_vertex_coefs_first=False))            
                 
+        terminal = helas_call_writers.FortranUFOHelasCallWriterOptimized.\
+            get_terminal_wavefunctions(matrix_element)
+        for left, right in sorted(set((item['loop_mother_rank'], item['vertex_rank'])
+                                      for item in terminal.values())):
+            if left == right == 1 or left == 0 or right == 0:
+                subroutines.append(mp_poly_writer.write_expanded_wl_updater(
+                    left, right, terminal=True))
+            else:
+                subroutines.append(mp_poly_writer.write_compact_wl_updater(
+                    left, right, terminal=True))
         writer.writelines('\n\n'.join(subroutines),
                                        context=self.get_context(matrix_element))
 
-    def write_mp_compute_loop_coefs(self, writer, matrix_element, fortran_model):
+    @staticmethod
+    def validate_terminal_wavefunctions(directory, prefix, expected):
+        """Check all rendered consumers before retaining private MP calls."""
+        def logical_source(filename):
+            statements = []
+            with open(filename) as stream:
+                for raw in stream:
+                    if not raw.strip() or raw[0] in 'cC*!':
+                        continue
+                    statement = raw[6:].strip().upper()
+                    if len(raw) > 5 and raw[5] not in ' 0':
+                        if not statements:
+                            raise ValueError("Orphan continuation")
+                        statements[-1] += statement
+                    else:
+                        statements.append(statement)
+            return '\n'.join(statements)
+        try:
+            sources = {os.path.basename(name): logical_source(name)
+                       for name in glob.glob(pjoin(directory, '*.f'))}
+            batches = sorted((name for name in sources
+                              if re.fullmatch(r'mp_coef_construction_\d+\.f', name)),
+                             key=lambda name: int(re.search(r'(\d+)\.f$', name)[1]))
+            if not batches:
+                return False
+            stem = re.escape('MP_'+prefix.upper())
+            update = re.compile(r'CALL '+stem+r'(UPDATE|TERMINAL)_WL_(\d+)_(\d+)'
+                r'\(WL\(1,0,1,(-?\d+)\),(\d+),COEFS,(\d+),(\d+),'
+                r'WL\(1,0,1,(\d+)\)(,WL_ENTRY_INEXACT)?\)')
+            create = re.compile(r'CALL '+stem+r'CREATE_LOOP_COEFS\(WL\(1,0,1,(\d+)\),')
+            producers, consumers, roots, private = {}, set(), set(), {}
+            for name in batches:
+                for line in sources[name].splitlines():
+                    match = update.fullmatch(line)
+                    if match:
+                        mode, left, right, origin, cut, ins, outs, target, flag = match.groups()
+                        left, right, origin, cut, ins, outs, target = map(
+                            int, (left, right, origin, cut, ins, outs, target))
+                        if (target in producers or target == origin or
+                                (origin not in producers and origin not in (-1, 0)) or
+                                (mode == 'TERMINAL') != bool(flag)):
+                            return False
+                        info = dict(loop_mother_rank=left, vertex_rank=right,
+                            loop_mother_number=origin, lcut_size=cut,
+                            in_size=ins, out_size=outs, out=target)
+                        producers[target] = info
+                        consumers.add(origin)
+                        if mode == 'TERMINAL':
+                            private[target] = info
+                    elif create.match(line):
+                        if len(re.findall(r'\bWL\b', line)) != 1:
+                            return False
+                        root = int(create.match(line)[1])
+                        if root not in producers:
+                            return False
+                        roots.add(root)
+                    elif re.search(r'\bWL\b', line) and not line.startswith(('COMPLEX', 'COMMON')):
+                        return False
+            if private != expected or not set(private).issubset(roots-consumers):
+                return False
+            block = '/'+prefix.upper()+'MP_WL/'
+            common = 'COMMON'+block+'WL,PL'
+            for name, text in sources.items():
+                declarations = [re.sub(r'\s+', '', line) for line in text.splitlines()
+                                if block in re.sub(r'\s+', '', line)]
+                if not declarations:
+                    continue
+                if any(declaration != common for declaration in declarations):
+                    return False
+                if name in batches:
+                    continue
+                for line in text.splitlines():
+                    if line.startswith(('COMPLEX', 'COMMON')):
+                        continue
+                    if re.search(r'\bCALL\b[^\n]*\bWL\b', line):
+                        return False
+                    if len(re.findall(r'\bWL\b', line)) != len(re.findall(r'\bWL\(', line)):
+                        return False
+                    for use in re.finditer(r'\bWL\(([^)\n]*)\)', line):
+                        indices = use[1].split(',')
+                        if len(indices) != 4 or indices[-1] not in ('-1', '0'):
+                            return False
+            polynomial = sources.get('polynomial.f', '')
+            merge = re.search(r'(?m)^SUBROUTINE '+stem+r'MERGE_WL\(.*?^END\s*$',
+                              polynomial, re.S | re.M)
+            create_body = re.search(r'(?m)^SUBROUTINE '+stem+r'CREATE_LOOP_COEFS\(.*?^END\s*$',
+                                    polynomial, re.S | re.M)
+            return bool(merge and create_body and
+                'OUT(J)=OUT(J)+WL(I,J,I)*CONST' in merge[0].replace(' ', '') and
+                len(re.findall(r'\bWL\(', merge[0])) == 2 and
+                len(re.findall(r'\bWL\b', merge[0])) == 3 and
+                len(re.findall(r'\bLOOP_WF\b', create_body[0])) == 3 and
+                re.search(r'(?m)^CALL '+stem+r'MERGE_WL\(LOOP_WF,', create_body[0]))
+        except (OSError, ValueError, KeyError):
+            return False
+
+    def write_mp_compute_loop_coefs(self, writer, matrix_element, fortran_model,
+                                   _terminal=True):
         """Create the write_mp_compute_loop_coefs.f file."""
         
         if not matrix_element.get('processes') or \
@@ -2691,14 +2815,24 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                        squared_orders=squared_orders, split_orders=split_orders)
         self.turn_to_mp_calls(born_ct_helas_calls)
         self.turn_to_mp_calls(uvct_helas_calls)
+        terminal = (fortran_model.get_terminal_wavefunctions(matrix_element)
+                    if _terminal else {})
         coef_construction, coef_merging = fortran_model.get_coef_construction_calls(\
                                     matrix_element,group_loops=self.group_loops,
-                        squared_orders=squared_orders,split_orders=split_orders)
+                        squared_orders=squared_orders,split_orders=split_orders,
+                        terminal_wavefunctions=terminal)
         # The proc_prefix must be replaced
         coef_construction = [c % matrix_element.rep_dict for c 
                                                            in coef_construction]
         self.turn_to_mp_calls(coef_construction)
         self.turn_to_mp_calls(coef_merging)        
+        # Add the intrinsic call after MP conversion, which prefixes all CALLs.
+        private_call = re.compile(r'(?m)^(CALL MP_'+re.escape(
+            matrix_element.rep_dict['proc_prefix'])+r'TERMINAL_WL_\d+_\d+\()')
+        has_terminal = any(private_call.search(call) for call in coef_construction)
+        coef_construction = [private_call.sub(
+            r'CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)\n\1', call)
+            for call in coef_construction]
                                          
         file = open(os.path.join(self.template_dir,\
                                            'mp_compute_loop_coefs.inc')).read()
@@ -2720,6 +2854,9 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                         continue_label = 3000,
                         momenta_array_name = 'MP_P',
                         context=context)
+        if has_terminal:
+            replace_dict['terminal_ieee_use'] = '      USE, INTRINSIC :: IEEE_EXCEPTIONS\n'
+            replace_dict['terminal_ieee_declarations'] = '      LOGICAL WL_ENTRY_INEXACT\n'
         file=self.split_HELASCALLS(writer,replace_dict,\
                 'mp_helas_calls_split.inc',file,coef_construction,\
                 'mp_coef_construction','mp_coef_construction',

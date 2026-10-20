@@ -508,3 +508,94 @@ class SparseQPWavefunctionUpdateTest(unittest.TestCase):
         for mode in ('expanded', 'compact'):
             with self.subTest(mode=mode):
                 self.check_kernel(mode, rounding_math=True, no_automatic=True)
+
+
+def _terminal_driver(left, right):
+    """Independent full-kernel oracle, including the private guard boundaries."""
+    driver = _SPARSE_DRIVER.replace('OLD_ROUTINE', 'MP_OLD_UPDATE_WL_%d_%d' % (left, right))
+    name = 'MP_NEW_TERMINAL_WL_%d_%d' % (left, right)
+    driver = driver.replace('NEW_ROUTINE', name)
+    driver = driver.replace('integer :: i,j,k,ls,ins,outs,trial,rounding,checks',
+        'integer :: i,j,k,ls,ins,outs,trial,rounding,checks,flagstate,before_fast\n'
+        'integer :: fast,fallback\ncommon/TRACE_COUNTS/fast,fallback')
+    driver = driver.replace('checks=0\n', 'checks=0\nfast=0\nfallback=0\ndo flagstate=0,1\n')
+    driver = driver.replace('call ieee_set_flag(ieee_all,.false.)',
+        'call ieee_set_flag(ieee_all,.false.)\n'
+        'if(flagstate==1) call ieee_set_flag(ieee_inexact,.true.)')
+    driver = driver.replace('call '+name+'(a,ls,b,ins,outs,actual)',
+        'before_fast=fast\ncall '+name+'(a,ls,b,ins,outs,actual,flagstate==1)')
+    driver = driver.replace('if(any(old_bits/=new_bits)) then',
+        'if(fast>before_fast) then\n'
+        '  do i=1,4\n'
+        '    if(any(transfer(expected(i,:,i),old_bits,210*4)/= &\n'
+        '      transfer(actual(i,:,i),new_bits,210*4))) stop 6\n'
+        '  enddo\n'
+        'else if(any(old_bits/=new_bits)) then')
+    driver = driver.replace('call ieee_set_rounding_mode(ieee_nearest)\nif(checks/=6000)',
+        'enddo\ncall ieee_set_rounding_mode(ieee_nearest)\nif(checks/=18000)')
+    driver = driver.replace("write(*,*) 'PASS',checks",
+        "if(fast==0.or.fallback==0) stop 7\nwrite(*,*) 'PASS',checks,fast,fallback")
+    driver = driver.replace('do trial=1,12', 'do trial=1,18')
+    driver = driver.replace('if(trial==12) a(i,j,k)=0', """if(trial==12) a(i,j,k)=0
+          if(trial==13) a(i,j,k)=cmplx(2.0_16**1000,-2.0_16**1000,kind=16)
+          if(trial==14) a(i,j,k)=cmplx(2.0_16**(-1000),2.0_16**(-1000),kind=16)
+          if(trial==15) a(i,j,k)=cmplx(2.0_16**1001,0.0_16,kind=16)
+          if(trial==16) a(i,j,k)=cmplx(2.0_16**(-1001),0.0_16,kind=16)
+          if(trial==17) a(i,j,k)=cmplx(2.0_16**1000,2.0_16**1000,kind=16)
+          if(trial==18) a(i,j,k)=cmplx(nearest(2.0_16**1001,-1.0_16), &
+            -nearest(2.0_16**1001,-1.0_16),kind=16)""")
+    driver = driver.replace('if(trial==12) b(i,j,k)=cmplx(snan,0.0_16,kind=16)',
+        """if(trial==12) b(i,j,k)=cmplx(snan,0.0_16,kind=16)
+          if(trial==13) b(i,j,k)=cmplx(2.0_16**1000,2.0_16**1000,kind=16)
+          if(trial==14.or.trial==17) b(i,j,k)=cmplx(2.0_16**(-1000), &
+            -2.0_16**(-1000),kind=16)
+          if(trial==15.or.trial==16) b(i,j,k)=cmplx(1.0_16,0.0_16,kind=16)
+          if(trial==18) b(i,j,k)=cmplx(nearest(2.0_16**1001,-1.0_16), &
+            nearest(2.0_16**1001,-1.0_16),kind=16)""")
+    return driver
+
+
+@unittest.skipUnless(shutil.which('gfortran'), 'gfortran is required')
+class TerminalQPWavefunctionUpdateTest(unittest.TestCase):
+    def test_consumed_bits_inputs_and_flags_with_full_fallback(self):
+        for mode in ('expanded', 'compact'):
+            for flags in ([], ['-frounding-math'],
+                          ['-frounding-math', '-fno-automatic']):
+                with self.subTest(mode=mode, flags=flags):
+                    self.check_kernel(mode, flags)
+
+    def check_kernel(self, mode, flags):
+        left, right = (1, 1) if mode == 'expanded' else (2, 1)
+        with tempfile.TemporaryDirectory(prefix='madloop-terminal-qp-') as tmp:
+            work = Path(tmp)
+            (work/'coef_specs.inc').write_text(
+                '      INTEGER MAXLWFSIZE,VERTEXMAXCOEFS\n'
+                '      PARAMETER(MAXLWFSIZE=4,VERTEXMAXCOEFS=15)\n')
+            (work/'loop_max_coefs.inc').write_text(
+                '      INTEGER LOOPMAXCOEFS\n      PARAMETER(LOOPMAXCOEFS=210)\n')
+            generator = FortranPolynomialRoutines(6, updater_max_rank=2,
+                proc_prefix='TEST_', sub_prefix='MP_NEW_', coef_format='complex*32')
+            constants = FortranPolynomialRoutines(6, updater_max_rank=2, sub_prefix='TEST_')
+            with FortranWriter(str(work/'constants.f')) as writer:
+                writer.writelines(constants.write_polynomial_constant_module())
+            method = getattr(generator, 'write_'+mode+'_wl_updater')
+            private = method(left, right, terminal=True)
+            # Only counters are added; both admission paths must actually run.
+            private = private.replace('  LOGICAL WL_ALREADY,WL_HALT,WL_ENTRY_INEXACT\n',
+                '  LOGICAL WL_ALREADY,WL_HALT,WL_ENTRY_INEXACT\n'
+                '  INTEGER FAST,FALLBACK\n  COMMON/TRACE_COUNTS/FAST,FALLBACK\n')
+            private = private.replace('  CALL MP_NEW_UPDATE_WL_%d_%d(' % (left, right),
+                '  FALLBACK=FALLBACK+1\n  CALL MP_NEW_UPDATE_WL_%d_%d(' % (left, right), 1)
+            private = private.replace('  RETURN\nENDIF\n',
+                                      '  RETURN\nENDIF\nFAST=FAST+1\n', 1)
+            with FortranWriter(str(work/'generated.f')) as writer:
+                writer.writelines(method(left, right)+'\n'+private)
+            (work/'old.f').write_text(_SPARSE_DENSE_REFERENCES[mode])
+            (work/'driver.f90').write_text(_terminal_driver(left, right))
+            command = ['gfortran', '-O3', '-fcheck=all', '-ffixed-line-length-132',
+                       *flags, 'constants.f', 'old.f', 'generated.f', 'driver.f90', '-o', 'check']
+            built = subprocess.run(command, cwd=work, capture_output=True, text=True)
+            self.assertEqual(built.returncode, 0, built.stdout+built.stderr)
+            result = subprocess.run([str(work/'check')], cwd=work, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            self.assertIn('18000', result.stdout)

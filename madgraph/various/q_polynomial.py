@@ -474,7 +474,7 @@ C        ARGUMENTS
             
         return '\n\n'.join(subroutines)
 
-    def _sparse_qp_updater_parts(self, r_1, r_2, compact):
+    def _sparse_qp_updater_parts(self, r_1, r_2, compact, terminal=False):
         """Emit exact-zero guards, with the original exceptional path intact.
 
         Restrict pruning to finite binary128 operands and nearest rounding.
@@ -502,6 +502,21 @@ IF(.NOT.WL_NEAREST.OR..NOT.ALL(WL_IS_FINITE(REAL(A(1:IN_SIZE,0:{na},1:LCUT_SIZE)
   RETURN
 ENDIF
 """.format(na=na, nb=nb, name=name)
+        if terminal:
+            declarations += "  LOGICAL WL_ALREADY,WL_HALT,WL_ENTRY_INEXACT\n"
+            # Private generated calls consume only the diagonal. The bounded
+            # operands cannot overflow/underflow or raise invalid; omitted
+            # inexact operations are already sticky and cannot trap.
+            preparation = """CALL IEEE_GET_ROUNDING_MODE(WL_ROUNDING)
+WL_NEAREST=WL_ROUNDING.EQ.IEEE_NEAREST
+WL_ALREADY=WL_ENTRY_INEXACT
+WL_HALT=.TRUE.
+IF(IEEE_SUPPORT_HALTING(IEEE_INEXACT)) CALL IEEE_GET_HALTING_MODE(IEEE_INEXACT,WL_HALT)
+IF(.NOT.WL_NEAREST.OR..NOT.WL_ALREADY.OR.WL_HALT.OR.LCUT_SIZE.GT.OUT_SIZE.OR.MAXLWFSIZE.GT.16.OR.{nca}.GT.65536.OR.{ncb}.GT.65536.OR..NOT.ALL(WL_BOUNDED(REAL(A(1:IN_SIZE,0:{na},1:LCUT_SIZE),KIND=16))).OR..NOT.ALL(WL_BOUNDED(AIMAG(A(1:IN_SIZE,0:{na},1:LCUT_SIZE)))).OR..NOT.ALL(WL_BOUNDED(REAL(B(1:OUT_SIZE,0:{nb},1:IN_SIZE),KIND=16))).OR..NOT.ALL(WL_BOUNDED(AIMAG(B(1:OUT_SIZE,0:{nb},1:IN_SIZE))))) THEN
+  CALL {name}(A,LCUT_SIZE,B,IN_SIZE,OUT_SIZE,OUT)
+  RETURN
+ENDIF
+""".format(na=na, nb=nb, nca=na+1, ncb=nb+1, name=name)
         if compact:
             preparation += """WL_AZERO(1:IN_SIZE,0:{na},1:LCUT_SIZE)=.FALSE.
 IF(WL_NEAREST) THEN
@@ -541,10 +556,27 @@ ELEMENTAL LOGICAL FUNCTION WL_IS_FINITE(X)
   END ASSOCIATE
 END FUNCTION
 """
+        if terminal:
+            classifier += """ELEMENTAL LOGICAL FUNCTION WL_BOUNDED(X)
+  REAL*16, INTENT(IN) :: X
+  INTEGER*8, PARAMETER :: BOUND_ONE(2)=TRANSFER(1.0_16,(/0_8,0_8/))
+  INTEGER, PARAMETER :: BOUND_HI=MERGE(1,2,BOUND_ONE(1).NE.0_8)
+  WL_BOUNDED=.FALSE.
+  IF(STORAGE_SIZE(X).NE.128.OR.DIGITS(X).NE.113.OR.RADIX(X).NE.2.OR.MAXEXPONENT(X).NE.16384) RETURN
+  IF(BOUND_ONE(BOUND_HI).NE.ISHFT(16383_8,48).OR.BOUND_ONE(3-BOUND_HI).NE.0_8) RETURN
+  ASSOCIATE(WORDS=>TRANSFER(X,BOUND_ONE))
+    IF(IBCLR(WORDS(BOUND_HI),63).EQ.0_8.AND.WORDS(3-BOUND_HI).EQ.0_8) THEN
+      WL_BOUNDED=.TRUE.
+    ELSE
+      WL_BOUNDED=IBITS(WORDS(BOUND_HI),48,15).GE.15383_8.AND.IBITS(WORDS(BOUND_HI),48,15).LE.17383_8
+    ENDIF
+  END ASSOCIATE
+END FUNCTION
+"""
         return declarations, preparation, classifier
 
     def write_compact_wl_updater(self,r_1,r_2,loop_over_vertex_coefs_first=True,
-                                _sparse=True):
+                                _sparse=True, terminal=False):
         """ Give out the subroutine to update a polynomial of rank r_1 with
         one of rank r_2 """
         
@@ -562,10 +594,12 @@ END FUNCTION
         lines=[]
         sparse = (_sparse and self.coef_format == 'complex*32' and
                   loop_over_vertex_coefs_first)
+        if terminal and not sparse:
+            raise PolynomialError("Terminal updates require the sparse QP vertex-first kernel")
         declarations = preparation = classifier = ''
         if sparse:
             declarations, preparation, classifier = \
-                self._sparse_qp_updater_parts(r_1, r_2, True)
+                self._sparse_qp_updater_parts(r_1, r_2, True, terminal)
         
         # Start by writing out the header:
         lines.append(
@@ -642,7 +676,16 @@ END FUNCTION
         lines.append("END")
         # return the subroutine
         result = '\n'.join(lines)
-        if sparse:
+        if terminal:
+            name = '%sUPDATE_WL_%d_%d' % (self.sub_prefix, r_1, r_2)
+            result = result.replace('SUBROUTINE '+name+'(',
+                'SUBROUTINE '+name.replace('UPDATE_WL_', 'TERMINAL_WL_')+'(', 1)
+            result = result.replace('OUT_SIZE,OUT)\n', 'OUT_SIZE,OUT,WL_ENTRY_INEXACT)\n', 1)
+            result = result.replace('  USE, INTRINSIC :: IEEE_ARITHMETIC\n',
+                '  USE, INTRINSIC :: IEEE_ARITHMETIC\n  USE, INTRINSIC :: IEEE_EXCEPTIONS\n', 1)
+            result = result.replace('          DO I=1,LCUT_SIZE',
+                                    '          DO I=J,MIN(J,LCUT_SIZE)', 1)
+        elif sparse:
             name = '%sUPDATE_WL_%d_%d' % (self.sub_prefix, r_1, r_2)
             dense = self.write_compact_wl_updater(
                 r_1, r_2, loop_over_vertex_coefs_first, _sparse=False)
@@ -650,7 +693,7 @@ END FUNCTION
                 'SUBROUTINE '+name+'(', 'SUBROUTINE '+name+'_DENSE(', 1)
         return result
 
-    def write_expanded_wl_updater(self,r_1,r_2,_sparse=True):
+    def write_expanded_wl_updater(self,r_1,r_2,_sparse=True,terminal=False):
         """ Give out the subroutine to update a polynomial of rank r_1 with
         one of rank r_2 """
         
@@ -665,10 +708,12 @@ END FUNCTION
         
         lines=[]
         sparse = _sparse and self.coef_format == 'complex*32'
+        if terminal and not sparse:
+            raise PolynomialError("Terminal updates require the sparse QP kernel")
         declarations = preparation = classifier = ''
         if sparse:
             declarations, preparation, classifier = \
-                self._sparse_qp_updater_parts(r_1, r_2, False)
+                self._sparse_qp_updater_parts(r_1, r_2, False, terminal)
         
         # Start by writing out the header:
         lines.append(
@@ -734,7 +779,16 @@ END FUNCTION
 
         # return the subroutine
         result = '\n'.join(lines)
-        if sparse:
+        if terminal:
+            name = '%sUPDATE_WL_%d_%d' % (self.sub_prefix, r_1, r_2)
+            result = result.replace('SUBROUTINE '+name+'(',
+                'SUBROUTINE '+name.replace('UPDATE_WL_', 'TERMINAL_WL_')+'(', 1)
+            result = result.replace('OUT_SIZE,OUT)\n', 'OUT_SIZE,OUT,WL_ENTRY_INEXACT)\n', 1)
+            result = result.replace('  USE, INTRINSIC :: IEEE_ARITHMETIC\n',
+                '  USE, INTRINSIC :: IEEE_ARITHMETIC\n  USE, INTRINSIC :: IEEE_EXCEPTIONS\n', 1)
+            result = result.replace('  DO K=1,IN_SIZE\n    DO J=1,OUT_SIZE',
+                                    '  DO K=1,IN_SIZE\n    DO J=I,I', 1)
+        elif sparse:
             name = '%sUPDATE_WL_%d_%d' % (self.sub_prefix, r_1, r_2)
             dense = self.write_expanded_wl_updater(r_1, r_2, _sparse=False)
             result += '\n\n' + dense.replace(

@@ -89,7 +89,9 @@ C     Coefficient construction for loop diagram with ID 2
       CALL MP_FFV1L3_2(PL(0,1),W(2),GC_5,ZERO,ZERO,PL(0,2),COEFS)
       CALL MP_UPDATE_WL_0_1(WL(1,0,1,1),4,COEFS,4,4,WL(1,0,1,2))
       CALL MP_FFV2L1_2(PL(0,2),W(3),GC_11,ZERO,ZERO,PL(0,3),COEFS)
-      CALL MP_UPDATE_WL_1_1(WL(1,0,1,2),4,COEFS,4,4,WL(1,0,1,3))
+      CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      CALL MP_TERMINAL_WL_1_1(WL(1,0,1,2),4,COEFS,4,4,WL(1,0,1,3)
+     $ ,WL_ENTRY_INEXACT)
       CALL MP_CREATE_LOOP_COEFS(WL(1,0,1,3),2,4,1,1,1,2,H)
 C     At this point, all loop coefficients needed for (QCD=2 QED=2),
 C      i.e. of split order ID=1, are computed.

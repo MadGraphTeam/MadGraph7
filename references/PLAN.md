@@ -401,3 +401,12 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   rank kernels and provable vertex sparsity in an isolated namespace. Preserve
   current production ports while this research proceeds; require both kernel
   and complete-process measurements before retaining a further change.
+- The measured terminal-QP optimization is now ported to the production
+  generator. Whole-graph and rendered-consumer checks select only private
+  wavefunctions consumed through their diagonal trace; unknown uses retain full
+  updaters. Fresh CLI exports reproduce all QCD3/EW2 100-point rows exactly,
+  plus complete ten-point mixed-order and loop-induced QP diagnostics. The port
+  passes 108,000 compiled numerical/IEEE comparisons, 12 graph tests, 39
+  polynomial tests and eight standalone/FKS/MatchBox/TIR exporter checks.
+  Public DP/QP updater source remains identical in 96 checked combinations.
+  These validate the port; final ABI3 source/runtime recertification remains.
