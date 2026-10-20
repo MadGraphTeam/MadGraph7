@@ -39,7 +39,9 @@ python-unit:
 # One-loop suite by marker (loop_fast, loop_physics, loop_nightly, or a marker
 # expression), selected from tests/unit by marker so no module is collected
 # twice. Generic direct-R2 tests (deferred_direct_r2) run only when the
-# expression names them. Needs the staged native runtime and SYMBOLICA_LICENSE;
+# expression names them. Collecting all of tests/unit needs the `test` extra
+# (e.g. jsonschema); modules for the optional `fft-profiling` extra skip without
+# it. Needs the staged native runtime and SYMBOLICA_LICENSE;
 # PYAMPLICOL_LOOP_PYTHONPATH prepends overlays such as the Community build.
 test-loop MARKERS="loop_fast or loop_physics or loop_nightly" *ARGS:
     PYTHONPATH="${PYAMPLICOL_LOOP_PYTHONPATH:+$PYAMPLICOL_LOOP_PYTHONPATH:}$PWD/src" {{python}} -m pytest tests/unit -m "{{MARKERS}}" -q {{ARGS}}
