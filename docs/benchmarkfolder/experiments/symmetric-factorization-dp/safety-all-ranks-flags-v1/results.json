@@ -1,0 +1,4021 @@
+{
+  "complete": true,
+  "passed": true,
+  "cpu": 2,
+  "acceptance_eligible": false,
+  "runner_sha256": "23dcf68bbc4595ebbab8b531860235bbf3441a365b07f70b890eef2e5625a8ff",
+  "factor_sha256": "7b31352cf577c1dcfcd0f50ab4a5fd9b2118e2b62dbbc80f4a10cfb6b1dc6f1c",
+  "compiler": {
+    "command": [
+      "gfortran",
+      "--version"
+    ],
+    "returncode": 0,
+    "seconds": 0.010216091061010957,
+    "output": "GNU Fortran (GCC) 15.3.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n"
+  },
+  "results": [
+    {
+      "key": "standalone-FFV1L1_2-rank2-full",
+      "tests": {
+        "guards_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "guards.f90",
+            "-o",
+            "guards"
+          ],
+          "returncode": 0,
+          "seconds": 3.3535778670338914,
+          "output": ""
+        },
+        "guards": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/guards"
+          ],
+          "returncode": 0,
+          "seconds": 0.003595725051127374,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           0           1\n PASS          18           0           1\n PASS          19           0           1\n PASS          20           0           1\n"
+        },
+        "sticky_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "sticky.f90",
+            "-o",
+            "sticky"
+          ],
+          "returncode": 0,
+          "seconds": 3.1702186930924654,
+          "output": ""
+        },
+        "sticky": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/sticky"
+          ],
+          "returncode": 0,
+          "seconds": 0.00413719704374671,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           1           0\n PASS          18           1           0\n PASS          19           1           0\n PASS          20           1           0\n PASS          21           1           0\n PASS          22           1           0\n PASS          23           1           0\n PASS          24           1           0\n PASS          25           1           0\n PASS          26           1           0\n PASS          27           1           0\n PASS          28           1           0\n PASS          29           1           0\n PASS          30           1           0\n PASS          31           1           0\n PASS          32           1           0\n"
+        },
+        "traps_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "returncode": 0,
+          "seconds": 2.8186694050673395,
+          "output": ""
+        },
+        "trap_subprocesses": [
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "0",
+              "0",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "1",
+              "0",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "0",
+              "0",
+              "2"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "1",
+              "0",
+              "2"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "0",
+              "0",
+              "3"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "1",
+              "0",
+              "3"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "0",
+              "0",
+              "4"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "1",
+              "0",
+              "4"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "0",
+              "0",
+              "5"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "1",
+              "0",
+              "5"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "0",
+              "1",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "1",
+              "1",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "0",
+              "2",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "1",
+              "2",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "0",
+              "3",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "1",
+              "3",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "0",
+              "4",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "1",
+              "4",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "0",
+              "5",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+              "1",
+              "5",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          }
+        ]
+      },
+      "sources": {
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "cbcedda96b4184472db2e1ac64018a4db4f39a5f44cdc7f1df80e2398d22f378",
+        "original.f": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34",
+        "sticky.f90": "cbe62809a796329b2fe9e9d97f0db2d4c2eb8cce79342279e1691453ab0ba9ce",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "guards.f90": "7f59dca0a117d712b9b098aacf7727a248f103253ed16dddb6725ee504a07aee",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "traps.f90": "9e507ddb17ce76e11a48e99c7f5ef8d6b5bfc0c708f8b09cfa4ef3aa1b0312e4"
+      },
+      "executables": {
+        "guards": "bd6cd5b0ad1c629f1cbf2be7fd7bf7f4a7fd2c6c943601c0381c09f23d81b6cb",
+        "sticky": "5cbc26e59f3c36332d0e86774d4bb2d97d8053f488bae632c35de8dc3584b1f9",
+        "traps": "12218b40ff8c3575356e7253f8cd826352d263d3be9441928413e877dc79655a"
+      }
+    },
+    {
+      "key": "standalone-FFV1L1_2-rank3-full",
+      "tests": {
+        "guards_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "guards.f90",
+            "-o",
+            "guards"
+          ],
+          "returncode": 0,
+          "seconds": 1.6675485200248659,
+          "output": ""
+        },
+        "guards": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/guards"
+          ],
+          "returncode": 0,
+          "seconds": 0.004068725975230336,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           0           1\n PASS          18           0           1\n PASS          19           0           1\n PASS          20           0           1\n"
+        },
+        "sticky_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "sticky.f90",
+            "-o",
+            "sticky"
+          ],
+          "returncode": 0,
+          "seconds": 1.7256696820259094,
+          "output": ""
+        },
+        "sticky": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/sticky"
+          ],
+          "returncode": 0,
+          "seconds": 0.005911574000492692,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           1           0\n PASS          18           1           0\n PASS          19           1           0\n PASS          20           1           0\n PASS          21           1           0\n PASS          22           1           0\n PASS          23           1           0\n PASS          24           1           0\n PASS          25           1           0\n PASS          26           1           0\n PASS          27           1           0\n PASS          28           1           0\n PASS          29           1           0\n PASS          30           1           0\n PASS          31           1           0\n PASS          32           1           0\n"
+        },
+        "traps_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "returncode": 0,
+          "seconds": 1.4094456969760358,
+          "output": ""
+        },
+        "trap_subprocesses": [
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "0",
+              "0",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "1",
+              "0",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "0",
+              "0",
+              "2"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "1",
+              "0",
+              "2"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "0",
+              "0",
+              "3"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "1",
+              "0",
+              "3"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "0",
+              "0",
+              "4"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "1",
+              "0",
+              "4"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "0",
+              "0",
+              "5"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "1",
+              "0",
+              "5"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "0",
+              "1",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "1",
+              "1",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "0",
+              "2",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "1",
+              "2",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "0",
+              "3",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "1",
+              "3",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "0",
+              "4",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "1",
+              "4",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "0",
+              "5",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+              "1",
+              "5",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          }
+        ]
+      },
+      "sources": {
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "traps.f90": "7c4b9b1be370399b4da8b34cdc0f732b995fedba47f947968dad981e56359169",
+        "guards.f90": "d0316c2aff1af0503a18d7a64ea231511259e0a88a5e196f294880107f10942e",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "factor.f": "9ff79d48d53c3bba304eacd08077c8308545fe813ee5fea060388d599da082c8",
+        "sticky.f90": "6fed0a5f250d2c686136a6f2b7e2ae9c2936c9f74b8720bc2b47053d4d254284",
+        "original.f": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+      },
+      "executables": {
+        "guards": "5639d98547633ab2c14bed4dc3379d29ce43ae401e4d9230ff0eb56ee194c527",
+        "sticky": "ee9d04a2593fd743ab84b606a4de637c4bbf0e1f3a23d8edea298241b3c27025",
+        "traps": "ffd554c31ff1fc5001f0920f6450d808eff192e514cb66e1d30034ed20c0266a"
+      }
+    },
+    {
+      "key": "standalone-FFV1L1_2-rank4-full",
+      "tests": {
+        "guards_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "guards.f90",
+            "-o",
+            "guards"
+          ],
+          "returncode": 0,
+          "seconds": 2.550882001989521,
+          "output": ""
+        },
+        "guards": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/guards"
+          ],
+          "returncode": 0,
+          "seconds": 0.007325530052185059,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           0           1\n PASS          18           0           1\n PASS          19           0           1\n PASS          20           0           1\n"
+        },
+        "sticky_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "sticky.f90",
+            "-o",
+            "sticky"
+          ],
+          "returncode": 0,
+          "seconds": 2.8898945359978825,
+          "output": ""
+        },
+        "sticky": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/sticky"
+          ],
+          "returncode": 0,
+          "seconds": 0.008920016000047326,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           1           0\n PASS          18           1           0\n PASS          19           1           0\n PASS          20           1           0\n PASS          21           1           0\n PASS          22           1           0\n PASS          23           1           0\n PASS          24           1           0\n PASS          25           1           0\n PASS          26           1           0\n PASS          27           1           0\n PASS          28           1           0\n PASS          29           1           0\n PASS          30           1           0\n PASS          31           1           0\n PASS          32           1           0\n"
+        },
+        "traps_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "returncode": 0,
+          "seconds": 2.130702120019123,
+          "output": ""
+        },
+        "trap_subprocesses": [
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "0",
+              "0",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "1",
+              "0",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "0",
+              "0",
+              "2"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "1",
+              "0",
+              "2"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "0",
+              "0",
+              "3"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "1",
+              "0",
+              "3"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "0",
+              "0",
+              "4"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "1",
+              "0",
+              "4"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "0",
+              "0",
+              "5"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "1",
+              "0",
+              "5"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "0",
+              "1",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "1",
+              "1",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "0",
+              "2",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "1",
+              "2",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "0",
+              "3",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "1",
+              "3",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "0",
+              "4",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "1",
+              "4",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "0",
+              "5",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+              "1",
+              "5",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          }
+        ]
+      },
+      "sources": {
+        "factor.f": "74ba1659c949e0d55fa5ec5b205292ce1d9cc7e40c5ccb80312e709fb4b9f2b0",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "guards.f90": "ec5ba9d40e62d0f805a2ce767e1fb7e6d9cae89a80a264a29d405947f96497d3",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "traps.f90": "6ee9a8eb140a8fbbc09ef55a574f0e0d41a44cf402f56dccc688d95c2cd7b00c",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "sticky.f90": "7b80c3189280457b1f480b7ac7955cccbffc87b5db771173cb538b8891a0c566",
+        "original.f": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+      },
+      "executables": {
+        "guards": "a7b1241584ad90f7ba4838fce86de0fa723acc60e2b3058539bcfb73b795af84",
+        "sticky": "4d20cf170fc6fd8e5cb96cccc84623b407414098fdc213b9272fe1e066caeef8",
+        "traps": "dd5b2a6267e6452ff514c973c452f26b120baa97078069d8e47504dbe9cee8c1"
+      }
+    },
+    {
+      "key": "standalone-FFV1L2_1-rank2-full",
+      "tests": {
+        "guards_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "guards.f90",
+            "-o",
+            "guards"
+          ],
+          "returncode": 0,
+          "seconds": 5.045093760942109,
+          "output": ""
+        },
+        "guards": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/guards"
+          ],
+          "returncode": 0,
+          "seconds": 0.005673683015629649,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           0           1\n PASS          18           0           1\n PASS          19           0           1\n PASS          20           0           1\n"
+        },
+        "sticky_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "sticky.f90",
+            "-o",
+            "sticky"
+          ],
+          "returncode": 0,
+          "seconds": 4.917645268957131,
+          "output": ""
+        },
+        "sticky": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/sticky"
+          ],
+          "returncode": 0,
+          "seconds": 0.007041348027996719,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           1           0\n PASS          18           1           0\n PASS          19           1           0\n PASS          20           1           0\n PASS          21           1           0\n PASS          22           1           0\n PASS          23           1           0\n PASS          24           1           0\n PASS          25           1           0\n PASS          26           1           0\n PASS          27           1           0\n PASS          28           1           0\n PASS          29           1           0\n PASS          30           1           0\n PASS          31           1           0\n PASS          32           1           0\n"
+        },
+        "traps_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "returncode": 0,
+          "seconds": 4.5285084010101855,
+          "output": ""
+        },
+        "trap_subprocesses": [
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "0",
+              "0",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "1",
+              "0",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "0",
+              "0",
+              "2"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "1",
+              "0",
+              "2"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "0",
+              "0",
+              "3"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "1",
+              "0",
+              "3"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "0",
+              "0",
+              "4"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "1",
+              "0",
+              "4"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "0",
+              "0",
+              "5"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "1",
+              "0",
+              "5"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "0",
+              "1",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "1",
+              "1",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "0",
+              "2",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "1",
+              "2",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "0",
+              "3",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "1",
+              "3",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "0",
+              "4",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "1",
+              "4",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "0",
+              "5",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+              "1",
+              "5",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          }
+        ]
+      },
+      "sources": {
+        "guards.f90": "aebf0bd103274b2312fbd08750fe4ddd883174d40f20628eb135c90953ca243c",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "traps.f90": "9e507ddb17ce76e11a48e99c7f5ef8d6b5bfc0c708f8b09cfa4ef3aa1b0312e4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "original.f": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34",
+        "factor.f": "359efa1f7cc852926125b824800dbd4e4b159ea272a3e3d8180e77f6d746247c",
+        "sticky.f90": "14c591f000efcb385acbc963b4da68457e44dc0a222462426553694a3a3d46b2"
+      },
+      "executables": {
+        "guards": "c971e5ca0d190d46e174585fe35692f27a9ac36425beea7e47be1b10f47b797f",
+        "sticky": "7b9046538f7f91cf3ff1ff1f4714b16aca0389efb74d8e07f790e7747dbfa904",
+        "traps": "7f2fbe39980f7f620b501ddc5930cc948b6401ffc278d9e2be53e7ff126070de"
+      }
+    },
+    {
+      "key": "standalone-FFV1L2_1-rank3-full",
+      "tests": {
+        "guards_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "guards.f90",
+            "-o",
+            "guards"
+          ],
+          "returncode": 0,
+          "seconds": 3.8729885689681396,
+          "output": ""
+        },
+        "guards": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/guards"
+          ],
+          "returncode": 0,
+          "seconds": 0.012648431002162397,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           0           1\n PASS          18           0           1\n PASS          19           0           1\n PASS          20           0           1\n"
+        },
+        "sticky_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "sticky.f90",
+            "-o",
+            "sticky"
+          ],
+          "returncode": 0,
+          "seconds": 5.98783498595003,
+          "output": ""
+        },
+        "sticky": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/sticky"
+          ],
+          "returncode": 0,
+          "seconds": 0.018913906067609787,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           1           0\n PASS          18           1           0\n PASS          19           1           0\n PASS          20           1           0\n PASS          21           1           0\n PASS          22           1           0\n PASS          23           1           0\n PASS          24           1           0\n PASS          25           1           0\n PASS          26           1           0\n PASS          27           1           0\n PASS          28           1           0\n PASS          29           1           0\n PASS          30           1           0\n PASS          31           1           0\n PASS          32           1           0\n"
+        },
+        "traps_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "returncode": 0,
+          "seconds": 4.4973041790071875,
+          "output": ""
+        },
+        "trap_subprocesses": [
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "0",
+              "0",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "1",
+              "0",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "0",
+              "0",
+              "2"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "1",
+              "0",
+              "2"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "0",
+              "0",
+              "3"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "1",
+              "0",
+              "3"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "0",
+              "0",
+              "4"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "1",
+              "0",
+              "4"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "0",
+              "0",
+              "5"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "1",
+              "0",
+              "5"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "0",
+              "1",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "1",
+              "1",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "0",
+              "2",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "1",
+              "2",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "0",
+              "3",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "1",
+              "3",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "0",
+              "4",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "1",
+              "4",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "0",
+              "5",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+              "1",
+              "5",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          }
+        ]
+      },
+      "sources": {
+        "guards.f90": "6857114408d642859ddebdd8504c6dcce3085ae83f609307e342f712b6b71d71",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "original.f": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e",
+        "sticky.f90": "0db65afd389b4e8849111f393e291da30791f2a29802165e18da4404ab266abf",
+        "traps.f90": "7c4b9b1be370399b4da8b34cdc0f732b995fedba47f947968dad981e56359169",
+        "factor.f": "5d3a9ba03b43390a92f3107a7bcb2873c1c1d734c46698cc8d83af0b249e5648",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+      },
+      "executables": {
+        "guards": "5bc3031873e5cdc13f48df6178bec3189b666a7a26329ad1cddb368c84510a27",
+        "sticky": "0749b8c5e24ec8a71c87659fc17b9011a83f6e792bad7210f130fb78d3c55f57",
+        "traps": "0ce98018ba933eb8c1dc762fc6df718b267bb98314ed4857eadd48577d1cdb94"
+      }
+    },
+    {
+      "key": "standalone-FFV1L2_1-rank4-full",
+      "tests": {
+        "guards_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "guards.f90",
+            "-o",
+            "guards"
+          ],
+          "returncode": 0,
+          "seconds": 5.516245515900664,
+          "output": ""
+        },
+        "guards": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/guards"
+          ],
+          "returncode": 0,
+          "seconds": 0.01564853300806135,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           0           1\n PASS          18           0           1\n PASS          19           0           1\n PASS          20           0           1\n"
+        },
+        "sticky_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "sticky.f90",
+            "-o",
+            "sticky"
+          ],
+          "returncode": 0,
+          "seconds": 4.564668133039959,
+          "output": ""
+        },
+        "sticky": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/sticky"
+          ],
+          "returncode": 0,
+          "seconds": 0.01596868399064988,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           1           0\n PASS          18           1           0\n PASS          19           1           0\n PASS          20           1           0\n PASS          21           1           0\n PASS          22           1           0\n PASS          23           1           0\n PASS          24           1           0\n PASS          25           1           0\n PASS          26           1           0\n PASS          27           1           0\n PASS          28           1           0\n PASS          29           1           0\n PASS          30           1           0\n PASS          31           1           0\n PASS          32           1           0\n"
+        },
+        "traps_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "returncode": 0,
+          "seconds": 3.502128647058271,
+          "output": ""
+        },
+        "trap_subprocesses": [
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "0",
+              "0",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "1",
+              "0",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "0",
+              "0",
+              "2"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "1",
+              "0",
+              "2"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "0",
+              "0",
+              "3"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "1",
+              "0",
+              "3"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "0",
+              "0",
+              "4"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "1",
+              "0",
+              "4"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "0",
+              "0",
+              "5"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "1",
+              "0",
+              "5"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "0",
+              "1",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "1",
+              "1",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "0",
+              "2",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "1",
+              "2",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "0",
+              "3",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "1",
+              "3",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "0",
+              "4",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "1",
+              "4",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "0",
+              "5",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+              "1",
+              "5",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          }
+        ]
+      },
+      "sources": {
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "traps.f90": "6ee9a8eb140a8fbbc09ef55a574f0e0d41a44cf402f56dccc688d95c2cd7b00c",
+        "guards.f90": "07bcb49a32f0643205eac3188e2c86a72d05c723df31e355bc02fedef9e505d0",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "factor.f": "bca29875da68366c55488638e1d4374425aba646889aadb8b7defdfa913463fc",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "sticky.f90": "02a30e8481197bc98d61c0a19aa36b05cea468c3b0a0e6a09676446c41b3ea35",
+        "original.f": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+      },
+      "executables": {
+        "guards": "c3e53ac1e47b67c327d4e91e6d606658eaec867613ed0ee6b69551d7b9127d84",
+        "sticky": "6ce4eef89ca138018e5ac60d07dd09c42ffb194107b520ef10d63dea80632bfb",
+        "traps": "76250535b962ad3fce667f44eae6e20f84a591760a779cf3e2cfbb7f24d6d82b"
+      }
+    },
+    {
+      "key": "nlo-FFV1L1_2-rank2-full",
+      "tests": {
+        "guards_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "guards.f90",
+            "-o",
+            "guards"
+          ],
+          "returncode": 0,
+          "seconds": 10.504341995925643,
+          "output": ""
+        },
+        "guards": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/guards"
+          ],
+          "returncode": 0,
+          "seconds": 0.012063707923516631,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           0           1\n PASS          18           0           1\n PASS          19           0           1\n PASS          20           0           1\n"
+        },
+        "sticky_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "sticky.f90",
+            "-o",
+            "sticky"
+          ],
+          "returncode": 0,
+          "seconds": 5.408999425941147,
+          "output": ""
+        },
+        "sticky": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/sticky"
+          ],
+          "returncode": 0,
+          "seconds": 0.011613066075369716,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           1           0\n PASS          18           1           0\n PASS          19           1           0\n PASS          20           1           0\n PASS          21           1           0\n PASS          22           1           0\n PASS          23           1           0\n PASS          24           1           0\n PASS          25           1           0\n PASS          26           1           0\n PASS          27           1           0\n PASS          28           1           0\n PASS          29           1           0\n PASS          30           1           0\n PASS          31           1           0\n PASS          32           1           0\n"
+        },
+        "traps_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "returncode": 0,
+          "seconds": 3.6887862159637734,
+          "output": ""
+        },
+        "trap_subprocesses": [
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "0",
+              "0",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "1",
+              "0",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "0",
+              "0",
+              "2"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "1",
+              "0",
+              "2"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "0",
+              "0",
+              "3"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "1",
+              "0",
+              "3"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "0",
+              "0",
+              "4"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "1",
+              "0",
+              "4"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "0",
+              "0",
+              "5"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "1",
+              "0",
+              "5"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "0",
+              "1",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "1",
+              "1",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "0",
+              "2",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "1",
+              "2",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "0",
+              "3",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "1",
+              "3",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "0",
+              "4",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "1",
+              "4",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "0",
+              "5",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+              "1",
+              "5",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          }
+        ]
+      },
+      "sources": {
+        "factor.f": "cbcedda96b4184472db2e1ac64018a4db4f39a5f44cdc7f1df80e2398d22f378",
+        "traps.f90": "9e507ddb17ce76e11a48e99c7f5ef8d6b5bfc0c708f8b09cfa4ef3aa1b0312e4",
+        "guards.f90": "7f59dca0a117d712b9b098aacf7727a248f103253ed16dddb6725ee504a07aee",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34",
+        "sticky.f90": "cbe62809a796329b2fe9e9d97f0db2d4c2eb8cce79342279e1691453ab0ba9ce",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+      },
+      "executables": {
+        "guards": "243cceb166ba298a6d2eb3908427271af6e6ef3d0a59bb4253641b05076cdeb5",
+        "sticky": "d96f776481be29480495f0b3d59c5eccbbe703c333b773dd31cd90f379cd9b45",
+        "traps": "3c225d7c2322e404fcce63fd7580b9662ba6e6a65dc8c1922c59af0ac1163cc6"
+      }
+    },
+    {
+      "key": "nlo-FFV1L1_2-rank3-full",
+      "tests": {
+        "guards_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "guards.f90",
+            "-o",
+            "guards"
+          ],
+          "returncode": 0,
+          "seconds": 5.441775792045519,
+          "output": ""
+        },
+        "guards": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/guards"
+          ],
+          "returncode": 0,
+          "seconds": 0.00991569901816547,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           0           1\n PASS          18           0           1\n PASS          19           0           1\n PASS          20           0           1\n"
+        },
+        "sticky_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "sticky.f90",
+            "-o",
+            "sticky"
+          ],
+          "returncode": 0,
+          "seconds": 3.993998780963011,
+          "output": ""
+        },
+        "sticky": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/sticky"
+          ],
+          "returncode": 0,
+          "seconds": 0.010141509934328496,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           1           0\n PASS          18           1           0\n PASS          19           1           0\n PASS          20           1           0\n PASS          21           1           0\n PASS          22           1           0\n PASS          23           1           0\n PASS          24           1           0\n PASS          25           1           0\n PASS          26           1           0\n PASS          27           1           0\n PASS          28           1           0\n PASS          29           1           0\n PASS          30           1           0\n PASS          31           1           0\n PASS          32           1           0\n"
+        },
+        "traps_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "returncode": 0,
+          "seconds": 3.1806868839776143,
+          "output": ""
+        },
+        "trap_subprocesses": [
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "0",
+              "0",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "1",
+              "0",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "0",
+              "0",
+              "2"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "1",
+              "0",
+              "2"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "0",
+              "0",
+              "3"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "1",
+              "0",
+              "3"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "0",
+              "0",
+              "4"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "1",
+              "0",
+              "4"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "0",
+              "0",
+              "5"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "1",
+              "0",
+              "5"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "0",
+              "1",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "1",
+              "1",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "0",
+              "2",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "1",
+              "2",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "0",
+              "3",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "1",
+              "3",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "0",
+              "4",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "1",
+              "4",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "0",
+              "5",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+              "1",
+              "5",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          }
+        ]
+      },
+      "sources": {
+        "guards.f90": "d0316c2aff1af0503a18d7a64ea231511259e0a88a5e196f294880107f10942e",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "sticky.f90": "6fed0a5f250d2c686136a6f2b7e2ae9c2936c9f74b8720bc2b47053d4d254284",
+        "original.f": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e",
+        "factor.f": "9ff79d48d53c3bba304eacd08077c8308545fe813ee5fea060388d599da082c8",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "traps.f90": "7c4b9b1be370399b4da8b34cdc0f732b995fedba47f947968dad981e56359169"
+      },
+      "executables": {
+        "guards": "16bf0be2d98543f9f00722aad3342db8ad68e364369b055dd2f85d730cf3a0a3",
+        "sticky": "8f3b77e93c249f78cb58a93fe914e5955ba500cb9ba19432cfab6d1b02694f4b",
+        "traps": "1b36d343e29ba17f3a5fb1dd0a6685432b669be3bc8fdd11698b2660bdb3ac8a"
+      }
+    },
+    {
+      "key": "nlo-FFV1L1_2-rank4-full",
+      "tests": {
+        "guards_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "guards.f90",
+            "-o",
+            "guards"
+          ],
+          "returncode": 0,
+          "seconds": 5.355758451973088,
+          "output": ""
+        },
+        "guards": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/guards"
+          ],
+          "returncode": 0,
+          "seconds": 0.01035807200241834,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           0           1\n PASS          18           0           1\n PASS          19           0           1\n PASS          20           0           1\n"
+        },
+        "sticky_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "sticky.f90",
+            "-o",
+            "sticky"
+          ],
+          "returncode": 0,
+          "seconds": 3.8660021350951865,
+          "output": ""
+        },
+        "sticky": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/sticky"
+          ],
+          "returncode": 0,
+          "seconds": 0.012636350002139807,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           1           0\n PASS          18           1           0\n PASS          19           1           0\n PASS          20           1           0\n PASS          21           1           0\n PASS          22           1           0\n PASS          23           1           0\n PASS          24           1           0\n PASS          25           1           0\n PASS          26           1           0\n PASS          27           1           0\n PASS          28           1           0\n PASS          29           1           0\n PASS          30           1           0\n PASS          31           1           0\n PASS          32           1           0\n"
+        },
+        "traps_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "returncode": 0,
+          "seconds": 2.8725532500538975,
+          "output": ""
+        },
+        "trap_subprocesses": [
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "0",
+              "0",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "1",
+              "0",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "0",
+              "0",
+              "2"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "1",
+              "0",
+              "2"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "0",
+              "0",
+              "3"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "1",
+              "0",
+              "3"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "0",
+              "0",
+              "4"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "1",
+              "0",
+              "4"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "0",
+              "0",
+              "5"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "1",
+              "0",
+              "5"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "0",
+              "1",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "1",
+              "1",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "0",
+              "2",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "1",
+              "2",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "0",
+              "3",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "1",
+              "3",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "0",
+              "4",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "1",
+              "4",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "0",
+              "5",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+              "1",
+              "5",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          }
+        ]
+      },
+      "sources": {
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "sticky.f90": "7b80c3189280457b1f480b7ac7955cccbffc87b5db771173cb538b8891a0c566",
+        "original.f": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c",
+        "traps.f90": "6ee9a8eb140a8fbbc09ef55a574f0e0d41a44cf402f56dccc688d95c2cd7b00c",
+        "factor.f": "74ba1659c949e0d55fa5ec5b205292ce1d9cc7e40c5ccb80312e709fb4b9f2b0",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "guards.f90": "ec5ba9d40e62d0f805a2ce767e1fb7e6d9cae89a80a264a29d405947f96497d3"
+      },
+      "executables": {
+        "guards": "02f6e7dd486a994f45e89fe94ec305a1a183bfa39ff9bda831fcae78389ca430",
+        "sticky": "4a9413d63f55c08a85900c465d9671a767449d73ea0784d4d7c8bf1fa3120a34",
+        "traps": "1767e84ed4c79dc960ba629053af040e264e930926c038830798a30be032326d"
+      }
+    },
+    {
+      "key": "nlo-FFV1L2_1-rank2-full",
+      "tests": {
+        "guards_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "guards.f90",
+            "-o",
+            "guards"
+          ],
+          "returncode": 0,
+          "seconds": 7.164372759056278,
+          "output": ""
+        },
+        "guards": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/guards"
+          ],
+          "returncode": 0,
+          "seconds": 0.00973554898519069,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           0           1\n PASS          18           0           1\n PASS          19           0           1\n PASS          20           0           1\n"
+        },
+        "sticky_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "sticky.f90",
+            "-o",
+            "sticky"
+          ],
+          "returncode": 0,
+          "seconds": 4.709924196009524,
+          "output": ""
+        },
+        "sticky": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/sticky"
+          ],
+          "returncode": 0,
+          "seconds": 0.013488374068401754,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           1           0\n PASS          18           1           0\n PASS          19           1           0\n PASS          20           1           0\n PASS          21           1           0\n PASS          22           1           0\n PASS          23           1           0\n PASS          24           1           0\n PASS          25           1           0\n PASS          26           1           0\n PASS          27           1           0\n PASS          28           1           0\n PASS          29           1           0\n PASS          30           1           0\n PASS          31           1           0\n PASS          32           1           0\n"
+        },
+        "traps_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "returncode": 0,
+          "seconds": 4.425014637992717,
+          "output": ""
+        },
+        "trap_subprocesses": [
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "0",
+              "0",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "1",
+              "0",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "0",
+              "0",
+              "2"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "1",
+              "0",
+              "2"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "0",
+              "0",
+              "3"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "1",
+              "0",
+              "3"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "0",
+              "0",
+              "4"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "1",
+              "0",
+              "4"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "0",
+              "0",
+              "5"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "1",
+              "0",
+              "5"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "0",
+              "1",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "1",
+              "1",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "0",
+              "2",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "1",
+              "2",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "0",
+              "3",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "1",
+              "3",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "0",
+              "4",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "1",
+              "4",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "0",
+              "5",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+              "1",
+              "5",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          }
+        ]
+      },
+      "sources": {
+        "sticky.f90": "14c591f000efcb385acbc963b4da68457e44dc0a222462426553694a3a3d46b2",
+        "original.f": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34",
+        "traps.f90": "9e507ddb17ce76e11a48e99c7f5ef8d6b5bfc0c708f8b09cfa4ef3aa1b0312e4",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "factor.f": "359efa1f7cc852926125b824800dbd4e4b159ea272a3e3d8180e77f6d746247c",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "guards.f90": "aebf0bd103274b2312fbd08750fe4ddd883174d40f20628eb135c90953ca243c",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+      },
+      "executables": {
+        "guards": "9e94fbc033d5824e81996a5c24e273e3671e67816a3944e158c34c585c091b23",
+        "sticky": "8d7713c55e02b97e1d0b2154607cd9e1397c25ceba3e61120277aed2229955aa",
+        "traps": "09b2cc945eb9897f4d8dadf083b6e2e656cb0c5a4bbee4c0d79ac880b574d49b"
+      }
+    },
+    {
+      "key": "nlo-FFV1L2_1-rank3-full",
+      "tests": {
+        "guards_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "guards.f90",
+            "-o",
+            "guards"
+          ],
+          "returncode": 0,
+          "seconds": 6.219851532950997,
+          "output": ""
+        },
+        "guards": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/guards"
+          ],
+          "returncode": 0,
+          "seconds": 0.025462882011197507,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           0           1\n PASS          18           0           1\n PASS          19           0           1\n PASS          20           0           1\n"
+        },
+        "sticky_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "sticky.f90",
+            "-o",
+            "sticky"
+          ],
+          "returncode": 0,
+          "seconds": 3.6479248150717467,
+          "output": ""
+        },
+        "sticky": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/sticky"
+          ],
+          "returncode": 0,
+          "seconds": 0.0073771600145846605,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           1           0\n PASS          18           1           0\n PASS          19           1           0\n PASS          20           1           0\n PASS          21           1           0\n PASS          22           1           0\n PASS          23           1           0\n PASS          24           1           0\n PASS          25           1           0\n PASS          26           1           0\n PASS          27           1           0\n PASS          28           1           0\n PASS          29           1           0\n PASS          30           1           0\n PASS          31           1           0\n PASS          32           1           0\n"
+        },
+        "traps_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "returncode": 0,
+          "seconds": 1.9645056130830199,
+          "output": ""
+        },
+        "trap_subprocesses": [
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "0",
+              "0",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "1",
+              "0",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "0",
+              "0",
+              "2"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "1",
+              "0",
+              "2"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "0",
+              "0",
+              "3"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "1",
+              "0",
+              "3"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "0",
+              "0",
+              "4"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "1",
+              "0",
+              "4"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "0",
+              "0",
+              "5"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "1",
+              "0",
+              "5"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "0",
+              "1",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "1",
+              "1",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "0",
+              "2",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "1",
+              "2",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "0",
+              "3",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "1",
+              "3",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "0",
+              "4",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "1",
+              "4",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "0",
+              "5",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+              "1",
+              "5",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          }
+        ]
+      },
+      "sources": {
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "guards.f90": "6857114408d642859ddebdd8504c6dcce3085ae83f609307e342f712b6b71d71",
+        "factor.f": "5d3a9ba03b43390a92f3107a7bcb2873c1c1d734c46698cc8d83af0b249e5648",
+        "original.f": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e",
+        "sticky.f90": "0db65afd389b4e8849111f393e291da30791f2a29802165e18da4404ab266abf",
+        "traps.f90": "7c4b9b1be370399b4da8b34cdc0f732b995fedba47f947968dad981e56359169",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+      },
+      "executables": {
+        "guards": "7715a32bb4b3e0b69ef0a16767803a963284550cae77c4ba8885d82cbed12631",
+        "sticky": "380f3555f6a4911337f74cc7a3b88425f9bd29e441abb290f785af35bda18797",
+        "traps": "4a31952794a62a1ade892981482ad70d3d2daa7da17b5f34813b9ce51945bab1"
+      }
+    },
+    {
+      "key": "nlo-FFV1L2_1-rank4-full",
+      "tests": {
+        "guards_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "guards.f90",
+            "-o",
+            "guards"
+          ],
+          "returncode": 0,
+          "seconds": 3.3785058399662375,
+          "output": ""
+        },
+        "guards": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/guards"
+          ],
+          "returncode": 0,
+          "seconds": 0.006427236017771065,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           0           1\n PASS          18           0           1\n PASS          19           0           1\n PASS          20           0           1\n"
+        },
+        "sticky_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "sticky.f90",
+            "-o",
+            "sticky"
+          ],
+          "returncode": 0,
+          "seconds": 2.409621755941771,
+          "output": ""
+        },
+        "sticky": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/sticky"
+          ],
+          "returncode": 0,
+          "seconds": 0.009740958921611309,
+          "output": " PASS           1           0           1\n PASS           2           0           1\n PASS           3           0           1\n PASS           4           0           1\n PASS           5           0           1\n PASS           6           0           1\n PASS           7           0           1\n PASS           8           0           1\n PASS           9           0           1\n PASS          10           0           1\n PASS          11           0           1\n PASS          12           0           1\n PASS          13           0           1\n PASS          14           0           1\n PASS          15           0           1\n PASS          16           0           1\n PASS          17           1           0\n PASS          18           1           0\n PASS          19           1           0\n PASS          20           1           0\n PASS          21           1           0\n PASS          22           1           0\n PASS          23           1           0\n PASS          24           1           0\n PASS          25           1           0\n PASS          26           1           0\n PASS          27           1           0\n PASS          28           1           0\n PASS          29           1           0\n PASS          30           1           0\n PASS          31           1           0\n PASS          32           1           0\n"
+        },
+        "traps_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "original.f",
+            "factor.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "returncode": 0,
+          "seconds": 1.9226260650902987,
+          "output": ""
+        },
+        "trap_subprocesses": [
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "0",
+              "0",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "1",
+              "0",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 1,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "0",
+              "0",
+              "2"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "1",
+              "0",
+              "2"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 2,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "0",
+              "0",
+              "3"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "1",
+              "0",
+              "3"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 3,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "0",
+              "0",
+              "4"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "1",
+              "0",
+              "4"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 4,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "0",
+              "0",
+              "5"
+            ],
+            "backend": 0,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "1",
+              "0",
+              "5"
+            ],
+            "backend": 1,
+            "scenario": 0,
+            "flag": 5,
+            "returncode": 0
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "0",
+              "1",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "1",
+              "1",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 1,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "0",
+              "2",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "1",
+              "2",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 2,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "0",
+              "3",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "1",
+              "3",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 3,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "0",
+              "4",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "1",
+              "4",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 4,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "0",
+              "5",
+              "1"
+            ],
+            "backend": 0,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          },
+          {
+            "command": [
+              "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+              "1",
+              "5",
+              "1"
+            ],
+            "backend": 1,
+            "scenario": 5,
+            "flag": 1,
+            "returncode": -8
+          }
+        ]
+      },
+      "sources": {
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "sticky.f90": "02a30e8481197bc98d61c0a19aa36b05cea468c3b0a0e6a09676446c41b3ea35",
+        "original.f": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c",
+        "traps.f90": "6ee9a8eb140a8fbbc09ef55a574f0e0d41a44cf402f56dccc688d95c2cd7b00c",
+        "guards.f90": "07bcb49a32f0643205eac3188e2c86a72d05c723df31e355bc02fedef9e505d0",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "factor.f": "bca29875da68366c55488638e1d4374425aba646889aadb8b7defdfa913463fc",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+      },
+      "executables": {
+        "guards": "18a26cd4ff5e577bb15a18367e9f91263b414b2423fa9f510bf355b18fad0f19",
+        "sticky": "e75b51362a817d008f6059ee05bda91e633dff596603b6d1782b6412703f765e",
+        "traps": "cdb176bf5f5fdc1fc08d0b1e13d87c46bd08388dc7e12ccb2d185437a37c6b58"
+      }
+    }
+  ]
+}

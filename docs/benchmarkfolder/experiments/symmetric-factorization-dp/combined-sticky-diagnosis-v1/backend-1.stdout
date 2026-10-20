@@ -1,0 +1,5 @@
+ AFTER_SET_FLAGS F T F F F F T F F F
+ AFTER_ENABLE F T F F F F F F F F
+ AFTER_GET_MASK F T F F F F F F F F
+ ENTER           1           0           1
+ AFTER_CALL F T F F F F F F F F

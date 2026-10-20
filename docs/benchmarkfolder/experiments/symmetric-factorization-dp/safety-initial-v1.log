@@ -1,0 +1,20 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/check_safety.py", line 307, in <module>
+    main()
+    ~~~~^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/check_safety.py", line 273, in main
+    records[name+'_build']=support.run(['gfortran',*support.FLAGS[flags],*sources,name+'.f90','-o',name],work,name+'-build.log')
+                           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/support.py", line 71, in run
+    raise RuntimeError(f"{work / log}: {record['output']}")
+RuntimeError: /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-initial-v1/nlo-FFV1L2_1-rank2-full/guards-build.log: guards.f90:302:19:
+
+  302 |     A(1,0,1)=cmplx(transfer(int(z'7FF0000000000001',8),0.0_8),0.0_8,8)
+      |                   1
+Error: Result of CMPLX is NaN at (1)
+guards.f90:312:19:
+
+  312 |     B(1,0,1)=cmplx(transfer(int(z'7FF0000000000001',8),0.0_8),0.0_8,8)
+      |                   1
+Error: Result of CMPLX is NaN at (1)
+

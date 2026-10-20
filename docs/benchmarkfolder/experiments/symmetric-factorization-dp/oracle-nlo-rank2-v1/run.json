@@ -1,0 +1,115 @@
+{
+  "complete": true,
+  "numerical_validation_pending": true,
+  "acceptance_eligible": false,
+  "cpu": 2,
+  "results": [
+    {
+      "key": "nlo-FFV1L1_2-rank2-full",
+      "rank": 2,
+      "terminal": false,
+      "vertex": "FFV1L1_2",
+      "flags": [
+        "-O3",
+        "-w",
+        "-fPIC",
+        "-ffixed-line-length-132",
+        "-fno-automatic"
+      ],
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 2.845288562006317,
+        "output": ""
+      },
+      "returncode": 0,
+      "seconds": 0.2918032519519329,
+      "raw_dump_sha256": "bcf172a0ebd4d355bdff881560c6a980c81885b67a987cab4c09bbceef58ac7e",
+      "gzip_sha256": "b810ff99e5488592d1191b7e7138d3419e8ec410176aa11fbfd95b6c7ab99d7d",
+      "executable_sha256": "b883e9fd7c7cd492d4a00d105c01c12591ee089c5f059d333c611875a9a0b3b1",
+      "sources": {
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "factor.f": "cbcedda96b4184472db2e1ac64018a4db4f39a5f44cdc7f1df80e2398d22f378",
+        "oracle.f90": "7e99c57dacd367c3ab277707c2c2ba568cd7b9e88a207e720a65567790f85af5",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "original.f": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+      }
+    },
+    {
+      "key": "nlo-FFV1L2_1-rank2-full",
+      "rank": 2,
+      "terminal": false,
+      "vertex": "FFV1L2_1",
+      "flags": [
+        "-O3",
+        "-w",
+        "-fPIC",
+        "-ffixed-line-length-132",
+        "-fno-automatic"
+      ],
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 2.588732040952891,
+        "output": ""
+      },
+      "returncode": 0,
+      "seconds": 0.29360667895525694,
+      "raw_dump_sha256": "ea5a5a0a7da8174ead8ee4a094fbfa5f93377541ee4f2fc574d517df30f7fb60",
+      "gzip_sha256": "a64d5deead8f2693ad7a8387a78a8bf9efb2dbca95225e0e33e0d1e44029d794",
+      "executable_sha256": "83568967e85d493521b465155bd1e571b74a247131d68e592586ad3bdeece08b",
+      "sources": {
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "oracle.f90": "2e192d6af742e11871914dd11589dd51dad6da645efd364c39795653d694fefe",
+        "factor.f": "359efa1f7cc852926125b824800dbd4e4b159ea272a3e3d8180e77f6d746247c",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+      }
+    }
+  ],
+  "inherited_proof_sha256": "f5bc8c65680a028e79103f788fefc2356962350a9a7cffd8ffacbfad49510f42",
+  "source_parity_sha256": "bae36aef34677ed6cbfd2c5fc529fe3f66c98f64e4eed98ea41a470582722404",
+  "factor_sha256": "7b31352cf577c1dcfcd0f50ab4a5fd9b2118e2b62dbbc80f4a10cfb6b1dc6f1c",
+  "oracle_driver_sha256": "e9cedfdf8cb5cc7e498e6df8fe445f499cd059996ecfb7a042d6368ab9b5d85e",
+  "runner_sha256": "effa9e96d5cbfe86385397dcd705ff0a368c2c13994a6b1e3e1307611076e77b",
+  "support_sha256": "8ff527f19d4de7387d1a9bc517938473a347fa51a401dfb7c6c7e7417f2a406b",
+  "production_generator_sha256": "4e584f4977f615fff35a5079ac7b7e4cd071cda99ee0b5faafa96dae4411c98e",
+  "compiler": {
+    "command": [
+      "gfortran",
+      "--version"
+    ],
+    "returncode": 0,
+    "seconds": 0.012216428993269801,
+    "output": "GNU Fortran (GCC) 15.3.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n"
+  },
+  "scope": "Compiled stored-binary64 full-updater input/output dumps. Completion alone is not numerical validation; the independent exact Fraction oracle must validate every retained stream. No DP terminal or process/performance claim."
+}

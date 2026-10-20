@@ -1,0 +1,12 @@
+standalone-FFV1L1_2-rank2-full 20 guards,32 sticky masks,20 paired trap processes passed
+standalone-FFV1L1_2-rank3-full 20 guards,32 sticky masks,20 paired trap processes passed
+standalone-FFV1L1_2-rank4-full 20 guards,32 sticky masks,20 paired trap processes passed
+standalone-FFV1L2_1-rank2-full 20 guards,32 sticky masks,20 paired trap processes passed
+standalone-FFV1L2_1-rank3-full 20 guards,32 sticky masks,20 paired trap processes passed
+standalone-FFV1L2_1-rank4-full 20 guards,32 sticky masks,20 paired trap processes passed
+nlo-FFV1L1_2-rank2-full 20 guards,32 sticky masks,20 paired trap processes passed
+nlo-FFV1L1_2-rank3-full 20 guards,32 sticky masks,20 paired trap processes passed
+nlo-FFV1L1_2-rank4-full 20 guards,32 sticky masks,20 paired trap processes passed
+nlo-FFV1L2_1-rank2-full 20 guards,32 sticky masks,20 paired trap processes passed
+nlo-FFV1L2_1-rank3-full 20 guards,32 sticky masks,20 paired trap processes passed
+nlo-FFV1L2_1-rank4-full 20 guards,32 sticky masks,20 paired trap processes passed

@@ -1,0 +1,12 @@
+test_actual_dp_sources_and_all_requested_driver_shapes (__main__.ExactBinary64OracleTests.test_actual_dp_sources_and_all_requested_driver_shapes) ... ok
+test_complex_arithmetic_and_monomial_indices (__main__.ExactBinary64OracleTests.test_complex_arithmetic_and_monomial_indices) ... ok
+test_exponent_endpoints_and_exact_lattice (__main__.ExactBinary64OracleTests.test_exponent_endpoints_and_exact_lattice) ... ok
+test_future_terminal_uses_full_reference_and_fallback (__main__.ExactBinary64OracleTests.test_future_terminal_uses_full_reference_and_fallback) ... ok
+test_ieee_decode_boundaries_and_one_ulp (__main__.ExactBinary64OracleTests.test_ieee_decode_boundaries_and_one_ulp) ... ok
+test_incomplete_stream_fails (__main__.ExactBinary64OracleTests.test_incomplete_stream_fails) ... ok
+test_known_direct_contraction_and_corruption (__main__.ExactBinary64OracleTests.test_known_direct_contraction_and_corruption) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.724s
+
+OK

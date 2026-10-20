@@ -1,0 +1,626 @@
+{
+  "arithmetic": "Exact Python Fraction over decoded stored IEEE binary64 A/B",
+  "cancellation_reporting_threshold": "2^-35",
+  "cases": [
+    {
+      "all_active_inputs_within_exponent_contract": true,
+      "case": 1,
+      "cumulative_ieee_flags_equal": true,
+      "different_numeric_outputs": 1107,
+      "different_zero_sign_components": 0,
+      "exact_stored_row_relation": true,
+      "fallback": 0,
+      "fast": 1,
+      "input_bits_unchanged": true,
+      "max_error_over_epsilon_product_scale": {
+        "NEW": 0.5393438174001074,
+        "OLD": 0.5393438174001074
+      },
+      "max_fraction_of_forward_bound": {
+        "NEW": 0.03893232251441058,
+        "OLD": 0.03893232251441058
+      },
+      "nonzero_b_zero_component_counts": {},
+      "original_reference": "unchanged full public DP updater",
+      "output_coefficients": 2016,
+      "passed": true,
+      "rank": 4,
+      "severely_cancelled_coefficients": 0,
+      "surviving_binary64_perturbations": 1118,
+      "terminal": false,
+      "terminal_projection_zero_coefficients": 0,
+      "worst_normalized_error_exact": {
+        "NEW": {
+          "absolute_error": "83035118129641529/162259276829213363391578010288128",
+          "bound": "17778342582648031725408396757973/1171075029912578306015085174590268020159938560",
+          "index": [
+            1,
+            122,
+            3
+          ],
+          "nonzero_complex_terms": 4,
+          "observed_imag": "-690424582766595/1125899906842624",
+          "observed_real": "-2615738162479117/1125899906842624",
+          "product_scale": "693355360723273237290927473560947/162259276829213363391578010288128",
+          "reference_imag": "-49750334298801076399832211390687/81129638414606681695789005144064",
+          "reference_real": "-376967597242871508732408972183495/162259276829213363391578010288128"
+        },
+        "OLD": {
+          "absolute_error": "83035118129641529/162259276829213363391578010288128",
+          "bound": "17778342582648031725408396757973/1171075029912578306015085174590268020159938560",
+          "index": [
+            1,
+            122,
+            3
+          ],
+          "nonzero_complex_terms": 4,
+          "observed_imag": "-690424582766595/1125899906842624",
+          "observed_real": "-2615738162479117/1125899906842624",
+          "product_scale": "693355360723273237290927473560947/162259276829213363391578010288128",
+          "reference_imag": "-49750334298801076399832211390687/81129638414606681695789005144064",
+          "reference_real": "-376967597242871508732408972183495/162259276829213363391578010288128"
+        }
+      }
+    },
+    {
+      "all_active_inputs_within_exponent_contract": true,
+      "case": 2,
+      "cumulative_ieee_flags_equal": true,
+      "different_numeric_outputs": 0,
+      "different_zero_sign_components": 0,
+      "exact_stored_row_relation": true,
+      "fallback": 0,
+      "fast": 1,
+      "input_bits_unchanged": true,
+      "max_error_over_epsilon_product_scale": {
+        "NEW": 0.5283750241524449,
+        "OLD": 0.5283750241524449
+      },
+      "max_fraction_of_forward_bound": {
+        "NEW": 0.04277259791138339,
+        "OLD": 0.04277259791138339
+      },
+      "nonzero_b_zero_component_counts": {},
+      "original_reference": "unchanged full public DP updater",
+      "output_coefficients": 2016,
+      "passed": true,
+      "rank": 4,
+      "severely_cancelled_coefficients": 0,
+      "surviving_binary64_perturbations": null,
+      "terminal": false,
+      "terminal_projection_zero_coefficients": 0,
+      "worst_normalized_error_exact": {
+        "NEW": {
+          "absolute_error": "390871985627865673/649037107316853453566312041152512",
+          "bound": "158647321491733396472743049773003/8699414507922010273254918439813419578330972160",
+          "index": [
+            3,
+            21,
+            2
+          ],
+          "nonzero_complex_terms": 4,
+          "observed_imag": "-7206061769490489/18014398509481984",
+          "observed_real": "2874853539446797/1125899906842624",
+          "product_scale": "3331593751326401325927604045233063/649037107316853453566312041152512",
+          "reference_imag": "-1014163034371441950109242228747/2535301200456458802993406410752",
+          "reference_real": "1657240234111660741911422364033609/649037107316853453566312041152512"
+        },
+        "OLD": {
+          "absolute_error": "390871985627865673/649037107316853453566312041152512",
+          "bound": "158647321491733396472743049773003/8699414507922010273254918439813419578330972160",
+          "index": [
+            3,
+            21,
+            2
+          ],
+          "nonzero_complex_terms": 4,
+          "observed_imag": "-7206061769490489/18014398509481984",
+          "observed_real": "2874853539446797/1125899906842624",
+          "product_scale": "3331593751326401325927604045233063/649037107316853453566312041152512",
+          "reference_imag": "-1014163034371441950109242228747/2535301200456458802993406410752",
+          "reference_real": "1657240234111660741911422364033609/649037107316853453566312041152512"
+        }
+      }
+    },
+    {
+      "all_active_inputs_within_exponent_contract": true,
+      "case": 3,
+      "cumulative_ieee_flags_equal": true,
+      "different_numeric_outputs": 522,
+      "different_zero_sign_components": 0,
+      "exact_stored_row_relation": true,
+      "fallback": 0,
+      "fast": 1,
+      "input_bits_unchanged": true,
+      "max_error_over_epsilon_product_scale": {
+        "NEW": 0.39555274131114326,
+        "OLD": 0.46262087458392803
+      },
+      "max_fraction_of_forward_bound": {
+        "NEW": 0.02365651650323064,
+        "OLD": 0.02365651650323064
+      },
+      "nonzero_b_zero_component_counts": {},
+      "original_reference": "unchanged full public DP updater",
+      "output_coefficients": 2016,
+      "passed": true,
+      "rank": 4,
+      "severely_cancelled_coefficients": 340,
+      "surviving_binary64_perturbations": null,
+      "terminal": false,
+      "terminal_projection_zero_coefficients": 0,
+      "worst_normalized_error_exact": {
+        "NEW": {
+          "absolute_error": "198039773787446585/20282409603651670423947251286016",
+          "bound": "27057585751340795713966826601105111/45671926166590472804949907202338756997232459776",
+          "index": [
+            1,
+            28,
+            2
+          ],
+          "nonzero_complex_terms": 8,
+          "observed_imag": "-2624998745309203/70368744177664",
+          "observed_real": "-767068358049797/17592186044416",
+          "product_scale": "9019195250446931904655608867035037/81129638414606681695789005144064",
+          "reference_imag": "-756604375758242756559225218933447/20282409603651670423947251286016",
+          "reference_real": "-1768739210998151017462429013527205/40564819207303340847894502572032"
+        },
+        "OLD": {
+          "absolute_error": "55248260272492517/20282409603651670423947251286016",
+          "bound": "5378400717430782912274761064216825/45671926166590513369769114505679604891735031808",
+          "index": [
+            1,
+            96,
+            3
+          ],
+          "nonzero_complex_terms": 6,
+          "observed_imag": "-2426839058350101/281474976710656",
+          "observed_real": "-1557552710025229/140737488355328",
+          "product_scale": "1075680143486156582454952212843365/40564819207303340847894502572032",
+          "reference_imag": "-87436091830989456140762911606329/10141204801825835211973625643008",
+          "reference_real": "-224467001743344936331239160287205/20282409603651670423947251286016"
+        }
+      }
+    },
+    {
+      "all_active_inputs_within_exponent_contract": true,
+      "case": 4,
+      "cumulative_ieee_flags_equal": true,
+      "different_numeric_outputs": 1107,
+      "different_zero_sign_components": 0,
+      "exact_stored_row_relation": true,
+      "fallback": 0,
+      "fast": 1,
+      "input_bits_unchanged": true,
+      "max_error_over_epsilon_product_scale": {
+        "NEW": 0.5393438174001074,
+        "OLD": 0.5393438174001074
+      },
+      "max_fraction_of_forward_bound": {
+        "NEW": 0.03893232251441058,
+        "OLD": 0.03893232251441058
+      },
+      "nonzero_b_zero_component_counts": {},
+      "original_reference": "unchanged full public DP updater",
+      "output_coefficients": 2016,
+      "passed": true,
+      "rank": 4,
+      "severely_cancelled_coefficients": 0,
+      "surviving_binary64_perturbations": null,
+      "terminal": false,
+      "terminal_projection_zero_coefficients": 0,
+      "worst_normalized_error_exact": {
+        "NEW": {
+          "absolute_error": "1201851226037317973142174019093397073791472315059835405307889203823709646854148687268065312768",
+          "bound": "257323928852694920984275828951731740454235553877552324228578615602413239328071805220468421086496239403401216/7217307095145",
+          "index": [
+            1,
+            122,
+            3
+          ],
+          "nonzero_complex_terms": 4,
+          "observed_imag": "-1440173787178271787596639145485011235051597821495568278247877533588687837727273345826820148163950943697633280",
+          "observed_real": "-5456233207440407243145059874602445237704032214873420710518980329844857990516167163922436587387221721699319808",
+          "product_scale": "10035633225255101918386757329117537877715186601224540644914566008494116333794800403598268422373353336732647424",
+          "reference_imag": "-1440173787178271722156858405746101122652760459239158936883689737933305587686370871762520653575200414533419008",
+          "reference_real": "-5456233207440406041293833837284472095530013121476346919046665270009452682626963340212789733238534453634007040"
+        },
+        "OLD": {
+          "absolute_error": "1201851226037317973142174019093397073791472315059835405307889203823709646854148687268065312768",
+          "bound": "257323928852694920984275828951731740454235553877552324228578615602413239328071805220468421086496239403401216/7217307095145",
+          "index": [
+            1,
+            122,
+            3
+          ],
+          "nonzero_complex_terms": 4,
+          "observed_imag": "-1440173787178271787596639145485011235051597821495568278247877533588687837727273345826820148163950943697633280",
+          "observed_real": "-5456233207440407243145059874602445237704032214873420710518980329844857990516167163922436587387221721699319808",
+          "product_scale": "10035633225255101918386757329117537877715186601224540644914566008494116333794800403598268422373353336732647424",
+          "reference_imag": "-1440173787178271722156858405746101122652760459239158936883689737933305587686370871762520653575200414533419008",
+          "reference_real": "-5456233207440406041293833837284472095530013121476346919046665270009452682626963340212789733238534453634007040"
+        }
+      }
+    },
+    {
+      "all_active_inputs_within_exponent_contract": true,
+      "case": 5,
+      "cumulative_ieee_flags_equal": true,
+      "different_numeric_outputs": 1107,
+      "different_zero_sign_components": 0,
+      "exact_stored_row_relation": true,
+      "fallback": 0,
+      "fast": 1,
+      "input_bits_unchanged": true,
+      "max_error_over_epsilon_product_scale": {
+        "NEW": 0.5393438174001074,
+        "OLD": 0.5393438174001074
+      },
+      "max_fraction_of_forward_bound": {
+        "NEW": 0.03893232251441058,
+        "OLD": 0.03893232251441058
+      },
+      "nonzero_b_zero_component_counts": {},
+      "original_reference": "unchanged full public DP updater",
+      "output_coefficients": 2016,
+      "passed": true,
+      "rank": 4,
+      "severely_cancelled_coefficients": 0,
+      "surviving_binary64_perturbations": null,
+      "terminal": false,
+      "terminal_projection_zero_coefficients": 0,
+      "worst_normalized_error_exact": {
+        "NEW": {
+          "absolute_error": "83035118129641529/381072821083495145432323880589986121307201921712032611188861933548019011086397170424842053596617672260721060927906081896416989218663120764928",
+          "bound": "17778342582648031725408396757973/2750319575372830659583874781807726581947547091759431790252994346593921112273200712702664307388841091781196365328708402199207773241376311348262834075074560",
+          "index": [
+            1,
+            122,
+            3
+          ],
+          "nonzero_complex_terms": 4,
+          "observed_imag": "-690424582766595/2644223875160994395807661232131084159313618731857124877138595181097623164945245383300756841758861139390364848100093433217024",
+          "observed_real": "-2615738162479117/2644223875160994395807661232131084159313618731857124877138595181097623164945245383300756841758861139390364848100093433217024",
+          "product_scale": "693355360723273237290927473560947/381072821083495145432323880589986121307201921712032611188861933548019011086397170424842053596617672260721060927906081896416989218663120764928",
+          "reference_imag": "-49750334298801076399832211390687/190536410541747572716161940294993060653600960856016305594430966774009505543198585212421026798308836130360530463953040948208494609331560382464",
+          "reference_real": "-376967597242871508732408972183495/381072821083495145432323880589986121307201921712032611188861933548019011086397170424842053596617672260721060927906081896416989218663120764928"
+        },
+        "OLD": {
+          "absolute_error": "83035118129641529/381072821083495145432323880589986121307201921712032611188861933548019011086397170424842053596617672260721060927906081896416989218663120764928",
+          "bound": "17778342582648031725408396757973/2750319575372830659583874781807726581947547091759431790252994346593921112273200712702664307388841091781196365328708402199207773241376311348262834075074560",
+          "index": [
+            1,
+            122,
+            3
+          ],
+          "nonzero_complex_terms": 4,
+          "observed_imag": "-690424582766595/2644223875160994395807661232131084159313618731857124877138595181097623164945245383300756841758861139390364848100093433217024",
+          "observed_real": "-2615738162479117/2644223875160994395807661232131084159313618731857124877138595181097623164945245383300756841758861139390364848100093433217024",
+          "product_scale": "693355360723273237290927473560947/381072821083495145432323880589986121307201921712032611188861933548019011086397170424842053596617672260721060927906081896416989218663120764928",
+          "reference_imag": "-49750334298801076399832211390687/190536410541747572716161940294993060653600960856016305594430966774009505543198585212421026798308836130360530463953040948208494609331560382464",
+          "reference_real": "-376967597242871508732408972183495/381072821083495145432323880589986121307201921712032611188861933548019011086397170424842053596617672260721060927906081896416989218663120764928"
+        }
+      }
+    },
+    {
+      "all_active_inputs_within_exponent_contract": true,
+      "case": 6,
+      "cumulative_ieee_flags_equal": true,
+      "different_numeric_outputs": 524,
+      "different_zero_sign_components": 0,
+      "exact_stored_row_relation": true,
+      "fallback": 0,
+      "fast": 1,
+      "input_bits_unchanged": true,
+      "max_error_over_epsilon_product_scale": {
+        "NEW": 0.5958677911514904,
+        "OLD": 0.719029149036185
+      },
+      "max_fraction_of_forward_bound": {
+        "NEW": 0.03893232251441058,
+        "OLD": 0.03893232251441058
+      },
+      "nonzero_b_zero_component_counts": {},
+      "original_reference": "unchanged full public DP updater",
+      "output_coefficients": 2016,
+      "passed": true,
+      "rank": 4,
+      "severely_cancelled_coefficients": 0,
+      "surviving_binary64_perturbations": null,
+      "terminal": false,
+      "terminal_projection_zero_coefficients": 0,
+      "worst_normalized_error_exact": {
+        "NEW": {
+          "absolute_error": "225502717353568926688584045001220078684688872482246500833854470897836382172272789392838193633227865271760400455833346413432549/248661618204893321077691124073410420050228075398673858720231988446579748506266687766528",
+          "bound": "14305190072807137701839792744870715847507619412889168848799575969734741960168377693474321130801917147544510529557949433619507269018907213583/335693156801227560777401499781544353629900687387758801278142502282329666994725410209076909822705664",
+          "index": [
+            1,
+            51,
+            3
+          ],
+          "nonzero_complex_terms": 10,
+          "observed_imag": "-933864470215155106450520770931281219262958333799170048",
+          "observed_real": "-3554184909779195236180911330307512715056298437099126784",
+          "product_scale": "852180608622939488809599082087298358344382470739254772849917597054198199627173356882684558792057064360865841546523559117047790168697758294873/124330809102446660538845562036705210025114037699336929360115994223289874253133343883264",
+          "reference_imag": "-232216250347755853764447175591447160874273498546265022376067848389182446321467024651788512904554082527113967261900931559989908451037605264377/248661618204893321077691124073410420050228075398673858720231988446579748506266687766528",
+          "reference_real": "-883789371065107234552793507993856616848074526452657186119131394840204538199363065906119738056219234474882390988907545138497112088017650053403/248661618204893321077691124073410420050228075398673858720231988446579748506266687766528"
+        },
+        "OLD": {
+          "absolute_error": "1011002472268568334364601956873099269584242779062668413728277472493311720929479265060979014627731340758598196688403114393343777/497323236409786642155382248146820840100456150797347717440463976893159497012533375533056",
+          "bound": "14775503211229650905115870409971789555636425964920096061453585529773047675584283930394097846629965116909301145564829856112474547202304257004957/186645395181482523792235233878538660618224782187593893510647231268975294849067328076246761861424349184",
+          "index": [
+            1,
+            57,
+            2
+          ],
+          "nonzero_complex_terms": 10,
+          "observed_imag": "-377418182824333220302836873546811585432466599318650880",
+          "observed_real": "-6467179821228575382958034367051883890230716421870977024",
+          "product_scale": "6332358519098421816478230175702195523844182556394326883480108084188449003821835970168899077127127907246843348099212795476774805943844681573553/497323236409786642155382248146820840100456150797347717440463976893159497012533375533056",
+          "reference_imag": "-11731177010131117374334540001164258154148879524569108471075155212199080905417748634193322998022808468792243659389993180675816013147316159105/31082702275611665134711390509176302506278509424834232340028998555822468563283335970816",
+          "reference_real": "-3216278799137459497276459795471608181053616274273388935296145710069909143976387063745089948084808971796720245388197727480992169231917135161567/497323236409786642155382248146820840100456150797347717440463976893159497012533375533056"
+        }
+      }
+    },
+    {
+      "all_active_inputs_within_exponent_contract": true,
+      "case": 7,
+      "cumulative_ieee_flags_equal": true,
+      "different_numeric_outputs": 1107,
+      "different_zero_sign_components": 0,
+      "exact_stored_row_relation": true,
+      "fallback": 0,
+      "fast": 1,
+      "input_bits_unchanged": true,
+      "max_error_over_epsilon_product_scale": {
+        "NEW": 0.5393438174001074,
+        "OLD": 0.5393438174001074
+      },
+      "max_fraction_of_forward_bound": {
+        "NEW": 0.03893232251441058,
+        "OLD": 0.03893232251441058
+      },
+      "nonzero_b_zero_component_counts": {},
+      "original_reference": "unchanged full public DP updater",
+      "output_coefficients": 2016,
+      "passed": true,
+      "rank": 4,
+      "severely_cancelled_coefficients": 0,
+      "surviving_binary64_perturbations": null,
+      "terminal": false,
+      "terminal_projection_zero_coefficients": 0,
+      "worst_normalized_error_exact": {
+        "NEW": {
+          "absolute_error": "83035118129641529/162259276829213363391578010288128",
+          "bound": "17778342582648031725408396757973/1171075029912578306015085174590268020159938560",
+          "index": [
+            1,
+            122,
+            3
+          ],
+          "nonzero_complex_terms": 4,
+          "observed_imag": "-690424582766595/1125899906842624",
+          "observed_real": "-2615738162479117/1125899906842624",
+          "product_scale": "693355360723273237290927473560947/162259276829213363391578010288128",
+          "reference_imag": "-49750334298801076399832211390687/81129638414606681695789005144064",
+          "reference_real": "-376967597242871508732408972183495/162259276829213363391578010288128"
+        },
+        "OLD": {
+          "absolute_error": "83035118129641529/162259276829213363391578010288128",
+          "bound": "17778342582648031725408396757973/1171075029912578306015085174590268020159938560",
+          "index": [
+            1,
+            122,
+            3
+          ],
+          "nonzero_complex_terms": 4,
+          "observed_imag": "-690424582766595/1125899906842624",
+          "observed_real": "-2615738162479117/1125899906842624",
+          "product_scale": "693355360723273237290927473560947/162259276829213363391578010288128",
+          "reference_imag": "-49750334298801076399832211390687/81129638414606681695789005144064",
+          "reference_real": "-376967597242871508732408972183495/162259276829213363391578010288128"
+        }
+      }
+    },
+    {
+      "all_active_inputs_within_exponent_contract": true,
+      "case": 8,
+      "cumulative_ieee_flags_equal": true,
+      "different_numeric_outputs": 0,
+      "different_zero_sign_components": 0,
+      "exact_stored_row_relation": true,
+      "fallback": 1,
+      "fast": 0,
+      "input_bits_unchanged": true,
+      "max_error_over_epsilon_product_scale": {
+        "NEW": 0.5393438174001074,
+        "OLD": 0.5393438174001074
+      },
+      "max_fraction_of_forward_bound": {
+        "NEW": 0.03893232251441058,
+        "OLD": 0.03893232251441058
+      },
+      "nonzero_b_zero_component_counts": {},
+      "original_reference": "unchanged full public DP updater",
+      "output_coefficients": 2016,
+      "passed": true,
+      "rank": 4,
+      "severely_cancelled_coefficients": 0,
+      "surviving_binary64_perturbations": null,
+      "terminal": false,
+      "terminal_projection_zero_coefficients": 0,
+      "worst_normalized_error_exact": {
+        "NEW": {
+          "absolute_error": "83035118129641529/162259276829213363391578010288128",
+          "bound": "17778342582648031725408396757973/1171075029912578306015085174590268020159938560",
+          "index": [
+            1,
+            122,
+            3
+          ],
+          "nonzero_complex_terms": 4,
+          "observed_imag": "-690424582766595/1125899906842624",
+          "observed_real": "-2615738162479117/1125899906842624",
+          "product_scale": "693355360723273237290927473560947/162259276829213363391578010288128",
+          "reference_imag": "-49750334298801076399832211390687/81129638414606681695789005144064",
+          "reference_real": "-376967597242871508732408972183495/162259276829213363391578010288128"
+        },
+        "OLD": {
+          "absolute_error": "83035118129641529/162259276829213363391578010288128",
+          "bound": "17778342582648031725408396757973/1171075029912578306015085174590268020159938560",
+          "index": [
+            1,
+            122,
+            3
+          ],
+          "nonzero_complex_terms": 4,
+          "observed_imag": "-690424582766595/1125899906842624",
+          "observed_real": "-2615738162479117/1125899906842624",
+          "product_scale": "693355360723273237290927473560947/162259276829213363391578010288128",
+          "reference_imag": "-49750334298801076399832211390687/81129638414606681695789005144064",
+          "reference_real": "-376967597242871508732408972183495/162259276829213363391578010288128"
+        }
+      }
+    },
+    {
+      "all_active_inputs_within_exponent_contract": true,
+      "case": 9,
+      "cumulative_ieee_flags_equal": true,
+      "different_numeric_outputs": 1138,
+      "different_zero_sign_components": 0,
+      "exact_stored_row_relation": true,
+      "fallback": 0,
+      "fast": 1,
+      "input_bits_unchanged": true,
+      "max_error_over_epsilon_product_scale": {
+        "NEW": 0.6525296658330021,
+        "OLD": 0.6525296658330021
+      },
+      "max_fraction_of_forward_bound": {
+        "NEW": 0.027188736076374943,
+        "OLD": 0.027188736076374943
+      },
+      "nonzero_b_zero_component_counts": {
+        "imag_negative_zero": 12,
+        "imag_positive_zero": 12,
+        "real_negative_zero": 4,
+        "real_positive_zero": 4
+      },
+      "original_reference": "unchanged full public DP updater",
+      "output_coefficients": 2016,
+      "passed": true,
+      "rank": 4,
+      "severely_cancelled_coefficients": 0,
+      "surviving_binary64_perturbations": null,
+      "terminal": false,
+      "terminal_projection_zero_coefficients": 0,
+      "worst_normalized_error_exact": {
+        "NEW": {
+          "absolute_error": "1097418157636730191/649037107316853453566312041152512",
+          "bound": "22722332475841435622732905033320753/365375409332723782439599257618710055977859678208",
+          "index": [
+            3,
+            6,
+            3
+          ],
+          "nonzero_complex_terms": 8,
+          "observed_imag": "-1084376163024887/4503599627370496",
+          "observed_real": "2414089447931915/562949953421312",
+          "product_scale": "7574110825280478540910968344440251/649037107316853453566312041152512",
+          "reference_imag": "-78137537339653309336918498998993/324518553658426726783156020576256",
+          "reference_real": "2783255638565177110089309708369231/649037107316853453566312041152512"
+        },
+        "OLD": {
+          "absolute_error": "1097418157636730191/649037107316853453566312041152512",
+          "bound": "22722332475841435622732905033320753/365375409332723782439599257618710055977859678208",
+          "index": [
+            3,
+            6,
+            3
+          ],
+          "nonzero_complex_terms": 8,
+          "observed_imag": "-1084376163024887/4503599627370496",
+          "observed_real": "2414089447931915/562949953421312",
+          "product_scale": "7574110825280478540910968344440251/649037107316853453566312041152512",
+          "reference_imag": "-78137537339653309336918498998993/324518553658426726783156020576256",
+          "reference_real": "2783255638565177110089309708369231/649037107316853453566312041152512"
+        }
+      }
+    },
+    {
+      "all_active_inputs_within_exponent_contract": true,
+      "case": 10,
+      "cumulative_ieee_flags_equal": true,
+      "different_numeric_outputs": 854,
+      "different_zero_sign_components": 0,
+      "exact_stored_row_relation": true,
+      "fallback": 0,
+      "fast": 1,
+      "input_bits_unchanged": true,
+      "max_error_over_epsilon_product_scale": {
+        "NEW": 0.608397790881973,
+        "OLD": 0.6614144212231547
+      },
+      "max_fraction_of_forward_bound": {
+        "NEW": 0.03836930455635475,
+        "OLD": 0.03836930455635475
+      },
+      "nonzero_b_zero_component_counts": {
+        "imag_negative_zero": 3,
+        "imag_positive_zero": 4,
+        "real_negative_zero": 10,
+        "real_positive_zero": 11
+      },
+      "original_reference": "unchanged full public DP updater",
+      "output_coefficients": 2016,
+      "passed": true,
+      "rank": 4,
+      "severely_cancelled_coefficients": 0,
+      "surviving_binary64_perturbations": null,
+      "terminal": false,
+      "terminal_projection_zero_coefficients": 0,
+      "worst_normalized_error_exact": {
+        "NEW": {
+          "absolute_error": "804684181857647951/649037107316853453566312041152512",
+          "bound": "17869765978167764853913838376012081/365375409332723782439599257618710055977859678208",
+          "index": [
+            3,
+            6,
+            3
+          ],
+          "nonzero_complex_terms": 8,
+          "observed_imag": "803614150885383/2251799813685248",
+          "observed_real": "708525722435587/140737488355328",
+          "product_scale": "5956588659389254951304612792004027/649037107316853453566312041152512",
+          "reference_imag": "115813004495266133617448585266479/324518553658426726783156020576256",
+          "reference_real": "3267498167852361601648579160587599/649037107316853453566312041152512"
+        },
+        "OLD": {
+          "absolute_error": "107800792911575099/81129638414606681695789005144064",
+          "bound": "4404121789987523036759524884107271/91343852333180945609899814404677513994464919552",
+          "index": [
+            3,
+            13,
+            1
+          ],
+          "nonzero_complex_terms": 8,
+          "observed_imag": "2293272017895439/2251799813685248",
+          "observed_real": "5609740537167899/1125899906842624",
+          "product_scale": "1468040596662507678919841628035757/162259276829213363391578010288128",
+          "reference_imag": "165247664084049349103287902668145/162259276829213363391578010288128",
+          "reference_real": "404224406285352148244522782951365/81129638414606681695789005144064"
+        }
+      }
+    }
+  ],
+  "complete": true,
+  "dump_sha256": "299cd8756363f1dc525d71348911f48677e8a507bc56b4a4b327f47f827c8e7e",
+  "epsilon": "2^-52",
+  "forward_bound": "gamma_(2*N+8)(epsilon) * sum of absolute real products",
+  "input_exponent_contract": "zero or unbiased exponent[-200,200] per component",
+  "oracle_sha256": "765fe4a1b24d1a1e37f44da734e80c255eef13b89567df02d89f82698875a1b7",
+  "passed": true,
+  "proof_sha256": "bae36aef34677ed6cbfd2c5fc529fe3f66c98f64e4eed98ea41a470582722404",
+  "schema": "exact-binary64-contraction-oracle-v1",
+  "vertex": "FFV1L2_1"
+}

@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/check_safety.py", line 316, in <module>
+    main()
+    ~~~~^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/check_safety.py", line 302, in main
+    assert ran.returncode==(0 if scenario==0 else -8), record
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'command': ['/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-combined-sticky-traps-v1/standalone-FFV1L1_2-rank2-full/traps', '0', '0', '1', '2'], 'backend': 0, 'scenario': 0, 'flag': 1, 'initial_mask': 2, 'returncode': 5}
