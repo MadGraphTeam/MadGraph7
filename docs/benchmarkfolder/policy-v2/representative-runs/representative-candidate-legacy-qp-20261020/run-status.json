@@ -1,0 +1,10 @@
+{
+  "status": "failed",
+  "requested_cases": [
+    "control-forced-qp"
+  ],
+  "completed_cases": [],
+  "acceptance_eligible": false,
+  "error_type": "RuntimeError",
+  "error": "Backend 6 returned unexpected status 420; initialization, failure or a different backend was used"
+}

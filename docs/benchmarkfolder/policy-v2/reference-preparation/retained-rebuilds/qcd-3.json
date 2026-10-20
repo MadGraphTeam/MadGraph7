@@ -1,0 +1,79 @@
+{
+  "schema": "forced-model-rebuild-v2",
+  "correction_identity_sha256": "16ae35077b8c1ae3c81cc31fb8d3291874555e345c8d8c115ca1ab0796f71a9a",
+  "scope": "All MODEL objects/archive and all subprocess objects/executable; original DHELAS/reduction libraries copied unchanged",
+  "prebuild_model_objects": [],
+  "prebuild_model_archive_exists": false,
+  "prelink_executable_exists": false,
+  "model_objects": {
+    "Source/MODEL/couplings.o": "aa1bcf008d3a5a7efb96a33bd1b356d5e507c676e2c8483fd90de2d62077d3d8",
+    "Source/MODEL/couplings1.o": "3cba043415a7413b05c8d0d0f9a25400a9ac1ab6df014597649291c43ad77b2c",
+    "Source/MODEL/couplings2.o": "0c19da5dc206131a84d99c0fc752f3150a0185af4ecf98016766c62d19d0fa10",
+    "Source/MODEL/couplings3.o": "617a72a8011c78987b2a008335817aed46bd0b62179683a83eb4a4f37396b8c4",
+    "Source/MODEL/flavor_couplings.o": "5832831a672f8cd368dcbf91021897330d45b03efb272d0831519beb50cbb3b4",
+    "Source/MODEL/get_color.o": "3242cc1c0d283b2d6f51b8eb609b9490d447bdbbeed06f3ddf990271f30ab4fe",
+    "Source/MODEL/lha_read.o": "66b991359cf5354e6af4f8e1487b2e46cc3c35e3827b003a1048d7a9c0833848",
+    "Source/MODEL/model_functions.o": "dfd945c56f215c7f4798f9b47e056931489ef75f84f83fb35811f32c74aa935d",
+    "Source/MODEL/mp_couplings1.o": "18503bebc3c67571d403a12e5b6c61ee03e9ef15e5a98ade56373fbb64c5fe22",
+    "Source/MODEL/mp_couplings2.o": "192311921c1de5871278f95a11185dd2a3ff262a5aa3f241b656313691f2b21f",
+    "Source/MODEL/mp_couplings3.o": "2ccf809ad896657e7e5d07272f94dc8d8445762561d5300e627159b6b717d877",
+    "Source/MODEL/printout.o": "32d98c9dc9b03050b6990231134a6c9d387e3f5f65d7229b162e8b8257bf0d89",
+    "Source/MODEL/rw_para.o": "3f36764a50d47bff5a5a7dc22120190bf078cb91be99f34bc3daf6d37d3cbac0"
+  },
+  "model_archive_sha256": "2a10621df8adb2f7c26ee3d5e7482e2803c0624305c977635e854f59501f9703",
+  "fresh_executable_sha256": "b66b0d54f8b5f904edb06a472c8c7c0f1b6b0f771ad00c84d5064438beb3df00",
+  "fresh_driver_sha256": "224391bcc102970b6474341db9739553764f363261f3c7bdadd120e114f0c50a",
+  "sources_sha256": "3b5f342f2f2b5044ecb82abaffe8d3b629d4d4f809d52e8dfc95ba3bad365722",
+  "libraries_before": {
+    "collier_lib/COLLIER-1.2.9/libcollier.a": "4f7d89154b89d771aef3533a078ee618a301442d0353f1b18d0a2365bb989949",
+    "collier_lib/COLLIER-1.2.9/libcollier.so": "1753ed686ab3021c149d6ecf80fe8c46cd4276bf8b5f891820c535603d39e127",
+    "collier_lib/libcollier.a": "4f7d89154b89d771aef3533a078ee618a301442d0353f1b18d0a2365bb989949",
+    "collier_lib/libcollier.so": "1753ed686ab3021c149d6ecf80fe8c46cd4276bf8b5f891820c535603d39e127",
+    "libcts.a": "802f2c821e381244df0bb7d6533de2c01f77bdce62c15a13569b0874cce1d216",
+    "libdhelas.a": "fdf3e5ebb33717bbd998d76f3c13ac57b0f65036d29bc1d23fbf9272cf768e42",
+    "libmodel.a": "21611f1df4599a2b0e8177d76c2f0d7ad836a96ecac2f862046d007155d1777f",
+    "ninja_lib/libavh_olo.a": "8469cc93665ba24c2ca0b848d61fead56a517f78c4a1672a110d64177568aa8d",
+    "ninja_lib/libninja.a": "42866021f93004c143e0a49de8c420a6bebbcd4eb26242eef556ad71296e57c0",
+    "ninja_lib/libninja.so": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128",
+    "ninja_lib/libninja.so.0": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128",
+    "ninja_lib/libninja.so.0.0.0": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128"
+  },
+  "libraries_after": {
+    "collier_lib/COLLIER-1.2.9/libcollier.a": "4f7d89154b89d771aef3533a078ee618a301442d0353f1b18d0a2365bb989949",
+    "collier_lib/COLLIER-1.2.9/libcollier.so": "1753ed686ab3021c149d6ecf80fe8c46cd4276bf8b5f891820c535603d39e127",
+    "collier_lib/libcollier.a": "4f7d89154b89d771aef3533a078ee618a301442d0353f1b18d0a2365bb989949",
+    "collier_lib/libcollier.so": "1753ed686ab3021c149d6ecf80fe8c46cd4276bf8b5f891820c535603d39e127",
+    "libcts.a": "802f2c821e381244df0bb7d6533de2c01f77bdce62c15a13569b0874cce1d216",
+    "libdhelas.a": "fdf3e5ebb33717bbd998d76f3c13ac57b0f65036d29bc1d23fbf9272cf768e42",
+    "libmodel.a": "2a10621df8adb2f7c26ee3d5e7482e2803c0624305c977635e854f59501f9703",
+    "ninja_lib/libavh_olo.a": "8469cc93665ba24c2ca0b848d61fead56a517f78c4a1672a110d64177568aa8d",
+    "ninja_lib/libninja.a": "42866021f93004c143e0a49de8c420a6bebbcd4eb26242eef556ad71296e57c0",
+    "ninja_lib/libninja.so": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128",
+    "ninja_lib/libninja.so.0": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128",
+    "ninja_lib/libninja.so.0.0.0": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128"
+  },
+  "seconds": 4.478833273984492,
+  "commands": [
+    [
+      "make",
+      "-j1",
+      "all"
+    ],
+    [
+      "make",
+      "-j4",
+      "check"
+    ]
+  ],
+  "logs": [
+    {
+      "path": "docs/benchmarkfolder/policy-v2/reference-preparation/logs/model-rebuild-qcd-3.log",
+      "sha256": "4796e37749b818ded7b2b95cbba55200ce5f39553cd3d55f4aeaff55f7251ead"
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v2/reference-preparation/logs/fresh-link-qcd-3.log",
+      "sha256": "0e2ed2cba80587ec970c03c50406677fcf4e77f7c7b4d1d70a3ae8244e7e7c0f"
+    }
+  ],
+  "identity_sha256": "9123f5b9191828427c12db84f89b26efff79d834167a7b5b566489e016a8ab42"
+}

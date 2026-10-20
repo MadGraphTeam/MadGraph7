@@ -377,3 +377,10 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   acceptance evidence. The production archive is unchanged. A separate
   explicit DP retry is being tested after normal stability failure, retaining
   the same thresholds, full direction/rotation checks and genuine QP fallback.
+- Legacy fresh/persistent validation now covers 26 eligible targets in 12 exact
+  runtime groups across the untouched and helper-corrected original roles.
+  Each group has the required precision coverage; both roles include
+  loop-induced and mixed-order controls. Strict ordinary forced-Ninja failures
+  remain retained failures. The full final-candidate proof is still pending.
+  All eight corrected-original source copies have passed clean MODEL and
+  subprocess builds; their complete numerical collection is prepared separately.

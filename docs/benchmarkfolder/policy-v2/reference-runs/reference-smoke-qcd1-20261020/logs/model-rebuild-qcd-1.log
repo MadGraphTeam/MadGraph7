@@ -1,0 +1,19 @@
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o flavor_couplings.o flavor_couplings.f
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o couplings.o couplings.f
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o lha_read.o lha_read.f
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o printout.o printout.f
+printout.f:14:10:
+
+   14 |       use model_object
+      |          1
+Fatal Error: Cannot open module file ‘model_object.mod’ for reading at (1): No such file or directory
+compilation terminated.
+couplings.f:6:10:
+
+    6 |       USE MODEL_OBJECT
+      |          1
+Fatal Error: Cannot open module file ‘model_object.mod’ for reading at (1): No such file or directory
+compilation terminated.
+make: *** [<builtin>: printout.o] Error 1
+make: *** Waiting for unfinished jobs....
+make: *** [<builtin>: couplings.o] Error 1

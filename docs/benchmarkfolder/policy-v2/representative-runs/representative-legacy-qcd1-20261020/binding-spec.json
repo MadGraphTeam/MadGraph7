@@ -1,0 +1,15 @@
+{
+  "report": "docs/benchmarkfolder/policy-v2/representative-runs/representative-legacy-qcd1-20261020",
+  "outputs": {
+    "qcd-1-baseline-1": ".benchmark-work/policy-v2/representative-runs/representative-legacy-qcd1-20261020/workers/qcd-1-baseline-1/outputs/baseline/qcd-1",
+    "qcd-1-baseline-6": ".benchmark-work/policy-v2/representative-runs/representative-legacy-qcd1-20261020/workers/qcd-1-baseline-6/outputs/baseline/qcd-1",
+    "qcd-1-baseline-7": ".benchmark-work/policy-v2/representative-runs/representative-legacy-qcd1-20261020/workers/qcd-1-baseline-7/outputs/baseline/qcd-1",
+    "qcd-1-candidate-1": ".benchmark-work/policy-v2/representative-runs/representative-legacy-qcd1-20261020/workers/qcd-1-candidate-1/outputs/candidate/qcd-1",
+    "qcd-1-candidate-6": ".benchmark-work/policy-v2/representative-runs/representative-legacy-qcd1-20261020/workers/qcd-1-candidate-6/outputs/candidate/qcd-1",
+    "qcd-1-candidate-7": ".benchmark-work/policy-v2/representative-runs/representative-legacy-qcd1-20261020/workers/qcd-1-candidate-7/outputs/candidate/qcd-1"
+  },
+  "role_map": {
+    "baseline": "original",
+    "candidate": "candidate_corrected"
+  }
+}

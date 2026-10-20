@@ -1,0 +1,15 @@
+{
+  "report": "docs/benchmarkfolder/policy-v2/representative-runs/representative-original-controls-20261020",
+  "outputs": {
+    "control-gg-h-baseline-1": ".benchmark-work/policy-v2/representative-runs/representative-original-controls-20261020/workers/control-gg-h-baseline-1/outputs/baseline/control-gg-h",
+    "control-gg-h-baseline-6": ".benchmark-work/policy-v2/representative-runs/representative-original-controls-20261020/workers/control-gg-h-baseline-6/outputs/baseline/control-gg-h",
+    "control-gg-h-baseline-7": ".benchmark-work/policy-v2/representative-runs/representative-original-controls-20261020/workers/control-gg-h-baseline-7/outputs/baseline/control-gg-h",
+    "control-mixed-baseline-1": ".benchmark-work/policy-v2/representative-runs/representative-original-controls-20261020/workers/control-mixed-baseline-1/outputs/baseline/control-mixed",
+    "control-mixed-baseline-6": ".benchmark-work/policy-v2/representative-runs/representative-original-controls-20261020/workers/control-mixed-baseline-6/outputs/baseline/control-mixed",
+    "control-mixed-baseline-7": ".benchmark-work/policy-v2/representative-runs/representative-original-controls-20261020/workers/control-mixed-baseline-7/outputs/baseline/control-mixed"
+  },
+  "role_map": {
+    "baseline": "original",
+    "candidate": "candidate_corrected"
+  }
+}

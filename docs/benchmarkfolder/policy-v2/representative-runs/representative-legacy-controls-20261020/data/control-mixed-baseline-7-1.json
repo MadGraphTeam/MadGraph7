@@ -1,0 +1,697 @@
+{
+  "source": "baseline",
+  "case": "control-mixed",
+  "backend": 7,
+  "worker_scheme": "persistent-worker-v1",
+  "acceptance_eligible": false,
+  "build_kind": "clean-subprocess",
+  "build_scope": "Generated subprocess Fortran; copied cached model/DHELAS/dependency libraries",
+  "compilation_seconds": 2.800236723967828,
+  "compiler": "GNU Fortran (GCC) 15.3.0",
+  "origin_compilation": {
+    "seconds": 0.928709811065346,
+    "settings": {
+      "Source/make_opts": "DEFAULT_CPP_COMPILER=g++\nMACFLAG=\nSTDLIB=-lstdc++\nSTDLIB_FLAG=\nDEFAULT_F2PY_COMPILER=f2py\nDEFAULT_F_COMPILER=gfortran\nMG5AMC_VERSION=SpecifiedByMG5aMCAtRunTime\nPYTHIA8_PATH=NotInstalled\n#end_of_make_opts_variables\n\nBIASLIBDIR=../../../lib/\nBIASLIBRARY=libbias.$(libext)\n\n# Rest of the makefile\nifeq ($(origin FFLAGS),undefined)\nFFLAGS= -w -fPIC\n#FFLAGS+= -g -fbounds-check -ffpe-trap=invalid,zero,overflow,underflow,denormal -Wall\nendif\n\nFFLAGS += $(GLOBAL_FLAG)\n\n# REMOVE MACFLAG IF NOT ON MAC OR FOR F2PY\nUNAME := $(shell uname -s)\nifdef f2pymode\nMACFLAG=\nelse\nifneq ($(UNAME), Darwin)\nMACFLAG=\nendif\nendif\n\n# set the flag for dynamical library\nifeq ($(UNAME), Darwin)\nDYNLIBFLAG=-dynamiclib\nRPATHFLAG=-install_name @rpath/\nelse\nDYNLIBFLAG=-shared -fPIC\nRPATHFLAG=-Wl,-soname,\nendif\n\nifeq ($(origin CXXFLAGS),undefined)\nCXXFLAGS= -O $(STDLIB_FLAG) $(MACFLAG)\nendif\n\nifeq ($(origin CFLAGS),undefined)\nCFLAGS= -O $(STDLIB_FLAG) $(MACFLAG)\nendif\n\n# Set FC unless it's defined by an environment variable\nifeq ($(origin FC),default)\nFC=$(DEFAULT_F_COMPILER)\nendif\nifeq ($(origin F2PY), undefined)\nF2PY=$(DEFAULT_F2PY_COMPILER)\nendif\n\n# Increase the number of allowed charcters in a Fortran line\nifeq ($(FC), ftn)\nFFLAGS+= -extend-source # for ifort type of compiler\nelse\nVERS=\"$(shell $(FC) --version | grep ifort -i)\"\nifeq ($(VERS), \"\")\nFFLAGS+= -ffixed-line-length-132\nelse\nFFLAGS+= -extend-source # for ifort type of compiler\nendif\nendif\n\n\nUNAME := $(shell uname -s)\nifeq ($(origin LDFLAGS), undefined)\nLDFLAGS=$(STDLIB) $(MACFLAG)\nendif\n\n# Options: dynamic, lhapdf\n# Option dynamic\n\nifeq ($(UNAME), Darwin)\ndylibext=dylib\nelse\ndylibext=so\nendif\n\nifdef dynamic\nifeq ($(UNAME), Darwin)\nlibext=dylib\nFFLAGS+= -fno-common\nLDFLAGS += -bundle\ndefine CREATELIB\n$(FC) -dynamiclib -undefined dynamic_lookup -o $(1) $(2)\nendef\nelse\nlibext=so\nFFLAGS+= -fPIC\nLDFLAGS += -shared\ndefine CREATELIB\n$(FC) $(FFLAGS) $(LDFLAGS) -o $(1) $(2)\nendef\nendif\nelse\nlibext=a\ndefine CREATELIB\n$(AR) cru $(1) $(2)\nranlib $(1)\nendef\nendif\n\n# Option lhapdf\n\nifneq ($(lhapdf),)\nCXXFLAGS += $(shell $(lhapdf) --cppflags)\nalfas_functions=alfas_functions_lhapdf\nalfas_to_clean=alfas_functions.o\nllhapdf+= $(shell $(lhapdf) --cflags --libs) -lLHAPDF\n# check if we need to activate c++11 (for lhapdf6.2)\nifeq ($(origin CXX),default)\nifeq ($lhapdfversion$lhapdfsubversion,62)\nCXX=$(DEFAULT_CPP_COMPILER) -std=c++11\nelse\nCXX=$(DEFAULT_CPP_COMPILER)\nendif\nendif\nelse\nalfas_functions=alfas_functions\nalfas_to_clean=alfas_functions_lhapdf.o\nllhapdf=\nendif\n\n\n# Helper function to check MG5 version\ndefine CHECK_MG5AMC_VERSION\npython -c 'import re; from distutils.version import StrictVersion; print StrictVersion(\"$(MG5AMC_VERSION)\") >= StrictVersion(\"$(1)\") if re.match(\"^[\\d\\.]+$$\",\"$(MG5AMC_VERSION)\") else True;'\nendef",
+      "SubProcesses/MadLoop_makefile_definitions": "LINK_LOOP_LIBS = -L$(LIBDIR) -lcts -liregi -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/ -lninja -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/ -lavh_olo -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier/ -lcollier\nLOOP_LIBS = $(LIBDIR)libcts.$(libext) $(LIBDIR)libiregi.$(libext) /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/libninja.$(libext) /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/libavh_olo.$(libext) /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier/libcollier.$(libext)\nDYLOOP_LIBS = /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/libninja.$(dylibext) /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/libavh_olo.$(libext) /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier/libcollier.$(dylibext)\nLOOP_INCLUDE = -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/include -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/include\nLOOP_PREFIX = P\nDOTO = %.o\nDOTF = %.f\nLINK_MADLOOP_LIB = -L$(LIBDIR) -lMadLoop\nMADLOOP_LIB = $(LIBDIR)libMadLoop.$(libext)\nRPATH_LIBS = -Wl,-rpath,/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib -Wl,-rpath,/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib -Wl,-rpath,/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier \n\n$(MADLOOP_LIB):\n\tcd ..; make -f makefile_MadLoop OLP_static\n"
+    },
+    "compiler": "GNU Fortran (GCC) 15.3.0",
+    "driver_sha256": "9c7d516fb94f15d8cc1b4d8dcbaaedc383e148f16963536c50d023393b4b191e",
+    "executable_sha256": "b515ed3a9559faebd099d8317f68b7db7c246742a6158a6bf93db05442819b62"
+  },
+  "generation_source_identity": {
+    "status": "reconstructed-from-verified-archive",
+    "revision": "27147b3300f556a75661a886e92bdbe00558ee25",
+    "reason": "The original archive was independently verified unchanged.",
+    "verification": "provenance.json:baseline_source_integrity",
+    "dirty_patch_sha256": null,
+    "identity_sha256": "fe26d772032ce87d96b3b1bdd00327a4b18f3148ee47254bbfc27082eb7862c7"
+  },
+  "original_generated_sources_sha256": "2837226d41bcd09629296599437bcb327a93c65c288a4fe5de4d03f2533999ad",
+  "generated_sources_sha256": "97963530a7d437d01a5a253a588d1c9705b5ac0d131e47cd20aaca588bb8b007",
+  "driver_sha256": "b9bd062210c3ef434fbbf7e05ee0201f424e15bf6df747bd865dc561baab8d41",
+  "executable_sha256": "205491274758d4db15c118c5eb9edf962365ddb5b88c5d593dc3c5d35f60d0c3",
+  "fresh_executable_sha256": "b515ed3a9559faebd099d8317f68b7db7c246742a6158a6bf93db05442819b62",
+  "fresh_driver_sha256": "9c7d516fb94f15d8cc1b4d8dcbaaedc383e148f16963536c50d023393b4b191e",
+  "parameter_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+  "madloop_card_sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+  "shared_numerical_settings": {
+    "iregimode": 2,
+    "iregirecy": true,
+    "ctmoderun": -1,
+    "mlstabthres": 1e-09,
+    "nrotations_dp": 0,
+    "nrotations_qp": 0,
+    "improvepspoint": 2,
+    "ctlooplibrary": 2,
+    "ctstabthres": 0.01,
+    "ctmodeinit": 1,
+    "checkcycle": 3,
+    "maxattempts": 10,
+    "zerothres": 1e-09,
+    "osthres": 1e-08,
+    "doublecheckhelicityfilter": true,
+    "writeoutfilters": true,
+    "useloopfilter": false,
+    "helicityfilterlevel": 2,
+    "loopinitstartover": false,
+    "helinitstartover": false,
+    "useqpintegrandforninja": true,
+    "useqpintegrandforcuttools": true,
+    "colliermode": 1,
+    "colliercomputeuvpoles": true,
+    "colliercomputeirpoles": true,
+    "collierrequiredaccuracy": 1e-12,
+    "colliercanoutput": false,
+    "collierglobalcache": -1,
+    "collierusecacheforpoles": false,
+    "collieruseinternalstabilitytest": true
+  },
+  "cpu": 3,
+  "points_sha256": "c0640d8258fea3bec32d28da8eb7a9bb8bbc50210efd2e22bf030c3dabf35527",
+  "measurement_run_id": "representative-legacy-controls-20261020",
+  "paired_baseline_candidate": false,
+  "benchmark_protocol": "persistent-worker-v1",
+  "protocol_identity_sha256": "383c21122fc089ad9a90eea685d6f0406d43d497df3816b54288b111225431c9",
+  "captured_during_timed_final_traversal": true,
+  "cold_seconds": 0.204425943,
+  "seconds": 0.068295559,
+  "seconds_per_point": 0.006829555900000001,
+  "rows": [
+    {
+      "point": 1,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.6821443241871514,
+        -0.4401345533294626,
+        -0.19955288598332893,
+        -0.06923497025841271
+      ],
+      "accuracy": 8.926606289947971e-15
+    },
+    {
+      "point": 1,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.7025604338917344,
+        -0.11816204299443789,
+        -0.21822808034517788,
+        -0.07036951452378364
+      ],
+      "accuracy": 2.0470744659982615e-14
+    },
+    {
+      "point": 1,
+      "order": 2,
+      "status": 217,
+      "coefficients": [
+        -1.1054085550842165,
+        0.5398254488582298,
+        0.3722926361615005,
+        0.10978178028691557
+      ],
+      "accuracy": 4.074113798904382e-15
+    },
+    {
+      "point": 1,
+      "order": 3,
+      "status": 217,
+      "coefficients": [
+        1.0849924453796336,
+        -0.76547794871815,
+        -0.3532892250195232,
+        -0.10719924596019817
+      ],
+      "accuracy": 1.731941022592512e-15
+    },
+    {
+      "point": 1,
+      "order": 4,
+      "status": 217,
+      "coefficients": [
+        0.0,
+        -0.0963200104751045,
+        -0.00032821678012835465,
+        -0.0014479900613464753
+      ],
+      "accuracy": 8.3075635864605e-15
+    },
+    {
+      "point": 2,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.9708327853735219,
+        -0.8173066892903483,
+        -0.307322653764963,
+        -0.09853571544602831
+      ],
+      "accuracy": 6.364994573768209e-15
+    },
+    {
+      "point": 2,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.7415572245664586,
+        -0.14242528245616512,
+        -0.24187937579927515,
+        -0.0742754919961629
+      ],
+      "accuracy": 2.033640880821941e-14
+    },
+    {
+      "point": 2,
+      "order": 2,
+      "status": 217,
+      "coefficients": [
+        -1.4166931017511983,
+        0.7618047631331,
+        0.5028925091795939,
+        0.14090846713773705
+      ],
+      "accuracy": 5.035317929729446e-15
+    },
+    {
+      "point": 2,
+      "order": 3,
+      "status": 217,
+      "coefficients": [
+        1.6459686625582617,
+        -1.2941208004459737,
+        -0.5682270903631058,
+        -0.16297204279081692
+      ],
+      "accuracy": 2.0967566648312776e-15
+    },
+    {
+      "point": 2,
+      "order": 4,
+      "status": 217,
+      "coefficients": [
+        0.0,
+        -0.1425653695213095,
+        -0.00010869678217596978,
+        -0.002196647796785534
+      ],
+      "accuracy": 1.1472302221876297e-14
+    },
+    {
+      "point": 3,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.5490661030338702,
+        -0.04453055815895674,
+        -0.11784272819230504,
+        -0.05572805338335297
+      ],
+      "accuracy": 4.2091243667001734e-14
+    },
+    {
+      "point": 3,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.5723435914039433,
+        -0.025829586074914517,
+        -0.12097623133495171,
+        -0.05732679884176465
+      ],
+      "accuracy": 4.594030725384205e-14
+    },
+    {
+      "point": 3,
+      "order": 2,
+      "status": 217,
+      "coefficients": [
+        -0.0338463831767551,
+        -0.015613904836563688,
+        0.0047626098993027955,
+        0.0026262766708438057
+      ],
+      "accuracy": 7.402876447751551e-14
+    },
+    {
+      "point": 3,
+      "order": 3,
+      "status": 217,
+      "coefficients": [
+        0.010568894806681961,
+        -0.0026714157057308504,
+        -0.0015980115967441295,
+        -0.0010134263634033044
+      ],
+      "accuracy": 2.967631588094328e-14
+    },
+    {
+      "point": 3,
+      "order": 4,
+      "status": 217,
+      "coefficients": [
+        0.0,
+        -0.0004156515417476828,
+        -3.109515991200698e-05,
+        -1.410484902882207e-05
+      ],
+      "accuracy": 1.216040040931062e-13
+    },
+    {
+      "point": 4,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.6793764468215415,
+        -0.43655718677445143,
+        -0.19854751345339874,
+        -0.06895404157471334
+      ],
+      "accuracy": 1.1708406512696121e-14
+    },
+    {
+      "point": 4,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.7020382981347024,
+        -0.11786592571943572,
+        -0.21792767552860623,
+        -0.07031721661748885
+      ],
+      "accuracy": 2.0708484092438496e-14
+    },
+    {
+      "point": 4,
+      "order": 2,
+      "status": 217,
+      "coefficients": [
+        -1.1017993745452874,
+        0.5373805293654051,
+        0.37082125967443036,
+        0.10942097613391709
+      ],
+      "accuracy": 3.3548146892522085e-15
+    },
+    {
+      "point": 4,
+      "order": 3,
+      "status": 217,
+      "coefficients": [
+        1.0791375232321265,
+        -0.7602477439541799,
+        -0.35111134328952953,
+        -0.10661762478842138
+      ],
+      "accuracy": 1.162201495655306e-15
+    },
+    {
+      "point": 4,
+      "order": 4,
+      "status": 217,
+      "coefficients": [
+        0.0,
+        -0.09582404646624093,
+        -0.0003297543096933474,
+        -0.0014401763027201981
+      ],
+      "accuracy": 1.1326501471158593e-14
+    },
+    {
+      "point": 5,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.4049941703294668,
+        -0.08233485775184402,
+        -0.10223713597804214,
+        -0.04110531795599655
+      ],
+      "accuracy": 2.6104178928792725e-14
+    },
+    {
+      "point": 5,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.59520741054673,
+        -0.06820300868399205,
+        -0.16303099723056186,
+        -0.0596168735109642
+      ],
+      "accuracy": 2.00400662043543e-14
+    },
+    {
+      "point": 5,
+      "order": 2,
+      "status": 217,
+      "coefficients": [
+        -0.5543838205513456,
+        0.20674812861332453,
+        0.1618409299113918,
+        0.05473357966149854
+      ],
+      "accuracy": 3.1471683991635192e-15
+    },
+    {
+      "point": 5,
+      "order": 3,
+      "status": 217,
+      "coefficients": [
+        0.3641705803340824,
+        -0.18815026445388097,
+        -0.10071175875882801,
+        -0.03573601576315111
+      ],
+      "accuracy": 2.308703231807609e-15
+    },
+    {
+      "point": 5,
+      "order": 4,
+      "status": 217,
+      "coefficients": [
+        0.0,
+        -0.03272971322729553,
+        -0.0003353099000440594,
+        -0.00048600834337977916
+      ],
+      "accuracy": 2.0053084171884518e-14
+    },
+    {
+      "point": 6,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.6942453144471006,
+        -0.4557829310681198,
+        -0.2039554972375404,
+        -0.07046317325158914
+      ],
+      "accuracy": 1.2144463104821288e-14
+    },
+    {
+      "point": 6,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.7047939393347762,
+        -0.11943642384517943,
+        -0.21951754165680606,
+        -0.07059322580345608
+      ],
+      "accuracy": 2.0738040251991766e-14
+    },
+    {
+      "point": 6,
+      "order": 2,
+      "status": 217,
+      "coefficients": [
+        -1.1209919341301375,
+        0.5504174522822652,
+        0.3786576285552642,
+        0.11133965432408297
+      ],
+      "accuracy": 4.481805712508811e-15
+    },
+    {
+      "point": 6,
+      "order": 3,
+      "status": 217,
+      "coefficients": [
+        1.110443309242462,
+        -0.7882914932823591,
+        -0.3627742586820398,
+        -0.10972764594633083
+      ],
+      "accuracy": 8.255389719765807e-16
+    },
+    {
+      "point": 6,
+      "order": 4,
+      "status": 217,
+      "coefficients": [
+        0.0,
+        -0.09847246622284643,
+        -0.0003213254539587444,
+        -0.0014819558258852019
+      ],
+      "accuracy": 7.799385759766449e-15
+    },
+    {
+      "point": 7,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.6272319714926752,
+        -0.05847626682107587,
+        -0.13383850110085538,
+        -0.06366158208993143
+      ],
+      "accuracy": 4.830566939558887e-14
+    },
+    {
+      "point": 7,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.6396187706328299,
+        -0.03272683400886489,
+        -0.13427546986158248,
+        -0.06406518243620256
+      ],
+      "accuracy": 5.243190614946006e-14
+    },
+    {
+      "point": 7,
+      "order": 2,
+      "status": 217,
+      "coefficients": [
+        -0.017676131868537767,
+        -0.02424194389461694,
+        0.0011652649321807242,
+        0.0009168569480499063
+      ],
+      "accuracy": 4.6279561013091194e-14
+    },
+    {
+      "point": 7,
+      "order": 3,
+      "status": 217,
+      "coefficients": [
+        0.0052893327283830656,
+        -0.001405589552840388,
+        -0.0007106274865074096,
+        -0.0005061976574935327
+      ],
+      "accuracy": 4.961239000641989e-14
+    },
+    {
+      "point": 7,
+      "order": 4,
+      "status": 217,
+      "coefficients": [
+        0.0,
+        -0.00010189936475365479,
+        -1.7668684946214615e-05,
+        -7.058944285250849e-06
+      ],
+      "accuracy": 2.928664365281177e-13
+    },
+    {
+      "point": 8,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.8340045122715951,
+        -0.11662129262059832,
+        -0.18754728957165268,
+        -0.08464818302389736
+      ],
+      "accuracy": 1.3994974204414588e-13
+    },
+    {
+      "point": 8,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.835191461076828,
+        -0.07383888407530098,
+        -0.18460750542133925,
+        -0.08365403859256244
+      ],
+      "accuracy": 1.4397020548916063e-13
+    },
+    {
+      "point": 8,
+      "order": 2,
+      "status": 217,
+      "coefficients": [
+        -0.0018875721113193744,
+        -0.042630243818621696,
+        -0.002861732967455643,
+        -0.0009255529996387747
+      ],
+      "accuracy": 1.3121132753194067e-13
+    },
+    {
+      "point": 8,
+      "order": 3,
+      "status": 217,
+      "coefficients": [
+        0.0007006233060865706,
+        -0.0001913243152604245,
+        -7.481051314471668e-05,
+        -6.765640621437253e-05
+      ],
+      "accuracy": 2.221730857688327e-13
+    },
+    {
+      "point": 8,
+      "order": 4,
+      "status": 217,
+      "coefficients": [
+        0.0,
+        3.915958858477805e-05,
+        -3.2406697130604467e-06,
+        -9.350254817729022e-07
+      ],
+      "accuracy": 3.268903655899281e-13
+    },
+    {
+      "point": 9,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.37779452536212815,
+        -0.022728261941564416,
+        -0.0886556108959602,
+        -0.03834466079946737
+      ],
+      "accuracy": 4.448943688916979e-14
+    },
+    {
+      "point": 9,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.5032774871329018,
+        -0.03461183612644983,
+        -0.121297946963758,
+        -0.05040903348928081
+      ],
+      "accuracy": 3.036960612273654e-14
+    },
+    {
+      "point": 9,
+      "order": 2,
+      "status": 217,
+      "coefficients": [
+        -0.23047075812460852,
+        0.05763163994841668,
+        0.056497810178879546,
+        0.02241264415806994
+      ],
+      "accuracy": 5.107280952386971e-15
+    },
+    {
+      "point": 9,
+      "order": 3,
+      "status": 217,
+      "coefficients": [
+        0.10498779635383486,
+        -0.037129963873520605,
+        -0.02368452809013389,
+        -0.010208158708642012
+      ],
+      "accuracy": 6.228357885643271e-15
+    },
+    {
+      "point": 9,
+      "order": 4,
+      "status": 217,
+      "coefficients": [
+        0.0,
+        -0.008618101890010658,
+        -0.00017094602094787812,
+        -0.00014011275961449572
+      ],
+      "accuracy": 2.1009150559082288e-14
+    },
+    {
+      "point": 10,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.37290042195647244,
+        -0.0306409651364171,
+        -0.08960607431356807,
+        -0.03784792852197479
+      ],
+      "accuracy": 3.805320999055798e-14
+    },
+    {
+      "point": 10,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.5305403631264688,
+        -0.04462772707122196,
+        -0.13385015867774966,
+        -0.05313972433898086
+      ],
+      "accuracy": 2.5254934453267758e-14
+    },
+    {
+      "point": 10,
+      "order": 2,
+      "status": 217,
+      "coefficients": [
+        -0.32643642033084774,
+        0.09741221552743982,
+        0.08571333487422175,
+        0.03198832586691183
+      ],
+      "accuracy": 3.5805092479114304e-15
+    },
+    {
+      "point": 10,
+      "order": 3,
+      "status": 217,
+      "coefficients": [
+        0.16879647916085141,
+        -0.06886247354405861,
+        -0.04124010323249053,
+        -0.016471260624983948
+      ],
+      "accuracy": 6.49627872942285e-15
+    },
+    {
+      "point": 10,
+      "order": 4,
+      "status": 217,
+      "coefficients": [
+        0.0,
+        -0.014562980048576353,
+        -0.000229147277549631,
+        -0.00022526942492181982
+      ],
+      "accuracy": 2.254693966473247e-14
+    }
+  ],
+  "status_counts": {
+    "217": 10
+  },
+  "timed_status_counts": {
+    "217": 10
+  },
+  "answer_dimensions": {
+    "allocated": 4,
+    "loop_orders": 4,
+    "born_orders": 3
+  },
+  "repetition": 1,
+  "loops": 1,
+  "command_wall_seconds": 0.06915028195362538,
+  "worker_sequence": 3,
+  "recorded_utc": "2026-10-20T16:01:31.241290+00:00"
+}

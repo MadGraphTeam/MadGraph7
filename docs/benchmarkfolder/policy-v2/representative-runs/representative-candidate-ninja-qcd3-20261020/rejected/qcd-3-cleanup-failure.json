@@ -1,0 +1,6 @@
+{
+  "errors": [
+    "Worker shutdown failed: Missing graceful worker shutdown"
+  ],
+  "acceptance_eligible": false
+}

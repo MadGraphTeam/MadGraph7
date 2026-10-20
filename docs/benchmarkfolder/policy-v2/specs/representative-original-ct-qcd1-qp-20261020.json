@@ -1,0 +1,25 @@
+{
+  "run_id": "representative-original-ct-qcd1-qp-20261020",
+  "configuration": "docs/benchmarkfolder/policy-v2/representative-qcd1-ct-qp.json",
+  "report": "docs/benchmarkfolder/policy-v2/representative-runs/representative-original-ct-qcd1-qp-20261020",
+  "work": ".benchmark-work/policy-v2/representative-runs/representative-original-ct-qcd1-qp-20261020",
+  "output_roots": {
+    "baseline": ".benchmark-work/outputs/baseline",
+    "candidate": ".benchmark-work/policy-v2/generation/outputs/candidate"
+  },
+  "points_root": "docs/benchmarkfolder/points",
+  "cases": [
+    "qcd-1"
+  ],
+  "sources": [
+    "baseline"
+  ],
+  "backends": [
+    1
+  ],
+  "cpu": 3,
+  "representative": true,
+  "fresh_parity": true,
+  "timeout": 7200,
+  "minimum_seconds": 1e-12
+}

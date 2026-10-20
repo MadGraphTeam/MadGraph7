@@ -1,0 +1,6 @@
+{
+  "reason": "Root requested deferring superseded candidate-generator collection after the classifier compiler fix; preserve failed/incomplete run and regenerate final candidate proof.",
+  "signal": "SIGINT to collector only; frozen worker finally cleanup ran",
+  "acceptance_eligible": false,
+  "recorded_utc": "2026-10-20T16:26:31.522003+00:00"
+}

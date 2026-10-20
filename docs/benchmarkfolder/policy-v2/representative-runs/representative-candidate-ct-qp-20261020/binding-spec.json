@@ -1,0 +1,10 @@
+{
+  "report": "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-ct-qp-20261020",
+  "outputs": {
+    "control-forced-qp-candidate-1": ".benchmark-work/policy-v2/representative-runs/representative-candidate-ct-qp-20261020/workers/control-forced-qp-candidate-1/outputs/candidate/control-forced-qp"
+  },
+  "role_map": {
+    "baseline": "original",
+    "candidate": "candidate_corrected"
+  }
+}
