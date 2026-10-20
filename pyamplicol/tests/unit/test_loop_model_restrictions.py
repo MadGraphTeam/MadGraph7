@@ -154,14 +154,30 @@ def test_unsupported_or_ambiguous_cards_fail_without_binary64_certification(
         _exact_card_entries(card)
 
 
-def test_restriction_uses_source_lha_identity_and_rejects_unknown_entries(source):
+def test_restriction_uses_source_lha_identity_and_ignores_unknown_entries(source):
+    # MadGraph semantics: entries without a matching external parameter are
+    # ignored (and recorded), never bound through names or comments.
     card = source / "restrict_default.dat"
-    card.write_text("BLOCK UNKNOWN\n 1 0 # M\n")
-    with pytest.raises(ValueError, match="no external"):
-        prepare_loop_restrictions(load_raw_loop_model(source))
-    card.write_text("BLOCK IMINPUT\n 1 0\n")
-    with pytest.raises(ValueError, match="complex parameter"):
-        prepare_loop_restrictions(load_raw_loop_model(source))
+    card.write_text(
+        "BLOCK UNKNOWN\n 1 0 # M\nBLOCK MASS\n 991 3\n 992 0\n"
+        "BLOCK IMINPUT\n 1 0.5\nDECAY 992 0\n"
+    )
+    prepared = prepare_loop_restrictions(load_raw_loop_model(source))
+    restriction = prepared.derived.metadata["restriction"]
+    assert sorted((b, tuple(c), v) for b, c, v in restriction["ignored_entries"]) == [
+        ("DECAY", (992,), "0"),
+        ("IMINPUT", (1,), "0.5"),
+        ("MASS", (992,), "0"),
+        ("UNKNOWN", (1,), "0"),
+    ]
+    # M is bound by its LHA address only; the real P keeps its source default.
+    assert "M" not in prepared.fixed_parameters
+    assert prepared.derived.exact_value("parameters", 1)["expression"] == (
+        "complex(3,0)"
+    )
+    assert prepared.derived.exact_value("parameters", 3) == (
+        prepared.original.exact_value("parameters", 3)
+    )
 
 
 def test_absent_card_preserves_raw_identity(source):
@@ -180,3 +196,82 @@ def test_partial_complex_card_cannot_erase_an_unspecified_component(source, bloc
     with pytest.raises(NotImplementedError, match="both real and imaginary"):
         prepare_loop_restrictions(raw)
     assert raw.to_dict() == original
+
+
+def _conflicting_addresses(text):
+    """Addresses a card assigns twice with different values (MadGraph rejects)."""
+    seen, conflicts, block = {}, set(), None
+    for line in text.splitlines():
+        tokens = line.split("#", 1)[0].split()
+        if not tokens:
+            continue
+        if tokens[0].lower() in {"block", "decay"}:
+            block = tokens[1].upper() if tokens[0].lower() == "block" else "DECAY"
+            if tokens[0].lower() == "block":
+                continue
+            tokens = tokens[1:]
+        address = (block, tuple(tokens[:-1]))
+        if seen.setdefault(address, float(tokens[-1])) != float(tokens[-1]):
+            conflicts.add(address)
+    return conflicts
+
+
+@pytest.mark.parametrize(
+    "variable",
+    [
+        "PYAMPLICOL_NLO_UFO_REFERENCE",
+        "PYAMPLICOL_EW_NLO_UFO_REFERENCE",
+        "PYAMPLICOL_EW_UFO_REFERENCE",
+    ],
+)
+def test_every_shipped_loop_model_restriction_card_loads(variable):
+    """loop_sm (incl. -ckm), loop_qcd_qed_sm and loop_qcd_qed_sm_Gmu cards."""
+    import os
+    from pathlib import Path
+
+    from pyamplicol.models.loop_import import RawLoopModel
+
+    symbolica = pytest.importorskip("symbolica")
+    if not symbolica.is_licensed():
+        pytest.skip("exact source controls require licensed Symbolica")
+    path = os.environ.get(variable)
+    if not path:
+        pytest.skip(f"set {variable} to the source loop model")
+    cards = sorted(Path(path).glob("restrict_*.dat"))
+    assert cards
+    base = load_raw_loop_model(path, restriction="full").to_dict()
+    addresses = {
+        (str(fields["lhablock"]).upper(), tuple(fields["lhacode"]))
+        for fields in (r["fields"] for r in base["collections"]["parameters"])
+        if fields.get("nature") == "external" and fields.get("lhablock")
+    }
+    loaded = 0
+    for card in cards:
+        name = card.stem.removeprefix("restrict_")
+        text = card.read_text(encoding="utf-8")
+        payload = dict(base, metadata=dict(base["metadata"]))
+        payload["metadata"]["restriction"] = {
+            "applied": False,
+            "name": name,
+            "card": text,
+        }
+        raw = RawLoopModel.from_dict(payload)
+        if _conflicting_addresses(text):
+            # MadGraph 3.7.0 rejects such a card too (loop_qcd_qed_sm_Gmu's
+            # restrict_parallel_test.dat assigns SMINPUTS 1 twice).
+            with pytest.raises(Exception, match="already define"):
+                prepare_loop_restrictions(raw)
+            continue
+        # Card semantics do not depend on zero simplification; its exact scalar
+        # lowering (about 20 s for Gmu) runs once, on the default card.
+        simplify = name == "default"
+        prepared = prepare_loop_restrictions(raw, simplify=simplify)
+        restriction = prepared.derived.metadata["restriction"]
+        assert restriction["applied"] and restriction["name"] == name
+        assert bool(prepared.fixed_parameters) == simplify
+        # Only entries without a model parameter are ignored, e.g. DECAY 15 in
+        # models that declare no tau width.
+        for block, code, _value in restriction["ignored_entries"]:
+            assert (block, tuple(code)) not in addresses
+        loaded += 1
+    assert loaded

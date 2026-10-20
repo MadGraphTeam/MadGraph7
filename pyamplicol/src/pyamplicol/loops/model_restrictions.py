@@ -110,6 +110,12 @@ def prepare_loop_restrictions(raw: RawLoopModel, *, simplify=True):
     generation inputs, as in ``Model.apply_input_param_card``. Source records,
     the original card and the unrestricted input remain available unchanged.
     No parameter equality, flavour identification or numerical pruning is inferred.
+
+    As in MadGraph's restriction reader, a card entry whose LHA address names no
+    external parameter of this model (e.g. a decay width the model does not
+    declare) is ignored; such entries are recorded under ``ignored_entries`` in
+    the derived restriction metadata. An ``IM`` block entry only addresses the
+    imaginary part of a complex parameter with the matching real address.
     """
     if not isinstance(simplify, bool):
         raise TypeError("restriction simplification must be a boolean")
@@ -136,18 +142,17 @@ def prepare_loop_restrictions(raw: RawLoopModel, *, simplify=True):
         if address in addresses:
             raise ValueError("ambiguous external parameter LHA address")
         addresses[address] = record
-    values = {}
+    values, ignored = {}, []
     for (block, code), literal in entries.items():
         address, component = (block, code), 0
         if address not in addresses and block.startswith("IM"):
-            address, component = (block[2:], code), 1
+            real = addresses.get((block[2:], code))
+            if real is not None and real["fields"].get("type") == "complex":
+                address, component = (block[2:], code), 1
         if address not in addresses:
-            raise ValueError(
-                f"restriction entry {block} {code} has no external parameter"
-            )
+            ignored.append([block, list(code), literal])
+            continue
         record = addresses[address]
-        if component and record["fields"].get("type") != "complex":
-            raise ValueError("imaginary restriction block requires a complex parameter")
         pair = values.setdefault(record["id"], [None, None])
         pair[component] = literal
     for record in external:
@@ -172,7 +177,9 @@ def prepare_loop_restrictions(raw: RawLoopModel, *, simplify=True):
             "exact": True,
             "declaration": [record["id"], record["name"]],
         }
-    payload["metadata"]["restriction"].update(applied=True, simplify=simplify)
+    payload["metadata"]["restriction"].update(
+        applied=True, simplify=simplify, ignored_entries=ignored
+    )
     derived = RawLoopModel.from_dict(payload)
     fixed = {}
     if simplify:
