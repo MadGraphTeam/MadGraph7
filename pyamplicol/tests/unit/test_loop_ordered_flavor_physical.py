@@ -146,7 +146,7 @@ def test_complete_formal_full_matches_independent_complex_history_reference(
                 spin_vectors=vectors,
             )
             assert expected.spin_legs == list(joint)
-            assert expected.history_ids == ["identity", "casimir", "ordered", "swapped"]
+            assert expected.history_ids == ["born", "casimir", "ordered", "swapped"]
             assert not expected.failures and expected.point_ids == ids
             values = {label: _decimals(getattr(actual, label)) for label in NAMES}
             for label, block in zip(NAMES, _blocks(expected)[:-1], strict=True):
