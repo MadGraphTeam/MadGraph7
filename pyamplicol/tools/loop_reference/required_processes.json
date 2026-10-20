@@ -57,6 +57,39 @@
       "openloops": {"process": "2 -2 -> 11 -11 21", "library": "ppllj_ew"}
     },
     {
+      "name": "uux_ddxg",
+      "role": "slice",
+      "pdgs": [2, -2, 1, -1, 21],
+      "born_orders": {"QCD": 3, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > d d~ g QED=0 [virt=QCD]"},
+      "recola": {"process": "u u~ -> d d~ g"},
+      "openloops": {"process": "2 -2 -> 1 -1 21", "library": "ppjjj"}
+    },
+    {
+      "name": "uux_uux",
+      "role": "slice",
+      "pdgs": [2, -2, 2, -2],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > u u~ QED=0 [virt=QCD]"},
+      "recola": {"process": "u u~ -> u u~"},
+      "openloops": {"process": "2 -2 -> 2 -2", "library": "ppjj"}
+    },
+    {
+      "name": "uux_uuxg",
+      "role": "slice",
+      "pdgs": [2, -2, 2, -2, 21],
+      "born_orders": {"QCD": 3, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > u u~ g QED=0 [virt=QCD]"},
+      "recola": {"process": "u u~ -> u u~ g"},
+      "openloops": {"process": "2 -2 -> 2 -2 21", "library": "ppjjj"}
+    },
+    {
       "name": "uux_emepddxg",
       "pdgs": [2, -2, 11, -11, 1, -1, 21],
       "born_orders": {"QCD": 3, "QED": 2},
