@@ -553,20 +553,20 @@ def test_cold_directed_completion_uses_the_authoritative_producer_scope(correcti
     from pyamplicol.loops.prepared_correlations import prepare_directed_model
 
     model = SimpleNamespace(
-        r2_strategy="model",
+        r2_strategy="direct",
         color_accuracy="full",
         color_projection=None,
         bare=SimpleNamespace(
             order_layout=SimpleNamespace(correction_names=corrections)
         ),
     )
-    # The cold entry checks before touching the prepared state or tensor algebra,
-    # even when public staged numerical validation is disabled.
+    # The actual completion strategy is checked before prepared state or tensor
+    # algebra; a correction name alone does not establish that capability.
     for operation in (
         lambda: require_directed_model_scope(model),
         lambda: prepare_directed_model(model, None),
     ):
-        with pytest.raises(NotImplementedError, match="EW correlation coverage"):
+        with pytest.raises(NotImplementedError, match="requires model R2"):
             operation()
 
 
