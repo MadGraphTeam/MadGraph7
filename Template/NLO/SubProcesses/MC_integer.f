@@ -136,23 +136,6 @@ c Compute the volume 'vol'
       return
       end
 
-      subroutine get_MC_integer_forced(this_dim,iint,vol)
-c Same as get_MC_integer, but for a given 'iint' (instead of a randomly
-c picked one): returns its volume. Used for studies only (FoldDump=2).
-      implicit none
-      integer iint,this_dim
-      double precision vol
-      integer maxdim,maxintervals
-      parameter (maxdim=50,maxintervals=200)
-      integer nintervals(maxdim)
-      integer ncall(0:maxintervals,maxdim)
-      double precision grid(0:maxintervals,maxdim),
-     &     acc(0:maxintervals,maxdim)
-      common/integration_integer/grid,acc,ncall,nintervals
-      vol=(grid(iint,this_dim)-grid(iint-1,this_dim))
-      return
-      end
-
       subroutine reset_MC_grid
       implicit none
       integer i,this_dim

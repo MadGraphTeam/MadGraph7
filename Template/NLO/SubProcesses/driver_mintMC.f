@@ -783,15 +783,8 @@ c "npNLO".
          do i=1,nndim
             x_save(i,ifold_counter)=x(i)
          enddo
-         if (ifl.eq.0) then
-            call get_MC_integer(1,proc_map(0,0),proc_map(0,1),vol1)
-            if (FoldDump.eq.2) then
-c For studies: the replica r of each rule uses the set r of FKS
-c configurations
-               proc_map(0,1)=mod(fold_dump_rep-1,proc_map(0,0))+1
-               call get_MC_integer_forced(1,proc_map(0,1),vol1)
-            endif
-         endif
+         if (ifl.eq.0)
+     &        call get_MC_integer(1,proc_map(0,0),proc_map(0,1),vol1)
 
 c The nbody contributions
          if (abrv.eq.'real') goto 11
@@ -853,9 +846,9 @@ c for different nFKSprocess.
          if(sum.eq.0) calculatedBorn=.false.
          nbody=.false.
 c With FoldSumSets, the S-event contributions of all the sets of FKS
-c configurations are included, while the H-event ones only come from the
-c set picked (and are divided by its probability). With FoldRealOnce, the
-c H-event contributions only come from one of the folded images.
+c configurations are included, while the H-event ones (and the
+c real-emission matrix element) only come from the set picked, divided
+c by its probability.
          if (FoldSumSets) then
             kset_lo=1
             kset_hi=proc_map(0,0)
@@ -867,12 +860,9 @@ c H-event contributions only come from one of the folded images.
 c The Born momenta of the various sets (and of the one used for the
 c n-body contributions) need not be exactly the same
          if (FoldSumSets) calculatedBorn=.false.
-         fold_h_keep=(.not.FoldRealOnce .or.
-     $        ifold_counter.eq.fold_real_img) .and.
-     $        kset.eq.proc_map(0,1)
+         fold_h_keep=kset.eq.proc_map(0,1)
          fold_h_scale=1d0
-         if (FoldRealOnce) fold_h_scale=fold_real_scale
-         if (FoldSumSets) fold_h_scale=fold_h_scale/vol1
+         if (FoldSumSets) fold_h_scale=1d0/vol1
          do i=1,proc_map(kset,0)
             wgt_me_real=0d0
             wgt_me_born=0d0
@@ -953,9 +943,9 @@ c by the call to compute_MC_subt_term) through the 'replace_MC_subt'.
                replace_MC_subt=(1d0-gfactcl)*(1d0-gfactsf)*probne
                call compute_soft_collinear_counter_term(replace_MC_subt)
             endif
-c Include the real-emission contribution. With FoldRealOnce, only one
-c image has H events (and without MC@NLO-Delta, there is nothing else in
-c the real emission).
+c Include the real-emission contribution. For the sets of FKS
+c configurations that are not picked, there are no H events (and without
+c MC@NLO-Delta nothing else comes from the real emission).
             if (passcuts_n1body .and. (fold_h_keep .or.
      $           probne.ne.1d0)) then
                pass_cuts_check=.true.
@@ -1001,8 +991,6 @@ c Sum the contributions that can be summed before taking the ABS value
 c Update the shower starting scale for the S-events after we have
 c determined which contributions are identical.
          call update_shower_scale_Sevents(ifold_counter,ifold_picked)
-         if (FoldDump.ne.0) call write_fold_dump(ifold_counter
-     $        ,proc_map(0,1),proc_map(0,0),vol1)
          call fill_mint_function_NLOPS(f,n1body_wgt)
          call fill_MC_integer(1,proc_map(0,1),n1body_wgt*vol1)
       endif

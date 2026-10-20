@@ -16,10 +16,8 @@ module FKSParams
               SelectedCouplingOrders(maxCouplingTypes,0:maxCouplingsSelected), &
               QCD_squared_selected
   logical :: separate_flavour_configs,IncludeBornContributions,use_poly_virtual
-  ! Folding node schemes (see FKS_params.dat): FoldTransform, FoldLattice,
-  ! FoldRealOnce and FoldDump
-  integer :: FoldTransform,FoldLattice,FoldDump
-  logical :: FoldRealOnce,FoldSumSets
+  ! MC@NLO folding (see FKS_params.dat): FoldCubic and FoldSumSets
+  logical :: FoldCubic,FoldSumSets
 
 contains
 
@@ -83,22 +81,10 @@ contains
              read(68,*,end=999) separate_flavour_configs
           else if (buff .eq. '#UsePolyVirtual') then
              read(68,*,end=999) use_poly_virtual
-          else if (buff .eq. '#FoldTransform') then
-             read(68,*,end=999) FoldTransform
-             if (FoldTransform .lt. 0 .or. FoldTransform .gt. 4) then
-                stop 'FoldTransform must be between 0 and 4.'
-             endif
-          else if (buff .eq. '#FoldLattice') then
-             read(68,*,end=999) FoldLattice
-             if (FoldLattice .lt. 0) then
-                stop 'FoldLattice must be >= 0.'
-             endif
-          else if (buff .eq. '#FoldRealOnce') then
-             read(68,*,end=999) FoldRealOnce
+          else if (buff .eq. '#FoldCubic') then
+             read(68,*,end=999) FoldCubic
           else if (buff .eq. '#FoldSumSets') then
              read(68,*,end=999) FoldSumSets
-          else if (buff .eq. '#FoldDump') then
-             read(68,*,end=999) FoldDump
           else if (buff .eq. '#VetoedContributionTypes') then
              read(68,*,end=999) VetoedContributionTypes(0)
              if (VetoedContributionTypes(0) .lt. 0.or. &
@@ -225,11 +211,8 @@ contains
        write(*,*) ' > MinVirtualFraction        = ',Min_virt_fraction
        write(*,*) ' > SeparateFlavourConfigs    = ',separate_flavour_configs
        write(*,*) ' > UsePolyVirtual            = ',use_poly_virtual
-       write(*,*) ' > FoldTransform             = ',FoldTransform
-       write(*,*) ' > FoldLattice               = ',FoldLattice
-       write(*,*) ' > FoldRealOnce              = ',FoldRealOnce
+       write(*,*) ' > FoldCubic                 = ',FoldCubic
        write(*,*) ' > FoldSumSets               = ',FoldSumSets
-       if (FoldDump.ne.0) write(*,*) ' > FoldDump                  = ',FoldDump
        write(*,*) &
             '==============================================================='
        paramPrinted=.TRUE.
@@ -254,11 +237,8 @@ contains
     separate_flavour_configs=.false.
     use_poly_virtual=.true.
     IncludeBornContributions=.true.
-    FoldTransform=0
-    FoldLattice=0
-    FoldRealOnce=.false.
-    FoldSumSets=.false.
-    FoldDump=0
+    FoldCubic=.true.
+    FoldSumSets=.true.
     SelectedContributionTypes(0)=0
     VetoedContributionTypes(0)=0
     do i=1, maxContribsSelected

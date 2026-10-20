@@ -1934,9 +1934,9 @@ c Check for NaN's and INF's. Simply skip the contribution
       if (wgt1.ne.wgt1) return
       if (wgt2.ne.wgt2) return
       if (wgt3.ne.wgt3) return
-c With FoldRealOnce or FoldSumSets, the H-event contributions come from
-c one of the folded images and/or from one set of FKS configurations
-c only, rescaled accordingly (see sigintF in driver_mintMC.f).
+c With FoldSumSets, the H-event contributions come from one set of FKS
+c configurations only, rescaled accordingly (see sigintF in
+c driver_mintMC.f).
       if (type.eq.1 .or. type.eq.8 .or. type.eq.9 .or. type.eq.10 .or.
      $     type.eq.13) then
          if (.not.fold_h_keep) return
@@ -3747,78 +3747,6 @@ c n1body_wgt is used for the importance sampling over FKS directories
       return
       end
 
-
-      subroutine write_fold_dump(nimages,iset,nsets,vol1)
-c For FoldDump: write, for the current Born point and group of folded
-c images (a rule with one random shift, see compute_integrand_nodes in
-c mint_module), the S-event weight split in n-body and n+1-body
-c contributions for each Born parton flavour configuration, and the sum
-c of the (absolute values of the) H-event weights. Also written: the set
-c of FKS configurations picked for this group (iset out of nsets) and
-c the probability with which it was picked (vol1).
-      use weight_lines
-      use mint_module
-      implicit none
-      include 'nexternal.inc'
-      include 'genps.inc'
-      include 'nFKSconfigs.inc'
-      integer nimages,i,j,jj,i_soft,ns,iset,nsets
-      double precision snb(maxproc),scn(maxproc),habs,hsum,w,vol1
-      integer iproc_save(fks_configs),eto(maxproc,fks_configs),
-     &     etoi(maxproc,fks_configs),maxproc_found
-      common/cproc_combination/iproc_save,eto,etoi,maxproc_found
-      logical firsttime
-      integer npt
-      data firsttime/.true./
-      data npt/0/
-      save firsttime,npt
-      if (firsttime) then
-         open(unit=78,file='fold_dump.out',status='unknown')
-         firsttime=.false.
-      endif
-      if (fold_dump_group.eq.1) npt=npt+1
-      i_soft=0
-      do i=1,icontr
-         if (.not.H_event(i) .and. icontr_sum(0,i).gt.0) then
-            i_soft=i
-            exit
-         endif
-      enddo
-      ns=0
-      if (i_soft.gt.0) ns=niproc(i_soft)
-      snb(1:max(ns,1))=0d0
-      scn(1:max(ns,1))=0d0
-      habs=0d0
-      hsum=0d0
-      do i=1,icontr
-         if (H_event(i)) then
-            if (icontr_sum(0,i).eq.0) cycle
-            do j=1,niproc(i)
-               habs=habs+abs(unwgt(j,i))
-               hsum=hsum+unwgt(j,i)
-            enddo
-         else
-            if (itype(i).eq.14 .and. imode.eq.1 .and. .not.only_virt)
-     $           cycle
-            do j=1,ns
-               do jj=1,iproc_save(nFKS(i))
-                  if (eto(jj,nFKS(i)).ne.j) cycle
-                  w=parton_iproc(jj,i)
-                  if (itype(i).eq.2 .or. itype(i).eq.3 .or. itype(i).eq
-     $                 .14 .or. itype(i).eq.15) then
-                     snb(j)=snb(j)+w
-                  else
-                     scn(j)=scn(j)+w
-                  endif
-               enddo
-            enddo
-         endif
-      enddo
-      write (78,'(i8,i5,i3,i5,2i3,200(1x,e16.8))') npt,fold_dump_group
-     $     ,ns,nimages,iset,nsets,vol1,(snb(j),j=1,ns),(scn(j),j=1,ns)
-     $     ,habs,hsum
-      return
-      end
 
       subroutine pick_unweight_contr(iFKS_picked,ifold_picked)
 c Randomly pick (weighted by the ABS values) the contribution to a given

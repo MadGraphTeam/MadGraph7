@@ -75,7 +75,7 @@ module mint_module
   integer, parameter, private :: min_inter=4      ! minimal number of intervals
   integer, parameter, private :: min_it0=4        ! minimal number of iterations in the mint step 0 phase
   integer, parameter, private :: min_it1=5        ! minimal number of iterations in the mint step 1 phase
-  integer, parameter, public :: max_fold=2048    ! max number of folded images (8*8*8 for the default lattice)
+  integer, parameter, public :: max_fold=512     ! 8*8*8 is max folding for the three variables
   integer, parameter, private :: max_points=100000! maximum number of points to trow per iteration if not enough non-zero points can be found.
   integer, parameter, public  :: maxchannels=20 ! set as least as large as in amcatnlo_run_interface
   ! Note that the number of intervals in the integration grids, 'nintervals', cannot be arbitrarily large.
@@ -97,20 +97,13 @@ module mint_module
   double precision, dimension(maxchannels), public :: virtual_fraction
   double precision, dimension(nintegrals,0:maxchannels), public :: ans,unc
   logical :: only_virt,new_point,pass_cuts_check
-! Folding images: number of images of the current point, the image that
-! carries the H events with FoldRealOnce (and the factor by which they
-! are scaled) and, with FoldDump, the group each image belongs to.
-  integer, public :: n_fold_images=1,fold_real_img=0,fold_ngroups=1,fold_dump_group=0,fold_dump_rep=0
-  integer, dimension(max_fold), private :: fold_img_rep
-  double precision, public :: fold_real_scale=1d0
-! Whether, and with which factor, the H-event contributions are included
-! (set in sigintF for FoldRealOnce and FoldSumSets)
+! Number of folded images of the current point, and whether (and with
+! which factor) the H-event contributions are included: with FoldSumSets
+! they only come from the set of FKS configurations that was picked (see
+! sigintF in driver_mintMC.f)
+  integer, public :: n_fold_images=1
   logical, public :: fold_h_keep=.true.
   double precision, public :: fold_h_scale=1d0
-  integer, dimension(max_fold), public :: fold_img_group
-  integer, parameter, private :: max_fold_cfg=50
-  integer, private :: n_fold_cfg=0
-  integer, dimension(6,max_fold_cfg), private :: fold_cfg
 
 ! private variables
   character(len=13), parameter, dimension(nintegrals), private :: title=(/ &
@@ -803,15 +796,11 @@ contains
     double precision, external :: fun
     ! contribution to integral
     ifirst=0
-    fold_real_img=0
     if(imode.eq.0) then
        n_fold_images=1
        dummy=fun(x,vol,ifirst,f1)
        if (.not. fixed_order) dummy=fun(x,vol,2,f1)
        f(1:nintegrals)=f1(1:nintegrals)
-    elseif (.not.fixed_order .and. (FoldTransform.ne.0 .or. &
-         FoldLattice.ne.0 .or. FoldRealOnce .or. FoldDump.ne.0)) then
-       call compute_integrand_nodes(fun,x,vol)
     else
        n_fold_images=product(ifold(1:ndim))
        f(1:nintegrals)=0d0
@@ -831,284 +820,12 @@ contains
        f(1:nintegrals)=f1(1:nintegrals)
     endif
   end subroutine compute_integrand
-
-  subroutine compute_integrand_nodes(fun,x,vol)
-! Same as the folding loop of compute_integrand, but the images of the
-! point in the three radiation dimensions (ifold_energy, ifold_yij and
-! ifold_phi) are the nodes of a randomly shifted rule: a product lattice
-! (as the default folding) or a rank-1 lattice in (xi_i,y_ij), possibly
-! after a transform of the xi_i and y_ij coordinates. The shift is the
-! position of the point within the first fold, so that the upper
-! bounding envelope keeps its meaning. Each node is uniformly
-! distributed (the transforms come with their jacobian), so the result
-! is exact on average whatever the rule. With FoldDump, several rules
-! (read from fold_dump.dat), each with several independent shifts, are
-! evaluated for the same Born point; each one is a group of images.
-    implicit none
-    double precision, external :: fun
-    double precision :: vol,dummy,vol_born,dx,wlat,wtot,r,acc
-    double precision, dimension(ndimmax) :: x,xnode
-    double precision, dimension(nintegrals) :: f1
-    double precision, dimension(3) :: u,t
-    double precision, dimension(max_fold) :: vnode
-    double precision, dimension(3,max_fold) :: xrad
-    double precision, external :: ran2
-    integer :: kdim,ic,ir,k,k1,k2,k3,nimg,nlat,glat,ifirst,igrp,ncfg
-    integer, dimension(3) :: rad,nf
-    integer, dimension(6) :: cfg
-    rad=(/ ifold_energy,ifold_yij,ifold_phi /)
-    if (FoldDump.ne.0 .and. n_fold_cfg.eq.0) call read_fold_dump_cfg
-    vol_born=1d0/vol_chan*wgt_mult
-    do kdim=1,ndim
-       if (any(rad.eq.kdim)) cycle
-       dx=xgrid(icell(kdim),kdim,ichan)-xgrid(icell(kdim)-1,kdim,ichan)
-       vol_born=vol_born*dx*(nint_used/ifold(kdim))
-    enddo
-    if (FoldDump.ne.0) then
-       ncfg=n_fold_cfg
-    else
-       ncfg=1
-    endif
-    nimg=0
-    igrp=0
-    do ic=1,ncfg
-       if (FoldDump.ne.0) then
-          cfg=fold_cfg(1:6,ic)
-       else
-          cfg=(/ FoldTransform,FoldLattice,ifold(rad(1)),ifold(rad(2)),ifold(rad(3)),1 /)
-       endif
-       if (cfg(2).gt.0) then
-          nlat=cfg(2)
-          glat=fold_lattice_generator(nlat)
-          nf=(/ nlat,1,cfg(5) /)
-       elseif (cfg(1).eq.5) then
-          ! deterministic composite Simpson rule (FoldDump only): n
-          ! intervals (n even) give n+1 nodes in xi_i and in y_ij
-          nf=(/ cfg(3)+1,cfg(4)+1,cfg(5) /)
-       else
-          nf=cfg(3:5)
-       endif
-       wlat=1d0/dble(product(nf))
-       do ir=1,cfg(6)
-          igrp=igrp+1
-          do k=1,3
-             if (ic.eq.1 .and. ir.eq.1) then
-                u(k)=(ncell(rad(k))-1+rand(rad(k)))/dble(nint_used/ifold(rad(k)))
-             else
-                u(k)=ran2()
-             endif
-          enddo
-          do k1=1,nf(1)
-             do k2=1,nf(2)
-                do k3=1,nf(3)
-                   nimg=nimg+1
-                   if (nimg.gt.max_fold) then
-                      write (*,*) 'ERROR: too many folded images',nimg,max_fold
-                      stop 1
-                   endif
-                   if (cfg(2).gt.0) then
-                      t(1)=modulo(u(1)+dble(k1-1)/dble(nlat),1d0)
-                      t(2)=modulo(u(2)+dble(mod((k1-1)*glat,nlat))/dble(nlat),1d0)
-                   elseif (cfg(1).eq.5) then
-                      t(1)=dble(k1-1)/dble(nf(1)-1)
-                      t(2)=dble(k2-1)/dble(nf(2)-1)
-                   else
-                      t(1)=(u(1)+dble(k1-1))/dble(nf(1))
-                      t(2)=(u(2)+dble(k2-1))/dble(nf(2))
-                   endif
-                   t(3)=(u(3)+dble(k3-1))/dble(nf(3))
-                   vnode(nimg)=vol_born*wlat
-                   if (cfg(1).eq.5) then
-                      vnode(nimg)=vol_born/dble(nf(3))* &
-                           simpson_weight(k1,nf(1))*simpson_weight(k2,nf(2))
-                      do k=1,2
-                         t(k)=min(max(t(k),1d-7),1d0-1d-7)
-                         call fold_node_to_x(t(k),rad(k),0,xrad(k,nimg),vnode(nimg))
-                      enddo
-                      call fold_node_to_x(t(3),rad(3),0,xrad(3,nimg),vnode(nimg))
-                   else
-                      do k=1,3
-                         call fold_node_to_x(t(k),rad(k),merge(cfg(1),0,k.le.2), &
-                              xrad(k,nimg),vnode(nimg))
-                      enddo
-                   endif
-                   fold_img_group(nimg)=igrp
-                   fold_img_rep(nimg)=ir
-                enddo
-             enddo
-          enddo
-       enddo
-    enddo
-    fold_ngroups=igrp
-    n_fold_images=nimg
-! Image that carries the H events (picked according to the image
-! weights; its H events are scaled to the sum of the weights)
-    fold_real_img=0
-    fold_real_scale=1d0
-    if (FoldRealOnce) then
-       wtot=sum(vnode(1:nimg))
-       r=ran2()*wtot
-       acc=0d0
-       do k=1,nimg
-          acc=acc+vnode(k)
-          if (acc.ge.r) exit
-       enddo
-       fold_real_img=min(k,nimg)
-       fold_real_scale=wtot/vnode(fold_real_img)
-    endif
-    f(1:nintegrals)=0d0
-    xnode(1:ndim)=x(1:ndim)
-    if (FoldDump.eq.0) then
-       ifirst=0
-       do k=1,nimg
-          xnode(rad(1:3))=xrad(1:3,k)
-          ! this accumulated value will not be used
-          dummy=fun(xnode,vnode(k),ifirst,f1)
-          ifirst=1
-       enddo
-       !closing call: accumulated value with correct sign
-       ifirst=2
-       dummy=fun(xnode,vol,ifirst,f1)
-       f(1:nintegrals)=f1(1:nintegrals)
-    else
-       ! each group is a complete evaluation of the point (written to
-       ! the dump by the closing call); MINT gets the first group
-       k1=1
-       do igrp=1,fold_ngroups
-          k2=k1
-          do while (k2.lt.nimg)
-             if (fold_img_group(k2+1).ne.igrp) exit
-             k2=k2+1
-          enddo
-          n_fold_images=k2-k1+1
-          fold_dump_group=igrp
-          fold_dump_rep=fold_img_rep(k1)
-          ifirst=0
-          do k=k1,k2
-             xnode(rad(1:3))=xrad(1:3,k)
-             dummy=fun(xnode,vnode(k),ifirst,f1)
-             ifirst=1
-          enddo
-          ifirst=2
-          dummy=fun(xnode,vol,ifirst,f1)
-          if (igrp.eq.1) f(1:nintegrals)=f1(1:nintegrals)
-          k1=k2+1
-       enddo
-    endif
-  end subroutine compute_integrand_nodes
-
-  subroutine fold_node_to_x(t,kdim,itrans,xout,v)
-! Map the node t in [0,1) of a rule to the vegas x of dimension kdim,
-! after the transform itrans; multiply v by the jacobians.
-    implicit none
-    double precision :: t,xout,v,s,w,dx
-    double precision, parameter :: pi=3.1415926535897932385d0
-    integer :: kdim,itrans,jc
-    select case (itrans)
-    case (0)
-       s=t
-       w=1d0
-    case (1)
-       s=1d0-abs(2d0*t-1d0)
-       w=1d0
-    case (2)
-       s=t**2*(3d0-2d0*t)
-       w=6d0*t*(1d0-t)
-    case (3)
-       s=t**3*(10d0-15d0*t+6d0*t**2)
-       w=30d0*t**2*(1d0-t)**2
-    case (4)
-       s=t-sin(2d0*pi*t)/(2d0*pi)
-       w=1d0-cos(2d0*pi*t)
-    case default
-       write (*,*) 'ERROR: unknown fold transform',itrans
-       stop 1
-    end select
-    ! stay strictly inside the unit interval (the transforms can round to 0 or 1)
-    s=min(max(s,1d-10),1d0-1d-10)
-    jc=min(int(s*nint_used)+1,nint_used)
-    dx=xgrid(jc,kdim,ichan)-xgrid(jc-1,kdim,ichan)
-    xout=xgrid(jc-1,kdim,ichan)+(s*nint_used-(jc-1))*dx
-    v=v*w*dx*nint_used
-  end subroutine fold_node_to_x
-
-  double precision function simpson_weight(j,n)
-! weight of node j (1..n) of the composite Simpson rule with n-1
-! intervals on [0,1]; n=2 is the trapezoidal rule
-    implicit none
-    integer :: j,n
-    if (n.eq.2) then
-       simpson_weight=0.5d0
-    elseif (j.eq.1 .or. j.eq.n) then
-       simpson_weight=1d0/(3d0*(n-1))
-    elseif (mod(j,2).eq.0) then
-       simpson_weight=4d0/(3d0*(n-1))
-    else
-       simpson_weight=2d0/(3d0*(n-1))
-    endif
-  end function simpson_weight
-
-  integer function fold_lattice_generator(n)
-! Generator of the rank-1 lattice with n points in two dimensions: the
-! previous Fibonacci number when n is a Fibonacci number, otherwise the
-! integer closest to n/golden ratio that is coprime with n.
-    implicit none
-    integer :: n,a,b,c,g
-    a=1
-    b=1
-    do while (b.lt.n)
-       c=a+b
-       a=b
-       b=c
-    enddo
-    if (b.eq.n) then
-       fold_lattice_generator=a
-       return
-    endif
-    g=max(1,nint(dble(n)/1.6180339887498949d0))
-    do while (gcd(g,n).ne.1)
-       g=g+1
-    enddo
-    fold_lattice_generator=g
-  contains
-    integer function gcd(i,j)
-      integer :: i,j,p,q,rr
-      p=i
-      q=j
-      do while (q.ne.0)
-         rr=mod(p,q)
-         p=q
-         q=rr
-      enddo
-      gcd=p
-    end function gcd
-  end function fold_lattice_generator
-
-  subroutine read_fold_dump_cfg
-! Each line of fold_dump.dat: transform, lattice, nxi, ny, nphi, replicas
-    implicit none
-    integer :: ios
-    open(unit=77,file='fold_dump.dat',status='old',iostat=ios)
-    if (ios.ne.0) then
-       write (*,*) 'ERROR: FoldDump needs the file fold_dump.dat'
-       stop 1
-    endif
-    n_fold_cfg=0
-    do
-       read(77,*,iostat=ios) fold_cfg(1:6,n_fold_cfg+1)
-       if (ios.ne.0) exit
-       n_fold_cfg=n_fold_cfg+1
-       if (n_fold_cfg.eq.max_fold_cfg) exit
-    enddo
-    close(77)
-    write (*,*) 'Fold dump configurations:',n_fold_cfg
-  end subroutine read_fold_dump_cfg
   
   subroutine get_random_x(x,vol,kfold)
     implicit none
     integer :: kdim,k_ord_virt,nintcurr
     integer, dimension(ndimmax) :: kfold
-    double precision :: vol,dx
+    double precision :: vol,dx,t,s
     double precision, dimension(ndimmax) :: x
     call get_channel
 ! find random x, and its random cell
@@ -1130,9 +847,24 @@ contains
     do kdim=1,ndim
        nintcurr=nint_used/ifold(kdim)
        icell(kdim)=ncell(kdim)+(kfold(kdim)-1)*nintcurr
-       dx=xgrid(icell(kdim),kdim,ichan)-xgrid(icell(kdim)-1,kdim,ichan)
-       vol=vol*dx*nintcurr
-       x(kdim)=xgrid(icell(kdim)-1,kdim,ichan)+rand(kdim)*dx
+       if (FoldCubic .and. ifold(kdim).gt.1 .and. &
+            (kdim.eq.ifold_energy .or. kdim.eq.ifold_yij)) then
+! Folded xi_i or y_ij with FoldCubic: the images t=(U+k-1)/n of the flat
+! coordinate are moved to s=t^2(3-2t), with weight ds/dt=6t(1-t). This is
+! a randomly shifted rule of Simpson order (exact on average, since each
+! image is uniformly distributed), that also keeps the images away from
+! the endpoints of the integration range.
+          t=(icell(kdim)-1+rand(kdim))/dble(nint_used)
+          s=min(max(t**2*(3d0-2d0*t),1d-10),1d0-1d-10)
+          icell(kdim)=min(int(s*nint_used)+1,nint_used)
+          dx=xgrid(icell(kdim),kdim,ichan)-xgrid(icell(kdim)-1,kdim,ichan)
+          vol=vol*dx*nintcurr*6d0*t*(1d0-t)
+          x(kdim)=xgrid(icell(kdim)-1,kdim,ichan)+(s*nint_used-(icell(kdim)-1))*dx
+       else
+          dx=xgrid(icell(kdim),kdim,ichan)-xgrid(icell(kdim)-1,kdim,ichan)
+          vol=vol*dx*nintcurr
+          x(kdim)=xgrid(icell(kdim)-1,kdim,ichan)+rand(kdim)*dx
+       endif
        if(imode.eq.0) nhits(icell(kdim),kdim,ichan)=nhits(icell(kdim),kdim,ichan)+1
     enddo
     do k_ord_virt=0,n_ord_virt
