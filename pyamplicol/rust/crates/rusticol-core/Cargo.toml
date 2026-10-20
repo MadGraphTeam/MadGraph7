@@ -38,3 +38,8 @@ symbolica = { workspace = true, optional = true }
 symjit = { workspace = true, optional = true }
 thiserror.workspace = true
 wide.workspace = true
+
+[[bench]]
+name = "loop_v2_kernels"
+harness = false
+required-features = ["loop-v2"]
