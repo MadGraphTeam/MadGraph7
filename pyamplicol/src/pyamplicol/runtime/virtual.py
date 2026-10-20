@@ -330,13 +330,13 @@ class VirtualRuntimeBackend:
         if not self._metadata["physics"]["correlations"]:
             return ()
         return tuple(
-            tuple(item["legs"])
-            for item in self._metadata["plan"].get("spin_projections", ()) or ()
+            tuple(legs)
+            for legs in self._metadata["selected_correlations"]["spin_classes"]
         )
 
     def _saved_color_correlations(self) -> tuple[ColorCorrelator, ...]:
-        descriptor = self._metadata["plan"].get("directed_projection")
-        if not self._metadata["physics"]["correlations"] or descriptor is None:
+        descriptor = self._metadata["selected_correlations"]
+        if not self._metadata["physics"]["correlations"] or not descriptor["histories"]:
             raise CompatibilityError(
                 "this selected process has no admitted directed colour histories"
             )

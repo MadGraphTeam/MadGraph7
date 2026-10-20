@@ -287,7 +287,12 @@ def write_loop_pacbin(
     }
     if flavor_members:
         data["admitted_flavor_members"] = [
-            item.for_program(program, spin_directed=spin_directed)
+            item.for_program(
+                program,
+                directed=directed,
+                directed_histories=declarations if directed is not None else None,
+                spin_directed=spin_directed,
+            )
             for item in flavor_members
         ]
     projection = color_projection_metadata(bare)

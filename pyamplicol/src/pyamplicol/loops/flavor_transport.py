@@ -1184,11 +1184,17 @@ class AdmittedFlavorMember:
         ):
             raise ValueError("public flavour member differs from the admitted process")
 
-    def for_program(self, program, *, spin_directed=()):
-        if self.transport.bose_correlations is not None:
-            raise NotImplementedError(
-                "Bose correlation scope requires its pending saved-runtime transport"
-            )
+    def for_program(
+        self, program, *, directed=None, directed_histories=None, spin_directed=()
+    ):
+        scope = self.transport.bose_correlations
+        if scope is not None:
+            scope.require_catalogues(self.transport)
+            if (
+                directed is not scope.representative_directed
+                or tuple(directed_histories or ()) != scope.representative_requests
+            ):
+                raise ValueError("saved Bose histories differ from their actual proof")
         if program.prepared is not self.transport.representative_plan:
             raise ValueError(
                 "flavour admission belongs to another saved representative"
@@ -1210,7 +1216,15 @@ class AdmittedFlavorMember:
             for item in self.transport.representative_spin
         }
         actual = tuple(spin_directed)
-        if not self.transport.permutes_external_legs and (
+        if scope is not None:
+            if any(item.bare.spin_layout is None for item in actual):
+                raise ValueError("saved Bose source class has no source layout")
+            saved = {item.bare.spin_layout.legs: item for item in actual}
+            if len(saved) != len(actual) or any(
+                saved.get(key) is not item for key, item in expected.items()
+            ):
+                raise ValueError("saved Bose classes omit their actual paired proof")
+        elif not self.transport.permutes_external_legs and (
             len(actual) != len(expected)
             or any(
                 item.bare.spin_layout is None
@@ -1230,6 +1244,13 @@ class AdmittedFlavorMember:
         }
         if self.transport.permutes_external_legs:
             result["permutation"] = self.transport.mapping.permutation
+        if scope is not None:
+            result["bose_correlations"] = {
+                "history_ids": scope.selected_history_ids,
+                "spin_classes": sorted(
+                    item.bare.spin_layout.legs for item in scope.member_spin
+                ),
+            }
         return result
 
 

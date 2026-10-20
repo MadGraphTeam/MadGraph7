@@ -119,24 +119,12 @@ impl Runtime {
             || vec![native.metadata().color_accuracy.clone()],
             |partition| partition.ids.clone(),
         );
-        let history_ids = if native.metadata().correlations {
-            plan.directed_projection
-                .as_ref()
-                .map_or_else(Vec::new, |p| {
-                    p.histories.iter().map(|h| h.id.clone()).collect()
-                })
-        } else {
-            Vec::new()
-        };
-        let spin_classes = if native.metadata().correlations {
-            plan.spin_projections
-                .iter()
-                .flatten()
-                .map(|class| class.legs.clone())
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let history_ids = native
+            .selected_histories()
+            .iter()
+            .map(|h| h.id.clone())
+            .collect();
+        let spin_classes = native.selected_spin_classes().to_vec();
         Ok(Self {
             native,
             shape,

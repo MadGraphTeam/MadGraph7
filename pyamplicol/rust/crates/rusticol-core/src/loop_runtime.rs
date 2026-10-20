@@ -262,7 +262,7 @@ record!(ColorProjection {
 // This checks only serialized operation types and role transport. Complete
 // history enumeration, tensor algebra and structural degree proofs belong to
 // the existing cold producer, never to the native evaluation path.
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 enum DirectedColorOperation {
     EmitGluon {
@@ -282,6 +282,45 @@ fn directed_label(value: serde_json::Number) -> RusticolResult<i128> {
         .map(i128::from)
         .or_else(|| value.as_u64().map(i128::from))
         .ok_or_else(|| invalid("directed colour labels must be integers"))
+}
+
+fn permute_directed_operations(
+    operations: &[serde_json::Value],
+    permutation: &[usize],
+    physical_labels: &[(usize, i32)],
+) -> RusticolResult<Vec<serde_json::Value>> {
+    let label = |value: serde_json::Number| -> RusticolResult<serde_json::Number> {
+        let index = directed_label(value.clone())?;
+        Ok(usize::try_from(index)
+            .ok()
+            .filter(|&i| physical_labels.iter().any(|&(leg, _)| leg == i))
+            .map_or(value, |i| serde_json::Number::from(permutation[i])))
+    };
+    operations
+        .iter()
+        .map(|value| {
+            let value: DirectedColorOperation = serde_json::from_value(value.clone())
+                .map_err(|e| invalid(format!("invalid directed colour operation: {e}")))?;
+            let mapped = match value {
+                DirectedColorOperation::EmitGluon { emitter, emitted } => {
+                    DirectedColorOperation::EmitGluon {
+                        emitter: label(emitter)?,
+                        emitted: label(emitted)?,
+                    }
+                }
+                DirectedColorOperation::SplitGluon {
+                    parent,
+                    quark,
+                    antiquark,
+                } => DirectedColorOperation::SplitGluon {
+                    parent: label(parent)?,
+                    quark: label(quark)?,
+                    antiquark: label(antiquark)?,
+                },
+            };
+            serde_json::to_value(mapped).map_err(|e| invalid(e.to_string()))
+        })
+        .collect()
 }
 
 fn directed_output_legs(
@@ -422,9 +461,12 @@ impl DirectedColorProjection {
 record!(BornColorComponents {
     kind: String, ids: Vec<String>, members: Vec<Vec<usize>>
 });
+record!(BoseCorrelationScope {
+    history_ids: Vec<String>, spin_classes: Vec<Vec<usize>>
+});
 record!(AdmittedFlavorMember {
     process_id: String, expression: String, external_pdgs: Vec<i32>, species: Vec<(i32, i32)>,
-    permutation: Option<Vec<usize>>
+    permutation: Option<Vec<usize>>, bose_correlations: Option<BoseCorrelationScope>
 });
 record!(LoopRuntimePlan {
     schema: u32, r2_strategy: String, dimensional_numerators: bool,
@@ -612,6 +654,118 @@ impl LoopRuntimePlan {
             },
             |w| w.execution(arithmetic),
         )
+    }
+
+    /// Derive routes from the saved common named-request catalogue. The cold
+    /// admission owns the independent member proof; this boundary checks all
+    /// referenced typed ports/classes. Aliased operator definitions stay distinct.
+    pub fn bose_history_routes(&self, member: &AdmittedFlavorMember) -> RusticolResult<Vec<usize>> {
+        let scope = member
+            .bose_correlations
+            .as_ref()
+            .ok_or_else(|| invalid("missing Bose correlation scope"))?;
+        let permutation = member
+            .permutation
+            .as_ref()
+            .ok_or_else(|| invalid("missing Bose permutation"))?;
+        let n = self.state_legs.len();
+        let mut sorted = permutation.clone();
+        sorted.sort_unstable();
+        require(
+            sorted == (0..n).collect::<Vec<_>>(),
+            "Bose correlation permutation is not a bijection",
+        )?;
+        require(
+            self.color_projection.is_none(),
+            "projected Bose correlation transport is unproved",
+        )?;
+        let ordinary = self
+            .directed_projection
+            .as_ref()
+            .ok_or_else(|| invalid("Bose scope has no ordinary directed bank"))?;
+        let mut inverse = vec![0; n];
+        for (a, &b) in permutation.iter().enumerate() {
+            inverse[b] = a;
+        }
+        let mut ports = ordinary
+            .color_legs
+            .iter()
+            .map(|&(leg, rep)| {
+                permutation
+                    .get(leg)
+                    .map(|&label| (label, rep))
+                    .ok_or_else(|| invalid("foreign Bose colour port"))
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        ports.sort_unstable();
+        let mut original_ports = ordinary.color_legs.clone();
+        original_ports.sort_unstable();
+        require(
+            ports == original_ports,
+            "Bose permutation changes typed colour ports",
+        )?;
+        require(
+            !scope.history_ids.is_empty() && unique(&scope.history_ids),
+            "empty or repeated Bose history scope",
+        )?;
+        let routes = scope
+            .history_ids
+            .iter()
+            .map(|id| {
+                let selected = ordinary
+                    .histories
+                    .iter()
+                    .find(|history| &history.id == id)
+                    .ok_or_else(|| invalid("Bose history ID absent from saved requests"))?;
+                let bra =
+                    permute_directed_operations(&selected.bra, &inverse, &ordinary.color_legs)?;
+                let ket =
+                    permute_directed_operations(&selected.ket, &inverse, &ordinary.color_legs)?;
+                require(
+                    directed_output_legs(&ordinary.color_legs, &bra)?
+                        == directed_output_legs(&ordinary.color_legs, &ket)?,
+                    "Bose history output roles differ",
+                )?;
+                ordinary
+                    .histories
+                    .iter()
+                    .position(|history| history.bra == bra && history.ket == ket)
+                    .ok_or_else(|| invalid("Bose history has no transported representative row"))
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        require(unique(&scope.spin_classes), "repeated Bose source class")?;
+        for key in &scope.spin_classes {
+            require(
+                !key.is_empty()
+                    && key.windows(2).all(|p| p[0] < p[1])
+                    && key.iter().all(|&leg| leg > 0 && leg <= n),
+                "invalid Bose source class",
+            )?;
+            let mut mapped = key
+                .iter()
+                .map(|&leg| inverse[leg - 1] + 1)
+                .collect::<Vec<_>>();
+            mapped.sort_unstable();
+            let class = self
+                .spin_projections
+                .iter()
+                .flatten()
+                .find(|class| class.legs == mapped)
+                .ok_or_else(|| invalid("Bose source class has no representative counterpart"))?;
+            // Each existing class retains its typed SourceIR and phase evaluator;
+            // the same-side identical species proof keeps their physical role.
+            require(
+                class.legs.iter().all(|&leg| {
+                    let target = permutation[leg - 1];
+                    self.external_pdgs[leg - 1] == self.external_pdgs[target]
+                        && self.state_legs[leg - 1].incoming == self.state_legs[target].incoming
+                        && self.state_legs[leg - 1].kind == self.state_legs[target].kind
+                        && self.state_legs[leg - 1].massless == self.state_legs[target].massless
+                }),
+                "Bose source changes physical SourceIR roles",
+            )?;
+        }
+        Ok(routes)
     }
 
     pub fn directed_projections(&self) -> impl Iterator<Item = (&DirectedProjection, usize)> {
@@ -940,6 +1094,13 @@ impl LoopRuntimePlan {
                             }),
                         "Bose permutation requires an admitted ordinary full-colour same-side boson layout",
                     )?;
+                }
+                if member.bose_correlations.is_some() {
+                    require(
+                        !identity,
+                        "Bose correlation scope requires nonidentity transport",
+                    )?;
+                    self.bose_history_routes(member)?;
                 }
                 let map: BTreeMap<_, _> = member.species.iter().copied().collect();
                 let targets: BTreeSet<_> = map.values().copied().collect();
