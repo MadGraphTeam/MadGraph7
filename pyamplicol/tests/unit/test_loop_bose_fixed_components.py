@@ -67,8 +67,10 @@ def test_fixed_components_reject_different_typed_external_interfaces(hep):
     lorentz = next(
         item for item in payload["lorentz_structures"] if item["name"] == "VVV1"
     )
-    # Deliberately malformed third-vector interface, not a physical model rule.
-    lorentz["structure"] = "Metric(idx(1,1),idx(1,2))"
+    # Deliberately omit the first vector port so the FIRST tested generator
+    # changes the interface. Omitting the third port would be rejected earlier
+    # as an unproved antisymmetric tensor, without reaching this boundary.
+    lorentz["structure"] = "Metric(idx(1,2),idx(1,3))"
     changed = hep.Model.from_json(json.dumps(payload))
     with pytest.raises(ValueError, match=r"port|interface|indices|structure"):
         symmetric_boson_slots(changed, ["V_36"], fixed_representation=True)
