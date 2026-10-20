@@ -40,6 +40,8 @@ from functools import cache
 from itertools import combinations, product
 from typing import Any, Protocol
 
+from pyamplicol.loops.orders import LoopEligibility
+
 Orders = tuple[tuple[str, int], ...]
 
 ZERO = "0"
@@ -56,10 +58,6 @@ def add_orders(*terms: Orders) -> Orders:
 def orders_within(orders: Orders, cap: Orders) -> bool:
     bound = dict(cap)
     return all(power <= bound.get(name, 0) for name, power in orders)
-
-
-def legs_of(mask: int) -> tuple[int, ...]:
-    return tuple(index for index in range(mask.bit_length()) if mask >> index & 1)
 
 
 def lowest_leg(mask: int) -> int:
@@ -89,15 +87,6 @@ class LoopSpecies:
     colour: int
     mass: MassId
     perturbative_orders: frozenset[str]
-
-    @property
-    def self_conjugate(self) -> bool:
-        return self.name == self.antiname
-
-    @property
-    def anticommuting(self) -> bool:
-        """Closed loops of fermions and ghosts carry a factor -1."""
-        return self.spin == -1 or (self.spin > 0 and self.spin % 2 == 0)
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -182,9 +171,8 @@ class BlockTable(Protocol):
 class LoopOrderSelection:
     """Selected corrections and the admitted loop-amplitude coupling orders.
 
-    The eligibility rule is MadLoop's joint selection (``loops/orders.py``):
-    every circulating species is perturbative in a selected correction and a
-    selected order occurs at some loop vertex.
+    Routings are admitted by ``LoopEligibility`` (MadLoop's joint selection,
+    ``loops/orders.py``); its species condition also prunes the recursion.
     """
 
     corrections: frozenset[str]
@@ -514,6 +502,7 @@ class _Recursion:
         self.orders = orders
         self.legs = tuple(blocks.legs)
         self.full = (1 << len(self.legs)) - 1
+        # The species condition of ``LoopEligibility`` prunes the recursion.
         eligible = frozenset(
             name
             for name in catalogue.loop_species()
@@ -671,11 +660,14 @@ class _Recursion:
             [position.mask for position in positions],
             [self.catalogue.species(p.vertex.loop_out).mass for p in positions],
         )
-        if not any(
-            name in self.orders.corrections
-            for position in positions
-            for name, _power in position.vertex.orders
-        ):
+        eligibility = LoopEligibility(
+            tuple(
+                self.catalogue.species(p.vertex.loop_out).perturbative_orders
+                for p in positions
+            ),
+            frozenset(name for p in positions for name, _power in p.vertex.orders),
+        )
+        if not eligibility.admits(self.orders.corrections):
             return
         reason = selection_rejection(positions, self.catalogue)
         if reason is not None:
@@ -784,35 +776,40 @@ def _mass_name(name: str | None) -> str:
 
 
 @cache
-def _momentum_degree(expression: str, slots: tuple[int, ...] | None) -> int:
-    """Maximal degree in the momenta of ``slots`` (all momenta if None)."""
+def _momentum_degree(expression: str, slots: tuple[int, int] | None) -> int:
+    """Degree in the loop momentum q of a UFO structure.
+
+    With ``slots = (in, out)`` the loop momentum enters at leg ``in`` and leaves
+    at leg ``out`` (all UFO momenta incoming): P_in -> P_in + q and
+    P_out -> P_out - q, so q cancels from structures in P_in + P_out. With
+    ``None`` every momentum is the line momentum (a propagator numerator).
+    """
     from symbolica import E, S
 
-    t = S("pyamplicol_v2_t")
+    t, q = S("pyamplicol_v2_t"), S("pyamplicol_v2_q")
+    momentum, lorentz = S("P"), S("x_")
     value = E(expression)
-    momentum = S("P")
     if slots is None:
         rest = S("x__")
         value = value.replace(momentum(rest), t * momentum(rest))
         slash = S("PSlash")
         value = value.replace(slash(rest), t * slash(rest))
     else:
-        index, lorentz, label = S("idx"), S("x_"), S("y_")
-        for slot in slots:
+        index, label = S("idx"), S("y_")
+        for slot, sign in zip(slots, (1, -1), strict=True):
             leg = index(label, slot)
-            value = value.replace(momentum(lorentz, leg), t * momentum(lorentz, leg))
-    value = value.expand()
-    degree = 0
-    for monomial, coefficient in value.coefficient_list(t):
-        if coefficient.expand() == E("0"):
-            continue
-        power = 0
-        while monomial != t**power and power <= 16:
-            power += 1
-        if power > 16:
-            raise ValueError(f"cannot read the momentum degree of {expression!r}")
-        degree = max(degree, power)
-    return degree
+            value = value.replace(
+                momentum(lorentz, leg), momentum(lorentz, leg) + sign * t * q(lorentz)
+            )
+    zero = E("0")
+    return max(
+        (
+            int(power.to_polynomial(vars=[t]).degree(t))
+            for power, coefficient in value.expand().coefficient_list(t)
+            if coefficient.expand() != zero
+        ),
+        default=0,
+    )
 
 
 class ModelLoopCatalogue:
