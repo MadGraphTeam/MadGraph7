@@ -1,0 +1,46 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 6K of event 'cpu-clock:u'
+# Event count (approx.): 129938773821
+#
+# Overhead  Command          Shared Object         Symbol                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+# ........  ...............  ....................  ..................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+#
+    24.50%  check            check                 [.] compiler_builtins::float::add::add::<f128>
+    23.76%  check            check                 [.] compiler_builtins::float::mul::mul::<f128>
+     3.57%  madloop-ninjars  check                 [.] <numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float> as core::ops::arith::Mul<&numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float>>>::mul
+     3.19%  madloop-ninjars  check                 [.] mpfr_mul
+     2.65%  madloop-ninjars  check                 [.] __gmpn_mul_basecase_zen
+     2.51%  madloop-ninjars  check                 [.] mpfr_cmp_d
+     2.29%  madloop-ninjars  check                 [.] __gmpn_copyi_zen
+     2.09%  madloop-ninjars  check                 [.] <numerica::domains::float::multiprecision::Float>::prec
+     2.03%  madloop-ninjars  check                 [.] <symbolica::evaluate::batch::BatchExpressionEvaluator<numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float>>>::evaluate_program
+     1.87%  madloop-ninjars  check                 [.] mpfr_set_d
+     1.66%  madloop-ninjars  check                 [.] mpfr_clear
+     1.54%  madloop-ninjars  check                 [.] mpfr_set_prec
+     1.49%  madloop-ninjars  libc.so.6             [.] cfree@GLIBC_2.2.5
+     1.48%  madloop-ninjars  check                 [.] mpfr_set4
+     1.07%  madloop-ninjars  libc.so.6             [.] malloc
+     1.02%  madloop-ninjars  check                 [.] mpfr_add1sp
+     0.97%  madloop-ninjars  check                 [.] mpfr_init2
+     0.79%  madloop-ninjars  check                 [.] __gmpn_mul
+     0.75%  madloop-ninjars  libc.so.6             [.] _int_malloc
+     0.72%  madloop-ninjars  check                 [.] mpfr_prec_round
+     0.66%  madloop-ninjars  check                 [.] __gmp_default_allocate
+     0.63%  madloop-ninjars  check                 [.] mpfr_sub1sp
+     0.63%  madloop-ninjars  libc.so.6             [.] _int_free_chunk
+     0.60%  madloop-ninjars  check                 [.] <numerica::domains::float::multiprecision::Float as core::ops::arith::Add<&numerica::domains::float::multiprecision::Float>>::add
+     0.53%  madloop-ninjars  check                 [.] __gmpn_lshift_zen
+     0.53%  madloop-ninjars  check                 [.] mpfr_add
+     0.52%  madloop-ninjars  check                 [.] mpfr_cmp3
+     0.50%  check            check                 [.] __subtf3
+     0.50%  madloop-ninjars  check                 [.] __gmpn_rshift_zen
+     0.50%  madloop-ninjars  check                 [.] mpfr_sub1
+
+
+#
+# (Tip: Boolean options have negative forms, e.g.: perf report --no-children)
+#

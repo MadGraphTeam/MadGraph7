@@ -1,0 +1,19 @@
+    Finished `release` profile [optimized] target(s) in 0.28s
+     Running unittests src/lib.rs (/common/build-cache/external/f7/d00a3ee9585371/release/deps/madloop_ninjars_tensor_plan_prototype-fe03369a8647692b)
+
+running 12 tests
+test tensor::plan_tests::planned_tensor_keeps_computed_zero_nodes_and_rejects_oversized_plans ... ok
+test tensor::plan_tests::planned_tensor_matches_dense_values_precision_and_signed_zero ... ok
+test tensor::plan_tests::planned_tensor_nonfinite_inputs_use_dense_fallback ... ok
+test tests::complete_mp_tadpole_retains_input_precision ... ok
+test tests::complex_mass_pentagon_converges_at_binary128_output_precision ... ok
+test tests::every_short_buffer_is_rejected_before_access_or_output ... ok
+test tests::invalid_input_preserves_outputs_and_reports_error ... ok
+test tests::mp_bubbles_cover_massless_orderings_and_context_rebinding ... ok
+test tests::mp_transport_preserves_binary128_information ... ok
+test tests::numerical_tensor_evaluation_and_laurent_expansion ... ok
+test tests::tadpole_rebinds_coefficients_masses_and_scale ... ok
+test tests::version_and_malformed_outputs_are_transactional ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.48s
+

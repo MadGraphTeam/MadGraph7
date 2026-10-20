@@ -1,0 +1,63 @@
+   Compiling madloop-ninjars-cache-prototype v0.1.0 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/master-cache/bridge)
+    Finished `release` profile [optimized] target(s) in 3m 55s
+     Running unittests src/lib.rs (/common/build-cache/external/f7/d00a3ee9585371/release/deps/madloop_ninjars_cache_prototype-309af1f1a830d1cc)
+
+running 9 tests
+test cache::tests::master_cache_dp_exact_reuse_rebinding_failures_and_bounds ... ok
+test cache::tests::master_cache_dp_keys_preserve_signed_zero_and_float_precision ... ok
+test cache::tests::master_cache_dp_mixed_hits_duplicates_and_failed_rows ... ok
+test cache::tests::master_cache_dp_rounding_and_cleared_exception_flags_recompute ... cache FENV invalidation: Some(32) -> 0
+ok
+test cache::tests::master_cache_dp_structural_failure_is_transactional ... ok
+test cache::tests::master_cache_mp_native_values_precision_and_failures ... ┌────────────────────────────────────────────────────────┐
+│ You are running a restricted Symbolica instance.       │
+│                                                        │
+│ For non-commercial use only, limited to one            │
+│ Symbolica thread per user.                             │
+│                                                        │
+├─ Unlock all cores ─────────────────────────────────────┤
+│                                                        │
+│ Hobbyists and students: free annual key                │
+│ https://symbolica.io/license/#get-hobbyist-license     │
+│                                                        │
+│ Free 30-day professional trial:                        │
+│ https://symbolica.io/license/#get-trial-license        │
+│                                                        │
+└────────────────────────────────────────────────────────┘
+ok
+test tests::master_cache_dp_panic_discards_state_without_poisoning_scope ... 
+thread 'tests::master_cache_dp_panic_discards_state_without_poisoning_scope' (3149308) panicked at src/lib.rs:384:49:
+injected DP engine panic
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: std::panicking::catch_unwind::do_call::<core::panic::unwind_safe::AssertUnwindSafe<madloop_ninjars_cache_prototype::ninjars_evaluate_dp::{closure#0}::{closure#2}>, core::result::Result<(i32, ninjars::fast::FastResult), alloc::string::String>>
+   3: ninjars_evaluate_dp
+   4: <madloop_ninjars_cache_prototype::tests::master_cache_dp_panic_discards_state_without_poisoning_scope::{closure#0} as core::ops::function::FnOnce<()>>::call_once
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+ok
+test tests::master_cache_dp_scope_and_fallback ... ok
+test tests::master_cache_mp_scope_before_worker_creation ... cache FENV invalidation: Some(0) -> 32
+late MP initial Stats { rows: 1, hits: 0, misses: 1, inserted: 1, evicted: 0, clears: 1, failures: 0, entries: 1 }, repeated Stats { rows: 2, hits: 0, misses: 2, inserted: 2, evicted: 0, clears: 2, failures: 0, entries: 1 }
+
+thread 'tests::master_cache_mp_scope_before_worker_creation' (3149320) panicked at src/lib.rs:384:49:
+injected DP engine panic
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: std::panicking::catch_unwind::do_call::<core::panic::unwind_safe::AssertUnwindSafe<madloop_ninjars_cache_prototype::ninjars_evaluate_dp::{closure#0}::{closure#2}>, core::result::Result<(i32, ninjars::fast::FastResult), alloc::string::String>>
+   3: ninjars_evaluate_dp
+   4: <madloop_ninjars_cache_prototype::tests::master_cache_mp_scope_before_worker_creation::{closure#0} as core::ops::function::FnOnce<()>>::call_once
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread 'madloop-ninjars-mp' (3149321) panicked at src/lib.rs:656:37:
+injected MP engine panic
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: <madloop_ninjars_cache_prototype::MpWorker>::new::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 1.06s
+

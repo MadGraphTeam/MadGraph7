@@ -1,0 +1,2 @@
+{"kind": 8, "build_passed": true, "driver_sha256": "8157b66b42278b68955dcf9ab454a3668fcb9f0f4585e6a5dc7bd498f2fbf5b0", "passed": true, "stdout": " PASS           8        1280\n", "stderr": ""}
+{"kind": 16, "build_passed": true, "driver_sha256": "7d93286ded7aabd01836df6817ea80f9cf8703403048d0fb6d8f6f02c5406dee", "passed": true, "stdout": " PASS          16        1280\n", "stderr": ""}

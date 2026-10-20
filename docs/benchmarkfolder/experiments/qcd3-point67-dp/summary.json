@@ -1,0 +1,18 @@
+[
+  {
+    "direction": 1,
+    "reductions": 116,
+    "failed_ninjars": 0,
+    "failed_ninja": 0,
+    "largest_loop": 52,
+    "largest_absolute_finite_difference": 7.341793839543698e-12
+  },
+  {
+    "direction": 2,
+    "reductions": 116,
+    "failed_ninjars": 0,
+    "failed_ninja": 0,
+    "largest_loop": 52,
+    "largest_absolute_finite_difference": 2.189370906791055e-11
+  }
+]

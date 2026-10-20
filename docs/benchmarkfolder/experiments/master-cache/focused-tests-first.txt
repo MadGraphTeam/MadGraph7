@@ -1,0 +1,35 @@
+   Compiling madloop-ninjars-cache-prototype v0.1.0 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/master-cache/bridge)
+    Finished `release` profile [optimized] target(s) in 3m 12s
+     Running unittests src/lib.rs (/common/build-cache/external/f7/d00a3ee9585371/release/deps/madloop_ninjars_cache_prototype-309af1f1a830d1cc)
+
+running 9 tests
+test cache::tests::master_cache_dp_exact_reuse_rebinding_failures_and_bounds ... ok
+test cache::tests::master_cache_dp_keys_preserve_signed_zero_and_float_precision ... ok
+test cache::tests::master_cache_dp_mixed_hits_duplicates_and_failed_rows ... ok
+test cache::tests::master_cache_dp_rounding_and_cleared_exception_flags_recompute ... ok
+test cache::tests::master_cache_dp_structural_failure_is_transactional ... ok
+test cache::tests::master_cache_mp_native_values_precision_and_failures ... ok
+test tests::master_cache_dp_panic_discards_state_without_poisoning_scope ... ok
+test tests::master_cache_dp_scope_and_fallback ... ok
+test tests::master_cache_mp_scope_before_worker_creation ... FAILED
+
+failures:
+
+---- tests::master_cache_mp_scope_before_worker_creation stdout ----
+
+thread 'tests::master_cache_mp_scope_before_worker_creation' (2917051) panicked at src/lib.rs:928:9:
+assertion failed: second.hits > first.hits
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: <madloop_ninjars_cache_prototype::tests::master_cache_mp_scope_before_worker_creation::{closure#0} as core::ops::function::FnOnce<()>>::call_once
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+
+failures:
+    tests::master_cache_mp_scope_before_worker_creation
+
+test result: FAILED. 8 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out; finished in 1.23s
+
+error: test failed, to rerun pass `--lib`

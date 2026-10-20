@@ -1,0 +1,21 @@
+{
+  "note": "Observed after completion; manifest excludes itself and Python bytecode. Historical metadata retains its original provenance limitations.",
+  "files": {
+    "MadLoopParams.dat": "b81bd92f94f7472046245761088b89bbdc539a4cca36527e6bc6fbf424b73abd",
+    "check_sa.f": "5250db8c3c6cbbb38cdb22fecff0b033874db35d8c9d67e711572e55ed535c25",
+    "dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "generated-sources.json": "81fc907f00fa62bff8129f7b3047dc9f54407c45b3ea3b0ca95f8b4f2a0d9098",
+    "param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "per-call.dat": "78a3d0dd02808ea307e9be8ef651e6ec93271e6992b15bf03617dc3374bf549a",
+    "perf-exemplars.txt": "3457dba8e09016aae9004f2c40fee436efa1704598c206bd70fd99a01c5b3cca",
+    "perf-flat.txt": "6b42b9c2a7f7fb54d71335589eb9d98a151a47ee948ba1f026562efa849094f7",
+    "perf-partition.json": "4390e16f14f96fcb4d539bfc1fcdf8639308302bc833c9636f6273de812332dd",
+    "perf-record.log": "768d4d4292d2d0508dc137583a4c973db9d97852a02cbc7396cd2b5db553e3dc",
+    "points1-and81.dat": "5a3efa8286ea3e96be0672b1f68f782f8b863ebc9219a3f1fd9c0461e9721204",
+    "provenance.json": "57b4fae74078c59be2c7dc39b7acc51d0ba735a607ffcacab76789ec7933e0af",
+    "run.log": "13da55c87abcb41241f8875b5c0134ae0c550b3b80f184494a23df86972dec9b",
+    "timed_status.dat": "b297efa40898de05f8aec2d54b9bbf7fc843e329aaf1841a8b7d326a4b648000",
+    "timing.dat": "d9499163c88be55d68ccbe4315d5e8930a1dfa70c62570370cbf0c056ceeae9e",
+    "values.dat": "19ea497aeede2d82d140612cdfcf98f9e5be0963c3a5a6c01354d74d469444a1"
+  }
+}

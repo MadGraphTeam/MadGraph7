@@ -1,0 +1,22 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 8K of event 'cpu-clock:u'
+# Event count (approx.): 171755099808
+#
+# Overhead  Command  Shared Object      Symbol                                                                                                                                                                                                                                                                                   
+# ........  .......  .................  .........................................................................................................................................................................................................................................................................................
+#
+    42.56%  check    libgcc_s.so.1      [.] __multf3
+    34.18%  check    libgcc_s.so.1      [.] __addtf3
+    11.73%  check    libgcc_s.so.1      [.] __subtf3
+     5.81%  check    libgcc_s.so.1      [.] __sfp_handle_exceptions
+     1.38%  check    check              [.] mp_ml5_0_update_wl_3_1_
+     0.52%  check    check              [.] mp_ml5_0_update_wl_4_1_
+
+
+#
+# (Tip: To not record events from perf itself add --exclude-perf)
+#

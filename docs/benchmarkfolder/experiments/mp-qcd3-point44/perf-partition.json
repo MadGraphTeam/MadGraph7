@@ -1,0 +1,423 @@
+{
+  "command": [
+    "/nix/store/7ccpnz8xkn5qsyw8nkz998vjmb6jpl49-perf-linux-6.19.6/bin/perf",
+    "script",
+    "--no-inline",
+    "-i",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/profile.perf"
+  ],
+  "samples": 1911,
+  "categories": {
+    "other_main": {
+      "samples": 44,
+      "percent": 2.3024594453165883
+    },
+    "fortran_qp_numerator": {
+      "samples": 842,
+      "percent": 44.060701203558345
+    },
+    "generic_cut_geometry": {
+      "samples": 119,
+      "percent": 6.227106227106227
+    },
+    "generic_reduction_and_bookkeeping": {
+      "samples": 291,
+      "percent": 15.2276295133438
+    },
+    "other_mp_worker": {
+      "samples": 113,
+      "percent": 5.913134484563056
+    },
+    "tensor_expansion_and_contraction": {
+      "samples": 349,
+      "percent": 18.26268969126112
+    },
+    "scalar_masters": {
+      "samples": 147,
+      "percent": 7.6923076923076925
+    },
+    "bridge_numeric_transport": {
+      "samples": 6,
+      "percent": 0.3139717425431711
+    }
+  },
+  "classification": "First matching actual owner/method frame; scalar, tensor and geometry take precedence over enclosing reducers. Reduction bucket includes generic algebra and allocation/bookkeeping. Unidentified worker work remains explicit.",
+  "top_leaf_frames_by_category": {
+    "other_main": [
+      [
+        "ml5_0_update_wl_2_1_+0x156 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        3
+      ],
+      [
+        "ml5_0_update_wl_3_1_+0x18b (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        2
+      ],
+      [
+        "__multf3+0x37f (/nix/store/wkiqjb44n5k0fwhmc523dvflspd47q3b-gcc-15.3.0-libgcc/lib/libgcc_s.so.1)",
+        2
+      ],
+      [
+        "__multf3+0x381 (/nix/store/wkiqjb44n5k0fwhmc523dvflspd47q3b-gcc-15.3.0-libgcc/lib/libgcc_s.so.1)",
+        2
+      ],
+      [
+        "ml5_0_update_wl_1_0_+0x2ec (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        1
+      ],
+      [
+        "ml5_0_update_wl_2_1_+0x13f (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        1
+      ],
+      [
+        "ffv1l1_2_+0x351a (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        1
+      ],
+      [
+        "ml5_0_update_wl_2_1_+0x113 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        1
+      ],
+      [
+        "_int_malloc+0xcac (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        1
+      ],
+      [
+        "hack_digit+0x11b (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        1
+      ],
+      [
+        "_gfortrani_set_internal_unit+0x6 (/nix/store/d17h7hf0qr99v6fadj50ybzgyvbsds81-gfortran-15.3.0-lib/lib/libgfortran.so.5.0.0)",
+        1
+      ],
+      [
+        "__GI_____strtof128_l_internal+0x35 (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        1
+      ]
+    ],
+    "fortran_qp_numerator": [
+      [
+        "__multf3+0x20 (/nix/store/wkiqjb44n5k0fwhmc523dvflspd47q3b-gcc-15.3.0-libgcc/lib/libgcc_s.so.1)",
+        112
+      ],
+      [
+        "__multf3+0x373 (/nix/store/wkiqjb44n5k0fwhmc523dvflspd47q3b-gcc-15.3.0-libgcc/lib/libgcc_s.so.1)",
+        111
+      ],
+      [
+        "__addtf3+0x215 (/nix/store/wkiqjb44n5k0fwhmc523dvflspd47q3b-gcc-15.3.0-libgcc/lib/libgcc_s.so.1)",
+        77
+      ],
+      [
+        "__addtf3+0x20 (/nix/store/wkiqjb44n5k0fwhmc523dvflspd47q3b-gcc-15.3.0-libgcc/lib/libgcc_s.so.1)",
+        76
+      ],
+      [
+        "__sfp_handle_exceptions+0x7c (/nix/store/wkiqjb44n5k0fwhmc523dvflspd47q3b-gcc-15.3.0-libgcc/lib/libgcc_s.so.1)",
+        40
+      ],
+      [
+        "__subtf3+0x20 (/nix/store/wkiqjb44n5k0fwhmc523dvflspd47q3b-gcc-15.3.0-libgcc/lib/libgcc_s.so.1)",
+        31
+      ],
+      [
+        "__subtf3+0x482 (/nix/store/wkiqjb44n5k0fwhmc523dvflspd47q3b-gcc-15.3.0-libgcc/lib/libgcc_s.so.1)",
+        29
+      ],
+      [
+        "__multf3+0x25 (/nix/store/wkiqjb44n5k0fwhmc523dvflspd47q3b-gcc-15.3.0-libgcc/lib/libgcc_s.so.1)",
+        10
+      ],
+      [
+        "__addtf3+0x25 (/nix/store/wkiqjb44n5k0fwhmc523dvflspd47q3b-gcc-15.3.0-libgcc/lib/libgcc_s.so.1)",
+        7
+      ],
+      [
+        "__multf3+0x133 (/nix/store/wkiqjb44n5k0fwhmc523dvflspd47q3b-gcc-15.3.0-libgcc/lib/libgcc_s.so.1)",
+        6
+      ],
+      [
+        "__multf3+0xac (/nix/store/wkiqjb44n5k0fwhmc523dvflspd47q3b-gcc-15.3.0-libgcc/lib/libgcc_s.so.1)",
+        6
+      ],
+      [
+        "__multf3+0x19d (/nix/store/wkiqjb44n5k0fwhmc523dvflspd47q3b-gcc-15.3.0-libgcc/lib/libgcc_s.so.1)",
+        6
+      ]
+    ],
+    "generic_cut_geometry": [
+      [
+        "mpfr_set_prec+0x31 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        15
+      ],
+      [
+        "cfree@GLIBC_2.2.5+0x6c (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        4
+      ],
+      [
+        "mpfr_clear+0xc (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        4
+      ],
+      [
+        "_int_malloc+0xff (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        4
+      ],
+      [
+        "<numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float> as core::ops::arith::Mul<&numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float>>>::mul+0x2b9 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        3
+      ],
+      [
+        "_int_free_chunk+0x2d (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        3
+      ],
+      [
+        "<numerica::domains::float::multiprecision::Float as core::ops::arith::Add<&numerica::domains::float::multiprecision::Float>>::add+0xd7 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        2
+      ],
+      [
+        "_int_malloc+0x93c (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        2
+      ],
+      [
+        "_int_malloc+0x942 (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        2
+      ],
+      [
+        "<numerica::domains::float::multiprecision::Float>::prec+0x6 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        2
+      ],
+      [
+        "mpfr_set_d+0x1b6 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        2
+      ],
+      [
+        "mpfr_cmp_d+0x44 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        2
+      ]
+    ],
+    "generic_reduction_and_bookkeeping": [
+      [
+        "mpfr_clear+0xc (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        17
+      ],
+      [
+        "mpfr_set_prec+0x31 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        13
+      ],
+      [
+        "unlink_chunk.isra.0+0x2f (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        7
+      ],
+      [
+        "<numerica::domains::float::multiprecision::Float>::prec+0x3 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        6
+      ],
+      [
+        "_int_free_chunk+0x2d (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        6
+      ],
+      [
+        "<numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float> as core::ops::arith::Mul<&numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float>>>::mul+0x122 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        5
+      ],
+      [
+        "<numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float> as core::clone::Clone>::clone+0x57 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        5
+      ],
+      [
+        "<numerica::domains::float::multiprecision::Float>::prec+0x0 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        4
+      ],
+      [
+        "_int_malloc+0x583 (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        4
+      ],
+      [
+        "<symbolica::evaluate::batch::BatchExpressionEvaluator<numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float>>>::evaluate_program+0x1cc1 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        4
+      ],
+      [
+        "malloc_consolidate+0x128 (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        4
+      ],
+      [
+        "mpfr_set_d+0x4e (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        4
+      ]
+    ],
+    "other_mp_worker": [
+      [
+        "__gmpn_copyi_zen+0x12 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        11
+      ],
+      [
+        "__gmpn_copyi_zen+0xf3 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        5
+      ],
+      [
+        "__gmpn_copyi_zen+0x4 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        5
+      ],
+      [
+        "__gmpn_copyi_zen+0x0 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        4
+      ],
+      [
+        "__gmpn_mul_basecase_zen+0x24e (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        4
+      ],
+      [
+        "__gmpn_mul_basecase_zen+0x514 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        4
+      ],
+      [
+        "__gmpn_mul_basecase_zen+0x152 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        4
+      ],
+      [
+        "__gmpn_mul_basecase_zen+0x247 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        4
+      ],
+      [
+        "__gmpn_mul_basecase_zen+0x1ec (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        3
+      ],
+      [
+        "__gmpn_mul_basecase_zen+0x24a (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        2
+      ],
+      [
+        "__gmpn_mul_basecase_zen+0x407 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        2
+      ],
+      [
+        "__gmpn_mul_basecase_zen+0x1af (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        2
+      ]
+    ],
+    "tensor_expansion_and_contraction": [
+      [
+        "<numerica::domains::float::multiprecision::Float>::prec+0x3 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        8
+      ],
+      [
+        "<numerica::domains::float::multiprecision::Float>::prec+0x0 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        6
+      ],
+      [
+        "<numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float> as core::ops::arith::Mul<&numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float>>>::mul+0xc8 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        6
+      ],
+      [
+        "<numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float> as core::ops::arith::Mul<&numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float>>>::mul+0x122 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        6
+      ],
+      [
+        "cfree@GLIBC_2.2.5+0x6c (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        5
+      ],
+      [
+        "<numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float> as core::ops::arith::Mul<&numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float>>>::mul+0x61 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        5
+      ],
+      [
+        "mpfr_set_d+0x58 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        5
+      ],
+      [
+        "mpfr_clear+0xc (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        5
+      ],
+      [
+        "<numerica::domains::float::multiprecision::Float>::prec+0x6 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        5
+      ],
+      [
+        "mpfr_round_raw+0x308 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        4
+      ],
+      [
+        "mpfr_set4+0x19 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        4
+      ],
+      [
+        "__gmpn_copyi_zen+0x0 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        4
+      ]
+    ],
+    "scalar_masters": [
+      [
+        "mpfr_set_prec+0x31 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        5
+      ],
+      [
+        "malloc+0x73 (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        3
+      ],
+      [
+        "mpfr_set_d+0x58 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        3
+      ],
+      [
+        "<numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float> as core::ops::arith::Mul<&numerica::domains::float::complex::Complex<numerica::domains::float::multiprecision::Float>>>::mul+0x1ff (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        2
+      ],
+      [
+        "<numerica::domains::float::multiprecision::Float>::prec+0x3 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        2
+      ],
+      [
+        "mpfr_cmp_d+0x2 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        2
+      ],
+      [
+        "mpfr_cmp_d+0x0 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        2
+      ],
+      [
+        "<numerica::domains::float::multiprecision::Float as core::ops::arith::Sub<&numerica::domains::float::multiprecision::Float>>::sub+0xd3 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        2
+      ],
+      [
+        "mpfr_set_d+0x22f (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        2
+      ],
+      [
+        "_int_malloc+0x583 (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        2
+      ],
+      [
+        "mpfr_set4+0x2c7 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        2
+      ],
+      [
+        "malloc+0x5c (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        2
+      ]
+    ],
+    "bridge_numeric_transport": [
+      [
+        "malloc_consolidate+0xc5 (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        1
+      ],
+      [
+        "core::ptr::drop_glue::<numerica::domains::backend::integer::implementation::MultiPrecisionInteger>+0x2a (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        1
+      ],
+      [
+        "malloc_consolidate+0xfd (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        1
+      ],
+      [
+        "realloc+0x49 (/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6)",
+        1
+      ],
+      [
+        "<alloc::raw_vec::RawVecInner>::finish_grow+0x2 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        1
+      ],
+      [
+        "madloop_ninjars::parse_record_at_precision+0x221 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/mp-qcd3-point44/qcd3/SubProcesses/P0_uux_zgg/check)",
+        1
+      ]
+    ]
+  }
+}

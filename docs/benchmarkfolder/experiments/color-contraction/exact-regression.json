@@ -1,0 +1,35 @@
+{
+  "scope": "Actual generated mixed-order CREATE/MERGE routines; synthetic shared inputs",
+  "production_modified": false,
+  "dimensions": {
+    "prefix": "ML5_0_",
+    "NBORNAMPS": 4,
+    "NCOLORROWS": 272,
+    "NAMPSO": 5,
+    "NLOOPGROUPS": 55,
+    "NCOMB": 16,
+    "NSQUAREDSO": 4
+  },
+  "comparison": "Whole LOOPCOEFS bit patterns and cumulative batch IEEE exception flags",
+  "contract": "IEEE flags are not cleared by user code during an active cache batch",
+  "source_polynomial_sha256": "b7a67eea8b21c9474affb1eccbd2175d1fd9e1f55129795c85ca2afb9b17549f",
+  "prototype_sha256": "39116b46d9c048f80d724ab1bdd23263dcfbbc62b4df4c3e4500f2b596970c5d",
+  "tests": [
+    {
+      "kind": 8,
+      "build_passed": true,
+      "driver_sha256": "8157b66b42278b68955dcf9ab454a3668fcb9f0f4585e6a5dc7bd498f2fbf5b0",
+      "passed": true,
+      "stdout": " PASS           8        1280\n",
+      "stderr": ""
+    },
+    {
+      "kind": 16,
+      "build_passed": true,
+      "driver_sha256": "7d93286ded7aabd01836df6817ea80f9cf8703403048d0fb6d8f6f02c5406dee",
+      "passed": true,
+      "stdout": " PASS          16        1280\n",
+      "stderr": ""
+    }
+  ]
+}

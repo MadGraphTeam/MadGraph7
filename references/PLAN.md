@@ -322,3 +322,13 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   The production port passes 43 polynomial tests, 30,000 additional compiled
   bit/IEEE/fallback comparisons, four polynomial exporter checks and the
   model-helper/internal-parameter exporter check, with independent code review.
+- Completed scalar-cache, generic-tensor dependency-plan and color-contraction
+  experiments are retained with their failed attempts and exact numerical
+  comparisons. None established a sufficient runtime benefit for production.
+  A warmed Zgg rescue profile assigns only 7.7% of samples to scalar masters,
+  versus 44.1% to QP Fortran numerator construction and 33.5% to generic tensor
+  and reduction work. Further performance effort follows those measured costs.
+  The extra Zgg rescue remains an aggregate direction-check failure; same-input
+  256-bit reductions show that original Ninja's smaller direction difference
+  is not evidence of uniformly smaller per-reduction error. Stability thresholds
+  and independent direction evaluation remain unchanged.

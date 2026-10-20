@@ -1,0 +1,28 @@
+warning: constant `CACHE_BYTES` is never used
+  --> .benchmark-work/experiments/generic-tensor-plan/bridge/src/tensor_plan.rs:10:11
+   |
+10 | pub const CACHE_BYTES: usize = 32 << 20;
+   |           ^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `CACHE_ENTRIES` is never used
+  --> .benchmark-work/experiments/generic-tensor-plan/bridge/src/tensor_plan.rs:11:11
+   |
+11 | pub const CACHE_ENTRIES: usize = 8;
+   |           ^^^^^^^^^^^^^
+
+warning: methods `slot` and `slots` are never used
+   --> .benchmark-work/experiments/generic-tensor-plan/bridge/src/tensor_plan.rs:278:12
+    |
+ 97 | impl Plan {
+    | --------- methods in this implementation
+...
+278 |     pub fn slot(&self, dense_address: usize) -> usize {
+    |            ^^^^
+...
+283 |     pub fn slots(&self) -> usize {
+    |            ^^^^^
+
+warning: 3 warnings emitted
+
