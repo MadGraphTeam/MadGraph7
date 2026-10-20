@@ -1,0 +1,9 @@
+e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8
+2026-10-17 13:07:44 +0000
+Evaluate the binary64 dilogarithm series with Estrin's scheme
+e0bbb78d560c6efaffd1198ba356d9ea8d80fb9e
+2025-05-26 11:43:22 +0200
+Implement more arithmetic operators on Atom, AtomView and Symbol (#32)
+9cdc2949cdb153478c1eca0d40690dc0abfc616e
+2026-10-19 22:21:26 +0000
+Round Float products once and keep factors of ±1 exact

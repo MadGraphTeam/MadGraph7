@@ -1554,6 +1554,9 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
         for tool in ['pjfry','golem','samurai','ninja','collier','ninjars']:
             tool_dir='%s_dir'%tool
             if not tool_dir in self.tir_dir:
+                if tool == 'ninjars' and tool_var[tool] in tools:
+                    raise MadGraph5Error("Requested NinjaRS library is unavailable. "
+                                         "Run 'install ninjars'.")
                 continue
             tool_libpath=self.tir_dir[tool_dir]
             tool_libname="lib%s.a"%tool
