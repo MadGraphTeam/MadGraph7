@@ -1,0 +1,687 @@
+# SPDX-License-Identifier: 0BSD
+"""Loop kernel catalogue of the v2 engine against independent UFO lowerings.
+
+Oracles: the UFO Lorentz structure contracted numerically with spenso, the
+tree engine's own full-variant oriented kernels, and the model-declared UFO
+propagator numerators (not the tree propagator rules the catalogue uses).
+"""
+
+from __future__ import annotations
+
+import random
+from decimal import Decimal, getcontext
+from fractions import Fraction
+
+import pytest
+
+pytestmark = pytest.mark.loop_fast
+
+
+@pytest.fixture(scope="module")
+def compiled(loop_sm_compiled_model):
+    from pyamplicol.models.loading import load_compiled_model
+
+    return load_compiled_model(loop_sm_compiled_model)
+
+
+@pytest.fixture(scope="module")
+def catalogue(compiled):
+    from pyamplicol.loops.v2.catalogue import build_loop_kernel_catalogue
+
+    return build_loop_kernel_catalogue(compiled)
+
+
+@pytest.fixture(scope="module")
+def full_model(compiled):
+    from pyamplicol.loops.v2.catalogue import compile_tree_kernel_variant
+    from pyamplicol.models.external import CompiledUFOModel
+
+    return CompiledUFOModel(compile_tree_kernel_variant(compiled, "full"))
+
+
+class ExactPoint:
+    """Random exact complex-rational inputs shared by kernels and oracles."""
+
+    def __init__(self, compiled, seed: int) -> None:
+        from symbolica import E
+
+        self.random = random.Random(seed)
+        self.E = E
+        # Parameters with a vanishing default lower as massless/zero in the
+        # tree engine, so they stay zero here as well.
+        self.parameters = {
+            name: E("0") if complex(*value) == 0 else self.rational(positive=True)
+            for name, value in compiled.parameter_defaults.items()
+        }
+
+    def rational(self, *, positive: bool = False):
+        numerator = self.random.randint(1 if positive else -40, 40)
+        return self.E(f"{numerator or 1}/{self.random.randint(1, 13)}")
+
+    def complex(self):
+        from symbolica import Expression
+
+        return self.rational() + self.rational() * Expression.I
+
+    def vector(self, length: int, *, real: bool = False):
+        return tuple(self.rational() if real else self.complex() for _ in range(length))
+
+
+def _decimal(value: Fraction) -> str:
+    # Symbolica derives the working precision from each input's digits.
+    return format(Decimal(value.numerator) / Decimal(value.denominator), ".70e")
+
+
+def _substitute(expression, values):
+    from symbolica import E, Replacement
+
+    return (
+        E(expression)
+        .replace_multiple([Replacement(E(symbol), value) for symbol, value in values])
+        .expand()
+    )
+
+
+def _zero(expression) -> bool:
+    return expression.expand().to_canonical_string() == "0"
+
+
+def _monomial(q, exponents):
+    from symbolica import E
+
+    value = E("1")
+    for component, power in zip(q, exponents, strict=True):
+        value *= component**power
+    return value
+
+
+def _kernel_inputs(kernel, point, *, shift=(), blocks=(), block_momenta=(), loop=()):
+    values = []
+    for item in kernel.inputs:
+        if item.role == "model-parameter":
+            values.append((item.symbol, point.parameters[item.model_parameter_name]))
+        else:
+            source = {
+                "loop-momentum": shift,
+                "block-current": blocks,
+                "block-momentum": block_momenta,
+                "loop-current": loop,
+            }[item.role]
+            values.append((item.symbol, source[item.component]))
+    return values
+
+
+def _apply_kernel(kernel, entries, dimension, values, q, loop, block_values=()):
+    """Sum entries of a fused/split segment or numerator applied to ``loop``."""
+
+    from symbolica import E
+
+    coefficients = [_substitute(item, values) for item in kernel.exact_expressions]
+    outputs = [E("0")] * dimension
+    for entry, coefficient in zip(entries, coefficients, strict=True):
+        term = coefficient * _monomial(q, entry.exponents) * loop[entry.loop_in]
+        for block, component in zip(block_values, entry.blocks, strict=True):
+            term *= block[component]
+        outputs[entry.out] += term
+    return [value.expand() for value in outputs]
+
+
+def _ufo_contraction(compiled, lorentz, spins, currents, momenta, open_leg):
+    """Numerically contract a normalized UFO Lorentz tensor with spenso."""
+
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.models import compiler_symbolica as sym
+    from pyamplicol.models.compiler_kernels import (
+        _ordered_dense_tensor_components,
+        _spin_axis_labels,
+        _spin_representations,
+        _spin_slots,
+    )
+
+    model_symbols = symbols.model(compiled.name)
+    library = sym.TensorLibrary.hep_lib_atom()
+    names = [
+        sym.TensorName(model_symbols.ufo_momentum_tensor_name(leg + 1))
+        for leg in range(len(spins))
+    ]
+    expression = sym.E(lorentz)
+    for leg, values in currents.items():
+        representations = _spin_representations(spins[leg])
+        if not representations:
+            expression *= values[0]
+            continue
+        name = sym.TensorName(f"loop_v2_oracle::current_{leg}")
+        library.register(sym.Tensor.dense(name(*representations), list(values)))
+        expression *= name(*_spin_slots(spins[leg], leg + 1)).to_expression()
+    for leg, values in momenta.items():
+        library.register(
+            sym.Tensor.dense(names[leg](sym.Representation.mink(4)), list(values))
+        )
+    labels = (
+        () if open_leg is None else _spin_axis_labels(spins[open_leg], open_leg + 1)
+    )
+    network = sym.TensorNetwork(
+        sym.as_tensor(expression) if labels else expression, library
+    )
+    network.execute(library=library)
+    return [
+        (sym.E("0") + value).expand()
+        for value in _ordered_dense_tensor_components(
+            network.result_tensor(library), labels
+        ).values
+    ]
+
+
+def _ufo_numerator(compiled, model, pdg, value, momentum, point):
+    """The model-declared UFO propagator numerator applied to ``value``."""
+
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.models.tensors import normalize_lorentz_expression
+
+    record = model._propagator_record(pdg)
+    spin = model.particle(pdg).spin
+    model_symbols = symbols.model(compiled.name)
+    normalized = normalize_lorentz_expression(
+        record.numerator, (spin, spin), model_symbols=model_symbols, vertex=False
+    )
+    numerator = model_symbols.expression(normalized.expression)
+    for record in compiled.ir.parameters:
+        if record.nature == "internal":
+            numerator = numerator.replace(
+                model_symbols.symbol(record.name),
+                model_symbols.expression(record.resolved_expression),
+            )
+    for name, parameter in point.parameters.items():
+        numerator = numerator.replace(model_symbols.symbol(name), parameter)
+    return _ufo_contraction(
+        compiled,
+        numerator.to_canonical_string(),
+        (spin, spin),
+        {0: value},
+        {0: momentum, 1: momentum},
+        open_leg=1,
+    )
+
+
+def _coupling(compiled, term, point):
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+
+    value = E(term.coupling_expression)
+    for name, parameter in point.parameters.items():
+        value = value.replace(
+            symbols.runtime_model_parameter(compiled.name, name), parameter
+        )
+    power = term.lc_color_normalization_power
+    return value * E(f"2^(-{power}/2)") if power else value
+
+
+def _particle(compiled, name):
+    return next(particle for particle in compiled.ir.particles if particle.name == name)
+
+
+def _segment_point(model, binding, point):
+    shift = point.vector(4, real=True)
+    q = point.vector(4, real=True)
+    loop = point.vector(binding.loop_in_dimension)
+    blocks = [point.vector(dimension) for dimension in binding.block_dimensions]
+    momenta = [point.vector(4, real=True) for _ in binding.attached_legs]
+    embedded = [
+        tuple(
+            value if not isinstance(value, float) else point.E("0")
+            for value in model._embed_weyl_current(species, chirality, block)
+        )
+        for species, chirality, block in zip(
+            binding.block_species,
+            binding.key.block_chiralities,
+            blocks,
+            strict=True,
+        )
+    ]
+    return shift, q, loop, blocks, momenta, embedded
+
+
+def test_segments_equal_ufo_vertex_times_propagator_numerator(
+    compiled, catalogue, full_model
+):
+    """Every segment equals UFO vertex x UFO propagator numerator, exactly."""
+
+    point = ExactPoint(compiled, seed=7)
+    model = full_model.with_runtime_parameters(point.parameters)
+    terms = {term.id: term for term in compiled.ir.vertex_terms}
+    tree_kernels = {
+        (kernel.term_ids, kernel.source_particle_legs): kernel
+        for kernel in full_model.compiled.ir.oriented_kernels
+    }
+    checked_against_tree = 0
+    for binding in catalogue.segments:
+        term = terms[binding.key.term_id]
+        kernel = catalogue.kernels[binding.kernel_id]
+        shift, q, loop, blocks, momenta, embedded = _segment_point(
+            model, binding, point
+        )
+        values = _kernel_inputs(
+            kernel,
+            point,
+            shift=shift,
+            blocks=[value for block in blocks for value in block],
+            block_momenta=[value for momentum in momenta for value in momentum],
+        )
+        split = binding.key.form == "split"
+        actual = _apply_kernel(
+            kernel,
+            binding.entries,
+            binding.loop_out_dimension,
+            values,
+            q,
+            loop,
+            blocks if split else (),
+        )
+
+        loop_momentum = [q[index] + shift[index] for index in range(4)]
+        out_momentum = [
+            loop_momentum[index] + sum(momentum[index] for momentum in momenta)
+            for index in range(4)
+        ]
+        currents = {binding.key.loop_in_leg: loop}
+        incoming = {binding.key.loop_in_leg: loop_momentum}
+        for leg, current, momentum in zip(
+            binding.attached_legs, embedded, momenta, strict=True
+        ):
+            currents[leg] = current
+            incoming[leg] = momentum
+        incoming[binding.key.loop_out_leg] = [-value for value in out_momentum]
+        spins = tuple(_particle(compiled, name).spin for name in term.particles)
+        coupling = _coupling(compiled, term, point)
+        vertex = [
+            coupling * value
+            for value in _ufo_contraction(
+                compiled,
+                term.lorentz_expression,
+                spins,
+                currents,
+                incoming,
+                binding.key.loop_out_leg,
+            )
+        ]
+        expected = _ufo_numerator(
+            compiled, model, binding.loop_out_species, vertex, out_momentum, point
+        )
+        assert len(actual) == len(expected) == binding.loop_out_dimension
+        assert all(
+            _zero(left - right) for left, right in zip(actual, expected, strict=True)
+        ), binding.key
+
+        legs = (
+            binding.key.loop_in_leg,
+            *binding.attached_legs,
+            binding.key.loop_out_leg,
+        )
+        tree = tree_kernels.get(((term.id,), legs))
+        if tree is None:
+            continue
+        # Tree couplings may be derived runtime parameters of the model.
+        tree_parameters = {
+            name: model._parameter_value(name) for name in tree.runtime_parameters
+        }
+        tree_vertex = model._projected_kernel_components(
+            tree,
+            loop,
+            blocks[0],
+            left_chirality=0,
+            right_chirality=binding.key.block_chiralities[0],
+            result_chirality=0,
+            left_momentum=loop_momentum,
+            right_momentum=momenta[0],
+            runtime_parameter_values=tree_parameters,
+        )
+        tree_coupling = model._resolved_kernel_coupling_expression(
+            tree, tree_parameters
+        )
+        expected = _ufo_numerator(
+            compiled,
+            model,
+            binding.loop_out_species,
+            [tree_coupling * value for value in tree_vertex],
+            out_momentum,
+            point,
+        )
+        assert all(
+            _zero(left - right) for left, right in zip(actual, expected, strict=True)
+        ), binding.key
+        checked_against_tree += 1
+    assert checked_against_tree > len(catalogue.segments) // 3
+
+
+def test_propagator_numerators_equal_the_ufo_declaration(compiled, catalogue):
+    from pyamplicol.models.external import CompiledUFOModel
+
+    point = ExactPoint(compiled, seed=11)
+    model = CompiledUFOModel(compiled)
+    for binding in catalogue.propagator_numerators:
+        kernel = catalogue.kernels[binding.kernel_id]
+        shift, q = point.vector(4, real=True), point.vector(4, real=True)
+        loop = point.vector(binding.dimension)
+        actual = _apply_kernel(
+            kernel,
+            binding.entries,
+            binding.dimension,
+            _kernel_inputs(kernel, point, shift=shift),
+            q,
+            loop,
+        )
+        momentum = [q[index] + shift[index] for index in range(4)]
+        expected = _ufo_numerator(
+            compiled, model, binding.species, loop, momentum, point
+        )
+        assert all(
+            _zero(left - right) for left, right in zip(actual, expected, strict=True)
+        ), binding.species
+
+
+def test_counterterm_sites_equal_the_ufo_counterterm_vertex(compiled, catalogue):
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.tensors import normalize_lorentz_expression
+
+    point = ExactPoint(compiled, seed=13)
+    model = CompiledUFOModel(compiled)
+    lorentz = {item["name"]: item for item in compiled.model["lorentz_structures"]}
+    assert catalogue.counterterm_sites
+    for binding in catalogue.counterterm_sites:
+        kernel = catalogue.kernels[binding.kernel_id]
+        blocks = [point.vector(dimension) for dimension in binding.block_dimensions]
+        momenta = [point.vector(4, real=True) for _ in binding.block_species]
+        (actual,) = (
+            _substitute(expression, values)
+            for expression in kernel.exact_expressions
+            for values in [
+                _kernel_inputs(
+                    kernel,
+                    point,
+                    blocks=[value for block in blocks for value in block],
+                    block_momenta=[value for momentum in momenta for value in momentum],
+                )
+            ]
+        )
+        spins = tuple(_particle(compiled, name).spin for name in binding.particles)
+        currents = {
+            leg: tuple(
+                value if not isinstance(value, float) else point.E("0")
+                for value in model._embed_weyl_current(species, chirality, block)
+            )
+            for leg, (species, chirality, block) in enumerate(
+                zip(
+                    binding.block_species,
+                    binding.key.block_chiralities,
+                    blocks,
+                    strict=True,
+                )
+            )
+        }
+        normalized = normalize_lorentz_expression(
+            lorentz[binding.lorentz_name]["structure"],
+            spins,
+            model_symbols=symbols.model(compiled.name),
+        ).expression
+        (expected,) = _ufo_contraction(
+            compiled, normalized, spins, currents, dict(enumerate(momenta)), None
+        )
+        assert _zero(actual - expected), binding.key
+    # Lorentz structures the tree normalizer cannot lower are recorded, never
+    # dropped (loop_sm: the Levi-Civita R2 vertices with a Z).
+    assert {item.vertex for item in catalogue.unsupported_counterterms} == {
+        "V_GGZ",
+        "V_GGGZ",
+    }
+    assert all("Epsilon" in item.reason for item in catalogue.unsupported_counterterms)
+
+
+def test_loop_sm_catalogue_structure(compiled, catalogue):
+    """Delta <= 1, both orientations, ghosts, massive Dirac lines and closures."""
+
+    by_name = {particle.name: particle.pdg_code for particle in compiled.ir.particles}
+    gluon, ghost, top = by_name["G"], by_name["gh"], by_name["t"]
+    assert {gluon, ghost, -ghost, top, -top} <= set(catalogue.loop_species)
+    assert max(binding.degree for binding in catalogue.segments) <= 1
+    assert max(binding.degree for binding in catalogue.propagator_numerators) <= 1
+    assert {binding.degree for binding in catalogue.segments} == {0, 1}
+
+    pairs = {
+        (binding.key.term_id, binding.key.loop_in_leg, binding.key.loop_out_leg)
+        for binding in catalogue.segments
+    }
+    assert all((term, out, into) in pairs for term, into, out in pairs)
+    forms = {}
+    for binding in catalogue.segments:
+        key = binding.key
+        forms.setdefault(
+            (key.term_id, key.loop_in_leg, key.loop_out_leg, key.block_chiralities),
+            set(),
+        ).add(key.form)
+    assert set(map(frozenset, forms.values())) == {frozenset({"fused", "split"})}
+
+    vertices = {binding.vertex for binding in catalogue.segments}
+    assert {"V_3", "V_4", "V_Ggh", "V_51"} <= vertices
+    ghost_segments = [
+        binding
+        for binding in catalogue.segments
+        if binding.loop_in_species in (ghost, -ghost)
+    ]
+    assert ghost_segments and all(
+        binding.block_species == (gluon,) for binding in ghost_segments
+    )
+    top_line = catalogue.propagator_numerator(top)
+    assert (top_line.propagator_kind, top_line.mass_parameter) == (
+        "dirac-fermion",
+        "MT",
+    )
+    assert any(entry.degree == 0 for entry in top_line.entries)
+    quartic = [binding for binding in catalogue.segments if binding.vertex == "V_4"]
+    assert quartic and all(len(binding.attached_legs) == 2 for binding in quartic)
+
+    signs = {}
+    for binding in catalogue.closures:
+        signs.setdefault(binding.species, set()).add(binding.sign)
+        kernel = catalogue.kernels[binding.kernel_id]
+        assert kernel.contract_kind == "loop-closure"
+        assert len(kernel.inputs) == binding.dimension
+    assert signs[gluon] == {1} and signs[ghost] == {-1} and signs[top] == {-1, 1}
+
+
+def test_tree_kernel_variants_differ_exactly_by_self_contractions(compiled, full_model):
+    """Transverse and full agree on conserved inputs, else differ by p_i.J_i."""
+
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+
+    transverse = {kernel.kind: kernel for kernel in compiled.ir.oriented_kernels}
+    full = {kernel.kind: kernel for kernel in full_model.compiled.ir.oriented_kernels}
+    assert transverse.keys() == full.keys()
+    changed = [
+        kind
+        for kind in transverse
+        if transverse[kind].component_expressions != full[kind].component_expressions
+    ]
+    assert [transverse[kind].particles for kind in changed] == [("G", "G", "G")]
+    assert all(
+        (transverse[kind].particles, transverse[kind].term_ids)
+        == (full[kind].particles, full[kind].term_ids)
+        for kind in transverse
+    )
+
+    model_symbols = symbols.model(compiled.name)
+    for kind in changed:
+        left = [model_symbols.kernel_component(kind, "left", i) for i in range(4)]
+        right = [model_symbols.kernel_component(kind, "right", i) for i in range(4)]
+        pl = [model_symbols.kernel_momentum(kind, "left", i) for i in range(4)]
+        pr = [model_symbols.kernel_momentum(kind, "right", i) for i in range(4)]
+
+        def dot(a, b):
+            return a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3]
+
+        difference = [
+            (E(f) - E(t)).expand()
+            for f, t in zip(
+                full[kind].component_expressions,
+                transverse[kind].component_expressions,
+                strict=True,
+            )
+        ]
+        assert not all(_zero(value) for value in difference)
+        # The difference is a combination of (p_L.L) R and (p_R.R) L whose
+        # coefficients (couplings) are free of currents and momenta.
+        left_scale = difference[0].coefficient(pl[0] * left[0] * right[0])
+        right_scale = difference[0].coefficient(pr[0] * right[0] * left[0])
+        kinematic = {
+            symbol.to_canonical_string() for symbol in (*left, *right, *pl, *pr)
+        }
+        for scale in (left_scale, right_scale):
+            assert not _zero(scale)
+            assert not kinematic & {
+                symbol.to_canonical_string() for symbol in scale.get_all_symbols(False)
+            }
+        for component, value in enumerate(difference):
+            expected = (
+                left_scale * dot(pl, left) * right[component]
+                + right_scale * dot(pr, right) * left[component]
+            )
+            assert _zero(value - expected)
+
+        # Conserved inputs: project random currents onto p.J = 0.
+        point = ExactPoint(compiled, seed=17)
+        momenta = [point.vector(4, real=True) for _ in range(2)]
+        currents = []
+        for momentum in momenta:
+            current = list(point.vector(4))
+            scale = dot(momentum, current) / dot(momentum, momentum)
+            currents.append(
+                [c - scale * p for c, p in zip(current, momentum, strict=True)]
+            )
+        values = [
+            (symbol.to_canonical_string(), value)
+            for symbols_, data in (
+                (left, currents[0]),
+                (right, currents[1]),
+                (pl, momenta[0]),
+                (pr, momenta[1]),
+            )
+            for symbol, value in zip(symbols_, data, strict=True)
+        ]
+        for f, t in zip(
+            full[kind].component_expressions,
+            transverse[kind].component_expressions,
+            strict=True,
+        ):
+            assert _zero(_substitute(f, values) - _substitute(t, values))
+
+
+def test_prepared_tree_catalog_carries_its_variant(compiled):
+    from pyamplicol.loops.v2.catalogue import (
+        compile_tree_kernel_variant,
+        prepared_tree_kernel_catalog,
+    )
+
+    assert compile_tree_kernel_variant(compiled, "transverse") is compiled
+    transverse = prepared_tree_kernel_catalog(compiled, "transverse")
+    full = prepared_tree_kernel_catalog(compiled, "full")
+    assert (transverse.tree_kernel_variant, full.tree_kernel_variant) == (
+        "transverse",
+        "full",
+    )
+    assert [binding.key for binding in transverse.vertex_bindings] == [
+        binding.key for binding in full.vertex_bindings
+    ]
+    changed = {
+        binding.key.particles
+        for left, binding in zip(
+            transverse.vertex_bindings, full.vertex_bindings, strict=True
+        )
+        if transverse.kernels[left.kernel_id].exact_expressions
+        != full.kernels[binding.kernel_id].exact_expressions
+    }
+    assert changed == {(21, 21, 21)}
+
+
+def test_symjit_and_exact_evaluators(compiled, catalogue):
+    """Binary64 SymJIT, arbitrary precision and the exact saved state."""
+
+    import numpy as np
+    from symbolica import E, Evaluator, Expression
+
+    from pyamplicol.loops.v2.catalogue import compile_loop_kernel
+
+    getcontext().prec = 80
+    point = ExactPoint(compiled, seed=19)
+
+    def fraction() -> Fraction:
+        return Fraction(point.random.randint(-40, 40), point.random.randint(1, 13))
+
+    by_name = {particle.name: particle.pdg_code for particle in compiled.ir.particles}
+    gluon_segment = next(
+        binding
+        for binding in catalogue.segments
+        if binding.vertex == "V_3" and binding.key.form == "fused"
+    )
+    selected = {
+        "gluon segment": catalogue.kernels[gluon_segment.kernel_id],
+        "top numerator": catalogue.kernels[
+            catalogue.propagator_numerator(by_name["t"]).kernel_id
+        ],
+        "counterterm site": catalogue.kernels[catalogue.counterterm_sites[0].kernel_id],
+    }
+    for label, kernel in selected.items():
+        evaluator = compile_loop_kernel(kernel)
+        restored = Evaluator.load(evaluator.exact_state())
+        pairs = [
+            [
+                (
+                    Fraction(
+                        point.parameters[
+                            item.model_parameter_name
+                        ].to_canonical_string()
+                    ),
+                    Fraction(0),
+                )
+                if item.role == "model-parameter"
+                else (fraction(), Fraction(0))
+                if "momentum" in item.role
+                else (fraction(), fraction())
+                for item in kernel.inputs
+            ]
+            for _ in range(3)
+        ]
+        inputs = [
+            [E(str(re)) + E(str(im)) * Expression.I for re, im in row] for row in pairs
+        ]
+        binary64 = evaluator.evaluate_complex(
+            np.array(
+                [[complex(value.evaluate({})) for value in row] for row in inputs],
+                dtype=np.complex128,
+            )
+        )
+        for row, values, exact_pairs in zip(binary64, inputs, pairs, strict=True):
+            substitutions = [
+                (item.symbol, value)
+                for item, value in zip(kernel.inputs, values, strict=True)
+            ]
+            exact = [
+                _substitute(expression, substitutions)
+                for expression in kernel.exact_expressions
+            ]
+            reference = np.array([complex(value.evaluate({})) for value in exact])
+            scale = max(1.0, float(np.max(np.abs(reference))))
+            assert np.max(np.abs(row - reference)) <= 1e-14 * scale, label
+
+            precise = [(_decimal(re), _decimal(im)) for re, im in exact_pairs]
+            expected = [value.evaluate({}, 80).to_decimal_tuple() for value in exact]
+            for result in (
+                evaluator.evaluate_with_precision(precise, 60),
+                restored.evaluate_complex_with_prec(precise, 60),
+            ):
+                for value, (re, im) in zip(result, expected, strict=True):
+                    actual_re, actual_im = value.to_decimal_tuple()
+                    assert abs(Decimal(actual_re) - Decimal(re)) <= Decimal("1e-50")
+                    assert abs(Decimal(actual_im) - Decimal(im)) <= Decimal("1e-50")
