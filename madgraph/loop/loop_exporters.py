@@ -66,6 +66,12 @@ pjoin = os.path.join
 _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0] + '/'
 logger = logging.getLogger('madgraph.loop_exporter')
 
+_FACTORIZED_WL_VERTEX = r'(?:FFV1L1_2|FFV1L2_1)'
+_PRIVATE_MP_WL_ROUTINE = (r'(?:TERMINAL_WL_\d+_\d+'
+    r'(?:_FACTOR_'+_FACTORIZED_WL_VERTEX+r')?|'
+    r'UPDATE_WL_[2-4]_1_FACTOR_'+_FACTORIZED_WL_VERTEX+r')')
+_PRIVATE_MP_WL_CALL = r'\bCALL MP_\w*'+_PRIVATE_MP_WL_ROUTINE+r'\('
+
 #===============================================================================
 # LoopExporterFortran
 #===============================================================================
@@ -1582,7 +1588,7 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
             helascalls_replace_dict['helas_calls']=\
                                            '\n'.join(helas_calls[k:k + n_helas])
             if replace_dict.get('terminal_ieee_use'):
-                has_private = re.search(r'\bCALL MP_\w*TERMINAL_WL_\d+_\d+\(',
+                has_private = re.search(_PRIVATE_MP_WL_CALL,
                     helascalls_replace_dict['helas_calls'])
                 for key in ('terminal_ieee_use', 'terminal_ieee_declarations'):
                     helascalls_replace_dict[key] = replace_dict[key] if has_private else ''
@@ -2677,6 +2683,13 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                   wl_update[0],wl_update[1],loop_over_vertex_coefs_first=False))
                 subroutines.append(mp_poly_writer.write_compact_wl_updater(\
                   wl_update[0],wl_update[1],loop_over_vertex_coefs_first=False))            
+            if wl_update[1] == 1 and 2 <= wl_update[0] <= 4:
+                for vertex in ('FFV1L1_2', 'FFV1L2_1'):
+                    name = (mp_poly_writer.sub_prefix+'UPDATE_WL_%d_1_FACTOR_%s' %
+                            (wl_update[0], vertex))
+                    if len(name) <= 63:
+                        subroutines.append(mp_poly_writer.write_factorized_wl_updater(
+                            wl_update[0], vertex))
                 
         terminal = helas_call_writers.FortranUFOHelasCallWriterOptimized.\
             get_terminal_wavefunctions(matrix_element)
@@ -2688,6 +2701,13 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             else:
                 subroutines.append(mp_poly_writer.write_compact_wl_updater(
                     left, right, terminal=True))
+            if right == 1 and 2 <= left <= 4:
+                for vertex in ('FFV1L1_2', 'FFV1L2_1'):
+                    name = (mp_poly_writer.sub_prefix+'TERMINAL_WL_%d_1_FACTOR_%s' %
+                            (left, vertex))
+                    if len(name) <= 63:
+                        subroutines.append(mp_poly_writer.write_factorized_wl_updater(
+                            left, vertex, terminal=True))
         writer.writelines('\n\n'.join(subroutines),
                                        context=self.get_context(matrix_element))
 
@@ -2718,6 +2738,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 return False
             stem = re.escape('MP_'+prefix.upper())
             update = re.compile(r'CALL '+stem+r'(UPDATE|TERMINAL)_WL_(\d+)_(\d+)'
+                r'(_FACTOR_'+_FACTORIZED_WL_VERTEX+r')?'
                 r'\(WL\(1,0,1,(-?\d+)\),(\d+),COEFS,(\d+),(\d+),'
                 r'WL\(1,0,1,(\d+)\)(,WL_ENTRY_INEXACT)?\)')
             create = re.compile(r'CALL '+stem+r'CREATE_LOOP_COEFS\(WL\(1,0,1,(\d+)\),')
@@ -2726,12 +2747,14 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 for line in sources[name].splitlines():
                     match = update.fullmatch(line)
                     if match:
-                        mode, left, right, origin, cut, ins, outs, target, flag = match.groups()
+                        mode, left, right, factor, origin, cut, ins, outs, target, flag = match.groups()
                         left, right, origin, cut, ins, outs, target = map(
                             int, (left, right, origin, cut, ins, outs, target))
                         if (target in producers or target == origin or
                                 (origin not in producers and origin not in (-1, 0)) or
-                                (mode == 'TERMINAL') != bool(flag)):
+                                (mode == 'TERMINAL' or bool(factor)) != bool(flag) or
+                                (factor and not (2 <= left <= 4 and right == 1 and
+                                                 ins == outs == 4 and 0 <= cut <= 4))):
                             return False
                         info = dict(loop_mother_rank=left, vertex_rank=right,
                             loop_mother_number=origin, lcut_size=cut,
@@ -2787,6 +2810,45 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         except (OSError, ValueError, KeyError):
             return False
 
+    @staticmethod
+    def factorize_mp_coef_calls(calls, prefix):
+        """Select guarded private contractions after recognized vertex calls.
+
+        Selection is local to one generated wavefunction call block. The
+        Fortran helper verifies the actual stored derivative rows and falls
+        back to the original updater whenever its numerical contract fails.
+        """
+        vertex_call = re.compile(r'CALL MP_('+_FACTORIZED_WL_VERTEX+r')\(.*?,COEFS\)')
+        updater = re.compile(r'(CALL MP_'+re.escape(prefix)+
+            r'(UPDATE|TERMINAL)_WL_([2-4])_1)'
+            r'\(WL\(1,0,1,(-?\d+)\),([0-4]),COEFS,4,4,'
+            r'WL\(1,0,1,(\d+)\)(,WL_ENTRY_INEXACT)?\)')
+        result = []
+        for block in calls:
+            vertex = None
+            lines = block.splitlines(keepends=True)
+            for index, raw in enumerate(lines):
+                line = raw.rstrip('\r\n')
+                if not line.strip() or line.lstrip().startswith(('#', '!')):
+                    continue
+                producer = vertex_call.fullmatch(line)
+                if producer:
+                    vertex = producer[1]
+                    continue
+                match = updater.fullmatch(line)
+                if (vertex and match and int(match[4]) != int(match[6]) and
+                        int(match[6]) > 0 and
+                        (match[2] == 'TERMINAL') == bool(match[7])):
+                    name = match[1][5:]+'_FACTOR_'+vertex
+                    if len(name) <= 63:
+                        rewritten = line.replace(match[1], 'CALL '+name, 1)
+                        if match[2] == 'UPDATE':
+                            rewritten = rewritten[:-1]+',WL_ENTRY_INEXACT)'
+                        lines[index] = rewritten+raw[len(line):]
+                vertex = None
+            result.append(''.join(lines))
+        return result
+
     def write_mp_compute_loop_coefs(self, writer, matrix_element, fortran_model,
                                    _terminal=True):
         """Create the write_mp_compute_loop_coefs.f file."""
@@ -2826,10 +2888,12 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                                                            in coef_construction]
         self.turn_to_mp_calls(coef_construction)
         self.turn_to_mp_calls(coef_merging)        
+        coef_construction = self.factorize_mp_coef_calls(
+            coef_construction, matrix_element.rep_dict['proc_prefix'])
         # Add the intrinsic call after MP conversion, which prefixes all CALLs.
         private_call = re.compile(r'(?m)^(CALL MP_'+re.escape(
-            matrix_element.rep_dict['proc_prefix'])+r'TERMINAL_WL_\d+_\d+\()')
-        has_terminal = any(private_call.search(call) for call in coef_construction)
+            matrix_element.rep_dict['proc_prefix'])+_PRIVATE_MP_WL_ROUTINE+r'\()')
+        has_private_updates = any(private_call.search(call) for call in coef_construction)
         coef_construction = [private_call.sub(
             r'CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)\n\1', call)
             for call in coef_construction]
@@ -2854,7 +2918,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                         continue_label = 3000,
                         momenta_array_name = 'MP_P',
                         context=context)
-        if has_terminal:
+        if has_private_updates:
             replace_dict['terminal_ieee_use'] = '      USE, INTRINSIC :: IEEE_EXCEPTIONS\n'
             replace_dict['terminal_ieee_declarations'] = '      LOGICAL WL_ENTRY_INEXACT\n'
         file=self.split_HELASCALLS(writer,replace_dict,\

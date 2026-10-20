@@ -1,0 +1,21 @@
+{
+  "complete": false,
+  "acceptance_eligible": false,
+  "cpu": 2,
+  "executable_sha256": "e5067f8bd8975124ef78ed28599016cc315979bef9009df5408d7ec14f9e26f5",
+  "executable": ".benchmark-work/experiments/symmetric-factorization-production/dev-nlo-v3/nlo/SubProcesses/P0_uux_zg/check_poles",
+  "source_manifest_sha256": "48eb166527d5ec983cdace2a77e4c40636658771f8ac3f2de0c2c94bc6bd154e",
+  "subprocess_timeout_seconds": 300,
+  "scope": "Unmodified actual NLO executable; forced QP CTModeRun4 with QP integrands for both backends. The analytic pole tolerance is the existing1e-5 FKS control, not the full benchmark coefficient gate. Factor call fast/fallback counts are not instrumented or claimed.",
+  "runs": {
+    "6": {
+      "returncode": -15,
+      "elapsed_seconds_diagnostic": 36.801226197043434,
+      "log_sha256": "bdb9837bc6562973d6dece2f13f12a343dfbc1ec2843ba7580251937398205f4",
+      "card_sha256": "9198ce1f85e3fb63e9b8a2d3142155972f9831eb12246f1dfcbd1c4e9b7169e8"
+    }
+  },
+  "error": "AssertionError()",
+  "original_cards_restored": true,
+  "source_and_executable_unchanged": true
+}

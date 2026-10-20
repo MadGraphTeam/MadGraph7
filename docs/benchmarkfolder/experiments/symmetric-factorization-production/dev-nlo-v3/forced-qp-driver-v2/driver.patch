@@ -1,0 +1,30 @@
+--- original/check_poles.f
++++ diagnostic/check_poles.f
+@@ -12,6 +12,7 @@
+       parameter (pi=3.1415926535897932385d0)
+       parameter (zero = 0d0)
+       integer npointsChecked
++      integer factor_attempts
+       integer i, j, k
+       integer return_code
+       double precision tolerance, tolerance_default
+@@ -150,6 +151,7 @@
+ 
+       nfail = 0
+       npointsChecked = 0
++      factor_attempts = 0
+ 
+ c Make sure that stability checks are always used by MadLoop, even for
+ c initialization
+@@ -230,7 +232,11 @@
+ c a per-point constant ratio between the MadFKS and the OLP poles and the
+ c check fails for every point. Go through binothlha_frame, exactly as the
+ c integration does at fks_singular.f (bornsoftvirtual).
++          factor_attempts = factor_attempts + 1
++          if (factor_attempts.gt.100) stop 97
++          call force_stability_check(.false.)
+           call binothlha_frame(p_born, born, virt_wgt)
++          write(*,*) 'FACTOR_DIAGNOSTIC_RETURN',ret_code_ml
+           if (npointsChecked.eq.0) then
+              if (mod(ret_code_ml,100)/10.eq.3 .or.
+      &            mod(ret_code_ml,100)/10.eq.4) then

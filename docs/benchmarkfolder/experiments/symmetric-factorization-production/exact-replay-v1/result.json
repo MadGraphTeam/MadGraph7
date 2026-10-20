@@ -1,0 +1,782 @@
+{
+  "complete": true,
+  "acceptance_eligible": false,
+  "production_generator_sha256": "0836eacabd299d53b4cb09a4df5af5a6bc1099745dd63c7ffacf4924c3bc5e2d",
+  "replay_script_sha256": "d8a56ff20794fb6e16f363277359d85ee59d25dfb03c0b1f8b08ffabdddc200a",
+  "sealed_campaign_sha256": "b8905aac9785be20b3e4473f043cd839473d01024a740d6c8e6682c31fc34395",
+  "scope": "Current production-generated helpers/public routines/constants must equal the sealed independently validated sources, after renaming only the private helper declaration for the unchanged oracle driver. Compile with each original actual SA/NLO flag set and require every raw binary128 input/output/flag record identical to the independently exact-validated stream.",
+  "results": [
+    {
+      "key": "oracle-dumps-nlo-v1-nlo-MP_FFV1L1_2-rank2-full",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 0.6856248590629548,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 11.6657956460258,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L1_2-rank2-full/exact-oracle.json",
+      "original_exact_oracle_sha256": "b5a2ec1b89008a7e4852d8c78cd75509dbda3bc61d0e7e5c50922ecc92442e18",
+      "original_run_sha256": "d9393db7451a57b4b57131707bf1606b193802de66737a57e1aa1ea75d5b0b14",
+      "raw_dump_sha256": "bf0481294279a842bdd3c6d932ebe37e9d8a0a68fdd632988d05069abe91664a",
+      "original_raw_dump_sha256": "bf0481294279a842bdd3c6d932ebe37e9d8a0a68fdd632988d05069abe91664a",
+      "executable_sha256": "90cbe490c479cd3552612d08451adb61a2240d124d4085ec80f2c78a7b7c5ed3",
+      "sources": {
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "26929ebdcfe3d1f9948ea42505cd014840ae9b40fab8a91b5b18d4f89461f906",
+        "oracle.f90": "50dd1ebec42b87f0a1f9d2420c43378e90ddbe221389f484d158d215efc36741",
+        "factor.f": "53d6764406e66f7881b72eb3fdcc525209bfe6e6560cc98f5e2a82f1de7eca4d",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+      }
+    },
+    {
+      "key": "oracle-dumps-nlo-v1-nlo-MP_FFV1L1_2-rank2-terminal",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 0.44195799506269395,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 8.840067647979595,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L1_2-rank2-terminal/exact-oracle.json",
+      "original_exact_oracle_sha256": "b04bad538b0a6fd0c65cc5d21ea551cbb2d2bd087add4cb311aec9c41e08432f",
+      "original_run_sha256": "d9393db7451a57b4b57131707bf1606b193802de66737a57e1aa1ea75d5b0b14",
+      "raw_dump_sha256": "ebf04f23c1d3a85413ba4ce82f9d755a1afb1ffa96c75e65ce0ce53a6bcd2544",
+      "original_raw_dump_sha256": "ebf04f23c1d3a85413ba4ce82f9d755a1afb1ffa96c75e65ce0ce53a6bcd2544",
+      "executable_sha256": "50c17fc1db2273455e22a2ebdbf8e353ef835088d0afa2c773c5772c7f2c32aa",
+      "sources": {
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "original.f": "07fc52f177cb39efb571d204867b93dee075647ae97347bc1141eb8e113d4026",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "oracle.f90": "368ea61f6c28c61ccb01673f6ba7e960a1415d765f5d10d3923caf868e3e17ca",
+        "factor.f": "0911f1bb0911767484307cdf78300376b68f4e539e2038cd0bca1ffd3d056f55"
+      }
+    },
+    {
+      "key": "oracle-dumps-nlo-v1-nlo-MP_FFV1L1_2-rank4-full",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 2.815926602925174,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 9.196179801947437,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L1_2-rank4-full/exact-oracle.json",
+      "original_exact_oracle_sha256": "1fd84d95f1e177aedc713d9b11f14d80c8382d0cb31339e1318e8546c013be8c",
+      "original_run_sha256": "d9393db7451a57b4b57131707bf1606b193802de66737a57e1aa1ea75d5b0b14",
+      "raw_dump_sha256": "c964a5995b6308a9107a101f17fd9c1f92e2833f2daf78f35f98ade380dd7160",
+      "original_raw_dump_sha256": "c964a5995b6308a9107a101f17fd9c1f92e2833f2daf78f35f98ade380dd7160",
+      "executable_sha256": "4cc7cc0f76f1a07845cd8e64dbe64b01d9749b88d9f6525ebdd3ad464e27f7d0",
+      "sources": {
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "original.f": "58e41bb28b1cb3afc8d57707060471065aad63c201af26b4d693a71df2d78705",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "factor.f": "02807ff9927e7722ef5fc550a39f6c8f670e200a284fb60216b1d1cab4b74b62",
+        "oracle.f90": "7636816ff9eba3b319a2193a1d0b16eda968805fe2b3f038a9989b9756261f4b"
+      }
+    },
+    {
+      "key": "oracle-dumps-nlo-v1-nlo-MP_FFV1L1_2-rank4-terminal",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 1.419661897001788,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 7.657893840922043,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L1_2-rank4-terminal/exact-oracle.json",
+      "original_exact_oracle_sha256": "27800a7c6bd8dcf7413ac5b9e068b53376197563c7e6892bd5de7f20b1ff88fd",
+      "original_run_sha256": "d9393db7451a57b4b57131707bf1606b193802de66737a57e1aa1ea75d5b0b14",
+      "raw_dump_sha256": "c391d2704bef51f3e16a00fbd42fdc6324730b1863dbcfaaaf853b63eda66e26",
+      "original_raw_dump_sha256": "c391d2704bef51f3e16a00fbd42fdc6324730b1863dbcfaaaf853b63eda66e26",
+      "executable_sha256": "57fdf7a1002abd329bd9bc2b81c3ac515482f4c329123f93a0a52fcd51181416",
+      "sources": {
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "factor.f": "28a5fcfa64b145358cce5f04a436fc1b1b33e90dc037309fb02151053aca4b00",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "original.f": "9649e7c74e5f100577b05d63abf2c53e1424af3567e17d72305815913a6d7fef",
+        "oracle.f90": "2917063e3753d6ae63cc1d3875742772a67111bed60320da8339fba1c22cea78"
+      }
+    },
+    {
+      "key": "oracle-dumps-nlo-v1-nlo-MP_FFV1L2_1-rank2-full",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 0.648738648975268,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 8.341092942049727,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L2_1-rank2-full/exact-oracle.json",
+      "original_exact_oracle_sha256": "19372047ecaee751d01e83bcd97e60a6f3bfe79bcd0315e61c6d910b61f6945d",
+      "original_run_sha256": "d9393db7451a57b4b57131707bf1606b193802de66737a57e1aa1ea75d5b0b14",
+      "raw_dump_sha256": "bde9edaccc4020daca1b60d5102e7fc83b2fbb46d12586563628f47d1b65809f",
+      "original_raw_dump_sha256": "bde9edaccc4020daca1b60d5102e7fc83b2fbb46d12586563628f47d1b65809f",
+      "executable_sha256": "bd1471ebfbb69c41805d434ec32b047ed4f11f6066ff10e9b5e5fcfb27d38030",
+      "sources": {
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "factor.f": "5d71afc6125bad39fcdcdf21a4e27e52baff74c670145799a675e9012d9f0495",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "oracle.f90": "5570e5972e1b53492e1cb8b37d679aab7905db25d673c3045dff393ba8528775",
+        "original.f": "26929ebdcfe3d1f9948ea42505cd014840ae9b40fab8a91b5b18d4f89461f906"
+      }
+    },
+    {
+      "key": "oracle-dumps-nlo-v1-nlo-MP_FFV1L2_1-rank2-terminal",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 0.4337687509832904,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 8.02957830298692,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L2_1-rank2-terminal/exact-oracle.json",
+      "original_exact_oracle_sha256": "3043c8409cc8d73e58a7a3315eba3a5e3b8d925f346a28bf2d2c3dc9e17a61a6",
+      "original_run_sha256": "d9393db7451a57b4b57131707bf1606b193802de66737a57e1aa1ea75d5b0b14",
+      "raw_dump_sha256": "0a02b62f545921177e69743fd0929219e8e09afe4465fea2a06c79252f3f7407",
+      "original_raw_dump_sha256": "0a02b62f545921177e69743fd0929219e8e09afe4465fea2a06c79252f3f7407",
+      "executable_sha256": "e97b52403427525767e1147a8207aa1860d8b58c1cf1f7f694ea415adc8334e3",
+      "sources": {
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "factor.f": "82c5cd782b2fc16d949eb94b9f575088abbaa2c9103bfeebe00c94b855aaa552",
+        "oracle.f90": "a54ab92e07b009eb777b5ad317e3ae4709f45dbbf1d3bb313cfa6f152170502a",
+        "original.f": "07fc52f177cb39efb571d204867b93dee075647ae97347bc1141eb8e113d4026",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+      }
+    },
+    {
+      "key": "oracle-dumps-nlo-v1-nlo-MP_FFV1L2_1-rank4-full",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 2.082992329960689,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 6.370904369978234,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L2_1-rank4-full/exact-oracle.json",
+      "original_exact_oracle_sha256": "cbea947f593da504f213ac0613347a15b6a288378ef4be19405645dbc845d76f",
+      "original_run_sha256": "d9393db7451a57b4b57131707bf1606b193802de66737a57e1aa1ea75d5b0b14",
+      "raw_dump_sha256": "68c231207fbe2428128238c3f8f44db125257967da24a731697a66e4552123b0",
+      "original_raw_dump_sha256": "68c231207fbe2428128238c3f8f44db125257967da24a731697a66e4552123b0",
+      "executable_sha256": "6771de998429b3234c95176d6727315ddc5c59d509f7879def874957932e0c64",
+      "sources": {
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "original.f": "58e41bb28b1cb3afc8d57707060471065aad63c201af26b4d693a71df2d78705",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "factor.f": "1af163fd66436a277023a98fb6dae0ba1cd39c2c9be1b07252e08ada79f766a8",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "oracle.f90": "ddecee04610d09d1b9bcd11eeb2227dc8b9628327af854b51d363d7e237ddcce"
+      }
+    },
+    {
+      "key": "oracle-dumps-nlo-v1-nlo-MP_FFV1L2_1-rank4-terminal",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 1.4578168250154704,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 6.017699085990898,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L2_1-rank4-terminal/exact-oracle.json",
+      "original_exact_oracle_sha256": "b53f6a349819fd6049ca81eef72791bdf6a0348f0a72c4be71c760ba4d532de2",
+      "original_run_sha256": "d9393db7451a57b4b57131707bf1606b193802de66737a57e1aa1ea75d5b0b14",
+      "raw_dump_sha256": "9be92e58fae9239f302fd4f4db29323c78f0f24c73a36be6f5910922d6acef13",
+      "original_raw_dump_sha256": "9be92e58fae9239f302fd4f4db29323c78f0f24c73a36be6f5910922d6acef13",
+      "executable_sha256": "504ce494c8ebdd827c79538f10865045b752b8c670acce666ed6895fcf301f68",
+      "sources": {
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "oracle.f90": "17bb26542e0b1b0df49a84d1b75628077bca07e485278747008090e92512d495",
+        "factor.f": "f8d783e64ac229d28cbcac366c95f257fd968b63256c0a6dbcb3824c68f77f20",
+        "original.f": "9649e7c74e5f100577b05d63abf2c53e1424af3567e17d72305815913a6d7fef"
+      }
+    },
+    {
+      "key": "oracle-dumps-sa-v1-standalone-MP_FFV1L1_2-rank2-full",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 0.7157714139902964,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 12.85213280795142,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L1_2-rank2-full/exact-oracle.json",
+      "original_exact_oracle_sha256": "b5a2ec1b89008a7e4852d8c78cd75509dbda3bc61d0e7e5c50922ecc92442e18",
+      "original_run_sha256": "c76004877a63e2a3918320963339aa727afd7c2dee7f5537d3d3851f5817531d",
+      "raw_dump_sha256": "bf0481294279a842bdd3c6d932ebe37e9d8a0a68fdd632988d05069abe91664a",
+      "original_raw_dump_sha256": "bf0481294279a842bdd3c6d932ebe37e9d8a0a68fdd632988d05069abe91664a",
+      "executable_sha256": "1670815a7325cbc4ecba1346318e16fd2d770d37cff34fe3008d980de3c05368",
+      "sources": {
+        "oracle.f90": "50dd1ebec42b87f0a1f9d2420c43378e90ddbe221389f484d158d215efc36741",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "original.f": "26929ebdcfe3d1f9948ea42505cd014840ae9b40fab8a91b5b18d4f89461f906",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "factor.f": "53d6764406e66f7881b72eb3fdcc525209bfe6e6560cc98f5e2a82f1de7eca4d"
+      }
+    },
+    {
+      "key": "oracle-dumps-sa-v1-standalone-MP_FFV1L1_2-rank2-terminal",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 0.1733158710412681,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 10.417068296927027,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L1_2-rank2-terminal/exact-oracle.json",
+      "original_exact_oracle_sha256": "b04bad538b0a6fd0c65cc5d21ea551cbb2d2bd087add4cb311aec9c41e08432f",
+      "original_run_sha256": "c76004877a63e2a3918320963339aa727afd7c2dee7f5537d3d3851f5817531d",
+      "raw_dump_sha256": "ebf04f23c1d3a85413ba4ce82f9d755a1afb1ffa96c75e65ce0ce53a6bcd2544",
+      "original_raw_dump_sha256": "ebf04f23c1d3a85413ba4ce82f9d755a1afb1ffa96c75e65ce0ce53a6bcd2544",
+      "executable_sha256": "1cab625351fd94c4654fcee8083402e2c697789bc3f5c81cb80a5d368d90b415",
+      "sources": {
+        "original.f": "07fc52f177cb39efb571d204867b93dee075647ae97347bc1141eb8e113d4026",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "oracle.f90": "368ea61f6c28c61ccb01673f6ba7e960a1415d765f5d10d3923caf868e3e17ca",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "factor.f": "0911f1bb0911767484307cdf78300376b68f4e539e2038cd0bca1ffd3d056f55"
+      }
+    },
+    {
+      "key": "oracle-dumps-sa-v1-standalone-MP_FFV1L1_2-rank4-full",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 1.6851925778901204,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 3.247986778966151,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L1_2-rank4-full/exact-oracle.json",
+      "original_exact_oracle_sha256": "1fd84d95f1e177aedc713d9b11f14d80c8382d0cb31339e1318e8546c013be8c",
+      "original_run_sha256": "c76004877a63e2a3918320963339aa727afd7c2dee7f5537d3d3851f5817531d",
+      "raw_dump_sha256": "c964a5995b6308a9107a101f17fd9c1f92e2833f2daf78f35f98ade380dd7160",
+      "original_raw_dump_sha256": "c964a5995b6308a9107a101f17fd9c1f92e2833f2daf78f35f98ade380dd7160",
+      "executable_sha256": "09988e196ba43eaca52a1716556d457e2b359236cc2066784743dc8242f2674c",
+      "sources": {
+        "oracle.f90": "7636816ff9eba3b319a2193a1d0b16eda968805fe2b3f038a9989b9756261f4b",
+        "original.f": "58e41bb28b1cb3afc8d57707060471065aad63c201af26b4d693a71df2d78705",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "factor.f": "02807ff9927e7722ef5fc550a39f6c8f670e200a284fb60216b1d1cab4b74b62"
+      }
+    },
+    {
+      "key": "oracle-dumps-sa-v1-standalone-MP_FFV1L1_2-rank4-terminal",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 0.577137541025877,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 3.933394360006787,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L1_2-rank4-terminal/exact-oracle.json",
+      "original_exact_oracle_sha256": "27800a7c6bd8dcf7413ac5b9e068b53376197563c7e6892bd5de7f20b1ff88fd",
+      "original_run_sha256": "c76004877a63e2a3918320963339aa727afd7c2dee7f5537d3d3851f5817531d",
+      "raw_dump_sha256": "c391d2704bef51f3e16a00fbd42fdc6324730b1863dbcfaaaf853b63eda66e26",
+      "original_raw_dump_sha256": "c391d2704bef51f3e16a00fbd42fdc6324730b1863dbcfaaaf853b63eda66e26",
+      "executable_sha256": "79c800112f67bc57a7004bcab7cb23db29582b2915bdd47667bff1bfee8a3d5b",
+      "sources": {
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "factor.f": "28a5fcfa64b145358cce5f04a436fc1b1b33e90dc037309fb02151053aca4b00",
+        "oracle.f90": "2917063e3753d6ae63cc1d3875742772a67111bed60320da8339fba1c22cea78",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "original.f": "9649e7c74e5f100577b05d63abf2c53e1424af3567e17d72305815913a6d7fef"
+      }
+    },
+    {
+      "key": "oracle-dumps-sa-v1-standalone-MP_FFV1L2_1-rank2-full",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 0.24692496401257813,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 3.1575961359776556,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L2_1-rank2-full/exact-oracle.json",
+      "original_exact_oracle_sha256": "19372047ecaee751d01e83bcd97e60a6f3bfe79bcd0315e61c6d910b61f6945d",
+      "original_run_sha256": "c76004877a63e2a3918320963339aa727afd7c2dee7f5537d3d3851f5817531d",
+      "raw_dump_sha256": "bde9edaccc4020daca1b60d5102e7fc83b2fbb46d12586563628f47d1b65809f",
+      "original_raw_dump_sha256": "bde9edaccc4020daca1b60d5102e7fc83b2fbb46d12586563628f47d1b65809f",
+      "executable_sha256": "708193846396b7aeb00ba35592130565492a7716261f86891e66bd8e970a7fa1",
+      "sources": {
+        "factor.f": "5d71afc6125bad39fcdcdf21a4e27e52baff74c670145799a675e9012d9f0495",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "original.f": "26929ebdcfe3d1f9948ea42505cd014840ae9b40fab8a91b5b18d4f89461f906",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "oracle.f90": "5570e5972e1b53492e1cb8b37d679aab7905db25d673c3045dff393ba8528775",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+      }
+    },
+    {
+      "key": "oracle-dumps-sa-v1-standalone-MP_FFV1L2_1-rank2-terminal",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 0.16715873591601849,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 3.8715527409221977,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L2_1-rank2-terminal/exact-oracle.json",
+      "original_exact_oracle_sha256": "3043c8409cc8d73e58a7a3315eba3a5e3b8d925f346a28bf2d2c3dc9e17a61a6",
+      "original_run_sha256": "c76004877a63e2a3918320963339aa727afd7c2dee7f5537d3d3851f5817531d",
+      "raw_dump_sha256": "0a02b62f545921177e69743fd0929219e8e09afe4465fea2a06c79252f3f7407",
+      "original_raw_dump_sha256": "0a02b62f545921177e69743fd0929219e8e09afe4465fea2a06c79252f3f7407",
+      "executable_sha256": "6f92cdcbd30ab8122027b98136521ca21d48b9525227fc1db2192acd52468e8d",
+      "sources": {
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "factor.f": "82c5cd782b2fc16d949eb94b9f575088abbaa2c9103bfeebe00c94b855aaa552",
+        "original.f": "07fc52f177cb39efb571d204867b93dee075647ae97347bc1141eb8e113d4026",
+        "oracle.f90": "a54ab92e07b009eb777b5ad317e3ae4709f45dbbf1d3bb313cfa6f152170502a"
+      }
+    },
+    {
+      "key": "oracle-dumps-sa-v1-standalone-MP_FFV1L2_1-rank4-full",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 0.9689030909212306,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 1.9153836849145591,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L2_1-rank4-full/exact-oracle.json",
+      "original_exact_oracle_sha256": "cbea947f593da504f213ac0613347a15b6a288378ef4be19405645dbc845d76f",
+      "original_run_sha256": "c76004877a63e2a3918320963339aa727afd7c2dee7f5537d3d3851f5817531d",
+      "raw_dump_sha256": "68c231207fbe2428128238c3f8f44db125257967da24a731697a66e4552123b0",
+      "original_raw_dump_sha256": "68c231207fbe2428128238c3f8f44db125257967da24a731697a66e4552123b0",
+      "executable_sha256": "cd312cbc52f46fefb6860c0a9c51ca87fb939af3b575c4b12b1ac892ace89636",
+      "sources": {
+        "factor.f": "1af163fd66436a277023a98fb6dae0ba1cd39c2c9be1b07252e08ada79f766a8",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "oracle.f90": "ddecee04610d09d1b9bcd11eeb2227dc8b9628327af854b51d363d7e237ddcce",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "original.f": "58e41bb28b1cb3afc8d57707060471065aad63c201af26b4d693a71df2d78705"
+      }
+    },
+    {
+      "key": "oracle-dumps-sa-v1-standalone-MP_FFV1L2_1-rank4-terminal",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 0.5587743469513953,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 1.9492234189528972,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L2_1-rank4-terminal/exact-oracle.json",
+      "original_exact_oracle_sha256": "b53f6a349819fd6049ca81eef72791bdf6a0348f0a72c4be71c760ba4d532de2",
+      "original_run_sha256": "c76004877a63e2a3918320963339aa727afd7c2dee7f5537d3d3851f5817531d",
+      "raw_dump_sha256": "9be92e58fae9239f302fd4f4db29323c78f0f24c73a36be6f5910922d6acef13",
+      "original_raw_dump_sha256": "9be92e58fae9239f302fd4f4db29323c78f0f24c73a36be6f5910922d6acef13",
+      "executable_sha256": "4bf3ba60c804f20096eff6234f62447a9d66da06fcc4e9162c16695e75ad9611",
+      "sources": {
+        "factor.f": "f8d783e64ac229d28cbcac366c95f257fd968b63256c0a6dbcb3824c68f77f20",
+        "original.f": "9649e7c74e5f100577b05d63abf2c53e1424af3567e17d72305815913a6d7fef",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "oracle.f90": "17bb26542e0b1b0df49a84d1b75628077bca07e485278747008090e92512d495"
+      }
+    },
+    {
+      "key": "oracle-dumps-rank3-v1-nlo-MP_FFV1L1_2-rank3-full",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 0.4960463069146499,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 1.851091507007368,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-rank3-v1/nlo-MP_FFV1L1_2-rank3-full/exact-oracle.json",
+      "original_exact_oracle_sha256": "5cb12ee3a393fe79b27374d8cda925b8fae9af5beb02c08e669a5dda2cb19675",
+      "original_run_sha256": "5f8c2234ca2340752e01642f2924993ed03ce355b4012c1b70386f2c4fe8eb9c",
+      "raw_dump_sha256": "3a42fb3ddbbfb936007ec68087175e9b85241597f5e26bd4b9da58e2bfc05c36",
+      "original_raw_dump_sha256": "3a42fb3ddbbfb936007ec68087175e9b85241597f5e26bd4b9da58e2bfc05c36",
+      "executable_sha256": "edcd1fbc7d2a3ca50a170da5a8e1be5a153a619c27051db4dfd0c472b43cc6f1",
+      "sources": {
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "5fe3fd2379757f51b338ea7152a2be2fda76950d17c8789535f3c8ed51483202",
+        "original.f": "86cb2ca2056442a44968e38de6a10f594e198719e7a1e3ccf1a6139cb6113885",
+        "oracle.f90": "96b5a01b37ae05d4a786f3cee796e3e29ca443f7c7faba4bb6fedfb18690b177"
+      }
+    },
+    {
+      "key": "oracle-dumps-rank3-v1-nlo-MP_FFV1L1_2-rank3-terminal",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 0.30606292898301035,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 1.9472388989524916,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-rank3-v1/nlo-MP_FFV1L1_2-rank3-terminal/exact-oracle.json",
+      "original_exact_oracle_sha256": "542733415452534b2fa53d723ec8149197dff41dfd8bab3877a1f033db90da26",
+      "original_run_sha256": "5f8c2234ca2340752e01642f2924993ed03ce355b4012c1b70386f2c4fe8eb9c",
+      "raw_dump_sha256": "c514f3b832d26e9e341fff52ef1243adf1a8b4706bd83f830daa9ac45fb3e0ba",
+      "original_raw_dump_sha256": "c514f3b832d26e9e341fff52ef1243adf1a8b4706bd83f830daa9ac45fb3e0ba",
+      "executable_sha256": "9de7bcb45489d7cd09cc708776fa5f7bce777db44f7fb6304315fb697d7d0a78",
+      "sources": {
+        "factor.f": "5acb776d64a94986b6b14c3913265bc7ac59d2055cd275899b9d6b443d1b4f2b",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "original.f": "c007bb557956993c8602f49e2811736bcdb77c5ad2539e74c45ee1919b8d6feb",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "oracle.f90": "b0851773295e0035c5fba233823552893b710ceaca936964094209d6f05f3b6c"
+      }
+    },
+    {
+      "key": "oracle-dumps-rank3-v1-nlo-MP_FFV1L2_1-rank3-full",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 0.4866371490061283,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 1.809433629969135,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-rank3-v1/nlo-MP_FFV1L2_1-rank3-full/exact-oracle.json",
+      "original_exact_oracle_sha256": "21052169a11228c8b6159bb144dac6539971872e5f3142fb5d41d77c0eb3b23c",
+      "original_run_sha256": "5f8c2234ca2340752e01642f2924993ed03ce355b4012c1b70386f2c4fe8eb9c",
+      "raw_dump_sha256": "785402f1404cb2f67286440d086dabcc064c362667487e6de9fe864f56a9dbb8",
+      "original_raw_dump_sha256": "785402f1404cb2f67286440d086dabcc064c362667487e6de9fe864f56a9dbb8",
+      "executable_sha256": "6b564da420b3e080b5cca9beca9d739be66b5ac24203f45ac4b0de6ce26fa5e5",
+      "sources": {
+        "original.f": "86cb2ca2056442a44968e38de6a10f594e198719e7a1e3ccf1a6139cb6113885",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "oracle.f90": "1903f33b44af7b8ab6781ae369a95c763b25d9b7f1ca550230d5738ba77c3998",
+        "factor.f": "5aeb41e0f3775fd8c667bc26dd493413b58652524e843dacdbf0303faa0a0642",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+      }
+    },
+    {
+      "key": "oracle-dumps-rank3-v1-nlo-MP_FFV1L2_1-rank3-terminal",
+      "returncode": 0,
+      "dump_identical": true,
+      "seconds": 0.3221051829168573,
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 1.998654713970609,
+        "output": ""
+      },
+      "original_exact_oracle": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-rank3-v1/nlo-MP_FFV1L2_1-rank3-terminal/exact-oracle.json",
+      "original_exact_oracle_sha256": "368a41f92d456bcf4018aa1ff342382b80d82ddf3d8194fa94cea4ddda234e78",
+      "original_run_sha256": "5f8c2234ca2340752e01642f2924993ed03ce355b4012c1b70386f2c4fe8eb9c",
+      "raw_dump_sha256": "5acda392e648dd28e8badb7932ef590a1fa49ba454d4fc887e708f29fc888931",
+      "original_raw_dump_sha256": "5acda392e648dd28e8badb7932ef590a1fa49ba454d4fc887e708f29fc888931",
+      "executable_sha256": "0904065237ae79fbf4898be62858fe67d8342556fd94aac350c575e8a3c20414",
+      "sources": {
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "factor.f": "893ff7b7f809de899117bc5009304ed6a794eff765ffd3a50d5f4a3df7b6dbd8",
+        "oracle.f90": "a2e2efc951bac568bc2cdf12b240b796006fd33b4970c015ceb297fdf2481adc",
+        "original.f": "c007bb557956993c8602f49e2811736bcdb77c5ad2539e74c45ee1919b8d6feb",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+      }
+    }
+  ]
+}

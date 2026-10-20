@@ -1,0 +1,68 @@
+./shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1599: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/tmpk45iumb0/batch.inc' mode='r' encoding='UTF-8'>
+  template_name)).read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1610: ResourceWarning: unclosed file <FortranWriter name='batch_1.f' mode='wb' closefd=True>
+  writers.FortranWriter(filename).writelines(helascalls_file,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1610: ResourceWarning: unclosed file <FortranWriter name='batch_2.f' mode='wb' closefd=True>
+  writers.FortranWriter(filename).writelines(helascalls_file,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1610: ResourceWarning: unclosed file <FortranWriter name='batch_3.f' mode='wb' closefd=True>
+  writers.FortranWriter(filename).writelines(helascalls_file,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1599: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/tmpbnkqfc9b/batch.inc' mode='r' encoding='UTF-8'>
+  template_name)).read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1610: ResourceWarning: unclosed file <FortranWriter name='batch_1.f' mode='wb' closefd=True>
+  writers.FortranWriter(filename).writelines(helascalls_file,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1610: ResourceWarning: unclosed file <FortranWriter name='batch_2.f' mode='wb' closefd=True>
+  writers.FortranWriter(filename).writelines(helascalls_file,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1610: ResourceWarning: unclosed file <FortranWriter name='batch_3.f' mode='wb' closefd=True>
+  writers.FortranWriter(filename).writelines(helascalls_file,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+......../shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1599: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/tmplv06e2tm/batch.inc' mode='r' encoding='UTF-8'>
+  template_name)).read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1610: ResourceWarning: unclosed file <FortranWriter name='batch_1.f' mode='wb' closefd=True>
+  writers.FortranWriter(filename).writelines(helascalls_file,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1610: ResourceWarning: unclosed file <FortranWriter name='batch_2.f' mode='wb' closefd=True>
+  writers.FortranWriter(filename).writelines(helascalls_file,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1610: ResourceWarning: unclosed file <FortranWriter name='batch_3.f' mode='wb' closefd=True>
+  writers.FortranWriter(filename).writelines(helascalls_file,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1599: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/tmpa957gohg/batch.inc' mode='r' encoding='UTF-8'>
+  template_name)).read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1610: ResourceWarning: unclosed file <FortranWriter name='batch_1.f' mode='wb' closefd=True>
+  writers.FortranWriter(filename).writelines(helascalls_file,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1610: ResourceWarning: unclosed file <FortranWriter name='batch_2.f' mode='wb' closefd=True>
+  writers.FortranWriter(filename).writelines(helascalls_file,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1610: ResourceWarning: unclosed file <FortranWriter name='batch_3.f' mode='wb' closefd=True>
+  writers.FortranWriter(filename).writelines(helascalls_file,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.../shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1599: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/tmp1jwrcqai/batch.inc' mode='r' encoding='UTF-8'>
+  template_name)).read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1610: ResourceWarning: unclosed file <FortranWriter name='batch_1.f' mode='wb' closefd=True>
+  writers.FortranWriter(filename).writelines(helascalls_file,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1610: ResourceWarning: unclosed file <FortranWriter name='batch_2.f' mode='wb' closefd=True>
+  writers.FortranWriter(filename).writelines(helascalls_file,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1610: ResourceWarning: unclosed file <FortranWriter name='batch_3.f' mode='wb' closefd=True>
+  writers.FortranWriter(filename).writelines(helascalls_file,
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/loop/loop_exporters.py:1599: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/tmpsv_tiz56/batch.inc' mode='r' encoding='UTF-8'>
+  template_name)).read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+........
+----------------------------------------------------------------------
+Ran 20 tests in 0.353s
+
+OK

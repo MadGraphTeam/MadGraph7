@@ -1,0 +1,14 @@
+{
+  "status": "cancelled-after-driver-policy-conflict",
+  "numerical_failure": false,
+  "tracked_child_pid": 2323215,
+  "tracked_parent_pid": 2323005,
+  "signal": "SIGTERM",
+  "reason": "Stock BinothLHA forces stability checks, but CTModeRun4 deliberately returns unchecked H1. SLOOPMATRIX_THRES repeats and relabels every H1 forced result as initialization T4. check_poles discards all such results while npointsChecked is zero. This repeats indefinitely independently of polynomial optimization. Stopped after36.8seconds; exact raw output retained.",
+  "source_locations": [
+    "SubProcesses/BinothLHA.f:132 FORCE_STABILITY_CHECK(.TRUE.)",
+    "V0_uux_zg/loop_matrix.f:SLOOPMATRIX_THRES H==1 retry/T4 mapping",
+    "SubProcesses/check_poles.f:235 initialization skip"
+  ],
+  "next_control": "Separate cloned check_poles driver disables FORCE_STABILITY_CHECK before each call and records statuses with bounded attempt count; unchanged helper/numerical code, forced unchecked QP only, no stability acceptance claim."
+}

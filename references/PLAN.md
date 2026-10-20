@@ -524,6 +524,27 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   recomputes the result from raw timings and binds source/runtime identities.
   The private Fortran production port is undergoing validation; the latest
   fully validated numerical revision remains b44d20e7.
+- The production QP helper now reproduces all 250,880 retained FFV oracle
+  outputs exactly. Forty-seven polynomial tests pass, including 408 compiled
+  guard/IEEE cases; twenty exporter/terminal tests pass. Independent helper
+  and exporter reviews find no blocker. A fresh CLI QCD3 export selects the
+  expected 136 private calls and passes all 100 Ninja/NinjaRS points; Ninja
+  reproduces the sealed original rows exactly, and both backends retain
+  98 DP evaluations and two QP rescues. This dirty-source diagnostic is retained
+  separately. Fresh NLO generation selects nine empty-prefix rank2 factor
+  calls and passes the complete FO build, soft/collinear checks and twenty
+  normal Ninja pole controls. A separately retained bounded driver passes
+  twenty forced-QP pole controls each for Ninja and NinjaRS; these unchecked
+  H1 results establish QP execution, not stability acceptance. The production
+  port is ready for its intermediate commit, followed by refreshed clean
+  generation/proofs and full-suite collection.
+- The fresh QCD3 diagnostic also exposes an outstanding NinjaRS runtime cost:
+  its single warmed traversal is about twice the candidate Ninja time, despite
+  identical DP/QP counts. This is not final acceptance timing. A separate
+  complete warmed-run profile attributes about half its samples to MP tensor,
+  reduction, masters and geometry work; numeric transport is below one percent.
+  An isolated allocation-only bridge study and an independently validated DP
+  factorization study are investigating this gap. No runtime gate is claimed.
 - Corrected-original reference collection completes the first six core streams,
   then reaches the unchanged 7,200-second startup timeout during QCD4 CutTools
   initialization, before any accepted QCD4 measurement. The failed full-suite

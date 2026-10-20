@@ -1,0 +1,342 @@
+diff --git a/madgraph/loop/loop_exporters.py b/madgraph/loop/loop_exporters.py
+index 54941a678..fdcb0e0d7 100755
+--- a/madgraph/loop/loop_exporters.py
++++ b/madgraph/loop/loop_exporters.py
+@@ -66,6 +66,12 @@ pjoin = os.path.join
+ _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0] + '/'
+ logger = logging.getLogger('madgraph.loop_exporter')
+ 
++_FACTORIZED_WL_VERTEX = r'(?:FFV1L1_2|FFV1L2_1)'
++_PRIVATE_MP_WL_ROUTINE = (r'(?:TERMINAL_WL_\d+_\d+'
++    r'(?:_FACTOR_'+_FACTORIZED_WL_VERTEX+r')?|'
++    r'UPDATE_WL_[2-4]_1_FACTOR_'+_FACTORIZED_WL_VERTEX+r')')
++_PRIVATE_MP_WL_CALL = r'\bCALL MP_\w*'+_PRIVATE_MP_WL_ROUTINE+r'\('
++
+ #===============================================================================
+ # LoopExporterFortran
+ #===============================================================================
+@@ -1582,7 +1588,7 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
+             helascalls_replace_dict['helas_calls']=\
+                                            '\n'.join(helas_calls[k:k + n_helas])
+             if replace_dict.get('terminal_ieee_use'):
+-                has_private = re.search(r'\bCALL MP_\w*TERMINAL_WL_\d+_\d+\(',
++                has_private = re.search(_PRIVATE_MP_WL_CALL,
+                     helascalls_replace_dict['helas_calls'])
+                 for key in ('terminal_ieee_use', 'terminal_ieee_declarations'):
+                     helascalls_replace_dict[key] = replace_dict[key] if has_private else ''
+@@ -2677,6 +2683,13 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
+                   wl_update[0],wl_update[1],loop_over_vertex_coefs_first=False))
+                 subroutines.append(mp_poly_writer.write_compact_wl_updater(\
+                   wl_update[0],wl_update[1],loop_over_vertex_coefs_first=False))            
++            if wl_update[1] == 1 and 2 <= wl_update[0] <= 4:
++                for vertex in ('FFV1L1_2', 'FFV1L2_1'):
++                    name = (mp_poly_writer.sub_prefix+'UPDATE_WL_%d_1_FACTOR_%s' %
++                            (wl_update[0], vertex))
++                    if len(name) <= 63:
++                        subroutines.append(mp_poly_writer.write_factorized_wl_updater(
++                            wl_update[0], vertex))
+                 
+         terminal = helas_call_writers.FortranUFOHelasCallWriterOptimized.\
+             get_terminal_wavefunctions(matrix_element)
+@@ -2688,6 +2701,13 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
+             else:
+                 subroutines.append(mp_poly_writer.write_compact_wl_updater(
+                     left, right, terminal=True))
++            if right == 1 and 2 <= left <= 4:
++                for vertex in ('FFV1L1_2', 'FFV1L2_1'):
++                    name = (mp_poly_writer.sub_prefix+'TERMINAL_WL_%d_1_FACTOR_%s' %
++                            (left, vertex))
++                    if len(name) <= 63:
++                        subroutines.append(mp_poly_writer.write_factorized_wl_updater(
++                            left, vertex, terminal=True))
+         writer.writelines('\n\n'.join(subroutines),
+                                        context=self.get_context(matrix_element))
+ 
+@@ -2718,6 +2738,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
+                 return False
+             stem = re.escape('MP_'+prefix.upper())
+             update = re.compile(r'CALL '+stem+r'(UPDATE|TERMINAL)_WL_(\d+)_(\d+)'
++                r'(_FACTOR_'+_FACTORIZED_WL_VERTEX+r')?'
+                 r'\(WL\(1,0,1,(-?\d+)\),(\d+),COEFS,(\d+),(\d+),'
+                 r'WL\(1,0,1,(\d+)\)(,WL_ENTRY_INEXACT)?\)')
+             create = re.compile(r'CALL '+stem+r'CREATE_LOOP_COEFS\(WL\(1,0,1,(\d+)\),')
+@@ -2726,12 +2747,14 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
+                 for line in sources[name].splitlines():
+                     match = update.fullmatch(line)
+                     if match:
+-                        mode, left, right, origin, cut, ins, outs, target, flag = match.groups()
++                        mode, left, right, factor, origin, cut, ins, outs, target, flag = match.groups()
+                         left, right, origin, cut, ins, outs, target = map(
+                             int, (left, right, origin, cut, ins, outs, target))
+                         if (target in producers or target == origin or
+                                 (origin not in producers and origin not in (-1, 0)) or
+-                                (mode == 'TERMINAL') != bool(flag)):
++                                (mode == 'TERMINAL' or bool(factor)) != bool(flag) or
++                                (factor and not (2 <= left <= 4 and right == 1 and
++                                                 ins == outs == 4 and 0 <= cut <= 4))):
+                             return False
+                         info = dict(loop_mother_rank=left, vertex_rank=right,
+                             loop_mother_number=origin, lcut_size=cut,
+@@ -2787,6 +2810,45 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
+         except (OSError, ValueError, KeyError):
+             return False
+ 
++    @staticmethod
++    def factorize_mp_coef_calls(calls, prefix):
++        """Select guarded private contractions after recognized vertex calls.
++
++        Selection is local to one generated wavefunction call block. The
++        Fortran helper verifies the actual stored derivative rows and falls
++        back to the original updater whenever its numerical contract fails.
++        """
++        vertex_call = re.compile(r'CALL MP_('+_FACTORIZED_WL_VERTEX+r')\(.*?,COEFS\)')
++        updater = re.compile(r'(CALL MP_'+re.escape(prefix)+
++            r'(UPDATE|TERMINAL)_WL_([2-4])_1)'
++            r'\(WL\(1,0,1,(-?\d+)\),([0-4]),COEFS,4,4,'
++            r'WL\(1,0,1,(\d+)\)(,WL_ENTRY_INEXACT)?\)')
++        result = []
++        for block in calls:
++            vertex = None
++            lines = block.splitlines(keepends=True)
++            for index, raw in enumerate(lines):
++                line = raw.rstrip('\r\n')
++                if not line.strip() or line.lstrip().startswith(('#', '!')):
++                    continue
++                producer = vertex_call.fullmatch(line)
++                if producer:
++                    vertex = producer[1]
++                    continue
++                match = updater.fullmatch(line)
++                if (vertex and match and int(match[4]) != int(match[6]) and
++                        int(match[6]) > 0 and
++                        (match[2] == 'TERMINAL') == bool(match[7])):
++                    name = match[1][5:]+'_FACTOR_'+vertex
++                    if len(name) <= 63:
++                        rewritten = line.replace(match[1], 'CALL '+name, 1)
++                        if match[2] == 'UPDATE':
++                            rewritten = rewritten[:-1]+',WL_ENTRY_INEXACT)'
++                        lines[index] = rewritten+raw[len(line):]
++                vertex = None
++            result.append(''.join(lines))
++        return result
++
+     def write_mp_compute_loop_coefs(self, writer, matrix_element, fortran_model,
+                                    _terminal=True):
+         """Create the write_mp_compute_loop_coefs.f file."""
+@@ -2826,10 +2888,12 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
+                                                            in coef_construction]
+         self.turn_to_mp_calls(coef_construction)
+         self.turn_to_mp_calls(coef_merging)        
++        coef_construction = self.factorize_mp_coef_calls(
++            coef_construction, matrix_element.rep_dict['proc_prefix'])
+         # Add the intrinsic call after MP conversion, which prefixes all CALLs.
+         private_call = re.compile(r'(?m)^(CALL MP_'+re.escape(
+-            matrix_element.rep_dict['proc_prefix'])+r'TERMINAL_WL_\d+_\d+\()')
+-        has_terminal = any(private_call.search(call) for call in coef_construction)
++            matrix_element.rep_dict['proc_prefix'])+_PRIVATE_MP_WL_ROUTINE+r'\()')
++        has_private_updates = any(private_call.search(call) for call in coef_construction)
+         coef_construction = [private_call.sub(
+             r'CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)\n\1', call)
+             for call in coef_construction]
+@@ -2854,7 +2918,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
+                         continue_label = 3000,
+                         momenta_array_name = 'MP_P',
+                         context=context)
+-        if has_terminal:
++        if has_private_updates:
+             replace_dict['terminal_ieee_use'] = '      USE, INTRINSIC :: IEEE_EXCEPTIONS\n'
+             replace_dict['terminal_ieee_declarations'] = '      LOGICAL WL_ENTRY_INEXACT\n'
+         file=self.split_HELASCALLS(writer,replace_dict,\
+diff --git a/madgraph/various/q_polynomial.py b/madgraph/various/q_polynomial.py
+index 8413567e6..ab23a5428 100755
+--- a/madgraph/various/q_polynomial.py
++++ b/madgraph/various/q_polynomial.py
+@@ -693,6 +693,188 @@ END FUNCTION
+                 'SUBROUTINE '+name+'(', 'SUBROUTINE '+name+'_DENSE(', 1)
+         return result
+ 
++    def write_factorized_wl_updater(self, rank, vertex, terminal=False):
++        """Private QP FFV updater sharing the four derivative contractions.
++
++        The two supported fermion orientations have derivative rows related by
++        signed real/imaginary permutations. Check that relation on the actual
++        stored coefficients before forming B(:,1,:)*A once. This changes sum
++        association, so require bounded finite binary128 inputs, nearest
++        rounding, disabled traps and an already-sticky entry INEXACT flag.
++        Unsupported inputs use the unchanged public updater.
++
++        Only generated calls selected by the exporter may use these helpers.
++        A terminal call additionally needs the existing proof that only its
++        diagonal is consumed. Public routines and DP arithmetic are untouched.
++        """
++        if vertex.startswith('MP_'):
++            vertex = vertex[3:]
++        if (self.coef_format != 'complex*32' or rank not in (2, 3, 4) or
++                vertex not in ('FFV1L1_2', 'FFV1L2_1')):
++            raise PolynomialError("Factorized updates require QP FFV1L1_2 or "
++                                  "FFV1L2_1 at ranks 2, 3 or 4")
++
++        # Entries are (source row of B(:,q0,:), real phase, imaginary phase).
++        # Every model's rounded coefficients must satisfy these identities at
++        # runtime; the routine name alone never authorizes a factorization.
++        common_q0 = ((1, 1, 0), (2, 1, 0), (3, 1, 0), (4, 1, 0))
++        common_q2 = ((2, 0, 1), (1, 0, -1), (4, 0, -1), (3, 0, 1))
++        if vertex == 'FFV1L1_2':
++            rows = (common_q0,
++                ((2, -1, 0), (1, -1, 0), (4, 1, 0), (3, 1, 0)),
++                common_q2,
++                ((1, -1, 0), (2, 1, 0), (3, 1, 0), (4, -1, 0)))
++        else:
++            rows = (common_q0,
++                ((2, 1, 0), (1, 1, 0), (4, -1, 0), (3, -1, 0)),
++                common_q2,
++                ((1, 1, 0), (2, -1, 0), (3, -1, 0), (4, 1, 0)))
++        required = [set(row[j][0] for row in rows) for j in range(4)]
++
++        def rotate(value, real, imag):
++            if (real, imag) == (1, 0):
++                return value
++            if (real, imag) == (-1, 0):
++                return "(-%s)" % value
++            if (real, imag) == (0, 1):
++                return "CMPLX(-AIMAG(%s),REAL(%s,KIND=16),KIND=16)" % (value, value)
++            return "CMPLX(AIMAG(%s),-REAL(%s,KIND=16),KIND=16)" % (value, value)
++
++        name = self.sub_prefix + ('TERMINAL' if terminal else 'UPDATE')
++        name += '_WL_%d_1' % rank
++        private = name + '_FACTOR_' + vertex
++        if len(private) > 63:
++            raise PolynomialError("Factorized updater name exceeds 63 characters")
++        source = self.write_compact_wl_updater(rank, 1, terminal=terminal)
++        if not terminal:
++            source = source.split('\n\nSUBROUTINE ' + name + '_DENSE(', 1)[0]
++        source = source.replace('SUBROUTINE ' + name + '(',
++                                'SUBROUTINE ' + private + '(', 1)
++        if 'USE, INTRINSIC :: IEEE_EXCEPTIONS' not in source:
++            source = source.replace('  implicit none',
++                '  USE, INTRINSIC :: IEEE_EXCEPTIONS\n  implicit none', 1)
++        if not terminal:
++            source = source.replace('OUT_SIZE,OUT)\n',
++                'OUT_SIZE,OUT,WL_ENTRY_INEXACT)\n', 1)
++            source = source.replace('  implicit none',
++                '  implicit none\n  LOGICAL WL_ENTRY_INEXACT', 1)
++
++        ncoef = get_number_of_coefs_for_rank(rank)
++        mapping = ','.join('.TRUE.' if r in required[j-1] else '.FALSE.'
++                          for j in range(1, 5) for r in range(1, 5))
++        source = source.replace('  INTEGER I,J,K,L,M\n',
++            '  INTEGER I,J,K,L,M,R,HALT_INDEX\n'
++            '  COMPLEX*32 U(4,0:%d,MAXLWFSIZE)\n' % (ncoef-1) +
++            '  LOGICAL, PARAMETER :: NEEDED(4,4)=RESHAPE((/%s/),(/4,4/))\n' % mapping +
++            '  LOGICAL HALT_FLAGS(SIZE(IEEE_ALL))\n', 1)
++        extra = ',WL_ENTRY_INEXACT' if terminal else ''
++        fallback = ('  CALL %s(A,LCUT_SIZE,B,IN_SIZE,OUT_SIZE,OUT%s)\n'
++                    '  RETURN\n') % (name, extra)
++        guard = """C Experimental derivative-row factorization; changed rounding
++IF(.NOT.WL_ENTRY_INEXACT.OR.IN_SIZE.NE.4.OR.OUT_SIZE.NE.4.OR.MAXLWFSIZE.NE.4.OR.LCUT_SIZE.LT.0.OR.LCUT_SIZE.GT.4) THEN
++{fallback}ENDIF
++DO HALT_INDEX=1,SIZE(IEEE_ALL)
++  IF(.NOT.IEEE_SUPPORT_HALTING(IEEE_ALL(HALT_INDEX))) THEN
++{fallback}  ENDIF
++ENDDO
++CALL IEEE_GET_HALTING_MODE(IEEE_ALL,HALT_FLAGS)
++IF(ANY(HALT_FLAGS)) THEN
++{fallback}ENDIF
++IF(.NOT.ALL(GATHER_BOUNDED(REAL(A(1:IN_SIZE,0:{na},1:LCUT_SIZE),KIND=16))).OR..NOT.ALL(GATHER_BOUNDED(AIMAG(A(1:IN_SIZE,0:{na},1:LCUT_SIZE)))).OR..NOT.ALL(GATHER_BOUNDED(REAL(B(1:OUT_SIZE,0:4,1:IN_SIZE),KIND=16))).OR..NOT.ALL(GATHER_BOUNDED(AIMAG(B(1:OUT_SIZE,0:4,1:IN_SIZE))))) THEN
++{fallback}ENDIF
++""".format(fallback=fallback, na=ncoef-1)
++        source = source.replace(
++            'C Welcome to the computational heart of MadLoop...', guard, 1)
++
++        # Numerical complex equality ignores either component's zero sign,
++        # including in a nonzero coefficient. This is a changed-association
++        # finite-accuracy contract, not a promise of identical output zero bits.
++        relation_guard = ''
++        for m, row in enumerate(rows, 1):
++            for j, (r, real, imag) in enumerate(row, 1):
++                value = rotate('B(%d,1,K)' % r, real, imag)
++                relation_guard += """DO K=1,4
++  IF(B({j},{m},K).NE.{value}) THEN
++{fallback}  ENDIF
++ENDDO
++""".format(j=j, m=m, value=value, fallback=fallback)
++
++        iloop = 'DO I=J,MIN(J,LCUT_SIZE)' if terminal else 'DO I=1,LCUT_SIZE'
++        # Keep B0 operations, K order and both existing zero guards unchanged.
++        b0 = """DO J=1,OUT_SIZE
++  M=0
++  DO K=1,IN_SIZE
++    UPDATER_COEF = B(J,M,K)
++    IF (UPDATER_COEF.EQ.{zero}) CYCLE
++    WL_SKIP_ZERO=.FALSE.
++    IF(WL_NEAREST) WL_SKIP_ZERO=WL_IS_FINITE(REAL(UPDATER_COEF,KIND=16)).AND.WL_IS_FINITE(AIMAG(UPDATER_COEF))
++    {iloop}
++      DO L=0,{na}
++        IF(WL_SKIP_ZERO) THEN
++          IF(WL_AZERO(K,L,I)) CYCLE
++        ENDIF
++        NEW_POSITION = COMB_COEF_POS(L,M)
++        OUT(J,NEW_POSITION,I)=OUT(J,NEW_POSITION,I) + A(K,L,I)*UPDATER_COEF
++      ENDDO
++    ENDDO
++  ENDDO
++ENDDO
++""".format(zero=self.czero, iloop=iloop, na=ncoef-1)
++        contraction = """U={zero}
++DO I=1,LCUT_SIZE
++  DO R=1,4
++""".format(zero=self.czero)
++        if terminal:
++            contraction += '    IF(.NOT.NEEDED(R,I)) CYCLE\n'
++        contraction += """    DO K=1,IN_SIZE
++      UPDATER_COEF=B(R,1,K)
++      IF(UPDATER_COEF.EQ.{zero}) CYCLE
++      DO L=0,{na}
++        IF(WL_AZERO(K,L,I)) CYCLE
++        U(R,L,I)=U(R,L,I)+A(K,L,I)*UPDATER_COEF
++      ENDDO
++    ENDDO
++  ENDDO
++ENDDO
++""".format(zero=self.czero, na=ncoef-1)
++        shifts = ''
++        for j in range(1, 5):
++            for m, row in enumerate(rows, 1):
++                r, real, imag = row[j-1]
++                value = rotate('U(%d,L,I)' % r, real, imag)
++                active_i = ('DO I=%d,MIN(%d,LCUT_SIZE)' % (j, j)
++                            if terminal else 'DO I=1,LCUT_SIZE')
++                shifts += """{iloop}
++  DO L=0,{na}
++    NEW_POSITION=COMB_COEF_POS(L,{m})
++    OUT({j},NEW_POSITION,I)=OUT({j},NEW_POSITION,I)+{value}
++  ENDDO
++ENDDO
++""".format(iloop=active_i, na=ncoef-1, m=m, j=j, value=value)
++        start = source.index('OUT(:,:,:)=', source.index('C Experimental'))
++        end = source.index('\nCONTAINS', start)
++        body = 'C FACTOR_FAST_PATH\nOUT(:,:,:)=%s\n' % self.czero
++        source = source[:start] + relation_guard + body + b0 + contraction + shifts + source[end:]
++        # With |component| exponents <=1000 and at most 40 real products in an
++        # output, products and every cancellation grid remain normal binary128.
++        # Integer classification preserves signaling-NaN flags before fallback;
++        # ASSOCIATE also remains valid with the FKS -fno-automatic build flag.
++        bounded = """ELEMENTAL LOGICAL FUNCTION GATHER_BOUNDED(X)
++  REAL*16, INTENT(IN) :: X
++  INTEGER*8, PARAMETER :: ONE(2)=TRANSFER(1.0_16,(/0_8,0_8/))
++  INTEGER, PARAMETER :: HI=MERGE(1,2,ONE(1).NE.0_8)
++  GATHER_BOUNDED=.FALSE.
++  IF(STORAGE_SIZE(X).NE.128.OR.DIGITS(X).NE.113.OR.RADIX(X).NE.2.OR.MAXEXPONENT(X).NE.16384) RETURN
++  IF(ONE(HI).NE.ISHFT(16383_8,48).OR.ONE(3-HI).NE.0_8) RETURN
++  ASSOCIATE(WORDS=>TRANSFER(X,ONE))
++    GATHER_BOUNDED=IBITS(WORDS(HI),48,15).GE.15383_8.AND.IBITS(WORDS(HI),48,15).LE.17383_8
++    IF(IBCLR(WORDS(HI),63).EQ.0_8.AND.WORDS(3-HI).EQ.0_8) GATHER_BOUNDED=.TRUE.
++  END ASSOCIATE
++END FUNCTION
++"""
++        last = source.rindex('\nEND')
++        return source[:last] + '\n' + bounded + source[last:]
++
+     def write_expanded_wl_updater(self,r_1,r_2,_sparse=True,terminal=False):
+         """ Give out the subroutine to update a polynomial of rank r_1 with
+         one of rank r_2 """

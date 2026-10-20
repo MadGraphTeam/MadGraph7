@@ -1,0 +1,229 @@
+ Enter 0 to compute MC/MC(limit)
+       1 to compute MC/ME(limit)
+       2 to compute ME/ME(limit)
+ Enter xi_i, y_ij to be used in coll/soft tests
+  Enter -2 to generate them randomly
+ Enter number of tests for soft and collinear limits
+ SPLIT TYPE USED: T F
+ A PDF is used, so alpha_s(MZ) is going to be modified
+ Old value of alpha_s from param_card:   0.11799999999999999     
+  ****************************************
+ 
+       NNPDFDriver version 1.0.3
+   Grid: NNPDF23_lo_as_0130_qed_mem0.grid
+  ****************************************
+ New value of alpha_s from PDF nn23lo1:  0.13000000000000000     
+ Give FKS configuration number ("0" loops over all)
+ 
+ =================================================
+ 
+ NEW FKS CONFIGURATION:
+ FKS configuration number is            1
+ FKS partons are: i=           5   j=           1
+ with PDGs:       i=          21   j=           2
+   
+   
+ Enter graph number (iconfig), '0' loops over all graphs
+Using random seed offsets:     1 ,      1 ,      0
+  with seed                   32
+ Ranmar initialization seeds       10730        9407
+tau_min   1     1 : 0.91188E+02      --       0.10119E+03
+tau_min   2     1 : 0.91188E+02      --       0.10119E+03
+tau_min   3     1 : 0.10119E+03  0.10119E+03  0.10119E+03
+tau_min   4     1 : 0.91188E+02      --       0.10119E+03
+tau_min   5     1 : 0.91188E+02      --       0.10119E+03
+tau_min   6     1 : 0.10119E+03  0.10119E+03  0.10119E+03
+tau_min   7     1 : 0.10119E+03  0.10119E+03  0.10119E+03
+tau_min   8     1 : 0.10119E+03  0.10119E+03  0.10119E+03
+ counterterm S.O           1 QCD
+ BORN: keeping split order           1
+ counterterm S.O           2 QED
+ BORN: not keeping split order           1
+ 
+ 
+ 
+ REAL 1: keeping split order            1
+ Soft tests done for (Born) config           1
+ Failures:           0           0           0
+Sum of all orders:      Soft test  1 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  4; QED:  2;      Soft test  1 PASSED. Fraction of failures: 0.00
+ 
+ 
+ 
+ Collinear tests done for (Born) config           1
+ Failures:           0           0           0
+Sum of all orders: Collinear test  1 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  4; QED:  2; Collinear test  1 PASSED. Fraction of failures: 0.00
+ 
+ =================================================
+ 
+ NEW FKS CONFIGURATION:
+ FKS configuration number is            2
+ FKS partons are: i=           5   j=           2
+ with PDGs:       i=          21   j=          -2
+   
+   
+ Enter graph number (iconfig), '0' loops over all graphs
+ 
+ 
+ 
+ Soft tests done for (Born) config           1
+ Failures:           0           0           2
+Sum of all orders:      Soft test  2 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  4; QED:  2;      Soft test  2 PASSED. Fraction of failures: 0.02
+ 
+ 
+ 
+ Collinear tests done for (Born) config           1
+ Failures:           0           0           0
+Sum of all orders: Collinear test  2 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  4; QED:  2; Collinear test  2 PASSED. Fraction of failures: 0.00
+ 
+ =================================================
+ 
+ NEW FKS CONFIGURATION:
+ FKS configuration number is            3
+ FKS partons are: i=           5   j=           4
+ with PDGs:       i=          21   j=          21
+   
+   
+ Enter graph number (iconfig), '0' loops over all graphs
+ 
+ 
+ 
+ Soft tests done for (Born) config           1
+ Failures:           0           0           0
+Sum of all orders:      Soft test  3 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  4; QED:  2;      Soft test  3 PASSED. Fraction of failures: 0.00
+ 
+ 
+ 
+ Collinear tests done for (Born) config           1
+ Failures:           0           0           0
+Sum of all orders: Collinear test  3 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  4; QED:  2; Collinear test  3 PASSED. Fraction of failures: 0.00
+ 
+ =================================================
+ 
+ NEW FKS CONFIGURATION:
+ FKS configuration number is            4
+ FKS partons are: i=           4   j=           1
+ with PDGs:       i=          -2   j=          21
+   
+   
+ Enter graph number (iconfig), '0' loops over all graphs
+ 
+ 
+ 
+ REAL 2: keeping split order            1
+ Soft tests done for (Born) config           1
+ Failures:           0           0           0
+Sum of all orders:      Soft test  4 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  4; QED:  2;      Soft test  4 PASSED. Fraction of failures: 0.00
+ 
+ 
+ 
+ Collinear tests done for (Born) config           1
+ Failures:           0           0           0
+Sum of all orders: Collinear test  4 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  4; QED:  2; Collinear test  4 PASSED. Fraction of failures: 0.00
+ 
+ =================================================
+ 
+ NEW FKS CONFIGURATION:
+ FKS configuration number is            5
+ FKS partons are: i=           4   j=           2
+ with PDGs:       i=           2   j=          21
+   
+   
+ Enter graph number (iconfig), '0' loops over all graphs
+ 
+ 
+ 
+ REAL 3: keeping split order            1
+ Soft tests done for (Born) config           1
+ Failures:           0           0           0
+Sum of all orders:      Soft test  5 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  4; QED:  2;      Soft test  5 PASSED. Fraction of failures: 0.00
+ 
+ 
+ 
+ Collinear tests done for (Born) config           1
+ Failures:           3           0           3
+Sum of all orders: Collinear test  5 PASSED. Fraction of failures: 0.03
+Split-order  2: QCD:  4; QED:  2; Collinear test  5 PASSED. Fraction of failures: 0.03
+ 
+ =================================================
+ 
+ NEW FKS CONFIGURATION:
+ FKS configuration number is            6
+ FKS partons are: i=           5   j=           4
+ with PDGs:       i=          -1   j=           1
+   
+   
+ Enter graph number (iconfig), '0' loops over all graphs
+ 
+ 
+ 
+ REAL 4: keeping split order            1
+ Soft tests done for (Born) config           1
+ Failures:           0           0           0
+Sum of all orders:      Soft test  6 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  4; QED:  2;      Soft test  6 PASSED. Fraction of failures: 0.00
+ 
+ 
+ 
+ Collinear tests done for (Born) config           1
+ Failures:           1           0           1
+Sum of all orders: Collinear test  6 PASSED. Fraction of failures: 0.01
+Split-order  2: QCD:  4; QED:  2; Collinear test  6 PASSED. Fraction of failures: 0.01
+ 
+ =================================================
+ 
+ NEW FKS CONFIGURATION:
+ FKS configuration number is            7
+ FKS partons are: i=           5   j=           4
+ with PDGs:       i=          -2   j=           2
+   
+   
+ Enter graph number (iconfig), '0' loops over all graphs
+ 
+ 
+ 
+ REAL 5: keeping split order            1
+ Soft tests done for (Born) config           1
+ Failures:           0           0           0
+Sum of all orders:      Soft test  7 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  4; QED:  2;      Soft test  7 PASSED. Fraction of failures: 0.00
+ 
+ 
+ 
+ Collinear tests done for (Born) config           1
+ Failures:           0           0           0
+Sum of all orders: Collinear test  7 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  4; QED:  2; Collinear test  7 PASSED. Fraction of failures: 0.00
+ 
+ =================================================
+ 
+ NEW FKS CONFIGURATION:
+ FKS configuration number is            8
+ FKS partons are: i=           5   j=           4
+ with PDGs:       i=          -4   j=           4
+   
+   
+ Enter graph number (iconfig), '0' loops over all graphs
+ 
+ 
+ 
+ REAL 6: keeping split order            1
+ Soft tests done for (Born) config           1
+ Failures:           0           0           0
+Sum of all orders:      Soft test  8 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  4; QED:  2;      Soft test  8 PASSED. Fraction of failures: 0.00
+ 
+ 
+ 
+ Collinear tests done for (Born) config           1
+ Failures:           1           0           1
+Sum of all orders: Collinear test  8 PASSED. Fraction of failures: 0.01
+Split-order  2: QCD:  4; QED:  2; Collinear test  8 PASSED. Fraction of failures: 0.01

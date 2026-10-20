@@ -1,0 +1,43 @@
+{
+  "files": {
+    "Cards/param_card.dat": {
+      "sha256": "ccbf142ec9dfb368c4a5ea80bc6d7c5dc60951384b470c308896c56da66b70ba",
+      "bytes": 3332
+    },
+    "Cards/run_card.dat": {
+      "sha256": "bb8c6a3225522209064a225c2fea33334018cd29c8fc6bc298f2c9c67f56eafc",
+      "bytes": 14731
+    },
+    "Source/run_card.inc": {
+      "sha256": "9c22accdcd3fa6201fb81cb53ea6ed83529e4704b00de6166dfef65bbb826f29",
+      "bytes": 3556
+    },
+    "Source/param_card.inc": {
+      "sha256": "abc6086b3cb6a115fb0347d7c209895d059c32f19d02436dfa9c6e73a7074f60",
+      "bytes": 904
+    },
+    "Source/make_opts": {
+      "sha256": "2eb7ebe7439c05ebb7882d0834dece4b37390d91c1389d60610b1f9271389a0a",
+      "bytes": 3599
+    },
+    "SubProcesses/makefile": {
+      "sha256": "ba7b6d5b03ff5907d3704cf97eb68acc8009b2e477e1d0e14f9ca4818fbcd845",
+      "bytes": 523
+    },
+    "SubProcesses/P0_uux_zg/V0_uux_zg/makefile": {
+      "sha256": "9594a8214f8c280c0bd493ca7084ec119c1d749107987ce8b9d324b04e135053",
+      "bytes": 2946
+    }
+  },
+  "libraries": {
+    "libcernlib.a": "ac5542c092568b292dbdd53eabec002793519737cd82e04572acd41e639f93b2",
+    "libcts.a": "802f2c821e381244df0bb7d6533de2c01f77bdce62c15a13569b0874cce1d216",
+    "libdhelas.a": "cb16ce373213c8f8f8665c98919e4c4f4eb86d896240c7d0fdf92ecd5c47c83b",
+    "libgammaUPC.a": "b79ce3165fd6c0a3aa3260a2dcf212d08ac72f5e0057e09e3e9b6fb765f60674",
+    "libgeneric.a": "1d84045817988f598c1bb01bac46dbf77bee6922cb563f54f8c4bd1f1d792e95",
+    "libiregi.a": "2486b785e34ee6b2cce856659cbfd7de000f633e5edcb3b9e557ac93ee2dfbdf",
+    "libmodel.a": "4c034fe0078ddc72fe25cb486ce4a2c874e05d66ff5b806d8340bae9ebb5ba56",
+    "libpdf.a": "8fbef1de424f1ba2300b7e9ffbb89b75ad5eca3508e6ae3fd68b354b0066b915"
+  },
+  "scope": "Post-compilation actual parameter/build inputs. NLO compile sets external Z width to zero for gauge cancellation, as recorded in compile log; initial cards remain separately retained."
+}

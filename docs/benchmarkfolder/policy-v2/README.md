@@ -15,12 +15,14 @@ The tools do not edit v1 runners, measurements, inputs or candidate outputs.
 All paths below are relative to the MadGraph repository; run commands there
 after sourcing `.ninjars-build/dev-env.sh`.
 
-## Current implementation evidence
+## Certified implementation evidence and current refresh
 
-The current numerical source is
+The completed source/runtime certification below uses numerical revision
 `b44d20e725f1ec68589df20284e4ce9116e9e2ab`, with installed NinjaRS ABI 3.
-Subsequent evidence commits do not change that numerical implementation.
-Completed checks are retained separately:
+The new private QP tensor-factor port has completed its development controls;
+the clean-source/runtime refresh is prepared separately in
+`refresh-chain-abi3-tensor-factor-v1/`. The following completed checks retain
+their original source identities:
 
 - [Thirteen fresh CLI exports](generation-abi3-terminal-fixed/README.md) and
   [their common runtime inventory](final-runtime-audit-fixed/inventory.json).
@@ -43,8 +45,18 @@ timeout to 24 hours and preserves the numerical inputs and collection protocol.
 The [symmetric-accumulation experiments](../experiments/symmetric-accumulation/README.md)
 and [guarded derivative-row factorization](../experiments/symmetric-factorization/prototype-notes.md)
 are separate research. The latter passes exact-arithmetic and full QCD3 controls,
-but its first seven-pair timing series is inconclusive. Neither experimental
-product sharing nor derivative-row factorization is part of this source.
+and its first seven-pair timing series remains inconclusive. A separate fixed
+21-pair confirmation resolves a modest gain: runtime ratio0.968095, with95%
+interval[0.958491,0.982138], and all16,800 compared coefficients, accuracy values
+and rescue counts unchanged. Its [private QP production port](../experiments/symmetric-factorization-production/README.md)
+has passed helper/exporter reviews, a fresh100-point QCD3 CLI diagnostic, and
+fresh NLO build/soft-collinear/pole controls, including separately bounded forced
+QP checks for Ninja and NinjaRS. The prior fully certified numerical revision
+above remains the source of the old runtime proof until clean generation and
+runtime proofs are refreshed. Experimental DP factorization remains separate.
+The fresh NinjaRS QCD3 runtime diagnostic is slower than Ninja and the overall
+performance requirement remains outstanding; its retained warmed profile guides
+an isolated MP allocation study without changing precision or stability settings.
 
 ## Exact correction evidence
 

@@ -693,6 +693,188 @@ END FUNCTION
                 'SUBROUTINE '+name+'(', 'SUBROUTINE '+name+'_DENSE(', 1)
         return result
 
+    def write_factorized_wl_updater(self, rank, vertex, terminal=False):
+        """Private QP FFV updater sharing the four derivative contractions.
+
+        The two supported fermion orientations have derivative rows related by
+        signed real/imaginary permutations. Check that relation on the actual
+        stored coefficients before forming B(:,1,:)*A once. This changes sum
+        association, so require bounded finite binary128 inputs, nearest
+        rounding, disabled traps and an already-sticky entry INEXACT flag.
+        Unsupported inputs use the unchanged public updater.
+
+        Only generated calls selected by the exporter may use these helpers.
+        A terminal call additionally needs the existing proof that only its
+        diagonal is consumed. Public routines and DP arithmetic are untouched.
+        """
+        if vertex.startswith('MP_'):
+            vertex = vertex[3:]
+        if (self.coef_format != 'complex*32' or rank not in (2, 3, 4) or
+                vertex not in ('FFV1L1_2', 'FFV1L2_1')):
+            raise PolynomialError("Factorized updates require QP FFV1L1_2 or "
+                                  "FFV1L2_1 at ranks 2, 3 or 4")
+
+        # Entries are (source row of B(:,q0,:), real phase, imaginary phase).
+        # Every model's rounded coefficients must satisfy these identities at
+        # runtime; the routine name alone never authorizes a factorization.
+        common_q0 = ((1, 1, 0), (2, 1, 0), (3, 1, 0), (4, 1, 0))
+        common_q2 = ((2, 0, 1), (1, 0, -1), (4, 0, -1), (3, 0, 1))
+        if vertex == 'FFV1L1_2':
+            rows = (common_q0,
+                ((2, -1, 0), (1, -1, 0), (4, 1, 0), (3, 1, 0)),
+                common_q2,
+                ((1, -1, 0), (2, 1, 0), (3, 1, 0), (4, -1, 0)))
+        else:
+            rows = (common_q0,
+                ((2, 1, 0), (1, 1, 0), (4, -1, 0), (3, -1, 0)),
+                common_q2,
+                ((1, 1, 0), (2, -1, 0), (3, -1, 0), (4, 1, 0)))
+        required = [set(row[j][0] for row in rows) for j in range(4)]
+
+        def rotate(value, real, imag):
+            if (real, imag) == (1, 0):
+                return value
+            if (real, imag) == (-1, 0):
+                return "(-%s)" % value
+            if (real, imag) == (0, 1):
+                return "CMPLX(-AIMAG(%s),REAL(%s,KIND=16),KIND=16)" % (value, value)
+            return "CMPLX(AIMAG(%s),-REAL(%s,KIND=16),KIND=16)" % (value, value)
+
+        name = self.sub_prefix + ('TERMINAL' if terminal else 'UPDATE')
+        name += '_WL_%d_1' % rank
+        private = name + '_FACTOR_' + vertex
+        if len(private) > 63:
+            raise PolynomialError("Factorized updater name exceeds 63 characters")
+        source = self.write_compact_wl_updater(rank, 1, terminal=terminal)
+        if not terminal:
+            source = source.split('\n\nSUBROUTINE ' + name + '_DENSE(', 1)[0]
+        source = source.replace('SUBROUTINE ' + name + '(',
+                                'SUBROUTINE ' + private + '(', 1)
+        if 'USE, INTRINSIC :: IEEE_EXCEPTIONS' not in source:
+            source = source.replace('  implicit none',
+                '  USE, INTRINSIC :: IEEE_EXCEPTIONS\n  implicit none', 1)
+        if not terminal:
+            source = source.replace('OUT_SIZE,OUT)\n',
+                'OUT_SIZE,OUT,WL_ENTRY_INEXACT)\n', 1)
+            source = source.replace('  implicit none',
+                '  implicit none\n  LOGICAL WL_ENTRY_INEXACT', 1)
+
+        ncoef = get_number_of_coefs_for_rank(rank)
+        mapping = ','.join('.TRUE.' if r in required[j-1] else '.FALSE.'
+                          for j in range(1, 5) for r in range(1, 5))
+        source = source.replace('  INTEGER I,J,K,L,M\n',
+            '  INTEGER I,J,K,L,M,R,HALT_INDEX\n'
+            '  COMPLEX*32 U(4,0:%d,MAXLWFSIZE)\n' % (ncoef-1) +
+            '  LOGICAL, PARAMETER :: NEEDED(4,4)=RESHAPE((/%s/),(/4,4/))\n' % mapping +
+            '  LOGICAL HALT_FLAGS(SIZE(IEEE_ALL))\n', 1)
+        extra = ',WL_ENTRY_INEXACT' if terminal else ''
+        fallback = ('  CALL %s(A,LCUT_SIZE,B,IN_SIZE,OUT_SIZE,OUT%s)\n'
+                    '  RETURN\n') % (name, extra)
+        guard = """C Experimental derivative-row factorization; changed rounding
+IF(.NOT.WL_ENTRY_INEXACT.OR.IN_SIZE.NE.4.OR.OUT_SIZE.NE.4.OR.MAXLWFSIZE.NE.4.OR.LCUT_SIZE.LT.0.OR.LCUT_SIZE.GT.4) THEN
+{fallback}ENDIF
+DO HALT_INDEX=1,SIZE(IEEE_ALL)
+  IF(.NOT.IEEE_SUPPORT_HALTING(IEEE_ALL(HALT_INDEX))) THEN
+{fallback}  ENDIF
+ENDDO
+CALL IEEE_GET_HALTING_MODE(IEEE_ALL,HALT_FLAGS)
+IF(ANY(HALT_FLAGS)) THEN
+{fallback}ENDIF
+IF(.NOT.ALL(GATHER_BOUNDED(REAL(A(1:IN_SIZE,0:{na},1:LCUT_SIZE),KIND=16))).OR..NOT.ALL(GATHER_BOUNDED(AIMAG(A(1:IN_SIZE,0:{na},1:LCUT_SIZE)))).OR..NOT.ALL(GATHER_BOUNDED(REAL(B(1:OUT_SIZE,0:4,1:IN_SIZE),KIND=16))).OR..NOT.ALL(GATHER_BOUNDED(AIMAG(B(1:OUT_SIZE,0:4,1:IN_SIZE))))) THEN
+{fallback}ENDIF
+""".format(fallback=fallback, na=ncoef-1)
+        source = source.replace(
+            'C Welcome to the computational heart of MadLoop...', guard, 1)
+
+        # Numerical complex equality ignores either component's zero sign,
+        # including in a nonzero coefficient. This is a changed-association
+        # finite-accuracy contract, not a promise of identical output zero bits.
+        relation_guard = ''
+        for m, row in enumerate(rows, 1):
+            for j, (r, real, imag) in enumerate(row, 1):
+                value = rotate('B(%d,1,K)' % r, real, imag)
+                relation_guard += """DO K=1,4
+  IF(B({j},{m},K).NE.{value}) THEN
+{fallback}  ENDIF
+ENDDO
+""".format(j=j, m=m, value=value, fallback=fallback)
+
+        iloop = 'DO I=J,MIN(J,LCUT_SIZE)' if terminal else 'DO I=1,LCUT_SIZE'
+        # Keep B0 operations, K order and both existing zero guards unchanged.
+        b0 = """DO J=1,OUT_SIZE
+  M=0
+  DO K=1,IN_SIZE
+    UPDATER_COEF = B(J,M,K)
+    IF (UPDATER_COEF.EQ.{zero}) CYCLE
+    WL_SKIP_ZERO=.FALSE.
+    IF(WL_NEAREST) WL_SKIP_ZERO=WL_IS_FINITE(REAL(UPDATER_COEF,KIND=16)).AND.WL_IS_FINITE(AIMAG(UPDATER_COEF))
+    {iloop}
+      DO L=0,{na}
+        IF(WL_SKIP_ZERO) THEN
+          IF(WL_AZERO(K,L,I)) CYCLE
+        ENDIF
+        NEW_POSITION = COMB_COEF_POS(L,M)
+        OUT(J,NEW_POSITION,I)=OUT(J,NEW_POSITION,I) + A(K,L,I)*UPDATER_COEF
+      ENDDO
+    ENDDO
+  ENDDO
+ENDDO
+""".format(zero=self.czero, iloop=iloop, na=ncoef-1)
+        contraction = """U={zero}
+DO I=1,LCUT_SIZE
+  DO R=1,4
+""".format(zero=self.czero)
+        if terminal:
+            contraction += '    IF(.NOT.NEEDED(R,I)) CYCLE\n'
+        contraction += """    DO K=1,IN_SIZE
+      UPDATER_COEF=B(R,1,K)
+      IF(UPDATER_COEF.EQ.{zero}) CYCLE
+      DO L=0,{na}
+        IF(WL_AZERO(K,L,I)) CYCLE
+        U(R,L,I)=U(R,L,I)+A(K,L,I)*UPDATER_COEF
+      ENDDO
+    ENDDO
+  ENDDO
+ENDDO
+""".format(zero=self.czero, na=ncoef-1)
+        shifts = ''
+        for j in range(1, 5):
+            for m, row in enumerate(rows, 1):
+                r, real, imag = row[j-1]
+                value = rotate('U(%d,L,I)' % r, real, imag)
+                active_i = ('DO I=%d,MIN(%d,LCUT_SIZE)' % (j, j)
+                            if terminal else 'DO I=1,LCUT_SIZE')
+                shifts += """{iloop}
+  DO L=0,{na}
+    NEW_POSITION=COMB_COEF_POS(L,{m})
+    OUT({j},NEW_POSITION,I)=OUT({j},NEW_POSITION,I)+{value}
+  ENDDO
+ENDDO
+""".format(iloop=active_i, na=ncoef-1, m=m, j=j, value=value)
+        start = source.index('OUT(:,:,:)=', source.index('C Experimental'))
+        end = source.index('\nCONTAINS', start)
+        body = 'C FACTOR_FAST_PATH\nOUT(:,:,:)=%s\n' % self.czero
+        source = source[:start] + relation_guard + body + b0 + contraction + shifts + source[end:]
+        # With |component| exponents <=1000 and at most 40 real products in an
+        # output, products and every cancellation grid remain normal binary128.
+        # Integer classification preserves signaling-NaN flags before fallback;
+        # ASSOCIATE also remains valid with the FKS -fno-automatic build flag.
+        bounded = """ELEMENTAL LOGICAL FUNCTION GATHER_BOUNDED(X)
+  REAL*16, INTENT(IN) :: X
+  INTEGER*8, PARAMETER :: ONE(2)=TRANSFER(1.0_16,(/0_8,0_8/))
+  INTEGER, PARAMETER :: HI=MERGE(1,2,ONE(1).NE.0_8)
+  GATHER_BOUNDED=.FALSE.
+  IF(STORAGE_SIZE(X).NE.128.OR.DIGITS(X).NE.113.OR.RADIX(X).NE.2.OR.MAXEXPONENT(X).NE.16384) RETURN
+  IF(ONE(HI).NE.ISHFT(16383_8,48).OR.ONE(3-HI).NE.0_8) RETURN
+  ASSOCIATE(WORDS=>TRANSFER(X,ONE))
+    GATHER_BOUNDED=IBITS(WORDS(HI),48,15).GE.15383_8.AND.IBITS(WORDS(HI),48,15).LE.17383_8
+    IF(IBCLR(WORDS(HI),63).EQ.0_8.AND.WORDS(3-HI).EQ.0_8) GATHER_BOUNDED=.TRUE.
+  END ASSOCIATE
+END FUNCTION
+"""
+        last = source.rindex('\nEND')
+        return source[:last] + '\n' + bounded + source[last:]
+
     def write_expanded_wl_updater(self,r_1,r_2,_sparse=True,terminal=False):
         """ Give out the subroutine to update a polynomial of rank r_1 with
         one of rank r_2 """

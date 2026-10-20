@@ -1,0 +1,173 @@
+make: Entering directory '/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/symmetric-factorization-production/dev-nlo-v3/forced-qp-driver-v2/SubProcesses/P0_uux_zg'
+gfortran -O -ffixed-line-length-132 -fno-automatic -c -I. -I/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/symmetric-factorization-production/dev-nlo-v3/forced-qp-driver-v2/lib/ check_poles.f
+check_poles.f:325:132:
+
+  325 |   101 Z(K)=Z(K-1)+PO2LOG-2.*LOG(DFLOAT(K-2))
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 101 at (1)
+check_poles.f:327:132:
+
+  327 |   102 Z(K)=(Z(K)-LOG(DFLOAT(K-1)))
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 102 at (1)
+check_poles.f:339:132:
+
+  339 |   105 XMT=XMT+ABS(XM(I))
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 105 at (1)
+check_poles.f:379:132:
+
+  379 |   202 Q(1,I)=Q(4,I)*S*SIN(F)
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 202 at (1)
+check_poles.f:383:132:
+
+  383 |   203 R(I)=0.
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 203 at (1)
+check_poles.f:385:132:
+
+  385 |       DO 204 K=1,4
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: Shared DO termination label 204 at (1)
+check_poles.f:386:132:
+
+  386 |   204 R(K)=R(K)+Q(K,I)
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 204 at (1)
+check_poles.f:389:132:
+
+  389 |   205 B(K)=-R(K)/RMAS
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 205 at (1)
+check_poles.f:398:132:
+
+  398 |   206 P(K,I)=X*(Q(K,I)+B(K)*(Q(4,I)+A*BQ))
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 206 at (1)
+check_poles.f:399:132:
+
+  399 |   207 P(0,I)=X*(G*Q(4,I)+BQ)
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 207 at (1)
+check_poles.f:421:132:
+
+  421 |   301 P2(I)=P(0,I)**2
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 301 at (1)
+check_poles.f:431:132:
+
+  431 |   303 G0=G0+P2(I)/E(I)
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 303 at (1)
+check_poles.f:442:132:
+
+  442 |   306 P(K,I)=X*P(K,I)
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 306 at (1)
+check_poles.f:443:132:
+
+  443 |   307 P(0,I)=E(I)
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 307 at (1)
+check_poles.f:450:132:
+
+  450 |   308 WT3=WT3+V(I)**2/E(I)
+      |                                                                                                                                    1
+Warning: Fortran 2018 deleted feature: DO termination statement which is not END DO or CONTINUE with label 308 at (1)
+run.inc:87:21:
+
+   87 |       common/to_rwgt/ do_rwgt_scale, rw_Fscale_down, rw_Fscale_up, rw_Rscale_down, rw_Rscale_up,
+      |                     1
+Warning: Padding of 4 bytes required before ‘rw_fscale_down’ in COMMON ‘to_rwgt’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+run.inc:10:22:
+
+   10 |       common/to_scale/scale,scalefact,ellissextonfact,alpsfact,fixed_ren_scale,
+      |                      1
+Warning: Padding of 4 bytes required before ‘mue_ref_fixed’ in COMMON ‘to_scale’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+gfortran -O -ffixed-line-length-132 -fno-automatic -c -I. -I/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/symmetric-factorization-production/dev-nlo-v3/forced-qp-driver-v2/lib/ handling_lhe_events.f
+run.inc:87:21:
+
+   87 |       common/to_rwgt/ do_rwgt_scale, rw_Fscale_down, rw_Fscale_up, rw_Rscale_down, rw_Rscale_up,
+      |                     1
+Warning: Padding of 4 bytes required before ‘rw_fscale_down’ in COMMON ‘to_rwgt’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+run.inc:10:22:
+
+   10 |       common/to_scale/scale,scalefact,ellissextonfact,alpsfact,fixed_ren_scale,
+      |                      1
+Warning: Padding of 4 bytes required before ‘mue_ref_fixed’ in COMMON ‘to_scale’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+./run.inc:87:21:
+
+   87 |       common/to_rwgt/ do_rwgt_scale, rw_Fscale_down, rw_Fscale_up, rw_Rscale_down, rw_Rscale_up,
+      |                     1
+Warning: Padding of 4 bytes required before ‘rw_fscale_down’ in COMMON ‘to_rwgt’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+./run.inc:10:22:
+
+   10 |       common/to_scale/scale,scalefact,ellissextonfact,alpsfact,fixed_ren_scale,
+      |                      1
+Warning: Padding of 4 bytes required before ‘mue_ref_fixed’ in COMMON ‘to_scale’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+./run.inc:87:21:
+
+   87 |       common/to_rwgt/ do_rwgt_scale, rw_Fscale_down, rw_Fscale_up, rw_Rscale_down, rw_Rscale_up,
+      |                     1
+Warning: Padding of 4 bytes required before ‘rw_fscale_down’ in COMMON ‘to_rwgt’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+./run.inc:10:22:
+
+   10 |       common/to_scale/scale,scalefact,ellissextonfact,alpsfact,fixed_ren_scale,
+      |                      1
+Warning: Padding of 4 bytes required before ‘mue_ref_fixed’ in COMMON ‘to_scale’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+run.inc:87:21:
+
+   87 |       common/to_rwgt/ do_rwgt_scale, rw_Fscale_down, rw_Fscale_up, rw_Rscale_down, rw_Rscale_up,
+      |                     1
+Warning: Padding of 4 bytes required before ‘rw_fscale_down’ in COMMON ‘to_rwgt’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+run.inc:10:22:
+
+   10 |       common/to_scale/scale,scalefact,ellissextonfact,alpsfact,fixed_ren_scale,
+      |                      1
+Warning: Padding of 4 bytes required before ‘mue_ref_fixed’ in COMMON ‘to_scale’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+./run.inc:87:21:
+
+   87 |       common/to_rwgt/ do_rwgt_scale, rw_Fscale_down, rw_Fscale_up, rw_Rscale_down, rw_Rscale_up,
+      |                     1
+Warning: Padding of 4 bytes required before ‘rw_fscale_down’ in COMMON ‘to_rwgt’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+./run.inc:10:22:
+
+   10 |       common/to_scale/scale,scalefact,ellissextonfact,alpsfact,fixed_ren_scale,
+      |                      1
+Warning: Padding of 4 bytes required before ‘mue_ref_fixed’ in COMMON ‘to_scale’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+run.inc:87:21:
+
+   87 |       common/to_rwgt/ do_rwgt_scale, rw_Fscale_down, rw_Fscale_up, rw_Rscale_down, rw_Rscale_up,
+      |                     1
+Warning: Padding of 4 bytes required before ‘rw_fscale_down’ in COMMON ‘to_rwgt’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+run.inc:10:22:
+
+   10 |       common/to_scale/scale,scalefact,ellissextonfact,alpsfact,fixed_ren_scale,
+      |                      1
+Warning: Padding of 4 bytes required before ‘mue_ref_fixed’ in COMMON ‘to_scale’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+run.inc:87:21:
+
+   87 |       common/to_rwgt/ do_rwgt_scale, rw_Fscale_down, rw_Fscale_up, rw_Rscale_down, rw_Rscale_up,
+      |                     1
+Warning: Padding of 4 bytes required before ‘rw_fscale_down’ in COMMON ‘to_rwgt’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+run.inc:10:22:
+
+   10 |       common/to_scale/scale,scalefact,ellissextonfact,alpsfact,fixed_ren_scale,
+      |                      1
+Warning: Padding of 4 bytes required before ‘mue_ref_fixed’ in COMMON ‘to_scale’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+run.inc:87:21:
+
+   87 |       common/to_rwgt/ do_rwgt_scale, rw_Fscale_down, rw_Fscale_up, rw_Rscale_down, rw_Rscale_up,
+      |                     1
+Warning: Padding of 4 bytes required before ‘rw_fscale_down’ in COMMON ‘to_rwgt’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+run.inc:10:22:
+
+   10 |       common/to_scale/scale,scalefact,ellissextonfact,alpsfact,fixed_ren_scale,
+      |                      1
+Warning: Padding of 4 bytes required before ‘mue_ref_fixed’ in COMMON ‘to_scale’ at (1); reorder elements or use ‘-fno-align-commons’ [-Walign-commons]
+gfortran -o check_poles analysis_HwU_template.o HwU.o open_output_files_dummy.o parton_lum_1.o parton_lum_2.o parton_lum_3.o parton_lum_4.o parton_lum_5.o parton_lum_6.o parton_lum_chooser.o matrix_1.o matrix_2.o matrix_3.o matrix_4.o matrix_5.o matrix_6.o FKSParams.o real_me_chooser.o chooser_functions.o recmom.o genps_fks.o setcuts.o setscales.o veto_xsec.o  born.o sborn_sf.o extra_cnt_wrapper.o  ewsudakov_functions_dummy.o ewsudakov_wrapper.o  momentum_reshuffling.o rescale_alpha_tagged.o fks_Sij.o fastjetfortran_madfks_core.o fjcore.o fastjet_wrapper.o fks_singular.o montecarlocounter.o reweight_xsec.o boostwdir2.o boost_to_frame.o cluster.o splitorders_stuff.o iproc_map.o sudakov.o MC_integer.o reweight_xsec_events_pdf_dummy.o pineappl_interface_dummy.o weight_lines.o mint_module.o polfit.o cuts.o dummy_fct.o pythia_unlops.o recluster.o fill_MC_mshell.o born_hel.o open_output_files.o add_write_info.o madfks_plot.o check_poles.o BinothLHA.o pythia8_fortran_dummy.o write_event.o handling_lhe_events.o -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/symmetric-factorization-production/dev-nlo-v3/forced-qp-driver-v2/lib/ libMadLoop.a -lcts -liregi -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/ -lninja -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/ -lavh_olo -lgcc_s -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/HEPTools/ninjars/lib/ -lninjars -ldl -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc   -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/symmetric-factorization-production/dev-nlo-v3/forced-qp-driver-v2/lib/ -ldhelas -lgeneric -lmodel -lpdf -lgammaUPC -lcernlib  -lstdc++   -lstdc++ 
+/nix/store/31gnwsgag5qa14hfblqi5hyn71pyx7py-binutils-2.46/bin/ld.bfd: warning: 2759c6e58623ef3d-x86_64.o: missing .note.GNU-stack section implies executable stack
+/nix/store/31gnwsgag5qa14hfblqi5hyn71pyx7py-binutils-2.46/bin/ld.bfd: NOTE: This behaviour is deprecated and will be removed in a future version of the linker
+strip check_poles
+make: Leaving directory '/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/symmetric-factorization-production/dev-nlo-v3/forced-qp-driver-v2/SubProcesses/P0_uux_zg'
