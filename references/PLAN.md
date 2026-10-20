@@ -149,4 +149,16 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
 
 - Implementation started 2026-10-20. Baseline checkout was clean and on the
   requested branch. GitHub account `huashengshao` has repository push access.
+- Bootstrap commit `7f883420e` was pushed to `origin/madloop_ninjars`.
+- The original revision is archived in `.benchmark-work/original`. Original
+  Ninja 1.2.1, OneLOop 3.6 and Collier 1.2.9 have built successfully with the
+  pinned toolchain. Download checksums and a reproducible setup script are
+  retained; the EW model was imported through the original CLI and its Python
+  source checksum recorded. Host compatibility changes apply only to downloaded
+  installer shebangs; original MadLoop numerical sources remain untouched.
+- The Fortran interface/card/status tests, installer failure/retry and copied
+  dependency tests, and old/new statistics-reader tests pass. Real generated
+  process integration and Rust precision checks are in progress. Independent
+  review identified and corrected the MP box sampling scale and conditional
+  cleanup; multi-context MP worker lifecycle is being hardened.
 - No numerical or performance gates have passed yet.

@@ -13,5 +13,40 @@
     "nixpkgs_revision": "02f5696b0e6097e589076d886b317b83ff0437d7"
   },
   "report_style_source": "https://github.com/MadGraphTeam/pyamplicol/blob/loop/docs/performance_reports/loop/benchmarks.typ",
-  "validation_status": "pending"
+  "validation_status": "pending",
+  "ew_model": {
+    "name": "loop_qcd_qed_sm_Gmu",
+    "source": "http://madgraph.phys.ucl.ac.be/Downloads/models/loop_qcd_qed_sm_Gmu.tgz",
+    "python_sources_sha256": "5dd9a66ef0b501f643251a65d9fa21a8be744b04959e1fcecd13eea51476a0e1",
+    "hashed_files": [
+      "._object_library.py",
+      "CT_couplings.py",
+      "CT_parameters.py",
+      "CT_vertices.py",
+      "__init__.py",
+      "coupling_orders.py",
+      "couplings.py",
+      "function_library.py",
+      "lorentz.py",
+      "object_library.py",
+      "parameters.py",
+      "particles.py",
+      "vertices.py",
+      "write_param_card.py"
+    ]
+  },
+  "reference_libraries": {
+    "Ninja": {
+      "version": "1.2.1",
+      "archive_sha256": "42866021f93004c143e0a49de8c420a6bebbcd4eb26242eef556ad71296e57c0"
+    },
+    "OneLOop": {
+      "version": "3.6",
+      "archive_sha256": "8469cc93665ba24c2ca0b848d61fead56a517f78c4a1672a110d64177568aa8d"
+    },
+    "Collier": {
+      "version": "1.2.9",
+      "archive_sha256": "4f7d89154b89d771aef3533a078ee618a301442d0353f1b18d0a2365bb989949"
+    }
+  }
 }
