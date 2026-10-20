@@ -1,0 +1,33 @@
+{
+  "bytes": 393116,
+  "count": 24,
+  "files": {
+    "README.md": "5e15dd4dfc635c5dcea9f8ac170d6dc606c4a690213d8522984e85879301e13b",
+    "audit.json": "e66420e266434319f68c36c5ec40fb7471ab915fa78c3e26f0fe28253c68a561",
+    "capture.log": "03d45c22998d67e3187d81a773055bf0b37c20c471f7e2c73aebc3bc03cd17e3",
+    "capture.py": "10d0a505a7230d5c47b63fdf8f92dc381eedeeba0c6c676a03307338a41fab40",
+    "inputs/PLAN.md": "182d77ad930738e69177705bc46a48862e6018c229e6cdaaa64f09e802f3859a",
+    "inputs/plan-provenance.json": "16efaadb7bad3cade01f5daf7f224d295dbe8e325ff6ed570c411e1aff742e4f",
+    "reversal-initial-diagnosis.json": "74ca041f03ac4a3a900a065fc191ffa80c413c710dc9efac68a7df3de22310b5",
+    "reversal-physical/README.md": "e4786aef60e494888a52a5dda6062e216f06e414fdefdde41d14bf6aa8f4acc8",
+    "reversal-physical/build.log": "7870622fc8bfa44e4efb2a3a1425de9c77c6d5dac70aa9eab4c56d763b4d75d9",
+    "reversal-physical/control.py": "9a63ccb9dc49669d91d3d9b32811e1aa231c07a83d9eb8b23da0297a8d6efe40",
+    "reversal-physical/driver.f90": "ec776627724b4ed6b865ea917de1bad8e1df4b570d7556141604c43a5a53e1b6",
+    "reversal-physical/inputs.dat": "46eb87d6c208f4d0fd6f333c1b223abeff677f9cbb5c64cadebd7580d01f738d",
+    "reversal-physical/inputs.json": "cc945355db4155cab33ded0ef2057b82bb228baadc1660149af0051305d3fa64",
+    "reversal-physical/result.json": "1f38a473aa84fec588721e928539c93020d9508dc603c6a0a7f55dcb7228e9e2",
+    "reversal-physical/run.log": "44c604a46819bcbba83206821197f91da106120f1eefd55cb520be47a32c246a",
+    "reversal/README.md": "5f56f323c8935470cb2a4f0774a0e8a237a8414f6fd89d39eb3bbbd3e2c4f569",
+    "reversal/build.log": "7870622fc8bfa44e4efb2a3a1425de9c77c6d5dac70aa9eab4c56d763b4d75d9",
+    "reversal/control.py": "65bca332513ece0097a6e5de1fb70249e6909c0c0701f50f623703559527e413",
+    "reversal/driver.f90": "ec38e8bf49ae195fe3192e11ad6975a0c34374ff3f0b4d95b45d06181ea89594",
+    "reversal/inputs.json": "945c28c60907956dcadde350668be83dc9c5cd5adc7ad71ce1b3ab9e93a1b1d7",
+    "reversal/result.json": "2612d5733a32e1a9abeb978b4e2181b1dba0388e4eb83b7af7f7b1e5828fd9a5",
+    "reversal/run.log": "fba0aad37964bde2aa9e8484acaff90a1d4030d3d591aee8a6270ee4f1473cfe",
+    "verification-before-seal.json": "a146d4542a8b9bb23ef746b9487c6b659d4034f5e478e023f0e51b3bdb68b107",
+    "verify.py": "4512bf4fbbd08cdb0e66570a09d0fceea931de832d1d99fd7e69fab79ba5bc77"
+  },
+  "numerical_source_revision": "b44d20e725f1ec68589df20284e4ce9116e9e2ab",
+  "performance_acceptance": false,
+  "schema": "final-focused-evidence-audit-seal-v1"
+}

@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "read_only": true,
+  "sources_verified": 52,
+  "evidence_files_verified": 201,
+  "recomputed_variant_comparisons": 8,
+  "reversal_rows_verified": 30,
+  "own_sealed_files_verified": null,
+  "audit_sha256": "e66420e266434319f68c36c5ec40fb7471ab915fa78c3e26f0fe28253c68a561",
+  "pending": [
+    "Complete final eight-core correctness/performance gates."
+  ]
+}

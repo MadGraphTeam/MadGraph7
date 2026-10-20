@@ -1,0 +1,13 @@
+{
+  "captured_utc": "2026-10-20T18:50:54.797600+00:00",
+  "original_path": "references/PLAN.md",
+  "original_sha256": "182d77ad930738e69177705bc46a48862e6018c229e6cdaaa64f09e802f3859a",
+  "repository_head_at_capture": "d0e78aabf6e5935c8cf8db27a76e350fe0d4250d",
+  "schema": "retained-plan-snapshot-v1",
+  "scope": "Exact live-plan bytes after root variants-sealed/PLAN-ready handoff; the mutable original path is provenance only and is not rehashed by this audit.",
+  "snapshot": {
+    "path": "docs/benchmarkfolder/policy-v2/final-focused-audit-fixed/inputs/PLAN.md",
+    "sha256": "182d77ad930738e69177705bc46a48862e6018c229e6cdaaa64f09e802f3859a"
+  },
+  "source_revision_under_audit": "b44d20e725f1ec68589df20284e4ce9116e9e2ab"
+}
