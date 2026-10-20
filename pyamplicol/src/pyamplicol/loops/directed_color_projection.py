@@ -10,7 +10,7 @@ Tensor algebra and Laurent decomposition remain dependency operations.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from pyamplicol.color.connection_catalogue import (
@@ -40,6 +40,30 @@ class DirectedColorColumns:
             self.factors
         ):
             raise ValueError("directed tensor columns, orders and scalar grades differ")
+
+
+@dataclass(frozen=True, slots=True)
+class DirectedColorInputs:
+    """Exact arguments of one actual colour assembly, before projection.
+
+    Domains distinguish bare, UV, R2 and field columns. They do not describe
+    numerical caches or identify an owner; the model factory owns that check.
+    """
+
+    born_tensors: tuple
+    born_orders: tuple
+    born_pairs: tuple
+    virtual_pairs: tuple
+    columns: tuple[DirectedColorColumns, ...]
+    domains: tuple[str, ...]
+
+    def __post_init__(self):
+        if len(self.born_tensors) != len(self.born_orders):
+            raise ValueError("Born tensor columns and orders differ")
+        if len(self.columns) != len(self.domains) or any(
+            not isinstance(domain, str) or not domain for domain in self.domains
+        ):
+            raise ValueError("directed column blocks and actual domains differ")
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,6 +284,190 @@ def project_directed_color_columns(
     )
 
 
+def reproject_directed_color_columns(
+    reference: DirectedColorProjection,
+    accuracy,
+    reference_inputs: DirectedColorInputs,
+    target_inputs: DirectedColorInputs,
+):
+    """Reproject exact full rows using their complete-family degree authority.
+
+    This mathematical operation makes no physical owner claim. Exact support
+    must agree in each typed tensor/order/grade/domain class. Repeated target
+    columns keep explicit output positions but do not alter the structural
+    maximum. The reference must retain full expressions, never bound Nc=3 rows.
+    """
+    from symbolica import E
+
+    from .color_orbits import _canonical_with_ports
+    from .exact import require_exact_numbers
+
+    accuracy = ColorAccuracy(accuracy).value
+    if reference.accuracy != "full":
+        raise ValueError("directed reprojection requires a full colour reference")
+    if (
+        reference_inputs.born_pairs != target_inputs.born_pairs
+        or reference_inputs.virtual_pairs != target_inputs.virtual_pairs
+    ):
+        raise ValueError("directed reprojection changes squared-order sectors")
+    histories = len(reference.history_families)
+    if len(reference.born) != histories or len(reference.columns) != len(
+        reference_inputs.columns
+    ):
+        raise ValueError("full directed rectangles differ from their column inputs")
+    for family in reference.families:
+        if len(family.born_degrees) != len(reference_inputs.born_pairs) or len(
+            family.virtual_degrees
+        ) != len(reference_inputs.virtual_pairs):
+            raise ValueError("directed family degrees differ from order sectors")
+    if any(
+        type(index) is not int or not 0 <= index < len(reference.families)
+        for index in reference.history_families
+    ):
+        raise ValueError("directed history has no complete family degree owner")
+
+    def require_matrix(matrix, width):
+        if len(matrix) != len(reference_inputs.born_tensors) or any(
+            len(row) != width for row in matrix
+        ):
+            raise ValueError("full directed rectangle has an invalid column shape")
+
+    for matrix in reference.born:
+        require_matrix(matrix, len(reference_inputs.born_tensors))
+    for group, columns in zip(reference.columns, reference_inputs.columns, strict=True):
+        if len(group) != 2 * histories:
+            raise ValueError("full directed rectangle has an invalid direction axis")
+        for matrix in group:
+            require_matrix(matrix, len(columns.tensors))
+
+    canonical = {}
+
+    def tensor_key(tensor):
+        key = id(tensor)
+        if key not in canonical:
+            expression, reason = _canonical_with_ports(tensor)
+            if reason is not None:
+                raise NotImplementedError(
+                    f"directed colour reuse has an unproved tensor: {reason}"
+                )
+            canonical[key] = (expression, frozenset(tensor.axes))
+        return canonical[key]
+
+    def born_keys(inputs):
+        return tuple(
+            (tensor_key(tensor), order)
+            for tensor, order in zip(
+                inputs.born_tensors, inputs.born_orders, strict=True
+            )
+        )
+
+    def column_keys(inputs):
+        groups = []
+        for domain, group in zip(inputs.domains, inputs.columns, strict=True):
+            keys = []
+            for tensor, order, factor in zip(
+                group.tensors, group.orders, group.factors, strict=True
+            ):
+                require_exact_numbers(factor)
+                # Keep tensor and grade/mask separate, even for an inactive
+                # column. No compensating colour-factor rescaling is inferred.
+                keys.append((domain, tensor_key(tensor), order, factor.together()))
+            groups.append(tuple(keys))
+        return tuple(groups)
+
+    left_born, right_born = born_keys(reference_inputs), born_keys(target_inputs)
+    left_columns, right_columns = (
+        column_keys(reference_inputs),
+        column_keys(target_inputs),
+    )
+    if set(left_born) != set(right_born) or {
+        key for group in left_columns for key in group
+    } != {key for group in right_columns for key in group}:
+        raise ValueError("directed reuse changes complete tensor/order/grade support")
+    born_indices = {}
+    for index, key in enumerate(left_born):
+        born_indices.setdefault(key, index)
+    born_map = tuple(born_indices[key] for key in right_born)
+    column_indices = {}
+    for group, keys in enumerate(left_columns):
+        for index, key in enumerate(keys):
+            column_indices.setdefault(key, (group, index))
+    column_maps = tuple(
+        tuple(column_indices[key] for key in keys) for keys in right_columns
+    )
+
+    def project(matrix, right_orders, pairs, degrees):
+        owners = {}
+        for sector, entries in enumerate(pairs):
+            for pair in entries:
+                if pair in owners:
+                    raise ValueError("directed order pair belongs to multiple sectors")
+                owners[pair] = sector
+        rows, row_owners = [], []
+        for order, values in zip(target_inputs.born_orders, matrix, strict=True):
+            for value, right_order in zip(values, right_orders, strict=True):
+                rows.append([value])
+                row_owners.append(owners.get((order, right_order)))
+        output = [E("0")] * len(rows)
+        for sector, degree in enumerate(degrees):
+            indices = [i for i, owner in enumerate(row_owners) if owner == sector]
+            plan = prepare_color_projection(reference.nc, [rows[i] for i in indices])
+            if plan.leading_degree is not None and (
+                degree is None or plan.leading_degree > degree
+            ):
+                raise ValueError("selected row exceeds its complete-family degree")
+            for index, value in zip(
+                indices,
+                replace(plan, leading_degree=degree).project(accuracy),
+                strict=True,
+            ):
+                output[index] = value
+        if any(rows[i][0] != 0 for i, owner in enumerate(row_owners) if owner is None):
+            raise ValueError("full directed row is outside its retained order sectors")
+        values = iter(output)
+        return tuple(tuple(next(values) for _ in row) for row in matrix)
+
+    born = []
+    columns = [[] for _ in target_inputs.columns]
+    for history, family_index in enumerate(reference.history_families):
+        family = reference.families[family_index]
+        born.append(
+            project(
+                tuple(
+                    tuple(reference.born[history][i][j] for j in born_map)
+                    for i in born_map
+                ),
+                target_inputs.born_orders,
+                target_inputs.born_pairs,
+                family.born_degrees,
+            )
+        )
+        for direction in (2 * history, 2 * history + 1):
+            for group, mapping in enumerate(column_maps):
+                columns[group].append(
+                    project(
+                        tuple(
+                            tuple(
+                                reference.columns[source_group][direction][i][j]
+                                for source_group, j in mapping
+                            )
+                            for i in born_map
+                        ),
+                        target_inputs.columns[group].orders,
+                        target_inputs.virtual_pairs,
+                        family.virtual_degrees,
+                    )
+                )
+    return DirectedColorProjection(
+        reference.nc,
+        accuracy,
+        reference.families,
+        reference.history_families,
+        tuple(born),
+        tuple(tuple(group) for group in columns),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class PreparedDirectedColorBank:
     plan: Any
@@ -296,8 +504,8 @@ class PreparedDirectedColorBank:
         )
 
 
-def prepare_directed_color_bank(model, histories):
-    """Build one source-independent bank from the actual complete formal owner."""
+def _model_color_inputs(model):
+    """Extract the existing actual assembly once for preparation and reuse."""
     from symbolica import E
 
     from .physical_correlations import (
@@ -318,13 +526,9 @@ def prepare_directed_color_bank(model, histories):
     formal.require_owner(model.bare)
     if model.r2_strategy != "model":
         raise NotImplementedError("directed formal completion requires model R2")
-    histories = tuple(tuple(pair) for pair in histories)
     legs, born, loop = _physical_color_ports(model.bare)
-    if any(item.initial_legs != legs for pair in histories for item in pair):
-        raise ValueError(
-            "directed history legs differ from actual physical colour ports"
-        )
     columns = [DirectedColorColumns(loop, formal.loop_orders, (E("1"),) * len(loop))]
+    domains = ["bare"]
     for current in model.currents:
         if type(current.color_grade) is not int:
             raise ValueError("formal counterterm has no retained scalar colour grade")
@@ -345,6 +549,7 @@ def prepare_directed_color_bank(model, histories):
                 ),
             )
         )
+        domains.append(current.insertion.rule.kind)
     for current in model.field_currents:
         if type(current.color_grade) is not int:
             raise ValueError(
@@ -363,19 +568,93 @@ def prepare_directed_color_bank(model, histories):
                 (factor,) * len(colors),
             )
         )
+        domains.append("field")
+    return (
+        formal,
+        legs,
+        DirectedColorInputs(
+            born,
+            formal.born_orders,
+            formal.born_pairs,
+            formal.virtual_pairs,
+            tuple(columns),
+            tuple(domains),
+        ),
+    )
+
+
+def prepare_directed_color_bank(model, histories):
+    """Build one source-independent bank from the actual complete formal owner."""
+    formal, legs, inputs = _model_color_inputs(model)
+    histories = tuple(tuple(pair) for pair in histories)
+    if any(item.initial_legs != legs for pair in histories for item in pair):
+        raise ValueError(
+            "directed history legs differ from actual physical colour ports"
+        )
     projection = project_directed_color_columns(
         formal.nc,
         formal.accuracy,
         histories,
-        born,
-        formal.born_orders,
-        formal.born_pairs,
-        formal.virtual_pairs,
-        columns,
+        inputs.born_tensors,
+        inputs.born_orders,
+        inputs.born_pairs,
+        inputs.virtual_pairs,
+        inputs.columns,
     )
     _require_identity_consistency(model, projection, histories)
     return PreparedDirectedColorBank(
         model.prepared, formal, histories, projection, len(model.currents)
+    )
+
+
+def reproject_directed_color_bank(reference_model, reference_bank, target_model):
+    """Make a new LC/NLC/full bank for the same actual process and source.
+
+    The target keeps its normally prepared currents, formal metrics and source
+    states. Cross-species owner substitution is not part of this factory.
+    """
+    reference_bank.require_owner(reference_model)
+    source = reference_model.source_color
+    if (
+        source is None
+        or target_model.source_color is not source
+        or any(
+            dict(model.prepared.metadata).get("source_color") is not source
+            for model in (reference_model, target_model)
+        )
+        or reference_model.bare.process is not target_model.bare.process
+        or reference_model.bare.model_state is None
+        or target_model.bare.model_state is None
+        or reference_model.bare.model_state.plan
+        is not target_model.bare.model_state.plan
+    ):
+        raise ValueError(
+            "directed reprojection requires the same actual process/source"
+        )
+    left, left_legs, reference_inputs = _model_color_inputs(reference_model)
+    right, right_legs, target_inputs = _model_color_inputs(target_model)
+    if (
+        reference_bank.formal is not left
+        or reference_bank.projection.nc != left.nc
+        or left.nc != right.nc
+        or left.initial_average != right.initial_average
+        or left.born_degrees != right.born_degrees
+        or left.virtual_degrees != right.virtual_degrees
+        or left_legs != right_legs
+    ):
+        raise ValueError(
+            "directed reprojection changes formal normalization or sectors"
+        )
+    projection = reproject_directed_color_columns(
+        reference_bank.projection, right.accuracy, reference_inputs, target_inputs
+    )
+    _require_identity_consistency(target_model, projection, reference_bank.histories)
+    return PreparedDirectedColorBank(
+        target_model.prepared,
+        right,
+        reference_bank.histories,
+        projection,
+        len(target_model.currents),
     )
 
 
