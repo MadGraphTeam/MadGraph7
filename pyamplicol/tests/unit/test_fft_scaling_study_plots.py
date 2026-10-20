@@ -6,6 +6,10 @@ from pathlib import Path
 
 import pytest
 
+# matplotlib belongs to the optional fft-profiling extra; without it the plot
+# tool exits at import, which would abort collection of the whole unit suite.
+pytest.importorskip("matplotlib")
+
 from tools.developer import fft_scaling_study_plots as plots
 
 

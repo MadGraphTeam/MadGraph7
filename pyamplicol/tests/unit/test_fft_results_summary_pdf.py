@@ -6,6 +6,10 @@ from pathlib import Path
 
 import pytest
 
+# reportlab belongs to the optional fft-profiling extra; without it the tool
+# exits at import, which would abort collection of the whole unit suite.
+pytest.importorskip("reportlab")
+
 from tools.developer import fft_results_summary_pdf as summary_pdf
 
 
