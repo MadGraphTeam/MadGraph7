@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Complete directed colour for existing validated full-colour QCD controls."""
+"""Directed colour from model-complete Born-loop currents."""
 
 from __future__ import annotations
 
@@ -43,18 +43,14 @@ class DirectedModelResult(DirectedBareResult):
 
 
 def require_directed_model_components(model):
-    """Check completion/colour ownership before any operator algebra.
+    """Check model-rule completion and colour ownership before operator algebra.
 
-    QCD is the validated completion domain today. EW correlation coverage is a
-    pending extension, not a claim that electroweak histories are incompatible.
+    The actual model program retains the admitted local tensor, scalar and
+    perturbative-order data. The correction name does not select a different
+    directed assembly or replace those capabilities.
     """
     if model.r2_strategy != "model":
         raise NotImplementedError("directed completion requires model R2")
-    if model.bare.order_layout.correction_names != ("QCD",):
-        raise NotImplementedError(
-            "directed model completion is currently validated for QCD corrections; "
-            "EW correlation coverage is a pending extension"
-        )
     if (model.color_projection is not None) != bool(
         getattr(model.bare, "_formal_color_projected", False)
     ) or model.color_accuracy != getattr(model.bare, "color_accuracy", "full"):
@@ -77,8 +73,10 @@ class NativeDirectedModelProgram(NativeDirectedBareProgram):
     The model's validated effective rules already contain their loop measure.
     Their forward term and conjugated swapped term use separate colour kernels
     and exact Born/loop pair masks. External fields keep the source delta-Z/2
-    and the insertion's specific Born graph. No source-model completeness beyond
-    the admitted QCD control, precision rescue or flavour mapping is added.
+    and the insertion's specific Born graph. Preparation retains the actual
+    source-model and colour owners; numerical calls reuse their compiled local
+    contributions in the selected arithmetic. Scheme and observable coverage are
+    established by the corresponding physical controls.
     """
 
     def __init__(self, model, histories, *, spin_layout=None, _prepared=None):
