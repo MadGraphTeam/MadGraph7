@@ -1,0 +1,286 @@
+{
+  "allocation_archive": {
+    "bytes": 298539680,
+    "path": ".benchmark-work/experiments/ninjars-mp-tensor-allocation-process-v1/packaged/libninjars.a",
+    "sha256": "55c728c82036692c93edb10a53820674fa9077920247a3e9f4def1be84a08f64"
+  },
+  "bare_rust_archive": {
+    "bytes": 298529676,
+    "path": ".benchmark-work/experiments/ninjars-mp-tensor-allocation-process-v1/target/release/libmadloop_ninjars.a",
+    "sha256": "1e3348538065252a89b9d26638749574930c034732236c80907916a283b5d04a"
+  },
+  "baseline_archive": {
+    "bytes": 298537584,
+    "path": ".benchmark-work/policy-v2/install-export-abi3-zero-sign-v1/source/HEPTools/ninjars-unavailable/lib/libninjars.a",
+    "sha256": "832fc0d1198814b9cc80a65e47bc7aa5dc204f7d25701f206c910cd188fbe80b"
+  },
+  "build": {
+    "bytes": 11504,
+    "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v1/build-retry-1/result.json",
+    "sha256": "5785663e5642b122afbcd91a6e9e7529c60d345bc29ddb5e8cc6285a22c348b0"
+  },
+  "cargo_fingerprints": [
+    {
+      "contents": {
+        "compile_kind": 0,
+        "config": 9396254390672932401,
+        "declared_features": "[]",
+        "deps": [
+          [
+            4927844529893823351,
+            "ninjars",
+            false,
+            3454323542796065845
+          ],
+          [
+            6940534024558116484,
+            "symbolica",
+            false,
+            5033624337002605845
+          ],
+          [
+            6980385603698060090,
+            "ninjars_symbolica",
+            false,
+            5405619250032387049
+          ]
+        ],
+        "features": "[]",
+        "local": [
+          {
+            "CheckDepInfo": {
+              "checksum": false,
+              "dep_info": "release/.fingerprint/madloop-ninjars-237b816711d31619/dep-lib-madloop_ninjars"
+            }
+          }
+        ],
+        "path": 10763286916239946207,
+        "profile": 1760205775310677080,
+        "rustc": 1625334936438085654,
+        "rustflags": [],
+        "target": 2564879356393967189
+      },
+      "file": {
+        "bytes": 550,
+        "path": ".benchmark-work/experiments/ninjars-mp-tensor-allocation-process-v1/build/release/.fingerprint/madloop-ninjars-237b816711d31619/lib-madloop_ninjars.json",
+        "sha256": "d7c40d641569f3be590429e00243624099c5b5c5ee113e194cc5bc2dd83ec5d7"
+      }
+    },
+    {
+      "contents": {
+        "compile_kind": 0,
+        "config": 9396254390672932401,
+        "declared_features": "[\"fenv-test-support\"]",
+        "deps": [
+          [
+            6241308227108952786,
+            "build_script_build",
+            false,
+            15240968684950821279
+          ],
+          [
+            6940534024558116484,
+            "symbolica",
+            false,
+            5033624337002605845
+          ],
+          [
+            17636724138452850925,
+            "ninjars",
+            false,
+            12184043296468220530
+          ],
+          [
+            18262701417071452267,
+            "ninjars_symbolica",
+            false,
+            7095175009060555411
+          ]
+        ],
+        "features": "[\"fenv-test-support\"]",
+        "local": [
+          {
+            "CheckDepInfo": {
+              "checksum": false,
+              "dep_info": "release/.fingerprint/madloop-ninjars-2bad83139d4c7212/dep-lib-madloop_ninjars"
+            }
+          }
+        ],
+        "path": 10763286916239946207,
+        "profile": 11349332380231099618,
+        "rustc": 1625334936438085654,
+        "rustflags": [],
+        "target": 2564879356393967189
+      },
+      "file": {
+        "bytes": 666,
+        "path": ".benchmark-work/experiments/ninjars-mp-tensor-allocation-process-v1/build/release/.fingerprint/madloop-ninjars-2bad83139d4c7212/lib-madloop_ninjars.json",
+        "sha256": "a865e6498941ff59394e23cfe010f52755d89e52c4aa316ba3f6d673d1f10498"
+      }
+    },
+    {
+      "contents": {
+        "compile_kind": 0,
+        "config": 9396254390672932401,
+        "declared_features": "[]",
+        "deps": [
+          [
+            6940534024558116484,
+            "symbolica",
+            false,
+            5033624337002605845
+          ],
+          [
+            17636724138452850925,
+            "ninjars",
+            false,
+            12184043296468220530
+          ],
+          [
+            18262701417071452267,
+            "ninjars_symbolica",
+            false,
+            7095175009060555411
+          ]
+        ],
+        "features": "[]",
+        "local": [
+          {
+            "CheckDepInfo": {
+              "checksum": false,
+              "dep_info": "release/.fingerprint/madloop-ninjars-410b6f7d0524cd99/dep-lib-madloop_ninjars"
+            }
+          }
+        ],
+        "path": 10763286916239946207,
+        "profile": 1760205775310677080,
+        "rustc": 1625334936438085654,
+        "rustflags": [],
+        "target": 2564879356393967189
+      },
+      "file": {
+        "bytes": 553,
+        "path": ".benchmark-work/experiments/ninjars-mp-tensor-allocation-process-v1/build/release/.fingerprint/madloop-ninjars-410b6f7d0524cd99/lib-madloop_ninjars.json",
+        "sha256": "5521dc192ebc42c5deab5fe1b12da8b585cc4a8eab06555aed2f8e405c133287"
+      }
+    },
+    {
+      "contents": {
+        "compile_kind": 0,
+        "config": 9396254390672932401,
+        "declared_features": "[\"fenv-test-support\"]",
+        "deps": [
+          [
+            6241308227108952786,
+            "build_script_build",
+            false,
+            9718543664562276802
+          ],
+          [
+            6940534024558116484,
+            "symbolica",
+            false,
+            5033624337002605845
+          ],
+          [
+            17636724138452850925,
+            "ninjars",
+            false,
+            12184043296468220530
+          ],
+          [
+            18262701417071452267,
+            "ninjars_symbolica",
+            false,
+            7095175009060555411
+          ]
+        ],
+        "features": "[]",
+        "local": [
+          {
+            "CheckDepInfo": {
+              "checksum": false,
+              "dep_info": "release/.fingerprint/madloop-ninjars-ab2a04765db6f7c1/dep-lib-madloop_ninjars"
+            }
+          }
+        ],
+        "path": 10763286916239946207,
+        "profile": 1760205775310677080,
+        "rustc": 1625334936438085654,
+        "rustflags": [],
+        "target": 2564879356393967189
+      },
+      "file": {
+        "bytes": 643,
+        "path": ".benchmark-work/experiments/ninjars-mp-tensor-allocation-process-v1/build/release/.fingerprint/madloop-ninjars-ab2a04765db6f7c1/lib-madloop_ninjars.json",
+        "sha256": "893121f70a1a5b4d336fa20ff2e981f8c50b821c8014f4831b9f408a4a78ddd1"
+      }
+    },
+    {
+      "contents": {
+        "compile_kind": 0,
+        "config": 9396254390672932401,
+        "declared_features": "[\"fenv-test-support\"]",
+        "deps": [
+          [
+            6241308227108952786,
+            "build_script_build",
+            false,
+            9718543664562276802
+          ],
+          [
+            6940534024558116484,
+            "symbolica",
+            false,
+            5033624337002605845
+          ],
+          [
+            17636724138452850925,
+            "ninjars",
+            false,
+            12184043296468220530
+          ],
+          [
+            18262701417071452267,
+            "ninjars_symbolica",
+            false,
+            7095175009060555411
+          ]
+        ],
+        "features": "[]",
+        "local": [
+          {
+            "CheckDepInfo": {
+              "checksum": false,
+              "dep_info": "release/.fingerprint/madloop-ninjars-e2c428e7a865f2b9/dep-lib-madloop_ninjars"
+            }
+          }
+        ],
+        "path": 10763286916239946207,
+        "profile": 11349332380231099618,
+        "rustc": 1625334936438085654,
+        "rustflags": [],
+        "target": 2564879356393967189
+      },
+      "file": {
+        "bytes": 644,
+        "path": ".benchmark-work/experiments/ninjars-mp-tensor-allocation-process-v1/build/release/.fingerprint/madloop-ninjars-e2c428e7a865f2b9/lib-madloop_ninjars.json",
+        "sha256": "c78690b46c30deb777e4920ade680a09f853c23d30b459fba500d8951b202d5a"
+      }
+    }
+  ],
+  "controller": {
+    "bytes": 2243,
+    "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v1/package-archive.py",
+    "sha256": "307358df8138b196b4862ad4084e5f61c16d546db8e8d9d7ab5a52d4bc64b3ae"
+  },
+  "numerical_execution": false,
+  "production_changed": false,
+  "schema": "allocation-process-packaged-archive-v1",
+  "wrapper_object": {
+    "bytes": 9384,
+    "path": ".benchmark-work/experiments/ninjars-mp-tensor-allocation-process-v1/packaged/mninjars.o",
+    "sha256": "4831e01d07d83d376c6e9fd1f13543094496ce168308e041eac126bbdc888245"
+  },
+  "wrapper_policy": "Exact installed mninjars.o extracted from baseline; no Fortran recompilation"
+}

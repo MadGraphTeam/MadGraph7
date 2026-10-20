@@ -1,0 +1,894 @@
+{
+  "schema": "bounded-production-genericity-source-census-v1",
+  "baseline_revision": "27147b3300f556a75661a886e92bdbe00558ee25",
+  "observed_head": "28c49f51bc6d37ad01eb74f8cc4005aa4c92cecb",
+  "scope": [
+    "madgraph",
+    "aloha",
+    "Template",
+    "bin",
+    "input",
+    "models",
+    "vendor/ninjars/src",
+    "vendor/ninjars/mninjars.f90",
+    "vendor/ninjars/ninjars.h",
+    "vendor/ninjars/smoke.f90"
+  ],
+  "files": {
+    "Template/LO/Source/dsample.f": {
+      "sha256": "776c3718584fef1336c22f4db913518a4363e1a3aa980ad59e397418887320b1",
+      "bytes": 99896,
+      "classification": "production",
+      "production_lines_searched": 2893
+    },
+    "Template/NLO/SubProcesses/BinothLHA.f": {
+      "sha256": "7b8fffd92f524a997e1a793d35add87c9467ce4c8f9611e6f574c3d270d74dd1",
+      "bytes": 28588,
+      "classification": "production",
+      "production_lines_searched": 715
+    },
+    "Template/NLO/SubProcesses/driver_mintFO.f": {
+      "sha256": "65673c02786e1d9842dc10078e84bd1268be9a641cbf7d5f8050100ba2d9e723",
+      "bytes": 31480,
+      "classification": "production",
+      "production_lines_searched": 947
+    },
+    "Template/NLO/SubProcesses/driver_mintMC.f": {
+      "sha256": "e9e1c60ea575c7de66326e12dd7922f1a3946e9bc1b8405b1c573bfe8087a279",
+      "bytes": 47752,
+      "classification": "production",
+      "production_lines_searched": 1359
+    },
+    "Template/loop_material/StandAlone/Cards/MadLoopParams.dat": {
+      "sha256": "b643cd5f0b8dd11533c02430daa906473f6183cb38b99a12244425ff0ff9ef25",
+      "bytes": 13359,
+      "classification": "production",
+      "production_lines_searched": 305
+    },
+    "Template/loop_material/StandAlone/SubProcesses/MadLoopCommons.inc": {
+      "sha256": "689133081012735e9f2d883eb59d0c15f0b889e7a67ed7fab0bd46ac57a213c1",
+      "bytes": 19182,
+      "classification": "production",
+      "production_lines_searched": 742
+    },
+    "Template/loop_material/StandAlone/SubProcesses/MadLoopParamReader.f": {
+      "sha256": "5ddc8637085eaa2b03c65d6c67a4c01d83100deb65b89cf20d037a7a2b166c6a",
+      "bytes": 12816,
+      "classification": "production",
+      "production_lines_searched": 351
+    },
+    "Template/loop_material/StandAlone/SubProcesses/MadLoopParams.inc": {
+      "sha256": "4cf7efebe5780c791f4aaaa1665a6fdd17919cda083feddd4de185c57b5f4265",
+      "bytes": 1626,
+      "classification": "production",
+      "production_lines_searched": 33
+    },
+    "input/.mg7_configuration_default.txt": {
+      "sha256": "f2f83015d10bb5566655270a0f1941f0b01cc009d9795aad573a253ff0d7d077",
+      "bytes": 10190,
+      "classification": "production",
+      "production_lines_searched": 264
+    },
+    "madgraph/interface/amcatnlo_run_interface.py": {
+      "sha256": "d089eea62ebb1d7b1e0a2196163a6832a42c15c9f4675dc7862960fae589e0b9",
+      "bytes": 298297,
+      "classification": "production",
+      "production_lines_searched": 6131
+    },
+    "madgraph/interface/loop_interface.py": {
+      "sha256": "2c57060fc51ce4b96a0193d020e6562fdd1d1f66fdc712a22d3a3294d2baba20",
+      "bytes": 56185,
+      "classification": "production",
+      "production_lines_searched": 1200
+    },
+    "madgraph/interface/madevent_interface.py": {
+      "sha256": "69a76843d347cca95c3e24b84759972e83e70407351d16d5c99db02b0782a5e6",
+      "bytes": 393808,
+      "classification": "production",
+      "production_lines_searched": 8272
+    },
+    "madgraph/interface/madgraph_interface.py": {
+      "sha256": "ce879b2eaf4f569ed02bbfa125a1f24bf00c10c87c10eb3552fc63ed0933a001",
+      "bytes": 744560,
+      "classification": "production",
+      "production_lines_searched": 14934
+    },
+    "madgraph/iolibs/export_fks.py": {
+      "sha256": "d21470b6bdfbfae276c6fa7710765baf171a8f8f3868df90fc3edcf8b4367a2e",
+      "bytes": 265097,
+      "classification": "production",
+      "production_lines_searched": 5714
+    },
+    "madgraph/iolibs/export_v4.py": {
+      "sha256": "25f529fe82df40ef0da3e748dd2024666b06e766a9a35527aec6b55f1198c4f5",
+      "bytes": 655121,
+      "classification": "production",
+      "production_lines_searched": 14502
+    },
+    "madgraph/iolibs/helas_call_writers.py": {
+      "sha256": "6c75c72cac484053561ffaee2f8fe20d6df4c70ebe6b39bcf17509f9c2a847e7",
+      "bytes": 126975,
+      "classification": "production",
+      "production_lines_searched": 2760
+    },
+    "madgraph/iolibs/template_files/loop_optimized/NINJARS_interface.inc": {
+      "sha256": "a0746e73bc12740a425f585e39d923f38bda017371a0c55f2977fea7c9da18e5",
+      "bytes": 10517,
+      "classification": "production",
+      "production_lines_searched": 279
+    },
+    "madgraph/iolibs/template_files/loop_optimized/TIR_interface.inc": {
+      "sha256": "25d4a1f2004f081c65b484bd2b959d9a95bf2dfe95953e7bc73d78289b427281",
+      "bytes": 16748,
+      "classification": "production",
+      "production_lines_searched": 598
+    },
+    "madgraph/iolibs/template_files/loop_optimized/helas_loop_amplitude.inc": {
+      "sha256": "0e201cf40bed561fd08e9580dee7e45e587190c86375e3c851c26f60f1bb1fec",
+      "bytes": 7530,
+      "classification": "production",
+      "production_lines_searched": 227
+    },
+    "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": {
+      "sha256": "3694162a7d920f1148c09f2adae197f74bf10f8def69d6c0655673251e78b97d",
+      "bytes": 101223,
+      "classification": "production",
+      "production_lines_searched": 3110
+    },
+    "madgraph/iolibs/template_files/loop_optimized/mp_compute_loop_coefs.inc": {
+      "sha256": "bc9061494b8e723d7881144a4a5a72e7ce750e34b0f8c3e8f9b5485957effba3",
+      "bytes": 21841,
+      "classification": "production",
+      "production_lines_searched": 691
+    },
+    "madgraph/iolibs/template_files/loop_optimized/mp_helas_calls_split.inc": {
+      "sha256": "668adda81df9f57cb6cf98a04167a71a318a84355d1a479abfbb319aae0c8486",
+      "bytes": 2854,
+      "classification": "production",
+      "production_lines_searched": 94
+    },
+    "madgraph/iolibs/template_files/matrix_loop_induced_madevent.inc": {
+      "sha256": "2959a9b54dffac22c7ca98c0e39e8092951fceb2747b5ba1955e3642ad55c095",
+      "bytes": 15833,
+      "classification": "production",
+      "production_lines_searched": 447
+    },
+    "madgraph/iolibs/template_files/matrix_loop_induced_madevent_group.inc": {
+      "sha256": "dbbd797f6d9740e20f6a6ca8667bbf2de549e6e46f31f70968313eaed2cd4976",
+      "bytes": 16629,
+      "classification": "production",
+      "production_lines_searched": 455
+    },
+    "madgraph/iolibs/ufo_expression_parsers.py": {
+      "sha256": "062c1581be8768ea322dd6d20819d6896950e1ef695eeeb5f7861a472b4e075c",
+      "bytes": 40720,
+      "classification": "production",
+      "production_lines_searched": 1090
+    },
+    "madgraph/loop/loop_exporters.py": {
+      "sha256": "4d69dd051947c41987f8af18e0e20e18ef177e681ff94320cd6ec0a6e03fe7bd",
+      "bytes": 206869,
+      "classification": "production",
+      "production_lines_searched": 4035
+    },
+    "madgraph/madevent/sum_html.py": {
+      "sha256": "23ace2ea471c7e03ba83e13c8c41d82c02163755a1cc8d372ef0a44f17390773",
+      "bytes": 36819,
+      "classification": "production",
+      "production_lines_searched": 879
+    },
+    "madgraph/various/banner.py": {
+      "sha256": "a9b248ffd66e40c45a1df12fe006f6d237241a9edbfa2c4937a1f9d4716c2beb",
+      "bytes": 428444,
+      "classification": "production",
+      "production_lines_searched": 8933
+    },
+    "madgraph/various/ninjars_install.py": {
+      "sha256": "17cc6f8cc6117ff872cd7ea02ed953bd134606f8c7f92022f85f95cb9ec6f9ef",
+      "bytes": 14340,
+      "classification": "production",
+      "production_lines_searched": 310
+    },
+    "madgraph/various/process_checks.py": {
+      "sha256": "a1b1fc34e9c0c8a5b0e8b9e7f4ad80808dfff0cecd9d1593473901cdbcfe2a56",
+      "bytes": 362994,
+      "classification": "production",
+      "production_lines_searched": 7680
+    },
+    "madgraph/various/q_polynomial.py": {
+      "sha256": "0836eacabd299d53b4cb09a4df5af5a6bc1099745dd63c7ffacf4924c3bc5e2d",
+      "bytes": 54580,
+      "classification": "production",
+      "production_lines_searched": 1287
+    },
+    "vendor/ninjars/mninjars.f90": {
+      "sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+      "bytes": 8497,
+      "classification": "production",
+      "production_lines_searched": 211
+    },
+    "vendor/ninjars/ninjars.h": {
+      "sha256": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+      "bytes": 4120,
+      "classification": "production",
+      "production_lines_searched": 71
+    },
+    "vendor/ninjars/smoke.f90": {
+      "sha256": "913e96e53e2ba15a71679559d0a2b79b3a12cc7640286ab1a86d1db260e2919a",
+      "bytes": 2398,
+      "classification": "installer smoke test, not production amplitude code",
+      "production_lines_searched": 0
+    },
+    "vendor/ninjars/src/guarded.rs": {
+      "sha256": "0c7ac81fe597083e13b069e74a978161d56a101ca8b58bad4b8adaa04ad0d94c",
+      "bytes": 9559,
+      "classification": "production",
+      "production_lines_searched": 200
+    },
+    "vendor/ninjars/src/guarded_fenv.c": {
+      "sha256": "79e47e68003e6660cfc0d67318b1069e0f2f8958a7a6d642020543670ffbb427",
+      "bytes": 621,
+      "classification": "production",
+      "production_lines_searched": 21
+    },
+    "vendor/ninjars/src/guarded_tests.rs": {
+      "sha256": "9566681f2b67e82f5fed8f3186c362820b7991624296d04c905491b230f3769d",
+      "bytes": 11621,
+      "classification": "cfg(test)-only module",
+      "production_lines_searched": 0
+    },
+    "vendor/ninjars/src/lib.rs": {
+      "sha256": "a4f7215e5812ce337a3fdc083c99ee731f1b6cc3a83e4ff4780ed0e1a4a26128",
+      "bytes": 51326,
+      "classification": "production prefix; embedded cfg(test) module excluded",
+      "production_lines_searched": 805
+    },
+    "vendor/ninjars/src/retry_tests.rs": {
+      "sha256": "2492364fb5877d3ea34088b2f33e3a55c27ba77bafe7871c4d91f78aa41fb10e",
+      "bytes": 5695,
+      "classification": "cfg(test)-only module",
+      "production_lines_searched": 0
+    },
+    "vendor/ninjars/src/tensor.rs": {
+      "sha256": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55",
+      "bytes": 16731,
+      "classification": "production",
+      "production_lines_searched": 405
+    },
+    "vendor/ninjars/src/transport_contract_tests.rs": {
+      "sha256": "884307cd6500059cfb28a24748f8219d0d9f3a87ab84dd97bfd9af34a97ac6fb",
+      "bytes": 4083,
+      "classification": "cfg(test)-only module",
+      "production_lines_searched": 0
+    },
+    "vendor/ninjars/src/transport_replay_tests.rs": {
+      "sha256": "d0a0e3129a9eb43765087d182a204db012cd8bb90ade093c25449e94c6a9a6cf",
+      "bytes": 3592,
+      "classification": "cfg(test)-only module",
+      "production_lines_searched": 0
+    }
+  },
+  "count": 42,
+  "patterns": {
+    "benchmark_case_or_process": "\\b(?:qcd[-_][1-4]|ew[-_][1-4]|ggh|hgg|gg_h|ttx|uux_z|loop_sm|loop_qcd_qed_sm_Gmu)\\b",
+    "benchmark_paths": "benchmarkfolder|\\.benchmark-work|ninjars[-_]benchmark",
+    "fixed_seed_or_point": "\\bseed\\b|\\bpoint[ _-]?(?:44|67|80)\\b"
+  },
+  "matches_for_manual_review": [
+    {
+      "file": "madgraph/interface/amcatnlo_run_interface.py",
+      "line": 1814,
+      "pattern": "fixed_seed_or_point",
+      "text": "\"\"\"Update random number seed with the value from the run_card.",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/amcatnlo_run_interface.py",
+      "line": 1816,
+      "pattern": "fixed_seed_or_point",
+      "text": "If a positive seed is set, reset it to 0 in the run_card after use",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/amcatnlo_run_interface.py",
+      "line": 1818,
+      "pattern": "fixed_seed_or_point",
+      "text": "A negative seed is preserved in the run_card across runs and its",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/amcatnlo_run_interface.py",
+      "line": 1819,
+      "pattern": "fixed_seed_or_point",
+      "text": "absolute value is used as the actual seed for the Fortran code.\"\"\"",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/amcatnlo_run_interface.py",
+      "line": 2638,
+      "pattern": "fixed_seed_or_point",
+      "text": "random.seed(r)",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/amcatnlo_run_interface.py",
+      "line": 2662,
+      "pattern": "fixed_seed_or_point",
+      "text": "\"\"\" Get the random number seed from the randinit file \"\"\"",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/amcatnlo_run_interface.py",
+      "line": 3219,
+      "pattern": "fixed_seed_or_point",
+      "text": "('\\n      Random seed: %(randinit)d' + \\",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/amcatnlo_run_interface.py",
+      "line": 3810,
+      "pattern": "fixed_seed_or_point",
+      "text": "seed=self.get_randinit_seed(),",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/loop_interface.py",
+      "line": 88,
+      "pattern": "benchmark_case_or_process",
+      "text": "model_name = 'loop_sm'",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/loop_interface.py",
+      "line": 312,
+      "pattern": "benchmark_case_or_process",
+      "text": "\"\"\" Upgrade the model sm to loop_sm if needed \"\"\"",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/loop_interface.py",
+      "line": 367,
+      "pattern": "benchmark_case_or_process",
+      "text": "if model_name.split('-')[0]=='loop_sm':",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 3616,
+      "pattern": "fixed_seed_or_point",
+      "text": "logger.info(\"Using random number seed offset = %s\" % self.random)",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 6534,
+      "pattern": "fixed_seed_or_point",
+      "text": "# absolute value as the actual seed for the Fortran code",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 6549,
+      "pattern": "fixed_seed_or_point",
+      "text": "#set random seed for python part of the code",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 6553,
+      "pattern": "fixed_seed_or_point",
+      "text": "random.seed(self.run_card['python_seed'])",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 6558,
+      "pattern": "fixed_seed_or_point",
+      "text": "random.seed(self.run_card['python_seed'])",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 6897,
+      "pattern": "fixed_seed_or_point",
+      "text": "raise MadGraph5Error('Random seed too large ' + str(self.random) + ' > 30081*30081')",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 6901,
+      "pattern": "fixed_seed_or_point",
+      "text": "random.seed(self.random)",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7404,
+      "pattern": "fixed_seed_or_point",
+      "text": "def __init__(self, me_dir = None, nb_event=0, seed=0, gran=-1, nprocs=1, maxevts=2500, *completekey, **stdin):",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7411,
+      "pattern": "fixed_seed_or_point",
+      "text": "self.random = seed",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7420,
+      "pattern": "fixed_seed_or_point",
+      "text": "self.write_gridcard(nb_event, seed, gran) # set readonly on True if needed",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7423,
+      "pattern": "fixed_seed_or_point",
+      "text": "if me_dir and nb_event and seed:",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7424,
+      "pattern": "fixed_seed_or_point",
+      "text": "self.launch(nb_event, seed)",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7427,
+      "pattern": "fixed_seed_or_point",
+      "text": "str(seed))",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7455,
+      "pattern": "fixed_seed_or_point",
+      "text": "def write_gridcard(self, nb_event, seed, gran):",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7470,
+      "pattern": "fixed_seed_or_point",
+      "text": "gridpackcard['gseed'] = seed",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7505,
+      "pattern": "fixed_seed_or_point",
+      "text": "def launch(self, nb_event, seed):",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7510,
+      "pattern": "fixed_seed_or_point",
+      "text": "self.set_run_name('GridRun_%s' % seed)",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7519,
+      "pattern": "fixed_seed_or_point",
+      "text": "random.seed(seed)",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7520,
+      "pattern": "fixed_seed_or_point",
+      "text": "random.mg_seedset = seed",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7524,
+      "pattern": "fixed_seed_or_point",
+      "text": "random.seed(self.run_card['python_seed'])",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7529,
+      "pattern": "fixed_seed_or_point",
+      "text": "#                str(nb_event), '0', 'Madevent','1','GridRun_%s' % seed],",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7568,
+      "pattern": "fixed_seed_or_point",
+      "text": "# Store seed in randinit file, to be read by ranmar.f",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madevent_interface.py",
+      "line": 7572,
+      "pattern": "fixed_seed_or_point",
+      "text": "logger.info(\"Using random number seed offset = %s\" % self.random)",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 854,
+      "pattern": "fixed_seed_or_point",
+      "text": "logger.info(\"    --seed=i : to force a specific RNG integer seed i (default is fixed to 0)\")",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 1498,
+      "pattern": "fixed_seed_or_point",
+      "text": "'--helicity':'-1','--seed':'-1','--collier_cache':'-1',",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 1530,
+      "pattern": "fixed_seed_or_point",
+      "text": "# Set the RNG seed, -1 is default (random).",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 1531,
+      "pattern": "fixed_seed_or_point",
+      "text": "user_options['--seed']=666",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 2688,
+      "pattern": "benchmark_case_or_process",
+      "text": "# loop_sm would then automatically be loaded",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 2765,
+      "pattern": "benchmark_case_or_process",
+      "text": "# loop_sm would then automatically be loaded",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 2930,
+      "pattern": "benchmark_case_or_process",
+      "text": "'loop_qcd_qed_sm' proposed for 'loop_sm-' would show up as '_qed_sm').\"\"\"",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 2987,
+      "pattern": "fixed_seed_or_point",
+      "text": "cms_options = ['--name=','--tweak=','--seed=','--offshellness=',",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 3612,
+      "pattern": "benchmark_case_or_process",
+      "text": "'loop_qcd_qed_sm_Gmu':['ckm', 'full', 'no_widths'],",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 5345,
+      "pattern": "fixed_seed_or_point",
+      "text": "elif option[0]=='--seed':",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 5346,
+      "pattern": "fixed_seed_or_point",
+      "text": "options['seed'] = int(option[1])",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 5407,
+      "pattern": "fixed_seed_or_point",
+      "text": "if tweak.startswith('seed'):",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 5571,
+      "pattern": "fixed_seed_or_point",
+      "text": "# Set the seed here if not in cms check and if specified",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 5572,
+      "pattern": "fixed_seed_or_point",
+      "text": "if args[0]!='cms' and options['seed']!=-1:",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 5578,
+      "pattern": "fixed_seed_or_point",
+      "text": "logger_check.info('Setting random seed to %d.'%options['seed'])",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 5579,
+      "pattern": "fixed_seed_or_point",
+      "text": "random.seed(options['seed'])",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 5580,
+      "pattern": "fixed_seed_or_point",
+      "text": "random.mg_seedset = options['seed']",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 11571,
+      "pattern": "fixed_seed_or_point",
+      "text": "when set to 4, all loop diagrams with 4 or less loop propagators seed their own channel",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 12326,
+      "pattern": "fixed_seed_or_point",
+      "text": "# Keep the diagrams of the amplitudes the seed rule applied to -- the",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/interface/madgraph_interface.py",
+      "line": 12330,
+      "pattern": "fixed_seed_or_point",
+      "text": "# seed. Amplitudes added later are picked up on the way past.",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/iolibs/export_fks.py",
+      "line": 1272,
+      "pattern": "benchmark_case_or_process",
+      "text": "'(e.g loop_qcd_qed_sm_Gmu-a0 or loop_qcd_qed_sm_a0-Gmu)')",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/loop/loop_exporters.py",
+      "line": 784,
+      "pattern": "benchmark_case_or_process",
+      "text": "# for the bubble made of a 4-gluon vertex and the effective ggH vertex.",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 266,
+      "pattern": "fixed_seed_or_point",
+      "text": "def change_seed(self, seed):",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 267,
+      "pattern": "fixed_seed_or_point",
+      "text": "\"\"\"Change the seed value in the banner\"\"\"",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 270,
+      "pattern": "fixed_seed_or_point",
+      "text": "new_seed_str = \" %s = iseed\" % seed",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 685,
+      "pattern": "fixed_seed_or_point",
+      "text": "def add_to_file(self, path, seed=None, out=None):",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 686,
+      "pattern": "fixed_seed_or_point",
+      "text": "\"\"\"Add the banner to a file and change the associate seed in the banner\"\"\"",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 688,
+      "pattern": "fixed_seed_or_point",
+      "text": "if seed is not None:",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 689,
+      "pattern": "fixed_seed_or_point",
+      "text": "self.set(\"run_card\", \"iseed\", seed)",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 3504,
+      "pattern": "fixed_seed_or_point",
+      "text": "same seed can be reused), but the Fortran code expects a non-negative",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 3505,
+      "pattern": "fixed_seed_or_point",
+      "text": "seed, so export the absolute value to the include file.\"\"\"",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 4491,
+      "pattern": "fixed_seed_or_point",
+      "text": "self.add_param(\"python_seed\", -2, include=False, hidden=True, comment=\"controlling python seed [handling in particular the final unweighting].\\n -1 means use default from random module.\\n -2 means set to same value as iseed\")",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 5947,
+      "pattern": "fixed_seed_or_point",
+      "text": "#seed and collider",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 6713,
+      "pattern": "fixed_seed_or_point",
+      "text": "self.add_toml_param('run', 'seed', -1, gridpack=True,",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 6714,
+      "pattern": "fixed_seed_or_point",
+      "text": "comment=\"random seed; -1 draws a fresh one, which is recorded in the output\")",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 7168,
+      "pattern": "fixed_seed_or_point",
+      "text": "# --- run / seed bookkeeping ---",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 7173,
+      "pattern": "fixed_seed_or_point",
+      "text": "return int(self['generation']['seed'])",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/banner.py",
+      "line": 8259,
+      "pattern": "fixed_seed_or_point",
+      "text": "# scale extras / helicity / seed",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/process_checks.py",
+      "line": 3915,
+      "pattern": "fixed_seed_or_point",
+      "text": "# Marsaglia-Zaman RNG matching the check_sa Fortran/C++ template seed",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/process_checks.py",
+      "line": 3984,
+      "pattern": "fixed_seed_or_point",
+      "text": "produced by the check_sa Fortran/C++ binaries, which use the same seed",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/process_checks.py",
+      "line": 4002,
+      "pattern": "fixed_seed_or_point",
+      "text": "\"\"\"Generate Python momenta with the same RAMBO RNG seed as check_sa.",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/process_checks.py",
+      "line": 4037,
+      "pattern": "fixed_seed_or_point",
+      "text": "the same RAMBO seed \u2192 identical phase-space points.",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/process_checks.py",
+      "line": 4472,
+      "pattern": "fixed_seed_or_point",
+      "text": "# Build the Python phase-space point using the same RAMBO RNG seed as",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/process_checks.py",
+      "line": 5431,
+      "pattern": "fixed_seed_or_point",
+      "text": "# Set the seed if chosen by user",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/process_checks.py",
+      "line": 5432,
+      "pattern": "fixed_seed_or_point",
+      "text": "if options['seed'] > 0:",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/process_checks.py",
+      "line": 5433,
+      "pattern": "fixed_seed_or_point",
+      "text": "random.seed(options['seed'])",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/process_checks.py",
+      "line": 5465,
+      "pattern": "benchmark_case_or_process",
+      "text": "if model.get('name') not in ['sm','loop_sm']:",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/process_checks.py",
+      "line": 6084,
+      "pattern": "fixed_seed_or_point",
+      "text": "# Apply the seed tweak if present",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/process_checks.py",
+      "line": 6086,
+      "pattern": "fixed_seed_or_point",
+      "text": "if tweak.startswith('seed'):",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/process_checks.py",
+      "line": 6090,
+      "pattern": "fixed_seed_or_point",
+      "text": "raise MadGraph5Error(\"Seed '%s' is not of the right format 'seed<int>'.\"%tweak)",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/process_checks.py",
+      "line": 6091,
+      "pattern": "fixed_seed_or_point",
+      "text": "random.seed(new_seed)",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/process_checks.py",
+      "line": 6198,
+      "pattern": "fixed_seed_or_point",
+      "text": "# such as masses, seed, offshellness could have affected it",
+      "added_or_modified_line": false
+    },
+    {
+      "file": "madgraph/various/process_checks.py",
+      "line": 6295,
+      "pattern": "fixed_seed_or_point",
+      "text": "if tweak.startswith('seed'):",
+      "added_or_modified_line": false
+    }
+  ],
+  "new_production_matches": [],
+  "source_diff_sha256": "91e51d1a5f13c9dec8e82d02a59a0599e9297f7378181c26bf1df0277bcf7ff1",
+  "interpretation": "Text census plus separate manual dispatch/fallback review; no proof over all models or phase space",
+  "builds_started": 0,
+  "tests_started": 0,
+  "reduction_engine_calls": 0
+}

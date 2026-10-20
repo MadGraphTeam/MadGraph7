@@ -15,6 +15,8 @@
   "ew-4": [$e^+ e^- -> mu^+ mu^- gamma gamma$],
   "supplement-gg-h": [$g g -> H$],
   "supplement-gg-hh": [$g g -> H H$],
+  "stress-qcd-4-gg-ttgg": [$g g -> t overline(t) g g$],
+  "stress-ew-4-uu-4l": [$u overline(u) -> e^+ e^- mu^+ mu^-$],
 ).at(key, default: key)
 #let status(s) = text(weight: "semibold", fill: (
   passed: rgb("#287240"), failed: rgb("#b44339"), unresolved: rgb("#966016"),
@@ -195,6 +197,79 @@ Full model names and MG5aMC process commands are listed with the reproducibility
   numerical/timing gates, the twelve-point top-threshold stability grid and the
   final runtime's independent precision controls. Missing or failed evidence
   remains outstanding, even when the eight core cases pass.
+]
+
+#pagebreak()
+#section-label[ADDITIONAL TWO-TO-FOUR · CORRECTNESS AND STATE REUSE]
+= Top-pair plus jets and four-lepton stress tests
+#note[
+  *Stress campaign: #status(data.stress.status). No performance acceptance gate for
+  these two new cases.* Twenty fixed ordinary
+  points, four fixed rotations and eight scale-sequence calls per process exercise
+  all four candidate backends. Two complete commands are retained for every stream.
+  Their diagnostic times do not replace or relax the original eight core gates or
+  the previously approved ggH/ggHH performance gates.
+]
+#v(7pt)
+#if data.stress.cases.len() == 0 {
+  small[Final stress evidence is pending. Missing, failed or incomplete mandatory
+    candidate/rotation/scale comparisons prevent a complete campaign declaration.]
+} else {
+  let checked(gate) = [#status(gate.status)\ #scientific(gate.at("max_tolerance_fraction", default: none))]
+  tab((1.5fr, 0.85fr, 1fr, 1fr, 0.95fr),
+    table.header(th[Process], th[Ordinary], th[Rotation / invariance], th[Scale / restoration], th[Optional references]),
+    ..data.stress.cases.map(c => (
+      label(c.id), checked(c.ordinary.agreement),
+      [#checked(c.rotation.agreement) / #checked(c.rotation.invariance)],
+      [#checked(c.scale.agreement) / #checked(c.scale.restoration)],
+      if c.optional_reference.at("agreement", default: none) == none {
+        status(c.optional_reference.status)
+      } else { checked(c.optional_reference.agreement) },
+    )).flatten(),
+  )
+  v(7pt)
+  small[Each number is the worst component discrepancy divided by the unchanged
+    acceptance bound. Optional corrected-original references, availability and
+    failures remain distinct from the mandatory four-candidate comparisons.]
+  v(8pt)
+  let diagnostic(c, b) = {
+    let t = c.ordinary.diagnostic_timings.at(b, default: none)
+    if t == none { return [Pending] }
+    [#value-fmt(t.median_us) µs\ init + warm #fmt(t.cold_seconds, digits: 3) s\
+      #value-fmt(t.dp) DP / #value-fmt(t.qp) QP]
+  }
+  tab((1.4fr, 1fr, 1fr, 1fr, 1fr),
+    table.header(th[Ordinary stream], th[CutTools], th[Ninja], th[Collier], th[NinjaRS]),
+    ..data.stress.cases.map(c => (label(c.id), ..("1", "6", "7", "8").map(b => diagnostic(c, b)))).flatten(),
+  )
+  v(7pt)
+  let observed(c, b, estimate: false) = {
+    if c.ordinary.stability.status != "measured" { return [—] }
+    let s = c.ordinary.stability.targets.at("candidate_corrected/" + b)
+    scientific(if estimate { s.estimated_accuracy.all_orders.maximum }
+               else { s.observed_discrepancy.max_point_scaled_error })
+  }
+  tab((1.25fr, 0.65fr, 1fr, 1fr, 1fr, 1fr),
+    table.header(th[Process], th[Quantity], th[CutTools], th[Ninja], th[Collier], th[NinjaRS]),
+    ..data.stress.cases.map(c => (
+      label(c.id), [Observed], ..("1", "6", "7", "8").map(b => observed(c, b)),
+      [], [Estimate], ..("1", "6", "7", "8").map(b => observed(c, b, estimate: true)),
+    )).flatten(),
+  )
+}
+#v(7pt)
+#small[
+  Diagnostic times summarize two ordinary-stream commands, including full numerator,
+  reduction, scalar integrals and actual rescue. Init + warm is recorded separately;
+  DP/QP counts sum the timed commands. No five-percent decision or confidence interval
+  is inferred from these diagnostic times. “Observed” is the corrected-cohort
+  point-scaled discrepancy; “Estimate” is the raw MadLoop estimate, never a measured
+  precision. Per-point/order estimates, all H/T/U histograms, control-stream outcomes
+  and failure records remain in the raw-bound stress snapshot.
+  Rotations compare physical coefficients at matching points. The scale sequence
+  $1,2,0.5,1$ checks matched-scale agreement and restoration of the first result;
+  changed-scale amplitudes are allowed to change. Physical cards, pole settings,
+  thresholds and numerical precision remain common across backends.
 ]
 
 #pagebreak()
@@ -703,6 +778,9 @@ python tools/ninjars_report_v2.py DATASET --compile \
   When `validation_specification` is set, pass it with `--validation-spec`.
   Its retained verifier rechecks raw suite logs, skip details, reviewed fixtures
   and tested production hashes against the measured candidate generator.
+  Pass `--stress` with `stress_specification` for the additional fixed two-to-four
+  controls. Its reader checks the same core source identity and complete measured
+  runtime descriptor. The diagnostic timings carry no additional performance gate.
 ]
 #v(5pt)
 #small[

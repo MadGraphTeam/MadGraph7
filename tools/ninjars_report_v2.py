@@ -378,6 +378,25 @@ def supplement_snapshot(specification, dataset, bindings, inputs):
     return result
 
 
+def stress_snapshot(specification, dataset, bindings, inputs):
+    """Additional fixed two-to-four correctness controls; timings are diagnostic."""
+    if specification is None:
+        return {"status": "pending", "complete_campaign_passed": False, "cases": []}
+    import ninjars_stress_v2 as stress
+    expected = supplement_expectations(dataset, bindings)
+    result = stress.report_snapshot(specification, expected, inputs,
+                                   runtime_signature=candidate_runtime_signature(bindings))
+    if (result.get("schema") != "madloop-final-stress-v1"
+            or result.get("status") not in ("passed", "failed", "unresolved", "pending")
+            or type(result.get("complete_campaign_passed")) is not bool
+            or any(result.get(key) != value for key, value in expected.items())):
+        raise ValueError("Invalid or differently bound final stress evidence")
+    if result["complete_campaign_passed"] and result["status"] != "passed":
+        raise ValueError("Contradictory stress campaign conclusion")
+    inputs[policy.relative(specification)] = workers.digest(policy.path(specification))
+    return result
+
+
 def runtime_provenance_snapshot(specification, dataset, bindings, inputs):
     """Read runtime metadata from measured targets, never historical setup pins.
 
@@ -511,7 +530,8 @@ def regression_snapshot(specification, bindings, inputs):
 
 
 def build_snapshot(dataset_path, timestamp=None, generation_inputs=None, profile_spec=None,
-                   supplement_spec=None, runtime_provenance_spec=None, validation_spec=None):
+                   supplement_spec=None, runtime_provenance_spec=None, validation_spec=None,
+                   stress_spec=None):
     dataset_path = policy.path(dataset_path)
     dataset = policy.validate_dataset(dataset_path)
     inputs = {}
@@ -631,13 +651,17 @@ def build_snapshot(dataset_path, timestamp=None, generation_inputs=None, profile
     counts["original_mismatch_records"] = sum(len(c["original_diagnostics"]["failures"]) for c in cases)
     profiles = profile_snapshot(profile_spec, dataset, bindings, correction, inputs)
     supplement = supplement_snapshot(supplement_spec, dataset, bindings, inputs)
+    stress = stress_snapshot(stress_spec, dataset, bindings, inputs)
     runtime_provenance = runtime_provenance_snapshot(runtime_provenance_spec, dataset, bindings, inputs)
     regressions = regression_snapshot(validation_spec, bindings, inputs)
     complete = (dataset["all_cases_passed"] and supplement["complete_campaign_passed"]
+                and stress["complete_campaign_passed"]
                 and runtime_provenance["status"] == "passed" and regressions["status"] == "passed")
     failed = (counts["correctness_failed"] or counts["performance_failed"]
-              or supplement["status"] == "failed" or regressions["status"] == "failed")
-    unresolved = counts["performance_unresolved"] or supplement["status"] == "unresolved"
+              or supplement["status"] == "failed" or stress["status"] == "failed"
+              or regressions["status"] == "failed")
+    unresolved = (counts["performance_unresolved"] or supplement["status"] == "unresolved"
+                  or stress["status"] == "unresolved")
     campaign_status = "passed" if complete else "failed" if failed else "unresolved" if unresolved else "pending"
     return {"schema_version": 2, "generated_utc": timestamp or datetime.now(timezone.utc).strftime("%Y-%m-%d · %H:%M UTC"),
             "dataset_identity_sha256": dataset["identity_sha256"],
@@ -648,6 +672,8 @@ def build_snapshot(dataset_path, timestamp=None, generation_inputs=None, profile
             "config": config, "provenance": provenance, "cases": cases, "summary": counts,
             "profiles": profiles,
             "supplement": supplement,
+            "stress": stress,
+            "stress_specification": policy.relative(stress_spec) if stress_spec else None,
             "runtime_provenance": runtime_provenance,
             "regressions": regressions,
             "validation_specification": policy.relative(validation_spec) if validation_spec else None,
@@ -664,20 +690,24 @@ def build_snapshot(dataset_path, timestamp=None, generation_inputs=None, profile
 
 def render(dataset_path, destination, timestamp=None, compile_pdf=False,
            generation_inputs=None, profile_spec=None, supplement_spec=None,
-           runtime_provenance_spec=None, validation_spec=None):
+           runtime_provenance_spec=None, validation_spec=None, stress_spec=None):
     destination = policy.path(destination)
     if destination.exists():
         raise ValueError("Report destination exists; preserve the previous report")
     snapshot = build_snapshot(dataset_path, timestamp, generation_inputs, profile_spec, supplement_spec,
-                              runtime_provenance_spec, validation_spec)
+                              runtime_provenance_spec, validation_spec, stress_spec)
     template = REPORT / "policy-v2/template/benchmark.typ"
     style = REPORT / "style.typ"
     render_sources = [Path(__file__).resolve(), Path(profiler.__file__).resolve(), template, style]
-    if supplement_spec is not None:
+    if supplement_spec is not None or stress_spec is not None:
         import ninjars_supplement_v2 as supplement
-        import ninjars_precision_v2 as precision
         render_sources.append(Path(supplement.__file__).resolve())
+    if supplement_spec is not None:
+        import ninjars_precision_v2 as precision
         render_sources.append(Path(precision.__file__).resolve())
+    if stress_spec is not None:
+        import ninjars_stress_v2 as stress
+        render_sources.append(Path(stress.__file__).resolve())
     if validation_spec is not None:
         render_sources.append(policy.path(validation_spec).parent / "verify_validation.py")
     snapshot["render_sources_sha256"] = {
@@ -716,11 +746,14 @@ def main():
     parser.add_argument("--validation-spec", type=Path,
                         help="retained MG7 regression manifest and verifier; tested production "
                              "source hashes must match the final measured generator")
+    parser.add_argument("--stress", type=Path,
+                        help="validated additional two-to-four correctness/rotation/scale controls; "
+                             "times are diagnostic and must match the exact core source/runtime")
     args = parser.parse_args()
     output = args.output or args.dataset.parent / "report"
     snapshot = render(args.dataset, output, args.timestamp, args.compile,
                       args.generation_inputs, args.profile_spec, args.supplement,
-                      args.runtime_provenance, args.validation_spec)
+                      args.runtime_provenance, args.validation_spec, args.stress)
     print(json.dumps({"report": str(output), "summary": snapshot["summary"],
                       "all_cases_passed": snapshot["all_cases_passed"],
                       "complete_campaign_passed": snapshot["complete_campaign_passed"]}, indent=2))

@@ -1,0 +1,48 @@
+{
+  "action": "SIGSTOP was sent to verified process group; stopped state independently confirmed after signal delivery.",
+  "command": [
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+    "-B",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/upstream-watch-final/watch.py"
+  ],
+  "controller_sha256": "22deb5b607ca40e5315155fe39684c121330b30e962ca6287e936448dafaa2ce",
+  "installer_draft_validation": "UNTESTED: source-only draft; seven added regression tests have not run. No validation milestone claimed.",
+  "last_status": {
+    "checks": 6,
+    "interval_seconds": 300,
+    "last_check": {
+      "checked_utc": "2026-10-20T23:54:57.315097+00:00",
+      "checker_exit": 0,
+      "checkpoint": ".benchmark-work/upstream-watch-final/checkpoint-000006.json",
+      "complete": true,
+      "index": 6,
+      "symbolica_exit": 0,
+      "symbolica_ninjars_pin_changed": false,
+      "update_pending": false
+    },
+    "lifecycle": "Root must stop on task pause or finish; no after-task monitoring guarantee.",
+    "pid": 2507588,
+    "schema": "ninjars-task-upstream-watch-v1",
+    "source_or_pin_mutations": false,
+    "started_utc": "2026-10-20T23:29:56.070468+00:00",
+    "status": "watching",
+    "tool_sha256": "291b8be48a37ab241bced84c5e687537b6303ba6532431958c4288d2b744b0cf"
+  },
+  "last_status_sha256": "6df6c7899da04b1d52e87579890cb6455116f8e49c6d85d29b8c32e0f9f78def",
+  "owned_active_compute": "No owned tests, compiler, engine or numerical jobs; watcher suspended.",
+  "owned_source_sha256": {
+    "madgraph/various/ninjars_install.py": "e2b83749c222077e309db3ebe99ee5847b7d66db6fb29d1cfce246344de36646",
+    "references/FINAL_FREEZE.md": "5a59452d311af960f487dc9cf99e1cc3ee1774ec5ac451d908539410c45b4c48",
+    "tests/unit_tests/various/test_ninjars_install.py": "0c0a2913f7a338336e379ab85732d8252c41f6ef1f0395c8b8cc56346658a11b"
+  },
+  "pgid": 2507588,
+  "pid": 2507588,
+  "process_record_sha256": "aed26fe5f8e82fb04cb3e556950c4356e1991613e9c1d3490d60a440d20436be",
+  "ready_checklist": "references/FINAL_FREEZE.md",
+  "reason": "Explicit user pause relayed by root; no implementation or tests may continue.",
+  "recorded_utc": "2026-10-20T23:57:46.546671+00:00",
+  "resume_policy": "Only resume after explicit user instruction; root owns final resumption and fresh identity checks.",
+  "schema": "ninjars-upstream-watch-pause-v1",
+  "start_ticks": 57269712,
+  "state": "T"
+}

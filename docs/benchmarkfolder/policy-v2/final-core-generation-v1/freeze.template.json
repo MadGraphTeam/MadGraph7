@@ -1,0 +1,20 @@
+{
+  "schema": "final-core-generation-freeze-v1",
+  "committed_revision": null,
+  "source_and_installation_frozen": false,
+  "generation_resource_release": false,
+  "generation_cpus": [],
+  "bridge_sources_sha256": null,
+  "installation_files_sha256": {
+    "Cargo.toml": null,
+    "Cargo.lock": null,
+    "include/mninjars.f90": null,
+    "include/ninjars.h": null,
+    "lib/libninjars.a": null,
+    "lib/mninjars.mod": null,
+    "lib/ninjars-config.json": null,
+    "lib/ninjars-link-before.txt": null,
+    "lib/ninjars-native-libs.txt": null,
+    "install.log": null
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "schema": "final-installer-audit-v1",
+  "files": {
+    "README.md": {
+      "bytes": 3796,
+      "sha256": "dcd145e5fa5489287f5ddecee43c0aa79480cdfeb17358e79311905511377e60"
+    },
+    "review.json": {
+      "bytes": 824,
+      "sha256": "457e47f4e3c3a0a7b408ef93ff8a9fabd9a575f31283acb6a69c4b09418e5b7e"
+    }
+  },
+  "count": 2
+}

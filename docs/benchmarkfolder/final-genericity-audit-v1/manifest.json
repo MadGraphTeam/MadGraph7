@@ -1,0 +1,22 @@
+{
+  "schema": "final-genericity-audit-v1",
+  "files": {
+    "README.md": {
+      "bytes": 4505,
+      "sha256": "87a163a84bb242ee782f503b0d3e24e0c4980918e189e3a9f58048829dcd85b4"
+    },
+    "capture.py": {
+      "bytes": 4312,
+      "sha256": "6ccdd4c13ce7cdde56c9beb25241f52c967cbf62e23c497b32cdfe8d82c6537f"
+    },
+    "source-census.json": {
+      "bytes": 31805,
+      "sha256": "aae93492eb6b79b8793c332626ded88eb858e56179b1190af84effc68425e498"
+    },
+    "verify.py": {
+      "bytes": 1788,
+      "sha256": "827c4a2f90391d2c7b6449727bac6d094220b8daadfe22f9f485ecfd2d8e5005"
+    }
+  },
+  "count": 4
+}

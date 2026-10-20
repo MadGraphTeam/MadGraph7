@@ -1,0 +1,81 @@
+{
+  "schema": "held-final-core-generation-preparation-seal-v1",
+  "state": "HELD-no-generation-compilers-or-numerical-jobs",
+  "files": {
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/README.md": {
+      "bytes": 5082,
+      "sha256": "461dc2f268a23ff98eb5014b333c0d06fd754e59a49585336f88af9c3b2220bc"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/audit_core.py": {
+      "bytes": 5242,
+      "sha256": "9bae1bd4b122f6e3cc1e9c1b91fd5ec71dbf83f6340bd0b87332bd27a51f40ba"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-ew-1.mg5": {
+      "bytes": 787,
+      "sha256": "76af961d3d2477fc885b85538f40d3f6a662ae9d2a64844bc7b95fab368d4a1e"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-ew-2.mg5": {
+      "bytes": 793,
+      "sha256": "7819417979240c3e7e79d10b012df3a7bb912e733c9001edbc68ee40ca92d147"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-ew-3.mg5": {
+      "bytes": 792,
+      "sha256": "915319a56d17ef4d8f4351d050ed0d5ad279d6b156ebe00c8546403c6c3e3ec5"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-ew-4.mg5": {
+      "bytes": 797,
+      "sha256": "bdc07f589fa880d40348b36d61bd5dce89052985138668d56911b6f772de59d0"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-qcd-1.mg5": {
+      "bytes": 684,
+      "sha256": "a9e657efda55775a4239cbcae6861cda8f155a3165cd6e218ebd2d19368cab8a"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-qcd-2.mg5": {
+      "bytes": 686,
+      "sha256": "ceba140360590b13b480b71264ea2b468ce369151585bb5e142964390add78a5"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-qcd-3.mg5": {
+      "bytes": 688,
+      "sha256": "b29210f5433442c2966e80513841b0ce998105e68b3b88d7e5de603ac3e39c6f"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-qcd-4.mg5": {
+      "bytes": 690,
+      "sha256": "581a34d73273c94c61fe606980d47ba46c55ba56cc010b16bc2599b502c8bf51"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands.sh": {
+      "bytes": 1061,
+      "sha256": "c6dec418665127ddc9dfae1b59f988008e20466da03f7324e0dd1cb8b577f70d"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/freeze.template.json": {
+      "bytes": 575,
+      "sha256": "c05cc89e3c003cbac579bf69cf30bff2fbe54e426b1ed37878e6ee92d5e8da5e"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/make_freeze.py": {
+      "bytes": 3075,
+      "sha256": "f8cb790b24be9c543434de275f2b64d3b8b3414ebbd9e913440cc5344b6d9e35"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/plan.json": {
+      "bytes": 2087,
+      "sha256": "0742648eac54c8d2614e8badb1e00e479f431dba794f59a4a3bab0c2390727d5"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/preparation.patch": {
+      "bytes": 14680,
+      "sha256": "174f50b342987ac753f8c27f75d6d336f1dcfe5984cecf29a45119e92f72c687"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/regenerate.py": {
+      "bytes": 19606,
+      "sha256": "9c42ae22d39d346a8223f973152eabdd61edc72d16bb6a8588e433e587d61115"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/summarize.py": {
+      "bytes": 4451,
+      "sha256": "9553eae90d3df21f9c3596c277c45a91eb27000b628dc3f8c89e61e0d7b92198"
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/verify_preparation.py": {
+      "bytes": 1198,
+      "sha256": "b2fd0f75d6d03e6dd562782e487569e34ebce1c5f251a68f1690e54c4d4b9240"
+    }
+  },
+  "file_count": 18,
+  "bytes": 62974,
+  "identity_sha256": "c7525cb7f8cfd5b5d7ece609b9fda57771af3290d5eb2483c63e20f851002151"
+}

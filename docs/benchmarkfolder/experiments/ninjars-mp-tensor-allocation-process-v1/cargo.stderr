@@ -1,0 +1,7 @@
+error: failed to load source for dependency `graphica`
+
+Caused by:
+  unable to update https://github.com/alphal00p/symbolica.git?rev=e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8#e679e8c1
+
+Caused by:
+  can't checkout from 'https://github.com/alphal00p/symbolica.git': you are in the offline mode (--offline)

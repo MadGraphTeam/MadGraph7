@@ -1,0 +1,14 @@
+{
+  "schema": "fixed-stress-preregistration-v1",
+  "status": "awaiting-root-review-no-execution",
+  "files": {
+    "PLAN.md": {
+      "bytes": 10236,
+      "sha256": "7e353fd214a589869237d48b9408b13ca3bc516dc0b36b412e79000be2dfe5c4"
+    },
+    "configuration.json": {
+      "bytes": 4398,
+      "sha256": "ae0287a9e63b8153e7448303fe49fadee0e0d445d3ad95f35e8c1739208eb332"
+    }
+  }
+}

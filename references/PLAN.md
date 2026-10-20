@@ -725,3 +725,21 @@ resume metadata. The earlier pause note is a historical checkpoint.
   original loop-induced CLI exports, two private corrected helper builds, two
   hundred fixed points and twelve threshold points are prepared. Numerical runs
   await final source/install freeze; synthetic PDF tests certify rendering only.
+- The user additionally requested two more challenging 2-to-4 tests and complete
+  genericity. Add `g g > t t~ g g [virt=QCD]` with `loop_sm` and
+  `u u~ > e+ e- mu+ mu- [virt=QED]` with `loop_qcd_qed_sm_Gmu`, beyond the
+  unchanged eight core processes. Freeze twenty deterministic ordinary points
+  per process and a small fixed rotation/scale control set at 1 TeV, real masses
+  and zero widths; compare all four candidate backends with the existing
+  Born/Laurent/split-order tolerance. Record actual rescues and costs. These
+  supplemental correctness tests do not replace the core performance gates or
+  modify the already running private timing study. Independently audit that
+  production optimizations depend only on generic rank/algebraic structure with
+  guarded general fallbacks, never process identities or benchmark inputs.
+
+- User requested another pause on 2026-10-20 at approximately 23:55 UTC.
+  All active task jobs and the read-only watcher are suspended with verified
+  identities in `references/pauses/20261020T235607Z`. Twelve allocation pairs
+  completed exactly; the current timed arm is interrupted and unaccepted.
+  Installer/stress/report extensions remain explicitly untested drafts.
+  No final optimization or performance gate is promoted; await user resume.

@@ -234,6 +234,22 @@ class NinjaRSReportV2Test(unittest.TestCase):
         self.assertNotIn("original/6", candidate["observed_discrepancy"]["reference_targets"])
         self.assertEqual(candidate["status_counts"], {"218": 2})
 
+    def test_complete_campaign_requires_additional_stress_controls(self):
+        self.fixture()
+        with patch.object(report, "supplement_snapshot", return_value={
+                "status": "passed", "complete_campaign_passed": True}), \
+                patch.object(report, "runtime_provenance_snapshot", return_value={"status": "passed"}), \
+                patch.object(report, "regression_snapshot", return_value={"status": "passed"}):
+            result = self.snapshot()
+            self.assertEqual(result["stress"]["status"], "pending")
+            self.assertFalse(result["complete_campaign_passed"])
+            for status in ("failed", "unresolved", "passed"):
+                stress = {"status": status, "complete_campaign_passed": status == "passed", "cases": []}
+                with self.subTest(status=status), patch.object(report, "stress_snapshot", return_value=stress):
+                    result = self.snapshot()
+                    self.assertEqual(result["complete_campaign_passed"], status == "passed")
+                    self.assertEqual(result["campaign_status"], status)
+
     def test_rejected_dataset_cannot_render_or_create_output(self):
         target = self.root / "report"
         with patch.object(self.policy, "validate_dataset", side_effect=RuntimeError("invalid proof")):
@@ -251,6 +267,17 @@ class NinjaRSReportV2Test(unittest.TestCase):
         self.assertTrue((target / "benchmark.typ").exists())
         with self.assertRaisesRegex(ValueError, "exists"):
             report.render(self.dataset_path, target)
+
+    def test_stress_render_hashes_actual_reader_and_transitive_supplement_source(self):
+        self.fixture()
+        snapshot = self.snapshot()
+        specification = self.write("synthetic-stress.json", {})
+        target = self.root / "stress-source-hashes"
+        with patch.object(report, "build_snapshot", return_value=snapshot):
+            result = report.render(self.dataset_path, target, stress_spec=specification)
+        for name in ("tools/ninjars_stress_v2.py", "tools/ninjars_supplement_v2.py"):
+            self.assertEqual(result["render_sources_sha256"][name],
+                             report.workers.digest(report.ROOT / name))
 
     @unittest.skipUnless(shutil.which("typst"), "Typst is required for PDF reproducibility")
     def test_pdf_is_identical_across_ambient_creation_epochs(self):
@@ -301,6 +328,18 @@ class NinjaRSReportV2Test(unittest.TestCase):
             "suites": [{"name": "Explicit synthetic suite", "tests_run": 2, "failures": 0,
                         "errors": 0, "skipped": 1,
                         "skip_details": [["synthetic.case", "Explicit synthetic skip"]]}]}
+        stress = {"points": 20,
+                  "ordinary": {"agreement": prototype["agreement"], "stability": prototype["stability"],
+                               "diagnostic_timings": prototype["timings"]["candidate"]},
+                  "rotation": {"points": 4, "agreement": prototype["agreement"],
+                               "invariance": prototype["agreement"]},
+                  "scale": {"points": 8, "agreement": prototype["agreement"],
+                            "restoration": prototype["agreement"]},
+                  "optional_reference": {"status": "unavailable", "agreement": None,
+                                         "failures": ["Explicit synthetic unavailable reference"]}}
+        snapshot["stress"] = {"status": "pending", "complete_campaign_passed": False,
+                              "cases": [dict(copy.deepcopy(stress), id=cid) for cid in
+                                        ("stress-qcd-4-gg-ttgg", "stress-ew-4-uu-4l")]}
         target = self.root / "supplement-layout-fixture"
         with patch.object(report, "build_snapshot", return_value=snapshot):
             result = report.render(self.dataset_path, target, compile_pdf=True)
@@ -561,6 +600,58 @@ class NinjaRSReportSupplementBoundaryTest(unittest.TestCase):
             module.report_snapshot = lambda *args, **kwargs: dict(valid, status="failed")
             with self.assertRaisesRegex(ValueError, "Contradictory"):
                 report.supplement_snapshot("unused.json", {}, [], {})
+
+
+class NinjaRSStressReportBoundaryTest(unittest.TestCase):
+    def setUp(self):
+        self.expected = {"core_dataset_identity_sha256": "core",
+                         "literal_baseline_revision": report.BASELINE_REVISION,
+                         "candidate_generator_identity_sha256": "generator",
+                         "candidate_runtime_identity_sha256": "runtime"}
+        self.signature = {"identity_sha256": "runtime", "libraries": {"libninjars.a": "archive"},
+                          "metadata": {"ninjars-config.json": "config"}}
+
+    def test_stress_reader_gets_full_runtime_without_a_new_timing_gate(self):
+        seen = []
+
+        def read(path, expected, inputs, *, runtime_signature):
+            seen.append(runtime_signature)
+            return dict(expected, schema="madloop-final-stress-v1", status="passed",
+                        complete_campaign_passed=True, cases=[{
+                            "ordinary": {"diagnostic_timings": {"8": {"median_us": 1e12}}},
+                            "optional_reference": {"status": "unavailable", "failures": ["fixture"]}}])
+
+        with tempfile.TemporaryDirectory(dir=report.ROOT / ".ninjars-build/tmp") as directory:
+            path = Path(directory) / "stress.json"
+            path.write_text("{}")
+            inputs = {}
+            with patch.dict(sys.modules, {"ninjars_stress_v2": SimpleNamespace(report_snapshot=read)}), \
+                    patch.object(report, "supplement_expectations", return_value=self.expected), \
+                    patch.object(report, "candidate_runtime_signature", return_value=self.signature):
+                result = report.stress_snapshot(path, {}, [], inputs)
+            self.assertEqual(seen, [self.signature])
+            self.assertTrue(result["complete_campaign_passed"])
+            self.assertNotIn("performance", result["cases"][0])
+            self.assertEqual(inputs[report.policy.relative(path)], report.workers.digest(path))
+
+    def test_stress_rejects_relabelled_or_contradictory_results(self):
+        valid = dict(self.expected, schema="madloop-final-stress-v1", status="passed",
+                     complete_campaign_passed=True, cases=[])
+        module = SimpleNamespace(report_snapshot=lambda *args, **kwargs: valid)
+        with patch.dict(sys.modules, {"ninjars_stress_v2": module}), \
+                patch.object(report, "supplement_expectations", return_value=self.expected), \
+                patch.object(report, "candidate_runtime_signature", return_value=self.signature):
+            for key in self.expected:
+                changed = dict(valid, **{key: "other"})
+                module.report_snapshot = lambda *args, **kwargs: changed
+                with self.subTest(key=key), self.assertRaisesRegex(ValueError, "differently bound"):
+                    report.stress_snapshot("unused.json", {}, [], {})
+            module.report_snapshot = lambda *args, **kwargs: dict(valid, status="failed")
+            with self.assertRaisesRegex(ValueError, "Contradictory"):
+                report.stress_snapshot("unused.json", {}, [], {})
+            module.report_snapshot = lambda *args, **kwargs: dict(valid, complete_campaign_passed="false")
+            with self.assertRaisesRegex(ValueError, "Invalid"):
+                report.stress_snapshot("unused.json", {}, [], {})
 
 
 class NinjaRSRuntimeProvenanceReportTest(unittest.TestCase):

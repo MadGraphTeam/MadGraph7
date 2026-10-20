@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 from pathlib import Path
 import shlex
 import shutil
@@ -41,6 +42,31 @@ class TestNinjaRSInstaller(unittest.TestCase):
             (lib / 'ninjars-native-libs.txt').write_text('-lgmp -lmpfr -lpthread\n')
             (lib / 'ninjars-link-before.txt').write_text('-lgcc_s\n')
 
+    @staticmethod
+    def snapshot(directory):
+        """Compare symlink text and regular bytes without following links."""
+        result = {}
+        for path in directory.rglob('*'):
+            name = str(path.relative_to(directory))
+            if path.is_symlink():
+                result[name] = ('symlink', os.readlink(path))
+            elif path.is_file():
+                result[name] = ('file', path.read_bytes())
+            elif path.is_dir():
+                result[name] = ('directory', None)
+        return result
+
+    def previous_install(self):
+        previous = self.prefix / 'ninjars'
+        (previous / 'lib').mkdir(parents=True)
+        (previous / 'lib/libninjars.a').write_text('previous working archive')
+        (previous / 'lib/mninjars.mod').write_text('previous module')
+        (previous / 'install.log').write_text('previous validated smoke')
+        (previous / 'lib' / ninjars_install.CONFIG_NAME).write_text(json.dumps({
+            'abi_version':ninjars_install.ABI_VERSION, 'quad_precision':True,
+            'native_libs':['-lgmp'], 'link_before':['-lgcc_s'], 'link_order_version':1}))
+        return previous
+
     def test_publish_and_idempotent_install(self):
         with mock.patch.object(ninjars_install.shutil, 'which', return_value='/bin/tool'), \
                 mock.patch.object(ninjars_install, '_run', side_effect=self.fake_build) as run:
@@ -75,6 +101,159 @@ class TestNinjaRSInstaller(unittest.TestCase):
             with self.assertRaisesRegex(MadGraph5Error, 'quad-precision'):
                 ninjars_install.install(self.root, self.prefix, ['--force'])
         self.assertEqual((lib / 'libninjars.a').read_text(), 'previous working archive')
+
+    def test_alias_publication_failure_rolls_back_previous_install_and_retry(self):
+        previous = self.previous_install()
+        common = self.prefix / 'lib'
+        common.mkdir()
+        (common / 'libninjars.a').symlink_to('../ninjars/lib/libninjars.a')
+        (common / 'mninjars.mod').symlink_to('../custom/old-module.mod')
+        (common / ninjars_install.CONFIG_NAME).symlink_to('../missing/old-metadata.json')
+        (common / 'ninjars-native-libs.txt').write_text('user-owned regular flags')
+        (common / 'ninjars-link-before.txt').symlink_to('../custom/old-runtime.txt')
+        sentinel = common / '.ninjars-link-before.txt.ninjars'
+        sentinel.write_text('user-owned hidden temporary sentinel')
+        before_tree, before_aliases = self.snapshot(previous), self.snapshot(common)
+        replace = ninjars_install.os.replace
+        injected = []
+        def fail_alias(source, target):
+            if Path(target) == common / ninjars_install.CONFIG_NAME and not injected:
+                injected.append(True)
+                raise OSError('simulated alias publication failure')
+            return replace(source, target)
+        with mock.patch.object(ninjars_install.shutil,'which',return_value='/bin/tool'), \
+                mock.patch.object(ninjars_install,'_run',side_effect=self.fake_build):
+            with mock.patch.object(ninjars_install.os,'replace',side_effect=fail_alias):
+                with self.assertRaisesRegex(OSError,'alias publication failure'):
+                    ninjars_install.install(self.root,self.prefix,['--force'])
+            self.assertEqual(before_tree,self.snapshot(previous))
+            self.assertEqual(before_aliases,self.snapshot(common))
+            libdir = ninjars_install.install(self.root,self.prefix,['--force'])
+        self.assertEqual(injected,[True])
+        self.assertEqual((Path(libdir)/'libninjars.a').read_text(),'new working archive')
+        self.assertEqual((common/'ninjars-native-libs.txt').read_text(),'user-owned regular flags')
+        self.assertEqual(sentinel.read_text(),'user-owned hidden temporary sentinel')
+
+    def test_first_install_alias_failure_removes_publication_and_retry_succeeds(self):
+        common = self.prefix/'lib'
+        replace = ninjars_install.os.replace
+        injected = []
+        def fail_alias(source,target):
+            if Path(target) == common/'mninjars.mod' and not injected:
+                injected.append(True)
+                raise OSError('first install alias publication failure')
+            return replace(source,target)
+        with mock.patch.object(ninjars_install.shutil,'which',return_value='/bin/tool'), \
+                mock.patch.object(ninjars_install,'_run',side_effect=self.fake_build):
+            with mock.patch.object(ninjars_install.os,'replace',side_effect=fail_alias):
+                with self.assertRaisesRegex(OSError,'alias publication failure'):
+                    ninjars_install.install(self.root,self.prefix)
+            self.assertFalse((self.prefix/'ninjars').exists())
+            self.assertFalse(common.exists())
+            self.assertTrue(list(self.prefix.glob('.ninjars-build-*/install.log')))
+            libdir = ninjars_install.install(self.root,self.prefix)
+        self.assertTrue(ninjars_install.supports_quad_precision(libdir))
+        self.assertEqual((common/'libninjars.a').read_text(),'new working archive')
+
+    def test_common_lib_mkdir_failure_restores_previous_install_and_retry(self):
+        previous = self.previous_install()
+        before = self.snapshot(previous)
+        common = self.prefix/'lib'
+        mkdir = Path.mkdir
+        def fail_common(path,*args,**kwargs):
+            if path == common:
+                raise OSError('simulated common library mkdir failure')
+            return mkdir(path,*args,**kwargs)
+        with mock.patch.object(ninjars_install.shutil,'which',return_value='/bin/tool'), \
+                mock.patch.object(ninjars_install,'_run',side_effect=self.fake_build):
+            with mock.patch.object(Path,'mkdir',autospec=True,side_effect=fail_common):
+                with self.assertRaisesRegex(OSError,'common library mkdir failure'):
+                    ninjars_install.install(self.root,self.prefix,['--force'])
+            self.assertEqual(before,self.snapshot(previous))
+            self.assertFalse(common.exists())
+            libdir = ninjars_install.install(self.root,self.prefix,['--force'])
+        self.assertEqual((Path(libdir)/'libninjars.a').read_text(),'new working archive')
+
+    def test_post_commit_cleanup_failure_keeps_success_and_recovery_diagnostic(self):
+        self.previous_install()
+        with mock.patch.object(ninjars_install.shutil,'which',return_value='/bin/tool'), \
+                mock.patch.object(ninjars_install,'_run',side_effect=self.fake_build), \
+                mock.patch.object(ninjars_install.shutil,'rmtree',side_effect=OSError('cleanup denied')):
+            with self.assertLogs('madgraph.ninjars_install',level='WARNING') as messages:
+                libdir = ninjars_install.install(self.root,self.prefix,['--force'])
+        self.assertTrue(ninjars_install.supports_quad_precision(libdir))
+        self.assertEqual((self.prefix/'lib/libninjars.a').read_text(),'new working archive')
+        self.assertTrue(list(self.prefix.glob('.ninjars-build-*/previous/lib/libninjars.a')))
+        self.assertIn('installed successfully','\n'.join(messages.output))
+        self.assertIn('cleanup denied','\n'.join(messages.output))
+
+    def test_rollback_failure_retains_recovery_files_and_raises_clear_error(self):
+        previous = self.previous_install()
+        common = self.prefix/'lib'
+        common.mkdir()
+        (common/'libninjars.a').symlink_to('../ninjars/lib/libninjars.a')
+        (common/'mninjars.mod').symlink_to('../custom/previous.mod')
+        replace = ninjars_install.os.replace
+        def fail_publication_and_module_restore(source,target):
+            if Path(target) == common/ninjars_install.CONFIG_NAME:
+                raise OSError('simulated alias publication failure')
+            if Path(target) == common/'mninjars.mod' and Path(source).parent.name == 'previous-links':
+                raise OSError('simulated module restore failure')
+            return replace(source,target)
+        with mock.patch.object(ninjars_install.shutil,'which',return_value='/bin/tool'), \
+                mock.patch.object(ninjars_install,'_run',side_effect=self.fake_build), \
+                mock.patch.object(ninjars_install.os,'replace',side_effect=fail_publication_and_module_restore):
+            with self.assertRaisesRegex(MadGraph5Error,'rollback.*retained'):
+                ninjars_install.install(self.root,self.prefix,['--force'])
+        self.assertEqual((previous/'lib/libninjars.a').read_text(),'previous working archive')
+        recovery = list(common.glob('.ninjars-links-*/previous-links/mninjars.mod'))
+        self.assertEqual(len(recovery),1)
+        self.assertEqual(os.readlink(recovery[0]),'../custom/previous.mod')
+
+    def test_symlinked_common_directory_keeps_user_files_and_working_aliases(self):
+        shared = self.root/'shared-libraries'
+        shared.mkdir()
+        self.prefix.mkdir()
+        common = self.prefix/'lib'
+        common.symlink_to('../shared-libraries')
+        (shared/'ninjars-native-libs.txt').write_text('user-owned link flags')
+        sentinel = shared/'.libninjars.a.ninjars'
+        sentinel.write_text('user-owned hidden file')
+        with mock.patch.object(ninjars_install.shutil,'which',return_value='/bin/tool'), \
+                mock.patch.object(ninjars_install,'_run',side_effect=self.fake_build):
+            libdir = Path(ninjars_install.install(self.root,self.prefix))
+        self.assertEqual(os.readlink(common),'../shared-libraries')
+        self.assertEqual((common/'libninjars.a').resolve(),libdir/'libninjars.a')
+        self.assertEqual((common/'libninjars.a').read_text(),'new working archive')
+        self.assertEqual((shared/'ninjars-native-libs.txt').read_text(),'user-owned link flags')
+        self.assertEqual(sentinel.read_text(),'user-owned hidden file')
+        self.assertFalse(list(shared.glob('.ninjars-links-*')))
+
+    def test_interrupted_alias_publication_restores_previous_state(self):
+        previous = self.previous_install()
+        common = self.prefix/'lib'
+        common.mkdir()
+        (common/'libninjars.a').symlink_to('../ninjars/lib/libninjars.a')
+        (common/'mninjars.mod').symlink_to('../custom/old-module.mod')
+        before_tree, before_aliases = self.snapshot(previous), self.snapshot(common)
+        replace = ninjars_install.os.replace
+        for interrupt_at in (previous,common/ninjars_install.CONFIG_NAME):
+            interrupted = []
+            def interrupt_after_replace(source,target):
+                result = replace(source,target)
+                if Path(target) == interrupt_at and not interrupted:
+                    interrupted.append(True)
+                    raise KeyboardInterrupt('interrupted after atomic publication')
+                return result
+            with self.subTest(interrupt_at=interrupt_at), \
+                    mock.patch.object(ninjars_install.shutil,'which',return_value='/bin/tool'), \
+                    mock.patch.object(ninjars_install,'_run',side_effect=self.fake_build), \
+                    mock.patch.object(ninjars_install.os,'replace',side_effect=interrupt_after_replace):
+                with self.assertRaises(KeyboardInterrupt):
+                    ninjars_install.install(self.root,self.prefix,['--force'])
+            self.assertEqual(interrupted,[True])
+            self.assertEqual(before_tree,self.snapshot(previous))
+            self.assertEqual(before_aliases,self.snapshot(common))
 
     def test_local_sources_are_copied_and_original_is_unchanged(self):
         source = self.root / 'reference'

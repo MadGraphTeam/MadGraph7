@@ -1,0 +1,9 @@
+{
+  "source_commit": "81a4adff34b00188c844f5eada268c6acf33d317",
+  "source_path": "tools/ninjars_report_v2.py",
+  "snapshot_sha256": "93f942dfa74b2c3354d066e5436f4aadd7a009d0f08fc03a05190aa8f5c21c85",
+  "compare_function_sha256": "0f1e713538c509548eacc5c28ad4550a97f5c9647c2b8bf748fc4e41a5f1d430",
+  "loader_scope": "Compile only exact compare function AST; standard-library globals only. Do not execute unrelated report module imports or functions.",
+  "previous_stale_freeze": "readiness-drafts/frozen-bindings-v3-stale-report.json",
+  "prior_public_draft_recovery": "Exact38895byte/SHA3d006c... draft unavailable. Report owner attests compare never edited; current and committed function byte-identical. No numerical sample depended on stale draft."
+}
