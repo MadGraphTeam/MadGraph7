@@ -1,0 +1,12 @@
+Relocated standalone built; GNU binary128 helpers verified.
+Traceback (most recent call last):
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/install-export-abi3-terminal/runtime_validator.py", line 312, in <module>
+    run()
+    ~~~^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/install-export-abi3-terminal/runtime_validator.py", line 258, in run
+    collect(nlo_log, measurements)
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/install-export-abi3-terminal/runtime_validator.py", line 267, in collect
+    assert "Poles successfully cancel for 20 points over 20" in nlo_log
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

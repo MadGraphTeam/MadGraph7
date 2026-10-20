@@ -1,0 +1,13 @@
+{
+  "revision": "c5496ca9b148b16a931214e1d541ead100ed1aad",
+  "new_build_environment": {
+    "CARGO_BUILD_BUILD_DIR": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/cargo/build",
+    "CARGO_TARGET_DIR": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/cargo",
+    "TMPDIR": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp"
+  },
+  "cargo_dependency_cache": "Existing ~/.cargo download cache reused with root authorization; no new external build products.",
+  "nlo_compile_card_sha256": "881f912c0be0830bf776afce99251f993b450c203d0c9be4806ac70705ef67cd",
+  "scripts_syntax_checked": true,
+  "production_matches_revision": true,
+  "private_install_not_started": true
+}

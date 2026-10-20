@@ -1,0 +1,12 @@
+{
+  "masses": [
+    0.0,
+    0.0,
+    125.0,
+    125.0
+  ],
+  "points": 10,
+  "seed": 930084,
+  "energy_gev": 1000.0,
+  "sha256": "a1fb9b0af7a351bf383a0ab5302f0be46f8053c1da33941e291fc5a0e2ec02b4"
+}

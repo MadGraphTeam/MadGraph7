@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "seed": 930083,
+  "points_per_case": 10,
+  "repetitions": 1,
+  "energy_gev": 1000.0,
+  "relative_tolerance": 1e-07,
+  "scale_tolerance": 1e-10,
+  "max_runtime_ratio": 1.05,
+  "cases": [
+    {
+      "id": "control-gg-h",
+      "model": "loop_sm",
+      "process": "g g > h [sqrvirt=QCD]",
+      "nfinal": 1
+    },
+    {
+      "id": "control-gg-hh",
+      "model": "loop_sm",
+      "process": "g g > h h [sqrvirt=QCD]",
+      "nfinal": 2
+    },
+    {
+      "id": "control-mixed",
+      "model": "loop_qcd_qed_sm_Gmu",
+      "process": "u u~ > d d~ QCD=2 QED=2 [virt=QCD QED]",
+      "nfinal": 2
+    },
+    {
+      "id": "control-complex",
+      "model": "loop_qcd_qed_sm_Gmu",
+      "process": "e+ e- > mu+ mu- [virt=QED]",
+      "nfinal": 2,
+      "complex_mass_scheme": true
+    },
+    {
+      "id": "control-forced-qp",
+      "model": "loop_sm",
+      "process": "g g > t t~ [virt=QCD]",
+      "nfinal": 2,
+      "madloop_parameters": {
+        "MLStabThres": 1e-20,
+        "NRotations_DP": 2,
+        "NRotations_QP": 2
+      }
+    }
+  ]
+}

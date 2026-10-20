@@ -1,9 +1,16 @@
-# Final candidate generation preparation
+# ABI 3 candidate generation at c5496ca9b
 
-This separate namespace will hold fresh CLI exports after the compensated DP
-retry (ABI 3) and terminal QP wavefunction optimization are committed and the
-corresponding NinjaRS library is installed. Preparation alone is not numerical
-or performance acceptance.
+All eight core processes and five controls were generated and clean-built at
+`c5496ca9b148b16a931214e1d541ead100ed1aad`, with the installed ABI 3 bridge.
+`summary.json` indexes all 13 exports. Original physical inputs, protected
+generated sources and dependency hashes stayed unchanged. No loop amplitude
+was evaluated; this is generation/build evidence, not numerical or performance
+acceptance.
+
+A separate internal NLO export found the empty-process-prefix IEEE declaration
+bug retained in `../install-export-abi3-terminal/failure.json`. These successful
+standalone builds do not close that NLO failure. Keep this namespace unchanged;
+the fixed generator requires its own generation and runtime evidence.
 
 From the repository root:
 
@@ -25,5 +32,5 @@ this preparation step.
 Build products remain under
 `.benchmark-work/policy-v2/generation-abi3-terminal`. Historical generation,
 numerical and timing evidence remains in its original namespace. Final workers
-must explicitly select these new outputs and bind their exact generated
+must explicitly select the intended outputs and bind their exact generated
 sources and installed libraries.

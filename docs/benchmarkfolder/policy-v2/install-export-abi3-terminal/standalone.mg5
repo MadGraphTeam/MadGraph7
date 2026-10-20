@@ -1,0 +1,11 @@
+set automatic_html_opening False
+set auto_update 0
+set nb_core 4
+set ninja None
+set collier None
+set ninjars /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal/source/HEPTools/ninjars/lib
+set output_dependencies internal
+import model loop_sm
+generate u u~ > z [virt=QCD]
+output standalone_fortran /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal/standalone
+quit
