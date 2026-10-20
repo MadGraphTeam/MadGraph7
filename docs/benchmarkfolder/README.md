@@ -4,6 +4,14 @@ Run all commands from the MadGraph7 repository on branch `madloop_ninjars`.
 The baseline is revision `27147b3300f556a75661a886e92bdbe00558ee25`.
 The baseline's tracked numerical sources must remain unchanged.
 
+Final validation uses the [corrected-model policy v2](policy-v2/README.md).
+It compares all four corrected candidate backends with three independently
+bound corrected-original references, while keeping the literal original Ninja
+as the timing denominator. Its common Collier accuracy is `1e-12`.
+The commands and report described below retain the earlier v1 experiment;
+its four accepted cases do not certify the current implementation. The final
+eight-process validation and performance gates remain outstanding.
+
 ## Environment and installation
 
 Enter the pinned Linux x86_64 environment with `nix develop path:.`. The flake
@@ -30,7 +38,7 @@ coordination. Serialize MP benchmark processes when the license permits only one
 active worker; a license with adequate worker capacity is required for parallel
 MP production use.
 
-## Core comparison
+## Retained v1 core comparison
 
 `cases.json` defines the eight processes, seeds, point counts, tolerances, and
 performance gate. Command cards in `commands/` record the actual CLI inputs.
@@ -73,7 +81,7 @@ helicity nor color sums are replaced by sampling. The original fresh-process
 driver remains available through `ninjars_benchmark.py measure` and provides the
 independent protocol-parity reference.
 
-The common core settings use `MLStabThres=1e-9` and
+The retained v1 core settings use `MLStabThres=1e-9` and
 `COLLIERRequiredAccuracy=1e-10`. Default settings allowed discrepancies beyond
 the requested comparison tolerance at high multiplicity; the stricter settings
 apply equally to every backend and to the untouched original baseline. Exact
@@ -103,7 +111,7 @@ The core comparison uses all six backend pairs at each point, with
 Born/Laurent value over all backends and split orders at that point. Legacy
 backends are also compared with their original implementations.
 
-## Report
+## Retained v1 report
 
 ```sh
 python tools/ninjars_report.py --compile
@@ -150,9 +158,13 @@ The original archive and its timings remain unchanged. Original higher-precision
 answers affected by these defects must remain visible as numerical discrepancies.
 Final correctness needs separately identified, minimally corrected original
 exports alongside all four corrected candidate backends. Performance continues
-to use the unmodified original Ninja denominator. The existing frozen seven-target
-protocol has not yet been revised to encode this distinction, so its earlier
-accepted results do not certify the repaired implementation.
+to use the unmodified original Ninja denominator. The frozen seven-target
+collection protocol remains unchanged; the separate
+[v2 validation and report tools](policy-v2/README.md) now encode this distinction,
+check all 21 corrected-cohort pairs, and bind representative precision coverage
+to the exact linked runtimes. Earlier accepted results do not certify the
+repaired implementation. Final publication requires a complete validated v2
+dataset and refreshed candidate evidence.
 
 See `experiments/ew3-collier-stability/` for the failed original runs, precision
 diagnostics, independent audit, fresh CLI export, and benchmark policy review.

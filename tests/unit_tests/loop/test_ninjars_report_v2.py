@@ -58,7 +58,11 @@ class NinjaRSReportV2Test(unittest.TestCase):
                 firsts[f"{role}/{backend}"] = records[0]["rows"]
                 times[f"{role}/{backend}"] = [r["seconds_per_point"] for r in records]
                 build = self.bound(f"builds/{role}-{backend}.json",
-                                   {"origin_compilation": {"seconds": 1., "build_kind": "clean-subprocess"}})
+                                   {"origin_compilation": {"seconds": 1., "build_kind": "clean-subprocess"},
+                                    "generation_source_identity": {"revision": role},
+                                    "parameter_card_sha256": "parameters",
+                                    "original_generated_sources_sha256":
+                                        report.bench.content_digest({"process.f": role})})
                 binding["targets"][f"qcd-1-{source}-{backend}"] = {
                     "role": role, "build": build, "backend": backend}
                 for r in records:
@@ -66,8 +70,12 @@ class NinjaRSReportV2Test(unittest.TestCase):
                     measurements[str(path.relative_to(report.ROOT))] = hashlib.sha256(path.read_bytes()).hexdigest()
         correction = self.bound("correction.json", {
             "identity_sha256": "correction",
-            "cases": {"qcd-1": {"original_generation": {"seconds": 2.},
-                               "generation_records": [None, None, self.bound("generation.json", {"seconds": 3.})]}}})
+            "cases": {"qcd-1": {"original_generation": {
+                "seconds": 2., "source_identity": {"revision": "original"},
+                "parameter_card_sha256": "parameters"},
+                "generation_records": [None, None, self.bound("generation.json", {
+                    "seconds": 3., "source_identity": {"revision": "candidate_corrected"},
+                    "parameter_card_sha256": "parameters"})]}}})
         policy = self.bound("policy.json", {"identity_sha256": "policy", "correction": correction,
                                           "configuration": self.bound("config.json", self.config)})
         corrected = {k: v for k, v in firsts.items() if not k.startswith("original/")}
@@ -97,9 +105,64 @@ class NinjaRSReportV2Test(unittest.TestCase):
         self.dataset_path = self.write("dataset.json", dataset)
         return dataset
 
-    def snapshot(self):
+    def snapshot(self, generation_inputs=None):
         with patch.object(self.policy, "validate_dataset", return_value=self.dataset):
-            return report.build_snapshot(self.dataset_path, timestamp="test")
+            return report.build_snapshot(self.dataset_path, timestamp="test",
+                                         generation_inputs=generation_inputs)
+
+    def test_generation_from_older_corrected_export_stays_pending(self):
+        self.fixture()
+        # The model-helper proof remains valid after a later generator change.
+        rules = json.loads((self.root / "policy.json").read_text())
+        correction = json.loads((self.root / "correction.json").read_text())
+        record = json.loads((self.root / "generation.json").read_text())
+        record["source_identity"] = {"revision": "older-candidate"}
+        correction["cases"]["qcd-1"]["generation_records"][2] = self.bound("generation.json", record)
+        rules["correction"] = self.bound("correction.json", correction)
+        self.dataset["policy"] = self.bound("policy.json", rules)
+        result = self.snapshot()["cases"][0]["preparation"]
+        self.assertIsNone(result["candidate"]["generation"])
+        self.assertEqual(result["baseline"]["generation"]["seconds"], 2.)
+        self.assertEqual(result["candidate"]["compilation"]["seconds"], 1.)
+
+    def test_final_generation_metadata_binds_exact_measured_sources(self):
+        self.fixture()
+        root = self.root / "final-inputs"
+        record = {"seconds": 19., "source_identity": {"revision": "candidate_corrected"},
+                  "parameter_card_sha256": "parameters"}
+        manifest = {"files": {"process.f": "candidate_corrected"}}
+        manifest["files_sha256"] = report.bench.content_digest(manifest["files"])
+        self.write("final-inputs/candidate/qcd-1/generation.json", record)
+        self.write("final-inputs/candidate/qcd-1/compiled-sources.json", manifest)
+        result = self.snapshot(root)
+        self.assertEqual(result["cases"][0]["preparation"]["candidate"]["generation"]["seconds"], 19.)
+        retained = str((root / "candidate/qcd-1/generation.json").relative_to(report.ROOT))
+        self.assertIn(retained, result["inputs_sha256"])
+        for field, value, message in (
+                ("source_identity", {"revision": "wrong"}, "identity"),
+                ("parameter_card_sha256", "wrong", "parameter card"),
+                ("seconds", float("nan"), "duration")):
+            with self.subTest(field=field):
+                self.write("final-inputs/candidate/qcd-1/generation.json", {**record, field: value})
+                with self.assertRaisesRegex(ValueError, message):
+                    self.snapshot(root)
+        self.write("final-inputs/candidate/qcd-1/generation.json", record)
+        manifest["files"]["process.f"] = "different-case"
+        manifest["files_sha256"] = report.bench.content_digest(manifest["files"])
+        self.write("final-inputs/candidate/qcd-1/compiled-sources.json", manifest)
+        with self.assertRaisesRegex(ValueError, "source manifest"):
+            self.snapshot(root)
+
+    def test_ordinary_collector_generation_inputs_are_found_automatically(self):
+        self.fixture()
+        self.write("timing/inputs/candidate/qcd-1/generation.json", {
+            "seconds": 23., "source_identity": {"revision": "candidate_corrected"},
+            "parameter_card_sha256": "parameters"})
+        files = {"process.f": "candidate_corrected"}
+        self.write("timing/inputs/candidate/qcd-1/compiled-sources.json", {
+            "files": files, "files_sha256": report.bench.content_digest(files)})
+        result = self.snapshot()["cases"][0]["preparation"]
+        self.assertEqual(result["candidate"]["generation"]["seconds"], 23.)
 
     def test_seven_corrected_targets_and_original_disagreements_remain_distinct(self):
         self.fixture(original_offset=.01)

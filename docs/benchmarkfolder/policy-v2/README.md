@@ -199,6 +199,16 @@ Render a published dataset into a new directory:
 python tools/ninjars_report_v2.py path/to/dataset.json --compile
 ```
 
+The renderer first uses the timing collector's retained
+`inputs/candidate/CASE` records for candidate generation times. For separately
+retained final CLI inputs, add
+`--generation-inputs path/to/final-generation/inputs`. That directory must retain
+`candidate/CASE/generation.json` and `compiled-sources.json` for every measured
+case. The renderer checks the generator identity, physical card and exact
+pre-worker source manifest against the measured build. Without matching
+generation evidence, the duration stays pending rather than reusing an older
+export's timing. These preparation records do not change numerical acceptance.
+
 The renderer defaults to a `report` directory beside the dataset. It refuses an
 existing destination, preserving every historical snapshot and PDF. It validates
 the complete retained evidence, then separately recomputes all numerical

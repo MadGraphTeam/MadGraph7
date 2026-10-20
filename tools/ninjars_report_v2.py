@@ -104,7 +104,19 @@ def compare_recorded(actual, recorded):
         raise ValueError("Stale or forged numerical dataset summary")
 
 
-def build_snapshot(dataset_path, timestamp=None):
+def generation_for_build(record, build):
+    """A historical model-correction export is not a later measured export."""
+    if record.get("source_identity") != build["generation_source_identity"]:
+        return None
+    if record.get("parameter_card_sha256") != build["parameter_card_sha256"]:
+        raise ValueError("Generation parameter card differs from measured build")
+    seconds = record.get("seconds")
+    if type(seconds) not in (int, float) or not math.isfinite(seconds) or seconds <= 0:
+        raise ValueError("Invalid generation duration")
+    return record
+
+
+def build_snapshot(dataset_path, timestamp=None, generation_inputs=None):
     dataset_path = policy.path(dataset_path)
     dataset = policy.validate_dataset(dataset_path)
     inputs = {}
@@ -182,15 +194,26 @@ def build_snapshot(dataset_path, timestamp=None):
                 item["ratio"] = item["median_us"] / timings["baseline"]["6"]["median_us"]
         preparation = {source: {"generation": None, "compilation": None}
                        for source in ("baseline", "candidate")}
-        if case_id in correction["cases"]:
-            c = correction["cases"][case_id]
-            preparation["baseline"]["generation"] = c["original_generation"]
-            preparation["candidate"]["generation"] = read(policy.check_file(c["generation_records"][2]))
         for source in preparation:
             key = f"{case_id}-{source}-6"
             if key in bindings[0]["targets"]:
                 build = read(policy.check_file(bindings[0]["targets"][key]["build"]))
                 preparation[source]["compilation"] = build["origin_compilation"]
+                c = correction["cases"][case_id]
+                record = (c["original_generation"] if source == "baseline" else
+                          read(policy.check_file(c["generation_records"][2])))
+                retained = (policy.path(generation_inputs) if generation_inputs is not None else
+                            policy.path(bindings[0]["report"]) / "inputs") / source / case_id
+                if source == "candidate" and (
+                        generation_inputs is not None or (retained / "generation.json").is_file()):
+                    record = read(retained / "generation.json")
+                    manifest = read(retained / "compiled-sources.json")
+                    if (bench.content_digest(manifest["files"]) != manifest["files_sha256"] or
+                            manifest["files_sha256"] != build["original_generated_sources_sha256"]):
+                        raise ValueError("Generation source manifest differs from measured build")
+                    if generation_for_build(record, build) is None:
+                        raise ValueError("Generation identity differs from measured build")
+                preparation[source]["generation"] = generation_for_build(record, build)
         cases.append(dict(case, timings=timings, corrected_reference_usage=references,
                           agreement=agreement, original_diagnostics=original,
                           performance=performance, preparation=preparation,
@@ -214,11 +237,12 @@ def build_snapshot(dataset_path, timestamp=None):
             "inputs_sha256": dict(sorted(inputs.items()))}
 
 
-def render(dataset_path, destination, timestamp=None, compile_pdf=False):
+def render(dataset_path, destination, timestamp=None, compile_pdf=False,
+           generation_inputs=None):
     destination = policy.path(destination)
     if destination.exists():
         raise ValueError("Report destination exists; preserve the previous report")
-    snapshot = build_snapshot(dataset_path, timestamp)
+    snapshot = build_snapshot(dataset_path, timestamp, generation_inputs)
     template = REPORT / "policy-v2/template/benchmark.typ"
     style = REPORT / "style.typ"
     snapshot["render_sources_sha256"] = {
@@ -240,9 +264,13 @@ def main():
     parser.add_argument("--output", type=Path)
     parser.add_argument("--timestamp")
     parser.add_argument("--compile", action="store_true")
+    parser.add_argument("--generation-inputs", type=Path,
+                        help="retained final CLI inputs root (candidate/CASE/generation.json "
+                             "and compiled-sources.json), verified against measured builds")
     args = parser.parse_args()
     output = args.output or args.dataset.parent / "report"
-    snapshot = render(args.dataset, output, args.timestamp, args.compile)
+    snapshot = render(args.dataset, output, args.timestamp, args.compile,
+                      args.generation_inputs)
     print(json.dumps({"report": str(output), "summary": snapshot["summary"],
                       "all_cases_passed": snapshot["all_cases_passed"]}, indent=2))
 

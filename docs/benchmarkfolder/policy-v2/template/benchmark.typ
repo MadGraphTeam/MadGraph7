@@ -262,6 +262,7 @@ resolved 95% interval within the same 1.05 threshold.
   A clean subprocess build does not include rebuilding external libraries.
   ML initialization plus warming is the median of the completed run preparations
   beginning at their first MadLoop call; parameter-card/model setup is excluded.
+  Generation is pending when its retained identity does not match the measured build.
   Generation and compilation have no performance acceptance gate.
 ]
 #v(8pt)
