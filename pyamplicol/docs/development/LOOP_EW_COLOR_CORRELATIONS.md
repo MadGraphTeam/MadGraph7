@@ -4,8 +4,9 @@ The retained control is `e- e+ -> u u~ [QED]` in the real-mass Gmu scheme,
 with complete model-supplied UV and R2. Ordinary components match independent
 binary64 references. Separate internal directed-source identities pass in
 double, DoubleFloat and 70-digit arithmetic. The source compiler receives an
-explicit compatibility repair and covariant multiplets; generic public model
-preparation is a separate integration gate.
+explicit compatibility repair and covariant multiplets. Public model preparation
+now passes a separate graph-free admission control. A fresh public process build
+remains a downstream integration gate.
 
 The source `loop_qcd_qed_sm_Gmu_py3` is imported with its full particle and
 counterterm catalogue. Its obsolete `Particle.anti` positional constructor loses
@@ -64,9 +65,28 @@ normalized model's `supported=false` flag and unknown-function diagnostics. Five
 declared, unused normalized-tree helpers are outside that path's function
 registry. The existing virtual writer and runtime execute the independently
 validated source-owned PACBIN; they do not pretend that the normalized model has
-become tree-supported. Generic Gmu/tree preparation remains unavailable under
-those truthful diagnostics. No function implementation, preflight flag or raw
-source file is changed for publication.
+become tree-supported. Tree preparation remains unavailable under those truthful
+diagnostics. No function implementation, preflight flag or raw source file is
+changed for publication.
+
+The public loop preparation boundary now accepts explicit compatibility,
+covariant multiplets and exact fixed values from `[loop.preparation]` or the
+source sidecar. Omission inherits the source record; an explicit empty or partial
+record replaces it completely. Sixteen focused checks pass across targeted runs
+using a normally refreshed compiled-model cache and the existing native module.
+Both planning and generation `_prepare` paths retain exact Gf bits, actual source
+and CT ownership, partner maps and repair diagnostics. Full-colour `auto`
+fallback reconstructs the same base inputs. Active unsupported scalar functions,
+shared model exclusions and default tree incompatibility still reject.
+
+These controls stop before `_graph_plan` and forbid graph/numerical process
+construction. Full dry-run performs later graph planning and is not certified by
+this control. Preparation retains every selected local counterterm key; its
+observed 1186 rules include 1015 without a local tensor certificate. The numerical
+constructor still requires certificates for actual matched insertions; the 59
+certified insertions in the independent physical control above are a separate
+gate. Inverse-zero symbolic warnings remain recorded, without assigning each to
+an inactive branch from this preparation-only evidence.
 
 Inspection now reports `Bdagger K_BL L + Ldagger K_LB B` for an actual directed
 plan and retains `2*Re(conj(Born)*loop)` for an ordinary plan. Both declarations
@@ -86,3 +106,6 @@ Saved/public/SDK evidence is in `workspace/reports/ew-directed-saved.log`,
 `ew-directed-public.log` and `ew-color-sdk.log`. Publication records preserve the
 explicit source scheme and unchanged model diagnostics in
 `workspace/reports/ew-quark-publication.json`.
+The separate preparation audit and targeted test progression are retained in
+`workspace/reports/public-loop-preparation-independent-review.md` and
+`public-preparation-{first-actual,ct-scope-assertion,tests}.log`.

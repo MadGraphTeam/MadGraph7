@@ -173,6 +173,55 @@ may be supplied. Relative typed-API restriction paths are resolved from the
 model directory; card names select the conventional `restrict_<name>.json` or
 `restrict_<name>.dat` file.
 
+### One-loop source preparation
+
+For a loop-capable UFO, `[loop.preparation]` supplies explicit source preparation
+inputs independently of the physics scheme in `[loop.model]`. For example, this
+fragment selects the existing compatibility profile and covariant partners of
+the tested `loop_qcd_qed_sm_Gmu_py3` source:
+
+```toml
+[loop.preparation]
+compatibility = "gmu_particle_anti"
+
+[loop.preparation.covariant_multiplets]
+"23" = [23, 250, 9000002, -9000002]
+"24" = [24, 251, 9000003, -9000004]
+"-24" = [-24, -251, 9000004, -9000003]
+
+[loop.preparation.fixed_parameters]
+epsUV = "1"
+epsIR = "1"
+GfRedefinitionChoice = "1"
+```
+
+This is a preparation fragment, not a complete generation card. The source
+must also provide compatible UV/R2 rules, and its scheme, remaining restrictions
+and correction orders must be declared. The complete real-mass control inputs
+are recorded in `tools/loop_reference/real_mass_ew_quarks.json`. Compatibility
+profiles validate the actual source declarations and retain repair diagnostics;
+a model name does not select or certify one automatically.
+
+Fixed values use decimal strings or `["real", "imaginary"]` string pairs, so
+inputs are preserved exactly. They are structural model restrictions rather
+than per-event parameters. A conflicting formal-colour parameter tie is an
+error. The same base inputs survive an eligible full-colour `auto` fallback.
+
+Omitting `[loop.preparation]` inherits any preparation record in the source
+sidecar. An explicit empty table clears it. Any supplied record, including a
+partial one, replaces the whole sidecar record. TOML and `--set` preserve this
+distinction; for example, `--set 'loop.preparation={}'` clears it, while setting
+only `loop.preparation.fixed_parameters.Gf` when the section is otherwise absent
+supplies a replacement containing that fixed parameter and no inherited
+compatibility profile or partner map. Ordinary card/CLI precedence still applies
+within an explicitly configured record.
+
+Loop preparation validates scalar expressions through the source frontend.
+Unused normalized-tree function declarations can therefore retain tree
+diagnostics without blocking this separate path. Active unsupported source
+expressions and shared particle/tensor exclusions still fail. Tree generation
+continues to enforce its own model compatibility checks.
+
 ## Model commands
 
 Inspect model capabilities and diagnostics:
