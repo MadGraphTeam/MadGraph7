@@ -246,7 +246,7 @@ def test_schedules_are_projections_of_one_skeleton_set(control):
     for key, schedule in plan.schedules.items():
         trie = schedule.trie
         assert len(trie.leaves) == per_family[key]
-        assert [node.depth for node in trie.nodes].count(len(key)) == 1
+        assert len(trie.accumulators) == 1  # one loop order
         assert schedule.bucket == (len(key), schedule.family.rank)
         assert schedule.family.rank <= len(key) + 2
         for node in trie.nodes:
@@ -260,7 +260,10 @@ def test_schedules_are_projections_of_one_skeleton_set(control):
     requests = plan.master_requests()
     assert sum(requests.values()) > len(requests)
     shapes = trie_shapes(plan, rows)
-    total = sum(STRUCTURED.close(s.trie.rank) for s in plan.schedules.values())
+    total = sum(
+        STRUCTURED.close(s.trie.rank) * len(s.trie.accumulators)
+        for s in plan.schedules.values()
+    )
     total += sum(record["work"] for record in shapes)
     assert total == sum(s.trie.cost(rows) for s in plan.schedules.values())
     # Positions only request block currents the block table provides.
@@ -268,6 +271,64 @@ def test_schedules_are_projections_of_one_skeleton_set(control):
     assert all(
         block in table.currents(block.mask) for block in families.block_requests()
     )
+
+
+@pytest.mark.loop_fast
+def test_schedules_keep_coupling_order_sectors_apart(control):
+    model, catalogue = control
+    sectors = frozenset({(("QCD", 4),), (("QCD", 2), ("QED", 2))})
+    selection = LoopOrderSelection(frozenset({"QCD", "QED"}), sectors)
+    table = ModelBlockTable(model, ["u", "u~"], ["d", "d~"], cap=selection.cap)
+    families = generate_families(table, catalogue, selection)
+    colour = PlanarWords(len(families.legs))
+    skeletons = [
+        skeleton
+        for family in families.families.values()
+        for skeleton in family_skeletons(families, family, colour, catalogue)
+    ]
+    assert {skeleton.orders for skeleton in skeletons} == sectors
+    contents = {c for skeleton in skeletons for c in skeleton.contents}
+    assert all(term.orders == c.orders for c in contents for term in c.terms)
+    # Gluon and photon terms share colour states: orders split the contents.
+    by_state = collections.defaultdict(set)
+    for c in contents:
+        by_state[c.colour, c.loop_in, c.loop_out, c.mask].add(c.orders)
+    assert any(len(orders) > 1 for orders in by_state.values())
+
+    def prefix_orders(graph):
+        """Orders of every state, propagated from the entries along edges."""
+        children = collections.defaultdict(list)
+        for parent, child, label in graph.edges:
+            children[parent].append((child, label[-1]))  # label ends in orders
+        orders = dict.fromkeys(graph.entries, ())
+        queue = list(graph.entries)
+        while queue:
+            state = queue.pop()
+            for child, step in children[state]:
+                total = v2_families.add_orders(orders[state], step)
+                if child not in orders:
+                    orders[child] = total
+                    queue.append(child)
+                assert orders[child] == total  # no state mixes prefix orders
+        return orders
+
+    for graph in (forward_graph(skeletons), merged_graph(skeletons)):
+        orders = prefix_orders(graph)
+        for state, group in graph.closures.items():
+            assert {skeleton.orders for skeleton in group} == {orders[state]}
+    rows = lambda mask: 2 ** mask.bit_count()  # noqa: E731
+    plan = build_schedules(families, catalogue, colour, policy=cheapest(rows))
+    split = 0
+    for schedule in plan.schedules.values():
+        trie = schedule.trie
+        leaves = {skeleton.orders for skeleton, _ring in trie.leaves}
+        assert sorted(node.orders for node in trie.accumulators) == sorted(leaves)
+        for node in trie.nodes:
+            for _segment, child in node.edges:
+                below = trie.leaves[child][0] if node.depth == 1 else trie.nodes[child]
+                assert below.orders == node.orders
+        split += len(leaves) > 1
+    assert split
 
 
 @pytest.mark.loop_fast

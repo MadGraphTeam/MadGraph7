@@ -4,8 +4,11 @@
 A skeleton is a ring of position *contents*. A content is one colour state of
 one position between two loop species; it sums every routing term (vertex
 template and attached block currents) that produces that colour state, e.g. the
-cubic and quartic parts of a planar gluon position (design §3.4). Skeletons are
-built per family from the family's routings and are never listed globally.
+cubic and quartic parts of a planar gluon position (design §3.4). Terms of
+different coupling orders are distinct contents, so every content and skeleton
+carries one exact order vector (design §3.6) and its closure lands in one
+squared-order sector. Skeletons are built per family from the family's routings
+and are never listed globally.
 
 Colour states come from a ``ColourModel`` (WP1.2 block colour states and the
 WP1.4 seed classes). ``DressedColour`` keeps one content per routing term;
@@ -28,7 +31,9 @@ from .families import (
     FamilyKey,
     FamilySet,
     LoopVertexCatalogue,
+    Orders,
     Position,
+    add_orders,
 )
 
 
@@ -101,12 +106,16 @@ class PlanarWords:
 
 @dataclass(frozen=True, slots=True, order=True)
 class Content:
-    """One position of a skeleton: a colour state between two loop species."""
+    """One position of a skeleton: a colour state between two loop species.
+
+    Every summed term has the coupling orders ``orders`` (vertex and blocks).
+    """
 
     colour: Hashable
     loop_in: str
     loop_out: str
     mask: int
+    orders: Orders
     terms: tuple[Position, ...]
 
     @property
@@ -115,8 +124,8 @@ class Content:
         return max(term.vertex.q_degree for term in self.terms)
 
     @property
-    def label(self) -> tuple[Hashable, str, str, int]:
-        return self.colour, self.loop_in, self.loop_out, self.mask
+    def label(self) -> tuple[Hashable, str, str, int, Orders]:
+        return self.colour, self.loop_in, self.loop_out, self.mask, self.orders
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,6 +150,11 @@ class Skeleton:
         """Species of the propagator following each position."""
         return tuple(content.loop_out for content in self.contents)
 
+    @property
+    def orders(self) -> Orders:
+        """Coupling orders of the loop amplitude (its sector offset, §3.6)."""
+        return add_orders(*(content.orders for content in self.contents))
+
 
 def reflect_content(
     content: Content, colour: ColourModel, catalogue: LoopVertexCatalogue
@@ -151,6 +165,7 @@ def reflect_content(
         species(content.loop_out).antiname,
         species(content.loop_in).antiname,
         content.mask,
+        content.orders,
         tuple(
             sorted(
                 Position(catalogue.reflected(term.vertex), term.blocks)
@@ -225,7 +240,7 @@ def _labelled_rings(
     options = [colour.states(position) for position in positions]
     for states in product(*options):
         labels = tuple(
-            (state, p.vertex.loop_in, p.vertex.loop_out, p.mask)
+            (state, p.vertex.loop_in, p.vertex.loop_out, p.mask, p.orders)
             for state, p in zip(states, positions, strict=True)
         )
         yield labels, positions

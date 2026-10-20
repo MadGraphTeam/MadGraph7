@@ -6,12 +6,17 @@ The three schedules are key projections of the same skeleton set:
 * **B** (default): per family, a suffix trie in a per-family cost-optimal
   frame. A node holds the undressed positions k+1..N; its edges are the
   distinct contents of position k, each from the node of positions k..N.
-  Leaves (depth 0) are skeletons, the depth-N node is the family accumulator.
+  Leaves (depth 0) are skeletons, a depth-N node is a family accumulator.
+  Nodes also carry the loop orders of their skeletons, so a family has one
+  accumulator (one reduction) per loop order.
 * **F** (baseline, oracle): prefixes in the F frame of the family recursion,
   shared across families; closures scatter into families.
 * **M** (merged): dressed positions keep only their leg sets and species, the
   undressed remainder is one colour word, so prefixes merge across families
   and seed orderings. It needs colour-ordered contents (words).
+
+Contents carry exact coupling orders, and F and M states carry the orders of
+their dressed prefix, so no state mixes squared-order sectors (design §3.5).
 
 Frames, buckets (N, R), master keys and re-test relabellings complete the
 per-family reduction data; ``trie_shapes`` exports the B node shapes for the
@@ -33,11 +38,19 @@ from .families import (
     LoopVertexCatalogue,
     MassId,
     MasterKey,
+    Orders,
     Relabelling,
+    add_orders,
     default_relabelling,
     ring_readings,
 )
-from .skeletons import ColourModel, Content, Skeleton, reflect_ring
+from .skeletons import (
+    ColourModel,
+    Content,
+    Skeleton,
+    family_skeletons,
+    reflect_ring,
+)
 
 # --------------------------------------------------------------------------- views
 
@@ -74,10 +87,10 @@ class SkeletonView:
     """Projection of skeleton contents onto schedule segments.
 
     By default a segment is keyed by the full content (colour state, both
-    species and every summed term), interned as an integer label;
+    species, orders and every summed term), interned as an integer label;
     ``content(label)`` recovers it. ``classes(skeleton)`` may return a species
     projection for that skeleton (e.g. to compare with a cost model that merges
-    flavours or orientations); ``keep`` filters skeletons.
+    flavours or orientations; orders are kept); ``keep`` filters skeletons.
     """
 
     def __init__(
@@ -109,6 +122,7 @@ class SkeletonView:
                 content.colour,
                 classes(content.loop_in),
                 classes(content.loop_out),
+                content.orders,
             )
         mass = self.catalogue.species(content.loop_out).mass
         return Segment(label, content.mask, mass, content.q_degree)
@@ -189,6 +203,7 @@ DENSE = CostModel(fused=320, vertex=1300)
 @dataclass(frozen=True, slots=True)
 class TrieNode:
     depth: int  # positions 1..depth are dressed
+    orders: Orders  # loop orders of the skeletons below
     suffix: Ring  # undressed positions depth+1..N
     rank_in: int  # rank entering the segment of position ``depth``
     edges: tuple[tuple[Segment, int], ...]  # (content of position depth, child)
@@ -198,9 +213,9 @@ class TrieNode:
 class SuffixTrie:
     """Schedule-B trie of one family in one frame.
 
-    ``nodes`` holds depths 1..N (the last node is the family accumulator);
-    a child index refers to ``nodes`` for depth > 1 and to ``leaves`` (the
-    oriented skeletons) for depth 1.
+    ``nodes`` holds depths 1..N (the depth-N nodes are the family
+    accumulators, one per loop order); a child index refers to ``nodes`` for
+    depth > 1 and to ``leaves`` (the oriented skeletons) for depth 1.
     """
 
     family: FamilyKey
@@ -209,8 +224,12 @@ class SuffixTrie:
     nodes: tuple[TrieNode, ...]
     rank: int
 
+    @property
+    def accumulators(self) -> tuple[TrieNode, ...]:
+        return tuple(node for node in self.nodes if node.depth == len(self.family))
+
     def cost(self, rows: Callable[[int], int], model: CostModel = STRUCTURED) -> int:
-        total = model.close(self.rank)
+        total = model.close(self.rank) * len(self.accumulators)
         for node in self.nodes:
             total += model.node(
                 _rows(self.suffix_masks(node), rows), node.rank_in, _x_rows(node, rows)
@@ -238,25 +257,24 @@ def build_trie(
 ) -> SuffixTrie:
     count = family.size
     nodes: list[TrieNode] = []
-    previous: dict[Ring, int] = {}  # suffix at depth k-1 -> index (leaf or node)
-    for leaf, (_skeleton, ring) in enumerate(oriented):
-        previous.setdefault(ring, leaf)
+    # (orders, suffix at depth k-1) -> index (leaf or node)
+    previous: dict[tuple[Orders, Ring], int] = {}
+    for leaf, (skeleton, ring) in enumerate(oriented):
+        previous.setdefault((skeleton.orders, ring), leaf)
     for depth in range(1, count + 1):
-        edges: dict[Ring, dict[Segment, int]] = defaultdict(dict)
-        rank_in: dict[Ring, int] = defaultdict(int)
-        for _skeleton, ring in oriented:
-            suffix = ring[depth:]
-            edges[suffix][ring[depth - 1]] = previous[ring[depth - 1 :]]
-            rank_in[suffix] = max(
-                rank_in[suffix], sum(segment.q_degree for segment in ring[: depth - 1])
+        edges: dict[tuple[Orders, Ring], dict[Segment, int]] = defaultdict(dict)
+        rank_in: dict[tuple[Orders, Ring], int] = defaultdict(int)
+        for skeleton, ring in oriented:
+            key = skeleton.orders, ring[depth:]
+            edges[key][ring[depth - 1]] = previous[skeleton.orders, ring[depth - 1 :]]
+            rank_in[key] = max(
+                rank_in[key], sum(segment.q_degree for segment in ring[: depth - 1])
             )
         current = {}
-        for suffix in sorted(edges):
-            current[suffix] = len(nodes)
+        for key in sorted(edges):
+            current[key] = len(nodes)
             nodes.append(
-                TrieNode(
-                    depth, suffix, rank_in[suffix], tuple(sorted(edges[suffix].items()))
-                )
+                TrieNode(depth, *key, rank_in[key], tuple(sorted(edges[key].items())))
             )
         previous = current
     rank = max(
@@ -399,8 +417,9 @@ class StateGraph:
 def forward_graph(skeletons: Iterable[Skeleton]) -> StateGraph:
     """Schedule F: a state is the sequence of contents dressed from the cut.
 
-    Contents carry the cut species; helicities of attached legs are explicit,
-    so prefixes are shared across families but not across orderings.
+    Contents carry the cut species and their orders; helicities of attached
+    legs are explicit, so prefixes are shared across families but not across
+    orderings.
     """
     graph = StateGraph()
     for skeleton in skeletons:
@@ -421,8 +440,8 @@ def merged_graph(skeletons: Iterable[Skeleton]) -> StateGraph:
 
     The seed of a chain is the full colour word read from the cut. States
     merge across families and seed orderings whenever the dressed leg sets,
-    species and the undressed word agree (design §3.5), so a state can have
-    several parents.
+    species, prefix orders and the undressed word agree (design §3.5), so a
+    state can have several parents.
     """
     graph = StateGraph()
     for skeleton in skeletons:
@@ -430,12 +449,14 @@ def merged_graph(skeletons: Iterable[Skeleton]) -> StateGraph:
         if not all(isinstance(word, tuple) for word in words):
             raise TypeError("schedule M needs colour-ordered (word) contents")
         cut = skeleton.cut
-        state = graph.state((cut, (), sum(words, ())))
+        state = graph.state((cut, (), sum(words, ()), ()))
         graph.entries.add(state)
         dressed: tuple = ()
+        orders = ()
         for index, content in enumerate(skeleton.contents):
             dressed = (*dressed, (content.mask, content.loop_out))
-            child = graph.state((cut, dressed, sum(words[index + 1 :], ())))
+            orders = add_orders(orders, content.orders)
+            child = graph.state((cut, dressed, sum(words[index + 1 :], ()), orders))
             graph.edges.add((state, child, content.label))
             state = child
         graph.closures[state].append(skeleton)
@@ -466,7 +487,10 @@ class LoopSchedules:
     schedules: Mapping[FamilyKey, FamilySchedule]
 
     def buckets(self) -> dict[tuple[int, int], tuple[FamilyKey, ...]]:
-        """(N, R) buckets: families reduced together as lanes of one call."""
+        """(N, R) buckets: families reduced together as lanes of one call.
+
+        A family takes one lane per accumulator (loop order) of its trie.
+        """
         out: dict[tuple[int, int], list[FamilyKey]] = defaultdict(list)
         for key, schedule in self.schedules.items():
             out[schedule.bucket].append(key)
@@ -491,8 +515,6 @@ def build_schedules(
     choose: ReadingChoice = shared_suffix,
 ) -> LoopSchedules:
     """Skeletons, B tries in the chosen frames and reduction data per family."""
-    from .skeletons import family_skeletons
-
     view = view or SkeletonView(catalogue, colour)
     out = {}
     for key, family in families.families.items():
@@ -513,9 +535,9 @@ def trie_shapes(
 ) -> list[dict[str, object]]:
     """B node shapes for the kernel gate G0 (design §5.4, WP0.3).
 
-    One record per node: input rows (undressed legs after the step), summed
-    block rows X of its edges, edge count, input rank and coefficient count,
-    output rank, loop-line species and modelled work.
+    One record per node: loop orders, input rows (undressed legs after the
+    step), summed block rows X of its edges, edge count, input rank and
+    coefficient count, output rank, loop-line species and modelled work.
     """
     out = []
     for key, schedule in schedules.schedules.items():
@@ -534,6 +556,7 @@ def trie_shapes(
                 {
                     "family": [[mask, mass.mass, mass.width] for mask, mass in key],
                     "depth": node.depth,
+                    "orders": [list(order) for order in node.orders],
                     "positions": len(key),
                     "rows_out": rows_out,
                     "x_rows": x_rows,
