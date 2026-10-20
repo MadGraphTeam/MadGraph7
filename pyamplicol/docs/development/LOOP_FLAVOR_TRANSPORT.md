@@ -267,9 +267,10 @@ reuses this already bound input. An independent non-involutive three-cycle
 control distinguishes this direction from its inverse and detects omitted or
 repeated application. Identical-boson physical amplitudes alone cannot do that.
 
-Capabilities belong to the selected member. A nonidentity member currently
-exposes ordinary inclusive evaluation; resolved outputs, colour histories and
-vector sources require their own axis/source proof and are rejected. The saved
+Capabilities belong to the selected member. A nonidentity member carrying only
+the ordinary proof exposes ordinary inclusive evaluation; resolved outputs,
+colour histories and vector sources require their own axis/source proof. The
+proved named-history/source extension below is explicit. The saved
 representative keeps its real resolved and correlated plans. Inspection exposes
 both selected-process capabilities and `representative_physics`, so a richer
 representative does not imply an unproved member capability. SDK discovery and
@@ -302,3 +303,61 @@ with ArbPrec60/80, retaining its original point identity. The safe Rust SDK
 checks ordinary coefficients, selected capability discovery, rejected resolved
 and correlated calls, and result ownership after clearing/dropping the handle.
 These are correctness controls, not updated performance measurements.
+
+## Explicit Bose history and vector-source subsets
+
+An ordinary admitted Bose relation can retain an additional immutable proof over
+the actual paired directed preparations and SourceIR catalogues. It proves a
+selected subset of the existing named requests; each selected ID keeps its
+original operator definition. The source-owned proof first checks that the
+member's `(id, definition)` matches the saved named catalogue, then locates the
+inverse-permuted representative definition. Aliases are permitted and keep
+separate selected IDs. No identity/Casimir allowlist or permutation search is
+introduced. The exercised closed subset is `born` and `casimir`; the richer
+representative also retains `ordered` and `swapped`.
+
+The initial physical colour ports determine which operator labels transform.
+Retired physical parents still transform; auxiliary labels stay unchanged,
+including positive labels equal to colourless physical slots. Existing typed
+colour connections validate the resulting history. Vector class keys follow the
+inverse leg permutation. Each side retains its actual SourceIR, crossing-phase
+and compact spectator authority, checked once when constructing the immutable
+scope. Replacing both sides with matching foreign metadata cannot manufacture
+this proof, and ordinary-only relations cannot be promoted by binding alone.
+
+The existing member record carries the selected history IDs and proved source
+class keys. The normal writer rechecks the actual representative directed plan
+and every required source object; extra validated representative classes may
+remain available. A selected singleton need only have its inverse counterpart
+on the representative: the exercised member leg4 works with representative
+leg3 alone. The typed reader validates saved references and physical roles.
+Public and SDK discovery describe the selected capability while preserving
+the complete representative plans. Resolved and projected transport are not
+inferred from this full-colour source proof.
+
+Native ingress permutes exact momenta and literal source keys once, before
+ordinary execution or verification. The existing SourceIR applies its phase
+once; there is no additional conjugation, rescaling or binary64 promotion.
+All complete Born/virtual component buffers, orders, Laurent coefficients, both
+integrated terms, status channels and original IDs are gathered after execution.
+
+The complete representative bank executes before selecting output histories.
+A failure in an unselected history therefore remains a point failure. It keeps
+its original representative context in the diagnostic and has no selected
+history index; failures shared by selected aliases produce the corresponding
+selected diagnostics. Structured external-leg fields and every verification
+attempt follow the same map. This conservative failure policy does not claim
+that omitted output rows were never evaluated.
+
+The independently generated fixed-full QCD d/s→gg source owners pass all three
+carriers with ordinary, singleton and joint vector classes, all nine component
+buffers and separate directed terms. The saved/public controls pass through
+normal artifacts, exact parameter updates, empty/singleton/tail batches, opaque
+IDs, malformed scope rejection and ArbPrec60/80 subset rescue. A distinct
+non-involutive exact-input test establishes routing direction and subset replay;
+Bose symmetry alone cannot detect consistently omitting both momentum and source
+actions. Tests also retain the old ordinary-only member denials. The binary64
+SDK client checks selected versus richer representative catalogues, reversed
+literal joint labels, singleton inverse routing, complete values and owned
+results after dropping handles. These are correctness controls; benchmark cells
+have not been retimed for this milestone.
