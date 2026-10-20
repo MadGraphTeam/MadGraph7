@@ -114,6 +114,12 @@ def _born_dag(graph, variables, momenta):
 def _saved(expressions, parameters):
     from symbolica import Expression
 
+    # For large projector linear forms the build time is dominated by the
+    # unbounded common-pair elimination (cpe_iterations=None): 524,288 Born
+    # terms take 280 s, the six-leg CT projector 89 s. cpe_iterations=0 builds
+    # them in about 1 s with slightly fewer instructions, but it reassociates
+    # the arithmetic (results change at the last-bit level), so it is not
+    # enabled here. n_cores > 1 gives no speedup at iterations=1.
     return Expression.evaluator_multiple(
         expressions, parameters, n_cores=1, jit_compile=False
     ).save()
