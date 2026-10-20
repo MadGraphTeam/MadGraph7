@@ -10,10 +10,14 @@ proves the semantic signed component axes. Crossing needs a separate proof.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
-from pyamplicol.generation.process_grouping import GroupMember, LegMapping
+from pyamplicol.generation.process_grouping import (
+    GroupMember,
+    LegMapping,
+    invert_permutation,
+)
 
 from .flavor_mappings import FlavorSymmetry
 from .physical_source import NativeSourceModelProgram
@@ -265,6 +269,182 @@ def _admit_sources(representative, member, species, left, right, left_spin, righ
     return tuple(a[key] for key in sorted(a)), tuple(b[key] for key in sorted(b))
 
 
+def _named_history_catalog(prepared, declarations):
+    """Bind existing request names to every actual prepared operator column."""
+    from pyamplicol.color.connections import ColorConnection
+    from pyamplicol.color.correlator_matrices import ColorCorrelator
+
+    from .prepared_correlations import PreparedDirectedModel
+
+    declarations = tuple(declarations)
+    if not isinstance(prepared, PreparedDirectedModel):
+        raise TypeError("named history catalogue requires an actual directed owner")
+    bare = prepared.bare
+    if (
+        len(declarations) != len(bare.histories)
+        or any(not isinstance(item, ColorCorrelator) for item in declarations)
+        or len({item.id for item in declarations}) != len(declarations)
+    ):
+        raise ValueError("named history catalogue differs from prepared columns")
+    for item, (bra, ket) in zip(declarations, bare.histories, strict=True):
+        if (
+            ColorConnection(bare.color_legs, item.bra) != bra
+            or ColorConnection(bare.color_legs, item.ket) != ket
+        ):
+            raise ValueError("named history definition differs from prepared column")
+    return {item.id: (index, item) for index, item in enumerate(declarations)}
+
+
+def _bose_history_routes(
+    left, right, left_requests, right_requests, selected, permutation
+):
+    from .correlation_labels import permute_native_color_history
+
+    a = _named_history_catalog(left, left_requests)
+    b = _named_history_catalog(right, right_requests)
+    selected = tuple(selected)
+    if (
+        not selected
+        or any(not isinstance(item, str) or not item for item in selected)
+        or len(set(selected)) != len(selected)
+        or any(item not in a or item not in b for item in selected)
+    ):
+        raise ValueError("selected history IDs must name a unique common catalogue")
+    inverse = invert_permutation(permutation)
+    routes = []
+    for name in selected:
+        request = b[name][1]
+        if a[name][1] != request:
+            raise ValueError("common named history changes its member definition")
+        wanted = permute_native_color_history(request, inverse)
+        route = next(
+            (
+                index
+                for index, item in enumerate(left_requests)
+                if (item.bra, item.ket) == (wanted.bra, wanted.ket)
+            ),
+            None,
+        )
+        if route is None:
+            raise NotImplementedError(
+                f"selected history {name!r} has no transported representative row"
+            )
+        routes.append(route)
+    return tuple(routes)
+
+
+@dataclass(frozen=True, slots=True)
+class BoseCorrelationScope:
+    """Existing named requests and their proved representative column routes."""
+
+    representative_requests: tuple
+    member_requests: tuple
+    selected_history_ids: tuple[str, ...]
+    history_routes: tuple[int, ...]
+
+    def require_catalogues(self, transport):
+        if (
+            transport.representative_directed is None
+            or transport.member_directed is None
+            or transport.representative_directed.plan
+            is not transport.representative_plan
+            or transport.member_directed.plan is not transport.member_plan
+            or transport.representative_directed.bare.plan
+            is not transport.representative_plan.bare
+            or transport.member_directed.bare.plan is not transport.member_plan.bare
+        ):
+            raise ValueError("Bose correlation scope has a different directed owner")
+        routes = _bose_history_routes(
+            transport.representative_directed,
+            transport.member_directed,
+            self.representative_requests,
+            self.member_requests,
+            self.selected_history_ids,
+            transport.mapping.permutation,
+        )
+        if routes != self.history_routes:
+            raise ValueError("Bose history routes differ from their actual catalogues")
+
+    def member_histories(self, transport):
+        indices = {item.id: index for index, item in enumerate(self.member_requests)}
+        return tuple(
+            transport.member_directed.bare.histories[indices[name]]
+            for name in self.selected_history_ids
+        )
+
+
+def _bose_source_catalogues(
+    representative, member, left, right, left_spin, right_spin, permutation
+):
+    """Pair actual SourceIR/phase owners and compact spectator sums through P."""
+    from collections import Counter
+
+    from .prepared_correlations import PreparedDirectedModel
+
+    for source, ordinary in ((representative, left), (member, right)):
+        if not isinstance(ordinary, PreparedDirectedModel):
+            raise TypeError(
+                "Bose correlation scope requires paired directed preparations"
+            )
+        ordinary.require_owner(source.virtual)
+        if ordinary.bare.spin_layout is not None:
+            raise ValueError("Bose correlation scope requires ordinary directed owners")
+        if (
+            ordinary.bare.color_bank is not None
+            or source.virtual.color_projection is not None
+        ):
+            raise NotImplementedError("projected Bose history transport is unproved")
+        if ordinary.bare.helicities != source.virtual.bare.helicities:
+            raise ValueError("Bose ordinary catalogue changes owner helicities")
+    if tuple(
+        sorted(
+            (permutation[leg.label], leg.representation) for leg in left.bare.color_legs
+        )
+    ) != tuple(
+        sorted((leg.label, leg.representation) for leg in right.bare.color_legs)
+    ):
+        raise ValueError("Bose history transport changes typed colour ports")
+    inverse = invert_permutation(permutation)
+    if Counter(
+        tuple(row[index] for index in inverse) for row in left.bare.helicities
+    ) != Counter(right.bare.helicities):
+        raise ValueError("Bose history transport changes physical helicity states")
+    a, b = (
+        _spin_catalog(representative, left, tuple(left_spin)),
+        _spin_catalog(member, right, tuple(right_spin)),
+    )
+    images = {key: tuple(sorted(permutation[leg - 1] + 1 for leg in key)) for key in a}
+    if set(images.values()) != b.keys():
+        raise ValueError("Bose transport changes the paired joint source classes")
+    for key, image in images.items():
+        original, target = a[key].bare.spin_layout, b[image].bare.spin_layout
+        paired = {
+            permutation[leg - 1] + 1: (contract, phase)
+            for leg, contract, phase in zip(
+                key, original.contracts, original.phase_states, strict=True
+            )
+        }
+        if tuple(paired[leg] for leg in image) != tuple(
+            zip(target.contracts, target.phase_states, strict=True)
+        ):
+            raise ValueError("Bose transport changes model-owned SourceIR or phase")
+        spectators = Counter(
+            tuple(
+                row[index] for leg, index in enumerate(inverse, 1) if leg not in image
+            )
+            for row in original.helicities
+        )
+        if spectators != Counter(
+            tuple(value for leg, value in enumerate(row, 1) if leg not in image)
+            for row in target.helicities
+        ):
+            raise ValueError("Bose transport changes compact spectator helicities")
+    return (
+        tuple(a[key] for key in sorted(a)),
+        tuple(b[images[key]] for key in sorted(a)),
+    )
+
+
 def _bose_local_rules(plan):
     """Apply the existing local proof to each complete retained eligibility group."""
     from symbolica import E
@@ -457,9 +637,9 @@ class IdentityFlavorTransport:
 
     ``species`` maps representative PDGs to member PDGs. The existing LegMapping
     maps member momenta to representative ports. Nonidentity maps additionally
-    require exact local Bose covariance and the complete indexed field multiset;
-    they admit only ordinary inclusive full colour. No relation is inferred from
-    numerical model defaults or equality of a few amplitudes.
+    require exact local Bose covariance and the complete indexed field multiset.
+    Correlations additionally require paired source/request ownership. No
+    relation is inferred from numerical defaults or equality of a few amplitudes.
     """
 
     symmetry: FlavorSymmetry = field(repr=False)
@@ -474,6 +654,7 @@ class IdentityFlavorTransport:
     representative_spin: tuple = field(default=(), repr=False)
     member_spin: tuple = field(default=(), repr=False)
     bose_scalar_bindings: Any = field(default=None, repr=False)
+    bose_correlations: BoseCorrelationScope | None = field(default=None, repr=False)
 
     @property
     def permutes_external_legs(self):
@@ -568,6 +749,77 @@ class IdentityFlavorTransport:
             bose_scalars,
         )
 
+    def with_bose_correlations(
+        self,
+        representative,
+        member,
+        *,
+        representative_directed,
+        member_directed,
+        representative_histories,
+        member_histories,
+        selected_history_ids,
+        representative_spin=(),
+        member_spin=(),
+    ):
+        """Extend the same ordinary proof with actual named source observables.
+
+        All numerical kernels remain owned by the original model preparations.
+        This checks request/source transport and does not repeat local-rule
+        algebra or promote an ordinary admission through saved-plan presence.
+        """
+        if not self.permutes_external_legs or self.bose_scalar_bindings is None:
+            raise ValueError("correlation extension requires an admitted Bose relation")
+        if (
+            representative.prepared is not self.representative_plan
+            or member.prepared is not self.member_plan
+        ):
+            raise ValueError("Bose correlation scope has a different prepared owner")
+        for source, expected in (
+            (representative, self.representative_request),
+            (member, self.member_request),
+        ):
+            if _request(self.symmetry, source)[0] != expected:
+                raise ValueError("Bose correlation scope changes its source request")
+        plan, binding = self.symmetry.plan, self.bose_scalar_bindings
+        if (
+            binding.program is not plan.structure.scalars
+            or binding.fixed_parameters != plan.structure.fixed_parameters
+        ):
+            raise ValueError("Bose correlation scope changes its paired scalar owner")
+        left_spin, right_spin = _bose_source_catalogues(
+            representative,
+            member,
+            representative_directed,
+            member_directed,
+            representative_spin,
+            member_spin,
+            self.mapping.permutation,
+        )
+        left_requests, right_requests = (
+            tuple(representative_histories),
+            tuple(member_histories),
+        )
+        selected = tuple(selected_history_ids)
+        routes = _bose_history_routes(
+            representative_directed,
+            member_directed,
+            left_requests,
+            right_requests,
+            selected,
+            self.mapping.permutation,
+        )
+        return replace(
+            self,
+            representative_directed=representative_directed,
+            member_directed=member_directed,
+            representative_spin=left_spin,
+            member_spin=right_spin,
+            bose_correlations=BoseCorrelationScope(
+                left_requests, right_requests, selected, routes
+            ),
+        )
+
     def _require_binding(self, representative, directed):
         """Use the same owner/capability boundary for every wrapper construction."""
         if (
@@ -578,7 +830,7 @@ class IdentityFlavorTransport:
                 "flavour transport belongs to another prepared representative"
             )
         if directed is not None:
-            if self.permutes_external_legs:
+            if self.permutes_external_legs and self.bose_correlations is None:
                 raise NotImplementedError(
                     "Bose permutation transport has no directed axis proof"
                 )
@@ -587,6 +839,13 @@ class IdentityFlavorTransport:
             if not isinstance(directed, PreparedDirectedModel):
                 raise TypeError("expected retained directed model instructions")
             directed.require_owner(representative.virtual)
+            if self.bose_correlations is not None:
+                if (
+                    not isinstance(self.bose_correlations, BoseCorrelationScope)
+                    or self.bose_scalar_bindings is None
+                ):
+                    raise ValueError("Bose correlation scope lacks its admitted owner")
+                self.bose_correlations.require_catalogues(self)
             if directed.bare.spin_layout is not None:
                 if not any(directed is item for item in self.representative_spin):
                     raise ValueError("mapped spin class has no paired source admission")
@@ -650,6 +909,104 @@ class NativeIdentityFlavorProgram:
             raise ValueError("expected (batch, leg, four components) momenta")
         return values[:, permutation, :]
 
+    def _spin_sources(self, sources):
+        """Transport already-phased native rows; values remain untouched."""
+        if not self.transport.permutes_external_legs:
+            return sources
+        from collections.abc import Mapping
+
+        sources = {} if sources is None else sources
+        if not isinstance(sources, Mapping):
+            raise TypeError("spin sources must map public physical legs to native rows")
+        layout = self.directed_plan.bare.spin_layout
+        representative = () if layout is None else layout.legs
+        permutation = self.transport.mapping.permutation
+        expected = tuple(sorted(permutation[leg - 1] + 1 for leg in representative))
+        if (
+            any(type(leg) is not int for leg in sources)
+            or tuple(sorted(sources)) != expected
+        ):
+            raise ValueError("member spin sources differ from the admitted joint class")
+        inverse = invert_permutation(permutation)
+        return {inverse[leg - 1] + 1: value for leg, value in sources.items()}
+
+    def _selected_statuses(self, statuses):
+        """Gather successful channels after the complete bank's failure checks."""
+        routes = self.transport.bose_correlations.history_routes
+        channels = self._directed.channels
+        families = dict.fromkeys(channel[2] for channel in channels)
+        selected = [
+            (index, (2 * target + direction % 2, order, family))
+            for family in families
+            for target, history in enumerate(routes)
+            for index, (direction, order, actual_family) in enumerate(channels)
+            if actual_family == family and direction // 2 == history
+        ]
+        return (
+            tuple(tuple(row[index] for index, _ in selected) for row in statuses),
+            tuple(channel for _, channel in selected),
+        )
+
+    def _selected_native(self, result):
+        scope = self.transport.bose_correlations
+        if scope is None:
+            return result
+        orders = self.transport.orders
+        changes = {}
+        for name in (
+            "born",
+            "virtual",
+            "bare",
+            "uv",
+            "r2",
+            "uv_local",
+            "uv_external_fields",
+            "first",
+            "second",
+        ):
+            width = len(orders.born) if name == "born" else len(orders.virtual) * 3
+            changes[name] = getattr(result, name).take_columns(
+                [
+                    history * width + column
+                    for history in scope.history_routes
+                    for column in range(width)
+                ]
+            )
+        changes["statuses"] = self._selected_statuses(result.statuses)[0]
+        return replace(result, **changes)
+
+    def _selected_decimal(self, result):
+        scope = self.transport.bose_correlations
+        if scope is None:
+            return result
+        import numpy as np
+
+        changes = {
+            name: np.take(getattr(result, name), scope.history_routes, axis=1)
+            for name in (
+                "born",
+                "virtual",
+                "bare",
+                "uv",
+                "r2",
+                "uv_local",
+                "uv_external_fields",
+                "first",
+                "second",
+            )
+        }
+        changes["statuses"], changes["channels"] = self._selected_statuses(
+            result.statuses
+        )
+        changes["histories"] = scope.member_histories(self.transport)
+        changes["spin_legs"] = tuple(
+            sorted(
+                self.transport.mapping.permutation[leg - 1] + 1
+                for leg in result.spin_legs
+            )
+        )
+        return replace(result, **changes)
+
     def evaluate_ordered_native(self, momenta, scales_squared):
         return self.representative.virtual.evaluate_ordered_native(
             self._momenta(momenta), scales_squared
@@ -665,8 +1022,13 @@ class NativeIdentityFlavorProgram:
     ):
         if self._directed is None:
             raise ValueError("mapped evaluation has no retained directed histories")
-        return self._directed.evaluate_native(
-            momenta, scales_squared, point_ids=point_ids, spin_sources=spin_sources
+        return self._selected_native(
+            self._directed.evaluate_native(
+                self._momenta(momenta),
+                scales_squared,
+                point_ids=point_ids,
+                spin_sources=self._spin_sources(spin_sources),
+            )
         )
 
     def evaluate_directed_decimal(
@@ -674,8 +1036,13 @@ class NativeIdentityFlavorProgram:
     ):
         if self._directed is None:
             raise ValueError("mapped evaluation has no retained directed histories")
-        return self._directed.evaluate_decimal(
-            momenta, scales_squared, point_ids=point_ids, spin_sources=spin_sources
+        return self._selected_decimal(
+            self._directed.evaluate_decimal(
+                self._momenta(momenta),
+                scales_squared,
+                point_ids=point_ids,
+                spin_sources=self._spin_sources(spin_sources),
+            )
         )
 
 
@@ -769,6 +1136,10 @@ class AdmittedFlavorMember:
             raise ValueError("public flavour member differs from the admitted process")
 
     def for_program(self, program, *, spin_directed=()):
+        if self.transport.bose_correlations is not None:
+            raise NotImplementedError(
+                "Bose correlation scope requires its pending saved-runtime transport"
+            )
         if program.prepared is not self.transport.representative_plan:
             raise ValueError(
                 "flavour admission belongs to another saved representative"
