@@ -564,8 +564,8 @@ class IdentityFlavorTransport:
             bose_scalars,
         )
 
-    def bind(self, representative, *, directed=None):
-        """Reuse admitted currents and their exact mutable global parameter owner."""
+    def _require_binding(self, representative, directed):
+        """Use the same owner/capability boundary for every wrapper construction."""
         if (
             not isinstance(representative, NativeSourceModelProgram)
             or representative.prepared is not self.representative_plan
@@ -591,6 +591,9 @@ class IdentityFlavorTransport:
                 and directed is not self.representative_directed
             ):
                 raise ValueError("mapped histories differ from their paired admission")
+
+    def bind(self, representative, *, directed=None):
+        """Reuse admitted currents and their exact mutable global parameter owner."""
         return NativeIdentityFlavorProgram(self, representative, directed)
 
 
@@ -610,6 +613,7 @@ class NativeIdentityFlavorProgram:
     _directed: Any = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
+        self.transport._require_binding(self.representative, self.directed_plan)
         if self.directed_plan is not None:
             object.__setattr__(
                 self, "_directed", self.directed_plan.bind(self.representative)
