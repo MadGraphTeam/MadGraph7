@@ -11,19 +11,41 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
+from collections.abc import Mapping
 from itertools import pairwise
 
 
-def symmetric_boson_slots(model, interactions):
+def symmetric_boson_slots(model, interactions, *, coupling_expressions=None):
     """Return full-permutation slot classes proved on the actual model rules.
 
     Only identical self-conjugate bosons are candidates. Adjacent transpositions
     generate the full symmetric group; an orbit under a smaller group would not
     justify erasing individual slot labels. All unproved slots remain distinct.
     The complete colour, Lorentz and coupling product is compared, before any
-    kinematic, parameter or on-shell substitution.
+    kinematic, parameter or on-shell substitution. An optional exact expansion
+    of native coupling aliases is useful when the complete vertex carries
+    distinct names for equal source coefficients. Its caller must retain the
+    checked source scalar owner, including every active diagnostic; this local
+    tensor comparison neither evaluates nor discards scalar diagnostics.
     """
+    from symbolica import Replacement
     from symbolica.community import hepkit as hep
+
+    from .exact import require_exact_numbers
+
+    replacements = []
+    if coupling_expressions is not None:
+        if not isinstance(coupling_expressions, Mapping):
+            raise TypeError("native coupling expansions require a mapping")
+        available = {coupling.name: coupling.symbol for coupling in model.couplings}
+        symbols = set(available.values())
+        for name, expression in coupling_expressions.items():
+            if name not in available:
+                raise ValueError(f"unknown native coupling expansion {name!r}")
+            require_exact_numbers(expression)
+            if set(expression.get_all_symbols(False)) & symbols:
+                raise ValueError("native coupling expansions must be fully resolved")
+            replacements.append(Replacement(available[name], expression))
 
     result = {}
     for name in sorted(set(interactions)):
@@ -64,6 +86,8 @@ def symmetric_boson_slots(model, interactions):
             .numerator_expression()
             .to_expression()
         )
+        if replacements:
+            original = original.replace_multiple(replacements)
         labels = list(range(len(rule.particles)))
         for slots in groups:
             proved = True
@@ -97,6 +121,8 @@ def symmetric_boson_slots(model, interactions):
                 expression = (
                     transformed.vertices[0].numerator_expression().to_expression()
                 )
+                if replacements:
+                    expression = expression.replace_multiple(replacements)
                 if (expression - original).expand() != 0:
                     proved = False
                     break
