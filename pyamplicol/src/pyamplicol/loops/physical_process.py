@@ -42,6 +42,7 @@ from .physical_orders import (
 from .physical_states import ExternalStateLayout
 from .recurrence import momentum_component_library
 from .scalar_frontend import real_scalar_part
+from .symbolic_sums import symbolic_sum
 
 
 @dataclass(frozen=True, slots=True)
@@ -649,9 +650,8 @@ class NativeBareProcessProgram:
         }
         values = [
             E("1i")
-            * sum(
-                (row[p] for (order, _), row in poles.items() if order == sector),
-                E("0"),
+            * symbolic_sum(
+                row[p] for (order, _), row in poles.items() if order == sector
             )
             / (16 * E("pi") ** 2)
             for sector in range(len(self.order_layout.virtual))
@@ -761,20 +761,14 @@ class NativeBareProcessProgram:
         Ordinary Hermitian Born observables explicitly request real output;
         non-Hermitian correlation metrics must retain the complex default.
         """
-        from symbolica import E
-
         symbols = self._born_symbols(helicities=helicities)
         values = [
-            sum(
-                (
-                    left.conj() * right * metric[i][j]
-                    for row in symbols
-                    for i, left in enumerate(row)
-                    for j, right in enumerate(row)
-                    if (self.born_term_orders[i], self.born_term_orders[j])
-                    in sector.pairs
-                ),
-                E("0"),
+            symbolic_sum(
+                left.conj() * right * metric[i][j]
+                for row in symbols
+                for i, left in enumerate(row)
+                for j, right in enumerate(row)
+                if (self.born_term_orders[i], self.born_term_orders[j]) in sector.pairs
             )
             for metric in metrics
             for sector in self.order_layout.born
@@ -849,11 +843,11 @@ class NativeBareProcessProgram:
         self, indices, powers, sector_indices, *, metrics=None, helicities=None
     ):
         """Prepare exact projection bytes and widths without a numerical workspace."""
-        from symbolica import E, S
+        from symbolica import S
 
         metrics = (self.loop_metric,) if metrics is None else metrics
         projected = {
-            (direction, sector, power): E("0")
+            (direction, sector, power): []
             for direction in range(len(metrics))
             for sector in sector_indices
             for power in powers
@@ -880,22 +874,17 @@ class NativeBareProcessProgram:
                             continue
                         for direction, metric in enumerate(metrics):
                             for sector in sector_indices:
-                                projected[direction, sector, power] += sum(
-                                    (
-                                        value.conj()
-                                        * metric[b][term_index]
-                                        * coefficient
-                                        for b, value in enumerate(born)
-                                        if (
-                                            self.born_term_orders[b],
-                                            self.loop_graphs[index].order,
-                                        )
-                                        in pairs[sector]
-                                    ),
-                                    E("0"),
+                                projected[direction, sector, power].extend(
+                                    value.conj() * metric[b][term_index] * coefficient
+                                    for b, value in enumerate(born)
+                                    if (
+                                        self.born_term_orders[b],
+                                        self.loop_graphs[index].order,
+                                    )
+                                    in pairs[sector]
                                 )
         outputs = [
-            projected[direction, sector, power]
+            symbolic_sum(projected[direction, sector, power])
             for direction in range(len(metrics))
             for sector in sector_indices
             for power in powers

@@ -24,6 +24,7 @@ from .recurrence import (
     momentum_component_library,
     separate_local_color,
 )
+from .symbolic_sums import symbolic_sum
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,8 +275,8 @@ class DrellYanBareProgram:
         )
         # This projection is complex-linear in the loop coefficients. Taking a
         # real part here would discard absorptive contributions after integration.
-        projection_parameters, weighted = [], [E("0")] * len(labels)
-        post_parameters, born_sum, virtual = [], E("0"), [E("0")] * 3
+        projection_parameters, weighted = [], [[] for _ in labels]
+        post_parameters, born_sum, virtual = [], [], [[], [], []]
         for helicity in range(len(self.helicities)):
             born = S(f"loop_physical::born{helicity}")
             coefficients = [
@@ -284,10 +285,10 @@ class DrellYanBareProgram:
             ]
             projection_parameters.extend([born, *coefficients])
             for i, coefficient in enumerate(coefficients):
-                weighted[i] += self.interference_weight * born.conj() * coefficient
+                weighted[i].append(self.interference_weight * born.conj() * coefficient)
             poles = [S(f"loop_physical::loop{helicity}_{pole}") for pole in range(3)]
             post_parameters.extend([born, *poles])
-            born_sum += self.born_weight * born.conj() * born
+            born_sum.append(self.born_weight * born.conj() * born)
             for pole in range(3):
                 value = (
                     self.interference_weight
@@ -296,7 +297,10 @@ class DrellYanBareProgram:
                     * poles[pole]
                     / (16 * E("pi") ** 2)
                 )
-                virtual[pole] += value + value.conj()
+                virtual[pole].extend((value, value.conj()))
+        born_sum = symbolic_sum(born_sum)
+        weighted = [symbolic_sum(terms) for terms in weighted]
+        virtual = [symbolic_sum(terms) for terms in virtual]
         self.project_born = backend.CoefficientEvaluator(
             _saved([born_sum, *weighted], projection_parameters), **self.native_options
         )

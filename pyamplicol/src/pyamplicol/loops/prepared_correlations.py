@@ -13,6 +13,7 @@ from typing import Any
 
 from .family_projectors import bind_family_projector
 from .physical import _saved
+from .symbolic_sums import symbolic_sum
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,13 +210,10 @@ def prepare_directed_bare(bare, histories, *, spin_layout=None, color_bank=None)
                 def amplitude(direction, sector=sector, pole=pole):
                     return (
                         E("1i")
-                        * sum(
-                            (
-                                values[pole]
-                                for (d, s, _), values in poles.items()
-                                if d == direction and s == sector
-                            ),
-                            E("0"),
+                        * symbolic_sum(
+                            values[pole]
+                            for (d, s, _), values in poles.items()
+                            if d == direction and s == sector
                         )
                         / (16 * E("pi") ** 2)
                     )
@@ -321,7 +319,8 @@ def prepare_directed_model(model, prepared):
     sectors = len(bare.order_layout.virtual)
     width = len(prepared.histories) * sectors * 3
     # Components are local UV, R2, external fields; each retains two terms.
-    cross_terms = [[E("0")] * width for _ in range(6)]
+    # Terms are collected per output and added once (``+=`` is quadratic).
+    cross_terms = [[[] for _ in range(width)] for _ in range(6)]
     parameters = []
     for helicity in range(len(prepared.helicities)):
         born = tuple(
@@ -369,7 +368,7 @@ def prepare_directed_model(model, prepared):
                 sectors,
             )
     counterterm_state = _saved(
-        [value for row in cross_terms for value in row], parameters
+        [symbolic_sum(terms) for row in cross_terms for terms in row], parameters
     )
     # Input rows are bare first/second then the six effective-rule blocks.
     inputs = tuple(S(f"loop_directed_model::sum_{i}") for i in range(8 * width))
@@ -481,26 +480,21 @@ def _accumulate_counterterm(
     power,
     sectors,
 ):
-    from symbolica import E
-
     for history in range(len(histories)):
         for sector, pairs in enumerate(model.sector_pairs):
             for direction in (0, 1):
-                value = sum(
-                    (
-                        left.conj() * weight * amplitude
-                        for left, left_order, row in zip(
-                            born,
-                            model.bare.born_term_orders,
-                            weights[2 * history + direction],
-                            strict=True,
-                        )
-                        if (left_order, order) in pairs
-                        for weight, amplitude in zip(row, amplitudes, strict=True)
-                    ),
-                    E("0"),
+                value = symbolic_sum(
+                    left.conj() * weight * amplitude
+                    for left, left_order, row in zip(
+                        born,
+                        model.bare.born_term_orders,
+                        weights[2 * history + direction],
+                        strict=True,
+                    )
+                    if (left_order, order) in pairs
+                    for weight, amplitude in zip(row, amplitudes, strict=True)
                 )
                 index = 3 * (history * sectors + sector) - power
-                outputs[2 * component + direction][index] += (
+                outputs[2 * component + direction][index].append(
                     value if direction == 0 else value.conj()
                 )
