@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Exact species transport and saved admission with unchanged external ports.
+"""Exact species transport and narrowly proved external Bose permutations.
 
 This is separate from the species-only proof. Admission uses two actual
 source-generated programs and never trusts numerical tree profiles or mutable
@@ -265,14 +265,197 @@ def _admit_sources(representative, member, species, left, right, left_spin, righ
     return tuple(a[key] for key in sorted(a)), tuple(b[key] for key in sorted(b))
 
 
+def _bose_local_rules(plan):
+    """Apply the existing local proof to each complete retained eligibility group."""
+    from symbolica import E
+
+    from .flavor_mappings import _powers, _whole_rule_aliases
+    from .model_expressions import LaurentExpression, epsilon_symbol
+    from .scalar_bindings import prepare_scalar_bindings
+    from .vertex_symmetry import symmetric_boson_slots
+
+    model = plan.counterterms.native
+    outputs, exact, aliases = {}, {}, {}
+    for name in plan.ordinary_rules:
+        for row in model.vertex_rule(name).couplings:
+            for alias in row:
+                if alias is not None:
+                    outputs[alias, 0] = None
+                    aliases[alias] = ((alias, 0),)
+    for rule in plan.counterterms.rules.values():
+        whole = _whole_rule_aliases(rule, model)
+        if whole:
+            if plan.source_color is None:
+                raise ValueError(
+                    "whole-rule Bose proof requires its formal source owner"
+                )
+            for alias, expression in whole.items():
+                aliases[alias] = tuple((alias, power) for power in _powers(expression))
+                for output in aliases[alias]:
+                    exact[output] = LaurentExpression(expression).coefficient(output[1])
+        else:
+            for alias, entry in rule.couplings:
+                terms = tuple(
+                    (entry.coupling.name, power)
+                    for power in _powers(entry.coupling.value.expression)
+                )
+                aliases[alias] = terms
+                outputs.update(dict.fromkeys(terms))
+    if plan.source_color is None:
+        binding = prepare_scalar_bindings(
+            plan.counterterms.source.raw,
+            tuple(outputs),
+            program=plan.structure.scalars,
+            fixed_parameters=plan.structure.fixed_parameters,
+        )
+    else:
+        binding = plan.source_color.formal_scalars(
+            tuple(outputs),
+            program=plan.structure.scalars,
+            fixed_parameters=plan.structure.fixed_parameters,
+            exact_outputs=exact,
+        )
+    resolved = dict(zip(binding.outputs, binding.expressions, strict=True))
+    epsilon = epsilon_symbol()
+    expansions = {
+        alias: sum(
+            (epsilon**power * resolved[name, power].value for name, power in terms),
+            E("0"),
+        )
+        for alias, terms in aliases.items()
+    }
+    names = (*plan.ordinary_rules, *plan.counterterms.rules)
+    classes = symmetric_boson_slots(
+        model, names, coupling_expressions=expansions, conserve_momentum=True
+    )
+    for name in names:
+        rule = model.vertex_rule(name)
+        groups = {}
+        for index, species in enumerate(rule.particles):
+            particle = model.particle(species)
+            if (
+                particle.spin > 0
+                and particle.spin % 2 == 1
+                and particle.is_self_antiparticle
+            ):
+                groups.setdefault(species, []).append(index)
+        labels = classes.get(name, tuple(range(len(rule.particles))))
+        if any(
+            len({labels[index] for index in slots}) != 1 for slots in groups.values()
+        ):
+            raise NotImplementedError(
+                f"complete local Bose symmetry is unproved for {name}"
+            )
+    # Keep the paired source preparation: scalar diagnostics are never erased
+    # merely because its value disappeared in the exact tensor comparison.
+    return binding
+
+
+def _bose_external_fields(plan, source, permutation):
+    """Check the actual complete field multiset and its physical-port image."""
+    from collections import Counter
+
+    from .wavefunction import match_external_field_counterterms
+
+    model, process = source.virtual, source.virtual.bare.process
+    actual = model.external_fields
+    if dict(source.prepared.metadata).get("external_fields") is not actual:
+        raise ValueError("Bose field factors differ from the captured model owner")
+    expected = match_external_field_counterterms(
+        plan.counterterms.source,
+        process,
+        selected_corrections=plan.correction_names,
+        allowed_amplitude_orders={
+            pair.loop for sector in process.orders.sectors for pair in sector.pairs
+        },
+    ).insertions
+    born = {id(graph): graph for graph in process.born}
+    rules = {
+        (
+            item.rule.particle_id,
+            item.rule.correction,
+            item.rule.loop_group_index,
+        ): item.rule
+        for item in expected
+    }
+
+    def entries(insertions, remap):
+        result = []
+        for item in insertions:
+            rule = item.rule
+            key = (rule.particle_id, rule.correction, rule.loop_group_index)
+            if (
+                born.get(id(item.born)) is not item.born
+                or rules.get(key) != rule
+                or type(item.external_index) is not int
+                or not 0 <= item.external_index < len(permutation)
+            ):
+                raise ValueError(
+                    "Bose field insertion has a different source or Born owner"
+                )
+            index = permutation[item.external_index] if remap else item.external_index
+            result.append((id(item.born), index, key, item.alternative_index))
+        return Counter(result)
+
+    original = entries(actual, False)
+    if original != entries(expected, False):
+        raise ValueError(
+            "Bose field insertions differ from the complete selected source rules"
+        )
+    if original != entries(actual, True):
+        raise ValueError("Bose permutation changes the indexed external-field multiset")
+
+
+def _admit_bose_permutation(symmetry, representative, member, mapping):
+    """Same-side identical self-conjugate bosons, ordinary full colour only."""
+    permutation = mapping.permutation
+    request = representative.source_bare.external_request
+    legs = len(request.external_pdgs)
+    if (
+        len(permutation) != legs
+        or any(type(index) is not int for index in permutation)
+        or sorted(permutation) != list(range(legs))
+    ):
+        raise ValueError("flavour external permutation must be a complete bijection")
+    for source in (representative, member):
+        if source.virtual.color_accuracy != "full":
+            raise NotImplementedError("Bose permutation transport requires full colour")
+        particles = source.source_bare.structure.native
+        external = source.source_bare.external_request.external_pdgs
+        states = source.source_bare.external_request.states.legs
+        for index, target in enumerate(permutation):
+            if index == target:
+                continue
+            particle = particles.particle_by_pdg(external[index])
+            if (
+                external[index] != external[target]
+                or states[index].incoming != states[target].incoming
+                or particle.spin <= 0
+                or particle.spin % 2 != 1
+                or not particle.is_self_antiparticle
+                or states[index].kind != states[target].kind
+                or states[index].massless != states[target].massless
+                or states[index].helicities != states[target].helicities
+            ):
+                raise NotImplementedError(
+                    "external permutation requires identical self-conjugate bosons "
+                    "on the same process side"
+                )
+    binding = _bose_local_rules(symmetry.plan)
+    for source in (representative, member):
+        _bose_external_fields(symmetry.plan, source, permutation)
+    return binding
+
+
 @dataclass(frozen=True, slots=True)
 class IdentityFlavorTransport:
     """Admitted unit-factor relation between two prepared source programs.
 
     ``species`` maps representative PDGs to member PDGs. The existing LegMapping
-    still maps member momenta to representative ports; those ports are unchanged
-    in this first supported domain. No relation is inferred from numerical model
-    defaults or equality of a few amplitudes.
+    maps member momenta to representative ports. Nonidentity maps additionally
+    require exact local Bose covariance and the complete indexed field multiset;
+    they admit only ordinary inclusive full colour. No relation is inferred from
+    numerical model defaults or equality of a few amplitudes.
     """
 
     symmetry: FlavorSymmetry = field(repr=False)
@@ -286,6 +469,13 @@ class IdentityFlavorTransport:
     member_directed: Any = field(default=None, repr=False)
     representative_spin: tuple = field(default=(), repr=False)
     member_spin: tuple = field(default=(), repr=False)
+    bose_scalar_bindings: Any = field(default=None, repr=False)
+
+    @property
+    def permutes_external_legs(self):
+        return self.mapping.permutation != tuple(
+            range(len(self.representative_request.external_pdgs))
+        )
 
     @classmethod
     def admit(
@@ -308,11 +498,23 @@ class IdentityFlavorTransport:
             raise TypeError("flavour transport requires an existing LegMapping")
         left, left_color = _request(symmetry, representative)
         right, right_color = _request(symmetry, member)
-        if mapping.conjugated or mapping.permutation != tuple(
-            range(len(left.external_pdgs))
-        ):
-            raise NotImplementedError(
-                "flavour transport currently requires unchanged external port order"
+        if mapping.conjugated:
+            raise NotImplementedError("charge-conjugated flavour transport is unproved")
+        nonidentity = mapping.permutation != tuple(range(len(left.external_pdgs)))
+        bose_scalars = None
+        if nonidentity:
+            if (
+                representative_directed is not None
+                or member_directed is not None
+                or representative_spin
+                or member_spin
+            ):
+                raise NotImplementedError(
+                    "Bose permutation transport has no directed or vector-source "
+                    "axis proof"
+                )
+            bose_scalars = _admit_bose_permutation(
+                symmetry, representative, member, mapping
             )
         species = dict(symmetry.species)
         if tuple(
@@ -359,6 +561,7 @@ class IdentityFlavorTransport:
             member_directed,
             left_spin,
             right_spin,
+            bose_scalars,
         )
 
     def bind(self, representative, *, directed=None):
@@ -371,6 +574,10 @@ class IdentityFlavorTransport:
                 "flavour transport belongs to another prepared representative"
             )
         if directed is not None:
+            if self.permutes_external_legs:
+                raise NotImplementedError(
+                    "Bose permutation transport has no directed axis proof"
+                )
             from .prepared_correlations import PreparedDirectedModel
 
             if not isinstance(directed, PreparedDirectedModel):
@@ -424,13 +631,26 @@ class NativeIdentityFlavorProgram:
     def update_parameters(self, changes):
         return self.representative.update_parameters(changes)
 
+    def _momenta(self, momenta):
+        if not self.transport.permutes_external_legs:
+            return momenta
+        import numpy as np
+
+        values = np.asarray(momenta, dtype=object)
+        permutation = self.transport.mapping.permutation
+        if values.ndim != 3 or values.shape[1:] != (len(permutation), 4):
+            raise ValueError("expected (batch, leg, four components) momenta")
+        return values[:, permutation, :]
+
     def evaluate_ordered_native(self, momenta, scales_squared):
         return self.representative.virtual.evaluate_ordered_native(
-            momenta, scales_squared
+            self._momenta(momenta), scales_squared
         )
 
     def evaluate_ordered_decimal(self, momenta, scales_squared):
-        return self.representative.evaluate_ordered_decimal(momenta, scales_squared)
+        return self.representative.evaluate_ordered_decimal(
+            self._momenta(momenta), scales_squared
+        )
 
     def evaluate_directed_native(
         self, momenta, scales_squared, *, point_ids=None, spin_sources=None
@@ -546,12 +766,23 @@ class AdmittedFlavorMember:
                 "flavour admission belongs to another saved representative"
             )
         _color_owner(self.transport.symmetry, program)
+        if self.transport.permutes_external_legs:
+            binding = self.transport.bose_scalar_bindings
+            structure = self.transport.symmetry.plan.structure
+            if (
+                binding is None
+                or binding.program is not structure.scalars
+                or binding.fixed_parameters != structure.fixed_parameters
+            ):
+                raise ValueError(
+                    "Bose transport lacks its retained paired source scalars"
+                )
         expected = {
             item.bare.spin_layout.legs: item
             for item in self.transport.representative_spin
         }
         actual = tuple(spin_directed)
-        if (
+        if not self.transport.permutes_external_legs and (
             len(actual) != len(expected)
             or any(
                 item.bare.spin_layout is None
@@ -563,12 +794,15 @@ class AdmittedFlavorMember:
             raise ValueError(
                 "saved spin classes differ from their paired flavour admission"
             )
-        return {
+        result = {
             "process_id": self.member.process_id,
             "expression": self.member.expression,
             "external_pdgs": self.member.pdgs,
             "species": self.transport.symmetry.species,
         }
+        if self.transport.permutes_external_legs:
+            result["permutation"] = self.transport.mapping.permutation
+        return result
 
 
 def identity_species_candidate(representative, member):

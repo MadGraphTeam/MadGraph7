@@ -193,17 +193,16 @@ pub fn load_loop_artifact(
         });
         require(
             selection.alias.is_none()
-                && selection
-                    .external_permutation
-                    .iter()
-                    .copied()
-                    .eq(0..plan.state_legs.len())
                 && relation.is_some_and(|r| {
                     !r.conjugated && r.factor_numerator == 1 && r.factor_denominator == 1
                 })
                 && member.is_some_and(|m| {
                     m.expression == selection.public_expression
                         && m.external_pdgs == selection.external_pdgs
+                        && m.permutation
+                            .clone()
+                            .unwrap_or_else(|| (0..plan.state_legs.len()).collect::<Vec<_>>())
+                            == selection.external_permutation
                 }),
             "selected loop group member lacks matching immutable flavour admission",
         )?;

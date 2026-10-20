@@ -423,7 +423,8 @@ record!(BornColorComponents {
     kind: String, ids: Vec<String>, members: Vec<Vec<usize>>
 });
 record!(AdmittedFlavorMember {
-    process_id: String, expression: String, external_pdgs: Vec<i32>, species: Vec<(i32, i32)>
+    process_id: String, expression: String, external_pdgs: Vec<i32>, species: Vec<(i32, i32)>,
+    permutation: Option<Vec<usize>>
 });
 record!(LoopRuntimePlan {
     schema: u32, r2_strategy: String, dimensional_numerators: bool,
@@ -880,7 +881,14 @@ impl LoopRuntimePlan {
                     && matches!(self.model_binding, ModelBinding::Source { .. }),
                 "flavour transport requires source-owned model R2",
             )?;
-            if self.color_projection.is_some() {
+            if self.color_projection.is_some()
+                && members.iter().any(|member| {
+                    member
+                        .permutation
+                        .as_ref()
+                        .is_none_or(|permutation| permutation.iter().copied().eq(0..legs))
+                })
+            {
                 require(
                     self.directed_projection
                         .iter()
@@ -901,6 +909,38 @@ impl LoopRuntimePlan {
             }
             let mut ids = BTreeSet::new();
             for member in members {
+                let permutation = member
+                    .permutation
+                    .clone()
+                    .unwrap_or_else(|| (0..legs).collect());
+                let identity = permutation.iter().copied().eq(0..legs);
+                let mut sorted = permutation.clone();
+                sorted.sort_unstable();
+                require(
+                    sorted == (0..legs).collect::<Vec<_>>(),
+                    "flavour external permutation is not a bijection",
+                )?;
+                if !identity {
+                    require(
+                        self.color_projection
+                            .as_ref()
+                            .is_none_or(|projection| projection.accuracy == "full")
+                            && permutation.iter().copied().enumerate().all(|(a, b)| {
+                                a == b
+                                    || (self.external_pdgs[a] == self.external_pdgs[b]
+                                        && self.state_legs[a].incoming
+                                            == self.state_legs[b].incoming
+                                        && self.state_legs[a].kind == self.state_legs[b].kind
+                                        && self.state_legs[a].massless
+                                            == self.state_legs[b].massless
+                                        && matches!(
+                                            self.state_legs[a].kind.as_str(),
+                                            "scalar" | "epsilon" | "epsilon_bar"
+                                        ))
+                            }),
+                        "Bose permutation requires an admitted ordinary full-colour same-side boson layout",
+                    )?;
+                }
                 let map: BTreeMap<_, _> = member.species.iter().copied().collect();
                 let targets: BTreeSet<_> = map.values().copied().collect();
                 // Identity-port source transport keeps every selected vector
@@ -931,9 +971,11 @@ impl LoopRuntimePlan {
                         && self
                             .external_pdgs
                             .iter()
-                            .zip(&member.external_pdgs)
-                            .all(|(a, b)| map.get(a).unwrap_or(a) == b),
-                    "invalid admitted identity-species flavour member",
+                            .zip(&permutation)
+                            .all(|(a, &index)| {
+                                map.get(a).unwrap_or(a) == &member.external_pdgs[index]
+                            }),
+                    "invalid admitted species or Bose flavour member",
                 )?;
             }
         }

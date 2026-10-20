@@ -327,6 +327,8 @@ class VirtualRuntimeBackend:
         self._spin_vectors: dict[int, object] = {}
 
     def _spin_classes(self) -> tuple[tuple[int, ...], ...]:
+        if not self._metadata["physics"]["correlations"]:
+            return ()
         return tuple(
             tuple(item["legs"])
             for item in self._metadata["plan"].get("spin_projections", ()) or ()
@@ -334,9 +336,9 @@ class VirtualRuntimeBackend:
 
     def _saved_color_correlations(self) -> tuple[ColorCorrelator, ...]:
         descriptor = self._metadata["plan"].get("directed_projection")
-        if descriptor is None:
+        if not self._metadata["physics"]["correlations"] or descriptor is None:
             raise CompatibilityError(
-                "this artifact has no saved directed colour histories"
+                "this selected process has no admitted directed colour histories"
             )
         return tuple(
             ColorCorrelator(
@@ -553,6 +555,9 @@ class VirtualRuntimeBackend:
                     "process_id": metadata["process_id"],
                     "process": metadata["expression"],
                     **metadata["physics"],
+                    "physics_scope": metadata["physics_scope"],
+                    "external_permutation": metadata["external_permutation"],
+                    "representative_physics": metadata["representative_physics"],
                     "initial_average": metadata["initial_average"],
                     "color_correlations": [
                         item.to_json_dict()
