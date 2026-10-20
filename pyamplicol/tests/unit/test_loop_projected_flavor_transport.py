@@ -73,7 +73,7 @@ def test_projected_transport_does_not_admit_unproved_ordered_histories(
                 actual, bare=replace(actual.bare, histories=((connection, connection),))
             )
         )
-    with pytest.raises(NotImplementedError, match="identity colour histories"):
+    with pytest.raises(NotImplementedError, match="actual complete colour banks"):
         IdentityFlavorTransport.admit(
             proof,
             left,

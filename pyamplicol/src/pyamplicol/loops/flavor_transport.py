@@ -168,6 +168,64 @@ def _request(proof, source):
     return request, _color_owner(proof, source.virtual)
 
 
+def _needs_projected_family_pair(model, directed):
+    return model.color_projection is not None and any(
+        connection.emissions for pair in directed.bare.histories for connection in pair
+    )
+
+
+def _paired_projected_banks(left, right):
+    """Compare owned complete families without identifying raw current columns.
+
+    The exact species proof intertwines the common typed operators. Their
+    complete-family degree and requested assignment must agree before numerical
+    sharing; equal colour support or values at Nc=3 alone are insufficient.
+    Each preparation's actual model/formal ownership was checked by its caller.
+    """
+    from .directed_color_projection import PreparedDirectedColorBank
+
+    banks = left.bare.color_bank, right.bare.color_bank
+    if banks == (None, None):
+        if any(
+            connection.emissions for pair in left.bare.histories for connection in pair
+        ):
+            raise NotImplementedError(
+                "projected flavour histories require actual complete colour banks"
+            )
+        return
+    if any(not isinstance(bank, PreparedDirectedColorBank) for bank in banks):
+        raise ValueError(
+            "projected flavour transport has an absent or foreign colour bank"
+        )
+
+    def signature(bank):
+        projection = bank.projection
+        if projection.nc != bank.formal.nc:
+            raise ValueError("directed colour bank changes its formal colour parameter")
+        return (
+            projection.nc,
+            projection.accuracy,
+            bank.formal.born_pairs,
+            bank.formal.virtual_pairs,
+            tuple(
+                (
+                    family.order,
+                    family.output_legs,
+                    family.histories,
+                    family.born_degrees,
+                    family.virtual_degrees,
+                )
+                for family in projection.families
+            ),
+            projection.history_families,
+        )
+
+    if signature(banks[0]) != signature(banks[1]):
+        raise ValueError(
+            "flavour transport changes complete colour families or degrees"
+        )
+
+
 def _directed_pair(representative, member, left, right):
     """Check actual preparations before comparing their observable catalogs."""
     from .prepared_correlations import PreparedDirectedModel
@@ -185,12 +243,8 @@ def _directed_pair(representative, member, left, right):
         raise ValueError("flavour transport changes directed history or colour ports")
     if a.helicities != b.helicities:
         raise ValueError("flavour transport changes spectator helicity layouts")
-    if representative.virtual.color_projection is not None and any(
-        connection.emissions for pair in a.histories for connection in pair
-    ):
-        raise NotImplementedError(
-            "projected flavour transport requires identity colour histories"
-        )
+    if representative.virtual.color_projection is not None:
+        _paired_projected_banks(left, right)
 
 
 def _spin_catalog(source, ordinary, prepared):
@@ -213,6 +267,10 @@ def _spin_catalog(source, ordinary, prepared):
             or item.bare.color_legs != ordinary.bare.color_legs
         ):
             raise ValueError("spin flavour catalog changes directed histories or ports")
+        if item.bare.color_bank is not ordinary.bare.color_bank:
+            raise ValueError(
+                "spin flavour catalog has a different ordinary colour bank"
+            )
         if item.bare.helicities != layout.helicities:
             raise ValueError("spin flavour catalog differs from its spectator layout")
         if layout.contracts != tuple(
@@ -896,8 +954,8 @@ class IdentityFlavorTransport:
                     raise ValueError("mapped spin class has no paired source admission")
             elif (
                 self.representative_directed is not None
-                and directed is not self.representative_directed
-            ):
+                or _needs_projected_family_pair(representative.virtual, directed)
+            ) and directed is not self.representative_directed:
                 raise ValueError("mapped histories differ from their paired admission")
 
     def bind(self, representative, *, directed=None):
@@ -1216,6 +1274,18 @@ class AdmittedFlavorMember:
             for item in self.transport.representative_spin
         }
         actual = tuple(spin_directed)
+        if directed is not None:
+            directed.require_owner(program)
+        paired = self.transport.representative_directed
+        requires_pair = directed is not None and (
+            paired is not None or _needs_projected_family_pair(program, directed)
+        )
+        if actual and paired is not None:
+            requires_pair |= _needs_projected_family_pair(program, paired)
+        if requires_pair and directed is not paired:
+            raise ValueError(
+                "saved ordinary directed plan differs from its paired flavour admission"
+            )
         if scope is not None:
             if any(item.bare.spin_layout is None for item in actual):
                 raise ValueError("saved Bose source class has no source layout")

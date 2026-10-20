@@ -1053,12 +1053,17 @@ impl LoopRuntimePlan {
                                 .map(|class| &class.directed),
                         )
                         .all(|projection| {
-                            projection
-                                .histories
-                                .iter()
-                                .all(|history| history.bra.is_empty() && history.ket.is_empty())
+                            // The shared directed validator below owns the
+                            // complete family, source and evaluator checks.
+                            // Admission adds no second colour algebra/schema.
+                            (projection.convention == PROJECTED_FAMILY_CONVENTION
+                                && projection.color_family_projection.is_some())
+                                || projection
+                                    .histories
+                                    .iter()
+                                    .all(|history| history.bra.is_empty() && history.ket.is_empty())
                         }),
-                    "projected flavour transport requires identity colour histories",
+                    "projected flavour transport requires identity histories or complete colour families",
                 )?;
             }
             let mut ids = BTreeSet::new();
