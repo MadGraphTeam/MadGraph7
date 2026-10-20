@@ -28,7 +28,11 @@ Conventions a consumer relies on:
   U(1)-subtraction auxiliaries are separate colour-singlet blocks.
 * **Signs.** Block currents carry the tree engine's fermion-ordering signs
   (Koszul signs for colour-singlet fermions, colour-flow pairing for coloured
-  lines); the loop sign rule of design §3.3 composes them.
+  lines); the loop sign rule of design §3.3 composes them. Against Feynman
+  rules, each word enters the full current with a fixed sign; for
+  flavour-conserving quark lines it is the parity of the word's colour
+  pairing (fundamental -> antifundamental, open ends paired with each other)
+  relative to the fermion lines, times one sign per current.
 """
 
 from __future__ import annotations
