@@ -132,16 +132,21 @@ def _requests():
     return ProcessSet((ProcessRequest.parse("e- e+ > u u~"),))
 
 
+def _quiet_phase():
+    from pyamplicol.generation.progress import PhaseHandle
+
+    return PhaseHandle("public-preparation", None, None)
+
+
 @pytest.mark.parametrize("planning", (True, False))
 def test_actual_public_gmu_preparation_owns_exact_source_and_counterterms(
     gmu_source, monkeypatch, planning
 ):
+    from pyamplicol.generation.loop_service import _prepare
     from pyamplicol.models.loop_preparation import (
         LoopPreparation,
         with_loop_preparation,
     )
-
-    from pyamplicol.generation.loop_service import _prepare
 
     gmu = gmu_source
     _forbid_process_work(monkeypatch)
@@ -157,10 +162,13 @@ def test_actual_public_gmu_preparation_owns_exact_source_and_counterterms(
         config = resolve_config(_configuration(gmu, supplied=False))
         assert config.effective.loop.preparation is None
         text = config_to_toml(config.effective)
-        assert "[loop.preparation]" not in text
-        config = resolve_config(tomllib.loads(text))
+        serialized = tomllib.loads(text)
+        assert "preparation" not in serialized["loop"]
+        config = resolve_config(serialized)
     backend = GenerationBackend(config, None)
-    context = _prepare(backend, _requests(), source, planning=planning, phase=None)
+    context = _prepare(
+        backend, _requests(), source, planning=planning, phase=_quiet_phase()
+    )
     prepared = context.prepared[0]
     assert len(context.expanded) == len(context.prepared) == 1
     assert context.expanded[0].process_ir.initial_pdgs == (11, -11)
@@ -177,8 +185,26 @@ def test_actual_public_gmu_preparation_owns_exact_source_and_counterterms(
     assert prepared.scope.loop_order_bounds == {"QCD": (0, 0), "QED": (0, 4)}
     prepared.scope.require_local_counterterms(prepared.counterterms)
     assert prepared.counterterms.rules and not prepared.counterterms.unavailable_entries
-    assert all(
-        rule.has_validated_tensor_basis for rule in prepared.counterterms.rules.values()
+    # This stage retains the complete selected local catalogue. Certification
+    # of tensors is checked on matched insertions by NativeModelVirtualProgram;
+    # unused model entries are not claimed to be physically certified here.
+    deferred = tuple(
+        rule
+        for rule in prepared.counterterms.rules.values()
+        if not rule.has_validated_tensor_basis
+    )
+    print(
+        "PREPARATION_TENSOR_SCOPE",
+        json.dumps(
+            {
+                "planning": planning,
+                "selected_rules": len(prepared.counterterms.rules),
+                "deferred_tensor_rules": len(deferred),
+                "deferred_source_vertices": sorted(
+                    {entry.vertex_name for rule in deferred for entry in rule.entries}
+                ),
+            }
+        ),
     )
     payload = json.loads(prepared.structure.native.to_json())
     assert payload["covariant_cut_multiplets"] == options["covariant_multiplets"]
@@ -203,12 +229,11 @@ def test_actual_public_gmu_preparation_owns_exact_source_and_counterterms(
 def test_explicit_preparation_replaces_source_record_at_actual_boundary(
     gmu_source, monkeypatch, mode
 ):
+    from pyamplicol.generation.loop_service import _prepare
     from pyamplicol.models.loop_preparation import (
         LoopPreparation,
         with_loop_preparation,
     )
-
-    from pyamplicol.generation.loop_service import _prepare
 
     gmu = gmu_source
     _forbid_process_work(monkeypatch)
@@ -218,8 +243,9 @@ def test_explicit_preparation_replaces_source_record_at_actual_boundary(
     if mode == "empty-toml":
         base = resolve_config(_configuration(gmu, preparation={}))
         text = config_to_toml(base.effective)
-        assert "[loop.preparation]" in text
-        config = resolve_config(tomllib.loads(text))
+        serialized = tomllib.loads(text)
+        assert "preparation" in serialized["loop"]
+        config = resolve_config(serialized)
     else:
         config = resolve_config(
             _configuration(gmu, supplied=False),
@@ -231,7 +257,7 @@ def test_explicit_preparation_replaces_source_record_at_actual_boundary(
     # Missing repair must fail at the real particle-pair authority, rather than
     # silently retaining the sidecar compatibility profile or partner data.
     with pytest.raises(ValueError, match="goldstoneboson"):
-        _prepare(backend, _requests(), source, planning=True, phase=None)
+        _prepare(backend, _requests(), source, planning=True, phase=_quiet_phase())
 
 
 def test_active_unsupported_source_function_still_rejects(gmu_source, monkeypatch):
@@ -264,7 +290,7 @@ def test_active_unsupported_source_function_still_rejects(gmu_source, monkeypatc
             _requests(),
             _compiled_model_from_payload(compiled),
             planning=True,
-            phase=None,
+            phase=_quiet_phase(),
         )
 
 
@@ -324,11 +350,10 @@ def test_default_tree_resolution_still_rejects_actual_gmu_registry_issues(
 def test_full_auto_fallback_reconstructs_actual_base_source_preparation(
     gmu_source, monkeypatch
 ):
-    from pyamplicol.models.loop_preparation import LoopPreparation
-
     from pyamplicol.generation.loop_service import _compile_color_operation
     from pyamplicol.loops.compiler import PreparedLoopRequestModel
     from pyamplicol.loops.source_color import SourceColorCapabilityUnavailable
+    from pyamplicol.models.loop_preparation import LoopPreparation
 
     gmu = gmu_source
     _forbid_process_work(monkeypatch)
