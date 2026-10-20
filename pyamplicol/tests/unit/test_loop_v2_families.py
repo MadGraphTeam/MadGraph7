@@ -666,17 +666,45 @@ def test_counts_equal_design_appendix_b(loop_sm_models, config, entry):
     assert len(families.families) == entry["families"]
     assert dict(histogram) == entry["families_by_N_rank"]
     colour, view, rows, policy, choose = _cost_model_view(families, catalogue, entry)
-    counts = collections.Counter()
+    views = {"FC": view}
+    if "leading_colour" in entry:
+        # All-gluon processes: every Born word is leading and the §7.5 face
+        # rule drops exactly the closed quark loops (degree P - 1).
+        def quark_loop(skeleton):
+            return any(abs(catalogue.species(n).colour) == 3 for n in skeleton.species)
+
+        views["LC"] = SkeletonView(
+            catalogue,
+            colour,
+            classes=view.classes,
+            keep=lambda s: view.keep(s) and not quark_loop(s),
+        )
+    counts = {name: collections.Counter() for name in views}
     for family in families.families.values():
-        viewed = view.select(family_skeletons(families, family, colour, catalogue))
-        candidates = candidate_tries(family, viewed, choose)
-        counts["skeletons"] += len(viewed)
-        counts["trie_nodes_largest"] += len(policy(family, candidates).nodes)
-        counts["dress_structured"] += min(t.cost(rows) for _f, t in candidates)
-        counts["dress_dense"] += min(t.cost(rows, DENSE) for _f, t in candidates)
+        skeletons = family_skeletons(families, family, colour, catalogue)
+        for name, projection in views.items():
+            viewed = projection.select(skeletons)
+            if not viewed:
+                continue
+            candidates = candidate_tries(family, viewed, choose)
+            count = counts[name]
+            count["families"] += 1
+            count[f"{family.size}:{family.rank}"] += 1
+            count["skeletons"] += len(viewed)
+            count["trie_nodes_largest"] += len(policy(family, candidates).nodes)
+            count["dress_structured"] += min(t.cost(rows) for _f, t in candidates)
+            count["dress_dense"] += min(t.cost(rows, DENSE) for _f, t in candidates)
     fields = ["skeletons", "dress_structured", "dress_dense"]
     if _largest_ring(entry) < 7:  # see the fixture's trie_nodes_seed_dependent
         fields.append("trie_nodes_largest")
-    assert {f: counts[f] for f in fields if f in entry} == {
+    assert {f: counts["FC"][f] for f in fields if f in entry} == {
         f: entry[f] for f in fields if f in entry
     }
+    if "LC" in counts:
+        expected = entry["leading_colour"]
+        lc = counts["LC"]
+        assert lc["families"] == expected["families"]
+        assert {
+            bucket: lc[bucket] for bucket in expected["families_by_N_rank"]
+        } == expected["families_by_N_rank"]
+        assert {f: lc[f] for f in fields} == {f: expected[f] for f in fields}
