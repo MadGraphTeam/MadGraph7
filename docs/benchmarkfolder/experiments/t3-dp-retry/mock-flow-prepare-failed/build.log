@@ -1,0 +1,15 @@
+gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c check_sa.f -o check_sa.o -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/include -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/include -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/t3-dp-retry/bridge
+gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c loop_matrix.f -o loop_matrix.o -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/include -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/include -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/t3-dp-retry/bridge
+gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c CT_interface.f -o CT_interface.o -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/include -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/include -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/t3-dp-retry/bridge
+CT_interface.f:1158:132:
+
+ 1158 |      $       ,LOOPNUM))
+      |                                                                                                                                    1
+Error: Type mismatch in argument ‘m2l’ at (1); passed COMPLEX(8) to COMPLEX(16)
+CT_interface.f:1158:132:
+
+ 1158 |      $       ,LOOPNUM))
+      |                                                                                                                                    1
+Error: Type mismatch in argument ‘res’ at (1); passed COMPLEX(8) to COMPLEX(16)
+make: *** [makefile:111: CT_interface.o] Error 1
+make: *** Waiting for unfinished jobs....

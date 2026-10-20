@@ -384,3 +384,13 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   remain retained failures. The full final-candidate proof is still pending.
   All eight corrected-original source copies have passed clean MODEL and
   subprocess builds; their complete numerical collection is prepared separately.
+- The isolated explicit compensated DP retry now passes its full QCD3 stream,
+  rotation controls, loop-induced and mixed-order controls. It retries each
+  finite native stability failure once, keeps the same thresholds and checks,
+  and sends unresolved points to genuine QP. The 100-point QCD3 stream uses
+  98 DP results and two QP rescues; all coefficients pass comparison. Seven
+  quiet alternating pairs show ordinary-path retry/native ratios of 1.005424
+  for QCD1 and 0.987828 for EW2, with exact coefficients and return statuses.
+  These establish the isolated retry's behavior and overhead, not final
+  acceptance against original Ninja. The sealed experiment is retained before
+  its independently reviewed production port and ABI update.

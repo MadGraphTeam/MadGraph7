@@ -1,0 +1,27 @@
+{
+  "command": [
+    "taskset",
+    "-c",
+    "5",
+    "./check",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/points/control-mixed.dat",
+    "1"
+  ],
+  "working_directory": ".benchmark-work/experiments/t3-dp-retry/control-mixed/SubProcesses/P0_uux_ddx",
+  "executable_sha256": "4922320ff781f7ce58151cf48ef113994a75c4b306fe22eab27a20628dce5db8",
+  "archive_sha256": "6dacbb7e5a4940b965bbc07ab1d7e39b95c6ea5f72fd390a8622cbb4cf600466",
+  "generated_sources_sha256": "b2e2db7011c84193c123615c4b31f5516b45dd1a5806c892db2ac4230c39f02f",
+  "points_sha256": "c0640d8258fea3bec32d28da8eb7a9bb8bbc50210efd2e22bf030c3dabf35527",
+  "card_sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+  "parameter_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+  "resolved_parameter_card": ".benchmark-work/experiments/t3-dp-retry/control-mixed/Cards/param_card.dat",
+  "note": "Exploratory correctness/retry controls only. No acceptance performance claim.",
+  "returncode": 0,
+  "artifacts": {
+    "values.dat": "a929de31488e52e153f2fb88ccaf3ad7fefabb8bf5ef9f5ea9f9c4809fcad8cc",
+    "retry-stats.dat": "380f2e229e851cb4ce6e24a4a489cda01b7ac81f18f9486182977ecfce612d9f",
+    "timed_status.dat": "ac6de06c1c136df7a28b6749b45a40aca992cfef2baf0e9e7d5bb1e9143f71e7",
+    "timing.dat": "2b3e747b05572804cfa7ecb0ed7f952b12f207c77cbef2f4299c839bc3cd9ca1",
+    "dimensions.dat": "60ba104da3f22c9d2d2a2389db012e959f42f75fc61ecd694b4098f6f784b522"
+  }
+}

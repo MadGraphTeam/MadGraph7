@@ -1,0 +1,10 @@
+   Compiling madloop-ninjars v0.1.0 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/t3-dp-retry/bridge)
+    Finished `release` profile [optimized] target(s) in 3m 23s
+     Running unittests src/lib.rs (/common/build-cache/external/f7/d00a3ee9585371/release/deps/madloop_ninjars-5133f6c9476c7d48)
+
+running 2 tests
+test retry_tests::retry_native_path_is_exact_and_compensated_state_is_lazy ... ok
+test retry_tests::retry_rebinding_and_failure_preserve_explicit_call_semantics ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.02s
+

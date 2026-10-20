@@ -1,0 +1,1063 @@
+{
+  "passed": true,
+  "acceptance_eligible": false,
+  "status_counts": {
+    "218": 98,
+    "322": 2
+  },
+  "retry_points": [
+    {
+      "point": 44,
+      "status": 322,
+      "retry_count": 1,
+      "passed": 0,
+      "failed": 1,
+      "hard_skip": 0,
+      "native_accuracy": 6.776291794014902e-09,
+      "compensated_accuracy": 4.5735636458497144e-08
+    },
+    {
+      "point": 67,
+      "status": 218,
+      "retry_count": 1,
+      "passed": 1,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": 1.7479784892170528e-09,
+      "compensated_accuracy": 2.1649470406554845e-10
+    },
+    {
+      "point": 80,
+      "status": 322,
+      "retry_count": 1,
+      "passed": 0,
+      "failed": 1,
+      "hard_skip": 0,
+      "native_accuracy": 2.8951034013499736e-08,
+      "compensated_accuracy": 2.8952588483239925e-08
+    }
+  ],
+  "all_points": [
+    {
+      "point": 1,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 2,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 3,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 4,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 5,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 6,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 7,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 8,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 9,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 10,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 11,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 12,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 13,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 14,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 15,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 16,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 17,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 18,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 19,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 20,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 21,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 22,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 23,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 24,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 25,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 26,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 27,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 28,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 29,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 30,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 31,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 32,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 33,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 34,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 35,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 36,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 37,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 38,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 39,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 40,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 41,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 42,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 43,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 44,
+      "status": 322,
+      "retry_count": 1,
+      "passed": 0,
+      "failed": 1,
+      "hard_skip": 0,
+      "native_accuracy": 6.776291794014902e-09,
+      "compensated_accuracy": 4.5735636458497144e-08
+    },
+    {
+      "point": 45,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 46,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 47,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 48,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 49,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 50,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 51,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 52,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 53,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 54,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 55,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 56,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 57,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 58,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 59,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 60,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 61,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 62,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 63,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 64,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 65,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 66,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 67,
+      "status": 218,
+      "retry_count": 1,
+      "passed": 1,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": 1.7479784892170528e-09,
+      "compensated_accuracy": 2.1649470406554845e-10
+    },
+    {
+      "point": 68,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 69,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 70,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 71,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 72,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 73,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 74,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 75,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 76,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 77,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 78,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 79,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 80,
+      "status": 322,
+      "retry_count": 1,
+      "passed": 0,
+      "failed": 1,
+      "hard_skip": 0,
+      "native_accuracy": 2.8951034013499736e-08,
+      "compensated_accuracy": 2.8952588483239925e-08
+    },
+    {
+      "point": 81,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 82,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 83,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 84,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 85,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 86,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 87,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 88,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 89,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 90,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 91,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 92,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 93,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 94,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 95,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 96,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 97,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 98,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 99,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 100,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    }
+  ],
+  "physical_comparisons": {
+    "native": {
+      "passed": true,
+      "worst_tolerance_fraction": 0.7174648423523979,
+      "failures": [],
+      "source": "docs/benchmarkfolder/experiments/t3-compensation-performance/first-three-cases-20261020/qcd-3/exploratory/native-0-values.dat",
+      "source_sha256": "c00ca3bc928938ea2394a2f4b2d4431c9ae28bd86bbf129931d841ec5724a75e"
+    },
+    "guarded": {
+      "passed": true,
+      "worst_tolerance_fraction": 4.4567571185047436e-05,
+      "failures": [],
+      "source": "docs/benchmarkfolder/experiments/t3-compensation-performance/first-three-cases-20261020/qcd-3/exploratory/guarded-0-values.dat",
+      "source_sha256": "8c494044205ed5089677764ac39f17a47ffec0099759e5361580ec2daf2ea697"
+    }
+  },
+  "ordinary_path_identity": {
+    "points": 97,
+    "rows": 194,
+    "all_printed_coefficients_accuracy_and_status_exact": true
+  }
+}

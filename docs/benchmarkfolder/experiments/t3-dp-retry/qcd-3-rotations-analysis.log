@@ -1,0 +1,70 @@
+{
+  "passed": true,
+  "acceptance_eligible": false,
+  "status_counts": {
+    "322": 4,
+    "218": 3
+  },
+  "retry_points": [
+    {
+      "point": 67,
+      "status": 322,
+      "retry_count": 1,
+      "passed": 0,
+      "failed": 1,
+      "hard_skip": 0,
+      "native_accuracy": 3.3107838543679847e-09,
+      "compensated_accuracy": 2.778772105534051e-09
+    },
+    {
+      "point": 44,
+      "status": 322,
+      "retry_count": 1,
+      "passed": 0,
+      "failed": 1,
+      "hard_skip": 0,
+      "native_accuracy": 4.938321476082405e-08,
+      "compensated_accuracy": 6.095205841303078e-08
+    },
+    {
+      "point": 80,
+      "status": 322,
+      "retry_count": 1,
+      "passed": 0,
+      "failed": 1,
+      "hard_skip": 0,
+      "native_accuracy": 2.9332688922489996e-08,
+      "compensated_accuracy": 2.9336904993071075e-08
+    },
+    {
+      "point": 67,
+      "status": 322,
+      "retry_count": 1,
+      "passed": 0,
+      "failed": 1,
+      "hard_skip": 0,
+      "native_accuracy": 3.3107838543679847e-09,
+      "compensated_accuracy": 2.778772105534051e-09
+    }
+  ],
+  "physical_comparisons": {
+    "native": {
+      "passed": true,
+      "worst_tolerance_fraction": 1.9416939575035294e-08,
+      "failures": [],
+      "source": "docs/benchmarkfolder/experiments/t3-compensation-performance/first-three-cases-20261020/qcd-3/exploratory/native-0-values.dat",
+      "source_sha256": "c00ca3bc928938ea2394a2f4b2d4431c9ae28bd86bbf129931d841ec5724a75e",
+      "required": true,
+      "role": "corrected-cohort physical reference"
+    },
+    "guarded": {
+      "passed": true,
+      "worst_tolerance_fraction": 0.7174648423523979,
+      "failures": [],
+      "source": "docs/benchmarkfolder/experiments/t3-compensation-performance/first-three-cases-20261020/qcd-3/exploratory/guarded-0-values.dat",
+      "source_sha256": "8c494044205ed5089677764ac39f17a47ffec0099759e5361580ec2daf2ea697",
+      "required": true,
+      "role": "corrected-cohort physical reference"
+    }
+  }
+}

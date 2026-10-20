@@ -1,0 +1,13 @@
+{
+  "base_output": ".benchmark-work/policy-v2/generation/outputs/candidate/ew-2",
+  "source_compilation_sha256": "7d5a82e57db92ef62adb856b643824192f57e964fb4f0a2af03873dea0799961",
+  "source_files": {
+    "loop_matrix.f": "99f94c7a52aa1268258d812c66e1f4326e0c4b005a6ec8842ab48cf9da5d16cf",
+    "CT_interface.f": "15bd2a48a3b6b12b34f5ee15363c2d1b3e7263da9bb0f26a88c5388166dbbb7e",
+    "check_sa.f": "22c54bc7368cf1fec68167078575b386c6b662e4ee1e83ae2d5c694b4cc8e90f"
+  },
+  "executable_sha256": "b7b1846629d2ca9317c640b74774ede6fc0e46c82a8bcd253b6553b70402b5a4",
+  "archive_sha256": "6dacbb7e5a4940b965bbc07ab1d7e39b95c6ea5f72fd390a8622cbb4cf600466",
+  "generated_sources_sha256": "67208995863a9c9d508eb5e8905a36797037018c3a9ca9848590fc2547a8b0ae",
+  "patch_sha256": "c362e18aacd27cbc87d4f2a42ca75b02624d2fff0e345a09d3313619724d71e6"
+}

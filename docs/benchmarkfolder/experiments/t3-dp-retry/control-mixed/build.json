@@ -1,0 +1,13 @@
+{
+  "base_output": ".benchmark-work/policy-v2/generation/outputs/candidate/control-mixed",
+  "source_compilation_sha256": "94e143a24977047c82f368a85fec637db7fb850ef04ded3c2e0fc05ffca2f104",
+  "source_files": {
+    "loop_matrix.f": "5a36d6b30a6d27c712230502907347b0e5819159052b969eb3f5a17d363e0edd",
+    "CT_interface.f": "7b83b8820876c7faf47a3edf75ed758c14be0d8c44e7d571dd10d4bac8a9918d",
+    "check_sa.f": "9c7d516fb94f15d8cc1b4d8dcbaaedc383e148f16963536c50d023393b4b191e"
+  },
+  "executable_sha256": "4922320ff781f7ce58151cf48ef113994a75c4b306fe22eab27a20628dce5db8",
+  "archive_sha256": "6dacbb7e5a4940b965bbc07ab1d7e39b95c6ea5f72fd390a8622cbb4cf600466",
+  "generated_sources_sha256": "b2e2db7011c84193c123615c4b31f5516b45dd1a5806c892db2ac4230c39f02f",
+  "patch_sha256": "d63d3b041a51ce5b90c24cf10f2b774df5d98c2808572a742a32006458f5c889"
+}

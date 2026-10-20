@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "scenarios_per_case": [
+    1,
+    0,
+    3,
+    0,
+    2,
+    0
+  ],
+  "cases": 4,
+  "files": {
+    "rotations-0-backends-8/mock-flow.dat": "a0da607686cb5b5693db6691ebaaa023e4ad98b0af0b6ffd10bab2abc0e6e23d",
+    "rotations-2-backends-8/mock-flow.dat": "7d01d679465dd92b645f4477e6bdc67bd046b2a133723ab9c0b65549132a3c8f",
+    "rotations-0-backends-8-6/mock-flow.dat": "0a557b4b4937e4dce78f9a83c89eea4e7a5bc05d3726449f9a29a5bc8ad3d43f",
+    "rotations-2-backends-8-6/mock-flow.dat": "22588f6d78da7a8d5cad9cc6adf40462df3e69995d3ef5fc1200f4780ff0c5d1"
+  }
+}

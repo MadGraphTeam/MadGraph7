@@ -1,0 +1,202 @@
+{
+  "passed": true,
+  "acceptance_eligible": false,
+  "status_counts": {
+    "218": 10
+  },
+  "retry_points": [],
+  "all_points": [
+    {
+      "point": 1,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 2,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 3,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 4,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 5,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 6,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 7,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 8,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 9,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    },
+    {
+      "point": 10,
+      "status": 218,
+      "retry_count": 0,
+      "passed": 0,
+      "failed": 0,
+      "hard_skip": 0,
+      "native_accuracy": -1.0,
+      "compensated_accuracy": -1.0
+    }
+  ],
+  "physical_comparisons": {
+    "representative-original-controls-20261020/control-mixed-baseline-6": {
+      "passed": true,
+      "worst_tolerance_fraction": 2.1792610107815934e-07,
+      "failures": [],
+      "source": "docs/benchmarkfolder/policy-v2/representative-runs/representative-original-controls-20261020/data/control-mixed-baseline-6-fresh.json",
+      "source_sha256": "7cb80b359ab21731f3627d479299180fdd3bd2acb4a7c7e07b54af5fd0e924d4",
+      "required": false,
+      "role": "literal-original diagnostic"
+    },
+    "representative-original-controls-20261020/control-mixed-baseline-1": {
+      "passed": true,
+      "worst_tolerance_fraction": 9.075192625481982e-06,
+      "failures": [],
+      "source": "docs/benchmarkfolder/policy-v2/representative-runs/representative-original-controls-20261020/data/control-mixed-baseline-1-fresh.json",
+      "source_sha256": "bdb6cd1d6444e45ada20194585599aeb62e032aa9447b89317615476c4f3b849",
+      "required": false,
+      "role": "literal-original diagnostic"
+    },
+    "representative-original-controls-20261020/control-mixed-baseline-7": {
+      "passed": true,
+      "worst_tolerance_fraction": 2.388987607632422e-06,
+      "failures": [],
+      "source": "docs/benchmarkfolder/policy-v2/representative-runs/representative-original-controls-20261020/data/control-mixed-baseline-7-fresh.json",
+      "source_sha256": "06ccd9bd6a876d1e55508efbe96277fe69bb3d626953e76fccd8a55787b46614",
+      "required": false,
+      "role": "literal-original diagnostic"
+    },
+    "representative-rs-controls-20261020/control-mixed-candidate-8": {
+      "passed": true,
+      "worst_tolerance_fraction": 0.0,
+      "failures": [],
+      "source": "docs/benchmarkfolder/policy-v2/representative-runs/representative-rs-controls-20261020/data/control-mixed-candidate-8-fresh.json",
+      "source_sha256": "9d9b59718d5f4e3ed7c223122769030430f2acae22fb6b6602dc0f9dafee8c04",
+      "required": true,
+      "role": "corrected-cohort physical reference"
+    },
+    "representative-legacy-controls-20261020/control-mixed-baseline-6": {
+      "passed": true,
+      "worst_tolerance_fraction": 2.1792610107815934e-07,
+      "failures": [],
+      "source": "docs/benchmarkfolder/policy-v2/representative-runs/representative-legacy-controls-20261020/data/control-mixed-baseline-6-fresh.json",
+      "source_sha256": "3b9ef5cef86138e35e5705bb3f76a5722282ba8b7e0e9a0e7b29d3522ef01076",
+      "required": true,
+      "role": "corrected-cohort physical reference"
+    },
+    "representative-legacy-controls-20261020/control-mixed-candidate-1": {
+      "passed": true,
+      "worst_tolerance_fraction": 9.075192625481982e-06,
+      "failures": [],
+      "source": "docs/benchmarkfolder/policy-v2/representative-runs/representative-legacy-controls-20261020/data/control-mixed-candidate-1-fresh.json",
+      "source_sha256": "e03f0e8a4934c5359581708225508c56f862ab0db642205d2c97b8555f03acb4",
+      "required": true,
+      "role": "corrected-cohort physical reference"
+    },
+    "representative-legacy-controls-20261020/control-mixed-candidate-6": {
+      "passed": true,
+      "worst_tolerance_fraction": 2.1792610107815934e-07,
+      "failures": [],
+      "source": "docs/benchmarkfolder/policy-v2/representative-runs/representative-legacy-controls-20261020/data/control-mixed-candidate-6-fresh.json",
+      "source_sha256": "ce0b257a713c4dbd113f8c64616ff21d0904392e649bb70e32cca26570bc9342",
+      "required": true,
+      "role": "corrected-cohort physical reference"
+    },
+    "representative-legacy-controls-20261020/control-mixed-baseline-1": {
+      "passed": true,
+      "worst_tolerance_fraction": 9.075192625481982e-06,
+      "failures": [],
+      "source": "docs/benchmarkfolder/policy-v2/representative-runs/representative-legacy-controls-20261020/data/control-mixed-baseline-1-fresh.json",
+      "source_sha256": "69623a8c75cf23aaa862da72bc1e9e55e890c8c6aed260bf45b2db7a818e8cc7",
+      "required": true,
+      "role": "corrected-cohort physical reference"
+    },
+    "representative-legacy-controls-20261020/control-mixed-candidate-7": {
+      "passed": true,
+      "worst_tolerance_fraction": 2.388987607632422e-06,
+      "failures": [],
+      "source": "docs/benchmarkfolder/policy-v2/representative-runs/representative-legacy-controls-20261020/data/control-mixed-candidate-7-fresh.json",
+      "source_sha256": "b75b90988cfc1b2294c55fcc5ca4ba61a5f1b2125f543125fcdb13951f3970de",
+      "required": true,
+      "role": "corrected-cohort physical reference"
+    },
+    "representative-legacy-controls-20261020/control-mixed-baseline-7": {
+      "passed": true,
+      "worst_tolerance_fraction": 2.388987607632422e-06,
+      "failures": [],
+      "source": "docs/benchmarkfolder/policy-v2/representative-runs/representative-legacy-controls-20261020/data/control-mixed-baseline-7-fresh.json",
+      "source_sha256": "cb7e45355110ae637e3040489a3a67b1e96b8ee4b36c751706c19bd3bfeacaa5",
+      "required": true,
+      "role": "corrected-cohort physical reference"
+    }
+  }
+}
