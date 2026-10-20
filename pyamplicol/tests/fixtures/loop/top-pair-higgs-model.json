@@ -4,7 +4,7 @@
  },
  "source": "MG5_aMC_v3_7_0/models/loop_sm-no_b_mass (MadLoop standalone, Feynman gauge, complex_mass_scheme False)",
  "scope": "QCD corrections with massive internal tops, top Yukawa/Goldstone (FFS) vertices and their QCD counterterms; binary64 independent MadLoop references; no timing claim",
- "provenance": "workspace/reference/generate_top_pair_higgs_model.py and run_top_pair_higgs_model.py; diagnostic CT split by generated SKIPLOOPEVAL plus CT index selection only",
+ "provenance": "tools/loop_reference/madloop_top_pair_model.py; diagnostic CT split by generated SKIPLOOPEVAL plus CT index selection only",
  "convention": "MadLoop finite part, Cepsilon=(4pi)^epsilon/Gamma(1-epsilon); aS fixed (no running) at MU_R",
  "points_scope": "Exact on-shell, non-CM rational points (terminating decimals): massless beams along z, p_t^2=p_tbar^2=173^2, p_h^2=125^2",
  "points": [
