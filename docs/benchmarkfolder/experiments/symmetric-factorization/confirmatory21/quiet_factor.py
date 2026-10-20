@@ -59,8 +59,9 @@ def main():
             f'/sys/devices/system/cpu/cpu{args.background_cpu}').glob('node*')],
         kernel=list(os.uname()),clock_ticks=os.sysconf('SC_CLK_TCK'),
         scope='Locally coordinated quiet window: other task-owned numerical and '
-        'compiler jobs paused except the explicitly allowed corrected-original '
-        'reference worker on the background CPU. Shared host is not exclusively '
+        'compiler jobs paused except explicitly allowed corrected-original '
+        'reference collection, preparation/builds and evaluation, with collector '
+        'and child affinity confined to the background CPU. Shared host is not exclusively '
         'reserved; CPU/SMT activity is retained rather than assumed absent.')
     (monitor/'topology.json').write_text(json.dumps(topology,indent=2)+'\n')
     command=[sys.executable,str(HERE/'run_pairs.py'),

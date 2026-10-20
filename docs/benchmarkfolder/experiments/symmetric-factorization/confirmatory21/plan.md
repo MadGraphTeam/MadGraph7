@@ -32,7 +32,8 @@ selection, or further adaptive rerun without a source change. Any pooled
 The quiet controller records topology, CPU affinity, current frequency and
 five-second activity samples for the selected core and the allowed reference
 CPU207. Other task-owned numerical and compilation work is paused during the
-series; the corrected-original reference retry may continue on CPU207. This is
+series; the corrected-original reference retry's collection, preparation/builds
+and evaluation may continue with collector and child affinity confined to CPU207. This is
 a coordinated local window on a shared host, not exclusive host ownership.
 
 After root review and a recorded idle-core preflight, run from the repository:

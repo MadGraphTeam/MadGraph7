@@ -33,9 +33,18 @@ Completed checks are retained separately:
 The focused audit includes a retained plan snapshot and source-scoped coverage
 limitations. Failed setup attempts remain preserved alongside their diagnoses.
 These checks do not replace the outstanding eight-process correctness and
-performance gates. `final-core-plan-fixed/` retains the held full-cohort plan.
+performance gates. `final-core-plan-fixed-24h/` retains the current held
+full-cohort plan. The [earlier reference attempt](reference-timeout-retention-20261020/README.md)
+completed six cases before QCD4 CutTools reached its startup timeout; the
+complete failed attempt remains retained. The separate
+[full-suite retry](reference-collection-plan-24h/README.md) changes the phase
+timeout to 24 hours and preserves the numerical inputs and collection protocol.
+
 The [symmetric-accumulation experiments](../experiments/symmetric-accumulation/README.md)
-are separate research; no product-sharing prototype is part of this source.
+and [guarded derivative-row factorization](../experiments/symmetric-factorization/prototype-notes.md)
+are separate research. The latter passes exact-arithmetic and full QCD3 controls,
+but its first seven-pair timing series is inconclusive. Neither experimental
+product sharing nor derivative-row factorization is part of this source.
 
 ## Exact correction evidence
 
