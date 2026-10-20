@@ -1,0 +1,13 @@
+{
+  "files": {
+    "PLAN.md": {
+      "bytes": 6407,
+      "sha256": "04f421b15c23a866221a005fff6b73967246fd45a4a58c67a1feeef7e510f49b"
+    },
+    "configuration.json": {
+      "bytes": 4054,
+      "sha256": "17f02760fec5f3f8e494b5c4d5a34abc921d49fee7baf4563997fcd652328ff3"
+    }
+  },
+  "schema": "fixed-supplement-preregistration-v1"
+}

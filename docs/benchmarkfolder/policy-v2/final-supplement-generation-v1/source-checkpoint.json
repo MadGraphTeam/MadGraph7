@@ -1,0 +1,30 @@
+{
+  "schema": "supplement-source-checkpoint-v1",
+  "files": {
+    "tools/ninjars_supplement_v2.py": {
+      "sha256": "8775d50b657d6dff7d44ee2e27c83917283137e5b4fdcc5ff4f7a165c6816585",
+      "bytes": 59665
+    },
+    "tools/ninjars_precision_v2.py": {
+      "sha256": "6f7a4ec0a0744ef816e38d6f6a5bb45844d3e9bc264c617bbc22da01a1bb9cb5",
+      "bytes": 24996
+    },
+    "tools/ninjars_precision_driver.c": {
+      "sha256": "8ce7d7f55d6a118f344ca785dc0ce60772b6a096474064dbf923f7c42a5c69a6",
+      "bytes": 5056
+    },
+    "tests/unit_tests/various/test_ninjars_supplement.py": {
+      "sha256": "4885fe74a633db0388b58646b315b0e50fc099830c2f6511b6f8ecd30ee9cc51",
+      "bytes": 6699
+    },
+    "tests/unit_tests/various/test_ninjars_precision.py": {
+      "sha256": "ace74a66ace8f94df1d0dc6741f129121487cf9707fe140134497c752a60bd48",
+      "bytes": 6352
+    }
+  },
+  "candidate_bound": false,
+  "amplitude_evaluations": 0,
+  "initialized_symbolica_workers": 0,
+  "local_tests": 19,
+  "c_driver_compile": "-std=c11 -Wall -Wextra -Werror compile-only; no link/execution"
+}

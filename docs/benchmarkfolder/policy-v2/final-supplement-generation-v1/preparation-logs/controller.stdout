@@ -1,0 +1,79 @@
+{
+  "status": "complete",
+  "source": "baseline",
+  "cases": {
+    "supplement-gg-h": {
+      "output": ".benchmark-work/policy-v2/final-supplement-generation-v1/outputs/baseline/supplement-gg-h",
+      "generated_manifest": {
+        "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/manifests/supplement-gg-h-baseline.json",
+        "sha256": "fe0d6360251c8cd545f7c1e5becde7a181f3a9d3eae6436c1ac9f843441c1e3d",
+        "bytes": 15697
+      },
+      "generation": {
+        "path": ".benchmark-work/policy-v2/final-supplement-generation-v1/outputs/baseline/supplement-gg-h/generation.json",
+        "sha256": "7aa5a353959450227bedf00ac7670c1b99fcad0d925e17c958439980a4a7e4cf",
+        "bytes": 549
+      },
+      "compilation": {
+        "path": ".benchmark-work/policy-v2/final-supplement-generation-v1/outputs/baseline/supplement-gg-h/compilation.json",
+        "sha256": "d6fd264d88c212925a5840ce6534fe5405b2264a7259df855f2f200511517147",
+        "bytes": 5936
+      },
+      "masses": [
+        0.0,
+        0.0,
+        125.0
+      ],
+      "point_stream": {
+        "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/points/supplement-gg-h.dat",
+        "sha256": "146ab1c08480c2687352d1800ba12c00633097d109c9f3b084bb69c9a41dfa5b",
+        "bytes": 29260
+      },
+      "physical_metadata": {
+        "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/points/supplement-gg-h.physical.json",
+        "sha256": "fea1dcb5752ad659c03a77391a83f244c12e8bb81a45a2a28194100064bf2142",
+        "bytes": 669
+      }
+    },
+    "supplement-gg-hh": {
+      "output": ".benchmark-work/policy-v2/final-supplement-generation-v1/outputs/baseline/supplement-gg-hh",
+      "generated_manifest": {
+        "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/manifests/supplement-gg-hh-baseline.json",
+        "sha256": "6ba158bb8c96923bc445c6e5ea99df6df9e1deea3cab5f209cac1f6e24844e9d",
+        "bytes": 16317
+      },
+      "generation": {
+        "path": ".benchmark-work/policy-v2/final-supplement-generation-v1/outputs/baseline/supplement-gg-hh/generation.json",
+        "sha256": "6d95414e3f4205071306c968dcaf709572b886159edad96e78c0c6a0afc14c6a",
+        "bytes": 549
+      },
+      "compilation": {
+        "path": ".benchmark-work/policy-v2/final-supplement-generation-v1/outputs/baseline/supplement-gg-hh/compilation.json",
+        "sha256": "e78ec71ba0c3be82dca82e12d951a9bf76d45a7e88a01668dabdb8c632747117",
+        "bytes": 5938
+      },
+      "masses": [
+        0.0,
+        0.0,
+        125.0,
+        125.0
+      ],
+      "point_stream": {
+        "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/points/supplement-gg-hh.dat",
+        "sha256": "3f05e279caa8057906bce524597066c479454b89d455ca57a42691f5060004f6",
+        "bytes": 38804
+      },
+      "physical_metadata": {
+        "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/points/supplement-gg-hh.physical.json",
+        "sha256": "8d2844d341aa42deed097209eee1eeadc159d870ae2cd257c4e6e7684ed3ab39",
+        "bytes": 642
+      }
+    }
+  },
+  "loop_evaluations": 0,
+  "initialized_symbolica_workers": 0,
+  "affinity": [
+    6,
+    7
+  ]
+}

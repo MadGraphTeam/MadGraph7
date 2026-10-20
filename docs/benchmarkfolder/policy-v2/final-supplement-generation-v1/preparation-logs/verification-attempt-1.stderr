@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tools/ninjars_supplement_v2.py", line 909, in <module>
+    main()
+    ~~~~^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tools/ninjars_supplement_v2.py", line 898, in main
+    result = verify_preparation(args.report, args.work, args.live)
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tools/ninjars_supplement_v2.py", line 376, in verify_preparation
+    if rebuild["sources_sha256"] != proof["corrected_manifest"]["files_sha256"] or not rebuild["passed"]:
+                                                                                       ~~~~~~~^^^^^^^^^^
+KeyError: 'passed'

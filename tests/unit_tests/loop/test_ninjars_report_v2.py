@@ -5,7 +5,9 @@ import json
 import os
 from pathlib import Path
 import shutil
+import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -204,6 +206,33 @@ class NinjaRSReportV2Test(unittest.TestCase):
         self.assertEqual(result["cases"][1]["agreement"]["status"], "pending")
         self.assertIsNone(result["cases"][1]["timings"]["candidate"]["8"]["median_us"])
         self.assertFalse(result["all_cases_passed"])
+        self.assertEqual(result["cases"][1]["stability"], {"status": "pending", "targets": {}})
+
+    def test_core_pass_does_not_complete_missing_supplement(self):
+        self.fixture()
+        result = self.snapshot()
+        self.assertTrue(result["all_cases_passed"])
+        self.assertFalse(result["complete_campaign_passed"])
+        self.assertEqual(result["campaign_status"], "pending")
+        self.assertEqual(result["supplement"]["status"], "pending")
+        self.assertEqual(result["regressions"]["status"], "pending")
+        self.assertIsNone(result["supplement_specification"])
+        for key in ("ninjars_revision", "oneloopmaster_revision", "symbolica_revision",
+                    "ninjars_abi_version", "accepted_core_series"):
+            self.assertNotIn(key, result["provenance"])
+        self.assertIsNone(result["runtime_provenance"]["dependencies"]["ninjars"])
+        self.assertFalse(result["complete_campaign_passed"])
+
+    def test_core_stability_separates_estimates_from_observed_discrepancy(self):
+        self.fixture(original_offset=1e20)
+        stability = self.snapshot()["cases"][0]["stability"]
+        self.assertFalse(stability["estimate_is_observed_error"])
+        self.assertEqual(len(stability["targets"]), 7)
+        candidate = stability["targets"]["candidate_corrected/8"]
+        self.assertEqual(candidate["estimated_accuracy"]["all_orders"]["maximum"], 1e-12)
+        self.assertEqual(candidate["observed_discrepancy"]["max_absolute_error"], 0.)
+        self.assertNotIn("original/6", candidate["observed_discrepancy"]["reference_targets"])
+        self.assertEqual(candidate["status_counts"], {"218": 2})
 
     def test_rejected_dataset_cannot_render_or_create_output(self):
         target = self.root / "report"
@@ -218,6 +247,7 @@ class NinjaRSReportV2Test(unittest.TestCase):
         with patch.object(self.policy, "validate_dataset", return_value=self.dataset):
             result = report.render(self.dataset_path, target, timestamp="test")
         self.assertEqual(result["summary"]["performance_failed"], 1)
+        self.assertEqual(result["campaign_status"], "failed")
         self.assertTrue((target / "benchmark.typ").exists())
         with self.assertRaisesRegex(ValueError, "exists"):
             report.render(self.dataset_path, target)
@@ -238,6 +268,45 @@ class NinjaRSReportV2Test(unittest.TestCase):
         self.assertEqual((reports[0] / "benchmark.pdf").read_bytes(),
                          (reports[1] / "benchmark.pdf").read_bytes())
 
+    @unittest.skipUnless(shutil.which("typst"), "Typst is required for supplement layout")
+    def test_supplement_and_threshold_pages_compile_with_explicit_synthetic_fixture(self):
+        self.fixture()
+        snapshot = self.snapshot()
+        prototype = copy.deepcopy(snapshot["cases"][0])
+        snapshot["cases"] = [dict(copy.deepcopy(prototype), id=f"{kind}-{number}", nfinal=number)
+                             for kind in ("qcd", "ew") for number in range(1, 5)]
+        snapshot["summary"].update(cases=8, measured_candidate_cells=32, correctness_passed=8,
+                                  performance_passed=8)
+        loop_cases = [dict(copy.deepcopy(prototype), id=cid, process=process, points=2, nfinal=nfinal)
+                      for cid, process, nfinal in (("supplement-gg-h", "g g > h [sqrvirt=QCD]", 1),
+                                                   ("supplement-gg-hh", "g g > h h [sqrvirt=QCD]", 2))]
+        snapshot["supplement"] = {
+            "status": "pending", "complete_campaign_passed": False,
+            "cases": loop_cases,
+            "threshold_grid": {
+                "agreement": {"status": "passed"},
+                "point_summaries": [{"point": point, "delta": delta, "cos_theta": cosine,
+                                     "max_tolerance_fraction": .2,
+                                     "estimated_accuracy": {"candidate_corrected/8": 5e-324 if point == 1 else 1e-12}}
+                                    for point, (delta, cosine) in enumerate(
+                                        ((d, c) for d in ("-0.01", "-0.0001", "-0.000001",
+                                                         "0.000001", "0.0001", "0.01")
+                                         for c in ("0", "0.8")), 1)]},
+            "precision_controls": {"status": "pending", "working_bits": 256,
+                                   "convergence_bits": 384,
+                                   "checks": [{"name": "Explicit synthetic layout fixture", "status": "pending"}]}}
+        snapshot["regressions"] = {
+            "status": "passed", "tests_run": 2, "tests_passed": 1, "total_skipped": 1,
+            "scope": "Explicit synthetic layout fixture; no physical process was evaluated.",
+            "suites": [{"name": "Explicit synthetic suite", "tests_run": 2, "failures": 0,
+                        "errors": 0, "skipped": 1,
+                        "skip_details": [["synthetic.case", "Explicit synthetic skip"]]}]}
+        target = self.root / "supplement-layout-fixture"
+        with patch.object(report, "build_snapshot", return_value=snapshot):
+            result = report.render(self.dataset_path, target, compile_pdf=True)
+        self.assertFalse(result["complete_campaign_passed"])
+        self.assertTrue((target / "benchmark.pdf").read_bytes().startswith(b"%PDF"))
+
     def test_raw_coefficient_stream_and_status_corruption_rejected(self):
         rows = {"a": self.record("original", 6, 0)["rows"],
                 "b": self.record("candidate_corrected", 8, 0)["rows"]}
@@ -257,6 +326,16 @@ class NinjaRSReportV2Test(unittest.TestCase):
         record["timed_status_counts"] = {"410": 4}
         with self.assertRaises(RuntimeError):
             report.summary([dict(record, repetition=i) for i in range(7)], 2, 7)
+
+    def test_point_histogram_is_recomputed_and_not_labelled_an_accuracy_distribution(self):
+        record = self.record("candidate_corrected", 8, 0)
+        runs = [dict(record, repetition=i) for i in range(7)]
+        summary = report.summary(runs, 2, 7)
+        self.assertEqual(summary["point_status_counts"], {"218": 14})
+        self.assertNotIn("accuracy_counts", summary)
+        runs[0] = dict(runs[0], status_counts={"322": 2})
+        with self.assertRaisesRegex(ValueError, "histogram differs"):
+            report.summary(runs, 2, 7)
 
     def test_wrong_original_magnitude_does_not_relax_corrected_comparison(self):
         self.fixture(original_offset=1e20, reference_offset=.01)
@@ -347,6 +426,282 @@ class NinjaRSProfileReportTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "diagnostic profile"):
                 self.evaluate()
             self.profile[key] = saved
+
+
+class NinjaRSStabilityReportTest(unittest.TestCase):
+    def groups(self):
+        rows = [{"point": point, "order": order, "status": 218,
+                 "accuracy": 0. if order == 0 else 1e-8,
+                 "coefficients": [0., 2., 0., 0.]}
+                for point in (1, 2) for order in (0, 1)]
+        reference = copy.deepcopy(rows)
+        for row in reference:
+            row["status"] = 216
+        return {"candidate_corrected/8": rows, "original_helper_corrected/6": reference}
+
+    def test_split_orders_do_not_multiply_point_or_rescue_counts(self):
+        groups = self.groups()
+        for row in groups["candidate_corrected/8"]:
+            if row["point"] == 2:
+                row["status"] = 322
+        result = report.stability_snapshot(groups)["targets"]["candidate_corrected/8"]
+        self.assertEqual(result["points"], 2)
+        self.assertEqual((result["dp"], result["qp"]), (1, 1))
+        self.assertEqual(result["status_counts"], {"218": 1, "322": 1})
+        self.assertEqual(result["estimated_accuracy"]["all_orders"]["count"], 4)
+        self.assertEqual(result["estimated_accuracy"]["total_order"]["zero_count"], 2)
+        self.assertEqual(result["estimated_accuracy"]["total_order"]["maximum"], 0.)
+
+    def test_small_estimate_cannot_hide_actual_mismatch(self):
+        groups = self.groups()
+        groups["candidate_corrected/8"][0]["accuracy"] = 0.
+        groups["candidate_corrected/8"][0]["coefficients"][1] += .01
+        result = report.stability_snapshot(groups)["targets"]["candidate_corrected/8"]
+        self.assertEqual(result["estimated_accuracy"]["total_order"]["maximum"], 0.)
+        observed = result["observed_discrepancy"]
+        self.assertGreater(observed["failures"], 0)
+        self.assertGreater(observed["max_tolerance_fraction"], 1.)
+        self.assertEqual(observed["worst"]["point"], 1)
+        self.assertEqual(observed["worst"]["order"], 0)
+        self.assertEqual(observed["worst"]["coefficient"], 1)
+
+    def test_bad_estimates_and_inconsistent_point_status_rejected(self):
+        for estimate in (-1., float("nan"), float("inf"), True):
+            with self.subTest(estimate=estimate):
+                groups = self.groups()
+                groups["candidate_corrected/8"][0]["accuracy"] = estimate
+                with self.assertRaisesRegex(ValueError, "estimate"):
+                    report.stability_snapshot(groups)
+        groups = self.groups()
+        groups["candidate_corrected/8"][1]["status"] = 322
+        with self.assertRaisesRegex(ValueError, "Point status"):
+            report.stability_snapshot(groups)
+
+    def test_uncorrected_original_cannot_relax_stability_scale(self):
+        groups = self.groups()
+        groups["original/6"] = groups.pop("original_helper_corrected/6")
+        with self.assertRaisesRegex(ValueError, "Uncorrected original"):
+            report.stability_snapshot(groups)
+
+    def test_nearest_rank_percentile_and_zero_estimate_are_explicit(self):
+        result = report.estimate_distribution([0.] + list(range(1, 20)))
+        self.assertEqual(result["p95_nearest_rank"], 18)
+        self.assertEqual(result["zero_count"], 1)
+        self.assertEqual(result["median"], 9.5)
+        self.assertEqual(report.estimate_distribution([0., 0.])["maximum"], 0.)
+
+
+class NinjaRSReportSupplementBoundaryTest(unittest.TestCase):
+    def test_precision_reader_receives_actual_full_runtime_descriptor(self):
+        expected = {"core_dataset_identity_sha256": "core",
+                    "literal_baseline_revision": report.BASELINE_REVISION,
+                    "candidate_generator_identity_sha256": "generator",
+                    "candidate_runtime_identity_sha256": "runtime"}
+        signature = {"identity_sha256": "runtime", "libraries": {"libninjars.a": "archive"},
+                     "metadata": {"ninjars-config.json": "config"}}
+        seen = []
+
+        def snapshot(path, cohort, inputs, *, runtime_signature):
+            seen.append(runtime_signature)
+            return dict(cohort, schema="madloop-final-supplement-v1", status="pending",
+                        complete_campaign_passed=False)
+
+        module = SimpleNamespace(report_snapshot=snapshot)
+        with tempfile.TemporaryDirectory(dir=report.ROOT / ".ninjars-build/tmp") as directory:
+            manifest = Path(directory) / "supplement.json"
+            manifest.write_text("{}")
+            inputs = {}
+            with patch.dict(sys.modules, {"ninjars_supplement_v2": module}), \
+                    patch.object(report, "supplement_expectations", return_value=expected), \
+                    patch.object(report, "candidate_runtime_signature", return_value=signature):
+                result = report.supplement_snapshot(manifest, {}, [], inputs)
+            self.assertEqual(seen, [signature])
+            self.assertFalse(result["complete_campaign_passed"])
+            self.assertEqual(inputs[report.policy.relative(manifest)], report.workers.digest(manifest))
+
+    def test_cohort_identity_includes_generator_runtime_and_literal_baseline(self):
+        item = {"role": "candidate_corrected", "backend": 8,
+                "generation_source_identity": {"tree_state_sha256": "generator"},
+                "signature": {"identity_sha256": "runtime"}}
+        binding = {"targets": {"case-candidate-8": item}}
+        with patch.object(report.policy, "reducer_signature", side_effect=lambda value: value["signature"]):
+            expected = report.supplement_expectations({"identity_sha256": "core"}, [binding])
+            self.assertEqual(expected, {
+                "core_dataset_identity_sha256": "core",
+                "literal_baseline_revision": "27147b3300f556a75661a886e92bdbe00558ee25",
+                "candidate_generator_identity_sha256": "generator",
+                "candidate_runtime_identity_sha256": "runtime"})
+            for field in ("generator", "runtime"):
+                changed = copy.deepcopy(item)
+                if field == "generator":
+                    changed["generation_source_identity"]["tree_state_sha256"] = "changed"
+                else:
+                    changed["signature"]["identity_sha256"] = "changed"
+                binding["targets"]["other-candidate-8"] = changed
+                with self.assertRaisesRegex(ValueError, "one bound"):
+                    report.supplement_expectations({"identity_sha256": "core"}, [binding])
+                binding["targets"].pop("other-candidate-8")
+
+    def test_supplement_cannot_self_certify_a_different_or_contradictory_cohort(self):
+        expected = {"core_dataset_identity_sha256": "core",
+                    "literal_baseline_revision": report.BASELINE_REVISION,
+                    "candidate_generator_identity_sha256": "generator",
+                    "candidate_runtime_identity_sha256": "runtime"}
+        valid = dict(expected, schema="madloop-final-supplement-v1", status="passed",
+                     complete_campaign_passed=True)
+        module = SimpleNamespace(report_snapshot=lambda *args, **kwargs: valid)
+        with patch.dict(sys.modules, {"ninjars_supplement_v2": module}), \
+                patch.object(report, "supplement_expectations", return_value=expected), \
+                patch.object(report, "candidate_runtime_signature", return_value={"identity_sha256": "runtime"}):
+            for key in expected:
+                changed = dict(valid, **{key: "other"})
+                module.report_snapshot = lambda *args, **kwargs: changed
+                with self.subTest(key=key), self.assertRaisesRegex(ValueError, "differently bound"):
+                    report.supplement_snapshot("unused.json", {}, [], {})
+            module.report_snapshot = lambda *args, **kwargs: dict(valid, status="failed")
+            with self.assertRaisesRegex(ValueError, "Contradictory"):
+                report.supplement_snapshot("unused.json", {}, [], {})
+
+
+class NinjaRSRuntimeProvenanceReportTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(dir=report.ROOT / ".ninjars-build/tmp",
+                                                prefix="runtime-report-test-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.revisions = {"ninjars": "a"*40, "oneloopmaster": "b"*40, "symbolica": "c"*40}
+        self.config = self.write("ninjars-config.json", {"abi_version": 3, "local_sources": {}})
+        self.cargo = self.root / "Cargo.toml"
+        self.cargo.write_text('''[dependencies]
+ninjars = { git = "https://example.org/ninjars", rev = "%s" }
+ninjars-symbolica = { git = "https://example.org/ninjars", rev = "%s" }
+[patch.crates-io]
+symbolica = { git = "https://example.org/symbolica", rev = "%s" }
+numerica = { git = "https://example.org/symbolica", rev = "%s" }
+graphica = { git = "https://example.org/symbolica", rev = "%s" }
+''' % (self.revisions["ninjars"], self.revisions["ninjars"],
+       self.revisions["symbolica"], self.revisions["symbolica"], self.revisions["symbolica"]))
+        self.lock = self.root / "Cargo.lock"
+        self.lock.write_text("\n".join('''[[package]]
+name = "%s"
+version = "0.1.0"
+source = "git+https://example.org/%s?rev=%s#%s"
+''' % (crate, name, revision, revision) for name, crate, revision in (
+            ("ninjars", "ninjars", self.revisions["ninjars"]),
+            ("oneloopmaster", "oneloop", self.revisions["oneloopmaster"]),
+            ("symbolica", "symbolica", self.revisions["symbolica"]))))
+        self.archive = "d"*64
+        self.installation = self.write("installation.json", {
+            "passed": True, "exit_code": 0, "compiled_smoke_passed": True, "abi_version": 3,
+            "revision": "source-commit", "files": {
+                "Cargo.toml": report.workers.digest(self.cargo),
+                "Cargo.lock": report.workers.digest(self.lock),
+                "lib/ninjars-config.json": report.workers.digest(self.config),
+                "lib/libninjars.a": self.archive}})
+        self.item = {"role": "candidate_corrected", "backend": 8,
+                     "generation_source_identity": {"tree_state_sha256": "generator"},
+                     "runtime_metadata": {"ninjars-config.json": report.policy.bound_file(self.config)},
+                     "libraries": {"libninjars.a": self.archive}}
+        self.bindings = [{"targets": {"case-candidate-8": self.item}}]
+        self.expected = {"core_dataset_identity_sha256": "core",
+                         "literal_baseline_revision": report.BASELINE_REVISION,
+                         "candidate_generator_identity_sha256": "generator",
+                         "candidate_runtime_identity_sha256": "runtime"}
+        self.manifest = dict(self.expected, schema="madloop-final-runtime-provenance-v1",
+                             installation=report.policy.bound_file(self.installation),
+                             cargo_toml=report.policy.bound_file(self.cargo),
+                             cargo_lock=report.policy.bound_file(self.lock),
+                             installed_config=report.policy.bound_file(self.config),
+                             dependencies=self.revisions)
+        self.path = self.write("manifest.json", report.policy.seal(self.manifest))
+
+    def write(self, name, value):
+        path = self.root / name
+        path.write_text(json.dumps(value))
+        return path
+
+    def evaluate(self, specification=True):
+        self.path.write_text(json.dumps(report.policy.seal(self.manifest)))
+        with patch.object(report.policy, "reducer_signature", return_value={"identity_sha256": "runtime"}):
+            return report.runtime_provenance_snapshot(self.path if specification else None,
+                                                      {"identity_sha256": "core"}, self.bindings, {})
+
+    def test_measured_abi3_metadata_is_distinct_from_historical_setup_provenance(self):
+        pending = self.evaluate(False)
+        self.assertEqual(pending["abi_version"], 3)
+        self.assertEqual(pending["dependencies"], {"ninjars": None, "oneloopmaster": None, "symbolica": None})
+        self.assertEqual(pending["status"], "pending")
+        final = self.evaluate()
+        self.assertEqual(final["status"], "passed")
+        self.assertEqual(final["dependencies"], self.revisions)
+        self.assertEqual(final["archive_sha256"], [self.archive])
+        self.assertEqual(final["source_roles"]["candidate_corrected"],
+                         [{"tree_state_sha256": "generator"}])
+
+    def test_mismatched_dependency_or_candidate_identity_rejected(self):
+        self.manifest["dependencies"] = dict(self.revisions, ninjars="e"*40)
+        with self.assertRaisesRegex(ValueError, "revisions differ"):
+            self.evaluate()
+        self.manifest["dependencies"] = self.revisions
+        self.manifest["candidate_runtime_identity_sha256"] = "older-runtime"
+        with self.assertRaisesRegex(ValueError, "measured source/runtime"):
+            self.evaluate()
+
+    def test_unbound_archive_and_changed_installed_metadata_rejected(self):
+        self.item["libraries"]["libninjars.a"] = "e"*64
+        with self.assertRaisesRegex(ValueError, "measured archive"):
+            self.evaluate()
+        self.item["libraries"]["libninjars.a"] = self.archive
+        self.lock.write_text(self.lock.read_text().replace("b"*40, "f"*40))
+        with self.assertRaisesRegex(RuntimeError, "Changed bound evidence"):
+            self.evaluate()
+
+    def test_old_abi_and_unrecorded_local_overrides_cannot_certify_final_runtime(self):
+        self.config.write_text(json.dumps({"abi_version": 2, "local_sources": {}}))
+        self.item["runtime_metadata"]["ninjars-config.json"] = report.policy.bound_file(self.config)
+        with self.assertRaisesRegex(ValueError, "ABI 3"):
+            self.evaluate(False)
+        self.config.write_text(json.dumps({"abi_version": 3, "local_sources": {"ninjars": "/tmp/clone"}}))
+        self.item["runtime_metadata"]["ninjars-config.json"] = report.policy.bound_file(self.config)
+        self.manifest["installed_config"] = report.policy.bound_file(self.config)
+        installation = json.loads(self.installation.read_text())
+        installation["files"]["lib/ninjars-config.json"] = report.workers.digest(self.config)
+        self.installation.write_text(json.dumps(installation))
+        self.manifest["installation"] = report.policy.bound_file(self.installation)
+        with self.assertRaisesRegex(ValueError, "local source overrides"):
+            self.evaluate()
+
+
+class NinjaRSRegressionReportTest(unittest.TestCase):
+    def setUp(self):
+        self.spec = report.REPORT / "policy-v2/final-regressions-v1/validation.json"
+        self.binding = report.policy.read(report.REPORT / (
+            "policy-v2/runtime-bindings-abi3-tensor-factor-v1/"
+            "representative-candidate-abi3-tensor-factor-v1-ggh-20261020.json"))
+
+    def test_actual_reviewed_mg7_suites_keep_one_explicit_legacy_skip(self):
+        inputs = {}
+        result = report.regression_snapshot(self.spec, [self.binding], inputs)
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["tests_run"], 90)
+        self.assertEqual(result["tests_passed"], 89)
+        self.assertEqual(result["total_skipped"], 1)
+        self.assertEqual(result["failures"], 0)
+        self.assertEqual(result["errors"], 0)
+        self.assertIn("python3-bypass", result["qualification"])
+        self.assertGreaterEqual(len(inputs), 1000)
+        self.assertEqual(inputs[report.policy.relative(self.spec)], report.workers.digest(self.spec))
+
+    def test_tested_source_cannot_be_relabelled_as_a_different_final_generator(self):
+        spec = report.policy.read(self.spec)
+        filename = next(iter(spec["production_source_sha256"]))
+        # Change every target identically so this exercises the verifier's
+        # actual tested/final hash check rather than the unique-generator check.
+        for item in self.binding["targets"].values():
+            if item["role"] == "candidate_corrected":
+                item["generation_source_identity"]["tree_state"]["tracked"][filename] = "wrong"
+        with self.assertRaisesRegex(AssertionError, "Tested/candidate source mismatch"):
+            report.regression_snapshot(self.spec, [self.binding], {})
 
 
 if __name__ == "__main__":

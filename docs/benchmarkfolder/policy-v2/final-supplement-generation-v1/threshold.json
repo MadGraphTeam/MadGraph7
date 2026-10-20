@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "seed": 930083,
+  "points_per_case": 12,
+  "repetitions": 2,
+  "energy_gev": 1000.0,
+  "relative_tolerance": 1e-07,
+  "scale_tolerance": 1e-10,
+  "max_runtime_ratio": 1.05,
+  "madloop_parameters": {
+    "COLLIERRequiredAccuracy": 1e-12,
+    "MLStabThres": 1e-09
+  },
+  "cases": [
+    {
+      "id": "supplement-gg-hh-threshold",
+      "model": "loop_sm",
+      "process": "g g > h h [sqrvirt=QCD]",
+      "nfinal": 2
+    }
+  ]
+}

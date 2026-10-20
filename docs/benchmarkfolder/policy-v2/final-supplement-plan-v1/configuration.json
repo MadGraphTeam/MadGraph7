@@ -1,0 +1,168 @@
+{
+  "abi_controls": {
+    "convergence_bits": 384,
+    "cross_basis_oracle": "complete Laurent coefficients; rational split reported separately",
+    "scope": "existing seven actual MadLoop tensor fixtures plus transport/reset/domain/lifecycle/convergence checks",
+    "working_bits": 256
+  },
+  "core_eight_gates_unchanged": true,
+  "gg_hh_threshold": {
+    "azimuth": "0",
+    "cos_theta": [
+      "0",
+      "0.8"
+    ],
+    "delta": [
+      "-0.01",
+      "-0.0001",
+      "-0.000001",
+      "0.000001",
+      "0.0001",
+      "0.01"
+    ],
+    "model": "loop_sm",
+    "point_count": 12,
+    "precision_comparison": "all Laurent/order components against helper-corrected original references; raw MadLoop estimates reported separately",
+    "process": "g g > h h [sqrvirt=QCD]",
+    "repetitions": 2,
+    "roles": [
+      {
+        "backend": 1,
+        "role": "candidate_corrected",
+        "timing": false
+      },
+      {
+        "backend": 6,
+        "role": "candidate_corrected",
+        "timing": false
+      },
+      {
+        "backend": 7,
+        "role": "candidate_corrected",
+        "timing": false
+      },
+      {
+        "backend": 8,
+        "role": "candidate_corrected",
+        "timing": false
+      },
+      {
+        "backend": 1,
+        "role": "original_helper_corrected",
+        "timing": false
+      },
+      {
+        "backend": 6,
+        "role": "original_helper_corrected",
+        "timing": false
+      },
+      {
+        "backend": 7,
+        "role": "original_helper_corrected",
+        "timing": false
+      }
+    ],
+    "sqrt_s": "2 * final_card_top_mass * (1 + delta)",
+    "timing_acceptance": false,
+    "widths": "same zero-width physical card, no rebinding"
+  },
+  "launch_status": "held-for-final-source-runtime-and-root-coordination",
+  "loop_induced": {
+    "benchmark_protocol": "unchanged frozen persistent-worker protocol",
+    "cases": [
+      {
+        "count_boosted_configurations_and_distinct_invariants_separately": true,
+        "id": "supplement-gg-h",
+        "model": "loop_sm",
+        "nfinal": 1,
+        "process": "g g > h [sqrvirt=QCD]"
+      },
+      {
+        "id": "supplement-gg-hh",
+        "model": "loop_sm",
+        "nfinal": 2,
+        "process": "g g > h h [sqrvirt=QCD]"
+      }
+    ],
+    "confidence_level": 0.95,
+    "cpu": 207,
+    "energy_gev": 1000.0,
+    "max_runtime_ratio": 1.05,
+    "performance_denominator": {
+      "backend": 6,
+      "role": "original"
+    },
+    "points_per_case": 100,
+    "repetitions": 7,
+    "seed": 930083
+  },
+  "no_overwrite": true,
+  "no_point_exclusion": true,
+  "no_threshold_relaxation": true,
+  "policy": {
+    "keep_all_failures": true,
+    "madloop_parameters": {
+      "COLLIERRequiredAccuracy": 1e-12,
+      "MLStabThres": 1e-09
+    },
+    "relative_tolerance": 1e-07,
+    "scale_tolerance": 1e-10,
+    "source_configuration": "docs/benchmarkfolder/policy-v2/controls.json",
+    "source_configuration_sha256": "e623e89f58e048efdc9b6f79075cb12b61fb5c8d3abc432b8e37f9cbc51602cb",
+    "stability_estimate_is_not_measured_precision": true
+  },
+  "production_changes": false,
+  "roles": [
+    {
+      "backend": 1,
+      "role": "original",
+      "timing": true
+    },
+    {
+      "backend": 6,
+      "role": "original",
+      "timing": true
+    },
+    {
+      "backend": 7,
+      "role": "original",
+      "timing": true
+    },
+    {
+      "backend": 1,
+      "role": "candidate_corrected",
+      "timing": true
+    },
+    {
+      "backend": 6,
+      "role": "candidate_corrected",
+      "timing": true
+    },
+    {
+      "backend": 7,
+      "role": "candidate_corrected",
+      "timing": true
+    },
+    {
+      "backend": 8,
+      "role": "candidate_corrected",
+      "timing": true
+    },
+    {
+      "backend": 1,
+      "role": "original_helper_corrected",
+      "timing": false
+    },
+    {
+      "backend": 6,
+      "role": "original_helper_corrected",
+      "timing": false
+    },
+    {
+      "backend": 7,
+      "role": "original_helper_corrected",
+      "timing": false
+    }
+  ],
+  "schema": "fixed-final-supplement-v1"
+}

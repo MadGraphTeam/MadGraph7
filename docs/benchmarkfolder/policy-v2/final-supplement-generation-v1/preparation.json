@@ -1,0 +1,24 @@
+{
+  "schema": "supplement-preparation-v1",
+  "configuration": {
+    "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/cases.json",
+    "sha256": "b37e7e07a5b3f5b1e112530d4510adf1c8a59bbcec98d6a01e8b0f23a5220213",
+    "bytes": 576
+  },
+  "preregistration": {
+    "path": "docs/benchmarkfolder/policy-v2/final-supplement-plan-v1/configuration.json",
+    "sha256": "17f02760fec5f3f8e494b5c4d5a34abc921d49fee7baf4563997fcd652328ff3",
+    "bytes": 4054
+  },
+  "baseline_revision": "27147b3300f556a75661a886e92bdbe00558ee25",
+  "script": {
+    "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/sources/preparation.py",
+    "sha256": "d389f8070155d2566e76fe2c47f477095b663cfc2cd4bbc88cd6ec5218a09dcb",
+    "bytes": 19941
+  },
+  "work": ".benchmark-work/policy-v2/final-supplement-generation-v1",
+  "report": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1",
+  "final_candidate_bound": false,
+  "loop_evaluations": 0,
+  "initialized_symbolica_workers": 0
+}

@@ -1,0 +1,26 @@
+{
+  "schema": "madloop-final-report-pipeline-evidence-v1",
+  "files": {
+    "README.md": {
+      "bytes": 7255,
+      "sha256": "b90fd1b27520285c0385b6625259e86e26a62c4a3339131162528781ac30f4bc"
+    },
+    "unittest.stderr": {
+      "bytes": 135,
+      "sha256": "662f4ee72d114610cfae2d735d3aac54019402ccf8f0dbe410efba72ca913cd5"
+    },
+    "unittest.stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "validation.json": {
+      "bytes": 3133,
+      "sha256": "f2497e61aa4d01e59d274e2b5fdcef565d48379c40de46ee8e041126ad7c178a"
+    },
+    "verify.py": {
+      "bytes": 2336,
+      "sha256": "2fdc9d8f4aa05a5b6af7c8ef21b30af5b0d676e27bba3ca7dacefb50df6626c2"
+    }
+  },
+  "identity_sha256": "b4290748decc52d75fdd9dd93f8b13e50aae34bb380f956610734d1f1bd9bd57"
+}

@@ -13,12 +13,21 @@
   "ew-3": [$e^+ e^- -> t overline(t) gamma$],
   "qcd-4": [$u overline(u) -> Z Z g g$],
   "ew-4": [$e^+ e^- -> mu^+ mu^- gamma gamma$],
-).at(key)
+  "supplement-gg-h": [$g g -> H$],
+  "supplement-gg-hh": [$g g -> H H$],
+).at(key, default: key)
 #let status(s) = text(weight: "semibold", fill: (
   passed: rgb("#287240"), failed: rgb("#b44339"), unresolved: rgb("#966016"),
   pending: grey, partial: grey, measured: navy,
 ).at(s, default: grey), s)
 #let short-hash(s) = if s == none { [Pending] } else { str(s).slice(0, calc.min(12, str(s).len())) }
+#let recorded-revision(s) = if s == none { [Final installed provenance pending] } else { text(size: 7.4pt, s) }
+#let scientific(x) = if x == none { [—] } else if x == 0 { [0] } else {
+  let exponent = calc.floor(calc.log(calc.abs(x), base: 10))
+  if exponent < -323 { str(x) } else {
+    [#fmt(x / calc.pow(10, exponent), digits: 2) × 10#super(str(exponent))]
+  }
+}
 #let prepare(c, source, stage) = {
   let value = c.preparation.at(source).at(stage)
   if value == none { none } else { value.seconds }
@@ -78,7 +87,7 @@
         text(size: 10pt, weight: "semibold", label(c.id))
         linebreak()
         v(4pt)
-        text(size: 7.3pt, fill: grey)[2 → #c.nfinal · #config.points_per_case points]
+        text(size: 7.3pt, fill: grey)[2 → #c.nfinal · #c.at("points", default: config.points_per_case) points]
         linebreak()
         text(size: 7.3pt, fill: grey)[#c.id]
       }),
@@ -116,6 +125,8 @@
   Policy v2 validates the corrected model arithmetic. All 21 pairings among the
   seven corrected targets are required. Original-source discrepancies remain visible
   and the runtime denominator remains untouched original MadLoop with Ninja.
+  The eight core gates and the loop-induced/stability supplement are separate:
+  complete campaign #status(data.campaign_status).
 ]
 
 #pagebreak()
@@ -142,6 +153,48 @@ Full model names and MG5aMC process commands are listed with the reproducibility
   timing. Calibration samples are excluded. Each repetition traverses the same
   #config.points_per_case distinct input points enough times to target a one-second
   timed interval. Native backend caches remain part of normal execution.
+]
+
+#pagebreak()
+#section-label[LOOP-INDUCED AMPLITUDES · LOOP_SM]
+= Complete evaluation · ggH and ggHH
+#if data.supplement.cases.len() == 0 {
+  note[*Supplement pending.* No validated final loop-induced timing dataset has
+    been supplied. Earlier ten-point controls remain regression evidence; their
+    times do not populate these final benchmark cards.]
+} else {
+  timing-grid(data.supplement.cases)
+  v(7pt)
+  legend
+  v(7pt)
+  tab((1.2fr, 0.7fr, 1fr, 1fr, 1.15fr),
+    table.header(th[Process], th[Checks], th[Max. error / bound], th[Agreement], th[Timing gate]),
+    ..data.supplement.cases.map(c => (
+      label(c.id), value-fmt(c.agreement.comparisons),
+      fmt(c.agreement.max_tolerance_fraction, digits: 4),
+      status(c.agreement.status), status(c.performance.status),
+    )).flatten(),
+  )
+}
+#v(7pt)
+#small[
+  These squared one-loop amplitudes have no Born interference. All four Laurent/Born
+  slots and every generated squared coupling order remain in the comparison;
+  the Born slot is verified to vanish. The ggH stream contains boosted on-shell
+  configurations with constrained invariants, rather than 100 independent
+  invariant configurations. The ggHH stream probes a distinct box topology.
+  The seven timing targets and three corrected-original references use the same
+  physical input and full stability settings as the core campaign. Literal original
+  Ninja remains the runtime denominator; neither a corrected reference nor an
+  isolated tensor kernel can replace it.
+]
+#v(8pt)
+= Supplemental campaign status
+#note[
+  *#status(data.supplement.status).* Completion requires both loop-induced
+  numerical/timing gates, the twelve-point top-threshold stability grid and the
+  final runtime's independent precision controls. Missing or failed evidence
+  remains outstanding, even when the eight core cases pass.
 ]
 
 #pagebreak()
@@ -353,6 +406,168 @@ transport carries actual binary128 input into 256-bit arithmetic. Context cleanu
 joins the retained worker. See `audit.md` for scope, evidence and remaining limits.
 
 #pagebreak()
+#section-label[NUMERICAL STABILITY · OBSERVED AND ESTIMATED]
+= Independent discrepancies and MadLoop estimates
+#let stable-cell(c, b, kind) = {
+  if c.stability.status != "measured" { return [—] }
+  let s = c.stability.targets.at("candidate_corrected/" + b)
+  if kind == "estimate" { scientific(s.estimated_accuracy.all_orders.maximum) }
+  else { scientific(s.observed_discrepancy.max_point_scaled_error) }
+}
+#tab((1.05fr, 0.65fr, 1fr, 1fr, 1fr, 1fr),
+  table.header(th[Process], th[Quantity], th[CutTools], th[Ninja], th[Collier], th[NinjaRS]),
+  ..(data.cases + data.supplement.cases).map(c => (
+    label(c.id), [Observed], ..("1", "6", "7", "8").map(b => stable-cell(c, b, "observed")),
+    [], [Estimate], ..("1", "6", "7", "8").map(b => stable-cell(c, b, "estimate")),
+  )).flatten(),
+)
+#v(7pt)
+#note[
+  *Different quantities.* “Observed” is the largest absolute coefficient difference
+  from any other corrected-cohort target, divided by the common point's largest
+  Born/Laurent magnitude across all orders. It is an independent cross-backend
+  discrepancy, not a known error against an exact amplitude. “Estimate” is the
+  largest MadLoop stability estimate over the retained point/order slots. It is
+  reported without treating it as a measured error or a proof of significant digits.
+  An exactly zero estimate is shown as zero. The acceptance test uses the separate
+  component-dependent tolerance defined earlier.
+]
+#v(7pt)
+#small[
+  The snapshot retains minimum, median, nearest-rank 95th percentile, maximum and
+  zero count for estimates over all orders and for the total-order slot separately.
+  Actual rescue counts refer to successful final statuses once per physical point;
+  timed histograms count every traversal. Neither count measures internal reduction
+  attempts. Worst discrepant point/order/coefficient records remain available even
+  for passing cases. Finite sampled agreement does not bound the instability rate
+  elsewhere in phase space, and agreement between backends is not an analytic oracle.
+]
+#v(8pt)
+= Top-pair threshold in loop-induced ggHH
+#if data.supplement.threshold_grid == none {
+  small[The final twelve-point threshold grid is pending. No stability rate is inferred
+    from earlier random-point or focused-control measurements.]
+} else {
+  let grid = data.supplement.threshold_grid
+  note[
+    *Grid agreement: #status(grid.agreement.status).* Twelve fixed configurations use
+    $sqrt(s) = 2 m_t (1 + delta)$, $delta = plus.minus(10^(-2), 10^(-4), 10^(-6))$,
+    $cos(theta) = 0, 0.8$, azimuth zero and the unchanged zero-width physical card.
+    Every recorded point/order/Laurent coefficient is compared across the seven
+    corrected targets. All failures and raw estimates remain in the supplement.
+  ]
+  if grid.at("point_summaries", default: ()).len() > 0 {
+    v(6pt)
+    tab((0.45fr, 0.9fr, 0.65fr, 1fr, 1.15fr),
+      table.header(th[Point], th[δ], th[cos θ], th[Max. error / bound], th[NinjaRS estimate]),
+      ..grid.point_summaries.map(p => (
+        str(p.point), str(p.delta), str(p.cos_theta),
+        scientific(p.max_tolerance_fraction),
+        scientific(p.estimated_accuracy.at("candidate_corrected/8")),
+      )).flatten(),
+    )
+  }
+}
+
+#pagebreak()
+#section-label[HIGHER PRECISION · CONTROLS AND OPTIMIZATION]
+= Genuine higher-precision rescue
+MadLoop recomputes numerator coefficients and kinematics in its existing binary128
+path. Forty-significant-digit ASCII records transport each original 113-bit value
+through the C ABI before exact widening to 256-bit arithmetic. Signed zeros and
+values distinguishable only beyond binary64 are preserved. The generic reduction
+engine uses oneloopmaster-backed scalar masters at the same working precision.
+MadLoop retains retry ordering, rotations, acceptance and final result conversion.
+
+The dimensionless MadLoop on-shell threshold remains distinct from the scalar
+provider's absolute threshold. Higher precision does not relax stability checks,
+omit poles or alter the physical card. Stored-input 256/384-bit convergence and
+analytic pole controls have a separate scope from full-amplitude agreement.
+#v(7pt)
+#if data.supplement.precision_controls == none {
+  note[*Final installed-runtime precision controls pending.* Earlier transport,
+    reset, scalar and convergence fixtures remain source-specific research evidence
+    and do not certify a newly installed archive.]
+} else {
+  let precision = data.supplement.precision_controls
+  note[*Final precision controls: #status(precision.status).* Working precision
+    #precision.working_bits bits; independent convergence checks at
+    #precision.convergence_bits bits. Full Laurent coefficients are the physical
+    cross-basis oracle; rational R1 contributions are retained separately.]
+  if precision.at("checks", default: ()).len() > 0 {
+    v(7pt)
+    tab((2.7fr, 0.7fr),
+      table.header(th[Control], th[Decision]),
+      ..precision.checks.map(c => (c.name, status(c.status))).flatten(),
+    )
+  }
+}
+#v(8pt)
+= Measured optimizations and retained negative results
+The guarded Fortran QP contraction-sharing study resolves a 3.19% full QCD3
+runtime reduction against its retained pre-factor candidate: ratio 0.968095,
+95% interval [0.958491, 0.982138]. Coefficients, stability estimates and rescue
+counts are unchanged. This process-specific comparison is distinct from the final
+original-Ninja denominator and its five-percent gate.
+
+A separate DP factorization study finds no full-process gain: ratio 1.013546,
+95% interval [0.996598, 1.030949]. That DP implementation is not promoted. An
+allocation-only higher-precision tensor experiment finds a 9.24% callback gain,
+ratio 0.907561, interval [0.898288, 0.912750], with exact value, precision and sign
+matches. A callback-only timing does not establish a full-process speedup; the
+final source/runtime bindings and complete evaluation campaign determine any
+production claim. Rejected experiments remain retained and never replace the
+final physical input, precision or stability policy.
+#v(7pt)
+#small[
+  Research records: `experiments/symmetric-factorization*`,
+  `experiments/symmetric-factorization-dp/process-timing21-v2` and
+  `experiments/ninjars-mp-tensor-allocation-performance-v1`.
+  The report does not infer an additive speedup from percentages measured over
+  different timing boundaries or source/runtime revisions.
+]
+
+#pagebreak()
+#section-label[MG7 REGRESSIONS · REVIEWED TEST COVERAGE]
+= Generator, Fortran and export regressions
+#if data.regressions.status == "pending" {
+  note[*Final regression evidence pending.* The report has not been supplied with
+    a checked MG7 regression manifest for the measured candidate generator.]
+} else {
+  tab((2fr, 0.6fr, 0.6fr, 0.6fr, 0.6fr),
+    table.header(th[Suite], th[Run], th[Failures], th[Errors], th[Skipped]),
+    ..data.regressions.suites.map(s => (
+      s.name, str(s.tests_run), str(s.failures), str(s.errors), str(s.skipped),
+    )).flatten(),
+  )
+  v(7pt)
+  note[
+    *#data.regressions.tests_run cases run; #data.regressions.tests_passed passed;
+    #data.regressions.total_skipped explicitly skipped.* Raw unittest footers,
+    skip reasons, reviewed IO fixtures and source hashes are independently checked.
+    Every tested production file in the generator scope must match the measured
+    candidate source exactly.
+  ]
+  for s in data.regressions.suites {
+    if s.skip_details.len() > 0 {
+      v(6pt)
+      small[#s.name: #s.skip_details.map(item => item.at(0) + " — " + item.at(1)).join("; ")]
+    }
+  }
+  v(7pt)
+  small[#data.regressions.scope]
+}
+#v(8pt)
+#small[
+  These suites cover their recorded generator, Fortran and exporter paths.
+  They do not execute the Rust reduction/scalar engine or replace the final
+  physical process campaign. Installed-archive numerical, precision, lifecycle
+  and convergence controls are reported separately. Historical incomplete or
+  failed fixture runs remain in the evidence; correcting a stale expected IO
+  fixture does not turn the original failed attempt into a passed run.
+]
+
+#pagebreak()
 #section-label[PROFILING · SAMPLED CPU WORK]
 = Where evaluation time is spent
 #note[
@@ -421,12 +636,18 @@ joins the retained worker. See `audit.md` for scope, evidence and remaining limi
 #pagebreak()
 #section-label[REPRODUCIBILITY · PINNED SOURCES AND RETAINED INPUTS]
 = Source and toolchain record
+#let candidates = data.runtime_provenance.source_roles.at("candidate_corrected", default: ())
 #tab((1.05fr, 2.6fr), left-columns: (0, 1),
   table.header(th[Component], th[Recorded revision / version]),
   [Original MadLoop], text(size: 7.4pt, data.provenance.baseline_revision),
-  [NinjaRS], text(size: 7.4pt, data.provenance.ninjars_revision),
-  [oneloopmaster], text(size: 7.4pt, data.provenance.oneloopmaster_revision),
-  [Symbolica], text(size: 7.4pt, data.provenance.symbolica_revision),
+  [Candidate source], text(size: 7.4pt, if candidates.len() == 0 { "Pending" } else {
+    candidates.map(c => c.at("revision", default: "Revision not recorded")).join(", ")
+  }),
+  [NinjaRS], recorded-revision(data.runtime_provenance.dependencies.ninjars),
+  [oneloopmaster], recorded-revision(data.runtime_provenance.dependencies.oneloopmaster),
+  [Symbolica], recorded-revision(data.runtime_provenance.dependencies.symbolica),
+  [Measured runtime ABI], [#if data.runtime_provenance.abi_version == none { [Pending] } else { str(data.runtime_provenance.abi_version) } · provenance #status(data.runtime_provenance.status)],
+  [NinjaRS archive SHA-256], text(size: 7.4pt, if data.runtime_provenance.archive_sha256.len() == 0 { "Pending" } else { data.runtime_provenance.archive_sha256.join(", ") }),
   [Compilers], [Rust #data.provenance.toolchain.rustc · gfortran #data.provenance.toolchain.gfortran],
   [Report tools], [Python #data.provenance.toolchain.python · Typst #data.provenance.toolchain.typst],
   [Reference libraries], [Ninja #data.provenance.reference_libraries.Ninja.version · OneLOop #data.provenance.reference_libraries.OneLOop.version · Collier #data.provenance.reference_libraries.Collier.version],
@@ -442,7 +663,10 @@ joins the retained worker. See `audit.md` for scope, evidence and remaining limi
 #v(7pt)
 #small[
   QCD cases use `loop_sm`; electroweak cases use `loop_qcd_qed_sm_Gmu`.
-  Full dependency revisions, source archive and model hashes are in `provenance.json`.
+  Setup source/archive and model hashes are retained in `provenance.json`.
+  Final NinjaRS dependency revisions above come from retained installed Cargo files
+  whose successful installation record matches the measured library hash. Historical
+  setup pins and ABI metadata never substitute for a new runtime's provenance.
   Full point/card hashes, per-run executable hashes when recorded, raw timings,
   Laurent coefficients, statuses and run logs remain with the benchmark inputs.
   `report-data.json` includes a SHA-256 manifest of the inputs used to build it.
@@ -469,6 +693,16 @@ python tools/ninjars_report_v2.py DATASET --compile \
   retained profile manifest listed in the snapshot's input hashes.
   When `generation_inputs` is set in the snapshot, pass that retained directory
   with `--generation-inputs` to reproduce its generation measurements.
+  When `supplement_specification` is set, pass the same retained manifest with
+  `--supplement`; its loop-induced, threshold and precision evidence must match
+  the core candidate generator and numerical runtime identities exactly.
+  When `runtime_provenance_specification` is set, also pass that manifest with
+  `--runtime-provenance`. The report rejects altered installed Cargo revisions,
+  configuration or archive identity. These final dependency pins do not come
+  from the live checkout or the earlier setup metadata.
+  When `validation_specification` is set, pass it with `--validation-spec`.
+  Its retained verifier rechecks raw suite logs, skip details, reviewed fixtures
+  and tested production hashes against the measured candidate generator.
 ]
 #v(5pt)
 #small[

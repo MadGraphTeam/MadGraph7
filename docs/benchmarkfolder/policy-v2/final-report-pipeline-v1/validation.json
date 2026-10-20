@@ -1,0 +1,65 @@
+{
+  "schema": "madloop-final-report-pipeline-validation-v1",
+  "scope": "Report calculations, cohort/provenance boundaries, and synthetic PDF layout only; no physics/benchmark gate is certified",
+  "branch": "madloop_ninjars",
+  "implementation_base_revision": "45375023e96b8fce0340ce14c93609ed4dcda01f",
+  "command": [
+    "taskset",
+    "-c",
+    "4",
+    "python",
+    "-B",
+    "-m",
+    "unittest",
+    "tests.unit_tests.loop.test_ninjars_report_v2"
+  ],
+  "environment_setup": ".ninjars-build/dev-env.sh",
+  "python_version": "3.14.7",
+  "typst_version": "typst 0.15.1 (9dfd3a08)",
+  "tests": 36,
+  "exit_code": 0,
+  "checks": [
+    "independent corrected-cohort numerical comparison and original diagnostics",
+    "MadLoop estimates separated from observed discrepancy and final status counts",
+    "split-order estimates retained without multiplying physical-point rescue counts",
+    "missing supplement cannot complete the campaign",
+    "supplement rejects changed generator/runtime/baseline/core identities",
+    "historical ABI2 and setup pins cannot supply current ABI3 provenance",
+    "installed Cargo/config metadata tied to the actual measured archive",
+    "changed dependency pin, archive, lockfile, ABI and hidden local override rejection",
+    "synthetic present loop-induced/threshold/precision pages compile",
+    "PDF bytes identical under two ambient SOURCE_DATE_EPOCH values",
+    "existing profile identity/raw-output/category corruption regression tests",
+    "reviewed actual90-case MG7 campaign retains89pass/1explicitGoSamPython3skip and1097source/log/fixturehashes",
+    "tested production source cannot be relabelled as a different final generator",
+    "full measured runtime descriptor forwarded to precision proof reader",
+    "full synthetic eight-core/two-loop-induced/twelve-threshold-point layout including subnormal estimate compiles"
+  ],
+  "historical_top_report_overwritten": false,
+  "final_physics_dataset_available": false,
+  "source_sha256": {
+    "tools/ninjars_report_v2.py": "00d077e2f619f2bbfa270542273737785dae84b2ac162ae2857ff415449e7374",
+    "tests/unit_tests/loop/test_ninjars_report_v2.py": "5446a09c1d42101ee1fb3ebe7b8b9784f782de2a499da91eeebcd732d8453806",
+    "docs/benchmarkfolder/policy-v2/template/benchmark.typ": "c71b52e767e94f11bc3dc7c8c09a7df3aacb6d56c5640c094321185d382d03d6",
+    "docs/benchmarkfolder/style.typ": "6ceb2b7181fec52a9e97ef2a6a88a010abe1a297039759882a97aad32df479c0"
+  },
+  "remaining": [
+    "final source/runtime freeze",
+    "complete eight-core and loop-induced/stability campaigns",
+    "final installed runtime provenance and precision proof manifests",
+    "new final snapshot compilation and visual inspection",
+    "reviewed promotion to benchmark.typ/benchmark.pdf after all gates"
+  ],
+  "wall_seconds": 6.851295323926024,
+  "logs": {
+    "unittest.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "unittest.stderr": {
+      "sha256": "662f4ee72d114610cfae2d735d3aac54019402ccf8f0dbe410efba72ca913cd5",
+      "bytes": 135
+    }
+  },
+  "unittest_seconds": 6.705
+}
