@@ -3499,6 +3499,8 @@ pub struct NativeRecurrenceExactSections {
     pub contributions: Vec<crate::recurrence::DirectContributionRow>,
     pub finalizations: Vec<crate::recurrence::DirectFinalizationRow>,
     pub closures: Vec<crate::recurrence::DirectClosureRow>,
+    /// Amplitude coupling-order component of every closure row.
+    pub closure_amplitude_orders: Vec<u32>,
     pub row_groups: Vec<crate::recurrence::DirectRowGroupDescriptor>,
     pub momentum_forms: Vec<crate::recurrence::DirectMomentumFormDescriptor>,
     pub momentum_terms: Vec<crate::recurrence::DirectMomentumTerm>,
@@ -4759,6 +4761,9 @@ mod recurrence_backend;
 mod recurrence_lane;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 use recurrence_lane::*;
+
+mod recurrence_orders;
+pub use recurrence_orders::{AmplitudeOrderCatalog, SquaredAmplitudeOrder};
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod recurrence_load;

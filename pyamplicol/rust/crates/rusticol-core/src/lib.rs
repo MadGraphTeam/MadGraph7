@@ -60,16 +60,16 @@ pub use eager_tables::{
 #[cfg(feature = "f64-symjit")]
 pub use engine::eager_direct_descriptor_for_source_application_bytes;
 pub use engine::{
-    NativeColorComponent, NativeCorrelatedEvaluation, NativeCorrelatedRequest,
-    NativeDecimalEvaluation, NativeDecimalResolvedEvaluation, NativeEagerExactAttachment,
-    NativeEagerExactClosure, NativeEagerExactCoupling, NativeEagerExactFinalization,
-    NativeEagerExactInvocation, NativeEagerExactSections, NativeEagerExactStage,
-    NativeExternalParticle, NativeHelicityConfiguration, NativeModelParameter,
-    NativeProfiledEvaluation, NativeRationalFactor, NativeRecurrenceExactExecutor,
-    NativeRecurrenceExactFactor, NativeRecurrenceExactSections, NativeRecurrenceSelectorPlan,
-    NativeResolvedEvaluation, NativeRuntime, NativeRuntimeMetadata, NativeRuntimeProfile,
-    NativeSpinCorrelationVectors, RuntimeCapability, preflight_prepared_kernel_pack,
-    supported_runtime_capabilities,
+    AmplitudeOrderCatalog, NativeColorComponent, NativeCorrelatedEvaluation,
+    NativeCorrelatedRequest, NativeDecimalEvaluation, NativeDecimalResolvedEvaluation,
+    NativeEagerExactAttachment, NativeEagerExactClosure, NativeEagerExactCoupling,
+    NativeEagerExactFinalization, NativeEagerExactInvocation, NativeEagerExactSections,
+    NativeEagerExactStage, NativeExternalParticle, NativeHelicityConfiguration,
+    NativeModelParameter, NativeProfiledEvaluation, NativeRationalFactor,
+    NativeRecurrenceExactExecutor, NativeRecurrenceExactFactor, NativeRecurrenceExactSections,
+    NativeRecurrenceSelectorPlan, NativeResolvedEvaluation, NativeRuntime, NativeRuntimeMetadata,
+    NativeRuntimeProfile, NativeSpinCorrelationVectors, RuntimeCapability, SquaredAmplitudeOrder,
+    preflight_prepared_kernel_pack, supported_runtime_capabilities,
 };
 #[cfg(feature = "on-the-fly-test-support")]
 pub use engine::{

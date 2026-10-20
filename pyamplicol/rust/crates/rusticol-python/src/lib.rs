@@ -766,6 +766,51 @@ impl Runtime {
         Ok(result)
     }
 
+    /// Amplitude and squared coupling-order axes as compact JSON.
+    fn _amplitude_orders_json(&self) -> PyResult<String> {
+        self.runtime.amplitude_orders_json().map_err(python_error)
+    }
+
+    /// Totals and point-major squared coupling-order partials.
+    #[pyo3(signature=(momenta, *, helicities=None, color_flows=None, precision=16))]
+    fn evaluate_orders(
+        &mut self,
+        py: Python<'_>,
+        momenta: &Bound<'_, PyAny>,
+        helicities: Option<Vec<String>>,
+        color_flows: Option<Vec<String>>,
+        precision: u32,
+    ) -> PyResult<(Vec<f64>, Vec<Vec<f64>>)> {
+        require_raw_f64_precision(precision).map_err(python_error)?;
+        let squared_count = self
+            .runtime
+            .amplitude_order_catalog()
+            .map_err(python_error)?
+            .squared_orders()
+            .len();
+        let momenta = parse_f64_momenta(momenta, self.runtime.external_count())?;
+        let point_count = momenta.point_count();
+        let mut totals = vec![0.0; point_count];
+        let mut partials = vec![0.0; point_count * squared_count];
+        self.runtime
+            .evaluate_orders_f64_into_with_selectors(
+                momenta.as_slice(),
+                point_count,
+                helicities.as_deref(),
+                color_flows.as_deref(),
+                &mut totals,
+                &mut partials,
+            )
+            .map_err(python_error)?;
+        self.emit_warnings(py)?;
+        let partials = partials
+            .chunks(squared_count.max(1))
+            .take(point_count)
+            .map(<[f64]>::to_vec)
+            .collect();
+        Ok((totals, partials))
+    }
+
     #[pyo3(signature=(momenta, repetitions, *, helicities=None, color_flows=None, helicity_by_point=None, color_flow_by_point=None, precision=16))]
     fn _benchmark_f64_wall_time(
         &mut self,
@@ -2006,6 +2051,10 @@ fn recurrence_exact_sections_to_python(
                 )
             })
             .collect::<Vec<_>>(),
+    )?;
+    result.set_item(
+        "closure_amplitude_orders",
+        sections.closure_amplitude_orders,
     )?;
     result.set_item(
         "row_groups",

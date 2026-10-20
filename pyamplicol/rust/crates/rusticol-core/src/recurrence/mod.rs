@@ -41,7 +41,8 @@ pub use color::{
     LCColorPortBinding, LCColorPortWiring, LCColorSourceSeed, LCColorSourceSeedOperation,
     LCColorTransitionWitness,
 };
-pub(crate) use color_contraction::RuntimeSymmetricGroupColorWorkspace;
+#[cfg(test)]
+pub(crate) use color_contraction::tests::klein_four_walsh_fixture as klein_four_walsh_color_contraction_fixture;
 pub use color_contraction::{
     CanonicalColorContractionEntries, CanonicalColorContractionEntry, FactorizedColorContraction,
     FactorizedColorContractionKind, RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
@@ -51,6 +52,9 @@ pub use color_contraction::{
     RuntimeFactorizedColorContractionEntry, RuntimeSymmetricGroupColorContraction,
     RuntimeSymmetricGroupKernel, decode_recurrence_color_contraction_v3,
     recurrence_color_contraction_digest,
+};
+pub(crate) use color_contraction::{
+    RuntimeSymmetricGroupColorWorkspace, RuntimeSymmetricGroupPairWorkspace,
 };
 pub use construct::RecurrenceBuildProgress;
 #[doc(hidden)]
