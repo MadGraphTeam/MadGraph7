@@ -297,8 +297,10 @@ contributing ordered amplitude-order pairs, following the Born order axis of
 `VirtualEvaluation`. Orders count fundamental couplings, list every pairwise
 sum (also structurally vanishing interference) and omit zero powers.
 `sum_orders()` adds the partials explicitly; it equals `total` up to rounding.
-Selectors and `precision` behave as in `evaluate`. Compiled, eager and
-on-the-fly artifacts raise `CompatibilityError`.
+The global `helicities` and `color_flows` selectors and `precision` behave as
+in `evaluate`; per-point selectors (`helicity_by_point`,
+`color_flow_by_point`) are not accepted. Compiled, eager and on-the-fly
+artifacts raise `CompatibilityError`.
 
 ## Retain completed OTF preparation
 

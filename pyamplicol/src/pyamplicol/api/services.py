@@ -935,9 +935,10 @@ class Runtime:
         Every squared coupling order of the generated amplitude, including
         vanishing interference, is a separate ``values[point][order]`` column
         alongside ``total``, which is exactly :meth:`evaluate`'s value for the
-        same selectors and precision. Orders follow the Born order axis of
-        virtual results (:attr:`VirtualEvaluation.born_orders`). Virtual
-        runtimes already return their order axes from :meth:`evaluate`.
+        same global selectors and precision; per-point selectors are not
+        supported. Orders follow the Born order axis of virtual results
+        (:attr:`VirtualEvaluation.born_orders`). Virtual runtimes already
+        return their order axes from :meth:`evaluate`.
         """
 
         if self.contribution_kind != "tree":

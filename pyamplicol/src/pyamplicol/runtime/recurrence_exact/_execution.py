@@ -243,8 +243,10 @@ def _execute_schedule(
     """Execute one schedule; optionally split closures by coupling order.
 
     ``order_amplitudes[component][destination]`` receives every closure
-    row's value by its amplitude coupling-order component. The ordinary
-    amplitudes add the same values in the same order, so totals are unchanged.
+    row's value by its amplitude coupling-order component. A closure row adds
+    exactly one scalar to its destination, so evaluating it into a cleared
+    destination and adding that value to the previous sum performs the same
+    single Decimal addition as the ordinary path: totals are unchanged.
     """
 
     sections = plan.sections
@@ -349,6 +351,14 @@ def _execute_schedule(
                     factor_cache=factor_cache,
                 )
         elif group.role == _ROLE_CLOSURE:
+            if (
+                order_amplitudes is not None
+                and executor.runtime_template is None
+                and executor.destination_component_count != 1
+            ):
+                raise ArtifactError(
+                    "coupling-order partials require scalar recurrence closures"
+                )
             for closure_index, closure_row in enumerate(
                 sections.closures[start:stop], start
             ):
