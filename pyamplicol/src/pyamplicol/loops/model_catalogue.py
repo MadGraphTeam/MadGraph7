@@ -138,10 +138,7 @@ def certified_source_counterterm_bases(source):
         ):
             control = "source-FFV-physical-frame-and-fundamental-color-control"
         elif (
-            entry.kind == "R2"
-            and spins == (2, 2)
-            and pdgs[0] == -pdgs[1]
-            and pdgs[1] in range(1, 7)
+            spins == (2, 2)
             and colors == (-3, 3)
             and any_equal(entry.color, ("Identity(1,2)",))
             and certified_fermion_slash_source(

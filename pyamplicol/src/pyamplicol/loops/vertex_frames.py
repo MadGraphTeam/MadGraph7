@@ -129,20 +129,23 @@ def certified_source_dirac_frame(structure):
 
 
 def certified_fermion_slash_source(structure):
-    """The tested source two-point slash, with its original momentum leg.
+    """Tested source two-point slashes, with their original momentum leg.
 
     Typed endpoint exchange gives exactly the momentum contraction of the
-    calibrated vector current. No mass, chiral or other two-point tensor is
-    inferred from that identity, and momentum references do not move.
+    calibrated vector or chiral vector current. Each chiral piece has its own
+    off-shell ALOHA control. No mass or other two-point tensor is inferred from
+    these identities, and momentum references do not move.
     """
     from ufo_model_loader.symbolica_processing import wrap_indices
 
     from .model_expressions import parse_exact_ufo
 
-    return (
-        tuple(structure.spins) == (2, 2)
-        and (
-            structure.structure - wrap_indices(parse_exact_ufo("P(-1,1)*Gamma(-1,2,1)"))
-        ).expand()
-        == 0
+    sources = (
+        "P(-1,1)*Gamma(-1,2,1)",
+        "P(-1,1)*Gamma(-1,2,-2)*ProjM(-2,1)",
+        "P(-1,1)*Gamma(-1,2,-2)*ProjP(-2,1)",
+    )
+    return tuple(structure.spins) == (2, 2) and any(
+        (structure.structure - wrap_indices(parse_exact_ufo(source))).expand() == 0
+        for source in sources
     )
