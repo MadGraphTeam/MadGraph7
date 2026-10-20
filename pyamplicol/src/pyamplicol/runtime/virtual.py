@@ -481,6 +481,15 @@ class VirtualRuntimeBackend:
         return cast(str, self._metadata["representative_process_id"])
 
     @property
+    def external_count(self) -> int:
+        return len(self._metadata["external_pdgs"])
+
+    @property
+    def external_permutation(self) -> tuple[int, ...]:
+        """The native loader's representative-to-selected leg mapping."""
+        return tuple(self._metadata["external_permutation"])
+
+    @property
     def physics(self) -> ProcessPhysics:
         metadata, plan = self._metadata, self._metadata["plan"]
         partition = plan.get("born_color_components")

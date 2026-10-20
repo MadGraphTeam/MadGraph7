@@ -192,6 +192,8 @@ def test_selected_ordinary_view_hides_only_unproved_features(monkeypatch):
     selected._metadata["process_id"] = "bose-member"
     selected._metadata["external_permutation"] = [0, 1, 3, 4, 2]
     member = Runtime(selected)
+    assert member.external_permutation == (0, 1, 3, 4, 2)
+    assert representative.external_permutation == (0, 1, 2, 3, 4)
     info = member.inspect()
     assert info["physics_scope"] == "selected-process"
     assert not info["resolved"] and not info["correlations"]
