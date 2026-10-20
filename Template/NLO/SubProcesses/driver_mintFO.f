@@ -336,6 +336,7 @@ c timing statistics
       use weight_lines
       use extra_weights
       use mint_module
+      use virt_surrogate
       implicit none
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
@@ -385,6 +386,9 @@ c PineAPPL
       if (new_point .and. ifl.ne.2) then
          pass_cuts_check=.false.
       endif
+      vs_vcomp=.false.
+      vs_featok=.false.
+      vs_ratio_set=.false.
       if (firsttime) then
          firsttime=.false.
          call setup_ini_fin_fks_map(ini_fin_fks_map)
@@ -519,6 +523,8 @@ c Include PDFs and alpha_S and reweight to include the uncertainties
 
 c Include the bias weight specified in the bias_weight_function
       call include_bias_wgt
+c fit of the surrogate of the virtual (VirtTrickSurrogate=1,2)
+      call virt_surrogate_fit_point
 
       if (doreweight) then
          if (do_rwgt_scale .and. ickkw.ne.-1) call reweight_scale

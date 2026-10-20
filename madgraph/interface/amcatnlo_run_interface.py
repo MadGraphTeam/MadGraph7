@@ -2408,6 +2408,11 @@ RESTART = %(mint_mode)s
                 elif 'IDE' in action:
                     # they should all be identical (INTEGERS)
                     write_string = [int(round(floatgrp[0])) for floatgrp in floatgrps]
+                elif 'VSU' in action:
+                    # fitted surrogate of the virtual (VirtTrickSurrogate):
+                    # the coefficients and the choice are not additive; any
+                    # surrogate is exact, so keep the one of the first job
+                    write_string = rowgrp[0].strip().split()[1:]
                 elif 'SPE' in action:
                     # special: average first; sum second; average third (ALL INTEGERS)
                     write_string=[]

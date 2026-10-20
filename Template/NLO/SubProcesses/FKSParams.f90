@@ -16,6 +16,12 @@ module FKSParams
               SelectedCouplingOrders(maxCouplingTypes,0:maxCouplingsSelected), &
               QCD_squared_selected
   logical :: separate_flavour_configs,IncludeBornContributions,use_poly_virtual
+  ! VirtTrickSurrogate: surrogate of the virtual for the virt-trick.
+  !   0 = the grid (or the polynomial fit) in the Born phase space,
+  !   1 = colour-dipole surrogate fitted per channel,
+  !   2 = 1 plus the kinematic logarithms of all Born pairs (default).
+  !   For 1 and 2, a channel falls back to the grid when the fit does worse.
+  integer :: VirtTrickSurrogate
 
 contains
 
@@ -79,6 +85,11 @@ contains
              read(68,*,end=999) separate_flavour_configs
           else if (buff .eq. '#UsePolyVirtual') then
              read(68,*,end=999) use_poly_virtual
+          else if (buff .eq. '#VirtTrickSurrogate') then
+             read(68,*,end=999) VirtTrickSurrogate
+             if (VirtTrickSurrogate.lt.0 .or. VirtTrickSurrogate.gt.2) then
+                stop 'VirtTrickSurrogate must be 0, 1 or 2.'
+             endif
           else if (buff .eq. '#VetoedContributionTypes') then
              read(68,*,end=999) VetoedContributionTypes(0)
              if (VetoedContributionTypes(0) .lt. 0.or. &
@@ -205,6 +216,7 @@ contains
        write(*,*) ' > MinVirtualFraction        = ',Min_virt_fraction
        write(*,*) ' > SeparateFlavourConfigs    = ',separate_flavour_configs
        write(*,*) ' > UsePolyVirtual            = ',use_poly_virtual
+       write(*,*) ' > VirtTrickSurrogate        = ',VirtTrickSurrogate
        write(*,*) &
             '==============================================================='
        paramPrinted=.TRUE.
@@ -228,6 +240,7 @@ contains
     Min_virt_fraction=0.005d0
     separate_flavour_configs=.false.
     use_poly_virtual=.true.
+    VirtTrickSurrogate=2
     IncludeBornContributions=.true.
     SelectedContributionTypes(0)=0
     VetoedContributionTypes(0)=0
