@@ -1,0 +1,25 @@
+{
+  "run_id": "representative-candidate-abi3-terminal-mixed-20261020",
+  "configuration": "docs/benchmarkfolder/policy-v2/controls.json",
+  "report": "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-terminal-mixed-20261020",
+  "work": ".benchmark-work/policy-v2/representative-runs/representative-candidate-abi3-terminal-mixed-20261020",
+  "output_roots": {
+    "baseline": ".benchmark-work/outputs/baseline",
+    "candidate": ".benchmark-work/policy-v2/generation-abi3-terminal/outputs/candidate"
+  },
+  "points_root": "docs/benchmarkfolder/points",
+  "cases": [
+    "control-mixed"
+  ],
+  "sources": [
+    "candidate"
+  ],
+  "backends": [
+    8
+  ],
+  "cpu": 3,
+  "representative": true,
+  "fresh_parity": true,
+  "timeout": 7200,
+  "minimum_seconds": 1e-12
+}
