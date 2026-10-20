@@ -8,25 +8,31 @@ in loop-request mode.
 
 from __future__ import annotations
 
+import json
 import math
 import string
-from dataclasses import replace
 from decimal import Decimal, localcontext
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-
-from pyamplicol.generation.dag_compiler import (  # noqa: E402
+from pyamplicol.generation.dag_compiler import (
     AttachableLoopBlocks,
     GenericDAGCompiler,
     compile_generic_dag,
 )
-from pyamplicol.loops.v2.blocks import (  # noqa: E402
+from pyamplicol.loops.v2.blocks import (
     RequestedLoopBlocks,
-    add_coupling_orders,
     block_colour_flow,
     build_tree_blocks,
+    requested_loop_blocks,
+)
+from pyamplicol.loops.v2.families import (
+    LoopOrderSelection,
+    ModelBlockTable,
+    ModelLoopCatalogue,
+    add_orders,
+    generate_families,
 )
 
 QCD = {"QCD": 99, "QED": 0}
@@ -40,33 +46,20 @@ MIRROR = np.array([1.0, -1.0, -1.0, -1.0])
 
 
 @pytest.fixture(scope="module")
-def models(loop_sm_ufo, tmp_path_factory):
-    symbolica = pytest.importorskip("symbolica")
-    if not symbolica.is_licensed():
-        pytest.skip("tree blocks require licensed Symbolica")
-    from pyamplicol.loops.compiler import prepare_loop_request_model
-    from pyamplicol.loops.model_compatibility import (
-        prepare_loop_sm_scalar_declarations,
-    )
-    from pyamplicol.models.external import CompiledUFOModel
-    from pyamplicol.models.loading import compile_model_source
+def models(loop_sm_compiled_model):
+    """(compiled loop_sm, tree-engine model, prepared native loop structure)."""
 
-    compiled = compile_model_source(
-        loop_sm_ufo,
-        cache_dir=tmp_path_factory.mktemp("loop-v2-blocks") / "model-cache",
-        require_supported=False,
-    )
-    native = prepare_loop_request_model(
-        replace(
-            compiled,
-            raw_loop_model=prepare_loop_sm_scalar_declarations(
-                compiled.raw_loop_model
-            ).derived,
-            _serialized_path=None,
-            _prepared_bundle=None,
-        )
-    ).structure.native
-    return compiled, CompiledUFOModel(compiled), native
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import load_compiled_model
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    structure = prepare_loop_request_model(
+        compiled,
+        born_order_bounds={"QCD": 5, "QED": 2},
+        loop_order_bounds={"QCD": 7, "QED": 2},
+    ).structure
+    return compiled, CompiledUFOModel(compiled), structure
 
 
 def _process(compiled, text, accuracy="full"):
@@ -373,7 +366,7 @@ def _colour_tensor(word, x_representation, axes, representations, generators):
     ends with ``tau^X_{in, out}`` (blocks module docstring), ``tau = sqrt(2) t``.
     """
 
-    flow = block_colour_flow(word, representations)
+    flow = block_colour_flow(word, representations, x_representation)
     letters = iter(string.ascii_letters)
     axis_letter = {axis: next(letters) for axis in axes}
     open_in = axis_letter["X"] if x_representation == -3 else next(letters)
@@ -402,49 +395,35 @@ def _colour_tensor(word, x_representation, axes, representations, generators):
     return tensor * math.sqrt(2) ** (adjoint_count + (x_representation == 8))
 
 
-def _colour_pairing_sign(word, x_representation, representations, pdgs):
-    """Parity of the colour pairing relative to the fermion-line pairing.
+def _feynkit_ordering_sign(pdgs, model):
+    """FeynKit's external-ordering sign of the identity fermion pairing.
 
-    Colour-flow blocks own the ordering sign of coloured fermions: a block
-    word whose strings pair (fundamental -> antifundamental) differently from
-    the fermion lines carries the parity of that permutation.
+    FeynKit signs an amplitude by the parity of its fermion lines listed as
+    (antiparticle leg, particle leg) after crossing every leg incoming,
+    relative to its leg order (``feynkit-generator`` ``generation.rs``,
+    ``external_ordering_negative``). Here every leg is outgoing, so the
+    antiparticle legs are the outgoing particles. Against the tree engine's
+    ordering every pairing differs by the parity of its permutation, which the
+    block signs carry; what remains is the identity pairing's parity.
     """
 
-    flow = block_colour_flow(word, representations)
-    colour = {}
-    for labels in flow.strings:
-        start = labels[0] if representations[labels[0]] == 3 else "in"
-        end = labels[-1] if representations[labels[-1]] == -3 else "out"
-        colour[start] = end
-    starts = sorted(label for label in word if representations[label] == 3)
-    ends = sorted(label for label in word if representations[label] == -3)
-    fermion = {}
-    for start in starts:
-        partner = next(
-            (
-                end
-                for end in ends
-                if pdgs[end] == -pdgs[start] and end not in fermion.values()
-            ),
-            "out",
-        )
-        fermion[start] = partner
-    if x_representation in (8, -3):
-        fermion["in"] = next(
-            (end for end in [*ends, "out"] if end not in fermion.values()), None
-        )
-    targets = list(fermion.values())
-    permutation = [targets.index(colour[start]) for start in fermion]
+    fermions = [index for index, pdg in enumerate(pdgs) if model.is_fermion(pdg)]
+    antiparticles = [index for index in fermions if pdgs[index] > 0]
+    particles = [index for index in fermions if pdgs[index] < 0]
+    sequence = [
+        leg for pair in zip(antiparticles, particles, strict=True) for leg in pair
+    ]
     inversions = sum(
-        permutation[i] > permutation[j]
-        for i in range(len(permutation))
-        for j in range(i + 1, len(permutation))
+        sequence[i] > sequence[j]
+        for i in range(len(sequence))
+        for j in range(i + 1, len(sequence))
     )
     return -1 if inversions % 2 else 1
 
 
-def _assert_blocks_equal_feynkit(models, text, seeds, orders):
-    compiled, model, native = models
+def _assert_blocks_equal_feynkit(models, text, seeds, orders, min_legs=2):
+    compiled, model, structure = models
+    native = structure.native
     process = _process(compiled, text)
     blocks = build_tree_blocks(
         process,
@@ -461,7 +440,7 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders):
     oracle = _FeynKitTrees(native, model)
     groups = {}
     for block in blocks.blocks:
-        if block.is_source or block.key.auxiliary_kind is not None:
+        if len(block.key.word) < min_legs or block.key.auxiliary_kind is not None:
             continue
         group = (
             block.key.external_mask,
@@ -503,6 +482,13 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders):
                 if model.is_fermion(pdg) and model.color_rep(pdg) == 3
             ]
             total = sum(momenta[label] for label in labels)
+            # FeynKit signs every diagram by its external fermion ordering;
+            # what the block signs leave over is the parity of its identity
+            # pairing, which the export carries as ``pairing_sign``.
+            feynkit_sign = _feynkit_ordering_sign(
+                [*(pdgs[label] for label in labels), x_bar], model
+            )
+            assert {block.pairing_sign for block in members} == {feynkit_sign}
             comparisons = []
             for helicities in sorted(
                 {row.helicities for block in members for row in block.rows}
@@ -579,9 +565,9 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders):
                             for row in flat
                         ]
                     ).reshape(fk.shape)
-                words = {}
-                for block, row in rows:
-                    words[block.key.word] = np.multiply.outer(
+                predicted = sum(
+                    block.wick_sign
+                    * np.multiply.outer(
                         _colour_tensor(
                             block.key.word,
                             x_representation,
@@ -591,55 +577,24 @@ def _assert_blocks_equal_feynkit(models, text, seeds, orders):
                         ),
                         values[(row.current_id, variant)],
                     )
-                comparisons.append((fk, words))
-            # Each colour-flow word enters the full current with a sign +-1,
-            # the same for every helicity, colour component and point: fit
-            # the signs once over all helicity rows.
-            word_list = sorted({word for _fk, words in comparisons for word in words})
-            target = np.concatenate([fk.reshape(-1) for fk, _words in comparisons])
-            design = np.stack(
-                [
-                    np.concatenate(
-                        [
-                            words.get(word, np.zeros(fk.shape)).reshape(-1)
-                            for fk, words in comparisons
-                        ]
-                    )
-                    for word in word_list
-                ],
-                axis=1,
-            )
-            scale = np.abs(target).max()
-            assert scale > 0, (labels, particle_id, orders)
-            signs, *_ = np.linalg.lstsq(design, target, rcond=None)
-            assert np.abs(design @ signs - target).max() <= TOLERANCE * scale, (
-                labels,
-                particle_id,
-                orders,
-            )
-            assert np.allclose(np.abs(signs), 1, rtol=0, atol=1e-9), signs
-            assert np.allclose(signs.imag, 0, rtol=0, atol=1e-9), signs
-            if all(name == "QCD" for name, _power in orders):
-                # With flavour-conserving lines the sign is the colour-pairing
-                # parity, up to one overall sign: the free external-ordering
-                # convention of each program.
-                predicted = [
-                    _colour_pairing_sign(word, x_representation, representations, pdgs)
-                    for word in word_list
-                ]
-                ratios = signs.real / np.array(predicted)
-                assert np.allclose(ratios, ratios[0], rtol=0, atol=1e-9), (
-                    labels,
-                    signs,
-                    predicted,
+                    for block, row in rows
                 )
+                comparisons.append((fk, predicted))
+            scale = max(np.abs(fk).max() for fk, _predicted in comparisons)
+            assert scale > 0, (labels, particle_id, orders)
+            error = max(np.abs(fk - mine).max() for fk, mine in comparisons)
+            assert error <= TOLERANCE * scale, (labels, particle_id, orders, error)
             checked += len(comparisons)
     return checked
 
 
 def _loop_attachments(native, model, process, orders):
-    """(leg mask, |field pdg|, coupling orders) of every tree a FeynKit
+    """(leg mask, particle id, coupling orders) of every tree a FeynKit
     one-loop diagram attaches to its loop (oracle only).
+
+    The particle id is the tree engine's: the field the tree emits into the
+    loop vertex, all outgoing; an edge entering the loop vertex carries its
+    conjugate.
 
     Trees on all legs only feed one-attachment (VEV) tadpoles, which the loop
     selection rule never generates; they are left out.
@@ -697,9 +652,7 @@ def _loop_attachments(native, model, process, orders):
                 seen_vertices, seen_edges, stack = {root}, {edge.id}, [root]
                 while stack:
                     vertex = stack.pop()
-                    tree_orders = add_coupling_orders(
-                        tree_orders, orders_by_vertex[vertex]
-                    )
+                    tree_orders = add_orders(tree_orders, orders_by_vertex[vertex])
                     for other in adjacent[vertex]:
                         if other.id in seen_edges:
                             continue
@@ -714,7 +667,12 @@ def _loop_attachments(native, model, process, orders):
                             seen_vertices.add(nxt)
                             stack.append(nxt)
             if mask != (1 << len(process.legs)) - 1:
-                attachments.add((mask, abs(edge.particle_pdg), tree_orders))
+                particle_id = (
+                    edge.particle_pdg
+                    if edge.source in loop_vertices
+                    else model.particles[edge.particle_pdg].anti_pdg
+                )
+                attachments.add((mask, particle_id, tree_orders))
     return attachments
 
 
@@ -735,13 +693,23 @@ def test_electroweak_block_currents_equal_feynkit_tree_sums(models):
     assert _assert_blocks_equal_feynkit(models, "u u~ > d d~ g", POINT_SEEDS, orders)
 
 
+@pytest.mark.loop_nightly
+def test_three_line_block_currents_equal_feynkit_tree_sums(models):
+    # Five-leg blocks of six quarks join three fermion lines by two gluon
+    # connections (``Block.connection_sign``).
+    orders = {"QCD": 4, "QED": 0}
+    text = "u u~ > d d~ s s~"
+    assert _assert_blocks_equal_feynkit(models, text, POINT_SEEDS[:1], orders, 5)
+
+
 @pytest.mark.loop_physics
 @pytest.mark.parametrize(
     "text",
     ["g g > g g g", "u u~ > d d~ g", "u u~ > u u~ g"],
 )
 def test_every_loop_position_content_is_a_block(models, text):
-    compiled, model, native = models
+    compiled, model, structure = models
+    native = structure.native
     process = _process(compiled, text)
     order = {"QCD": len(process.legs) - 2 + 2}
     blocks = build_tree_blocks(
@@ -751,7 +719,7 @@ def test_every_loop_position_content_is_a_block(models, text):
         block_coupling_orders={**order, "QED": 0},
     )
     available = {
-        (block.key.external_mask, abs(block.key.particle_id), block.key.coupling_orders)
+        (block.key.external_mask, block.key.particle_id, block.key.coupling_orders)
         for block in blocks.blocks
     }
     required = _loop_attachments(native, model, process, {**order, "QED": 0})
@@ -771,9 +739,66 @@ def test_every_loop_position_content_is_a_block(models, text):
             assert len(mask_words) == math.factorial(mask.bit_count())
 
 
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("text", "born"),
+    [("g g > g g", {"QCD": 2}), ("u u~ > d d~ g", {"QCD": 3})],
+)
+def test_family_recursion_runs_on_the_block_table(models, text, born):
+    """WP1.3 consumes the blocks as its ``BlockTable`` and feeds back requests."""
+
+    compiled, model, structure = models
+    data = json.loads(structure.native.to_json())
+    catalogue = ModelLoopCatalogue(
+        data, species_orders=structure.perturbative_species_orders
+    )
+    selection = LoopOrderSelection(
+        frozenset({"QCD"}), frozenset({add_orders(tuple(born.items()), (("QCD", 2),))})
+    )
+    limits = {"QED": 0, **dict(selection.cap)}
+    process = _process(compiled, text)
+    table = build_tree_blocks(
+        process, model, born_coupling_orders=limits, block_coupling_orders=limits
+    ).block_table(data)
+    native = structure.native
+    incoming = [
+        native.particle_by_pdg(model.particles[leg.outgoing_pdg].anti_pdg).name
+        for leg in process.legs
+        if leg.is_initial
+    ]
+    outgoing = [
+        native.particle_by_pdg(leg.outgoing_pdg).name
+        for leg in process.legs
+        if not leg.is_initial
+    ]
+    reference = ModelBlockTable(data, incoming, outgoing, cap=selection.cap)
+    assert table.legs == reference.legs
+    for mask in range(1, 1 << len(table.legs)):
+        assert table.currents(mask) == reference.currents(mask), mask
+    families = generate_families(table, catalogue, selection)
+    assert families.families
+    assert families.families.keys() == (
+        generate_families(reference, catalogue, selection).families.keys()
+    )
+    # The family recursion's requests drive the loop-aware reachability, and
+    # the requested blocks alone reproduce the same families.
+    requests = families.block_requests()
+    requested = build_tree_blocks(
+        process,
+        model,
+        born_coupling_orders=limits,
+        block_coupling_orders=limits,
+        reachability=requested_loop_blocks(requests, data),
+    ).block_table(data)
+    assert all(request in requested.currents(request.mask) for request in requests)
+    again = generate_families(requested, catalogue, selection)
+    assert again.families.keys() == families.families.keys()
+    assert again.block_requests() == requests
+
+
 @pytest.mark.loop_fast
 def test_born_is_the_tree_program_bucketed_by_exact_order(models):
-    compiled, model, _native = models
+    compiled, model, _structure = models
     # The Born keeps the requested accuracy; this leading-colour tree has
     # both the QCD and the electroweak exchange.
     process = _process(compiled, "u u~ > d d~", "lc")
@@ -797,9 +822,7 @@ def test_born_is_the_tree_program_bucketed_by_exact_order(models):
             dag_root = blocks.born_dag.amplitude_roots[root.root_id]
             left = blocks.born_dag.currents[dag_root.left_id].index
             right = blocks.born_dag.currents[dag_root.right_id].index
-            assert add_coupling_orders(left.coupling_orders, right.coupling_orders) == (
-                orders
-            )
+            assert add_orders(left.coupling_orders, right.coupling_orders) == (orders)
             assert [label for label, _helicity in root.helicities] == [1, 2, 3, 4]
     assert blocks.squared_born_orders() == {
         (("QCD", 2), ("QED", 2)): (
@@ -824,7 +847,7 @@ def test_born_is_the_tree_program_bucketed_by_exact_order(models):
 
 @pytest.mark.loop_fast
 def test_requested_blocks_keep_their_subcurrents_only(models):
-    compiled, model, _native = models
+    compiled, model, _structure = models
     process = _process(compiled, "g g > g g g")
     generic = GenericDAGCompiler(
         model=model, max_coupling_orders=QCD, loop_blocks=True
@@ -856,7 +879,7 @@ def test_requested_blocks_keep_their_subcurrents_only(models):
 
 @pytest.mark.loop_fast
 def test_generic_reachability_is_every_attachable_proper_subset(models):
-    compiled, model, _native = models
+    compiled, model, _structure = models
     process = _process(compiled, "u u~ > d d~ g")
     reachability = AttachableLoopBlocks.for_process(process, model)
     assert not reachability.admits_mask(0b11111)
@@ -875,20 +898,68 @@ def test_generic_reachability_is_every_attachable_proper_subset(models):
 @pytest.mark.loop_fast
 def test_block_words_are_colour_flow_strings():
     representations = {1: -3, 2: 3, 3: 3, 4: -3, 5: 8, 6: 1}
-    flow = block_colour_flow((3, 1, 2, 5, 6), representations)
+    flow = block_colour_flow((3, 1, 2, 5, 6), representations, 3)
     assert flow.strings == ((3, 1), (2, 5))
     assert (flow.incoming_open, flow.outgoing_open) == (False, True)
     assert flow.singlet_labels == (6,)
-    gluon = block_colour_flow((4, 3, 5), representations)
+    # Starts 2, 3 end at the open end (ranked last) and at 1: one inversion.
+    assert flow.sign == -1
+    gluon = block_colour_flow((4, 3, 5), representations, 8)
     assert gluon.strings == ((4,), (3, 5))
     assert (gluon.incoming_open, gluon.outgoing_open) == (True, True)
+    assert gluon.sign == 1  # the open ends join: 3 -> 5 -> X -> 4
+    # Two lines through an adjoint field: 2 -> X -> 1 and 3 -> 4.
+    assert block_colour_flow((1, 3, 4, 2), representations, 8).sign == 1
+    assert block_colour_flow((1, 2, 4, 3), representations, 8).sign == -1
+    assert block_colour_flow((2, 1), representations, 1).sign == 1
     with pytest.raises(ValueError, match="not a colour-flow block word"):
-        block_colour_flow((5, 2), representations)
+        block_colour_flow((5, 2), representations, 8)
+    with pytest.raises(ValueError, match="does not match a field"):
+        block_colour_flow((2, 5), representations, -3)
+
+
+@pytest.mark.loop_fast
+def test_colour_octet_connections_flip_the_wick_sign(models):
+    compiled, model, _structure = models
+    limits = {"QCD": 3, "QED": 2}
+    blocks = build_tree_blocks(
+        _process(compiled, "u u~ > d d~ g"),
+        model,
+        born_coupling_orders=limits,
+        block_coupling_orders=limits,
+    )
+    signs = {}
+    for block in blocks.blocks:
+        if block.key.external_mask == 0b00111 and block.key.particle_id == 1:
+            signs.setdefault(block.key.coupling_orders, set()).add(
+                (block.connection_sign, block.pairing_sign)
+            )
+    # The d-quark current of legs 1-3 joins the u-line by a gluon or by an
+    # electroweak boson; identity pairing (2 -> 1, 3 -> open end) is odd.
+    assert signs == {(("QCD", 2),): {(-1, -1)}, (("QED", 2),): {(1, -1)}}
+
+
+@pytest.mark.loop_fast
+def test_blocks_record_the_compiled_tree_kernel_variant(models):
+    from pyamplicol.loops.v2.catalogue import compile_tree_kernel_variant
+    from pyamplicol.models.external import CompiledUFOModel
+
+    compiled, model, _structure = models
+    process = _process(compiled, "g g > g g")
+    for variant, tree_model in (
+        ("transverse", model),
+        ("full", CompiledUFOModel(compile_tree_kernel_variant(compiled, "full"))),
+    ):
+        blocks = build_tree_blocks(
+            process, tree_model, born_coupling_orders=QCD, block_coupling_orders=QCD
+        )
+        assert blocks.kernel_variant == variant
+        assert {block.kernel_variant for block in blocks.blocks} == {variant}
 
 
 @pytest.mark.loop_fast
 def test_loop_blocks_reject_tree_only_options(models):
-    compiled, model, _native = models
+    compiled, model, _structure = models
     with pytest.raises(ValueError, match="tree-only options: max_currents"):
         GenericDAGCompiler(model=model, loop_blocks=True, max_currents=10)
     with pytest.raises(ValueError, match="full-colour process"):
