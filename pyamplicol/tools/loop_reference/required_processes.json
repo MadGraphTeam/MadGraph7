@@ -1,0 +1,149 @@
+{
+  "description": "Process specifications for independent one-loop provider references (MASTER_PLAN 5.6-5.7). Orders are amplitude coupling powers (g_s, e). Parameter values are exact decimal strings shared by every provider.",
+  "schemes": {
+    "qcd": {
+      "description": "QCD corrections in the MG5 loop_sm-no_b_mass model: alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, massless b/tau/light fermions, all widths zero, five-flavour alpha_s renormalization with decoupled top, six quark flavours in loops, Feynman gauge.",
+      "madloop_model": "{mg5}/models/loop_sm-no_b_mass",
+      "parameters": {"aS": "0.118", "aEWM1": "132.507", "Gf": "0.0000116639", "MZ": "91.188", "MH": "125", "MT": "173", "ymt": "173"},
+      "fixed_parameters": {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", "WT": "0", "WW": "0", "WZ": "0", "WH": "0"},
+      "electroweak_inputs": "alpha_fixed",
+      "complex_mass_scheme": false,
+      "active_flavours": 5,
+      "loop_quark_flavours": 6
+    },
+    "ew-gmu": {
+      "description": "Full NLO EW (all one-loop graphs of the selected order, QCD-EW mixed included) in the G_mu scheme with on-shell real masses, matching OpenLoops ew_scheme=1/ew_renorm_scheme=1 and the MG5 loop_qcd_qed_sm_Gmu default restriction (massless light fermions, diagonal CKM). Real on-shell mass renormalization (MadLoop complex_mass_scheme False, Recola set_on_shell_scheme, OpenLoops complex_mass_scheme=0) with all widths zero; stable top; Feynman gauge. Recola's default complex-mass scheme keeps absorptive self-energy parts in its counterterms even at zero widths and is therefore not used.",
+      "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_py3",
+      "parameters": {"aS": "0.118", "Gf": "0.0000116639", "MZ": "91.188", "MW": "80.419", "MH": "125", "MT": "173", "ymt": "173"},
+      "fixed_parameters": {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", "WT": "0", "WW": "0", "WZ": "0", "WH": "0", "WTau": "0"},
+      "electroweak_inputs": "gmu",
+      "complex_mass_scheme": false,
+      "active_flavours": 5,
+      "loop_quark_flavours": 6
+    }
+  },
+  "processes": [
+    {
+      "name": "gg_ttx",
+      "role": "sanity",
+      "pdgs": [21, 21, 6, -6],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g g > t t~ QED=0 [virt=QCD]"},
+      "recola": {"process": "g g -> t t~"},
+      "openloops": {"process": "21 21 -> 6 -6", "library": "pptt"}
+    },
+    {
+      "name": "gg_ttx_ew",
+      "role": "sanity",
+      "pdgs": [21, 21, 6, -6],
+      "born_orders": {"QCD": 2, "QED": 0},
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {"process": "g g > t t~ QCD=2 QED=0 [virt=QCD QED] QCD^2==4 QED^2==2"},
+      "recola": {"process": "g g -> t t~"},
+      "openloops": {"process": "21 21 -> 6 -6", "library": "pptt_ew"}
+    },
+    {
+      "name": "uux_emepg_ew",
+      "role": "sanity",
+      "pdgs": [2, -2, 11, -11, 21],
+      "born_orders": {"QCD": 1, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {"process": "u u~ > e- e+ g QCD=1 QED=2 [virt=QCD QED] QCD^2==2 QED^2==6"},
+      "recola": {"process": "u u~ -> e- e+ g"},
+      "openloops": {"process": "2 -2 -> 11 -11 21", "library": "ppllj_ew"}
+    },
+    {
+      "name": "uux_emepddxg",
+      "pdgs": [2, -2, 11, -11, 1, -1, 21],
+      "born_orders": {"QCD": 3, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > e- e+ d d~ g QED=2 [virt=QCD]"},
+      "recola": {"process": "u u~ -> e- e+ d d~ g"},
+      "openloops": {"process": "2 -2 -> 11 -11 1 -1 21", "library": "pplljjj"}
+    },
+    {
+      "name": "uux_emepggg",
+      "pdgs": [2, -2, 11, -11, 21, 21, 21],
+      "born_orders": {"QCD": 3, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > e- e+ g g g QED=2 [virt=QCD]"},
+      "recola": {"process": "u u~ -> e- e+ g g g"},
+      "openloops": {"process": "2 -2 -> 11 -11 21 21 21", "library": "pplljjj"}
+    },
+    {
+      "name": "gg_ttxgg",
+      "pdgs": [21, 21, 6, -6, 21, 21],
+      "born_orders": {"QCD": 4, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g g > t t~ g g QED=0 [virt=QCD]"},
+      "recola": {"process": "g g -> t t~ g g"},
+      "openloops": {"process": "21 21 -> 6 -6 21 21", "library": "ppttjj"}
+    },
+    {
+      "name": "gg_gggg",
+      "pdgs": [21, 21, 21, 21, 21, 21],
+      "born_orders": {"QCD": 4, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g g > g g g g QED=0 [virt=QCD]"},
+      "recola": {"process": "g g -> g g g g"},
+      "openloops": {"process": "21 21 -> 21 21 21 21", "library": "ppjjjj"}
+    },
+    {
+      "name": "gg_ttxemepg_qcd",
+      "pdgs": [21, 21, 6, -6, 11, -11, 21],
+      "born_orders": {"QCD": 3, "QED": 2},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g g > t t~ e- e+ g QED=2 [virt=QCD]"},
+      "recola": {"process": "g g -> t t~ e- e+ g"},
+      "openloops": {"process": "21 21 -> 6 -6 11 -11 21", "library": "ppllttj"}
+    },
+    {
+      "name": "gg_ttxemep_ew",
+      "role": "diagnostic",
+      "pdgs": [21, 21, 6, -6, 11, -11],
+      "born_orders": {"QCD": 2, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {"process": "g g > t t~ e- e+ QCD=2 QED=2 [virt=QCD QED] QCD^2==4 QED^2==6"},
+      "recola": {"process": "g g -> t t~ e- e+"},
+      "openloops": {"process": "21 21 -> 6 -6 11 -11", "library": "pplltt_ew"}
+    },
+    {
+      "name": "gg_ttxemepg_ew",
+      "pdgs": [21, 21, 6, -6, 11, -11, 21],
+      "born_orders": {"QCD": 3, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {"process": "g g > t t~ e- e+ g QCD=3 QED=2 [virt=QCD QED] QCD^2==6 QED^2==6"},
+      "recola": {"process": "g g -> t t~ e- e+ g"},
+      "openloops": {"process": "21 21 -> 6 -6 11 -11 21", "library": "ppllttj_ew"}
+    },
+    {
+      "name": "gg_ggggg",
+      "pdgs": [21, 21, 21, 21, 21, 21, 21],
+      "born_orders": {"QCD": 5, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "g g > g g g g g QED=0 [virt=QCD]"},
+      "recola": {"process": "g g -> g g g g g"}
+    },
+    {
+      "name": "uux_ggggg",
+      "pdgs": [2, -2, 21, 21, 21, 21, 21],
+      "born_orders": {"QCD": 5, "QED": 0},
+      "correction": "QCD",
+      "scheme": "qcd",
+      "madloop": {"process": "u u~ > g g g g g QED=0 [virt=QCD]"},
+      "recola": {"process": "u u~ -> g g g g g"}
+    }
+  ]
+}
