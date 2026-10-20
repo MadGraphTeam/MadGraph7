@@ -179,6 +179,28 @@ exactly. These shared-host exploratory measurements support retaining the
 expanded change. Final legacy regression and NinjaRS performance gates still
 apply to every core process. Evidence is in `experiments/expanded-wl-layout`.
 
+## Exact-zero QP polynomial updates
+
+The generator now skips exact-zero products in compact QP updates and entire
+zero B blocks in expanded QP updates. It does so only for finite IEEE binary128
+operands under nearest rounding. Integer representation checks do not signal on
+NaNs in unused regions. Other rounding modes, nonfinite inputs and unsupported
+layouts call the unchanged dense routine. DP bodies remain unchanged.
+
+Seven alternating, CPU-pinned pairs with other task computation paused give
+QCD3 a median ratio of `0.831836`, with 95% interval `[0.806229, 0.877321]`.
+EW2's all-DP regression gives `1.008293`, interval `[0.974855, 1.017739]`.
+All 200 point/order rows, accuracy estimates and status codes match exactly.
+These compare the preceding candidate generator with the sparse prototype,
+using retained model inputs from before the precision repair; they do not
+replace the final four-backend correctness or NinjaRS runtime gates.
+
+The production port passes all 43 polynomial tests, including 30,000 new
+compiled bit/IEEE/layout-fallback comparisons, plus four optimized polynomial
+exporter checks. Independent review found no blocker. Earlier prototype tests,
+rejected NaN classifiers, failed setup attempts, full quiet-run measurements
+and final source hashes are retained under `experiments/expanded-wl-sparsity`.
+
 ## Limits and optimization follow-up
 
 Code review and scalar tests cannot establish correctness on all high-rank,

@@ -474,7 +474,75 @@ C        ARGUMENTS
             
         return '\n\n'.join(subroutines)
 
-    def write_compact_wl_updater(self,r_1,r_2,loop_over_vertex_coefs_first=True):
+    def _sparse_qp_updater_parts(self, r_1, r_2, compact):
+        """Emit exact-zero guards, with the original exceptional path intact.
+
+        Restrict pruning to finite binary128 operands and nearest rounding.
+        Integer classification avoids signaling on a NaN in an empty update.
+        """
+        na = get_number_of_coefs_for_rank(r_1)-1
+        nb = get_number_of_coefs_for_rank(r_2)-1
+        name = '%sUPDATE_WL_%d_%d' % (self.sub_prefix, r_1, r_2)
+        declarations = """  TYPE(IEEE_ROUND_TYPE) WL_ROUNDING
+  LOGICAL WL_NEAREST
+"""
+        if compact:
+            declarations += """  LOGICAL WL_SKIP_ZERO
+  LOGICAL WL_AZERO(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
+  INTEGER WL_I,WL_K,WL_L
+"""
+        else:
+            declarations += """  LOGICAL WL_SKIP(MAXLWFSIZE,MAXLWFSIZE)
+  INTEGER WL_J,WL_K
+"""
+        preparation = """CALL IEEE_GET_ROUNDING_MODE(WL_ROUNDING)
+WL_NEAREST=WL_ROUNDING.EQ.IEEE_NEAREST
+IF(.NOT.WL_NEAREST.OR..NOT.ALL(WL_IS_FINITE(REAL(A(1:IN_SIZE,0:{na},1:LCUT_SIZE),KIND=16))).OR..NOT.ALL(WL_IS_FINITE(AIMAG(A(1:IN_SIZE,0:{na},1:LCUT_SIZE)))).OR..NOT.ALL(WL_IS_FINITE(REAL(B(1:OUT_SIZE,0:{nb},1:IN_SIZE),KIND=16))).OR..NOT.ALL(WL_IS_FINITE(AIMAG(B(1:OUT_SIZE,0:{nb},1:IN_SIZE))))) THEN
+  CALL {name}_DENSE(A,LCUT_SIZE,B,IN_SIZE,OUT_SIZE,OUT)
+  RETURN
+ENDIF
+""".format(na=na, nb=nb, name=name)
+        if compact:
+            preparation += """WL_AZERO(1:IN_SIZE,0:{na},1:LCUT_SIZE)=.FALSE.
+IF(WL_NEAREST) THEN
+  DO WL_K=1,IN_SIZE
+    DO WL_I=1,LCUT_SIZE
+      DO WL_L=0,{na}
+        IF(WL_IS_FINITE(REAL(A(WL_K,WL_L,WL_I),KIND=16)).AND.WL_IS_FINITE(AIMAG(A(WL_K,WL_L,WL_I)))) WL_AZERO(WL_K,WL_L,WL_I)=A(WL_K,WL_L,WL_I).EQ.0
+      ENDDO
+    ENDDO
+  ENDDO
+ENDIF
+""".format(na=na)
+        else:
+            preparation += """WL_SKIP=.FALSE.
+IF(WL_NEAREST) THEN
+  DO WL_K=1,IN_SIZE
+    IF(ALL(WL_IS_FINITE(REAL(A(WL_K,0:{na},1:LCUT_SIZE),KIND=16))).AND.ALL(WL_IS_FINITE(AIMAG(A(WL_K,0:{na},1:LCUT_SIZE))))) THEN
+      DO WL_J=1,OUT_SIZE
+        IF(ALL(WL_IS_FINITE(REAL(B(WL_J,0:{nb},WL_K),KIND=16))).AND.ALL(WL_IS_FINITE(AIMAG(B(WL_J,0:{nb},WL_K))))) WL_SKIP(WL_J,WL_K)=ALL(B(WL_J,0:{nb},WL_K).EQ.0)
+      ENDDO
+    ENDIF
+  ENDDO
+ENDIF
+""".format(na=na, nb=nb)
+        classifier = """CONTAINS
+ELEMENTAL LOGICAL FUNCTION WL_IS_FINITE(X)
+  REAL*16, INTENT(IN) :: X
+  INTEGER*8 WORDS(2)
+  INTEGER*8, PARAMETER :: ONE_WORDS(2)=TRANSFER(1.0_16,(/0_8,0_8/))
+  INTEGER, PARAMETER :: HI=MERGE(1,2,ONE_WORDS(1).NE.0_8)
+  WL_IS_FINITE=.FALSE.
+  IF(STORAGE_SIZE(X).NE.128.OR.DIGITS(X).NE.113.OR.RADIX(X).NE.2.OR.MAXEXPONENT(X).NE.16384) RETURN
+  IF(ONE_WORDS(HI).NE.ISHFT(16383_8,48).OR.ONE_WORDS(3-HI).NE.0_8) RETURN
+  WORDS=TRANSFER(X,WORDS)
+  WL_IS_FINITE=IBITS(WORDS(HI),48,15).NE.32767_8
+END FUNCTION
+"""
+        return declarations, preparation, classifier
+
+    def write_compact_wl_updater(self,r_1,r_2,loop_over_vertex_coefs_first=True,
+                                _sparse=True):
         """ Give out the subroutine to update a polynomial of rank r_1 with
         one of rank r_2 """
         
@@ -490,24 +558,34 @@ C        ARGUMENTS
         # coefficients equal to zero
         
         lines=[]
+        sparse = (_sparse and self.coef_format == 'complex*32' and
+                  loop_over_vertex_coefs_first)
+        declarations = preparation = classifier = ''
+        if sparse:
+            declarations, preparation, classifier = \
+                self._sparse_qp_updater_parts(r_1, r_2, True)
         
         # Start by writing out the header:
         lines.append(
           """SUBROUTINE %(sub_prefix)sUPDATE_WL_%(r_1)d_%(r_2)d(A,LCUT_SIZE,B,IN_SIZE,OUT_SIZE,OUT)
   USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS      
-  implicit none
+%(ieee_use)s  implicit none
   INTEGER I,J,K,L,M
   %(coef_format)s A(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
   %(coef_format)s B(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
   %(coef_format)s OUT(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
   INTEGER LCUT_SIZE,IN_SIZE,OUT_SIZE
-  INTEGER NEW_POSITION
+%(sparse_declarations)s  INTEGER NEW_POSITION
   %(coef_format)s UPDATER_COEF
 """%{'sub_prefix':self.sub_prefix,'proc_prefix':self.proc_prefix,
-                           'r_1':r_1,'r_2':r_2,'coef_format':self.coef_format})
+                           'r_1':r_1,'r_2':r_2,'coef_format':self.coef_format,
+      'ieee_use':'  USE, INTRINSIC :: IEEE_ARITHMETIC\n' if sparse else '',
+      'sparse_declarations':declarations})
         
         # Start the loop on the elements i,j of the vector OUT(i,coef,j)
         lines.append("C Welcome to the computational heart of MadLoop...")
+        if sparse:
+            lines.append(preparation)
         if loop_over_vertex_coefs_first:
             # Traverse coefficients within each last-index array plane. Keeping
             # M and K outside I preserves the summation order of every output.
@@ -518,9 +596,9 @@ C        ARGUMENTS
         DO K=1,IN_SIZE
           UPDATER_COEF = B(J,M,K)
           IF (UPDATER_COEF.EQ.%s) CYCLE
-          DO I=1,LCUT_SIZE
+{zero_prepare}          DO I=1,LCUT_SIZE
             DO L=0,%d
-              NEW_POSITION = COMB_COEF_POS(L,M)
+{zero_guard}              NEW_POSITION = COMB_COEF_POS(L,M)
               OUT(J,NEW_POSITION,I)=OUT(J,NEW_POSITION,I) + A(K,L,I)*UPDATER_COEF
             ENDDO
           ENDDO
@@ -530,6 +608,12 @@ C        ARGUMENTS
     """%(get_number_of_coefs_for_rank(r_2)-1,
          self.czero,
          get_number_of_coefs_for_rank(r_1)-1))
+            lines[-1] = lines[-1].replace('{zero_prepare}', """          WL_SKIP_ZERO=.FALSE.
+          IF(WL_NEAREST) WL_SKIP_ZERO=WL_IS_FINITE(REAL(UPDATER_COEF,KIND=16)).AND.WL_IS_FINITE(AIMAG(UPDATER_COEF))
+""" if sparse else '').replace('{zero_guard}', """              IF(WL_SKIP_ZERO) THEN
+                IF(WL_AZERO(K,L,I)) CYCLE
+              ENDIF
+""" if sparse else '')
         else:
             lines.append("OUT(:,:,:)=%s"%self.czero)
             lines.append(
@@ -551,11 +635,20 @@ C        ARGUMENTS
          self.czero,
          get_number_of_coefs_for_rank(r_2)-1))            
         
+        if sparse:
+            lines.append(classifier)
         lines.append("END")
         # return the subroutine
-        return '\n'.join(lines)
+        result = '\n'.join(lines)
+        if sparse:
+            name = '%sUPDATE_WL_%d_%d' % (self.sub_prefix, r_1, r_2)
+            dense = self.write_compact_wl_updater(
+                r_1, r_2, loop_over_vertex_coefs_first, _sparse=False)
+            result += '\n\n' + dense.replace(
+                'SUBROUTINE '+name+'(', 'SUBROUTINE '+name+'_DENSE(', 1)
+        return result
 
-    def write_expanded_wl_updater(self,r_1,r_2):
+    def write_expanded_wl_updater(self,r_1,r_2,_sparse=True):
         """ Give out the subroutine to update a polynomial of rank r_1 with
         one of rank r_2 """
         
@@ -569,21 +662,30 @@ C        ARGUMENTS
         # with a rank 1 updater.
         
         lines=[]
+        sparse = _sparse and self.coef_format == 'complex*32'
+        declarations = preparation = classifier = ''
+        if sparse:
+            declarations, preparation, classifier = \
+                self._sparse_qp_updater_parts(r_1, r_2, False)
         
         # Start by writing out the header:
         lines.append(
           """SUBROUTINE %(sub_prefix)sUPDATE_WL_%(r_1)d_%(r_2)d(A,LCUT_SIZE,B,IN_SIZE,OUT_SIZE,OUT)
   USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
-  INTEGER I,J,K
+%(ieee_use)s  INTEGER I,J,K
   %(coef_format)s A(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
   %(coef_format)s B(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
   %(coef_format)s OUT(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
   INTEGER LCUT_SIZE,IN_SIZE,OUT_SIZE
-"""%{'sub_prefix':self.sub_prefix,'proc_prefix':self.proc_prefix,
-                            'r_1':r_1,'r_2':r_2,'coef_format':self.coef_format})
+%(sparse_declarations)s"""%{'sub_prefix':self.sub_prefix,'proc_prefix':self.proc_prefix,
+                            'r_1':r_1,'r_2':r_2,'coef_format':self.coef_format,
+      'ieee_use':'  USE, INTRINSIC :: IEEE_ARITHMETIC\n' if sparse else '',
+      'sparse_declarations':declarations})
         
         # Traverse the first array index contiguously. Each fixed output still
         # receives the same arithmetic statements in ascending K order.
+        if sparse:
+            lines.append(preparation)
         lines.append("DO I=1,LCUT_SIZE")
         lines.append("  DO K=0,%d"%(get_number_of_coefs_for_rank(r_2+r_1)-1))
         lines.append("    DO J=1,OUT_SIZE")
@@ -592,6 +694,8 @@ C        ARGUMENTS
         lines.append("  ENDDO")
         lines.append("  DO K=1,IN_SIZE")
         lines.append("    DO J=1,OUT_SIZE")
+        if sparse:
+            lines.append("      IF(WL_SKIP(J,K)) CYCLE")
         
         # Now we write the lines defining the coefs of OUT(j,*,i) from those
         # of A(k,*,i) and B(j,*,k)
@@ -622,10 +726,18 @@ C        ARGUMENTS
         lines.append("    ENDDO")
         lines.append("  ENDDO")
         lines.append("ENDDO")
+        if sparse:
+            lines.append(classifier)
         lines.append("END")
 
         # return the subroutine
-        return '\n'.join(lines)
+        result = '\n'.join(lines)
+        if sparse:
+            name = '%sUPDATE_WL_%d_%d' % (self.sub_prefix, r_1, r_2)
+            dense = self.write_expanded_wl_updater(r_1, r_2, _sparse=False)
+            result += '\n\n' + dense.replace(
+                'SUBROUTINE '+name+'(', 'SUBROUTINE '+name+'_DENSE(', 1)
+        return result
         
     def write_polynomial_evaluator(self):
         """ Give out the subroutine to evaluate a polynomial of a rank up to

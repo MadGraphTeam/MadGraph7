@@ -1,0 +1,21 @@
+CRITICAL:root:file tests.unit_tests.madspin.test_madspin takes a long time to load (0.1334s)
+/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python: No module named pip
+
+Installing build dependencies...
+
+$ /nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python -m pip install --upgrade scikit-build-core>=0.10 packaging>=22 pyyaml>=6 pybind11-stubgen>=2.5 --target=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madspace/install
+
+CRITICAL:root:file tests.unit_tests.iolibs.test_mg7_discrete_flavor takes a long time to load (0.1075s)
+CRITICAL:root:file tests.unit_tests.various.test_mg7_plots takes a long time to load (0.3710s)
+WARNING:madgraph.loop_exporter:The iregi reduction library could not be found with PATH: specified in mg7_configuration.txt. It will not be available.
+
+You don't have madspace installed for this madgraph instance
+Running the madspace installation script
+
+loading test takes 0.8090662956237793s
+
+== [1;32mOperational mode[0m : file [1;34mTESTING[0m ==
+
+Processing [1;32mgg_ttx[0m in [1;34mshort_ML_SMQCD_optimized[0m
+[1;32m
+1 IOTests [0msuccessfully tested in [1;34m2.48s[0m.

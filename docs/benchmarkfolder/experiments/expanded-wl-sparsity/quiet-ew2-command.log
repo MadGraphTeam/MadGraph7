@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/expanded-wl-sparsity/run.py", line 195, in <module>
+    main()
+    ~~~~^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/expanded-wl-sparsity/run.py", line 116, in main
+    files = modify_variant(directory, variant)
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/expanded-wl-sparsity/run.py", line 31, in modify_variant
+    after, _ = transform(after, mode)
+               ~~~~~~~~~^^^^^^^^^^^^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/expanded-wl-sparsity/prototype.py", line 145, in transform
+    raise ValueError("No matching QP routines")
+ValueError: No matching QP routines

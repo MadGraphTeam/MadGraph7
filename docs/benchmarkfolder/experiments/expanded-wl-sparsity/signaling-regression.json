@@ -1,0 +1,134 @@
+{
+  "scope": "Isolated generated QP prototypes only; no production edit",
+  "comparison": "Entire output bit patterns, input preservation and all IEEE flags",
+  "ranks": {
+    "expanded": [
+      [
+        1,
+        1
+      ]
+    ],
+    "compact": [
+      [
+        2,
+        1
+      ]
+    ]
+  },
+  "dimensions": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "trials": 12,
+  "rounding_modes": [
+    "nearest",
+    "up",
+    "down",
+    "toward zero"
+  ],
+  "inputs": [
+    "dense",
+    "sparse",
+    "1e\u00b12000",
+    "all zero",
+    "cancellation",
+    "signed zero",
+    "nonfinite A and zero B",
+    "nonfinite B",
+    "subnormal",
+    "overflow",
+    "signaling NaN A with zero B",
+    "signaling NaN B with zero A"
+  ],
+  "compiler": "GNU Fortran (GCC) 15.3.0",
+  "prototype_sha256": "9df30c1e5b73800e2ef432f0fb2c83821c012c51a65b65da4ffc8d05428c1b12",
+  "test_sha256": "231378bece5db2ef3537a2fa58d2808eed54062ce3ad0ac1f2c87b11912cacba",
+  "generator_sha256": "cba8f223357a2f884ac06b7fd2597876ce9bd1a377d77adc025eaa6cb192f882",
+  "results": [
+    {
+      "mode": "expanded",
+      "flags": [
+        "-O3",
+        "-fcheck=all",
+        "-ffixed-line-length-132"
+      ],
+      "expected_checks": 6000,
+      "source_hashes": {
+        "driver.f90": "434b98ec6c55b623df738906f94c6c4c5c73a4c15a6e54d5529345a9baadafcf",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "old.f": "820064e160c25a1cb4fafaa1ea347b92b9c3a117e9aa38bcd8d9f48609ac4659",
+        "new.f": "b7c76fbd56acafd2fe44e1989638d1f5ee3c60bdfe97eaa62c68297802e0027d"
+      },
+      "build_passed": true,
+      "returncode": 0,
+      "stdout": " PASS        6000\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "mode": "expanded",
+      "flags": [
+        "-O3",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-frounding-math"
+      ],
+      "expected_checks": 6000,
+      "source_hashes": {
+        "driver.f90": "434b98ec6c55b623df738906f94c6c4c5c73a4c15a6e54d5529345a9baadafcf",
+        "old.f": "820064e160c25a1cb4fafaa1ea347b92b9c3a117e9aa38bcd8d9f48609ac4659",
+        "new.f": "b7c76fbd56acafd2fe44e1989638d1f5ee3c60bdfe97eaa62c68297802e0027d",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+      },
+      "build_passed": true,
+      "returncode": 0,
+      "stdout": " PASS        6000\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "mode": "compact",
+      "flags": [
+        "-O3",
+        "-fcheck=all",
+        "-ffixed-line-length-132"
+      ],
+      "expected_checks": 6000,
+      "source_hashes": {
+        "driver.f90": "ada50d942ef9b1e96a85b394556f49b84593b7969189f173b08b73517da18ce9",
+        "new.f": "66a534e84a5ddcf480d0868a147de3997b51fef7c115d428ab6a22bc2bdc4aa2",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "old.f": "9696bb3da39699dd7085d98391966e757b94cc1b075b058b50329c33aa79adcf"
+      },
+      "build_passed": true,
+      "returncode": 0,
+      "stdout": " PASS        6000\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "mode": "compact",
+      "flags": [
+        "-O3",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "-frounding-math"
+      ],
+      "expected_checks": 6000,
+      "source_hashes": {
+        "driver.f90": "ada50d942ef9b1e96a85b394556f49b84593b7969189f173b08b73517da18ce9",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "new.f": "66a534e84a5ddcf480d0868a147de3997b51fef7c115d428ab6a22bc2bdc4aa2",
+        "old.f": "9696bb3da39699dd7085d98391966e757b94cc1b075b058b50329c33aa79adcf"
+      },
+      "build_passed": true,
+      "returncode": 0,
+      "stdout": " PASS        6000\n",
+      "stderr": "",
+      "passed": true
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "tests": {
+    "polynomial_unit_tests": 43,
+    "new_compiled_comparisons": 30000,
+    "optimized_polynomial_io_cases": 4,
+    "model_helper_and_mp_internal_parameter_io_cases": 1
+  },
+  "source_sha256": {
+    "madgraph/various/q_polynomial.py": "d7e6ece70afca5cdc2bcaa626b4afe6bd77f7449ea44b49888c60b0bf1852712",
+    "tests/unit_tests/various/test_q_polynomial_compiled.py": "82947d0674bf3e7c33b78d2caa1c7181d55e68db9fa702a4c0045d6120fe3874"
+  },
+  "logs_sha256": {
+    "production-polynomial-tests.log": "c72d76f9548e5d4e5cd9165420f378ccebfecb8a90b7168182303f8dd63b5479",
+    "production-exporter-tests.log": "40dab84418c592a654e4a8caf79258742bd4417e2ae7246839866573934accff",
+    "production-regression.log": "e9684b11326c05ed1d70bd3f6da465399d6886672145a0dbfc0d06a76fab60e8",
+    "model-helper-exporter-check.log": "f5dddb1edebb8054b5547941b8089353afbe01be157df5e525f204e2c77a1406"
+  }
+}

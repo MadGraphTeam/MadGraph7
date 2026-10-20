@@ -1,0 +1,5 @@
+{
+  "passed": true,
+  "ranks_checked": 30,
+  "scope": "Every logical Fortran statement matches measured v4; whitespace/comments ignored; sole extra statement is compile-time binary128-one layout guard."
+}

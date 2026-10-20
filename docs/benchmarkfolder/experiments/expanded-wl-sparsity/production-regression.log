@@ -1,0 +1,7 @@
+test_sparse_binary128_preserves_bits_and_exception_flags (tests.unit_tests.various.test_q_polynomial_compiled.SparseQPWavefunctionUpdateTest.test_sparse_binary128_preserves_bits_and_exception_flags) ... ok
+test_unrecognized_binary128_layout_uses_original_arithmetic (tests.unit_tests.various.test_q_polynomial_compiled.SparseQPWavefunctionUpdateTest.test_unrecognized_binary128_layout_uses_original_arithmetic) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 13.141s
+
+OK

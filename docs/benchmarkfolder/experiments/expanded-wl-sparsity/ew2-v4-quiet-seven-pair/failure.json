@@ -1,0 +1,8 @@
+{
+  "complete": false,
+  "stage": "pre-timing copied-output transformation",
+  "error": "combined runner assumed a compact QP updater existed; EW2 has only expanded QP updaters",
+  "timed_measurements": 0,
+  "raw_log_sha256": "178b54a48706245adbe6179c886d6d96c020f09ed495b70704e502201ad3c52c",
+  "retry": "ew2-v4-quiet-seven-pair-retry1"
+}

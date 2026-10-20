@@ -310,3 +310,15 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   hashes and all 100 points/orders. No incorrect original QP value is silently
   relabelled or excluded. A versioned correctness policy and refreshed worker
   proof are required before promoting new final measurements.
+- The next isolated Fortran optimization is validated: skip exact-zero products
+  in QP polynomial updates only for finite IEEE binary128 operands under nearest
+  rounding. Nonfinite operands, other rounding modes and unsupported layouts
+  execute the unchanged dense routine. DP updater bodies remain unchanged.
+  A quiet seven-pair QCD3 comparison against the previous candidate generator
+  gives ratio 0.831836 (95% interval [0.806229, 0.877321]); EW2's all-DP control
+  gives 1.008293 ([0.974855, 1.017739]). Every coefficient, accuracy and return
+  code matches exactly. These use retained pre-model-correction process inputs
+  and qualify the isolated optimization, not the final NinjaRS performance gate.
+  The production port passes 43 polynomial tests, 30,000 additional compiled
+  bit/IEEE/fallback comparisons, four polynomial exporter checks and the
+  model-helper/internal-parameter exporter check, with independent code review.
