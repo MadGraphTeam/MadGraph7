@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-pytestmark = pytest.mark.loop_nightly
+pytestmark = pytest.mark.loop_physics
 
 
 class _LongitudinalKernel:

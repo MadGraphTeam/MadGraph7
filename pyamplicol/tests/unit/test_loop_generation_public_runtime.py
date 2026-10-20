@@ -11,7 +11,7 @@ from pyamplicol.api import Generator, ProcessRequest, ProcessSet, Runtime
 from pyamplicol.cli import run_cli
 from pyamplicol.config import resolve_config
 
-pytestmark = pytest.mark.loop_fast
+pytestmark = pytest.mark.loop_physics
 
 
 def _card(model, output):

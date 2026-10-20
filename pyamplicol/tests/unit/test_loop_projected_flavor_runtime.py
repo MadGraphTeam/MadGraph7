@@ -10,7 +10,7 @@ from .test_loop_portable import _rewrite
 from .test_loop_projected_flavor_transport import _compare
 from .test_loop_projected_flavor_transport import saved_pair as _saved_pair
 
-pytestmark = pytest.mark.loop_fast
+pytestmark = pytest.mark.loop_physics
 
 
 @pytest.fixture(scope="module")

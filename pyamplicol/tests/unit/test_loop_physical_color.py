@@ -17,7 +17,7 @@ from pyamplicol.loops.physical_counterterms import (
     top_pair_model_virtual_program,
 )
 
-pytestmark = pytest.mark.loop_nightly
+pytestmark = pytest.mark.loop_physics
 
 
 @pytest.fixture(scope="module")

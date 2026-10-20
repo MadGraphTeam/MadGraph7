@@ -229,7 +229,9 @@ def test_writer_preserves_owner_and_unsupported_domain_boundaries(
     spin = replace(prepared, bare=replace(prepared.bare, spin_layout=object()))
     with pytest.raises(NotImplementedError, match="inclusive physical helicities"):
         write_loop_pacbin(source.virtual, destination, directed=spin)
+    # Projected directed plans are supported (8b673992); a projected accuracy
+    # without its formal colour projection is rejected before writing.
     monkeypatch.setattr(source.virtual.bare, "color_accuracy", "lc", raising=False)
-    with pytest.raises(NotImplementedError, match="projected-colour"):
+    with pytest.raises(ValueError, match="no formal projection"):
         write_loop_pacbin(source.virtual, destination, directed=prepared)
     assert not destination.exists()

@@ -254,17 +254,16 @@ def assert_retained_full_projection(original, projected, points):
                 )
 
 
-def test_actual_charged_declaration_keys_and_negative_scope(projected_massive):
+def test_actual_charged_declaration_keys_and_negative_scope(loop_sm_colour_model):
     from pyamplicol.models.loading import load_compiled_model
     from pyamplicol.models.loop_color_declaration import (
         LoopColorDeclaration,
         resolve_loop_color_declaration,
     )
 
-    root, _ = projected_massive
-    compiled = load_compiled_model(
-        root / "loop-sm-w-charges-colour.pyAmplicol-model.json"
-    )
+    # Prepared now from the committed example, not a saved compiled snapshot
+    # whose compiler fingerprint goes stale.
+    compiled = load_compiled_model(loop_sm_colour_model)
     raw = compiled.raw_loop_model
     declaration = resolve_loop_color_declaration(raw)
     stored = LoopColorDeclaration.from_dict(
