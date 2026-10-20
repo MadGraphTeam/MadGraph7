@@ -40,7 +40,19 @@
       "correction": "EW",
       "scheme": "ew-gmu",
       "madloop": {"process": "g g > t t~ QCD=2 QED=0 [virt=QCD QED] QCD^2==4 QED^2==2"},
-      "recola": {"process": "g g -> t t~"}
+      "recola": {"process": "g g -> t t~"},
+      "openloops": {"process": "21 21 -> 6 -6", "library": "pptt_ew"}
+    },
+    {
+      "name": "uux_emepg_ew",
+      "role": "sanity",
+      "pdgs": [2, -2, 11, -11, 21],
+      "born_orders": {"QCD": 1, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {"process": "u u~ > e- e+ g QCD=1 QED=2 [virt=QCD QED] QCD^2==2 QED^2==6"},
+      "recola": {"process": "u u~ -> e- e+ g"},
+      "openloops": {"process": "2 -2 -> 11 -11 21", "library": "ppllj_ew"}
     },
     {
       "name": "uux_emepddxg",
