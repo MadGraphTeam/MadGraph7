@@ -23,10 +23,43 @@ from pyamplicol.color.correlator_matrices import ColorCorrelator
 RETAINED_BOSE_SOURCES = None
 
 
-def _permuted(history, permutation):
+def _permuted(history, permutation, *, physical_labels=None):
     from pyamplicol.loops.correlation_labels import permute_native_color_history
 
-    return permute_native_color_history(history, permutation)
+    return permute_native_color_history(
+        history,
+        permutation,
+        physical_labels=(
+            tuple(range(len(permutation)))
+            if physical_labels is None
+            else physical_labels
+        ),
+    )
+
+
+def test_colourless_slot_number_is_an_auxiliary_label_not_a_physical_port():
+    initial = tuple(ColorLeg(i, rep) for i, rep in enumerate((-3, 3, 8)))
+    steps = (EmitGluon(0, 3), SplitGluon(3, 9, -2))
+    history = ColorCorrelator("positive-auxiliary", steps, steps)
+    actual = _permuted(history, (0, 1, 2, 4, 3), physical_labels=(0, 1, 2))
+    assert actual == history
+    assert ColorConnection(initial, actual.bra).output_legs == ColorConnection(
+        initial, steps
+    ).output_legs
+
+
+def test_partial_physical_set_moves_retired_adjoint_but_preserves_positive_auxiliary():
+    initial = tuple(ColorLeg(i, rep) for i, rep in ((0, -3), (1, 3), (2, 8), (5, 8)))
+    steps = (SplitGluon(2, 3, -2), EmitGluon(3, 9))
+    history = ColorCorrelator("retired-physical", steps, steps)
+    actual = _permuted(
+        history, (0, 1, 5, 4, 3, 2), physical_labels=(0, 1, 2, 5)
+    )
+    expected = (SplitGluon(5, 3, -2), EmitGluon(3, 9))
+    assert actual.bra == actual.ket == expected
+    output = ColorConnection(initial, actual.bra).output_legs
+    assert 5 not in {leg.label for leg in output}
+    assert {2, 3, -2, 9} <= {leg.label for leg in output}
 
 
 def test_three_cycle_maps_only_original_physical_history_labels():
