@@ -1536,6 +1536,122 @@ pub unsafe extern "C" fn rusticol_runtime_evaluate_resolved_f64(
     })
 }
 
+/// Copies the amplitude and squared coupling-order axes as JSON.
+///
+/// The `rusticol-amplitude-orders-v1` object lists the coupling-order `names`, the amplitude
+/// `components` (powers per name) and the `squared` orders with their ordered component `pairs`.
+/// Partial output columns of [`rusticol_runtime_evaluate_orders_f64`] follow `squared`.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live and available for shared access during the call. If
+/// non-null, `required` must be writable for one `size_t`, and `buffer` must be writable for
+/// `capacity` bytes. A null `buffer` is valid only for a zero-capacity query.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_coupling_orders_json(
+    handle: *const RusticolRuntimeHandle,
+    buffer: *mut c_char,
+    capacity: size_t,
+    required: *mut size_t,
+) -> c_int {
+    // SAFETY: The caller upholds this function's pointer contract.
+    unsafe {
+        runtime_string(handle, buffer, capacity, required, |runtime| {
+            Ok(runtime.amplitude_orders_json()?)
+        })
+    }
+}
+
+/// Writes the number of squared coupling orders of a recurrence runtime.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live and available for shared access during the call. If
+/// non-null, `output` must be writable for one `size_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_squared_order_count(
+    handle: *const RusticolRuntimeHandle,
+    output: *mut size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        let count = handle
+            .runtime
+            .amplitude_order_catalog()?
+            .squared_orders()
+            .len();
+        unsafe { write_size(count, output, "squared order count") }
+    })
+}
+
+/// Evaluates totals and squared coupling-order partials with optional global selectors.
+///
+/// `totals` receives one value per point, bitwise equal to the selected total evaluation.
+/// `partials` uses `[point][squared order]` with the order axis of
+/// [`rusticol_runtime_coupling_orders_json`]. Global selector arrays contain physical
+/// helicity/color string IDs; a null pointer with zero length omits that axis.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live and exclusively accessible during the call. `momenta`
+/// must reference `momentum_count` readable `f64` values, `totals` and `partials` must reference
+/// `totals_capacity` and `partials_capacity` writable `f64` values, and no two of these regions
+/// may overlap. For each nonzero selector count, the corresponding pointer must reference that
+/// many readable NUL-terminated string pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_evaluate_orders_f64(
+    handle: *mut RusticolRuntimeHandle,
+    momenta: *const c_double,
+    momentum_count: size_t,
+    point_count: size_t,
+    helicity_ids: *const *const c_char,
+    helicity_count: size_t,
+    color_ids: *const *const c_char,
+    color_count: size_t,
+    totals: *mut c_double,
+    totals_capacity: size_t,
+    partials: *mut c_double,
+    partials_capacity: size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate all pointers and arrays.
+        let handle = unsafe { required_handle_mut(handle) }?;
+        if point_count == 0 {
+            return Err(invalid("point_count must be positive"));
+        }
+        let momenta = unsafe { read_f64_slice(momenta, momentum_count, "momenta") }?;
+        let helicities =
+            unsafe { read_selector_ids(helicity_ids, helicity_count, "helicity ids") }?;
+        let colors = unsafe { read_selector_ids(color_ids, color_count, "color ids") }?;
+        let squared_count = handle
+            .runtime
+            .amplitude_order_catalog()?
+            .squared_orders()
+            .len();
+        let partial_count = point_count
+            .checked_mul(squared_count)
+            .ok_or_else(|| invalid("squared-order output shape overflow"))?;
+        validate_f64_output(totals, totals_capacity, point_count, "total output")?;
+        validate_f64_output(partials, partials_capacity, partial_count, "partial output")?;
+        // SAFETY: Both outputs are non-null with at least the required writable values; the
+        // slices cover only the result prefixes so excess capacity stays untouched.
+        let totals = unsafe { slice::from_raw_parts_mut(totals, point_count) };
+        let partials = unsafe { slice::from_raw_parts_mut(partials, partial_count) };
+        handle
+            .runtime
+            .evaluate_orders_f64_into_with_selectors(
+                momenta,
+                point_count,
+                helicities.as_deref(),
+                colors.as_deref(),
+                totals,
+                partials,
+            )
+            .map_err(AbiError::from)
+    })
+}
+
 /// Updates multiple runtime model parameters atomically.
 ///
 /// # Safety
