@@ -1,0 +1,9 @@
+{
+  "matching_candidate": "passed",
+  "input_files_recorded": 1097,
+  "qualification": "passed-with-explicit-existing-python3-bypass",
+  "wrong-source": "rejected",
+  "missing-source": "rejected",
+  "verify_validation.py-optimized-python": "rejected",
+  "verify_fixture_review.py-optimized-python": "rejected"
+}

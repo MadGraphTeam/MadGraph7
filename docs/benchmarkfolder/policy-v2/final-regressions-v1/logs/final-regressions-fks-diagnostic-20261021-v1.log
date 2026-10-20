@@ -1,0 +1,249 @@
+testIO_test_pptt_fks_loonly (tests.unit_tests.iolibs.test_export_fks.IOExportFKSTest.testIO_test_pptt_fks_loonly)
+target: SubProcesses/[P0.*\/.+\.(inc|f)] ... Interpreting 'QCD^2=4' as 'QCD^2<=4'
+Interpreting 'QED^2=0' as 'QED^2<=0'
+Use of multiparticles is non-trivial for NLO process generation and depends on the orders included, the process considered, as well as the PDF set chosen. See appendix D of arXiv:1804.10017 [hep-ph] for some guidance.
+ok
+testIO_test_pptt_fksreal (tests.unit_tests.iolibs.test_export_fks.IOExportFKSTest.testIO_test_pptt_fksreal)
+target: SubProcesses/[P0.*\/.+\.(inc|f)] ... Interpreting 'QCD^2=4' as 'QCD^2<=4'
+Interpreting 'QED^2=0' as 'QED^2<=0'
+Use of multiparticles is non-trivial for NLO process generation and depends on the orders included, the process considered, as well as the PDF set chosen. See appendix D of arXiv:1804.10017 [hep-ph] for some guidance.
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+ok
+testIO_test_pptt_fksrealew (tests.unit_tests.iolibs.test_export_fks.IOExportFKSTest.testIO_test_pptt_fksrealew)
+target: SubProcesses/[P0.*\/.+\.(inc|f)] ... Interpreting 'QCD^2=4' as 'QCD^2<=4'
+Interpreting 'QED^2=0' as 'QED^2<=0'
+Use of multiparticles is non-trivial for NLO process generation and depends on the orders included, the process considered, as well as the PDF set chosen. See appendix D of arXiv:1804.10017 [hep-ph] for some guidance.
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+ok
+testIO_test_ppw_fksall (tests.unit_tests.iolibs.test_export_fks.IOExportFKSTest.testIO_test_ppw_fksall)
+target: SubProcesses/[P0.*\/.+\.(inc|f)] ... Interpreting 'QCD^2=0' as 'QCD^2<=0'
+Interpreting 'QED^2=2' as 'QED^2<=2'
+Use of multiparticles is non-trivial for NLO process generation and depends on the orders included, the process considered, as well as the PDF set chosen. See appendix D of arXiv:1804.10017 [hep-ph] for some guidance.
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+ok
+testIO_test_tdecay_fksreal (tests.unit_tests.iolibs.test_export_fks.IOExportFKSTest.testIO_test_tdecay_fksreal)
+target: SubProcesses/[P0.*\/.+\.(inc|f)] ... Interpreting 'QCD^2=0' as 'QCD^2<=0'
+Interpreting 'QED^2=4' as 'QED^2<=4'
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+ok
+testIO_test_wprod_fksew (tests.unit_tests.iolibs.test_export_fks.IOExportFKSTest.testIO_test_wprod_fksew)
+target: SubProcesses/[P0.*\/.+\.(inc|f)] ... Pass the definition of 'j' and 'p' to 5 flavour scheme, including the photon.
+Interpreting 'QCD^2=0' as 'QCD^2<=0'
+Interpreting 'QED^2=4' as 'QED^2<=4'
+Use of multiparticles is non-trivial for NLO process generation and depends on the orders included, the process considered, as well as the PDF set chosen. See appendix D of arXiv:1804.10017 [hep-ph] for some guidance.
+NLO EW corrections are requested for a process with s-channel
+propagator(s) of unstable particle(s): w+, while the complex-mass scheme is
+not used. Close to the resonance the virtual corrections are then not gauge
+invariant and are dominated by the resonant self-energy: the NLO cross
+section can be wrong by O(100%). Use 'set complex_mass_scheme True' before
+generating the process (see arXiv:1804.10017).
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 42.264s
+
+OK
+{
+  "diagnostic_only": true,
+  "changed_count": 16,
+  "tests": 6,
+  "errors": 0,
+  "failures": 0
+}

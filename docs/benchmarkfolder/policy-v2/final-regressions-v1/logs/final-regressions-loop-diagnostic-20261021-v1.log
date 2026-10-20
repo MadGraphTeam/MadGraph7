@@ -1,0 +1,20 @@
+testIO_UnitProcOutputIOTests (tests.unit_tests.loop.test_loop_exporters.IOExportMadLoopUnitTest.testIO_UnitProcOutputIOTests)
+Run the iotests ... The iregi reduction library could not be found with PATH: specified in mg7_configuration.txt. It will not be available.
+The iregi reduction library could not be found with PATH: specified in mg7_configuration.txt. It will not be available.
+ok
+testIO_Loop_sqso_uux_ddx (tests.unit_tests.loop.test_loop_exporters.IOTestMadLoopSquaredOrdersExport.testIO_Loop_sqso_uux_ddx)
+target: [loop_matrix(.*)\.f] ... Some loop diagrams contributing to this process are discarded because they are not pure (QED)-perturbation.
+Make sure you did not want to include them.
+ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 64.982s
+
+OK
+{
+  "diagnostic_only": true,
+  "changed_count": 10,
+  "tests": 2,
+  "errors": 0,
+  "failures": 0
+}

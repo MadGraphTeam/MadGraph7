@@ -711,3 +711,10 @@ resume metadata. The earlier pause note is a historical checkpoint.
   first, under the unchanged 24-hour timeout and frozen protocol. Its sealed
   recovery ledger is separate from the live incomplete report. Final timing
   remains held until its references and the final numerical source are ready.
+- The bounded MG7 regression campaign now passes ninety cases: eighty-nine
+  passes and one explicit existing GoSam Python 3 skip. Exactly twenty-two
+  individually reviewed expected-output fixtures and one deterministic FKS
+  test-helper setting were updated; no production arithmetic was changed.
+  The sealed logs, failed earlier attempts, fixture review and report adapter
+  bind 102 tested production paths to the final candidate. Rust reduction,
+  amplitude agreement and performance remain separate outstanding gates.

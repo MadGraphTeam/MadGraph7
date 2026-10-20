@@ -1,0 +1,32 @@
+[
+  {
+    "test": "tests.unit_tests.loop.test_loop_exporters.IOExportMadLoopUnitTest.testIO_UnitProcOutputIOTests",
+    "modifications": {
+      "updated": [
+        "short_ML_SMQCD_optimized/gg_ttx/mp_coef_construction_1.f",
+        "short_ML_SMQCD_optimized/gg_ttx/polynomial.f"
+      ],
+      "created": [],
+      "removed": [],
+      "missing": []
+    }
+  },
+  {
+    "test": "tests.unit_tests.loop.test_loop_exporters.IOTestMadLoopSquaredOrdersExport.testIO_Loop_sqso_uux_ddx",
+    "modifications": {
+      "updated": [
+        "LoopSquaredOrder_IOTest/Loop_sqso_uux_ddx/loop_matrix_QCDQEDpert_QCDsq_eq_4.f",
+        "LoopSquaredOrder_IOTest/Loop_sqso_uux_ddx/loop_matrix_QCDQEDpert_QEDsq_le_4.f",
+        "LoopSquaredOrder_IOTest/Loop_sqso_uux_ddx/loop_matrix_QEDpert_default.f",
+        "LoopSquaredOrder_IOTest/Loop_sqso_uux_ddx/loop_matrix_QCDQEDpert_QCDsq_gt_4.f",
+        "LoopSquaredOrder_IOTest/Loop_sqso_uux_ddx/loop_matrix_QCDQEDpert_WGTsq_le_10_QEDAmpAndQEDsq_gt_2.f",
+        "LoopSquaredOrder_IOTest/Loop_sqso_uux_ddx/loop_matrix_QCDQEDpert_QCDsq_gt_0_QEDAmpAndQEDsq_gt_2.f",
+        "LoopSquaredOrder_IOTest/Loop_sqso_uux_ddx/loop_matrix_QCDpert_default.f",
+        "LoopSquaredOrder_IOTest/Loop_sqso_uux_ddx/loop_matrix_QCDQEDpert_default.f"
+      ],
+      "created": [],
+      "removed": [],
+      "missing": []
+    }
+  }
+]

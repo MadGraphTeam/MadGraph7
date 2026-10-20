@@ -1,0 +1,114 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 6277,
+      "sha256": "14a05362caf58a3d759c9efac76846185a17bcd710d91b5aff5a9a634f87106c"
+    },
+    "diagnostics/capture_fks_absent_io.py": {
+      "bytes": 2550,
+      "sha256": "d60e4260a8ef2ef06dc080d1a4899a9dba4c7145b6a62904453970433d50b812"
+    },
+    "diagnostics/capture_fks_installed_io.py": {
+      "bytes": 2543,
+      "sha256": "1946cb433365211d9ba9b14edf332ee02ffd0affe415b311cb4b8fb13b4046fe"
+    },
+    "diagnostics/capture_loop_io.py": {
+      "bytes": 2487,
+      "sha256": "7ed6b245fb0a00c310d3a2cb21d4bfae2f421831c9d3a79f0f8e6faba64c9091"
+    },
+    "diagnostics/fks-absent-capture-calls.json": {
+      "bytes": 2869,
+      "sha256": "a34920f93b8cd498ff633e8963e5efdf4bfffe3b5f926764afb86e7a83473da5"
+    },
+    "diagnostics/fks-absent-capture-summary.json": {
+      "bytes": 5579,
+      "sha256": "e13fc59c87a75c85b6cb98b4c89096157e59e159e5521703ef8e3ef07ca7acac"
+    },
+    "diagnostics/fks-installed-capture-calls.json": {
+      "bytes": 2869,
+      "sha256": "b22814f9cbe2f8c505057f8f3d815763d119b1f762098f15be928c31a98b3b77"
+    },
+    "diagnostics/fks-installed-capture-summary.json": {
+      "bytes": 5587,
+      "sha256": "009da39f6bee7c45697287b01f6a9b945955d35643e0cdf0c9f88c566da8a862"
+    },
+    "diagnostics/fks-supported-result.json": {
+      "bytes": 454,
+      "sha256": "e0626e25ece22319b2ed01990085271757b3a911cba7cbfaed96acf2d252280e"
+    },
+    "diagnostics/loop-capture-calls.json": {
+      "bytes": 1344,
+      "sha256": "49ef39c6e4226025fc7e1c40b9e49d76a4c461b4275b280394835d858352932b"
+    },
+    "diagnostics/loop-capture-summary.json": {
+      "bytes": 3419,
+      "sha256": "ae442baaad267f2703e7c7472b50283b93289c3570a8a5d39f7ccf5a607cec8d"
+    },
+    "diagnostics/run_supported_fks.py": {
+      "bytes": 1478,
+      "sha256": "ab5fb93268c9e70efec6a063dae02e3eb610f496e947c313037fc22a934e2951"
+    },
+    "fixture-review.json": {
+      "bytes": 26492,
+      "sha256": "3c4e1402e292dfd69e6f9d28a5acb22ea41739314180027150fff07b17b9f78f"
+    },
+    "logs/final-regressions-fks-20261021-v1.log": {
+      "bytes": 36599,
+      "sha256": "0d526cdd2a3a57c1f2debaf6854612bc9805346d99a7724269126dd899539e62"
+    },
+    "logs/final-regressions-fks-diagnostic-20261021-v1.log": {
+      "bytes": 12407,
+      "sha256": "40e0c22262cca016c942ef82b5f39e0e3f0c44c7e99764964a933ad9914e7a2b"
+    },
+    "logs/final-regressions-fks-diagnostic-20261021-v2-absent.log": {
+      "bytes": 12407,
+      "sha256": "1022b9bdfa01458756360a96d4c712d7404854472475885e6f66b6bbfa990e1d"
+    },
+    "logs/final-regressions-fks-supported-20261021-v2.log": {
+      "bytes": 32347,
+      "sha256": "7199f29b17d52e9fcfcada3a16fe59c825f1138463690065de874e0816bd46e1"
+    },
+    "logs/final-regressions-loop-20261021-v1.log": {
+      "bytes": 3455,
+      "sha256": "3873b7e2ae1aff8ce96b787d5df087e2ad615a9a1d9f3387c7263b720ef4db64"
+    },
+    "logs/final-regressions-loop-20261021-v2.log": {
+      "bytes": 803,
+      "sha256": "d4d5aeb389377d666e81cacb35de4a64c8d4ac086b98ed0d587daf3182b0a85e"
+    },
+    "logs/final-regressions-loop-diagnostic-20261021-v1.log": {
+      "bytes": 902,
+      "sha256": "89aea378b4a0be6d1175c6cce912f68d5ae262fd3579425b4d7e7247d563e13b"
+    },
+    "logs/final-regressions-polynomial-helas-20261021-v1.log": {
+      "bytes": 13833,
+      "sha256": "613c7dfe516b848e868b351ec5db4133744ac7e721e2c98ac30ac6ca43ef9f41"
+    },
+    "logs/incomplete-initial-broad-suite-20261020.log.gz": {
+      "bytes": 90122,
+      "sha256": "4daed44aa959e8872fef2195ea408926fd687e6dc1299e44f265579fa1f5a238"
+    },
+    "validation.json": {
+      "bytes": 239869,
+      "sha256": "08a581a49ecf24f0178a2dc049072fbe67777142f6552bf1beffb2775ca8ef5e"
+    },
+    "verifier-controls.json": {
+      "bytes": 312,
+      "sha256": "312aa2dccc73bf16d7483359495bf412a680a0006462ad7410dd38bb40e4dc8f"
+    },
+    "verify_fixture_review.py": {
+      "bytes": 4026,
+      "sha256": "4607a1c1d69d24384bd86c3a3b77606b7eb8e28fcf50fc8c101efb1239cdf969"
+    },
+    "verify_seal.py": {
+      "bytes": 1237,
+      "sha256": "45cff31a597cd95d48a68774d894acc45cfb3352ce3d8968b4ce1f5b86b76883"
+    },
+    "verify_validation.py": {
+      "bytes": 6878,
+      "sha256": "57fe7a762474933d5cb00394a07bed281ae9d681d718e6cd937fcd7aec68918c"
+    }
+  },
+  "identity_sha256": "20a5bd608b3bf4dc0e5590d7365b5cf148c9ee4d5c90e51ce49a1751cc2dbd7e",
+  "schema": 1
+}
