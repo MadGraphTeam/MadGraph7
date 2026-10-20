@@ -58,7 +58,7 @@ fn monomial_value(q: &[Rational; 4], exponents: [u32; 4]) -> Vec<Rational> {
     let mut value = Rational::from(1);
     for (component, &power) in q.iter().zip(&exponents) {
         for _ in 0..power {
-            value = value * component;
+            value *= component;
         }
     }
     let mut out = zeros(1);
@@ -119,7 +119,7 @@ fn run_case(case: Case, rng: &mut Lcg) {
     let mut sparse_entries = Vec::new();
     let mut sparse_values = Vec::new();
     for (k, entry) in dense_vertex.entries().iter().enumerate() {
-        if rng.next() % 3 == 0 {
+        if rng.next().is_multiple_of(3) {
             continue;
         }
         let value = rng.lane_vectors(1);
