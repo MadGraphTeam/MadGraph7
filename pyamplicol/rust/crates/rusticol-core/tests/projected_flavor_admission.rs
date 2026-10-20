@@ -154,6 +154,16 @@ fn actual_projected_flavor_descriptors_use_existing_native_validators() {
     );
     rejected_mutation(
         &original,
+        "nonidentity family advertised as identity-only",
+        "projected flavour transport requires identity histories or complete colour families",
+        |plan| {
+            alter_all_directed(plan, |directed| {
+                directed["convention"] = json!(PROJECTED_IDENTITY_CONVENTION);
+            });
+        },
+    );
+    rejected_mutation(
+        &original,
         "foreign family accuracy",
         "invalid complete directed colour family descriptor",
         |plan| {
