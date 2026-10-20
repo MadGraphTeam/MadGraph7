@@ -19,16 +19,16 @@ from pyamplicol.models.loading import compile_model_source
 
 from .test_loop_generation_public_runtime import _card
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def public_spin_artifact(tmp_path_factory):
-    source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    reference = os.environ.get("PYAMPLICOL_RECOLA_SPIN_REFERENCE")
+def public_spin_artifact(loop_sm_ufo, loop_reference, tmp_path_factory):
+    source = str(loop_sm_ufo)
+    rows = loop_reference("spin-recola-control")["rows"]
     retained = os.environ.get("PYAMPLICOL_PUBLIC_SPIN_ARTIFACT")
-    if retained and reference:
-        return Path(retained), json.loads(Path(reference).read_text())["rows"]
-    if not source or not reference:
-        pytest.skip("requires source loop_sm and independent Recola spin controls")
+    if retained:
+        return Path(retained), rows
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native
@@ -83,7 +83,7 @@ def public_spin_artifact(tmp_path_factory):
     # Normal staged validation checks every declared source class and Laurent
     # order with generic literal complex vectors. No native identity is patched.
     print(f"PUBLISHED_PUBLIC_SPIN {output}", flush=True)
-    return output, json.loads(Path(reference).read_text())["rows"]
+    return output, rows
 
 
 def _real(value):

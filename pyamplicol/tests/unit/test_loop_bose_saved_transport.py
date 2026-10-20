@@ -2,7 +2,6 @@
 """Actual admitted Bose members through the current saved execution boundary."""
 
 import json
-import os
 from decimal import localcontext
 from pathlib import Path
 
@@ -12,12 +11,12 @@ from .test_loop_portable import _rewrite
 from .test_loop_projected_flavor_runtime import _close_values
 from .test_loop_projected_flavor_transport import _compare
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def saved_bose():
-    location = os.environ.get("PYAMPLICOL_BOSE_TRANSPORT_FIXTURE")
-    if not location:
-        pytest.skip("requires the independently prepared admitted Bose pair")
+def saved_bose(saved_loop_fixture):
+    location = str(saved_loop_fixture("bose-permutation"))
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native

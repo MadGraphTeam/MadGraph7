@@ -35,6 +35,20 @@ Published dependencies are unchanged. Normal release builds still target
 `manylinux_2_28` and must run in the appropriate build environment; a host wheel
 is not a substitute for the audited release artifact.
 
+## One-loop test suite
+
+Loop tests carry one cost marker: `loop_fast` (unit and saved-control checks),
+`loop_physics` (generation and provider-reference comparisons) or `loop_nightly`
+(the longest generation and precision controls); generic direct-R2 tests are
+additionally `deferred_direct_r2` and are deselected unless named in `-m`. Run
+`just test-loop loop_fast` (or another marker expression) after staging the
+native runtime, with `SYMBOLICA_LICENSE` set; without it loop tests skip rather
+than abort. `tests/conftest.py` resolves external inputs once: UFO models and
+MadGraph default to the reference checkout/workspace and are overridden by the
+documented `PYAMPLICOL_*` variables, saved PACBIN/artifact controls come from
+`PYAMPLICOL_LOOP_SAVED_FIXTURES` (default `<workspace>/fixtures`), and provider
+references are the committed `tests/fixtures/loop/*.json`, whose absence fails.
+
 ## Focused SymJIT dependency tests
 
 The source checkout includes small opt-in numerical/compiler regressions in

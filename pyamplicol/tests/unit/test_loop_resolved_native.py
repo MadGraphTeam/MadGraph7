@@ -13,6 +13,8 @@ from .test_loop_artifact_writer import source_process, target_metadata, write_ar
 from .test_loop_physical_model_orders import catalogue, control
 from .test_loop_source_portable import source_control
 
+pytestmark = pytest.mark.loop_physics
+
 # These fixtures prepare actual source currents once; evaluation below must not
 # depend on any generation object or repeated symbolic lowering.
 __all__ = ["catalogue", "control", "source_control", "target_metadata"]
@@ -117,8 +119,10 @@ def test_saved_native_resolved_total_and_helicity_poles(
     assert permuted.born_values == (resolved.born_values[2], resolved.born_values[0])
 
 
-def test_native_sparse_point_ids_and_capability_boundary(resolved_artifact):
-    import _loop_reduction as native
+def test_native_sparse_point_ids_and_capability_boundary(
+    loop_native, resolved_artifact
+):
+    native = loop_native
 
     path, points = resolved_artifact
     runtime = native.NativeVirtualRuntime(str(path), process="gg")
@@ -152,9 +156,9 @@ def test_native_sparse_point_ids_and_capability_boundary(resolved_artifact):
     ],
 )
 def test_resolved_plan_malformed_capabilities(
-    resolved_plan, tmp_path, mutation, message
+    loop_native, resolved_plan, tmp_path, mutation, message
 ):
-    import _loop_reduction as native
+    native = loop_native
 
     from .test_loop_portable import _rewrite
 
@@ -165,8 +169,8 @@ def test_resolved_plan_malformed_capabilities(
         native.PortableLoopPlan(str(destination))
 
 
-def test_public_metadata_must_match_resolved_plan(resolved_plan):
-    import _loop_reduction as native
+def test_public_metadata_must_match_resolved_plan(loop_native, resolved_plan):
+    native = loop_native
 
     path, _ = resolved_plan
     process = source_process(path)
@@ -198,8 +202,8 @@ def mixed_plan(request, tmp_path_factory):
     return path
 
 
-def test_native_mixed_order_helicity_axes(mixed_plan):
-    import _loop_reduction as native
+def test_native_mixed_order_helicity_axes(loop_native, mixed_plan):
+    native = loop_native
 
     runtime = native.NativeLoopProgram(str(mixed_plan), reduction_engine="fast")
     plan = json.loads(runtime.metadata_json())
@@ -261,6 +265,7 @@ def test_resolved_failure_names_physical_point_and_helicity(resolved_artifact):
         arithmetic="double",
         precision=None,
         evaluate_partial=lambda *args, **kwargs: SimpleNamespace(
+            requested_point_ids=list(range(2)),
             point_ids=list(range(2)),
             r2_strategy="model",
             failures=[],
@@ -298,11 +303,11 @@ def test_resolved_parameter_update_clear_and_retained_results(resolved_artifact)
 
 
 def test_native_nonfinite_resolved_projection_retains_physical_id(
-    resolved_plan, tmp_path
+    loop_native, resolved_plan, tmp_path
 ):
     import io
 
-    import _loop_reduction as native
+    native = loop_native
     from symbolica import E, S
 
     from pyamplicol.generation.evaluator_container import (

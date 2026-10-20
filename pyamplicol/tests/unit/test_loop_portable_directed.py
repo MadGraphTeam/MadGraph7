@@ -11,6 +11,8 @@ import pytest
 from .test_loop_portable import _rewrite
 from .test_loop_source_correlations import source_directed as source_directed
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
 def directed_artifact(source_directed, tmp_path_factory):
@@ -36,9 +38,10 @@ def directed_artifact(source_directed, tmp_path_factory):
 
 
 def test_directed_descriptor_reuses_source_schedules_and_exact_states(
+    loop_native,
     directed_artifact,
 ):
-    native = pytest.importorskip("_loop_reduction")
+    native = loop_native
     _, prepared, ordinary, path = directed_artifact
     baseline = json.loads(native.PortableLoopPlan(str(ordinary)).metadata_json())
     loaded = native.PortableLoopPlan(str(path))
@@ -82,9 +85,9 @@ def test_directed_descriptor_reuses_source_schedules_and_exact_states(
     [("double", None), ("double-double", None), ("arbitrary", 70)],
 )
 def test_cold_directed_assembly_keeps_complex_terms_without_ordinary_execution(
-    directed_artifact, arithmetic, precision
+    loop_native, directed_artifact, arithmetic, precision
 ):
-    native = pytest.importorskip("_loop_reduction")
+    native = loop_native
     from pyamplicol.loops.portable import PortableLoopPlan
 
     source, prepared, _, path = directed_artifact
@@ -161,7 +164,10 @@ def test_cold_directed_assembly_keeps_complex_terms_without_ordinary_execution(
     [
         (lambda d: d["directed_projection"].update(kind="ordinary-real"), "kind"),
         (lambda d: d["directed_projection"]["families"].pop(), "family"),
-        (lambda d: d["directed_projection"]["histories"].pop(), "shape"),
+        (
+            lambda d: d["directed_projection"]["histories"].pop(),
+            "dual Born weight key out of range",
+        ),
         (
             lambda d: d["directed_projection"]["color_legs"][0].__setitem__(0, 9),
             "ports",
@@ -177,9 +183,9 @@ def test_cold_directed_assembly_keeps_complex_terms_without_ordinary_execution(
     ],
 )
 def test_bad_directed_descriptor_fails_at_shared_reader(
-    directed_artifact, tmp_path, mutation, message
+    loop_native, directed_artifact, tmp_path, mutation, message
 ):
-    native = pytest.importorskip("_loop_reduction")
+    native = loop_native
     target = tmp_path / "bad.pacbin"
     _rewrite(directed_artifact[-1], target, mutation)
     with pytest.raises(ValueError, match=message):
@@ -218,12 +224,14 @@ def test_writer_preserves_owner_and_unsupported_domain_boundaries(
         write_loop_pacbin(
             source.virtual, destination, directed=replace(prepared, plan=object())
         )
-    with pytest.raises(NotImplementedError, match="spin/resolved"):
+    with pytest.raises(NotImplementedError, match="inclusive physical helicities"):
         write_loop_pacbin(source.virtual, destination, directed=prepared, resolved=True)
     spin = replace(prepared, bare=replace(prepared.bare, spin_layout=object()))
-    with pytest.raises(NotImplementedError, match="spin/resolved"):
+    with pytest.raises(NotImplementedError, match="inclusive physical helicities"):
         write_loop_pacbin(source.virtual, destination, directed=spin)
+    # Projected directed plans are supported (8b673992); a projected accuracy
+    # without its formal colour projection is rejected before writing.
     monkeypatch.setattr(source.virtual.bare, "color_accuracy", "lc", raising=False)
-    with pytest.raises(NotImplementedError, match="projected-colour"):
+    with pytest.raises(ValueError, match="no formal projection"):
         write_loop_pacbin(source.virtual, destination, directed=prepared)
     assert not destination.exists()

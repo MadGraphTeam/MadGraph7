@@ -2,7 +2,6 @@
 """Graph-free publication and public complex transport of a real source plan."""
 
 import json
-import os
 from dataclasses import replace
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -13,14 +12,14 @@ from pyamplicol import CorrelatedRequest, CorrelatedValue, Runtime
 from pyamplicol.api import VirtualArithmeticSpec, VirtualStabilityPolicy
 from pyamplicol.api.errors import CompatibilityError, EvaluationError
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def artifact(tmp_path_factory):
-    plan_path = os.environ.get("PYAMPLICOL_NATIVE_DIRECTED_PACBIN")
-    model_path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not plan_path or not model_path:
-        pytest.skip("set the retained directed plan and original loop_sm UFO paths")
-    native = pytest.importorskip("_loop_reduction")
+def artifact(saved_loop_fixture, loop_sm_ufo, loop_native, tmp_path_factory):
+    plan_path = str(saved_loop_fixture("source-portable-directed/uudd-source.pacbin"))
+    model_path = str(loop_sm_ufo)
+    native = loop_native
     from pyamplicol.api.requests import ModelSource
     from pyamplicol.config import resolve_config
     from pyamplicol.generation.artifact_writer import (

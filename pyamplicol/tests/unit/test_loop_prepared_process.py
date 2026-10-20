@@ -2,7 +2,6 @@
 """Complete arithmetic views reuse cold physics and own numerical workspaces."""
 
 import json
-import os
 from dataclasses import FrozenInstanceError
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -10,16 +9,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def controls():
+def controls(loop_sm_ufo, loop_native):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("licensed dependency generation required")
-    pytest.importorskip("_loop_reduction")
-    model_path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not model_path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE")
+    model_path = str(loop_sm_ufo)
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.loops.physical_counterterms import (
         distinct_flavour_model_virtual_program,
@@ -208,14 +206,14 @@ def test_color_projection_replaces_retained_weight_instructions(controls):
     assert replay.virtual.to_decimal() == before.virtual.to_decimal()
 
 
-def test_retained_external_fields_have_fresh_scalar_workspaces(monkeypatch, controls):
+def test_retained_external_fields_have_fresh_scalar_workspaces(
+    monkeypatch, controls, loop_sm_ufo
+):
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.loops.physical_counterterms import top_pair_model_virtual_program
     from pyamplicol.models.loop_import import load_raw_loop_model
 
-    source = build_loop_model(
-        load_raw_loop_model(os.environ["PYAMPLICOL_NLO_UFO_REFERENCE"])
-    )
+    source = build_loop_model(load_raw_loop_model(loop_sm_ufo))
     program = top_pair_model_virtual_program(source, reduction_engine="fast")
     path = (
         Path(__file__).resolve().parents[2] / "tools/loop_reference/top_pair_qcd.json"
@@ -263,12 +261,11 @@ def test_standalone_formal_projection_cannot_lose_its_scope_in_a_view(
 
 
 @pytest.fixture(scope="module")
-def direct_control():
+def direct_control(loop_reference_path, loop_sm_ufo, loop_native):
     symbolica = pytest.importorskip("symbolica")
-    pytest.importorskip("_loop_reduction")
-    source_path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    reference_path = os.environ.get("PYAMPLICOL_GG_COMPONENT_REFERENCE")
-    if not symbolica.is_licensed() or not source_path or not reference_path:
+    source_path = str(loop_sm_ufo)
+    reference_path = str(loop_reference_path("gluon-scattering-component-control"))
+    if not symbolica.is_licensed():
         pytest.skip("licensed loop_sm and independent gg component reference required")
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.loops.physical_counterterms import (
@@ -297,6 +294,7 @@ def direct_control():
     return direct, model, points, json.loads(Path(reference_path).read_text())
 
 
+@pytest.mark.deferred_direct_r2
 def test_direct_views_reuse_dimensional_instructions_and_fixed_strategy(
     direct_control, monkeypatch
 ):
@@ -442,6 +440,7 @@ def test_direct_views_reuse_dimensional_instructions_and_fixed_strategy(
     assert tuple(value.to_decimal() for value in batches(baseline)) == baseline_values
 
 
+@pytest.mark.deferred_direct_r2
 def test_direct_retained_scope_rejects_incomplete_or_mixed_completion(direct_control):
     from types import SimpleNamespace
 

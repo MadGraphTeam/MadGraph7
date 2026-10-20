@@ -12,6 +12,8 @@ import pytest
 from .test_loop_portable import _batches
 from .test_loop_source_portable import _forbid_source, source_control  # noqa: F401
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
 def native_source_control(request):
@@ -37,9 +39,16 @@ def native_source_control(request):
     ],
 )
 def test_native_source_complete_snapshot_and_rebind(
-    native_source_control, monkeypatch, arithmetic, precision, engine, tolerance, bit
+    loop_native,
+    native_source_control,
+    monkeypatch,
+    arithmetic,
+    precision,
+    engine,
+    tolerance,
+    bit,
 ):
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     from pyamplicol.loops.portable import PortableLoopPlan
 
     path, points = native_source_control

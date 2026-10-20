@@ -13,17 +13,15 @@ import pytest
 
 from .test_loop_portable import _batches, _forbid_producer, _rewrite
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def source_control(tmp_path_factory):
+def source_control(loop_sm_ufo, loop_native, tmp_path_factory):
     symbolica = pytest.importorskip("symbolica")
-    backend = pytest.importorskip("_loop_reduction")
-    source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if (
-        not source
-        or not symbolica.is_licensed()
-        or not hasattr(backend, "PortableLoopPlan")
-    ):
+    backend = loop_native
+    source = str(loop_sm_ufo)
+    if not symbolica.is_licensed() or not hasattr(backend, "PortableLoopPlan"):
         pytest.skip("licensed source generation and native portable bridge required")
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.portable import write_loop_pacbin
@@ -83,7 +81,13 @@ def _forbid_source(monkeypatch):
     ],
 )
 def test_source_owner_complete_roundtrip(
-    source_control, monkeypatch, arithmetic, precision, engine, tolerance
+    loop_reference_path,
+    source_control,
+    monkeypatch,
+    arithmetic,
+    precision,
+    engine,
+    tolerance,
 ):
     from pyamplicol.loops.portable import PortableLoopPlan
 
@@ -174,29 +178,26 @@ def test_source_owner_complete_roundtrip(
     with pytest.raises(TypeError, match="mapping"):
         plan.bind(parameters=[("aS", "0.1")])
     if arithmetic == "double":
-        reference_path = os.environ.get("PYAMPLICOL_GG_COMPONENT_REFERENCE")
-        if reference_path:
-            view.update_parameters(original.source_bare.state.overrides)
-            result = view.evaluate_ordered_native(points, ["1000000"] * 3)
-            capture = json.loads(Path(reference_path).read_text())
-            for name, key in (
-                ("bare", "bare"),
-                ("uv", "uv"),
-                ("r2", "r2"),
-                ("virtual", "full"),
-                ("uv_local", "uv_vertex"),
-                ("uv_external_fields", "wf"),
-            ):
-                values = np.asarray(
-                    getattr(result, name).to_decimal(), dtype=float
-                ).reshape(3, 3, 2)[:, :, 0]
-                reference_values = [
-                    [row[key][p] for p in ("finite", "single_pole", "double_pole")]
-                    for row in capture["rows"]
-                ]
-                np.testing.assert_allclose(
-                    values, reference_values, rtol=5e-11, atol=1e-10
-                )
+        reference_path = str(loop_reference_path("gluon-scattering-component-control"))
+        view.update_parameters(original.source_bare.state.overrides)
+        result = view.evaluate_ordered_native(points, ["1000000"] * 3)
+        capture = json.loads(Path(reference_path).read_text())
+        for name, key in (
+            ("bare", "bare"),
+            ("uv", "uv"),
+            ("r2", "r2"),
+            ("virtual", "full"),
+            ("uv_local", "uv_vertex"),
+            ("uv_external_fields", "wf"),
+        ):
+            values = np.asarray(
+                getattr(result, name).to_decimal(), dtype=float
+            ).reshape(3, 3, 2)[:, :, 0]
+            reference_values = [
+                [row[key][p] for p in ("finite", "single_pole", "double_pole")]
+                for row in capture["rows"]
+            ]
+            np.testing.assert_allclose(values, reference_values, rtol=5e-11, atol=1e-10)
 
 
 @pytest.mark.parametrize(

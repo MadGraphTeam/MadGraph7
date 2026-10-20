@@ -25,6 +25,8 @@ from pyamplicol.config import resolve_config
 
 from .test_loop_generation_public_runtime import _card
 
+pytestmark = pytest.mark.loop_nightly
+
 # The opt-in fixture keeps source owners for diagnostic follow-ups in an
 # interactive research process; saved numerical controls use ordinary PACBIN.
 _LIVE_SOURCE_PAIR = None
@@ -48,10 +50,8 @@ def _vectors():
 
 
 @pytest.fixture(scope="module")
-def mapped_sources(tmp_path_factory):
-    source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not source:
-        pytest.skip("actual complete source-model fixture required")
+def mapped_sources(loop_sm_ufo, tmp_path_factory):
+    source = str(loop_sm_ufo)
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.generation import loop_service

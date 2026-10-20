@@ -15,6 +15,8 @@ from .test_loop_massive_vector_sources import (
     test_charged_three_state_sources_and_exact_replay as _check_three_states,
 )
 
+pytestmark = pytest.mark.loop_physics
+
 __all__ = ["projected_massive"]
 
 

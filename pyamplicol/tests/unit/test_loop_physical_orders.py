@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import replace
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -16,13 +15,15 @@ from pyamplicol.loops.graphs import build_loop_process
 from pyamplicol.loops.orders import BornLoopPair, compile_order_plan
 from pyamplicol.loops.physical_process import NativeBareProcessProgram
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def native():
+def native(loop_native):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("native generation requires a licensed Symbolica runtime")
-    return pytest.importorskip("_loop_reduction")
+    return loop_native
 
 
 @pytest.fixture(scope="module")
@@ -115,7 +116,7 @@ def _targets(point):
     ],
 )
 def test_order_axes_born_and_universal_double_poles(
-    setup, native, arithmetic, precision, engine, tolerance
+    loop_reference_path, setup, native, arithmetic, precision, engine, tolerance
 ):
     program = _program(
         setup,
@@ -217,50 +218,49 @@ def test_order_axes_born_and_universal_double_poles(
     assert empty.born.shape == (0, 3, 2) and empty.virtual.shape == (0, 4, 3, 2)
     assert empty.statuses == ()
     assert empty.sum_orders().virtual.shape == (0, 3, 2)
-    reference_path = os.environ.get("PYAMPLICOL_MIXED_UUDD_BARE_REFERENCE")
-    if reference_path:
-        reference = json.loads(Path(reference_path).read_text())
-        assert reference["native_ct_amplitudes"] == 0
-        for index, order in reference["born_orders"].items():
-            np.testing.assert_allclose(
-                result.born_order(_order(order["QCD"], order["QED"]))[:, 0].astype(
-                    float
-                ),
-                [row["born"][index] for row in reference["rows"]],
-                rtol=3e-12,
-                atol=1e-15,
-            )
-        for index, order in reference["loop_orders"].items():
-            np.testing.assert_allclose(
-                result.virtual_order(_order(order["QCD"], order["QED"]))[
-                    :, :, 0
-                ].astype(float),
-                [
-                    [
-                        row["bare"][index][pole]
-                        for pole in ("finite", "single_pole", "double_pole")
-                    ]
-                    for row in reference["rows"]
-                ],
-                rtol=3e-11,
-                atol=1e-15,
-            )
+    reference_path = str(loop_reference_path("mixed-uudd-bare-control"))
+    reference = json.loads(Path(reference_path).read_text())
+    assert reference["native_ct_amplitudes"] == 0
+    for index, order in reference["born_orders"].items():
         np.testing.assert_allclose(
-            result.sum_orders().virtual[:, :, 0].astype(float),
-            [row["total"][1:] for row in reference["rows"]],
+            result.born_order(_order(order["QCD"], order["QED"]))[:, 0].astype(float),
+            [row["born"][index] for row in reference["rows"]],
+            rtol=3e-12,
+            atol=1e-15,
+        )
+    for index, order in reference["loop_orders"].items():
+        np.testing.assert_allclose(
+            result.virtual_order(_order(order["QCD"], order["QED"]))[:, :, 0].astype(
+                float
+            ),
+            [
+                [
+                    row["bare"][index][pole]
+                    for pole in ("finite", "single_pole", "double_pole")
+                ]
+                for row in reference["rows"]
+            ],
             rtol=3e-11,
             atol=1e-15,
         )
+    np.testing.assert_allclose(
+        result.sum_orders().virtual[:, :, 0].astype(float),
+        [row["total"][1:] for row in reference["rows"]],
+        rtol=3e-11,
+        atol=1e-15,
+    )
 
 
-def test_explicit_pair_masks_include_both_mixed_interferences(setup, native):
+def test_explicit_pair_masks_include_both_mixed_interferences(
+    loop_reference_path, setup, native
+):
     catalogue, _, _, points = setup
     options = dict(reduction_engine="fast", coefficient_engine="jit")
     full = _program(setup, native, **options).evaluate_ordered_decimal(
         points, ["1000000"] * 3, model_values=["0.118", "132.507", "173"]
     )
     contributions = []
-    reference_path = os.environ.get("PYAMPLICOL_MIXED_UUDD_BARE_REFERENCE")
+    reference_path = str(loop_reference_path("mixed-uudd-bare-control"))
     reference = (
         None if reference_path is None else json.loads(Path(reference_path).read_text())
     )

@@ -26,6 +26,8 @@ from pyamplicol.config import R2Strategy
 from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
 from pyamplicol.loops.strategy import R2Selection
 
+pytestmark = pytest.mark.loop_fast
+
 
 def _physics():
     return ProcessPhysics(

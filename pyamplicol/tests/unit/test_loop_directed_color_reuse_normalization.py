@@ -12,6 +12,8 @@ from pyamplicol.loops.directed_color_projection import reproject_directed_color_
 from .test_loop_directed_color_reuse import algebra as algebra
 from .test_loop_directed_color_reuse import graded as graded
 
+pytestmark = pytest.mark.loop_fast
+
 
 def _entries(rows):
     if isinstance(rows, tuple):

@@ -12,6 +12,8 @@ from pyamplicol.generation.correlated import correlated_configuration
 from pyamplicol.generation.loop_service import _graph_plan, _order_bounds
 from pyamplicol.generation.service import GenerationBackend
 
+pytestmark = pytest.mark.loop_fast
+
 
 def loop_config(**sections):
     data = {

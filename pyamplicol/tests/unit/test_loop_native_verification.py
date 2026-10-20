@@ -9,11 +9,13 @@ import pytest
 from .test_loop_artifact_writer import source_process, target_metadata, write_artifact
 from .test_loop_native_failures import source_plan
 
+pytestmark = pytest.mark.loop_physics
+
 __all__ = ["source_plan", "target_metadata"]
 
 
-def test_exact_scale_subset_rescue_and_snapshot_updates(source_plan):
-    import _loop_reduction as native
+def test_exact_scale_subset_rescue_and_snapshot_updates(loop_native, source_plan):
+    native = loop_native
 
     path, points = source_plan
     runtime = native.NativeLoopProgram(str(path), reduction_engine="fast")
@@ -73,8 +75,10 @@ def test_exact_scale_subset_rescue_and_snapshot_updates(source_plan):
 
 
 @pytest.mark.parametrize("resolved", [False, True])
-def test_verification_empty_all_failed_and_unattainable_output(source_plan, resolved):
-    import _loop_reduction as native
+def test_verification_empty_all_failed_and_unattainable_output(
+    loop_native, source_plan, resolved
+):
+    native = loop_native
 
     path, points = source_plan
     runtime = native.NativeLoopProgram(str(path), reduction_engine="fast")
@@ -115,8 +119,8 @@ def test_verification_empty_all_failed_and_unattainable_output(source_plan, reso
         assert json.loads(accepted.diagnostics_json)[0]["status"] == "rescued"
 
 
-def test_actual_precision_growth_and_tolerances_are_required(source_plan):
-    import _loop_reduction as native
+def test_actual_precision_growth_and_tolerances_are_required(loop_native, source_plan):
+    native = loop_native
 
     path, _ = source_plan
     runtime = native.NativeLoopProgram(str(path), arithmetic="double-double")
@@ -174,10 +178,12 @@ def test_public_typed_verification_and_clear(source_plan, tmp_path, target_metad
     assert error.value.verification[0].status == "accuracy-not-established"
 
 
-def test_all_precision_attempts_fail_without_placeholder_values(source_plan, tmp_path):
+def test_all_precision_attempts_fail_without_placeholder_values(
+    loop_native, source_plan, tmp_path
+):
     import io
 
-    import _loop_reduction as native
+    native = loop_native
     from symbolica import E, S
 
     from pyamplicol.generation.evaluator_container import (
@@ -247,6 +253,7 @@ def test_all_precision_attempts_fail_without_placeholder_values(source_plan, tmp
     ],
 )
 def test_verification_preserves_requested_high_precision_carrier(
+    loop_native,
     source_plan,
     arithmetic,
     precision,
@@ -254,7 +261,7 @@ def test_verification_preserves_requested_high_precision_carrier(
     rtol,
     atol,
 ):
-    import _loop_reduction as native
+    native = loop_native
 
     path, points = source_plan
     runtime = native.NativeLoopProgram(

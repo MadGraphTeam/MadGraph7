@@ -9,6 +9,8 @@ from pyamplicol.loops.graphs import build_loop_process
 from pyamplicol.loops.kinematics import build_loop_kinematics
 from pyamplicol.loops.recurrence import build_open_loop_recurrence
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
 def native():
@@ -125,14 +127,21 @@ def test_routed_kinematics_match_native_denominators_and_family_map(
     if massive:
         assert all(mass != s.E("0") for mass in plans[0].masses_squared)
     else:
-        assert plans[0].masses_squared == (s.E("0"),) * plan.propagators
+        # The dependency's qcd_qed model gives the u quark a symbolic mass; only
+        # the gluon propagator of this vertex correction is massless.
+        u_mass = native[1].Model.qcd_qed().particle("u").mass ** 2
+        assert sorted(map(str, plans[0].masses_squared)) == sorted(
+            map(str, (u_mass, u_mass, s.E("0")))
+        )
 
 
-def test_exact_invariant_input_plan_preserves_lightlike_relations(native, processes):
+def test_exact_invariant_input_plan_preserves_lightlike_relations(
+    loop_native, native, processes
+):
     s, _, _ = native
     recurrence = build_open_loop_recurrence(processes["dy"].loops[0])
     plan = build_loop_kinematics(recurrence)
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     if not hasattr(backend, "ExactPolynomialEvaluator"):
         pytest.skip("exact native kinematics evaluator not built")
     from decimal import Decimal, localcontext

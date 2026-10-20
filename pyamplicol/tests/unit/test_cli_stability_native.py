@@ -3,7 +3,6 @@
 
 import io
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -11,12 +10,12 @@ import pytest
 
 from pyamplicol.cli import run_cli
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def retained():
-    directory = os.environ.get("PYAMPLICOL_CLI_STABILITY_FIXTURES")
-    if directory is None:
-        pytest.skip("set PYAMPLICOL_CLI_STABILITY_FIXTURES to retained loop fixtures")
+def retained(saved_loop_fixtures):
+    directory = str(saved_loop_fixtures)
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native

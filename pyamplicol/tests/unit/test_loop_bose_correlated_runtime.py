@@ -7,7 +7,6 @@ alone cannot detect consistently omitting both the momentum and source action.
 """
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -18,12 +17,12 @@ from .test_loop_physical_correlations import _close
 from .test_loop_portable import _rewrite
 from .test_loop_projected_flavor_runtime import _close_values
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def saved_bose_sources():
-    location = os.environ.get("PYAMPLICOL_BOSE_CORRELATED_FIXTURE")
-    if not location:
-        pytest.skip("requires the actual admitted Bose source/history artifacts")
+def saved_bose_sources(saved_loop_fixture):
+    location = str(saved_loop_fixture("bose-correlated"))
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native

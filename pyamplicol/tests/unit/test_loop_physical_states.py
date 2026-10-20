@@ -11,6 +11,8 @@ from pyamplicol.loops.graphs import build_loop_process
 from pyamplicol.loops.physical_process import NativeBareProcessProgram
 from pyamplicol.loops.physical_states import ExternalStateLayout
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
 def dependencies():
@@ -239,9 +241,13 @@ def test_mixed_state_partial_failure_keeps_original_point_ids(
     )
     assert result.requested_point_ids == (41, 99, 72)
     assert result.batch.point_ids == [41, 72]
-    assert result.batch.lane_ids == [41 * 9 + i for i in range(9)] + [
-        72 * 9 + i for i in range(9)
-    ]
+    # Lane IDs are transient local helicity rows (039a1772); caller point IDs
+    # stay opaque and are recovered through the batch's lane-to-point map.
+    assert result.batch.lane_ids == [*range(9), *range(18, 27)]
+    assert result.batch.point_by_lane == {
+        **{lane: 41 for lane in range(9)},
+        **{lane: 72 for lane in range(18, 27)},
+    }
     assert result.failures and {failure.point_id for failure in result.failures} == {99}
     assert all(
         failure.stage == "external state preparation" for failure in result.failures

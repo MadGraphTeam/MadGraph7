@@ -18,6 +18,8 @@ from pyamplicol.models.loop_import import RawLoopModel, capture_raw_loop_model
 
 from .test_loop_model_declaration import _scheme
 
+pytestmark = pytest.mark.loop_fast
+
 
 def declaration():
     return LoopColorDeclaration(

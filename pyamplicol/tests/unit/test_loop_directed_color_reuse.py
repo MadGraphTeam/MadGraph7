@@ -19,6 +19,8 @@ from pyamplicol.loops.directed_color_projection import (
 
 from .test_loop_color_connections import algebra as _algebra
 
+pytestmark = pytest.mark.loop_physics
+
 BORN = (("QCD", 1),)
 LOOP = (("QCD", 3),)
 OTHER_BORN = (("QED", 1),)

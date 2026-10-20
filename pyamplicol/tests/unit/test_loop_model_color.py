@@ -7,6 +7,8 @@ import pytest
 
 from pyamplicol.loops.model_color import prepare_color_expression
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
 def hep():

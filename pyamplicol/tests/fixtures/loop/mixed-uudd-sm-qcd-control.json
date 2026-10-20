@@ -1,0 +1,256 @@
+{
+  "scope": "complete QCD correction to full SM QCD and EW Born currents",
+  "source": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0",
+  "ufo": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/models/loop_sm",
+  "unfiltered_model": true,
+  "born": 4,
+  "loops": 20,
+  "native_identified_loop_records": 18,
+  "loop_count_convention": "includes native diagram.multiplier; loop_sm identifies its exactly massless equivalent quark loops",
+  "loop_orders": {
+    "1": {
+      "QCD": 6,
+      "QED": 0
+    },
+    "2": {
+      "QCD": 4,
+      "QED": 2
+    },
+    "3": {
+      "QCD": 2,
+      "QED": 4
+    }
+  },
+  "UVCT_diagrams": 0,
+  "attached_CT_vertices": 35,
+  "retained_interaction_types": {
+    "base": 130,
+    "R2": 106,
+    "UVloop1eps": 58,
+    "UVloop": 42,
+    "UVmass": 3,
+    "UVmass1eps": 3
+  },
+  "particle_counterterms_preserved": true,
+  "split_order_configuration": "explicit native Process.split_orders=[QCD,QED]; graph selection unchanged",
+  "split_order_names": [
+    "QCD",
+    "QED"
+  ],
+  "process": "Process: u u~ > d d~ QCD<=4 QED<=4 [ virt = QCD ]",
+  "parameters": {
+    "alpha_s": "0.118",
+    "alpha_inverse": "132.507",
+    "mu_R": "1000",
+    "MT": "173",
+    "other_quark_and_charged_lepton_masses": "0",
+    "all_widths": "0",
+    "light_yukawas": "0"
+  },
+  "normalization": "native MadLoop raw interference; no alpha extraction; initial average36",
+  "provider_speed_claim": false,
+  "native_ct_amplitudes": 35,
+  "born_order_mapping": "native forward SOINDEX_FOR_SQUARED_ORDERS; MG3.7 inverse getter has an uninitialized misspelled COMMON",
+  "structural_zero_born_orders": [],
+  "born_orders": {
+    "1": {
+      "QCD": 4,
+      "QED": 0
+    },
+    "2": {
+      "QCD": 2,
+      "QED": 2
+    },
+    "3": {
+      "QCD": 0,
+      "QED": 4
+    }
+  },
+  "rows": [
+    {
+      "status": 216,
+      "accuracy": 1.2201610546979684e-16,
+      "born": {
+        "1": 0.8013367806451908,
+        "2": -2.0322878122576093,
+        "3": 3.0512301482522957
+      },
+      "full": {
+        "1": {
+          "finite": -0.19094989612756078,
+          "single_pole": -0.28421984016919477,
+          "double_pole": -0.08026310265110026,
+          "accuracy": 5.996528905609331e-16
+        },
+        "2": {
+          "finite": 1.313041990604555,
+          "single_pole": 0.7811563156803705,
+          "double_pole": 0.20355701776284274,
+          "accuracy": 5.798126613425666e-16
+        },
+        "3": {
+          "finite": -3.018755956775497,
+          "single_pole": -1.1476469718544264,
+          "double_pole": -0.3056158216076459,
+          "accuracy": 0.0
+        }
+      },
+      "total": [
+        1.820279116639877,
+        -1.896663862298503,
+        -0.6507104963432507,
+        -0.1823219064959034
+      ]
+    },
+    {
+      "status": 216,
+      "accuracy": 4.363005882754387e-16,
+      "born": {
+        "1": 0.6645231839496704,
+        "2": -0.828027887443747,
+        "3": 0.6675879817212743
+      },
+      "full": {
+        "1": {
+          "finite": -0.09815982119155314,
+          "single_pole": -0.19728572374154163,
+          "double_pole": -0.0665596461009124,
+          "accuracy": 4.600305681200277e-16
+        },
+        "2": {
+          "finite": 0.39577821941383795,
+          "single_pole": 0.2619126455461622,
+          "double_pole": 0.08293652423436904,
+          "accuracy": 2.2485457076455577e-16
+        },
+        "3": {
+          "finite": -0.49023535202273494,
+          "single_pole": -0.2032145391564421,
+          "double_pole": -0.06686662087617365,
+          "accuracy": 0.0
+        }
+      },
+      "total": [
+        0.5040832782271977,
+        -0.19261695380045013,
+        -0.1385876173518215,
+        -0.05048974274271702
+      ]
+    },
+    {
+      "status": 216,
+      "accuracy": 5.326016000855104e-15,
+      "born": {
+        "1": 0.48861998819828717,
+        "2": -0.13185747707632395,
+        "3": 0.0499113448753155
+      },
+      "full": {
+        "1": {
+          "finite": -0.025980329091194493,
+          "single_pole": -0.11157503975332589,
+          "double_pole": -0.04894091625067089,
+          "accuracy": 3.739263958993774e-15
+        },
+        "2": {
+          "finite": 0.04096755509582974,
+          "single_pole": 0.02953714316511755,
+          "double_pole": 0.013207044121163415,
+          "accuracy": 1.4920259298893937e-15
+        },
+        "3": {
+          "finite": -0.022403208769142962,
+          "single_pole": -0.010518702489311478,
+          "double_pole": -0.004999195711391757,
+          "accuracy": 0.0
+        }
+      },
+      "total": [
+        0.40667385599727873,
+        -0.007415982764507712,
+        -0.09255659907751981,
+        -0.04073306784089923
+      ]
+    }
+  ],
+  "points": [
+    [
+      [
+        "500",
+        "0",
+        "0",
+        "500"
+      ],
+      [
+        "500",
+        "0",
+        "0",
+        "-500"
+      ],
+      [
+        "500",
+        "300",
+        "0",
+        "400"
+      ],
+      [
+        "500",
+        "-300",
+        "0",
+        "-400"
+      ]
+    ],
+    [
+      [
+        "500",
+        "0",
+        "0",
+        "500"
+      ],
+      [
+        "500",
+        "0",
+        "0",
+        "-500"
+      ],
+      [
+        "500",
+        "0",
+        "400",
+        "300"
+      ],
+      [
+        "500",
+        "0",
+        "-400",
+        "-300"
+      ]
+    ],
+    [
+      [
+        "500",
+        "0",
+        "0",
+        "500"
+      ],
+      [
+        "500",
+        "0",
+        "0",
+        "-500"
+      ],
+      [
+        "500",
+        "-400",
+        "300",
+        "0"
+      ],
+      [
+        "500",
+        "400",
+        "-300",
+        "0"
+      ]
+    ]
+  ]
+}

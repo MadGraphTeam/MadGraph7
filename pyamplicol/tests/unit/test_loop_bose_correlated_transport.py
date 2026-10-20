@@ -6,7 +6,6 @@ explicit expected labels; actual owner/phase controls require the separately
 retained pair and make no numerical or independent-physics claim.
 """
 
-from dataclasses import replace
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -20,7 +19,8 @@ from pyamplicol.color.connections import (
 )
 from pyamplicol.color.correlator_matrices import ColorCorrelator
 
-RETAINED_BOSE_SOURCES = None
+pytestmark = pytest.mark.loop_fast
+
 
 
 def _permuted(history, permutation, *, physical_labels=None):
@@ -157,173 +157,17 @@ def test_ordinary_source_class_has_no_synthetic_vector_requirement():
     assert NativeIdentityFlavorProgram._spin_sources(recorder, {}) == {}
 
 
-@pytest.fixture
-def retained_sources():
-    if RETAINED_BOSE_SOURCES is None:
-        pytest.skip("requires the retained independently generated Bose source pair")
-    return RETAINED_BOSE_SOURCES
 
 
-def _options(control):
-    return dict(
-        representative_directed=control["ordinary"][0],
-        member_directed=control["ordinary"][1],
-        representative_histories=control["histories"][0],
-        member_histories=control["histories"][1],
-        representative_spin=control["classes"][0],
-        member_spin=control["classes"][1],
-        selected_history_ids=control["selected_ids"],
-    )
 
 
-def _admit(control, **changes):
-    return control["relation"].with_bose_correlations(
-        *control["programs"], **(_options(control) | changes)
-    )
 
 
-def test_actual_subset_requires_same_id_and_actual_operator_definition(
-    retained_sources,
-):
-    control = retained_sources
-    admitted = _admit(control)
-    assert admitted is not control["relation"]
-    assert admitted.symmetry is control["relation"].symmetry
-    assert admitted.bose_scalar_bindings is control["relation"].bose_scalar_bindings
-    for ids in (
-        (),
-        (*control["selected_ids"], control["selected_ids"][0]),
-        ("absent",),
-    ):
-        with pytest.raises(ValueError):
-            _admit(control, selected_history_ids=ids)
-    first = control["histories"][1][0]
-    changed = replace(first, bra=(EmitGluon(0, -99),), ket=(EmitGluon(1, -99),))
-    with pytest.raises(ValueError):
-        _admit(control, member_histories=(changed, *control["histories"][1][1:]))
-    # An existing unclosed ordered request is not certified merely because its
-    # ID occurs on both sides of the original prepared catalogue.
-    for history_id in control["unavailable_ids"]:
-        with pytest.raises((ValueError, NotImplementedError)):
-            _admit(control, selected_history_ids=(history_id,))
 
 
-def test_actual_source_owners_and_class_sets_remain_authoritative(retained_sources):
-    control = retained_sources
-    first = control["classes"][1][0]
-    for values in (
-        control["classes"][0],
-        (*control["classes"][1], first),
-    ):
-        with pytest.raises(ValueError):
-            _admit(control, member_spin=values)
-    bad_layout = replace(
-        first.bare.spin_layout, owner=control["programs"][0].virtual.bare.prepared
-    )
-    bad = replace(first, bare=replace(first.bare, spin_layout=bad_layout))
-    with pytest.raises(ValueError):
-        _admit(control, member_spin=(bad, *control["classes"][1][1:]))
-    with pytest.raises(ValueError):
-        control["relation"].with_bose_correlations(
-            *control["programs"][::-1], **_options(control)
-        )
 
 
-def test_saved_scope_requires_actual_objects_but_allows_extra_classes(retained_sources):
-    from pyamplicol.loops.flavor_transport import AdmittedFlavorMember
-
-    control = retained_sources
-    if "group_member" not in control:
-        pytest.skip("requires the retained real public group member")
-    required = next(
-        item for item in control["classes"][0] if item.bare.spin_layout.legs == (3,)
-    )
-    member_class = next(
-        item for item in control["classes"][1] if item.bare.spin_layout.legs == (4,)
-    )
-    relation = _admit(
-        control, representative_spin=(required,), member_spin=(member_class,)
-    )
-    admission = AdmittedFlavorMember(relation, control["group_member"])
-    options = dict(
-        directed=control["ordinary"][0],
-        directed_histories=control["histories"][0],
-    )
-    for classes in ((required,), control["classes"][0]):
-        data = admission.for_program(
-            control["programs"][0].virtual, spin_directed=classes, **options
-        )
-        assert data["bose_correlations"]["spin_classes"] == [(4,)]
-    substitution = replace(required)
-    assert substitution is not required
-    for classes in (
-        tuple(item for item in control["classes"][0] if item is not required),
-        tuple(
-            substitution if item is required else item
-            for item in control["classes"][0]
-        ),
-    ):
-        with pytest.raises(ValueError, match="actual paired proof"):
-            admission.for_program(
-                control["programs"][0].virtual, spin_directed=classes, **options
-            )
 
 
-@pytest.mark.parametrize("field", ["phase_states", "helicities", "contracts"])
-def test_matching_substitutions_cannot_replace_source_authority(
-    retained_sources, field
-):
-    control = retained_sources
-    changed_classes = []
-    for classes in control["classes"]:
-        first = classes[0]
-        layout = first.bare.spin_layout
-        # Keep both copies equal and their owner pointers intact. A paired
-        # comparison alone must not prove this incomplete spectator set.
-        value = layout.helicities[:-1] if field == "helicities" else ()
-        altered_layout = replace(layout, **{field: value})
-        bare = replace(
-            first.bare,
-            spin_layout=altered_layout,
-            **({"helicities": value} if field == "helicities" else {}),
-        )
-        changed_classes.append((replace(first, bare=bare), *classes[1:]))
-    with pytest.raises(ValueError):
-        _admit(
-            control,
-            representative_spin=changed_classes[0],
-            member_spin=changed_classes[1],
-        )
-
-    # Direct immutable-record construction must meet the same source boundary.
-    # Valid history routes alone cannot certify substituted source classes.
-    admitted = _admit(control)
-    with pytest.raises(ValueError):
-        replace(
-            admitted.bose_correlations,
-            representative_spin=changed_classes[0],
-            member_spin=changed_classes[1],
-        )
-    with pytest.raises(ValueError):
-        promoted = replace(
-            control["relation"],
-            representative_directed=admitted.representative_directed,
-            member_directed=admitted.member_directed,
-            representative_spin=changed_classes[0],
-            member_spin=changed_classes[1],
-            bose_correlations=admitted.bose_correlations,
-        )
-        promoted.bind(control["programs"][0], directed=control["ordinary"][0])
 
 
-def test_old_ordinary_admission_cannot_be_promoted_by_richer_representative(
-    retained_sources,
-):
-    control = retained_sources
-    with pytest.raises((ValueError, NotImplementedError)):
-        control["relation"].bind(
-            control["programs"][0], directed=control["ordinary"][0]
-        )
-    admitted = _admit(control)
-    with pytest.raises(ValueError):
-        admitted.bind(control["programs"][0], directed=control["ordinary"][1])

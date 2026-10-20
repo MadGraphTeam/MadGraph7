@@ -18,6 +18,8 @@ from pyamplicol.loops.physical_process import NativeBareProcessProgram
 from .test_loop_color_orbits import _expanded_metric
 from .test_loop_color_orbits import algebra as algebra
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture
 def formal_owner(algebra):

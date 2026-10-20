@@ -4,23 +4,21 @@
 from __future__ import annotations
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def source():
+def source(loop_gmu_ufo, loop_native):
     s = pytest.importorskip("symbolica")
     if not s.is_licensed():
         pytest.skip("source graph generation requires licensed Symbolica")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_EW_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_EW_UFO_REFERENCE to the full Gmu UFO")
+    path = str(loop_gmu_ufo)
     from pyamplicol.loops.covariant_model import build_covariant_structure
     from pyamplicol.models.loop_import import load_raw_loop_model
 

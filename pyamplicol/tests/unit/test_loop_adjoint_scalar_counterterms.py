@@ -1,20 +1,19 @@
 # SPDX-License-Identifier: 0BSD
 """Actual adjoint-scalar UFO bases; local conformance is not a scheme proof."""
 
-import os
 from dataclasses import replace
 
 import pytest
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def prepared():
+def prepared(sgluon_nlo_ufo):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("local source tensors require licensed Symbolica")
-    path = os.environ.get("PYAMPLICOL_SGLUON_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_SGLUON_UFO_REFERENCE to the converted NLO UFO")
+    path = str(sgluon_nlo_ufo)
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.models.loop_import import load_raw_loop_model
 

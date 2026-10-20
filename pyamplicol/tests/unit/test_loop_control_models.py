@@ -5,6 +5,8 @@ import json
 
 import pytest
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
 def dependencies():

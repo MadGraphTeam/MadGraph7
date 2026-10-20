@@ -16,6 +16,8 @@ from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
 from pyamplicol.loops.strategy import R2Selection
 
+pytestmark = pytest.mark.loop_fast
+
 QCD2 = (("QCD", 2),)
 QED2 = (("QED", 2),)
 SECTORS = (

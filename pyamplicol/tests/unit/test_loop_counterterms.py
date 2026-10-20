@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import replace
 from types import ModuleType, SimpleNamespace
 
@@ -21,6 +20,8 @@ from pyamplicol.loops.model_correspondence import (
 )
 from pyamplicol.loops.model_expressions import parse_exact_ufo
 from pyamplicol.models.loop_import import capture_raw_loop_model, load_raw_loop_model
+
+pytestmark = pytest.mark.loop_fast
 
 
 @pytest.fixture(scope="module")
@@ -419,10 +420,8 @@ def test_fingerprint_and_correction_selection_reject_mismatched_catalogues(hep):
         match_counterterms(prepared, process, foreign, selected_corrections=["QCD"])
 
 
-def test_real_loop_sm_drell_yan_selects_model_r2_without_uv(hep):
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if path is None:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to MadLoop loop_sm")
+def test_real_loop_sm_drell_yan_selects_model_r2_without_uv(loop_sm_ufo, hep):
+    path = str(loop_sm_ufo)
     source = build_loop_model(load_raw_loop_model(path))
     prepared = prepare_counterterm_model(source, hep.Model.qcd_qed())
     loops, ct = _catalogue(prepared)
@@ -529,10 +528,8 @@ def test_ordinary_correspondence_rejects_wrong_ports_scalar_or_missing_provenanc
         )
 
 
-def test_real_loop_sm_drell_yan_source_basis_correspondence(hep):
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if path is None:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to MadLoop loop_sm")
+def test_real_loop_sm_drell_yan_source_basis_correspondence(loop_sm_ufo, hep):
+    path = str(loop_sm_ufo)
     source = build_loop_model(load_raw_loop_model(path))
     tree = next(
         e

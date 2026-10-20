@@ -17,6 +17,8 @@ from .test_public_virtual_colour import _transport_backend
 from .test_public_virtual_spin import _runtime
 from .test_runtime_virtual_policy import _policy
 
+pytestmark = pytest.mark.loop_fast
+
 
 def _failure(point, *, directed=False):
     return VirtualFailureDiagnostic(

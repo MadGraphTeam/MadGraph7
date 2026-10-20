@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.mark.parametrize(
     "arithmetic,precision,tolerance",
@@ -16,9 +18,9 @@ import pytest
 )
 @pytest.mark.parametrize("directions", [1, 2, 3])
 def test_shared_weights_keep_orders_directions_families_and_native_rows(
-    arithmetic, precision, tolerance, directions
+    loop_native, arithmetic, precision, tolerance, directions
 ):
-    native = pytest.importorskip("_loop_reduction")
+    native = loop_native
     from symbolica import E
 
     from pyamplicol.loops.dual_weights import prepare_dual_born_weights

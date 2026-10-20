@@ -30,6 +30,8 @@ from pyamplicol.models.loop_declaration import (
 )
 from pyamplicol.models.loop_import import RawLoopModel, capture_raw_loop_model
 
+pytestmark = pytest.mark.loop_fast
+
 
 def _scheme() -> LoopSchemeDeclaration:
     return LoopSchemeDeclaration(

@@ -7,11 +7,13 @@ import pytest
 
 from pyamplicol.loops.family_projectors import bind_family_projector
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def native():
+def native(loop_native):
     pytest.importorskip("symbolica")
-    return pytest.importorskip("_loop_reduction")
+    return loop_native
 
 
 @pytest.fixture(scope="module")

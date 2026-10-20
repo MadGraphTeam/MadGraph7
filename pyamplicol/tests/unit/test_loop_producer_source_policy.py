@@ -15,6 +15,8 @@ from pyamplicol.loops.scalar_bindings import (
 )
 from tests.unit.test_loop_scale_bindings import source as scale_source
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture
 def source(tmp_path):

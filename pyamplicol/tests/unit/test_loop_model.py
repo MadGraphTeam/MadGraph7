@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 from fractions import Fraction
 from graphlib import CycleError
 from types import ModuleType, SimpleNamespace
@@ -16,6 +15,8 @@ from pyamplicol.loops.model_expressions import (
     parse_exact_ufo,
 )
 from pyamplicol.models.loop_import import capture_raw_loop_model, load_raw_loop_model
+
+pytestmark = pytest.mark.loop_fast
 
 
 @pytest.fixture(scope="module")
@@ -117,14 +118,10 @@ def test_formal_identities_do_not_replace_model_constants(symbolic):
 
 
 @pytest.fixture(scope="module")
-def qcd_model(symbolic):
+def qcd_model(loop_sm_ufo, symbolic):
     if not symbolic.is_licensed():
         pytest.skip("native local Feynman rules require licensed Symbolica")
-    source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if source is None:
-        pytest.skip(
-            "set PYAMPLICOL_NLO_UFO_REFERENCE to the local MadLoop loop_sm model"
-        )
+    source = str(loop_sm_ufo)
     from ufo_model_loader.model import Model
 
     ir = build_loop_model(load_raw_loop_model(source))

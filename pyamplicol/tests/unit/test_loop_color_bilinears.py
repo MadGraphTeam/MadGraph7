@@ -11,6 +11,8 @@ from pyamplicol.loops.color_bilinears import (
     external_color_tensor,
 )
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
 def algebra():

@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.loop_fast
+
 
 def test_source_endpoint_map_is_typed_simultaneous_and_involutive():
     pytest.importorskip("symbolica")

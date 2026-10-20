@@ -2,7 +2,6 @@
 """Retained directed instructions bind the actual source scalar/current owner."""
 
 import json
-import os
 from dataclasses import FrozenInstanceError, replace
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -19,13 +18,15 @@ from .test_loop_physical_correlations import (
 )
 from .test_loop_physical_counterterms import _uudd_born_uv
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def source_directed():
+def source_directed(loop_sm_ufo, loop_native):
     symbolica = pytest.importorskip("symbolica")
-    backend = pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path or not symbolica.is_licensed():
+    backend = loop_native
+    path = str(loop_sm_ufo)
+    if not symbolica.is_licensed():
         pytest.skip("licensed source generation and loop_sm reference required")
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.physical_model_correlations import NativeDirectedModelProgram

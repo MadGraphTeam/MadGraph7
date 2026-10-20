@@ -9,16 +9,34 @@ import pytest
 from pyamplicol.loops.flavor_transport import _bose_external_fields
 from pyamplicol.loops.wavefunction import match_external_field_counterterms
 
-# An existing source-only qualified owner supplies the real complete UFO rules.
-# The synthetic Born below tests index/multiset bookkeeping, not an amplitude.
-RETAINED_PLAN = None
+pytestmark = pytest.mark.loop_fast
+
+
+@pytest.fixture(scope="module")
+def source_plan(loop_sm_ufo):
+    """A graph-free loop_sm source owner supplying the real complete UFO rules."""
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+    from pyamplicol.loops.flavor_mappings import RetainedFlavorPlan
+    from pyamplicol.models.loop_import import load_raw_loop_model
+
+    prepared = prepare_loop_request_model(
+        load_raw_loop_model(loop_sm_ufo),
+        born_order_bounds={"QCD": 2, "QED": 0},
+        loop_order_bounds={"QCD": 4, "QED": 0},
+        fixed_parameters={"MB": "0"},
+    )
+    return RetainedFlavorPlan(
+        prepared.structure,
+        prepared.counterterms,
+        tuple(rule.name for rule in prepared.structure.native.vertex_rules),
+        ("QCD",),
+    )
 
 
 @pytest.fixture
-def field_control():
-    if RETAINED_PLAN is None:
-        pytest.skip("requires the retained graph-free loop-model source owner")
-    plan = RETAINED_PLAN
+def field_control(source_plan):
+    # The synthetic Born below tests index/multiset bookkeeping, not an amplitude.
+    plan = source_plan
     pdgs = (1, -1, 21, 21)
     native = plan.structure.native
     born = SimpleNamespace(

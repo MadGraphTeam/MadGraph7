@@ -15,13 +15,16 @@ from pyamplicol.cli.main import write_result
 
 from .test_public_virtual_colour import _transport_backend
 
+pytestmark = pytest.mark.loop_fast
+
 
 def _directed(monkeypatch):
     backend, handle = _transport_backend(monkeypatch, "full")
     backend._metadata["physics"].update(resolved=False, correlations=True)
-    backend._metadata["plan"]["directed_projection"] = {
-        "histories": [{"id": name, "bra": [], "ket": []} for name in ("born", "x")]
-    }
+    histories = [{"id": name, "bra": [], "ket": []} for name in ("born", "x")]
+    backend._metadata["plan"]["directed_projection"] = {"histories": histories}
+    # The native consumer reports the selected process's admitted subset (8a6cb89f).
+    backend._metadata["selected_correlations"]["histories"] = histories
     calls = []
 
     def batch(rows, width):

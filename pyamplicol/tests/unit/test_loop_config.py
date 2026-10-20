@@ -18,6 +18,8 @@ from pyamplicol.config import (
     resolve_config,
 )
 
+pytestmark = pytest.mark.loop_fast
+
 
 def test_auto_preserves_intent_and_resolves_contribution() -> None:
     tree = resolve_config(action="generate")

@@ -3,7 +3,6 @@
 
 import io
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -15,14 +14,12 @@ from pyamplicol.cli.main import write_result
 
 from .test_runtime_source_binding_rescue import POINT
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def artifact():
-    path = os.environ.get("PYAMPLICOL_CLI_CORRELATED_ARTIFACT")
-    if path is None:
-        pytest.skip(
-            "set PYAMPLICOL_CLI_CORRELATED_ARTIFACT to a saved joint-source artifact"
-        )
+def artifact(saved_loop_fixture):
+    path = str(saved_loop_fixture("bose-correlated/artifact"))
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native

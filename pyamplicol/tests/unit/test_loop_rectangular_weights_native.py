@@ -3,7 +3,6 @@
 
 import copy
 import json
-import os
 from itertools import permutations
 from types import SimpleNamespace
 
@@ -12,13 +11,11 @@ import pytest
 from .test_loop_color_orbits import algebra as algebra
 from .test_loop_formal_color_weights import formal_owner as formal_owner
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def native():
-    if not os.environ.get("PYAMPLICOL_LOOP_FFT_NATIVE"):
-        pytest.skip(
-            "set PYAMPLICOL_LOOP_FFT_NATIVE for the normally staged native control"
-        )
+def native(loop_native):
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native

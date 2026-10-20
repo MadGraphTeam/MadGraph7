@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 
 import numpy as np
 import pytest
@@ -16,6 +15,8 @@ from pyamplicol.loops.color_terms import (
 from pyamplicol.loops.kernels import CoefficientDAG
 from pyamplicol.loops.model import CovariantKernelCatalogue, build_loop_model
 from pyamplicol.models.loop_import import load_raw_loop_model
+
+pytestmark = pytest.mark.loop_fast
 
 
 @pytest.fixture(scope="module")
@@ -160,11 +161,11 @@ def test_local_zero_and_component_axis_order_preserved(native, quartic):
     ).expand().to_expression() == 0
 
 
-def test_r2_model_basis_keeps_selected_loop_group_and_exact_laurent_power(native):
+def test_r2_model_basis_keeps_selected_loop_group_and_exact_laurent_power(
+    loop_sm_ufo, native
+):
     symbolica, _, tensor = native
-    source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if source is None:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to the local loop_sm model")
+    source = str(loop_sm_ufo)
     from ufo_model_loader.model import Model
 
     ir = build_loop_model(load_raw_loop_model(source))

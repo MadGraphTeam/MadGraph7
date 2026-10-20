@@ -2,7 +2,6 @@
 """Actual projected identity sources preserve all complete native components."""
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -12,12 +11,12 @@ from .test_loop_native_directed import _blocks, _values
 from .test_loop_physical_correlations import _close
 from .test_loop_portable import _rewrite
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def projected_spin():
-    root = os.environ.get("PYAMPLICOL_PROJECTED_SPIN_FIXTURES")
-    if not root:
-        pytest.skip("retained actual projected source artifacts required")
+def projected_spin(saved_loop_fixture):
+    root = str(saved_loop_fixture("projected-spin-v43ff063"))
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native

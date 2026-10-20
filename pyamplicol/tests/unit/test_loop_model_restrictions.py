@@ -12,6 +12,8 @@ from pyamplicol.loops.model_restrictions import (
 )
 from pyamplicol.models.loop_import import load_raw_loop_model
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture
 def source(tmp_path):
@@ -99,9 +101,8 @@ def test_restriction_exact_defaults_and_structural_zero_are_distinct(source):
     ],
 )
 def test_restricted_scalar_defaults_keep_original_digits_in_native_carriers(
-    source, arithmetic, precision, tolerance
+    loop_native, source, arithmetic, precision, tolerance
 ):
-    pytest.importorskip("_loop_reduction")
     from pyamplicol.loops.covariant_model import build_covariant_structure
     from pyamplicol.loops.scalar_bindings import NativeScalarBindings
 

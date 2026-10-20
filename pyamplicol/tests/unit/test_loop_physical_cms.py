@@ -11,15 +11,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.loop_nightly
 
-def _prepare_cms_source(reglog_convention="source"):
+
+def _prepare_cms_source(loop_gmu_ufo, reglog_convention="source"):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("source graph generation requires licensed Symbolica")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_EW_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_EW_UFO_REFERENCE to the full Gmu UFO")
+    path = str(loop_gmu_ufo)
     from pyamplicol.loops.counterterms import prepare_counterterm_model
     from pyamplicol.loops.covariant_model import build_covariant_structure
     from pyamplicol.loops.model import build_loop_model
@@ -69,8 +68,8 @@ def _prepare_cms_source(reglog_convention="source"):
 
 
 @pytest.fixture(scope="module")
-def cms_source():
-    return _prepare_cms_source()
+def cms_source(loop_native, loop_gmu_ufo):
+    return _prepare_cms_source(loop_gmu_ufo)
 
 
 CASES = (
@@ -220,8 +219,8 @@ def test_source_semantic_cms_zero_width(cms_program):
 
 
 @pytest.fixture(scope="module")
-def standard_source():
-    return _prepare_cms_source("ufo-standard")
+def standard_source(loop_native, loop_gmu_ufo):
+    return _prepare_cms_source(loop_gmu_ufo, "ufo-standard")
 
 
 @pytest.mark.parametrize(

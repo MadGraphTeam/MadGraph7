@@ -22,6 +22,8 @@ from pyamplicol.loops.color_connections import (
     directed_color_bilinears,
 )
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
 def algebra():

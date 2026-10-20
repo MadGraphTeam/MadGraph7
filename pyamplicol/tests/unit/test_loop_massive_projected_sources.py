@@ -2,7 +2,6 @@
 """Actual declared-colour W source composition; no assumed SM continuation."""
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -11,6 +10,8 @@ import pytest
 from .test_loop_massive_vector_sources import (
     test_charged_three_state_sources_and_exact_replay as _check_three_states,
 )
+
+pytestmark = pytest.mark.loop_physics
 
 
 def assert_retained_formal_completion(original, projected):
@@ -154,10 +155,8 @@ def assert_retained_incomplete_declaration_rejected(
 
 
 @pytest.fixture(scope="module")
-def projected_massive():
-    root = os.environ.get("PYAMPLICOL_MASSIVE_PROJECTED_FIXTURES")
-    if not root:
-        pytest.skip("actual declared-colour massive source artifacts required")
+def projected_massive(saved_loop_fixture):
+    root = str(saved_loop_fixture("massive-projected-sources-v43ff063"))
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native
@@ -255,17 +254,16 @@ def assert_retained_full_projection(original, projected, points):
                 )
 
 
-def test_actual_charged_declaration_keys_and_negative_scope(projected_massive):
+def test_actual_charged_declaration_keys_and_negative_scope(loop_sm_colour_model):
     from pyamplicol.models.loading import load_compiled_model
     from pyamplicol.models.loop_color_declaration import (
         LoopColorDeclaration,
         resolve_loop_color_declaration,
     )
 
-    root, _ = projected_massive
-    compiled = load_compiled_model(
-        root / "loop-sm-w-charges-colour.pyAmplicol-model.json"
-    )
+    # Prepared now from the committed example, not a saved compiled snapshot
+    # whose compiler fingerprint goes stale.
+    compiled = load_compiled_model(loop_sm_colour_model)
     raw = compiled.raw_loop_model
     declaration = resolve_loop_color_declaration(raw)
     stored = LoopColorDeclaration.from_dict(

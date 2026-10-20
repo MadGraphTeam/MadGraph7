@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import cmath
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -14,6 +13,8 @@ from pyamplicol.loops.scalar_bindings import (
     prepare_scalar_bindings,
 )
 from pyamplicol.models.loop_import import RawLoopModel, load_raw_loop_model
+
+pytestmark = pytest.mark.loop_fast
 
 
 @pytest.fixture
@@ -73,9 +74,8 @@ c=Coupling(name='GC',value='y+x',order={'QED':1})
     ],
 )
 def test_exact_defaults_derived_complex_values_and_laurent(
-    source, arithmetic, precision, tolerance
+    loop_native, source, arithmetic, precision, tolerance
 ):
-    pytest.importorskip("_loop_reduction")
     outputs = (
         ("tiny_difference", 0),
         ("high_difference", 0),
@@ -116,8 +116,9 @@ def test_exact_defaults_derived_complex_values_and_laurent(
     assert changed[6] == runtime.values.to_decimal()[6]
 
 
-def test_failed_update_is_atomic_and_inactive_dependency_stays_inactive(source):
-    pytest.importorskip("_loop_reduction")
+def test_failed_update_is_atomic_and_inactive_dependency_stays_inactive(
+    loop_native, source
+):
     runtime = NativeScalarBindings(prepare_scalar_bindings(source, (("safe", 0),)))
     previous = runtime.values.to_decimal()
     with pytest.raises(ArithmeticError, match="active diagnostics"):
@@ -147,9 +148,9 @@ def test_failed_update_is_atomic_and_inactive_dependency_stays_inactive(source):
     ],
 )
 def test_anonymous_source_fields_preserve_branches_owner_and_snapshot(
-    source, arithmetic, precision, tolerance
+    loop_native, source, arithmetic, precision, tolerance
 ):
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     from pyamplicol.loops.scalar_bindings import NativeScaleBindings
 
     owner_plan = prepare_scalar_bindings(source, (("safe", 0),))
@@ -230,8 +231,7 @@ def test_anonymous_source_definition_restrictions(source, definitions, match):
         )
 
 
-def test_no_external_parameters_and_selector_validation(tmp_path):
-    pytest.importorskip("_loop_reduction")
+def test_no_external_parameters_and_selector_validation(loop_native, tmp_path):
     path = tmp_path / "constant_source"
     path.mkdir()
     (path / "__init__.py").write_text(
@@ -261,11 +261,8 @@ class Parameter:
         prepare_scalar_bindings(raw, ())
 
 
-def test_gmu_model_scalar_bindings():
-    pytest.importorskip("_loop_reduction")
-    configured = os.environ.get("PYAMPLICOL_EW_UFO")
-    if not configured:
-        pytest.skip("set PYAMPLICOL_EW_UFO for the full Gmu fixture")
+def test_gmu_model_scalar_bindings(loop_gmu_ufo, loop_native):
+    configured = str(loop_gmu_ufo)
     raw = load_raw_loop_model(Path(configured), restriction="full")
     names = ["MW", "sw", "cw", "ee"]
     names.extend(record["name"] for record in raw.collections["couplings"][:3])
@@ -282,10 +279,11 @@ def test_gmu_model_scalar_bindings():
         assert not runtime.values.nonfinite_rows()
 
 
-def test_explicit_override_bypasses_invalid_default_and_program_identity(source):
+def test_explicit_override_bypasses_invalid_default_and_program_identity(
+    loop_native, source
+):
     from pyamplicol.loops.scalar_frontend import lower_scalar_program
 
-    pytest.importorskip("_loop_reduction")
     payload = source.to_dict()
     # Raw serializations retain exact source expressions independently of the
     # historical Python runtime default. Alter this deliberate diagnostic fixture.
@@ -315,9 +313,8 @@ def test_explicit_override_bypasses_invalid_default_and_program_identity(source)
     ],
 )
 def test_fixed_parameters_preserve_exact_laurent_values_and_are_not_adjustable(
-    source, arithmetic, precision, tolerance
+    loop_native, source, arithmetic, precision, tolerance
 ):
-    pytest.importorskip("_loop_reduction")
     original = source.to_dict()
     with localcontext() as context:
         context.prec = 300
@@ -358,8 +355,9 @@ def test_fixed_parameters_preserve_exact_laurent_values_and_are_not_adjustable(
     assert source.to_dict() == original
 
 
-def test_fixed_parameters_preserve_active_diagnostics_and_reject_wrong_types(source):
-    pytest.importorskip("_loop_reduction")
+def test_fixed_parameters_preserve_active_diagnostics_and_reject_wrong_types(
+    loop_native, source
+):
     safe = prepare_scalar_bindings(source, (("safe", 0),), fixed_parameters={"x": "1"})
     NativeScalarBindings(safe)  # Invalid ordering of complex z is inactive.
     active = prepare_scalar_bindings(
@@ -386,14 +384,14 @@ def test_fixed_parameters_preserve_active_diagnostics_and_reject_wrong_types(sou
     ],
 )
 def test_retained_scalar_owner_and_scale_view_need_no_source_producer(
-    source, monkeypatch, arithmetic, precision, bit, tolerance
+    loop_native, source, monkeypatch, arithmetic, precision, bit, tolerance
 ):
     from dataclasses import fields, is_dataclass, replace
 
     from pyamplicol.loops.scalar_bindings import NativeScaleBindings, ScalarBindingPlan
     from pyamplicol.loops.scalar_frontend import ScalarFunctionLibrary
 
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     plan = prepare_scalar_bindings(
         source, (("safe", 0),), fixed_parameters={"high": "1"}
     )

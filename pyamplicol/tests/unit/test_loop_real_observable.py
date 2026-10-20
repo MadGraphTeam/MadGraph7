@@ -8,6 +8,8 @@ import pytest
 from pyamplicol.loops.physical_orders import BornSquaredSector, PhysicalOrderLayout
 from pyamplicol.loops.physical_process import NativeBareProcessProgram
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.mark.parametrize(
     "arithmetic,precision,tolerance",
@@ -18,9 +20,9 @@ from pyamplicol.loops.physical_process import NativeBareProcessProgram
     ],
 )
 def test_saved_born_real_closure_and_complex_directed_metric(
-    arithmetic, precision, tolerance
+    loop_native, arithmetic, precision, tolerance
 ):
-    native = pytest.importorskip("_loop_reduction")
+    native = loop_native
     from symbolica import E
 
     options = {"arithmetic": arithmetic, "precision": precision}

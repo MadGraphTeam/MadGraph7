@@ -20,6 +20,8 @@ from tools.loop_reference.graph_r2_oracle import (
     sample_bindings,
 )
 
+pytestmark = [pytest.mark.loop_fast, pytest.mark.deferred_direct_r2]
+
 
 @pytest.fixture(scope="module")
 def process():
@@ -368,13 +370,13 @@ def native_controls(recurrences):
     ],
 )
 def test_dimensional_gauge_remainder_native_epsilon_sectors(
-    native_controls, size, arithmetic, precision, tolerance
+    loop_native, native_controls, size, arithmetic, precision, tolerance
 ):
     from decimal import Decimal, localcontext
 
     from pyamplicol.loops.kernels import NativeCoefficientDAG
 
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     recurrence, columns, names, sectors, inputs, oracle, kinematics = native_controls[
         size
     ]

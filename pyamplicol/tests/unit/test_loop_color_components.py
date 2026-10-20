@@ -16,6 +16,8 @@ from pyamplicol.loops.color_components import (
 from pyamplicol.loops.physical_orders import BornSquaredSector, PhysicalOrderLayout
 from pyamplicol.loops.physical_process import NativeBareProcessProgram
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture
 def tensors():
@@ -115,9 +117,9 @@ print(json.dumps(prepare_born_color_components(tensors).as_dict()))
     [("double", None), ("double-double", None), ("arbitrary", 70)],
 )
 def test_signed_coherent_born_components_reconstruct_hermitian_observable(
-    tensors, arithmetic, precision
+    loop_native, tensors, arithmetic, precision
 ):
-    native = pytest.importorskip("_loop_reduction")
+    native = loop_native
     from symbolica import E
 
     direct, crossed = tensors
@@ -162,8 +164,8 @@ def test_signed_coherent_born_components_reconstruct_hermitian_observable(
     assert result.row_ids == [71]
 
 
-def test_counterterm_anchors_keep_uv_rational_fields_and_poles(tensors):
-    native = pytest.importorskip("_loop_reduction")
+def test_counterterm_anchors_keep_uv_rational_fields_and_poles(loop_native, tensors):
+    native = loop_native
     from symbolica import E
 
     from pyamplicol.loops.physical_counterterms import NativeModelVirtualProgram
@@ -227,8 +229,8 @@ def test_counterterm_anchors_keep_uv_rational_fields_and_poles(tensors):
     assert by_members[(1,)] == [0, -48, 0, -216, 0, 0, 0, 0, -120]
 
 
-def test_weighted_numerator_anchors_stay_complex_before_integration():
-    native = pytest.importorskip("_loop_reduction")
+def test_weighted_numerator_anchors_stay_complex_before_integration(loop_native):
+    native = loop_native
     from symbolica import E
 
     from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector

@@ -5,24 +5,29 @@ The public API exposes Born and complete complex totals. Separate integrated
 terms and local components are covered by the saved-native controls.
 """
 
-import os
+import json
 from decimal import Decimal, localcontext
 from pathlib import Path
 
 import pytest
 
 from .test_loop_generation_spin_flavor_runtime import _vectors
-from .test_loop_ordered_flavor_physical import _points
 from .test_loop_projected_flavor_runtime import _close_values
+
+pytestmark = pytest.mark.loop_fast
+
+
+def _points():
+    path = Path(__file__).resolve().parents[2] / "tools/loop_reference/uudd_qcd.json"
+    return json.loads(path.read_text(), parse_float=str, parse_int=str)["points"]
+
 
 HISTORIES = ("born", "casimir", "ordered", "swapped")
 
 
 @pytest.fixture(scope="module")
-def published():
-    root = os.environ.get("PYAMPLICOL_PROJECTED_FLAVOR_FIXTURES")
-    if not root:
-        pytest.skip("requires actual published projected ordered flavour artifacts")
+def published(saved_loop_fixture):
+    root = str(saved_loop_fixture("projected-ordered-flavor"))
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
 

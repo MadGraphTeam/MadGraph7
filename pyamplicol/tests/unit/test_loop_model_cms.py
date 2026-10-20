@@ -4,7 +4,6 @@ from __future__ import annotations
 import cmath
 import io
 import json
-import os
 import tokenize
 from decimal import Decimal, localcontext
 
@@ -15,6 +14,8 @@ from pyamplicol.loops.model_cms import (
     prepare_gmu_complex_mass_declarations,
 )
 from pyamplicol.models.loop_import import RawLoopModel, load_raw_loop_model
+
+pytestmark = pytest.mark.loop_fast
 
 
 def test_cms_identifier_rewrite_preserves_numeric_lexemes_and_other_tokens():
@@ -34,10 +35,8 @@ def test_cms_identifier_rewrite_preserves_numeric_lexemes_and_other_tokens():
 
 
 @pytest.fixture(scope="module")
-def cms():
-    path = os.environ.get("PYAMPLICOL_EW_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_EW_UFO_REFERENCE to the full Gmu UFO")
+def cms(loop_gmu_ufo):
+    path = str(loop_gmu_ufo)
     source = load_raw_loop_model(path, restriction="full")
     original = source.to_dict()
     result = prepare_gmu_complex_mass_declarations(source)
@@ -128,9 +127,8 @@ def test_structural_propagators_use_the_same_derived_mass_symbols(structure):
     ],
 )
 def test_native_pole_masses_weak_angle_and_source_ct_continuation(
-    structure, arithmetic, precision, bit, tolerance
+    loop_native, structure, arithmetic, precision, bit, tolerance
 ):
-    pytest.importorskip("_loop_reduction")
     from pyamplicol.loops.scalar_bindings import NativeScalarBindings
 
     outputs = (

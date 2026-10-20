@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import cmath
-import os
 from decimal import Decimal, localcontext
 
 import pytest
@@ -12,12 +11,12 @@ import pytest
 from pyamplicol.loops.model_cms import prepare_gmu_complex_mass_declarations
 from pyamplicol.models.loop_import import RawLoopModel, load_raw_loop_model
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def declarations():
-    path = os.environ.get("PYAMPLICOL_EW_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_EW_UFO_REFERENCE to the full Gmu UFO")
+def declarations(loop_gmu_ufo):
+    path = str(loop_gmu_ufo)
     raw = load_raw_loop_model(path, restriction="full")
     return {
         convention: prepare_gmu_complex_mass_declarations(
@@ -96,9 +95,9 @@ def plans(declarations):
     [("double", None), ("double-double", None), ("arbitrary", 80)],
 )
 def test_complex_charge_ct_anchor_width_limit_and_active_local_shifts(
-    plans, arithmetic, precision
+    loop_native, plans, arithmetic, precision
 ):
-    native = pytest.importorskip("_loop_reduction")
+    native = loop_native
     from symbolica import S
 
     from pyamplicol.loops.scalar_bindings import NativeScalarBindings

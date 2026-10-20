@@ -1163,7 +1163,7 @@ def _member_expression_identity(structure, expression):
         resolve_model_particle_name,
     )
 
-    from .covariant_model import _flag
+    from .covariant_model import _flag, source_goldstone
 
     expression = ProcessRequest.parse(expression).expression
     initial, separator, final = expression.partition(">")
@@ -1189,7 +1189,7 @@ def _member_expression_identity(structure, expression):
         if not is_external_model_particle(
             spin=fields["spin"],
             ghost_number=fields.get("GhostNumber", 0),
-            goldstoneboson=_flag(fields, ("GoldstoneBoson", "goldstoneboson", False)),
+            goldstoneboson=source_goldstone(fields),
             propagating=_flag(fields, ("Propagating", "propagating", True)),
             auxiliary_kind=fields.get("auxiliary_kind"),
         ):

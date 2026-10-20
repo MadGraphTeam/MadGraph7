@@ -14,6 +14,8 @@ from pyamplicol.runtime import virtual
 from .test_public_virtual_colour import _transport_backend
 from .test_public_virtual_spin import _runtime
 
+pytestmark = pytest.mark.loop_fast
+
 
 def _policy(precision=90):
     return VirtualStabilityPolicy(

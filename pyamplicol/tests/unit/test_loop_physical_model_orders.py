@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import replace
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -16,16 +15,16 @@ from pyamplicol.loops.orders import BornLoopPair, compile_order_plan
 from pyamplicol.loops.physical_counterterms import NativeModelVirtualProgram
 from pyamplicol.loops.physical_process import NativeBareProcessProgram
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def control():
+def control(loop_sm_ufo, loop_native):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("native generation requires licensed Symbolica")
-    backend = pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    backend = loop_native
+    path = str(loop_sm_ufo)
     from symbolica import E, S
 
     from pyamplicol.loops.control_models import qcd_qed_control_model
@@ -195,7 +194,7 @@ def _order(qcd, qed):
     ],
 )
 def test_complete_mixed_order_axes_and_components(
-    control, catalogue, arithmetic, precision, engine
+    loop_reference_path, control, catalogue, arithmetic, precision, engine
 ):
     program = _program(
         control,
@@ -245,36 +244,35 @@ def test_complete_mixed_order_axes_and_components(
                 + Decimal(result.r2[index])
             )
             assert abs(Decimal(result.virtual[index]) - target) < tolerance
-    path = os.environ.get("PYAMPLICOL_MIXED_UUDD_QCD_REFERENCE")
-    if path:
-        reference = json.loads(Path(path).read_text())
-        for order, index in (
-            (_order(6, 0), "1"),
-            (_order(4, 2), "2"),
-            (_order(2, 4), "3"),
+    path = str(loop_reference_path("mixed-uudd-qcd-control"))
+    reference = json.loads(Path(path).read_text())
+    for order, index in (
+        (_order(6, 0), "1"),
+        (_order(4, 2), "2"),
+        (_order(2, 4), "3"),
+    ):
+        for name, key in (
+            ("virtual", "full"),
+            ("bare", "bare"),
+            ("r2", "r2"),
+            ("uv", "uv"),
+            ("uv_local", "uv_local"),
+            ("uv_external_fields", "fields"),
         ):
-            for name, key in (
-                ("virtual", "full"),
-                ("bare", "bare"),
-                ("r2", "r2"),
-                ("uv", "uv"),
-                ("uv_local", "uv_local"),
-                ("uv_external_fields", "fields"),
-            ):
-                expected = [
-                    [
-                        row[key][index][pole]
-                        for pole in ("finite", "single_pole", "double_pole")
-                    ]
-                    for row in reference["rows"]
+            expected = [
+                [
+                    row[key][index][pole]
+                    for pole in ("finite", "single_pole", "double_pole")
                 ]
-                sector = result.virtual_orders.index(order)
-                np.testing.assert_allclose(
-                    getattr(result, name)[:, sector, :, 0].astype(float),
-                    expected,
-                    rtol=3e-10,
-                    atol=3e-14,
-                )
+                for row in reference["rows"]
+            ]
+            sector = result.virtual_orders.index(order)
+            np.testing.assert_allclose(
+                getattr(result, name)[:, sector, :, 0].astype(float),
+                expected,
+                rtol=3e-10,
+                atol=3e-14,
+            )
     # The photon Born has two independently corrected quark currents. Its
     # complete sector is twice the massless form factor, an all-precision oracle.
     scales = ["900000", "2100000"]
@@ -460,12 +458,10 @@ def test_directed_complete_mixed_orders_and_complex_effective_cross_terms(
                 assert abs(Decimal(value) - Decimal(a) - Decimal(b)) < Decimal("4e-11")
 
 
-def test_complete_mixed_sector_retains_both_explicit_born_origins(control, catalogue):
-    path = os.environ.get("PYAMPLICOL_MIXED_UUDD_QCD_REFERENCE")
-    if not path:
-        pytest.skip(
-            "set PYAMPLICOL_MIXED_UUDD_QCD_REFERENCE for isolated Born-source control"
-        )
+def test_complete_mixed_sector_retains_both_explicit_born_origins(
+    loop_reference_path, control, catalogue
+):
+    path = str(loop_reference_path("mixed-uudd-qcd-control"))
     reference = json.loads(Path(path).read_text())
     original, insertions, _ = catalogue
     values = []

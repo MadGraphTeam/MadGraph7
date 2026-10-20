@@ -2,7 +2,6 @@
 """Exact fixed-component proofs never substitute scalar or formal colour data."""
 
 import json
-from dataclasses import replace
 
 import pytest
 
@@ -10,8 +9,7 @@ from pyamplicol.loops.vertex_symmetry import symmetric_boson_slots
 
 from .test_loop_vertex_symmetry import _aliased_whole_vertex
 
-# Supplied only by the retained graph-free declared-model owner when requested.
-RETAINED_FORMAL_PLAN = None
+pytestmark = pytest.mark.loop_fast
 
 
 @pytest.fixture
@@ -74,30 +72,3 @@ def test_fixed_components_reject_different_typed_external_interfaces(hep):
     changed = hep.Model.from_json(json.dumps(payload))
     with pytest.raises(ValueError, match=r"port|interface|indices|structure"):
         symmetric_boson_slots(changed, ["V_36"], fixed_representation=True)
-
-
-def test_actual_formal_owner_never_enters_fixed_component_fallback(monkeypatch):
-    if RETAINED_FORMAL_PLAN is None:
-        pytest.skip("requires retained graph-free formal source owner")
-    from pyamplicol.loops import vertex_symmetry
-    from pyamplicol.loops.flavor_transport import _bose_local_rules
-
-    plan = RETAINED_FORMAL_PLAN
-    assert plan.source_color is not None
-    observed = []
-    original = vertex_symmetry.symmetric_boson_slots
-
-    def require_symbolic(*args, **kwargs):
-        observed.append(kwargs.get("fixed_representation", False))
-        assert kwargs.get("fixed_representation", False) is False
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(vertex_symmetry, "symmetric_boson_slots", require_symbolic)
-    binding = _bose_local_rules(plan)
-    assert observed == [False]
-    assert binding.program is plan.structure.scalars
-    assert binding.fixed_parameters == plan.structure.fixed_parameters
-    # Removing the actual continuation pointer cannot reinterpret whole-rule
-    # aliases as fixed-colour native coefficients.
-    with pytest.raises(ValueError, match=r"whole-rule.*formal"):
-        _bose_local_rules(replace(plan, source_color=None))

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import sys
 from decimal import Decimal
@@ -24,6 +23,8 @@ from pyamplicol.models.loop_import import (
     capture_raw_loop_model,
     load_raw_loop_model,
 )
+
+pytestmark = pytest.mark.loop_fast
 
 
 def _nlo_module() -> ModuleType:
@@ -634,12 +635,8 @@ def test_compiled_model_serialization_retains_raw_sidecar(tmp_path: Path) -> Non
     )
 
 
-def test_local_loop_sm_regression() -> None:
-    source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if source is None:
-        pytest.skip(
-            "set PYAMPLICOL_NLO_UFO_REFERENCE to the local MadLoop loop_sm model"
-        )
+def test_local_loop_sm_regression(loop_sm_ufo) -> None:
+    source = str(loop_sm_ufo)
     model = load_raw_loop_model(source)
     assert len(model.collections["counterterm_parameters"]) == 21
     assert len(model.collections["counterterm_vertices"]) == 103
@@ -658,12 +655,10 @@ def test_local_loop_sm_regression() -> None:
     assert model.capabilities["goldstone_particles"] == ("G0", "G+", "G-")
 
 
-def test_local_full_ew_duplicate_vertex_names_are_preserved() -> None:
-    source = os.environ.get("PYAMPLICOL_EW_NLO_UFO_REFERENCE")
-    if source is None:
-        pytest.skip(
-            "set PYAMPLICOL_EW_NLO_UFO_REFERENCE to the full loop_qcd_qed_sm model"
-        )
+def test_local_full_ew_duplicate_vertex_names_are_preserved(
+    loop_qcd_qed_sm_ufo,
+) -> None:
+    source = str(loop_qcd_qed_sm_ufo)
     model = load_raw_loop_model(source)
     vertices = [
         record

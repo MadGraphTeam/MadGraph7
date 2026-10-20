@@ -2,7 +2,6 @@
 """Ordinary transactional artifacts carry source-owned, graph-free virtual plans."""
 
 import json
-import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -31,6 +30,8 @@ from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
 from pyamplicol.loops.physical_orders import BornSquaredSector, PhysicalOrderLayout
 from pyamplicol.models.loading import compile_model_source
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(autouse=True)
 def target_metadata(monkeypatch):
@@ -47,7 +48,9 @@ def target_metadata(monkeypatch):
 
 
 def source_process(path):
-    backend = pytest.importorskip("_loop_reduction")
+    from pyamplicol.loops.native import load_loop_native
+
+    backend = load_loop_native()
     data = json.loads(backend.PortableLoopPlan(str(path)).metadata_json())
 
     def order(value):
@@ -104,13 +107,8 @@ def source_process(path):
 
 
 @pytest.fixture(scope="module")
-def retained_source_process():
-    path = os.environ.get("PYAMPLICOL_NATIVE_SOURCE_PACBIN")
-    if not path:
-        pytest.skip(
-            "retained source PACBIN required; do not regenerate numerical physics "
-            "for transport tests"
-        )
+def retained_source_process(saved_loop_fixture, loop_native):
+    path = str(saved_loop_fixture("source-portable-v3/gg.pacbin"))
     return source_process(Path(path))
 
 
@@ -197,9 +195,9 @@ def test_source_artifact_rejects_metadata_mismatch_transactionally(
 
 @pytest.mark.parametrize("accuracy", ["lc", "nlc"])
 def test_full_colour_declaration_cannot_hide_saved_projection(
-    retained_source_process, accuracy
+    loop_native, retained_source_process, accuracy
 ):
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     plan = json.loads(
         backend.PortableLoopPlan(
             str(retained_source_process.loop_runtime_path)
@@ -282,6 +280,7 @@ def test_changed_single_pole_fails_transactional_numerical_validation(
             execution_mode="loop_recurrence",
             artifact_id=load_manifest(staged).artifact_id,
             representative_process_key=process,
+            physics=SimpleNamespace(process_id=process),
             evaluate=lambda *args, **kwargs: changed,
         )
 

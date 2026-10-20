@@ -7,6 +7,8 @@ import pytest
 
 from pyamplicol.loops.request import prepare_loop_external_request
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
 def model():

@@ -173,6 +173,12 @@ rustc-codegen-arguments = ["-C", "lto=off", "-C", "embed-bitcode=no"]
 addopts = "-ra --import-mode=importlib"
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+  "loop_fast: one-loop unit and saved-control tests",
+  "loop_physics: one-loop generation and provider-reference comparisons",
+  "loop_nightly: long one-loop generation and precision controls",
+  "deferred_direct_r2: generic direct R2 (deferred); deselected unless selected with -m",
+]
 
 [tool.ruff]
 line-length = 88

@@ -11,6 +11,8 @@ from pyamplicol.loops.scalar_incidence import (
     scalar_grade_term_mask,
 )
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture
 def primitives():

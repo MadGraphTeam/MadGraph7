@@ -13,6 +13,8 @@ from pyamplicol.loops.color_orbits import (
     prepare_rectangular_color_certificate,
 )
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture
 def algebra():

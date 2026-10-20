@@ -9,6 +9,8 @@ import pytest
 from pyamplicol.loops.counterterms import _rooted_current_key
 from pyamplicol.loops.vertex_symmetry import symmetric_boson_slots
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture
 def hep():
