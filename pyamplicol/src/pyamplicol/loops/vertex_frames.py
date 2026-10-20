@@ -125,6 +125,7 @@ def certified_source_dirac_frame(structure):
         certified_ffv_source(structure)
         or certified_ffs_source(structure)
         or certified_fermion_slash_source(structure)
+        or certified_fermion_mass_source(structure)
     )
 
 
@@ -148,4 +149,23 @@ def certified_fermion_slash_source(structure):
     return tuple(structure.spins) == (2, 2) and any(
         (structure.structure - wrap_indices(parse_exact_ufo(source))).expand() == 0
         for source in sources
+    )
+
+
+def certified_fermion_mass_source(structure):
+    """Tested endpoint-symmetric Dirac two-point identity (mass insertion).
+
+    The bispinor identity is invariant under the typed endpoint exchange and
+    carries neither a momentum nor a chiral projector, so no momentum leg or
+    projector convention is involved. Its local value has an independent
+    off-shell ALOHA control (``tools/loop_reference/fermion_mass_two_point_*``).
+    Chiral two-point projectors are not inferred from this identity.
+    """
+    from ufo_model_loader.symbolica_processing import wrap_indices
+
+    from .model_expressions import parse_exact_ufo
+
+    return tuple(structure.spins) == (2, 2) and any(
+        (structure.structure - wrap_indices(parse_exact_ufo(source))).expand() == 0
+        for source in ("Identity(1,2)", "Identity(2,1)")
     )

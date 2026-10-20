@@ -62,11 +62,18 @@ card to a derived raw declaration view and retains the original unchanged. The
 installed UFO `ParamCard` parser owns block/LHA addresses. Source-line annotations
 in comments preserve the original numeric lexemes; its binary64 values are never
 used. Every source record and address must survive exactly, so duplicate records
-(including values that round to the same double), unknown addresses, malformed
-headers, scans, continuations, nonfinite literals, scale-dependent blocks and
-decay tables are rejected. Signed decimal and Fortran D-exponent literals are
-exact. Complex parameters require both real and `IM` blocks; partial component
-updates are explicitly unsupported and cannot erase an omitted component.
+(including values that round to the same double), malformed headers, scans,
+continuations, nonfinite literals, scale-dependent blocks and decay tables are
+rejected. As in MadGraph's restriction reader, an entry whose LHA address names
+no external parameter of the model (for example `DECAY 15` in models without a
+tau width) is ignored and recorded under `ignored_entries`; names and comments
+never bind an entry. Signed decimal and Fortran D-exponent literals are exact.
+Complex parameters require both real and `IM` blocks; an `IM` entry only
+addresses a complex parameter, and partial component updates are explicitly
+unsupported and cannot erase an omitted component. All restriction cards shipped
+with loop_sm, loop_qcd_qed_sm and loop_qcd_qed_sm_Gmu load, except Gmu's
+`restrict_parallel_test.dat`, which assigns `SMINPUTS 1` twice and which
+MadGraph 3.7.0 rejects as well.
 
 Nonzero entries replace adjustable defaults. Simplification fixes exactly zero
 external parameters, including omitted exact-zero defaults, under the existing
@@ -1500,8 +1507,21 @@ gamma-five prescription nor an anomaly, UV-scheme or full-process certificate.
 The source quark two-point slash retains its original momentum leg. The typed
 endpoint adapter gives exactly the explicit native representative previously
 checked by `fermion_two_point_oracle.py`: contraction of the calibrated vector
-current with that momentum. Other two-point mass, chiral, reversed-endpoint or
-momentum-leg tensors remain outside this admission. Scalar source coefficients,
+current with that momentum. The endpoint-symmetric bispinor identity
+`Identity(1,2)` (R2 and UV quark mass insertions) is admitted separately: it has
+no momentum or projector, is invariant under the endpoint exchange, and its
+lowered source kernels are rechecked against generated ALOHA `R2_QQ_2_0`
+(`fermion_mass_two_point_oracle.py`); `g g > t t~` and `u u~ > t t~` compare
+with MadLoop including the isolated mass insertions. Counterterms of
+colour-singlet scalar couplings to an ordered fundamental pair (e.g. QCD
+corrections of quark Yukawa/Goldstone vertices) use the same exact FFS bases and
+physical frame as the tree vertices; `e+ e- > t t~ h` matches MadLoop for
+every component. Family denominators reach the reducer in loop-cycle order
+(`kinematics.py`), the conventional D0 argument order: oneloopmaster 09b2c74
+misevaluates a soft-divergent box with massive emitters, such as the
+(m, m, 0, m) boxes of these processes, when its propagators are labelled
+non-adjacently (finite without the soft pole in binary64, NaN in DoubleFloat). Other two-point chiral, reversed-endpoint or momentum-leg tensors
+remain outside this admission. Scalar source coefficients,
 loop groups, matching and all process-level cancellations are independent gates.
 
 ### Flavour-changing Dirac/vector counterterms
