@@ -370,3 +370,10 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   attempt is retained separately from the initial failure. This closes the
   classifier/export regression for the recorded source; final eight-process
   acceptance and any later numerical-archive recertification remain outstanding.
+- An isolated unconditional compensated T3 expansion passes full 100-point,
+  all-order coefficient comparisons in QCD1, EW2 and QCD3. Zgg uses two QP
+  rescues instead of three. Exploratory timing shows added cost on the all-DP
+  cases, with substantial host contention; these runs are not performance
+  acceptance evidence. The production archive is unchanged. A separate
+  explicit DP retry is being tested after normal stability failure, retaining
+  the same thresholds, full direction/rotation checks and genuine QP fallback.
