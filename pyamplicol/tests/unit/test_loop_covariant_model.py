@@ -142,6 +142,54 @@ def test_invalid_condition_cannot_certify_zero_mass(source):
         build_covariant_structure(raw)
 
 
+def test_unused_propagator_declarations_do_not_change_covariant_kernels(source):
+    raw = load_raw_loop_model(source, restriction="full")
+    baseline = build_covariant_structure(raw)
+    payload = raw.to_dict()
+    payload["collections"]["propagators"] = [
+        {
+            "id": 0,
+            "name": "unbound_template",
+            "ufo_type": "Propagator",
+            "fields": {
+                "name": "unbound_template",
+                "numerator": "UncertifiedNumerator(id)",
+                "denominator": "UncertifiedDenominator(id)",
+            },
+        }
+    ]
+    declared = RawLoopModel.from_dict(payload)
+    unchanged = declared.to_dict()
+    actual = build_covariant_structure(declared)
+    assert actual.raw is declared
+    assert declared.to_dict() == unchanged
+    assert json.loads(actual.native.to_json()) == json.loads(baseline.native.to_json())
+
+
+@pytest.mark.parametrize("declared", (False, True))
+def test_actual_custom_propagator_binding_still_requires_certification(source, declared):
+    raw = load_raw_loop_model(source, restriction="full")
+    payload = raw.to_dict()
+    if declared:
+        payload["collections"]["propagators"] = [
+            {
+                "id": 0,
+                "name": "bound_template",
+                "ufo_type": "Propagator",
+                "fields": {"name": "bound_template", "numerator": "1", "denominator": "1"},
+            }
+        ]
+        binding = {"kind": "reference", "collection": "propagators", "id": 0, "name": "bound_template"}
+    else:
+        binding = "custom_inline_propagator"
+    payload["collections"]["particles"][0]["fields"]["propagator"] = binding
+    bound = RawLoopModel.from_dict(payload)
+    unchanged = bound.to_dict()
+    with pytest.raises(NotImplementedError, match="custom source propagator metadata"):
+        build_covariant_structure(bound)
+    assert bound.to_dict() == unchanged
+
+
 @pytest.fixture(scope="module")
 def gmu():
     configured = os.environ.get("PYAMPLICOL_EW_UFO")
