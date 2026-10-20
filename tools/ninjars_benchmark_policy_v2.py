@@ -578,7 +578,7 @@ def validate_adapter(protocol, policy):
     check_file(adapter)
 
 
-def create_proof(policy_path, binding_paths, output):
+def create_proof(policy_path, binding_paths, output=None):
     policy, correction, _ = validate_policy(policy_path)
     coverage = {role: {"dp": set(), "qp": set(), "loop_induced": False, "split_orders": False}
                 for role in ROLES}
@@ -628,9 +628,10 @@ def create_proof(policy_path, binding_paths, output):
                      "correction_identity_sha256": correction["identity_sha256"],
                      "bindings": [bound_file(item) for item in binding_paths],
                      "coverage": coverage, "entries": entries, "files_sha256": files})
-    if path(output).exists():
-        raise RuntimeError("Proof destination exists")
-    bench.dump(path(output), evidence)
+    if output is not None:
+        if path(output).exists():
+            raise RuntimeError("Proof destination exists")
+        bench.dump(path(output), evidence)
     return evidence
 
 
@@ -644,9 +645,7 @@ def validate_proof(filename, policy_path):
         if workers.digest(path(name)) != checksum:
             raise RuntimeError("Representative proof evidence changed")
     # Recompute coverage and parity instead of trusting sealed booleans.
-    import tempfile
-    with tempfile.TemporaryDirectory(prefix="v2-proof-check-", dir=ROOT / ".benchmark-work") as temp:
-        actual = create_proof(policy_path, [check_file(item) for item in data["bindings"]], Path(temp) / "proof.json")
+    actual = create_proof(policy_path, [check_file(item) for item in data["bindings"]])
     if actual != data:
         raise RuntimeError("Representative proof summary does not match raw evidence")
     return data

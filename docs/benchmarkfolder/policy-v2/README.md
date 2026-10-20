@@ -109,13 +109,19 @@ final candidate generator identity; historical v1 proof is insufficient.
 
 ## Bind, validate and publish
 
+`policy.json` is the superseded pre-proof policy retained with the initial
+implementation commit. No completed dataset uses it. `policy-offline.json` is
+the final policy after proof revalidation was made entirely in memory, so a
+report does not require even an empty disposable work directory. The collection
+adapter and its numerical data are unchanged.
+
 After implementation review/freeze, seal the policy:
 
 ```sh
 python tools/ninjars_benchmark_policy_v2.py policy \
   --correction docs/benchmarkfolder/policy-v2/model-correction.json \
   --config docs/benchmarkfolder/policy-v2/cases.json \
-  --output docs/benchmarkfolder/policy-v2/policy.json
+  --output docs/benchmarkfolder/policy-v2/policy-offline.json
 ```
 
 The timing adapter writes `binding-spec.json` with the report path, role map and
@@ -136,12 +142,12 @@ strict and compares those artifacts before recording them.
 
 ```sh
 python tools/ninjars_benchmark_policy_v2.py proof \
-  --policy docs/benchmarkfolder/policy-v2/policy.json \
+  --policy docs/benchmarkfolder/policy-v2/policy-offline.json \
   --bindings representative-role-bindings-1.json representative-role-bindings-2.json \
   --output docs/benchmarkfolder/policy-v2/representative-proof.json
 
 python tools/ninjars_benchmark_policy_v2.py publish \
-  --policy docs/benchmarkfolder/policy-v2/policy.json \
+  --policy docs/benchmarkfolder/policy-v2/policy-offline.json \
   --proof docs/benchmarkfolder/policy-v2/representative-proof.json \
   --bindings timing-role-bindings.json corrected-reference-role-bindings.json \
   --output docs/benchmarkfolder/policy-v2/datasets

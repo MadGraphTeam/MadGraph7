@@ -422,6 +422,21 @@ class PolicyV2Test(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "committed untouched-original"):
             policy.create_correction(self.spec, self.root / "wrong-parent.json")
 
+    def test_offline_proof_revalidation_needs_no_temporary_work_directory(self):
+        policy_record = policy.read(self.policy_path)
+        recorded = policy.seal({"schema": policy.PROOF,
+            "policy_identity_sha256": policy_record["identity_sha256"],
+            "correction_identity_sha256": self.correction["identity_sha256"],
+            "files_sha256": {}, "bindings": []})
+        proof = self.root / "retained-proof.json"
+        self.dump(proof, recorded)
+        def recompute(policy_path, bindings, output=None):
+            self.assertIsNone(output)
+            return recorded
+        with mock.patch.object(policy, "create_proof", side_effect=recompute), \
+             mock.patch("tempfile.TemporaryDirectory", side_effect=AssertionError("Disposable work tree is absent")):
+            self.assertEqual(policy.validate_proof(proof, self.policy_path), recorded)
+
 
 if __name__ == "__main__":
     unittest.main()
