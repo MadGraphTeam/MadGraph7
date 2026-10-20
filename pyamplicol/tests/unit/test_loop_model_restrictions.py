@@ -262,13 +262,13 @@ def test_every_shipped_loop_model_restriction_card_loads(variable):
             with pytest.raises(Exception, match="already define"):
                 prepare_loop_restrictions(raw)
             continue
-        # Card semantics do not depend on zero simplification; its exact scalar
-        # lowering (about 20 s for Gmu) runs once, on the default card.
-        simplify = name == "default"
-        prepared = prepare_loop_restrictions(raw, simplify=simplify)
+        # The production path, including exact zero simplification (its scalar
+        # lowering takes about 20 s per card for the EW models).
+        prepared = prepare_loop_restrictions(raw)
         restriction = prepared.derived.metadata["restriction"]
         assert restriction["applied"] and restriction["name"] == name
-        assert bool(prepared.fixed_parameters) == simplify
+        assert restriction["simplify"]
+        assert set(restriction["fixed_parameters"]) == set(prepared.fixed_parameters)
         # Only entries without a model parameter are ignored, e.g. DECAY 15 in
         # models that declare no tau width.
         for block, code, _value in restriction["ignored_entries"]:
