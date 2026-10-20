@@ -184,7 +184,11 @@ and a relocated internal-copy DP/QP/stability check now pass for that numerical
 revision. See `policy-v2/generation-retention-abi3-tensor-factor-v1/`,
 `policy-v2/representative-retention-abi3-tensor-factor-v1/` and
 `policy-v2/install-export-abi3-tensor-factor-v1/` for offline verifiers.
-Complete generated variants and eight-process validation remain outstanding.
+The refreshed generated controls and rotation, rebinding, fresh-context and
+near-singular variants also pass; see
+`policy-v2/controls-retention-abi3-tensor-factor-v1/` and
+`policy-v2/final-variant-controls-abi3-tensor-factor-v1/`.
+Complete eight-process validation remains outstanding.
 The current NinjaRS QCD3 diagnostic is about twice the candidate Ninja time;
 the final performance requirement is unresolved. DP tensor factorization and
 MP tensor allocation experiments remain isolated from production.

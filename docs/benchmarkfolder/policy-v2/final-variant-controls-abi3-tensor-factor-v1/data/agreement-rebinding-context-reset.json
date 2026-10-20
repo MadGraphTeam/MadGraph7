@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "failures": [],
+  "numerical_agreement_passed": true,
+  "measurement_validation_failures": {},
+  "coefficient_comparisons": 80,
+  "maximum_tolerance_fraction": 0.0,
+  "maximum_point_scaled_absolute_difference": 0.0,
+  "observed_ninjars_rescue": false,
+  "observed_ninjars_full_qp_rescue_322": false,
+  "status_counts": {
+    "retained-8": {
+      "218": 10
+    },
+    "fresh-8": {
+      "218": 10
+    }
+  },
+  "relative_tolerance": 1e-07,
+  "scale_tolerance": 1e-10
+}

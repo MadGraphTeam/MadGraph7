@@ -1,0 +1,12 @@
+{
+  "report": "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-tensor-factor-v1-mixed-legacy-20261020",
+  "outputs": {
+    "control-mixed-candidate-1": ".benchmark-work/policy-v2/control-runs/controls-candidate-abi3-tensor-factor-v1-mixed-legacy-20261020/workers/control-mixed-candidate-1/outputs/candidate/control-mixed",
+    "control-mixed-candidate-6": ".benchmark-work/policy-v2/control-runs/controls-candidate-abi3-tensor-factor-v1-mixed-legacy-20261020/workers/control-mixed-candidate-6/outputs/candidate/control-mixed",
+    "control-mixed-candidate-7": ".benchmark-work/policy-v2/control-runs/controls-candidate-abi3-tensor-factor-v1-mixed-legacy-20261020/workers/control-mixed-candidate-7/outputs/candidate/control-mixed"
+  },
+  "role_map": {
+    "baseline": "original",
+    "candidate": "candidate_corrected"
+  }
+}

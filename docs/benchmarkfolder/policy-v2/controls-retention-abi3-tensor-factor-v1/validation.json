@@ -1,0 +1,246 @@
+{
+  "comparison_identity_sha256": "99e151fe0a419282325cc5130f63dcd3072eed398b14feb7662a1ac5d530b06c",
+  "proof": {
+    "path": "docs/benchmarkfolder/policy-v2/representative-proof-abi3-tensor-factor-v1.json",
+    "sha256": "8330b8b0ce04e4e8de8c8954e2a5d30f32c13ad618742eeb7587bc82452ddcd1"
+  },
+  "cases": {
+    "control-gg-h": {
+      "passed": true,
+      "points": 10,
+      "corrected_targets": 7,
+      "pairs_per_repetition": 21,
+      "repetitions": 2
+    },
+    "control-gg-hh": {
+      "passed": true,
+      "points": 10,
+      "corrected_targets": 7,
+      "pairs_per_repetition": 21,
+      "repetitions": 2
+    },
+    "control-mixed": {
+      "passed": true,
+      "points": 10,
+      "corrected_targets": 7,
+      "pairs_per_repetition": 21,
+      "repetitions": 2
+    },
+    "control-complex": {
+      "passed": true,
+      "points": 10,
+      "corrected_targets": 7,
+      "pairs_per_repetition": 21,
+      "repetitions": 2
+    }
+  },
+  "checked_runs": {
+    "controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020": {
+      "report": "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020",
+      "target_count": 8,
+      "persistent_records": 16,
+      "fresh_parity": {
+        "control-gg-hh-candidate-1": {
+          "passed": true,
+          "exact_rows": true,
+          "status_counts_match": true
+        },
+        "control-gg-hh-candidate-6": {
+          "passed": true,
+          "exact_rows": true,
+          "status_counts_match": true
+        },
+        "control-gg-hh-candidate-7": {
+          "passed": true,
+          "exact_rows": true,
+          "status_counts_match": true
+        },
+        "control-gg-hh-candidate-8": {
+          "passed": true,
+          "exact_rows": true,
+          "status_counts_match": true
+        },
+        "control-complex-candidate-1": {
+          "passed": true,
+          "exact_rows": true,
+          "status_counts_match": true
+        },
+        "control-complex-candidate-6": {
+          "passed": true,
+          "exact_rows": true,
+          "status_counts_match": true
+        },
+        "control-complex-candidate-7": {
+          "passed": true,
+          "exact_rows": true,
+          "status_counts_match": true
+        },
+        "control-complex-candidate-8": {
+          "passed": true,
+          "exact_rows": true,
+          "status_counts_match": true
+        }
+      },
+      "status_counts": {
+        "control-gg-hh-candidate-1-0": {
+          "211": 8,
+          "329": 2
+        },
+        "control-gg-hh-candidate-1-1": {
+          "211": 8,
+          "329": 2
+        },
+        "control-gg-hh-candidate-6-0": {
+          "216": 10
+        },
+        "control-gg-hh-candidate-6-1": {
+          "216": 10
+        },
+        "control-gg-hh-candidate-7-0": {
+          "217": 10
+        },
+        "control-gg-hh-candidate-7-1": {
+          "217": 10
+        },
+        "control-gg-hh-candidate-8-0": {
+          "218": 10
+        },
+        "control-gg-hh-candidate-8-1": {
+          "218": 10
+        },
+        "control-complex-candidate-1-0": {
+          "211": 10
+        },
+        "control-complex-candidate-1-1": {
+          "211": 10
+        },
+        "control-complex-candidate-6-0": {
+          "216": 10
+        },
+        "control-complex-candidate-6-1": {
+          "216": 10
+        },
+        "control-complex-candidate-7-0": {
+          "217": 10
+        },
+        "control-complex-candidate-7-1": {
+          "217": 10
+        },
+        "control-complex-candidate-8-0": {
+          "218": 10
+        },
+        "control-complex-candidate-8-1": {
+          "218": 10
+        }
+      }
+    },
+    "controls-candidate-abi3-tensor-factor-v1-mixed-legacy-20261020": {
+      "report": "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-tensor-factor-v1-mixed-legacy-20261020",
+      "target_count": 3,
+      "persistent_records": 6,
+      "fresh_parity": {
+        "control-mixed-candidate-1": {
+          "passed": true,
+          "exact_rows": true,
+          "status_counts_match": true
+        },
+        "control-mixed-candidate-6": {
+          "passed": true,
+          "exact_rows": true,
+          "status_counts_match": true
+        },
+        "control-mixed-candidate-7": {
+          "passed": true,
+          "exact_rows": true,
+          "status_counts_match": true
+        }
+      },
+      "status_counts": {
+        "control-mixed-candidate-1-0": {
+          "211": 10
+        },
+        "control-mixed-candidate-1-1": {
+          "211": 10
+        },
+        "control-mixed-candidate-6-0": {
+          "216": 10
+        },
+        "control-mixed-candidate-6-1": {
+          "216": 10
+        },
+        "control-mixed-candidate-7-0": {
+          "217": 10
+        },
+        "control-mixed-candidate-7-1": {
+          "217": 10
+        }
+      }
+    },
+    "controls-reference-hh-complex-20261020": {
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020",
+      "target_count": 6,
+      "persistent_records": 12,
+      "fresh_parity": {},
+      "status_counts": {
+        "control-gg-hh-baseline-1-0": {
+          "211": 8,
+          "329": 2
+        },
+        "control-gg-hh-baseline-1-1": {
+          "211": 8,
+          "329": 2
+        },
+        "control-gg-hh-baseline-6-0": {
+          "216": 10
+        },
+        "control-gg-hh-baseline-6-1": {
+          "216": 10
+        },
+        "control-gg-hh-baseline-7-0": {
+          "217": 10
+        },
+        "control-gg-hh-baseline-7-1": {
+          "217": 10
+        },
+        "control-complex-baseline-1-0": {
+          "211": 10
+        },
+        "control-complex-baseline-1-1": {
+          "211": 10
+        },
+        "control-complex-baseline-6-0": {
+          "216": 10
+        },
+        "control-complex-baseline-6-1": {
+          "216": 10
+        },
+        "control-complex-baseline-7-0": {
+          "217": 10
+        },
+        "control-complex-baseline-7-1": {
+          "217": 10
+        }
+      }
+    }
+  },
+  "reused_bindings": [
+    {
+      "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-reference-controls-20261020.json",
+      "sha256": "8e8298961ccb30c5abb038a875b2fee9d6513440919499baa256b04a39e13f4e"
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/representative-candidate-abi3-tensor-factor-v1-ggh-20261020.json",
+      "sha256": "1b68a4739107026383130a6f9b7306dd36dd284d328e38f1e884aa1d28304ace"
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/representative-candidate-abi3-tensor-factor-v1-mixed-20261020.json",
+      "sha256": "e29f7a78ba22dd9bde18840aceb6750b8e47d79e2d61ff7baa168a079990554c"
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/controls-reference-hh-complex-20261020.json",
+      "sha256": "0a9a80f9be58078ff794f403a4624b810fd58879543a2c878d4015d999e840ca"
+    }
+  ],
+  "acceptance_evidence": false,
+  "physics_evaluations_started": false
+}

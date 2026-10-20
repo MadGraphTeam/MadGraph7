@@ -1,0 +1,17 @@
+{
+  "report": "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020",
+  "outputs": {
+    "control-gg-hh-candidate-1": ".benchmark-work/policy-v2/control-runs/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020/workers/control-gg-hh-candidate-1/outputs/candidate/control-gg-hh",
+    "control-gg-hh-candidate-6": ".benchmark-work/policy-v2/control-runs/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020/workers/control-gg-hh-candidate-6/outputs/candidate/control-gg-hh",
+    "control-gg-hh-candidate-7": ".benchmark-work/policy-v2/control-runs/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020/workers/control-gg-hh-candidate-7/outputs/candidate/control-gg-hh",
+    "control-gg-hh-candidate-8": ".benchmark-work/policy-v2/control-runs/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020/workers/control-gg-hh-candidate-8/outputs/candidate/control-gg-hh",
+    "control-complex-candidate-1": ".benchmark-work/policy-v2/control-runs/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020/workers/control-complex-candidate-1/outputs/candidate/control-complex",
+    "control-complex-candidate-6": ".benchmark-work/policy-v2/control-runs/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020/workers/control-complex-candidate-6/outputs/candidate/control-complex",
+    "control-complex-candidate-7": ".benchmark-work/policy-v2/control-runs/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020/workers/control-complex-candidate-7/outputs/candidate/control-complex",
+    "control-complex-candidate-8": ".benchmark-work/policy-v2/control-runs/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020/workers/control-complex-candidate-8/outputs/candidate/control-complex"
+  },
+  "role_map": {
+    "baseline": "original",
+    "candidate": "candidate_corrected"
+  }
+}

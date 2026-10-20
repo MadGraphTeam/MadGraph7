@@ -561,8 +561,11 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   eight targets across all four backends, with exact fresh-process parity and
   actual CutTools, Ninja and NinjaRS QP execution. A fresh relocated internal-copy
   build passes DP, genuine QP and checked-stability evaluations with its private
-  installation hidden; all 48 coefficient comparisons pass. Complete generated
-  control/variant and eight-process validation remains outstanding.
+  installation hidden; all 48 coefficient comparisons pass. All four generated
+  controls now pass all 21 corrected-cohort pairs at both repetitions. Twelve
+  rotation, mass/scale rebinding, fresh-context and near-singular variant streams
+  pass eight recomputed comparisons (1,600 coefficients), with fresh/retained
+  NinjaRS rows exact. Complete eight-process validation remains outstanding.
 - Separate DP factorization passes all six original/capture-only/factored
   100-point Ninja/NinjaRS streams. Capture-only results are exact; changed
   association remains within the original tolerance. Both backends still
@@ -575,7 +578,9 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   test and diagnosis remain retained: arbitrary NaN-source assignment is outside
   the implemented finite zero/one scratch-reset domain. The prototype is not
   installed or in production, and its runtime benefit has not been measured.
-- A separate capture-only experiment is separating DP numerator inputs, QP
-  numerator inputs and reduction geometry at the two QCD3 rescue points. It must
-  first preserve all 100 complete results, accuracy estimates and statuses.
+- A separate capture-only experiment preserves all 100 complete QCD3 results,
+  accuracy estimates and statuses exactly, then records 1,392 complete native,
+  compensated and QP calls at the two rescue points. All 464 semantic keys match;
+  native/compensated input bits agree. Both coefficient and geometry bundles
+  change through normal QP construction, so a later replay must separate them.
   No mixed-precision controller or reporting change is authorized by this probe.
