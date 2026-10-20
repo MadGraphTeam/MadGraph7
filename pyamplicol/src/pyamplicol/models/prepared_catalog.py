@@ -26,6 +26,10 @@ PreparedContractKind: TypeAlias = Literal[
     "propagator",
     "closure",
     "model-parameter",
+    "loop-segment",
+    "loop-propagator-numerator",
+    "loop-closure",
+    "ct-site",
 ]
 PreparedInputRole: TypeAlias = Literal[
     "left-current",
@@ -37,7 +41,19 @@ PreparedInputRole: TypeAlias = Literal[
     "coupling-real",
     "coupling-imag",
     "model-parameter",
+    "loop-current",
+    "loop-momentum",
+    "block-current",
+    "block-momentum",
 ]
+# Tree kernels exist in two variants. ``transverse`` is the compile-time
+# default: proven massless Yang-Mills vertices drop the terms proportional to
+# each input current's self-contraction p_i.J_i, which is exact for conserved
+# Berends-Giele currents. ``full`` keeps the complete Feynman rule; it is needed
+# wherever an input current is not conserved (CT=1 currents, Ward or
+# non-transverse spin sources).
+TreeKernelVariant: TypeAlias = Literal["transverse", "full"]
+TREE_KERNEL_VARIANTS: tuple[TreeKernelVariant, ...] = ("transverse", "full")
 PreparedOutputFactorSource: TypeAlias = Literal[
     "none",
     "coupling-real",
@@ -51,7 +67,18 @@ PREPARED_HOMOGENEOUS_LINEAR_CURRENT_PROOF = (
 PREPARED_INDEPENDENT_BLOCK_PROOF = (
     "prepared-kernel-independent-current-block-v1"
 )
-_CONTRACT_KINDS = frozenset(("vertex", "propagator", "closure", "model-parameter"))
+_CONTRACT_KINDS = frozenset(
+    (
+        "vertex",
+        "propagator",
+        "closure",
+        "model-parameter",
+        "loop-segment",
+        "loop-propagator-numerator",
+        "loop-closure",
+        "ct-site",
+    )
+)
 _INPUT_ROLES = frozenset(
     (
         "left-current",
@@ -63,6 +90,10 @@ _INPUT_ROLES = frozenset(
         "coupling-real",
         "coupling-imag",
         "model-parameter",
+        "loop-current",
+        "loop-momentum",
+        "block-current",
+        "block-momentum",
     )
 )
 _OUTPUT_FACTOR_SOURCES = frozenset(("none", "coupling-real", "coupling-imag"))
@@ -328,10 +359,15 @@ class PreparedKernelCatalog:
     closure_bindings: tuple[PreparedClosureBinding, ...]
     model_parameter_kernel_id: int | None
     unsupported_variants: tuple[PreparedKernelGap, ...] = ()
+    tree_kernel_variant: TreeKernelVariant = "transverse"
 
     def __post_init__(self) -> None:
         if not self.model_name:
             raise PreparedKernelCatalogError("prepared catalog model name is empty")
+        if self.tree_kernel_variant not in TREE_KERNEL_VARIANTS:
+            raise PreparedKernelCatalogError(
+                f"unsupported tree kernel variant {self.tree_kernel_variant!r}"
+            )
         expected_ids = tuple(range(len(self.kernels)))
         actual_ids = tuple(kernel.kernel_id for kernel in self.kernels)
         if actual_ids != expected_ids:
@@ -498,6 +534,7 @@ def build_prepared_kernel_catalog(model: Model) -> PreparedKernelCatalog:
 __all__ = [
     "PREPARED_HOMOGENEOUS_LINEAR_CURRENT_PROOF",
     "PREPARED_INDEPENDENT_BLOCK_PROOF",
+    "TREE_KERNEL_VARIANTS",
     "ClosureKernelKey",
     "PreparedClosureBinding",
     "PreparedContractKind",
@@ -512,6 +549,7 @@ __all__ = [
     "PreparedPropagatorBinding",
     "PreparedVertexBinding",
     "PropagatorKernelKey",
+    "TreeKernelVariant",
     "VertexKernelKey",
     "build_prepared_kernel_catalog",
 ]
