@@ -581,13 +581,27 @@
         "production": {
           "settings": {
             "requested_relative_accuracy": "MadLoop MLStabThres (production setting)",
-            "stability_check": "MadLoop default (CTModeRun=-1 after initialization)"
+            "stability_check": "MadLoop default (CTModeRun=-1 after initialization)",
+            "fortran_flags": {
+              "export_make_opts": {
+                "GLOBAL_FLAG": "-O",
+                "ALOHA_FLAG": "",
+                "MATRIX_FLAG": ""
+              },
+              "mg5_production": {
+                "GLOBAL_FLAG": "-O",
+                "ALOHA_FLAG": "",
+                "MATRIX_FLAG": ""
+              },
+              "production_build": true,
+              "source": "MG5_aMC run-card defaults global_flag/aloha_flag/matrix_flag (CommonRunCmd.update_make_opts of an optimised MG5 run); MadLoop's own makefile adds -O3 for polynomial.f"
+            }
           },
           "version": "MadLoop/MG5_aMC 3.7.0",
           "evaluation_seconds": [
-            8.21600257,
-            8.79549134,
-            8.31995523
+            6.93683784,
+            7.08499731,
+            6.90379357
           ],
           "statuses": [
             216,
@@ -595,20 +609,20 @@
             216
           ],
           "estimated_accuracies": [
-            1.560806525453189e-10,
-            2.0088918537648186e-11,
+            1.5608065254531903e-10,
+            2.009170458409995e-11,
             2.722566537021804e-09
           ],
           "relative_deviation_from_reference_run": [
             {
               "born": 0.0,
-              "finite": 1.1664288524098504e-11,
+              "finite": 1.1663109017466324e-11,
               "single_pole": 3.783955362479131e-12,
               "double_pole": 1.0911537751941827e-12
             },
             {
               "born": 0.0,
-              "finite": 1.2261477225683001e-11,
+              "finite": 1.2247767778267823e-11,
               "single_pole": 2.368629747258338e-12,
               "double_pole": 6.154416756308022e-13
             },
@@ -619,8 +633,8 @@
               "double_pole": 2.766442852961056e-11
             }
           ],
-          "initial_call_seconds": 104.567133,
-          "cpu": 327
+          "initial_call_seconds": 90.7592617,
+          "cpu": 250
         }
       }
     },
