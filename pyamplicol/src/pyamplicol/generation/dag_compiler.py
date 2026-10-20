@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from typing import Protocol
 
 from ..color.plan import GenericColorPlan, build_color_plan
 from ..models._physics_ir import ContractionIR
@@ -26,6 +27,7 @@ from .dag_algorithms import (
     _retain_canonical_open_line_alias_roots,
     build_backward_live_state_plan,
     prune_dag_to_amplitude_roots,
+    prune_dag_to_required_currents,
 )
 from .dag_color import ColorEngine
 from .dag_equivalence import (
@@ -69,6 +71,84 @@ from .dag_types import (
 from .fermion_ordering import apply_fermion_ordering_signs
 
 DAGProgressCallback = Callable[[Mapping[str, str | int]], None]
+
+
+class LoopBlockReachability(Protocol):
+    """Loop-aware reachability of tree currents in loop-request mode.
+
+    ``admits_mask`` names the leg sets a loop position may absorb; the
+    recursion sweeps those and all of their subsets, so a block keeps every
+    sub-current it needs. ``admits_block`` decides which currents are position
+    contents; the compiler keeps those and every current feeding them.
+    """
+
+    def admits_mask(self, mask: int) -> bool: ...
+
+    def admits_block(self, index: CurrentIndex) -> bool: ...
+
+
+@dataclass(frozen=True, slots=True)
+class AttachableLoopBlocks:
+    """Generic loop-aware reachability: every current a loop vertex can absorb.
+
+    A current is a possible position content when its leg set is a proper,
+    non-empty subset of the process legs and its field enters some model
+    vertex, whose two other legs are then loop lines. The family recursion
+    replaces this default with its position table.
+    """
+
+    full_mask: int
+    attachable_particle_ids: frozenset[int]
+
+    @classmethod
+    def for_process(
+        cls,
+        process: CanonicalProcessIR,
+        model: Model,
+        *,
+        ignored_particle_ids: Iterable[int] = (),
+        ignored_vertex_kinds: Iterable[int] = (),
+    ) -> AttachableLoopBlocks:
+        ignored_particles = frozenset(int(pdg) for pdg in ignored_particle_ids)
+        ignored_kinds = frozenset(int(kind) for kind in ignored_vertex_kinds)
+        attachable = frozenset(
+            particle_id
+            for vertex in model.iter_vertices(color_accuracy="full")
+            if vertex.kind not in ignored_kinds
+            and not ignored_particles.intersection(vertex.particles)
+            for particle_id in vertex.particles[:2]
+        )
+        return cls(
+            full_mask=_labels_mask(leg.label for leg in process.legs),
+            attachable_particle_ids=attachable,
+        )
+
+    def admits_mask(self, mask: int) -> bool:
+        return 0 < mask != self.full_mask and mask & self.full_mask == mask
+
+    def admits_block(self, index: CurrentIndex) -> bool:
+        return (
+            self.admits_mask(index.external_mask)
+            and index.particle_id in self.attachable_particle_ids
+        )
+
+
+def _loop_block_masks(
+    full_mask: int,
+    reachability: LoopBlockReachability,
+) -> frozenset[int]:
+    """Admitted leg sets and all of their subsets (multi-leg masks only)."""
+
+    allowed: set[int] = set()
+    legs = tuple(1 << index for index in range(full_mask.bit_length()))
+    for mask in reversed(_masks_by_size(full_mask)):
+        if mask & (mask - 1) == 0 or mask == full_mask:
+            continue
+        if reachability.admits_mask(mask) or any(
+            mask | leg in allowed for leg in legs if not mask & leg
+        ):
+            allowed.add(mask)
+    return frozenset(allowed)
 
 
 def _restrict_color_plan(
@@ -138,7 +218,44 @@ class GenericDAGCompiler:
         online_evaluation_reuse: bool = False,
         backward_live_planning: bool = False,
         progress_callback: DAGProgressCallback | None = None,
+        loop_blocks: bool = False,
+        loop_block_reachability: LoopBlockReachability | None = None,
     ) -> None:
+        """``loop_blocks`` compiles loop-request blocks instead of a tree.
+
+        Loop-request mode builds the U(N) colour-flow currents a loop position
+        can absorb: every ordering of every admitted leg set, with the Born
+        closure pruning layers replaced by ``loop_block_reachability``
+        (default ``AttachableLoopBlocks``). It builds no amplitude roots; the
+        Born stays the ordinary tree compilation. Reflection folding and
+        tree-only selections do not apply.
+        """
+
+        if loop_blocks:
+            tree_only = {
+                "max_currents": max_currents,
+                "max_color_sectors": max_color_sectors,
+                "reference_color_order": reference_color_order,
+                "selected_color_sector_ids": selected_color_sector_ids,
+                "max_lc_current_line_groups": max_lc_current_line_groups,
+                "max_quark_pairs": max_quark_pairs,
+                "selected_source_helicities": selected_source_helicities,
+            }
+            requested = sorted(name for name, value in tree_only.items() if value)
+            if online_evaluation_reuse:
+                requested.append("online_evaluation_reuse")
+            if backward_live_planning:
+                requested.append("backward_live_planning")
+            if requested:
+                raise ValueError(
+                    "loop-request blocks do not support tree-only options: "
+                    + ", ".join(requested)
+                )
+            lc_all_ordering_symmetry = False
+        elif loop_block_reachability is not None:
+            raise ValueError("loop_block_reachability requires loop_blocks=True")
+        self.loop_blocks = bool(loop_blocks)
+        self.loop_block_reachability = loop_block_reachability
         self.model = model
         self.color_plan = color_plan
         self.max_currents = _normalize_generation_cap(max_currents)
@@ -196,6 +313,11 @@ class GenericDAGCompiler:
                 "generic DAG compilation requires a model-resolved CanonicalProcessIR"
             )
         process_ir = process
+        if self.loop_blocks and process_ir.color_accuracy != "full":
+            raise ValueError(
+                "loop-request blocks are exact colour-flow currents; compile the "
+                "full-colour process"
+            )
         self._report_progress("colour planning")
         lc_trace_reflection_proven = bool(
             self.lc_all_ordering_symmetry
@@ -268,6 +390,7 @@ class GenericDAGCompiler:
                 lc_trace_reflection_proven and self.selected_color_sector_ids is None
             ),
             cache_shared_lc_orderings=self.online_evaluation_reuse,
+            loop_blocks=self.loop_blocks,
         )
         global_flip_anchor = self._eager_global_helicity_flip_anchor(process_ir)
         interactions: list[InteractionNode] = []
@@ -328,11 +451,22 @@ class GenericDAGCompiler:
             and self.model.is_massless_adjoint_vector(int(leg.outgoing_pdg))
         )
         locally_reflectable_current_ids: set[int] = set()
-        closure_candidate_splits = _closure_candidate_splits(
-            process_ir,
-            self.model,
-            color_engine,
-            reference_color_order=self.reference_color_order,
+        # Loop-request blocks replace the three Born-closure pruning layers
+        # (closure-side masks, colour-order masks, useful species states) by
+        # the loop-aware reachability test.
+        tree_pruning = not self.loop_blocks
+        loop_block_reachability = (
+            self._loop_block_reachability(process_ir) if self.loop_blocks else None
+        )
+        closure_candidate_splits = (
+            _closure_candidate_splits(
+                process_ir,
+                self.model,
+                color_engine,
+                reference_color_order=self.reference_color_order,
+            )
+            if tree_pruning
+            else ()
         )
         self._report_progress(
             "reachability",
@@ -343,7 +477,7 @@ class GenericDAGCompiler:
                 full_mask,
                 closure_candidate_splits,
             )
-            if self.closure_side_mask_pruning
+            if self.closure_side_mask_pruning and tree_pruning
             else None
         )
         backward_planner_candidate = bool(
@@ -359,7 +493,11 @@ class GenericDAGCompiler:
                 color_plan,
                 self.model,
             )
-            if self.color_order_mask_pruning and not backward_planner_candidate
+            if (
+                self.color_order_mask_pruning
+                and tree_pruning
+                and not backward_planner_candidate
+            )
             else None
         )
         useful_states_by_mask = (
@@ -374,7 +512,7 @@ class GenericDAGCompiler:
                 ignored_particle_ids=self.ignored_particle_ids,
                 ignored_vertex_kinds=self.ignored_vertex_kinds,
             )
-            if self.species_reachability_pruning
+            if self.species_reachability_pruning and tree_pruning
             else None
         )
         live_state_plan = (
@@ -563,6 +701,9 @@ class GenericDAGCompiler:
             )
 
         def reflection_reusable_current(current_id: int) -> bool:
+            if self.loop_blocks:
+                # Blocks are literal colour-ordered currents.
+                return False
             if self.online_evaluation_reuse:
                 if not eager_shared_lc_orderings:
                     return False
@@ -676,10 +817,17 @@ class GenericDAGCompiler:
                 color_flow_cache[key] = cached
             return cached
 
+        loop_masks = (
+            None
+            if loop_block_reachability is None
+            else _loop_block_masks(full_mask, loop_block_reachability)
+        )
         recursive_masks = tuple(
             mask
             for mask in _masks_by_size(full_mask)
-            if mask & (mask - 1) and mask != full_mask
+            if mask & (mask - 1)
+            and mask != full_mask
+            and (loop_masks is None or mask in loop_masks)
         )
         recursion_stage_total = max(len(process_ir.legs) - 2, 1)
         for mask_index, mask in enumerate(recursive_masks, start=1):
@@ -1203,6 +1351,20 @@ class GenericDAGCompiler:
                     table.currents[mask_current_start:],
                 )
 
+        if loop_block_reachability is not None:
+            return self._finish_loop_blocks(
+                GenericDAG(
+                    process=process_ir,
+                    color_plan=color_plan,
+                    currents=tuple(table.currents),
+                    sources=tuple(sources),
+                    interactions=tuple(interactions),
+                    amplitude_roots=(),
+                    helicity_coverage=helicity_coverage,
+                    color_coverage=color_coverage,
+                ),
+                loop_block_reachability,
+            )
         self._report_progress(
             "amplitude-closure",
             current_count=len(table.currents),
@@ -1256,6 +1418,43 @@ class GenericDAGCompiler:
             amplitude_count=len(dag.amplitude_roots),
         )
         return self._apply_fermion_ordering(dag)
+
+    def _loop_block_reachability(
+        self,
+        process_ir: CanonicalProcessIR,
+    ) -> LoopBlockReachability:
+        if self.loop_block_reachability is not None:
+            return self.loop_block_reachability
+        return AttachableLoopBlocks.for_process(
+            process_ir,
+            self.model,
+            ignored_particle_ids=self.ignored_particle_ids,
+            ignored_vertex_kinds=self.ignored_vertex_kinds,
+        )
+
+    def _finish_loop_blocks(
+        self,
+        dag: GenericDAG,
+        reachability: LoopBlockReachability,
+    ) -> GenericDAG:
+        """Keep admitted blocks with their sub-DAG; sources are always blocks."""
+
+        dag = prune_dag_to_required_currents(
+            dag,
+            (
+                current.id
+                for current in dag.currents
+                if current.is_source or reachability.admits_block(current.index)
+            ),
+        )
+        self._report_progress(
+            "loop-blocks",
+            current_count=len(dag.currents),
+            interaction_count=len(dag.interactions),
+        )
+        return self._apply_fermion_ordering(
+            assign_recursive_current_evaluation_reuse(dag, self.model)
+        )
 
     def _compile_backward_live_plan(
         self,
