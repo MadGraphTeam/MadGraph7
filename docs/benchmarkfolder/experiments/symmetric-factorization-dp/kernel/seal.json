@@ -1,0 +1,2693 @@
+{
+  "complete": true,
+  "completed_run": "kernel-source-fixtures-cpu212-v1",
+  "correctness_seal_sha256": "702f0754b838f061d101ab9fc8dba33fcefa847461759d479ed392d05687793f",
+  "excluded_build_products": [
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank2/kernel",
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank3/kernel",
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank4/kernel",
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank4/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank2/kernel",
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank3/kernel",
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank4/kernel",
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank4/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank2/kernel",
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank3/kernel",
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank4/kernel",
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank4/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank2/kernel",
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank3/kernel",
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank4/kernel",
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank4/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/kernel",
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/kernel",
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/kernel",
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/kernel",
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/kernel",
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/kernel",
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/kernel",
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/kernel",
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/kernel",
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/kernel",
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/kernel",
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/kernel",
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank2/kernel",
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank3/kernel",
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank4/kernel",
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank4/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank2/kernel",
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank3/kernel",
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank4/kernel",
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank4/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank2/kernel",
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank3/kernel",
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank4/kernel",
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank4/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank2/kernel",
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank3/kernel",
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank4/kernel",
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank4/test_polynomial_constants.mod",
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank2/kernel",
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank3/kernel",
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank4/kernel",
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank4/test_polynomial_constants.mod",
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank2/kernel",
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank3/kernel",
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank4/kernel",
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank4/test_polynomial_constants.mod",
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank2/kernel",
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank3/kernel",
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank4/kernel",
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank4/test_polynomial_constants.mod",
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank2/kernel",
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank2/test_polynomial_constants.mod",
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank3/kernel",
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank3/test_polynomial_constants.mod",
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank4/kernel",
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank4/test_polynomial_constants.mod"
+  ],
+  "file_count": 645,
+  "files": {
+    "kernel-source-fixtures-cpu209-v1-measure.log": {
+      "bytes": 562,
+      "sha256": "ab4a9e0a2430f6b4b047026147bb8ab80d70386aa9a81630527a8dc05ea9ec01"
+    },
+    "kernel-source-fixtures-cpu209-v1/compiler.log": {
+      "bytes": 227,
+      "sha256": "a574cf2f0787bf5b465a5ee69494d97910c6eea55236469875cfc97e6a755ade"
+    },
+    "kernel-source-fixtures-cpu209-v1/correctness-seal.log": {
+      "bytes": 90,
+      "sha256": "85bf0cbe58448151c3bb0d9d370cbf604f256bcf8c49e0df2f1eb1460c1753dd"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "3f91d8998caff1c750ae3c5dd31d38b5c222dd21529b27dafe00a51137567024"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "bbdd6a8f0eef5f69995b6be3b1a4dc58ea223ec2be71f752dfa01c28d197a8c1"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "3fe7d72096654ed5f5cdd2a4a397af537a7e24d1432cd61e49db98ffa17c1f88"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c920126a63210f33c0f4bf10e7096c4f0bd7d9254e92ea6810c13447a03926fa"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "b59f37fed2df4f5f27ee190af1fe867f47318e041c5fa3bb6ed5d70e8d3b994a"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e728a1f4191b564e9f6480ce719567378dc56b886e98bbda9c6e92030e56a2d8"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "5386ab30324c3253e2c0292eb70a9ec783471a3d042e8869cb71b1154f5db02f"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "637ea0a4a7dd3482e307d923155fc3a34d6d05f92b11a0cd5f81c4b3caeab8f4"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "85d49110e30a588287de87b9ec3ca0c9bed0f00edb6bb22cc52f17824144b7ff"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "43a4c17685d25ba1dc05115c8c7771fd2112335aaa25e225df293119ee1fb406"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "304352c09b37933a5046ddc3360941c4f6c33d4f6971fd628928f3d05b1d1d50"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "0466630bb2c7720011123524b4cd554beb1c405f8c04bf5d2b54017eb10c1443"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "8cf8c72beb0aad77c317f40554bd0e460f2acb2679dccc0b8925bfc0fbfcceca"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "7075fd07f90c5338bb4f94b4186cecc93686935ec59cd711361a08a6007a077f"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "99b127ccb8e0a245237d85290ab236d1a219f72b10a839e3c2ddd075f46a6a9a"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "9f7c13cfa7371036783ef67603c88e9135d0226bc1ee9da0130d3e75c95c282b"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "48fbef66eb97844f8671edf99cc7986f891efcf89c7df67ea39248f2d0d3516b"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "2cd8c19ee5bbadf4b8c2cdabcb719c65eab780bb828de13640b1a20a278079bd"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "70bc81c12c1552b66cc9e47e88ff3ce04652f02509b287cc596408e0c2607f02"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "c44d4867b432a06b4c58bdb07279f9fb0f057cc417dd3788b582be7d5ff14ef8"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "4cb457dc8ad1ede7100d5fa7c9aa99bb944d06c949daecfbafe10dacf6abb65c"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c50baff024108ff3fbf02fbba77b25eb489c094ed1acb828806ca9f75a1204b9"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "2d1448be4c752a835c2f4e4b46cf19a91d8ec2d6b375cced426f5afa00bb0b49"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "bab1fe46dd7ac450a7b961be7d9f14d3953a989b3c7651b83cdadefdfeacbf3f"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "6079913b9af64b334177a9ceed4e7401fbdd78d276b0df79490c491409c82449"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "df4e7844afdcae0481d6ef4518c23f4d4ddb68d915b70834417a7f1733672f5e"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "e51a36b0d1baae162d4b045eb2095b684b2c1fed85c7a792aa69d825f3b8cf4d"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "7f69ca52ec662c73fe2ebe14b50d2b59b35017c67c548250b529b517f432e54a"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "03847d9609aa302b5df5cc75fa34f1c2029e2858392a8c6adce0a0965a7ec67a"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e015ad523ed75127ba2b4c5620b370a3956812ef0b2e1c157c34dde1efc871cb"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "2a2e563efeeae7b5e59fdcfb5e7df93324d2bebc0397554b1fac737a9b9d79a4"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "5956b9fcd40be1b4ff5ebcf6ccf099c10198a1c7757674dc11b070b5ea57059f"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "bb5eb14627ec188bdfc2b5abb60f8699a6dfde1f2a4e74b3ecfbc8725834b0cd"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "7414d9fc3da364bc6dec5caced7c6b9cf0b63712a9c7b08c1d9f1907f2d99755"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "99c2c596ec80696b02e3b432b4694adcc051fe1fc3aadfd778874deba6508f99"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "4b990d216da1280b961ea358378cb6f90cdaf13854027d6675a97f7fc3f802ed"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel-source-fixtures-cpu209-v1/plan.json": {
+      "bytes": 39370,
+      "sha256": "e58211b0e164b158abb8509352facf1d216260e8913414feb6c2e9c1efc01b73"
+    },
+    "kernel-source-fixtures-cpu209-v1/preflight.json": {
+      "bytes": 1507,
+      "sha256": "9160eb106d9bd8662b764c812c1bab642e124e691c95d7cedae7bded8ee4e52c"
+    },
+    "kernel-source-fixtures-cpu209-v1/run.py": {
+      "bytes": 13561,
+      "sha256": "8865b47276c069ef2277285caa7a9731bac7e3429ebad4827220e3bf20bdb3c5"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "3f91d8998caff1c750ae3c5dd31d38b5c222dd21529b27dafe00a51137567024"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "bbdd6a8f0eef5f69995b6be3b1a4dc58ea223ec2be71f752dfa01c28d197a8c1"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "3fe7d72096654ed5f5cdd2a4a397af537a7e24d1432cd61e49db98ffa17c1f88"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c920126a63210f33c0f4bf10e7096c4f0bd7d9254e92ea6810c13447a03926fa"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "b59f37fed2df4f5f27ee190af1fe867f47318e041c5fa3bb6ed5d70e8d3b994a"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e728a1f4191b564e9f6480ce719567378dc56b886e98bbda9c6e92030e56a2d8"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "5386ab30324c3253e2c0292eb70a9ec783471a3d042e8869cb71b1154f5db02f"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "637ea0a4a7dd3482e307d923155fc3a34d6d05f92b11a0cd5f81c4b3caeab8f4"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "85d49110e30a588287de87b9ec3ca0c9bed0f00edb6bb22cc52f17824144b7ff"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "43a4c17685d25ba1dc05115c8c7771fd2112335aaa25e225df293119ee1fb406"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "304352c09b37933a5046ddc3360941c4f6c33d4f6971fd628928f3d05b1d1d50"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "0466630bb2c7720011123524b4cd554beb1c405f8c04bf5d2b54017eb10c1443"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "8cf8c72beb0aad77c317f40554bd0e460f2acb2679dccc0b8925bfc0fbfcceca"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "7075fd07f90c5338bb4f94b4186cecc93686935ec59cd711361a08a6007a077f"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "99b127ccb8e0a245237d85290ab236d1a219f72b10a839e3c2ddd075f46a6a9a"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "9f7c13cfa7371036783ef67603c88e9135d0226bc1ee9da0130d3e75c95c282b"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "48fbef66eb97844f8671edf99cc7986f891efcf89c7df67ea39248f2d0d3516b"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "2cd8c19ee5bbadf4b8c2cdabcb719c65eab780bb828de13640b1a20a278079bd"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "70bc81c12c1552b66cc9e47e88ff3ce04652f02509b287cc596408e0c2607f02"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "c44d4867b432a06b4c58bdb07279f9fb0f057cc417dd3788b582be7d5ff14ef8"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "4cb457dc8ad1ede7100d5fa7c9aa99bb944d06c949daecfbafe10dacf6abb65c"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c50baff024108ff3fbf02fbba77b25eb489c094ed1acb828806ca9f75a1204b9"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "2d1448be4c752a835c2f4e4b46cf19a91d8ec2d6b375cced426f5afa00bb0b49"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "bab1fe46dd7ac450a7b961be7d9f14d3953a989b3c7651b83cdadefdfeacbf3f"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "6079913b9af64b334177a9ceed4e7401fbdd78d276b0df79490c491409c82449"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "df4e7844afdcae0481d6ef4518c23f4d4ddb68d915b70834417a7f1733672f5e"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "e51a36b0d1baae162d4b045eb2095b684b2c1fed85c7a792aa69d825f3b8cf4d"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "7f69ca52ec662c73fe2ebe14b50d2b59b35017c67c548250b529b517f432e54a"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "03847d9609aa302b5df5cc75fa34f1c2029e2858392a8c6adce0a0965a7ec67a"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e015ad523ed75127ba2b4c5620b370a3956812ef0b2e1c157c34dde1efc871cb"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "2a2e563efeeae7b5e59fdcfb5e7df93324d2bebc0397554b1fac737a9b9d79a4"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "5956b9fcd40be1b4ff5ebcf6ccf099c10198a1c7757674dc11b070b5ea57059f"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "bb5eb14627ec188bdfc2b5abb60f8699a6dfde1f2a4e74b3ecfbc8725834b0cd"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "7414d9fc3da364bc6dec5caced7c6b9cf0b63712a9c7b08c1d9f1907f2d99755"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "99c2c596ec80696b02e3b432b4694adcc051fe1fc3aadfd778874deba6508f99"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "4b990d216da1280b961ea358378cb6f90cdaf13854027d6675a97f7fc3f802ed"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel-source-fixtures-cpu212-v1-measure.log": {
+      "bytes": 1566,
+      "sha256": "ec254ea901f54723f05492cccb5d44065c32b2f19c19396001e3a8b956aace53"
+    },
+    "kernel-source-fixtures-cpu212-v1/analysis.json": {
+      "bytes": 415050,
+      "sha256": "b79a337afed0ec269bb4f1bdae464a1239a19e3212390ca5148f36c31e8770a7"
+    },
+    "kernel-source-fixtures-cpu212-v1/analysis.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu212-v1/compiler.log": {
+      "bytes": 227,
+      "sha256": "a574cf2f0787bf5b465a5ee69494d97910c6eea55236469875cfc97e6a755ade"
+    },
+    "kernel-source-fixtures-cpu212-v1/correctness-seal.log": {
+      "bytes": 90,
+      "sha256": "85bf0cbe58448151c3bb0d9d370cbf604f256bcf8c49e0df2f1eb1460c1753dd"
+    },
+    "kernel-source-fixtures-cpu212-v1/measurements.json": {
+      "bytes": 662233,
+      "sha256": "3e0903ba45e5dc567859ba0efe7bf4b45f2e526bce6491b89e7d093f30aab05e"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "3f91d8998caff1c750ae3c5dd31d38b5c222dd21529b27dafe00a51137567024"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/case-1.log": {
+      "bytes": 7862,
+      "sha256": "142157e2dd00a52a3abc5ecc2e853c44fbd94e6ad057ad269a1cdab1d2136d67"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/case-2.log": {
+      "bytes": 7862,
+      "sha256": "0a5288ebeee33c253f9509bd7f10118a09dd5205d783ee57bdd91200a3963ee4"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/case-7.log": {
+      "bytes": 7862,
+      "sha256": "f744462b3f1ed2d4f1b838312448e24166e24bd945c7562da546b9d93d799491"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "bbdd6a8f0eef5f69995b6be3b1a4dc58ea223ec2be71f752dfa01c28d197a8c1"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "3fe7d72096654ed5f5cdd2a4a397af537a7e24d1432cd61e49db98ffa17c1f88"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c920126a63210f33c0f4bf10e7096c4f0bd7d9254e92ea6810c13447a03926fa"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "b59f37fed2df4f5f27ee190af1fe867f47318e041c5fa3bb6ed5d70e8d3b994a"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e728a1f4191b564e9f6480ce719567378dc56b886e98bbda9c6e92030e56a2d8"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "5386ab30324c3253e2c0292eb70a9ec783471a3d042e8869cb71b1154f5db02f"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/case-1.log": {
+      "bytes": 7862,
+      "sha256": "e3f79c67c0bd563fc449cfe65a62fd6a60860de2dd727b57e3f23bdd64534fbc"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/case-2.log": {
+      "bytes": 7862,
+      "sha256": "0e75beec293356ec0d9807d4b06a9b2a9153bf27224afd28471c80051d175dac"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/case-7.log": {
+      "bytes": 7862,
+      "sha256": "f7f9bad0621bbdd566bfa1e6784868265012f110071f9ba686933f4243bfc278"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "637ea0a4a7dd3482e307d923155fc3a34d6d05f92b11a0cd5f81c4b3caeab8f4"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "85d49110e30a588287de87b9ec3ca0c9bed0f00edb6bb22cc52f17824144b7ff"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "43a4c17685d25ba1dc05115c8c7771fd2112335aaa25e225df293119ee1fb406"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "304352c09b37933a5046ddc3360941c4f6c33d4f6971fd628928f3d05b1d1d50"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "0466630bb2c7720011123524b4cd554beb1c405f8c04bf5d2b54017eb10c1443"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "8cf8c72beb0aad77c317f40554bd0e460f2acb2679dccc0b8925bfc0fbfcceca"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/case-1.log": {
+      "bytes": 7862,
+      "sha256": "598ca25c7d8f619c031abf874108cbdfd9f8359e8ee6bb7de43278719d0c9a87"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/case-2.log": {
+      "bytes": 7862,
+      "sha256": "e3b7099a4c8818ac567bd6d0d3577c404bd0ebc7ae613dd2cee3c9b99aa2edc1"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/case-7.log": {
+      "bytes": 7862,
+      "sha256": "65107fe95ac1ee49edef4851ebb37a17ff8efadafbd784e3f1c78824e911723e"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "7075fd07f90c5338bb4f94b4186cecc93686935ec59cd711361a08a6007a077f"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "99b127ccb8e0a245237d85290ab236d1a219f72b10a839e3c2ddd075f46a6a9a"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "9f7c13cfa7371036783ef67603c88e9135d0226bc1ee9da0130d3e75c95c282b"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "48fbef66eb97844f8671edf99cc7986f891efcf89c7df67ea39248f2d0d3516b"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "2cd8c19ee5bbadf4b8c2cdabcb719c65eab780bb828de13640b1a20a278079bd"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "70bc81c12c1552b66cc9e47e88ff3ce04652f02509b287cc596408e0c2607f02"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/case-1.log": {
+      "bytes": 7862,
+      "sha256": "9be209b5ad40c751b757e2ad273cee2c317991d1181816bbabbeab94134a905d"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/case-2.log": {
+      "bytes": 7862,
+      "sha256": "4f0cf9358bf370bb46a0da6416e8c88120586ae8fe886898ff05b850c1a48fbe"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/case-7.log": {
+      "bytes": 7862,
+      "sha256": "dd7418761d41d7b3aaf0811543dc596dfd9babafb24b3b808b8aca871c338597"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "c44d4867b432a06b4c58bdb07279f9fb0f057cc417dd3788b582be7d5ff14ef8"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "4cb457dc8ad1ede7100d5fa7c9aa99bb944d06c949daecfbafe10dacf6abb65c"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c50baff024108ff3fbf02fbba77b25eb489c094ed1acb828806ca9f75a1204b9"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "2d1448be4c752a835c2f4e4b46cf19a91d8ec2d6b375cced426f5afa00bb0b49"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "bab1fe46dd7ac450a7b961be7d9f14d3953a989b3c7651b83cdadefdfeacbf3f"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "6079913b9af64b334177a9ceed4e7401fbdd78d276b0df79490c491409c82449"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/case-1.log": {
+      "bytes": 7862,
+      "sha256": "a12d9ab0676a8b48100a2fd285ff55cae6fcc792e9216fd8376c660aa820479a"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/case-2.log": {
+      "bytes": 7862,
+      "sha256": "22d52cd3d902a5deb613314ebbd2373120f2fad6adbfb58b953219803e613364"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/case-7.log": {
+      "bytes": 7862,
+      "sha256": "a96202f3aa6cd29935879f8b2d0b97ee3f97bf7923c180482e3759d60e7f4256"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "df4e7844afdcae0481d6ef4518c23f4d4ddb68d915b70834417a7f1733672f5e"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "e51a36b0d1baae162d4b045eb2095b684b2c1fed85c7a792aa69d825f3b8cf4d"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "7f69ca52ec662c73fe2ebe14b50d2b59b35017c67c548250b529b517f432e54a"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "03847d9609aa302b5df5cc75fa34f1c2029e2858392a8c6adce0a0965a7ec67a"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e015ad523ed75127ba2b4c5620b370a3956812ef0b2e1c157c34dde1efc871cb"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "2a2e563efeeae7b5e59fdcfb5e7df93324d2bebc0397554b1fac737a9b9d79a4"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/case-1.log": {
+      "bytes": 7862,
+      "sha256": "d369f8df7e1efd4612f5ba4c01d9a7eef3270536eb20b95eca59517fcb338ef2"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/case-2.log": {
+      "bytes": 7862,
+      "sha256": "5ae3787c3d646c70b80a24e721dfdafa854990e2e620693840225ba11ea2ab8d"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/case-7.log": {
+      "bytes": 7862,
+      "sha256": "9a751462bb554648267bf7ce78be3c7b460f8d4bff6934d4bc631ae7f243cf23"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "5956b9fcd40be1b4ff5ebcf6ccf099c10198a1c7757674dc11b070b5ea57059f"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "bb5eb14627ec188bdfc2b5abb60f8699a6dfde1f2a4e74b3ecfbc8725834b0cd"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "7414d9fc3da364bc6dec5caced7c6b9cf0b63712a9c7b08c1d9f1907f2d99755"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "99c2c596ec80696b02e3b432b4694adcc051fe1fc3aadfd778874deba6508f99"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "4b990d216da1280b961ea358378cb6f90cdaf13854027d6675a97f7fc3f802ed"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel-source-fixtures-cpu212-v1/plan.json": {
+      "bytes": 39280,
+      "sha256": "55a3f83096b3ba62bdfc20346c33e3511353ef2f6a7aa6da353e2ab8311e234b"
+    },
+    "kernel-source-fixtures-cpu212-v1/preflight.json": {
+      "bytes": 1510,
+      "sha256": "8441fc9b68c8f7f9d0742f4ac4a2a0cc936e02a724b83ef21d9c2f6d5b31e4c0"
+    },
+    "kernel-source-fixtures-cpu212-v1/run.py": {
+      "bytes": 13561,
+      "sha256": "8865b47276c069ef2277285caa7a9731bac7e3429ebad4827220e3bf20bdb3c5"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "3f91d8998caff1c750ae3c5dd31d38b5c222dd21529b27dafe00a51137567024"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/case-1.log": {
+      "bytes": 7862,
+      "sha256": "4f74b42380a69b357ab17f6b313b3dfaaca567a9aa708be08ba1d6dc596d29c7"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/case-2.log": {
+      "bytes": 7862,
+      "sha256": "959e17ab4516931055cd42a1c016a52534d3112019280f3bfc5475334dbccfc7"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/case-7.log": {
+      "bytes": 7862,
+      "sha256": "f77f7142753a8fbfc6dc898bd7f4cc7e78f4819bb2744e33a7c7a79204037ba1"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "bbdd6a8f0eef5f69995b6be3b1a4dc58ea223ec2be71f752dfa01c28d197a8c1"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "3fe7d72096654ed5f5cdd2a4a397af537a7e24d1432cd61e49db98ffa17c1f88"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c920126a63210f33c0f4bf10e7096c4f0bd7d9254e92ea6810c13447a03926fa"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "b59f37fed2df4f5f27ee190af1fe867f47318e041c5fa3bb6ed5d70e8d3b994a"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e728a1f4191b564e9f6480ce719567378dc56b886e98bbda9c6e92030e56a2d8"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "5386ab30324c3253e2c0292eb70a9ec783471a3d042e8869cb71b1154f5db02f"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/case-1.log": {
+      "bytes": 7862,
+      "sha256": "5e3cb9d0f9b7af603ca6567454edf3e2aa2fce8ea91119a136e7b020b4d5d2ac"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/case-2.log": {
+      "bytes": 7862,
+      "sha256": "ba66e6cabafec046942e1f59ae1eecbad8438393f452b1bedf2ce4f5220c4356"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/case-7.log": {
+      "bytes": 7862,
+      "sha256": "292d61fb5ef200633068310a3d4c3fded27a8a293b834c597930f6a8ff79b3d0"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "637ea0a4a7dd3482e307d923155fc3a34d6d05f92b11a0cd5f81c4b3caeab8f4"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "85d49110e30a588287de87b9ec3ca0c9bed0f00edb6bb22cc52f17824144b7ff"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "43a4c17685d25ba1dc05115c8c7771fd2112335aaa25e225df293119ee1fb406"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "304352c09b37933a5046ddc3360941c4f6c33d4f6971fd628928f3d05b1d1d50"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "0466630bb2c7720011123524b4cd554beb1c405f8c04bf5d2b54017eb10c1443"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "8cf8c72beb0aad77c317f40554bd0e460f2acb2679dccc0b8925bfc0fbfcceca"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/case-1.log": {
+      "bytes": 7862,
+      "sha256": "869b8a25cfe94569f9fad1aa442cb6c515592c5c0526bc6635e6ed1e25e7b9f1"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/case-2.log": {
+      "bytes": 7862,
+      "sha256": "4bd26d841a7b05e86a84c49a25f9128bed3c3966f072880757d1f39d7a1debe3"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/case-7.log": {
+      "bytes": 7862,
+      "sha256": "70da9df0c583c432c11d3d93aae26e69fa4a06f52f19e50c6422702612fe7985"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "7075fd07f90c5338bb4f94b4186cecc93686935ec59cd711361a08a6007a077f"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "99b127ccb8e0a245237d85290ab236d1a219f72b10a839e3c2ddd075f46a6a9a"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "9f7c13cfa7371036783ef67603c88e9135d0226bc1ee9da0130d3e75c95c282b"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "48fbef66eb97844f8671edf99cc7986f891efcf89c7df67ea39248f2d0d3516b"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "2cd8c19ee5bbadf4b8c2cdabcb719c65eab780bb828de13640b1a20a278079bd"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "70bc81c12c1552b66cc9e47e88ff3ce04652f02509b287cc596408e0c2607f02"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/case-1.log": {
+      "bytes": 7862,
+      "sha256": "3a713d1018ef7141c472ed850fdc33bc0cc4dca43277a811e8ce6b42a7b49b34"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/case-2.log": {
+      "bytes": 7862,
+      "sha256": "f2a7c031f7b65b2e96af47acd7bcbb150ebb8c25807d19ea99f4409b0cbe102e"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/case-7.log": {
+      "bytes": 7862,
+      "sha256": "b8cd934e4b407c6fd9df901b8f6ef90407715cdab0f21980b215dc69a22d8006"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "c44d4867b432a06b4c58bdb07279f9fb0f057cc417dd3788b582be7d5ff14ef8"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "4cb457dc8ad1ede7100d5fa7c9aa99bb944d06c949daecfbafe10dacf6abb65c"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c50baff024108ff3fbf02fbba77b25eb489c094ed1acb828806ca9f75a1204b9"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "2d1448be4c752a835c2f4e4b46cf19a91d8ec2d6b375cced426f5afa00bb0b49"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "bab1fe46dd7ac450a7b961be7d9f14d3953a989b3c7651b83cdadefdfeacbf3f"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "6079913b9af64b334177a9ceed4e7401fbdd78d276b0df79490c491409c82449"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/case-1.log": {
+      "bytes": 7862,
+      "sha256": "c80ad8067e29c8451ff904818d94afa94a99c7356950b8ba5795da83de4e2c55"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/case-2.log": {
+      "bytes": 7862,
+      "sha256": "e8ff233d4734c08e25bcf9ccc312adf1bcffabfef88692f372aa9b9df5f1de79"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/case-7.log": {
+      "bytes": 7862,
+      "sha256": "630cf43988d72e1afcec65494e798b843fcfba753136d468bc16d8816f697a72"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "df4e7844afdcae0481d6ef4518c23f4d4ddb68d915b70834417a7f1733672f5e"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "e51a36b0d1baae162d4b045eb2095b684b2c1fed85c7a792aa69d825f3b8cf4d"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "7f69ca52ec662c73fe2ebe14b50d2b59b35017c67c548250b529b517f432e54a"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "03847d9609aa302b5df5cc75fa34f1c2029e2858392a8c6adce0a0965a7ec67a"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e015ad523ed75127ba2b4c5620b370a3956812ef0b2e1c157c34dde1efc871cb"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "2a2e563efeeae7b5e59fdcfb5e7df93324d2bebc0397554b1fac737a9b9d79a4"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/case-1.log": {
+      "bytes": 7862,
+      "sha256": "387928975c7a090c4cfd3595601b4c0802b46653f0b1950fc37be941c7e43098"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/case-2.log": {
+      "bytes": 7862,
+      "sha256": "28deb7b02b3b81f784141352d4ce620b081985219754b826180076166ec2a299"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/case-7.log": {
+      "bytes": 7862,
+      "sha256": "263e079528abe1399117d70e1aa6cd46b8b77d80c3d10ef9847603a6be0a369c"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "5956b9fcd40be1b4ff5ebcf6ccf099c10198a1c7757674dc11b070b5ea57059f"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "bb5eb14627ec188bdfc2b5abb60f8699a6dfde1f2a4e74b3ecfbc8725834b0cd"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "7414d9fc3da364bc6dec5caced7c6b9cf0b63712a9c7b08c1d9f1907f2d99755"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "99c2c596ec80696b02e3b432b4694adcc051fe1fc3aadfd778874deba6508f99"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "4b990d216da1280b961ea358378cb6f90cdaf13854027d6675a97f7fc3f802ed"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel-source-fixtures-cpu6-v1-measure.log": {
+      "bytes": 562,
+      "sha256": "ab4a9e0a2430f6b4b047026147bb8ab80d70386aa9a81630527a8dc05ea9ec01"
+    },
+    "kernel-source-fixtures-cpu6-v1/compiler.log": {
+      "bytes": 227,
+      "sha256": "a574cf2f0787bf5b465a5ee69494d97910c6eea55236469875cfc97e6a755ade"
+    },
+    "kernel-source-fixtures-cpu6-v1/correctness-seal.log": {
+      "bytes": 90,
+      "sha256": "85bf0cbe58448151c3bb0d9d370cbf604f256bcf8c49e0df2f1eb1460c1753dd"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "3f91d8998caff1c750ae3c5dd31d38b5c222dd21529b27dafe00a51137567024"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "bbdd6a8f0eef5f69995b6be3b1a4dc58ea223ec2be71f752dfa01c28d197a8c1"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "3fe7d72096654ed5f5cdd2a4a397af537a7e24d1432cd61e49db98ffa17c1f88"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c920126a63210f33c0f4bf10e7096c4f0bd7d9254e92ea6810c13447a03926fa"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "b59f37fed2df4f5f27ee190af1fe867f47318e041c5fa3bb6ed5d70e8d3b994a"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e728a1f4191b564e9f6480ce719567378dc56b886e98bbda9c6e92030e56a2d8"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "5386ab30324c3253e2c0292eb70a9ec783471a3d042e8869cb71b1154f5db02f"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "637ea0a4a7dd3482e307d923155fc3a34d6d05f92b11a0cd5f81c4b3caeab8f4"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "85d49110e30a588287de87b9ec3ca0c9bed0f00edb6bb22cc52f17824144b7ff"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "43a4c17685d25ba1dc05115c8c7771fd2112335aaa25e225df293119ee1fb406"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "304352c09b37933a5046ddc3360941c4f6c33d4f6971fd628928f3d05b1d1d50"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "0466630bb2c7720011123524b4cd554beb1c405f8c04bf5d2b54017eb10c1443"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "8cf8c72beb0aad77c317f40554bd0e460f2acb2679dccc0b8925bfc0fbfcceca"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "7075fd07f90c5338bb4f94b4186cecc93686935ec59cd711361a08a6007a077f"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "99b127ccb8e0a245237d85290ab236d1a219f72b10a839e3c2ddd075f46a6a9a"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "9f7c13cfa7371036783ef67603c88e9135d0226bc1ee9da0130d3e75c95c282b"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "48fbef66eb97844f8671edf99cc7986f891efcf89c7df67ea39248f2d0d3516b"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "2cd8c19ee5bbadf4b8c2cdabcb719c65eab780bb828de13640b1a20a278079bd"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "70bc81c12c1552b66cc9e47e88ff3ce04652f02509b287cc596408e0c2607f02"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "c44d4867b432a06b4c58bdb07279f9fb0f057cc417dd3788b582be7d5ff14ef8"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "4cb457dc8ad1ede7100d5fa7c9aa99bb944d06c949daecfbafe10dacf6abb65c"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c50baff024108ff3fbf02fbba77b25eb489c094ed1acb828806ca9f75a1204b9"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "2d1448be4c752a835c2f4e4b46cf19a91d8ec2d6b375cced426f5afa00bb0b49"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "bab1fe46dd7ac450a7b961be7d9f14d3953a989b3c7651b83cdadefdfeacbf3f"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "6079913b9af64b334177a9ceed4e7401fbdd78d276b0df79490c491409c82449"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "df4e7844afdcae0481d6ef4518c23f4d4ddb68d915b70834417a7f1733672f5e"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "e51a36b0d1baae162d4b045eb2095b684b2c1fed85c7a792aa69d825f3b8cf4d"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "7f69ca52ec662c73fe2ebe14b50d2b59b35017c67c548250b529b517f432e54a"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "03847d9609aa302b5df5cc75fa34f1c2029e2858392a8c6adce0a0965a7ec67a"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e015ad523ed75127ba2b4c5620b370a3956812ef0b2e1c157c34dde1efc871cb"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "2a2e563efeeae7b5e59fdcfb5e7df93324d2bebc0397554b1fac737a9b9d79a4"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "5956b9fcd40be1b4ff5ebcf6ccf099c10198a1c7757674dc11b070b5ea57059f"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "bb5eb14627ec188bdfc2b5abb60f8699a6dfde1f2a4e74b3ecfbc8725834b0cd"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "7414d9fc3da364bc6dec5caced7c6b9cf0b63712a9c7b08c1d9f1907f2d99755"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "99c2c596ec80696b02e3b432b4694adcc051fe1fc3aadfd778874deba6508f99"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "4b990d216da1280b961ea358378cb6f90cdaf13854027d6675a97f7fc3f802ed"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel-source-fixtures-cpu6-v1/plan.json": {
+      "bytes": 39278,
+      "sha256": "f76eacf3241ec7c169e77128e93ddbbc23dc11dd2aefbc9e86e62660fce4228e"
+    },
+    "kernel-source-fixtures-cpu6-v1/preflight.json": {
+      "bytes": 2547,
+      "sha256": "fa0d3fdc4cfbb3ca9be6c210cb3a288bb50388c3669e7bf7d79bf518b5a9b58d"
+    },
+    "kernel-source-fixtures-cpu6-v1/run.py": {
+      "bytes": 13561,
+      "sha256": "8865b47276c069ef2277285caa7a9731bac7e3429ebad4827220e3bf20bdb3c5"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "3f91d8998caff1c750ae3c5dd31d38b5c222dd21529b27dafe00a51137567024"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "bbdd6a8f0eef5f69995b6be3b1a4dc58ea223ec2be71f752dfa01c28d197a8c1"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "3fe7d72096654ed5f5cdd2a4a397af537a7e24d1432cd61e49db98ffa17c1f88"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c920126a63210f33c0f4bf10e7096c4f0bd7d9254e92ea6810c13447a03926fa"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "b59f37fed2df4f5f27ee190af1fe867f47318e041c5fa3bb6ed5d70e8d3b994a"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e728a1f4191b564e9f6480ce719567378dc56b886e98bbda9c6e92030e56a2d8"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "5386ab30324c3253e2c0292eb70a9ec783471a3d042e8869cb71b1154f5db02f"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "637ea0a4a7dd3482e307d923155fc3a34d6d05f92b11a0cd5f81c4b3caeab8f4"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "85d49110e30a588287de87b9ec3ca0c9bed0f00edb6bb22cc52f17824144b7ff"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "43a4c17685d25ba1dc05115c8c7771fd2112335aaa25e225df293119ee1fb406"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "304352c09b37933a5046ddc3360941c4f6c33d4f6971fd628928f3d05b1d1d50"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "0466630bb2c7720011123524b4cd554beb1c405f8c04bf5d2b54017eb10c1443"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "8cf8c72beb0aad77c317f40554bd0e460f2acb2679dccc0b8925bfc0fbfcceca"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "7075fd07f90c5338bb4f94b4186cecc93686935ec59cd711361a08a6007a077f"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "99b127ccb8e0a245237d85290ab236d1a219f72b10a839e3c2ddd075f46a6a9a"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "9f7c13cfa7371036783ef67603c88e9135d0226bc1ee9da0130d3e75c95c282b"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "48fbef66eb97844f8671edf99cc7986f891efcf89c7df67ea39248f2d0d3516b"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "2cd8c19ee5bbadf4b8c2cdabcb719c65eab780bb828de13640b1a20a278079bd"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "70bc81c12c1552b66cc9e47e88ff3ce04652f02509b287cc596408e0c2607f02"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "c44d4867b432a06b4c58bdb07279f9fb0f057cc417dd3788b582be7d5ff14ef8"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "4cb457dc8ad1ede7100d5fa7c9aa99bb944d06c949daecfbafe10dacf6abb65c"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c50baff024108ff3fbf02fbba77b25eb489c094ed1acb828806ca9f75a1204b9"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "2d1448be4c752a835c2f4e4b46cf19a91d8ec2d6b375cced426f5afa00bb0b49"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "bab1fe46dd7ac450a7b961be7d9f14d3953a989b3c7651b83cdadefdfeacbf3f"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "6079913b9af64b334177a9ceed4e7401fbdd78d276b0df79490c491409c82449"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "df4e7844afdcae0481d6ef4518c23f4d4ddb68d915b70834417a7f1733672f5e"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "e51a36b0d1baae162d4b045eb2095b684b2c1fed85c7a792aa69d825f3b8cf4d"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "7f69ca52ec662c73fe2ebe14b50d2b59b35017c67c548250b529b517f432e54a"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "03847d9609aa302b5df5cc75fa34f1c2029e2858392a8c6adce0a0965a7ec67a"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e015ad523ed75127ba2b4c5620b370a3956812ef0b2e1c157c34dde1efc871cb"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "2a2e563efeeae7b5e59fdcfb5e7df93324d2bebc0397554b1fac737a9b9d79a4"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "5956b9fcd40be1b4ff5ebcf6ccf099c10198a1c7757674dc11b070b5ea57059f"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "bb5eb14627ec188bdfc2b5abb60f8699a6dfde1f2a4e74b3ecfbc8725834b0cd"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "7414d9fc3da364bc6dec5caced7c6b9cf0b63712a9c7b08c1d9f1907f2d99755"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "99c2c596ec80696b02e3b432b4694adcc051fe1fc3aadfd778874deba6508f99"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "4b990d216da1280b961ea358378cb6f90cdaf13854027d6675a97f7fc3f802ed"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel-source-fixtures-v1-measure.log": {
+      "bytes": 562,
+      "sha256": "ab4a9e0a2430f6b4b047026147bb8ab80d70386aa9a81630527a8dc05ea9ec01"
+    },
+    "kernel-source-fixtures-v1-prepare.log": {
+      "bytes": 378,
+      "sha256": "c67cd2d9cc3e4956c009b67fd0e3e0fd5070cb91bfe58c6a3b9b22bff3edd4a8"
+    },
+    "kernel-source-fixtures-v1/compiler.log": {
+      "bytes": 227,
+      "sha256": "a574cf2f0787bf5b465a5ee69494d97910c6eea55236469875cfc97e6a755ade"
+    },
+    "kernel-source-fixtures-v1/correctness-seal.log": {
+      "bytes": 90,
+      "sha256": "85bf0cbe58448151c3bb0d9d370cbf604f256bcf8c49e0df2f1eb1460c1753dd"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "3f91d8998caff1c750ae3c5dd31d38b5c222dd21529b27dafe00a51137567024"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "bbdd6a8f0eef5f69995b6be3b1a4dc58ea223ec2be71f752dfa01c28d197a8c1"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "3fe7d72096654ed5f5cdd2a4a397af537a7e24d1432cd61e49db98ffa17c1f88"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c920126a63210f33c0f4bf10e7096c4f0bd7d9254e92ea6810c13447a03926fa"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "b59f37fed2df4f5f27ee190af1fe867f47318e041c5fa3bb6ed5d70e8d3b994a"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e728a1f4191b564e9f6480ce719567378dc56b886e98bbda9c6e92030e56a2d8"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "5386ab30324c3253e2c0292eb70a9ec783471a3d042e8869cb71b1154f5db02f"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "637ea0a4a7dd3482e307d923155fc3a34d6d05f92b11a0cd5f81c4b3caeab8f4"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "85d49110e30a588287de87b9ec3ca0c9bed0f00edb6bb22cc52f17824144b7ff"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "43a4c17685d25ba1dc05115c8c7771fd2112335aaa25e225df293119ee1fb406"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "304352c09b37933a5046ddc3360941c4f6c33d4f6971fd628928f3d05b1d1d50"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "0466630bb2c7720011123524b4cd554beb1c405f8c04bf5d2b54017eb10c1443"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "8cf8c72beb0aad77c317f40554bd0e460f2acb2679dccc0b8925bfc0fbfcceca"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "7075fd07f90c5338bb4f94b4186cecc93686935ec59cd711361a08a6007a077f"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "99b127ccb8e0a245237d85290ab236d1a219f72b10a839e3c2ddd075f46a6a9a"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "9f7c13cfa7371036783ef67603c88e9135d0226bc1ee9da0130d3e75c95c282b"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "48fbef66eb97844f8671edf99cc7986f891efcf89c7df67ea39248f2d0d3516b"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "2cd8c19ee5bbadf4b8c2cdabcb719c65eab780bb828de13640b1a20a278079bd"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L1_2-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "70bc81c12c1552b66cc9e47e88ff3ce04652f02509b287cc596408e0c2607f02"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "c44d4867b432a06b4c58bdb07279f9fb0f057cc417dd3788b582be7d5ff14ef8"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "4cb457dc8ad1ede7100d5fa7c9aa99bb944d06c949daecfbafe10dacf6abb65c"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c50baff024108ff3fbf02fbba77b25eb489c094ed1acb828806ca9f75a1204b9"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "2d1448be4c752a835c2f4e4b46cf19a91d8ec2d6b375cced426f5afa00bb0b49"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "bab1fe46dd7ac450a7b961be7d9f14d3953a989b3c7651b83cdadefdfeacbf3f"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "6079913b9af64b334177a9ceed4e7401fbdd78d276b0df79490c491409c82449"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "df4e7844afdcae0481d6ef4518c23f4d4ddb68d915b70834417a7f1733672f5e"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "e51a36b0d1baae162d4b045eb2095b684b2c1fed85c7a792aa69d825f3b8cf4d"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "7f69ca52ec662c73fe2ebe14b50d2b59b35017c67c548250b529b517f432e54a"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "03847d9609aa302b5df5cc75fa34f1c2029e2858392a8c6adce0a0965a7ec67a"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e015ad523ed75127ba2b4c5620b370a3956812ef0b2e1c157c34dde1efc871cb"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "2a2e563efeeae7b5e59fdcfb5e7df93324d2bebc0397554b1fac737a9b9d79a4"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "5956b9fcd40be1b4ff5ebcf6ccf099c10198a1c7757674dc11b070b5ea57059f"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "bb5eb14627ec188bdfc2b5abb60f8699a6dfde1f2a4e74b3ecfbc8725834b0cd"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "7414d9fc3da364bc6dec5caced7c6b9cf0b63712a9c7b08c1d9f1907f2d99755"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "99c2c596ec80696b02e3b432b4694adcc051fe1fc3aadfd778874deba6508f99"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "4b990d216da1280b961ea358378cb6f90cdaf13854027d6675a97f7fc3f802ed"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-v1/nlo-FFV1L2_1-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel-source-fixtures-v1/plan.json": {
+      "bytes": 38869,
+      "sha256": "1c2df45f60a72aceba45988ade7d2f0d2f3d59323d098ebd288f8e109462f022"
+    },
+    "kernel-source-fixtures-v1/preflight.json": {
+      "bytes": 2534,
+      "sha256": "6dbf4f653212c7c876262ead998825b867353d5d3b22bb73ebd4851bcf7a89b4"
+    },
+    "kernel-source-fixtures-v1/run.py": {
+      "bytes": 13561,
+      "sha256": "8865b47276c069ef2277285caa7a9731bac7e3429ebad4827220e3bf20bdb3c5"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "3f91d8998caff1c750ae3c5dd31d38b5c222dd21529b27dafe00a51137567024"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "bbdd6a8f0eef5f69995b6be3b1a4dc58ea223ec2be71f752dfa01c28d197a8c1"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "3fe7d72096654ed5f5cdd2a4a397af537a7e24d1432cd61e49db98ffa17c1f88"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c920126a63210f33c0f4bf10e7096c4f0bd7d9254e92ea6810c13447a03926fa"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "b59f37fed2df4f5f27ee190af1fe867f47318e041c5fa3bb6ed5d70e8d3b994a"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e728a1f4191b564e9f6480ce719567378dc56b886e98bbda9c6e92030e56a2d8"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "5386ab30324c3253e2c0292eb70a9ec783471a3d042e8869cb71b1154f5db02f"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "637ea0a4a7dd3482e307d923155fc3a34d6d05f92b11a0cd5f81c4b3caeab8f4"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "85d49110e30a588287de87b9ec3ca0c9bed0f00edb6bb22cc52f17824144b7ff"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "43a4c17685d25ba1dc05115c8c7771fd2112335aaa25e225df293119ee1fb406"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "304352c09b37933a5046ddc3360941c4f6c33d4f6971fd628928f3d05b1d1d50"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "0466630bb2c7720011123524b4cd554beb1c405f8c04bf5d2b54017eb10c1443"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "8cf8c72beb0aad77c317f40554bd0e460f2acb2679dccc0b8925bfc0fbfcceca"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "7075fd07f90c5338bb4f94b4186cecc93686935ec59cd711361a08a6007a077f"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "99b127ccb8e0a245237d85290ab236d1a219f72b10a839e3c2ddd075f46a6a9a"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "9f7c13cfa7371036783ef67603c88e9135d0226bc1ee9da0130d3e75c95c282b"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "48fbef66eb97844f8671edf99cc7986f891efcf89c7df67ea39248f2d0d3516b"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "2cd8c19ee5bbadf4b8c2cdabcb719c65eab780bb828de13640b1a20a278079bd"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L1_2-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank2/azero.f": {
+      "bytes": 5351,
+      "sha256": "70bc81c12c1552b66cc9e47e88ff3ce04652f02509b287cc596408e0c2607f02"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank2/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank2/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank2/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank2/factor.f": {
+      "bytes": 8548,
+      "sha256": "c44d4867b432a06b4c58bdb07279f9fb0f057cc417dd3788b582be7d5ff14ef8"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank2/fixture-1.dat": {
+      "bytes": 63600,
+      "sha256": "4cb457dc8ad1ede7100d5fa7c9aa99bb944d06c949daecfbafe10dacf6abb65c"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank2/fixture-2.dat": {
+      "bytes": 63600,
+      "sha256": "c50baff024108ff3fbf02fbba77b25eb489c094ed1acb828806ca9f75a1204b9"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank2/fixture-7.dat": {
+      "bytes": 63600,
+      "sha256": "2d1448be4c752a835c2f4e4b46cf19a91d8ec2d6b375cced426f5afa00bb0b49"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank2/guarded.f": {
+      "bytes": 5301,
+      "sha256": "bab1fe46dd7ac450a7b961be7d9f14d3953a989b3c7651b83cdadefdfeacbf3f"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank2/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank2/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank2/original.f": {
+      "bytes": 967,
+      "sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank3/azero.f": {
+      "bytes": 5351,
+      "sha256": "6079913b9af64b334177a9ceed4e7401fbdd78d276b0df79490c491409c82449"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank3/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank3/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank3/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank3/factor.f": {
+      "bytes": 8548,
+      "sha256": "df4e7844afdcae0481d6ef4518c23f4d4ddb68d915b70834417a7f1733672f5e"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank3/fixture-1.dat": {
+      "bytes": 127760,
+      "sha256": "e51a36b0d1baae162d4b045eb2095b684b2c1fed85c7a792aa69d825f3b8cf4d"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank3/fixture-2.dat": {
+      "bytes": 127760,
+      "sha256": "7f69ca52ec662c73fe2ebe14b50d2b59b35017c67c548250b529b517f432e54a"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank3/fixture-7.dat": {
+      "bytes": 127760,
+      "sha256": "03847d9609aa302b5df5cc75fa34f1c2029e2858392a8c6adce0a0965a7ec67a"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank3/guarded.f": {
+      "bytes": 5301,
+      "sha256": "e015ad523ed75127ba2b4c5620b370a3956812ef0b2e1c157c34dde1efc871cb"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank3/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank3/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank3/original.f": {
+      "bytes": 967,
+      "sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank4/azero.f": {
+      "bytes": 5351,
+      "sha256": "2a2e563efeeae7b5e59fdcfb5e7df93324d2bebc0397554b1fac737a9b9d79a4"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank4/build.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank4/coef_specs.inc": {
+      "bytes": 88,
+      "sha256": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank4/constants.f": {
+      "bytes": 23541,
+      "sha256": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank4/factor.f": {
+      "bytes": 8548,
+      "sha256": "5956b9fcd40be1b4ff5ebcf6ccf099c10198a1c7757674dc11b070b5ea57059f"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank4/fixture-1.dat": {
+      "bytes": 233312,
+      "sha256": "bb5eb14627ec188bdfc2b5abb60f8699a6dfde1f2a4e74b3ecfbc8725834b0cd"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank4/fixture-2.dat": {
+      "bytes": 233312,
+      "sha256": "7414d9fc3da364bc6dec5caced7c6b9cf0b63712a9c7b08c1d9f1907f2d99755"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank4/fixture-7.dat": {
+      "bytes": 233312,
+      "sha256": "99c2c596ec80696b02e3b432b4694adcc051fe1fc3aadfd778874deba6508f99"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank4/guarded.f": {
+      "bytes": 5301,
+      "sha256": "4b990d216da1280b961ea358378cb6f90cdaf13854027d6675a97f7fc3f802ed"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank4/kernel.f90": {
+      "bytes": 3532,
+      "sha256": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank4/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3"
+    },
+    "kernel-source-fixtures-v1/standalone-FFV1L2_1-rank4/original.f": {
+      "bytes": 967,
+      "sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+    },
+    "kernel/README.md": {
+      "bytes": 12462,
+      "sha256": "894544c33d6dac763d7fe51c5d82f1025627e13dff098d7795de7b3e604cfae3"
+    },
+    "kernel/analyze.py": {
+      "bytes": 3721,
+      "sha256": "4d63e1c30dec529c2d6ef3bc906dd1853181599c39f65d0470bacffbc441cdbf"
+    },
+    "kernel/idle-pairs-scan-v1.json": {
+      "bytes": 114338,
+      "sha256": "9395a4c593171b5d9772a26a14b29222d6214f9d519fbaf43ee69badc6a4f208"
+    },
+    "kernel/run.py": {
+      "bytes": 13561,
+      "sha256": "8865b47276c069ef2277285caa7a9731bac7e3429ebad4827220e3bf20bdb3c5"
+    },
+    "kernel/verify.py": {
+      "bytes": 3854,
+      "sha256": "91415071fa315c2ab798cd220edd9e891f5be2b9073fac8392ef1bdbe6b534d6"
+    }
+  },
+  "rejected_preflights": [
+    "kernel-source-fixtures-v1",
+    "kernel-source-fixtures-cpu6-v1",
+    "kernel-source-fixtures-cpu209-v1"
+  ],
+  "schema": "dp-factor-kernel-seal-v1",
+  "scope": "Source-derived binary64 kernel experiment only; no generated-process performance claim; preserves all36 fixed21-block measurements and rejected CPU preflights."
+}

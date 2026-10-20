@@ -552,3 +552,17 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   running with an 86,400-second phase timeout and the same points, numerical
   settings, CPU and frozen collection tools. Copied pre-existing output files
   from the timed-out worker are not measurements.
+- The guarded QP port is committed and pushed as f4bffc61e. All thirteen fresh
+  core/control CLI exports and clean builds now pass from that exact revision.
+  Their physical inputs are preserved, model postimages match the retained
+  correction exactly, and every library/module/link signature matches the prior
+  certified runtime. Independent live rehashing confirms one common complete
+  runtime group per backend. New representative and variant proof collection
+  remains pending. A fresh relocated internal-copy build also passes with only
+  its private installation hidden; its numerical runtime phase is next.
+- Separate DP factorization passes all six original/capture-only/factored
+  100-point Ninja/NinjaRS streams. Capture-only results are exact; changed
+  association remains within the original tolerance. Both backends still
+  rescue points 44 and 80, so the rescue-reduction hypothesis is negative.
+  Pure Fortran kernel timing has mixed results and does not justify promotion;
+  an uninstrumented full-process timing plan remains held.

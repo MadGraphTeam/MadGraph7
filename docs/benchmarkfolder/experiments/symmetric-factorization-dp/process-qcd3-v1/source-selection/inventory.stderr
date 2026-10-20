@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-plan-v1/inventory.py", line 82, in <module>
+    main()
+    ~~~~^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-plan-v1/inventory.py", line 66, in main
+    assert sha(path) == sha(stored), vertex
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: FFV1L1_2

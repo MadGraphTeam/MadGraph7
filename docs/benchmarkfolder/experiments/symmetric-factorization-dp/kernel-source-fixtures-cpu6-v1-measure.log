@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel/run.py", line 323, in <module>
+    measure(report)
+    ~~~~~~~^^^^^^^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel/run.py", line 279, in measure
+    raise RuntimeError('CPU/sibling idle preflight failed; no measurement launched')
+RuntimeError: CPU/sibling idle preflight failed; no measurement launched

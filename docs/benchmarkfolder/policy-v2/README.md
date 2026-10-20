@@ -19,9 +19,11 @@ after sourcing `.ninjars-build/dev-env.sh`.
 
 The completed source/runtime certification below uses numerical revision
 `b44d20e725f1ec68589df20284e4ce9116e9e2ab`, with installed NinjaRS ABI 3.
-The new private QP tensor-factor port has completed its development controls;
-the clean-source/runtime refresh is prepared separately in
-`refresh-chain-abi3-tensor-factor-v1/`. The following completed checks retain
+The new private QP tensor-factor port is committed as `f4bffc61e` and has
+completed its development controls. Its [thirteen clean exports and runtime
+reuse checks](generation-retention-abi3-tensor-factor-v1/README.md) also pass.
+Fresh candidate representative/variant proofs remain pending in the separate
+`refresh-chain-abi3-tensor-factor-v1/` chain. The following earlier checks retain
 their original source identities:
 
 - [Thirteen fresh CLI exports](generation-abi3-terminal-fixed/README.md) and

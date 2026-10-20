@@ -1,0 +1,1032 @@
+{
+  "arms": [
+    "original",
+    "guarded-original",
+    "factor-only",
+    "A-zero-only"
+  ],
+  "case_ids": [
+    1,
+    2,
+    7
+  ],
+  "compiler": {
+    "command": [
+      "gfortran",
+      "--version"
+    ],
+    "elapsed": 0.008257393958047032,
+    "returncode": 0
+  },
+  "complete": true,
+  "configurations": [
+    {
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "guarded.f",
+          "azero.f",
+          "kernel.f90",
+          "-o",
+          "kernel"
+        ],
+        "elapsed": 2.6538121110061184,
+        "returncode": 0
+      },
+      "executable_sha256": "de0d2c07a0252567c34c7b15acc627c41478d94d4e8af9b81a74a0574ff12e78",
+      "fixtures": [
+        {
+          "A_total": 240,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 1,
+          "file": "fixture-1.dat",
+          "fixture_kind": "source-derived dense phase-related rows",
+          "sha256": "3fe7d72096654ed5f5cdd2a4a397af537a7e24d1432cd61e49db98ffa17c1f88"
+        },
+        {
+          "A_total": 240,
+          "A_zero": 160,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 2,
+          "file": "fixture-2.dat",
+          "fixture_kind": "source-derived sparse phase-related rows",
+          "sha256": "c920126a63210f33c0f4bf10e7096c4f0bd7d9254e92ea6810c13447a03926fa"
+        },
+        {
+          "A_total": 240,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 7,
+          "file": "fixture-7.dat",
+          "fixture_kind": "source-derived dense independently rounded actual ALOHA expressions",
+          "sha256": "b59f37fed2df4f5f27ee190af1fe867f47318e041c5fa3bb6ed5d70e8d3b994a"
+        }
+      ],
+      "flags": "standalone",
+      "generated_sources": {
+        "azero.f": "3f91d8998caff1c750ae3c5dd31d38b5c222dd21529b27dafe00a51137567024",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "bbdd6a8f0eef5f69995b6be3b1a4dc58ea223ec2be71f752dfa01c28d197a8c1",
+        "guarded.f": "e728a1f4191b564e9f6480ce719567378dc56b886e98bbda9c6e92030e56a2d8",
+        "kernel.f90": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+      },
+      "key": "standalone-FFV1L1_2-rank2",
+      "oracle_result_sha256": "80f8a830d14805b70aaeebf6c359a2b42d8ee88f7c5a8801819dea0692f92702",
+      "rank": 2,
+      "source_dump": "oracle-sa-rank234-v1/standalone-FFV1L1_2-rank2-full/dump.txt.gz",
+      "source_dump_sha256": "b810ff99e5488592d1191b7e7138d3419e8ec410176aa11fbfd95b6c7ab99d7d",
+      "variants": {
+        "source_instrumented_factor_sha256": "cbcedda96b4184472db2e1ac64018a4db4f39a5f44cdc7f1df80e2398d22f378",
+        "source_original_sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34",
+        "trace_lines_removed": 20,
+        "zero_only_change": "same admission prefix as factor; original body plus A==0 cycle; no reassociation"
+      },
+      "vertex": "FFV1L1_2"
+    },
+    {
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "guarded.f",
+          "azero.f",
+          "kernel.f90",
+          "-o",
+          "kernel"
+        ],
+        "elapsed": 1.3913100049830973,
+        "returncode": 0
+      },
+      "executable_sha256": "02f5f4198e9e500e67f34999e3c75b89a7232334b39a06a264c2f914e07b362f",
+      "fixtures": [
+        {
+          "A_total": 560,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 1,
+          "file": "fixture-1.dat",
+          "fixture_kind": "source-derived dense phase-related rows",
+          "sha256": "85d49110e30a588287de87b9ec3ca0c9bed0f00edb6bb22cc52f17824144b7ff"
+        },
+        {
+          "A_total": 560,
+          "A_zero": 373,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 2,
+          "file": "fixture-2.dat",
+          "fixture_kind": "source-derived sparse phase-related rows",
+          "sha256": "43a4c17685d25ba1dc05115c8c7771fd2112335aaa25e225df293119ee1fb406"
+        },
+        {
+          "A_total": 560,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 7,
+          "file": "fixture-7.dat",
+          "fixture_kind": "source-derived dense independently rounded actual ALOHA expressions",
+          "sha256": "304352c09b37933a5046ddc3360941c4f6c33d4f6971fd628928f3d05b1d1d50"
+        }
+      ],
+      "flags": "standalone",
+      "generated_sources": {
+        "azero.f": "5386ab30324c3253e2c0292eb70a9ec783471a3d042e8869cb71b1154f5db02f",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "637ea0a4a7dd3482e307d923155fc3a34d6d05f92b11a0cd5f81c4b3caeab8f4",
+        "guarded.f": "0466630bb2c7720011123524b4cd554beb1c405f8c04bf5d2b54017eb10c1443",
+        "kernel.f90": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+      },
+      "key": "standalone-FFV1L1_2-rank3",
+      "oracle_result_sha256": "4d2d3eacb14a8bc05ef989954bf3a2453b3f830f34a82c8e22b6e6be1338c8ec",
+      "rank": 3,
+      "source_dump": "oracle-sa-rank234-v1/standalone-FFV1L1_2-rank3-full/dump.txt.gz",
+      "source_dump_sha256": "cfbe6245a2acca46afc1945c185010cb6923b0160812e1538480abc5989819d8",
+      "variants": {
+        "source_instrumented_factor_sha256": "9ff79d48d53c3bba304eacd08077c8308545fe813ee5fea060388d599da082c8",
+        "source_original_sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e",
+        "trace_lines_removed": 20,
+        "zero_only_change": "same admission prefix as factor; original body plus A==0 cycle; no reassociation"
+      },
+      "vertex": "FFV1L1_2"
+    },
+    {
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "guarded.f",
+          "azero.f",
+          "kernel.f90",
+          "-o",
+          "kernel"
+        ],
+        "elapsed": 1.4612251579528674,
+        "returncode": 0
+      },
+      "executable_sha256": "8ed15da1e172e90a2fc679c07a477bf1f9cc2dd03facba63b643f95c491255fd",
+      "fixtures": [
+        {
+          "A_total": 1120,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 1,
+          "file": "fixture-1.dat",
+          "fixture_kind": "source-derived dense phase-related rows",
+          "sha256": "99b127ccb8e0a245237d85290ab236d1a219f72b10a839e3c2ddd075f46a6a9a"
+        },
+        {
+          "A_total": 1120,
+          "A_zero": 747,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 2,
+          "file": "fixture-2.dat",
+          "fixture_kind": "source-derived sparse phase-related rows",
+          "sha256": "9f7c13cfa7371036783ef67603c88e9135d0226bc1ee9da0130d3e75c95c282b"
+        },
+        {
+          "A_total": 1120,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 7,
+          "file": "fixture-7.dat",
+          "fixture_kind": "source-derived dense independently rounded actual ALOHA expressions",
+          "sha256": "48fbef66eb97844f8671edf99cc7986f891efcf89c7df67ea39248f2d0d3516b"
+        }
+      ],
+      "flags": "standalone",
+      "generated_sources": {
+        "azero.f": "8cf8c72beb0aad77c317f40554bd0e460f2acb2679dccc0b8925bfc0fbfcceca",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "7075fd07f90c5338bb4f94b4186cecc93686935ec59cd711361a08a6007a077f",
+        "guarded.f": "2cd8c19ee5bbadf4b8c2cdabcb719c65eab780bb828de13640b1a20a278079bd",
+        "kernel.f90": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+      },
+      "key": "standalone-FFV1L1_2-rank4",
+      "oracle_result_sha256": "7b05ac60099322a886fea15cebb0345a6e81497cbc07208d0cec5aa3126066e8",
+      "rank": 4,
+      "source_dump": "oracle-sa-rank234-v1/standalone-FFV1L1_2-rank4-full/dump.txt.gz",
+      "source_dump_sha256": "72ba816d590e943371a7e1e96269d84de3e2a5d97349d6bacac83526eb5f3545",
+      "variants": {
+        "source_instrumented_factor_sha256": "74ba1659c949e0d55fa5ec5b205292ce1d9cc7e40c5ccb80312e709fb4b9f2b0",
+        "source_original_sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c",
+        "trace_lines_removed": 20,
+        "zero_only_change": "same admission prefix as factor; original body plus A==0 cycle; no reassociation"
+      },
+      "vertex": "FFV1L1_2"
+    },
+    {
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "guarded.f",
+          "azero.f",
+          "kernel.f90",
+          "-o",
+          "kernel"
+        ],
+        "elapsed": 2.6449433739762753,
+        "returncode": 0
+      },
+      "executable_sha256": "c146a76bf33358ff90bfa0ca05e051aed5151298bfc30d6c825ac5d8bdf6a36e",
+      "fixtures": [
+        {
+          "A_total": 240,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 1,
+          "file": "fixture-1.dat",
+          "fixture_kind": "source-derived dense phase-related rows",
+          "sha256": "4cb457dc8ad1ede7100d5fa7c9aa99bb944d06c949daecfbafe10dacf6abb65c"
+        },
+        {
+          "A_total": 240,
+          "A_zero": 160,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 2,
+          "file": "fixture-2.dat",
+          "fixture_kind": "source-derived sparse phase-related rows",
+          "sha256": "c50baff024108ff3fbf02fbba77b25eb489c094ed1acb828806ca9f75a1204b9"
+        },
+        {
+          "A_total": 240,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 7,
+          "file": "fixture-7.dat",
+          "fixture_kind": "source-derived dense independently rounded actual ALOHA expressions",
+          "sha256": "2d1448be4c752a835c2f4e4b46cf19a91d8ec2d6b375cced426f5afa00bb0b49"
+        }
+      ],
+      "flags": "standalone",
+      "generated_sources": {
+        "azero.f": "70bc81c12c1552b66cc9e47e88ff3ce04652f02509b287cc596408e0c2607f02",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "c44d4867b432a06b4c58bdb07279f9fb0f057cc417dd3788b582be7d5ff14ef8",
+        "guarded.f": "bab1fe46dd7ac450a7b961be7d9f14d3953a989b3c7651b83cdadefdfeacbf3f",
+        "kernel.f90": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+      },
+      "key": "standalone-FFV1L2_1-rank2",
+      "oracle_result_sha256": "e958e8d8fc0e9009130af8a2920b246a5594f32bd619a512f62fd910b0014975",
+      "rank": 2,
+      "source_dump": "oracle-sa-rank234-v1/standalone-FFV1L2_1-rank2-full/dump.txt.gz",
+      "source_dump_sha256": "a64d5deead8f2693ad7a8387a78a8bf9efb2dbca95225e0e33e0d1e44029d794",
+      "variants": {
+        "source_instrumented_factor_sha256": "359efa1f7cc852926125b824800dbd4e4b159ea272a3e3d8180e77f6d746247c",
+        "source_original_sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34",
+        "trace_lines_removed": 20,
+        "zero_only_change": "same admission prefix as factor; original body plus A==0 cycle; no reassociation"
+      },
+      "vertex": "FFV1L2_1"
+    },
+    {
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "guarded.f",
+          "azero.f",
+          "kernel.f90",
+          "-o",
+          "kernel"
+        ],
+        "elapsed": 1.4537831839406863,
+        "returncode": 0
+      },
+      "executable_sha256": "0a296d602aab5523a14a52828cdc7b33765f00531665326210b7be6677494414",
+      "fixtures": [
+        {
+          "A_total": 560,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 1,
+          "file": "fixture-1.dat",
+          "fixture_kind": "source-derived dense phase-related rows",
+          "sha256": "e51a36b0d1baae162d4b045eb2095b684b2c1fed85c7a792aa69d825f3b8cf4d"
+        },
+        {
+          "A_total": 560,
+          "A_zero": 373,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 2,
+          "file": "fixture-2.dat",
+          "fixture_kind": "source-derived sparse phase-related rows",
+          "sha256": "7f69ca52ec662c73fe2ebe14b50d2b59b35017c67c548250b529b517f432e54a"
+        },
+        {
+          "A_total": 560,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 7,
+          "file": "fixture-7.dat",
+          "fixture_kind": "source-derived dense independently rounded actual ALOHA expressions",
+          "sha256": "03847d9609aa302b5df5cc75fa34f1c2029e2858392a8c6adce0a0965a7ec67a"
+        }
+      ],
+      "flags": "standalone",
+      "generated_sources": {
+        "azero.f": "6079913b9af64b334177a9ceed4e7401fbdd78d276b0df79490c491409c82449",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "df4e7844afdcae0481d6ef4518c23f4d4ddb68d915b70834417a7f1733672f5e",
+        "guarded.f": "e015ad523ed75127ba2b4c5620b370a3956812ef0b2e1c157c34dde1efc871cb",
+        "kernel.f90": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+      },
+      "key": "standalone-FFV1L2_1-rank3",
+      "oracle_result_sha256": "f59e432eef930c49702d4c38c5882e0f9c980249a26cf10d5c949b538c6041cc",
+      "rank": 3,
+      "source_dump": "oracle-sa-rank234-v1/standalone-FFV1L2_1-rank3-full/dump.txt.gz",
+      "source_dump_sha256": "f0d16a3ac4b810119744fd87cff21c429be7e63217b44d926001cebdf2c3503a",
+      "variants": {
+        "source_instrumented_factor_sha256": "5d3a9ba03b43390a92f3107a7bcb2873c1c1d734c46698cc8d83af0b249e5648",
+        "source_original_sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e",
+        "trace_lines_removed": 20,
+        "zero_only_change": "same admission prefix as factor; original body plus A==0 cycle; no reassociation"
+      },
+      "vertex": "FFV1L2_1"
+    },
+    {
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "guarded.f",
+          "azero.f",
+          "kernel.f90",
+          "-o",
+          "kernel"
+        ],
+        "elapsed": 1.4261655630543828,
+        "returncode": 0
+      },
+      "executable_sha256": "ec0ca431e0c253347908b15303306c6e10dc09bc9f46455a6bebfaaa9ba91d7a",
+      "fixtures": [
+        {
+          "A_total": 1120,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 1,
+          "file": "fixture-1.dat",
+          "fixture_kind": "source-derived dense phase-related rows",
+          "sha256": "bb5eb14627ec188bdfc2b5abb60f8699a6dfde1f2a4e74b3ecfbc8725834b0cd"
+        },
+        {
+          "A_total": 1120,
+          "A_zero": 747,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 2,
+          "file": "fixture-2.dat",
+          "fixture_kind": "source-derived sparse phase-related rows",
+          "sha256": "7414d9fc3da364bc6dec5caced7c6b9cf0b63712a9c7b08c1d9f1907f2d99755"
+        },
+        {
+          "A_total": 1120,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 7,
+          "file": "fixture-7.dat",
+          "fixture_kind": "source-derived dense independently rounded actual ALOHA expressions",
+          "sha256": "99c2c596ec80696b02e3b432b4694adcc051fe1fc3aadfd778874deba6508f99"
+        }
+      ],
+      "flags": "standalone",
+      "generated_sources": {
+        "azero.f": "2a2e563efeeae7b5e59fdcfb5e7df93324d2bebc0397554b1fac737a9b9d79a4",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "5956b9fcd40be1b4ff5ebcf6ccf099c10198a1c7757674dc11b070b5ea57059f",
+        "guarded.f": "4b990d216da1280b961ea358378cb6f90cdaf13854027d6675a97f7fc3f802ed",
+        "kernel.f90": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+      },
+      "key": "standalone-FFV1L2_1-rank4",
+      "oracle_result_sha256": "9105f6eaa55638d9ec185996ce08e268fb5f75972fc3e3f79c09b61db24a31fd",
+      "rank": 4,
+      "source_dump": "oracle-sa-rank234-v1/standalone-FFV1L2_1-rank4-full/dump.txt.gz",
+      "source_dump_sha256": "299cd8756363f1dc525d71348911f48677e8a507bc56b4a4b327f47f827c8e7e",
+      "variants": {
+        "source_instrumented_factor_sha256": "bca29875da68366c55488638e1d4374425aba646889aadb8b7defdfa913463fc",
+        "source_original_sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c",
+        "trace_lines_removed": 20,
+        "zero_only_change": "same admission prefix as factor; original body plus A==0 cycle; no reassociation"
+      },
+      "vertex": "FFV1L2_1"
+    },
+    {
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "guarded.f",
+          "azero.f",
+          "kernel.f90",
+          "-o",
+          "kernel"
+        ],
+        "elapsed": 1.3759030220098794,
+        "returncode": 0
+      },
+      "executable_sha256": "c1a11130f3e1839c55bb0242cfd1cba16578eb4e9d36df45c803e9bf7afa9c14",
+      "fixtures": [
+        {
+          "A_total": 240,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 1,
+          "file": "fixture-1.dat",
+          "fixture_kind": "source-derived dense phase-related rows",
+          "sha256": "3fe7d72096654ed5f5cdd2a4a397af537a7e24d1432cd61e49db98ffa17c1f88"
+        },
+        {
+          "A_total": 240,
+          "A_zero": 160,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 2,
+          "file": "fixture-2.dat",
+          "fixture_kind": "source-derived sparse phase-related rows",
+          "sha256": "c920126a63210f33c0f4bf10e7096c4f0bd7d9254e92ea6810c13447a03926fa"
+        },
+        {
+          "A_total": 240,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 7,
+          "file": "fixture-7.dat",
+          "fixture_kind": "source-derived dense independently rounded actual ALOHA expressions",
+          "sha256": "b59f37fed2df4f5f27ee190af1fe867f47318e041c5fa3bb6ed5d70e8d3b994a"
+        }
+      ],
+      "flags": "nlo",
+      "generated_sources": {
+        "azero.f": "3f91d8998caff1c750ae3c5dd31d38b5c222dd21529b27dafe00a51137567024",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "bbdd6a8f0eef5f69995b6be3b1a4dc58ea223ec2be71f752dfa01c28d197a8c1",
+        "guarded.f": "e728a1f4191b564e9f6480ce719567378dc56b886e98bbda9c6e92030e56a2d8",
+        "kernel.f90": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+      },
+      "key": "nlo-FFV1L1_2-rank2",
+      "oracle_result_sha256": "80f8a830d14805b70aaeebf6c359a2b42d8ee88f7c5a8801819dea0692f92702",
+      "rank": 2,
+      "source_dump": "oracle-nlo-rank2-v1/nlo-FFV1L1_2-rank2-full/dump.txt.gz",
+      "source_dump_sha256": "b810ff99e5488592d1191b7e7138d3419e8ec410176aa11fbfd95b6c7ab99d7d",
+      "variants": {
+        "source_instrumented_factor_sha256": "cbcedda96b4184472db2e1ac64018a4db4f39a5f44cdc7f1df80e2398d22f378",
+        "source_original_sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34",
+        "trace_lines_removed": 20,
+        "zero_only_change": "same admission prefix as factor; original body plus A==0 cycle; no reassociation"
+      },
+      "vertex": "FFV1L1_2"
+    },
+    {
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "guarded.f",
+          "azero.f",
+          "kernel.f90",
+          "-o",
+          "kernel"
+        ],
+        "elapsed": 1.3427204620093107,
+        "returncode": 0
+      },
+      "executable_sha256": "b2167cb825874de6e8166f6c1b6b81ed385be229e322c2eac60f7e380a392b71",
+      "fixtures": [
+        {
+          "A_total": 560,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 1,
+          "file": "fixture-1.dat",
+          "fixture_kind": "source-derived dense phase-related rows",
+          "sha256": "85d49110e30a588287de87b9ec3ca0c9bed0f00edb6bb22cc52f17824144b7ff"
+        },
+        {
+          "A_total": 560,
+          "A_zero": 373,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 2,
+          "file": "fixture-2.dat",
+          "fixture_kind": "source-derived sparse phase-related rows",
+          "sha256": "43a4c17685d25ba1dc05115c8c7771fd2112335aaa25e225df293119ee1fb406"
+        },
+        {
+          "A_total": 560,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 7,
+          "file": "fixture-7.dat",
+          "fixture_kind": "source-derived dense independently rounded actual ALOHA expressions",
+          "sha256": "304352c09b37933a5046ddc3360941c4f6c33d4f6971fd628928f3d05b1d1d50"
+        }
+      ],
+      "flags": "nlo",
+      "generated_sources": {
+        "azero.f": "5386ab30324c3253e2c0292eb70a9ec783471a3d042e8869cb71b1154f5db02f",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "637ea0a4a7dd3482e307d923155fc3a34d6d05f92b11a0cd5f81c4b3caeab8f4",
+        "guarded.f": "0466630bb2c7720011123524b4cd554beb1c405f8c04bf5d2b54017eb10c1443",
+        "kernel.f90": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+      },
+      "key": "nlo-FFV1L1_2-rank3",
+      "oracle_result_sha256": "4d2d3eacb14a8bc05ef989954bf3a2453b3f830f34a82c8e22b6e6be1338c8ec",
+      "rank": 3,
+      "source_dump": "oracle-nlo-rank34-v1/nlo-FFV1L1_2-rank3-full/dump.txt.gz",
+      "source_dump_sha256": "cfbe6245a2acca46afc1945c185010cb6923b0160812e1538480abc5989819d8",
+      "variants": {
+        "source_instrumented_factor_sha256": "9ff79d48d53c3bba304eacd08077c8308545fe813ee5fea060388d599da082c8",
+        "source_original_sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e",
+        "trace_lines_removed": 20,
+        "zero_only_change": "same admission prefix as factor; original body plus A==0 cycle; no reassociation"
+      },
+      "vertex": "FFV1L1_2"
+    },
+    {
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "guarded.f",
+          "azero.f",
+          "kernel.f90",
+          "-o",
+          "kernel"
+        ],
+        "elapsed": 1.3108867489499971,
+        "returncode": 0
+      },
+      "executable_sha256": "4dd932e8098e35f54131c650f228aaca25e9da74d8ed1bdf14a70b465fba1925",
+      "fixtures": [
+        {
+          "A_total": 1120,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 1,
+          "file": "fixture-1.dat",
+          "fixture_kind": "source-derived dense phase-related rows",
+          "sha256": "99b127ccb8e0a245237d85290ab236d1a219f72b10a839e3c2ddd075f46a6a9a"
+        },
+        {
+          "A_total": 1120,
+          "A_zero": 747,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 2,
+          "file": "fixture-2.dat",
+          "fixture_kind": "source-derived sparse phase-related rows",
+          "sha256": "9f7c13cfa7371036783ef67603c88e9135d0226bc1ee9da0130d3e75c95c282b"
+        },
+        {
+          "A_total": 1120,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 7,
+          "file": "fixture-7.dat",
+          "fixture_kind": "source-derived dense independently rounded actual ALOHA expressions",
+          "sha256": "48fbef66eb97844f8671edf99cc7986f891efcf89c7df67ea39248f2d0d3516b"
+        }
+      ],
+      "flags": "nlo",
+      "generated_sources": {
+        "azero.f": "8cf8c72beb0aad77c317f40554bd0e460f2acb2679dccc0b8925bfc0fbfcceca",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "7075fd07f90c5338bb4f94b4186cecc93686935ec59cd711361a08a6007a077f",
+        "guarded.f": "2cd8c19ee5bbadf4b8c2cdabcb719c65eab780bb828de13640b1a20a278079bd",
+        "kernel.f90": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+      },
+      "key": "nlo-FFV1L1_2-rank4",
+      "oracle_result_sha256": "7b05ac60099322a886fea15cebb0345a6e81497cbc07208d0cec5aa3126066e8",
+      "rank": 4,
+      "source_dump": "oracle-nlo-rank34-v1/nlo-FFV1L1_2-rank4-full/dump.txt.gz",
+      "source_dump_sha256": "72ba816d590e943371a7e1e96269d84de3e2a5d97349d6bacac83526eb5f3545",
+      "variants": {
+        "source_instrumented_factor_sha256": "74ba1659c949e0d55fa5ec5b205292ce1d9cc7e40c5ccb80312e709fb4b9f2b0",
+        "source_original_sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c",
+        "trace_lines_removed": 20,
+        "zero_only_change": "same admission prefix as factor; original body plus A==0 cycle; no reassociation"
+      },
+      "vertex": "FFV1L1_2"
+    },
+    {
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "guarded.f",
+          "azero.f",
+          "kernel.f90",
+          "-o",
+          "kernel"
+        ],
+        "elapsed": 1.3372254819842055,
+        "returncode": 0
+      },
+      "executable_sha256": "ea84400fc9d164c35f4d52093ca01ae029b2654580e9c8c900b33c7e3b7b8f4a",
+      "fixtures": [
+        {
+          "A_total": 240,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 1,
+          "file": "fixture-1.dat",
+          "fixture_kind": "source-derived dense phase-related rows",
+          "sha256": "4cb457dc8ad1ede7100d5fa7c9aa99bb944d06c949daecfbafe10dacf6abb65c"
+        },
+        {
+          "A_total": 240,
+          "A_zero": 160,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 2,
+          "file": "fixture-2.dat",
+          "fixture_kind": "source-derived sparse phase-related rows",
+          "sha256": "c50baff024108ff3fbf02fbba77b25eb489c094ed1acb828806ca9f75a1204b9"
+        },
+        {
+          "A_total": 240,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 7,
+          "file": "fixture-7.dat",
+          "fixture_kind": "source-derived dense independently rounded actual ALOHA expressions",
+          "sha256": "2d1448be4c752a835c2f4e4b46cf19a91d8ec2d6b375cced426f5afa00bb0b49"
+        }
+      ],
+      "flags": "nlo",
+      "generated_sources": {
+        "azero.f": "70bc81c12c1552b66cc9e47e88ff3ce04652f02509b287cc596408e0c2607f02",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "c44d4867b432a06b4c58bdb07279f9fb0f057cc417dd3788b582be7d5ff14ef8",
+        "guarded.f": "bab1fe46dd7ac450a7b961be7d9f14d3953a989b3c7651b83cdadefdfeacbf3f",
+        "kernel.f90": "1ab0a66a0a9f7b6e950d6944a47f70e4b3e654fb1863bbd0e051ac5b47b67e9e",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+      },
+      "key": "nlo-FFV1L2_1-rank2",
+      "oracle_result_sha256": "e958e8d8fc0e9009130af8a2920b246a5594f32bd619a512f62fd910b0014975",
+      "rank": 2,
+      "source_dump": "oracle-nlo-rank2-v1/nlo-FFV1L2_1-rank2-full/dump.txt.gz",
+      "source_dump_sha256": "a64d5deead8f2693ad7a8387a78a8bf9efb2dbca95225e0e33e0d1e44029d794",
+      "variants": {
+        "source_instrumented_factor_sha256": "359efa1f7cc852926125b824800dbd4e4b159ea272a3e3d8180e77f6d746247c",
+        "source_original_sha256": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34",
+        "trace_lines_removed": 20,
+        "zero_only_change": "same admission prefix as factor; original body plus A==0 cycle; no reassociation"
+      },
+      "vertex": "FFV1L2_1"
+    },
+    {
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "guarded.f",
+          "azero.f",
+          "kernel.f90",
+          "-o",
+          "kernel"
+        ],
+        "elapsed": 1.3141065950039774,
+        "returncode": 0
+      },
+      "executable_sha256": "bc7dd448d8eaae5e144f08fa184563f402f1709dfb11115f1069ee8bd4a6e1d8",
+      "fixtures": [
+        {
+          "A_total": 560,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 1,
+          "file": "fixture-1.dat",
+          "fixture_kind": "source-derived dense phase-related rows",
+          "sha256": "e51a36b0d1baae162d4b045eb2095b684b2c1fed85c7a792aa69d825f3b8cf4d"
+        },
+        {
+          "A_total": 560,
+          "A_zero": 373,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 2,
+          "file": "fixture-2.dat",
+          "fixture_kind": "source-derived sparse phase-related rows",
+          "sha256": "7f69ca52ec662c73fe2ebe14b50d2b59b35017c67c548250b529b517f432e54a"
+        },
+        {
+          "A_total": 560,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 7,
+          "file": "fixture-7.dat",
+          "fixture_kind": "source-derived dense independently rounded actual ALOHA expressions",
+          "sha256": "03847d9609aa302b5df5cc75fa34f1c2029e2858392a8c6adce0a0965a7ec67a"
+        }
+      ],
+      "flags": "nlo",
+      "generated_sources": {
+        "azero.f": "6079913b9af64b334177a9ceed4e7401fbdd78d276b0df79490c491409c82449",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "df4e7844afdcae0481d6ef4518c23f4d4ddb68d915b70834417a7f1733672f5e",
+        "guarded.f": "e015ad523ed75127ba2b4c5620b370a3956812ef0b2e1c157c34dde1efc871cb",
+        "kernel.f90": "98471aeb581147fabbe933c9cd288b3f2711fd530c0ae91029bf6ac816f5596c",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+      },
+      "key": "nlo-FFV1L2_1-rank3",
+      "oracle_result_sha256": "f59e432eef930c49702d4c38c5882e0f9c980249a26cf10d5c949b538c6041cc",
+      "rank": 3,
+      "source_dump": "oracle-nlo-rank34-v1/nlo-FFV1L2_1-rank3-full/dump.txt.gz",
+      "source_dump_sha256": "f0d16a3ac4b810119744fd87cff21c429be7e63217b44d926001cebdf2c3503a",
+      "variants": {
+        "source_instrumented_factor_sha256": "5d3a9ba03b43390a92f3107a7bcb2873c1c1d734c46698cc8d83af0b249e5648",
+        "source_original_sha256": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e",
+        "trace_lines_removed": 20,
+        "zero_only_change": "same admission prefix as factor; original body plus A==0 cycle; no reassociation"
+      },
+      "vertex": "FFV1L2_1"
+    },
+    {
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "guarded.f",
+          "azero.f",
+          "kernel.f90",
+          "-o",
+          "kernel"
+        ],
+        "elapsed": 1.3357711440185085,
+        "returncode": 0
+      },
+      "executable_sha256": "360e225facd8f82c69998d47b655e8971ffb5b8efa2dea6dac606958ca7b4075",
+      "fixtures": [
+        {
+          "A_total": 1120,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 1,
+          "file": "fixture-1.dat",
+          "fixture_kind": "source-derived dense phase-related rows",
+          "sha256": "bb5eb14627ec188bdfc2b5abb60f8699a6dfde1f2a4e74b3ecfbc8725834b0cd"
+        },
+        {
+          "A_total": 1120,
+          "A_zero": 747,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 2,
+          "file": "fixture-2.dat",
+          "fixture_kind": "source-derived sparse phase-related rows",
+          "sha256": "7414d9fc3da364bc6dec5caced7c6b9cf0b63712a9c7b08c1d9f1907f2d99755"
+        },
+        {
+          "A_total": 1120,
+          "A_zero": 2,
+          "B_total": 80,
+          "B_zero": 32,
+          "case": 7,
+          "file": "fixture-7.dat",
+          "fixture_kind": "source-derived dense independently rounded actual ALOHA expressions",
+          "sha256": "99c2c596ec80696b02e3b432b4694adcc051fe1fc3aadfd778874deba6508f99"
+        }
+      ],
+      "flags": "nlo",
+      "generated_sources": {
+        "azero.f": "2a2e563efeeae7b5e59fdcfb5e7df93324d2bebc0397554b1fac737a9b9d79a4",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "5956b9fcd40be1b4ff5ebcf6ccf099c10198a1c7757674dc11b070b5ea57059f",
+        "guarded.f": "4b990d216da1280b961ea358378cb6f90cdaf13854027d6675a97f7fc3f802ed",
+        "kernel.f90": "41cba90d8781511ebb5f2ee0561bea16af231b76264d8b0eb5f0d3e26f39faf7",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c"
+      },
+      "key": "nlo-FFV1L2_1-rank4",
+      "oracle_result_sha256": "9105f6eaa55638d9ec185996ce08e268fb5f75972fc3e3f79c09b61db24a31fd",
+      "rank": 4,
+      "source_dump": "oracle-nlo-rank34-v1/nlo-FFV1L2_1-rank4-full/dump.txt.gz",
+      "source_dump_sha256": "299cd8756363f1dc525d71348911f48677e8a507bc56b4a4b327f47f827c8e7e",
+      "variants": {
+        "source_instrumented_factor_sha256": "bca29875da68366c55488638e1d4374425aba646889aadb8b7defdfa913463fc",
+        "source_original_sha256": "778333dd5fc696a2ca5ecad58685bc49857379fbe176a278a385da9db2e2a04c",
+        "trace_lines_removed": 20,
+        "zero_only_change": "same admission prefix as factor; original body plus A==0 cycle; no reassociation"
+      },
+      "vertex": "FFV1L2_1"
+    }
+  ],
+  "correctness_seal_sha256": "702f0754b838f061d101ab9fc8dba33fcefa847461759d479ed392d05687793f",
+  "cpu": 212,
+  "flags": {
+    "nlo": [
+      "-O3",
+      "-w",
+      "-fPIC",
+      "-ffixed-line-length-132",
+      "-fno-automatic"
+    ],
+    "standalone": [
+      "-O3",
+      "-w",
+      "-fPIC",
+      "-ffixed-line-length-132"
+    ]
+  },
+  "loops": 5000,
+  "pairs": 21,
+  "preparation_origin": {
+    "note": "Binaries, inputs and source snapshots copied byte-for-byte; actual compilation occurred at origin. Only affinity and this provenance changed; no sampling/loop/fixture changes.",
+    "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-v1",
+    "plan_sha256": "1c2df45f60a72aceba45988ade7d2f0d2f3d59323d098ebd288f8e109462f022"
+  },
+  "runner_sha256": "8865b47276c069ef2277285caa7a9731bac7e3429ebad4827220e3bf20bdb3c5",
+  "schedule": [
+    [
+      0,
+      1,
+      2,
+      3
+    ],
+    [
+      3,
+      2,
+      1,
+      0
+    ],
+    [
+      1,
+      2,
+      3,
+      0
+    ],
+    [
+      0,
+      3,
+      2,
+      1
+    ],
+    [
+      2,
+      3,
+      0,
+      1
+    ],
+    [
+      1,
+      0,
+      3,
+      2
+    ],
+    [
+      3,
+      0,
+      1,
+      2
+    ],
+    [
+      2,
+      1,
+      0,
+      3
+    ]
+  ],
+  "schema": "fixed-dp-kernel-four-arm-v1",
+  "scope": "Source-derived exact-validated pure-Fortran DP kernels; no captured physical call trace, Symbolica, generated process or acceptance claim.",
+  "warmup_calls_per_arm": 100
+}
