@@ -1,0 +1,35 @@
+{
+  "crate": ".benchmark-work/experiments/ninjars-mp-tensor-allocation-performance-v1/crate",
+  "sources": {
+    "Cargo.lock": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25",
+    "Cargo.toml": "8748a4d8820c1580c9c520eb249abe4bf61d1305f90b802814bfdc5dbf87f427",
+    "src/allocation.rs": "525d5083904cd0257938c128e0e44f2d202de0e31f82b411f45e2a004ff8e5e1",
+    "src/capture.rs": "57a79744a889b806713d9a0fb05aaf0a0fbce6c3f576afcb525e7c2ec62c7406",
+    "src/common.rs": "f2729527b649b98b6272d38a9eeeab7dffaa5f1d507b1667f0cf9ac4a1568d9f",
+    "src/kernel.rs": "d01da637a77fb79de4616ae5a9f278c1217176540c7e04e56290fc9d9c2b679c",
+    "src/original.rs": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55"
+  },
+  "frozen_inputs": {
+    "original/Cargo.toml": {
+      "sha256": "a025c54a99707cf3f950c1a24aaa4144f3f78941f2c00472dc83122ff39360e4",
+      "bytes": 1343
+    },
+    "original/Cargo.lock": {
+      "sha256": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25",
+      "bytes": 78237
+    },
+    "original/src/tensor.rs": {
+      "sha256": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55",
+      "bytes": 16731
+    },
+    "tensor.rs": {
+      "sha256": "525d5083904cd0257938c128e0e44f2d202de0e31f82b411f45e2a004ff8e5e1",
+      "bytes": 17547
+    },
+    "tensor_capture_tests.rs": {
+      "sha256": "38354ecdff8568c877f465c2a6cce18120d737ad962ee5375039cfec15dfec53",
+      "bytes": 11781
+    }
+  },
+  "plan_identity": "71605407bddfcb24328ccd80c0333057785e1b58641a4414c70af91afb9972af"
+}

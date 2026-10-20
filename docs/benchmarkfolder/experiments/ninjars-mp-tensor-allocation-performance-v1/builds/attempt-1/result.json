@@ -1,0 +1,72 @@
+{
+  "all_compiler_children_exited": true,
+  "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)\n",
+  "command": [
+    "cargo",
+    "build",
+    "--manifest-path",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-performance-v1/crate/Cargo.toml",
+    "--locked",
+    "--offline",
+    "--release",
+    "--bins",
+    "--message-format=json-render-diagnostics",
+    "-j1"
+  ],
+  "cpu_affinity": [
+    212
+  ],
+  "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+  "environment": {
+    "CARGO_BUILD_BUILD_DIR": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-performance-v1/build",
+    "CARGO_BUILD_JOBS": "1",
+    "CARGO_ENCODED_RUSTFLAGS": null,
+    "CARGO_TARGET_DIR": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-performance-v1/target",
+    "CC": "gcc",
+    "CXX": "g++",
+    "FC": "gfortran",
+    "RUSTFLAGS": null,
+    "TMPDIR": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp"
+  },
+  "exit_code": 101,
+  "failure": "RuntimeError('cargo failed with exit 101')",
+  "finished_utc": "2026-10-20T21:34:28.685278+00:00",
+  "numerical_execution": false,
+  "plan_identity": "71605407bddfcb24328ccd80c0333057785e1b58641a4414c70af91afb9972af",
+  "production_changes": false,
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.1\nLLVM version: 22.1.8\n",
+  "schema": "pure-tensor-build-v1",
+  "sources": {
+    "Cargo.lock": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25",
+    "Cargo.toml": "8748a4d8820c1580c9c520eb249abe4bf61d1305f90b802814bfdc5dbf87f427",
+    "src/allocation.rs": "525d5083904cd0257938c128e0e44f2d202de0e31f82b411f45e2a004ff8e5e1",
+    "src/capture.rs": "bf38e2c3eb31f8cbc7346e8860d8f4fad386c860454393981023d78abd90b85e",
+    "src/common.rs": "f2729527b649b98b6272d38a9eeeab7dffaa5f1d507b1667f0cf9ac4a1568d9f",
+    "src/kernel.rs": "d01da637a77fb79de4616ae5a9f278c1217176540c7e04e56290fc9d9c2b679c",
+    "src/original.rs": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55"
+  },
+  "started_utc": "2026-10-20T21:31:12.423581+00:00",
+  "status": "failed",
+  "verified_frozen_inputs": {
+    "original/Cargo.lock": {
+      "bytes": 78237,
+      "sha256": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25"
+    },
+    "original/Cargo.toml": {
+      "bytes": 1343,
+      "sha256": "a025c54a99707cf3f950c1a24aaa4144f3f78941f2c00472dc83122ff39360e4"
+    },
+    "original/src/tensor.rs": {
+      "bytes": 16731,
+      "sha256": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55"
+    },
+    "tensor.rs": {
+      "bytes": 17547,
+      "sha256": "525d5083904cd0257938c128e0e44f2d202de0e31f82b411f45e2a004ff8e5e1"
+    },
+    "tensor_capture_tests.rs": {
+      "bytes": 11781,
+      "sha256": "38354ecdff8568c877f465c2a6cce18120d737ad962ee5375039cfec15dfec53"
+    }
+  }
+}

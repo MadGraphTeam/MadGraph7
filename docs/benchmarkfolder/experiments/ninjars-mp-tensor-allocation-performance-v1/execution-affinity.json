@@ -1,0 +1,90 @@
+{
+  "acceptance_evidence": false,
+  "bindings": {
+    "affinity_analyzer": {
+      "bytes": 1189,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/analyze_affinity.py",
+      "sha256": "53b255014631e38e074514702ba4d75fb1fef8b0a800329f9931d1e64b245b26"
+    },
+    "analyzer": {
+      "bytes": 9039,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/analyze.py",
+      "sha256": "1f353e8f8cabaea7523ec65e947cf8e45db67a8f6634a1b9987e8640e3251d49"
+    },
+    "build": {
+      "bytes": 12459,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/builds/attempt-2/result.json",
+      "sha256": "78104d0f666e2e8e6a3dc9ed58a145b2fdc365dcf82ad186c26c490ac2d41ae7"
+    },
+    "controller": {
+      "bytes": 10385,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/run_cpu234.py",
+      "sha256": "9f78ee49dc6029792294722dfa9504c524ccb05dea7099ffc15ff4159e5339d6"
+    },
+    "diff": {
+      "bytes": 2160,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/execution-affinity-controller.diff",
+      "sha256": "39dff1cd3d7572013de3cd18ff54b33cf4b01bf67c980e4868d6cb535f644149"
+    },
+    "failed_preflight": {
+      "bytes": 415679,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/preflight-1.json",
+      "sha256": "098c9acadcfa690f54af51df533c56f110b7461ce982f816d29f9357d377ad90"
+    },
+    "failed_survey": {
+      "bytes": 217463,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/survey-1.json",
+      "sha256": "e32f15a93ca0b2fea523f457d6b1a778ce94e3ca73c2da78e372a7cd800c4724"
+    },
+    "plan": {
+      "bytes": 3295,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/plan.json",
+      "sha256": "01e99f3e7861ba6c34808efda3298995ce5315fb6657082cff32622d25be1f42"
+    },
+    "prior_controller": {
+      "bytes": 10249,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/run.py",
+      "sha256": "e6d77bac668100a467416542227906c448886ddc5582e2d49fd234997712f586"
+    },
+    "survey": {
+      "bytes": 384912,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/survey-all-1.json",
+      "sha256": "60e82863911e3608ae52fbd64c98e40371373f96c945734b8a978f2ee1d0d5f2"
+    },
+    "survey_controller": {
+      "bytes": 2930,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/survey_all.py",
+      "sha256": "a37de35be360bbf0583170e9149ba13ffe3c8376c777670d1113d6fca545c3b5"
+    },
+    "trace": {
+      "bytes": 1071780,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/traces/attempt-1/result.json",
+      "sha256": "7e2e6ac7a6a9d1e72b9a8680a0d487b0d22d38be842dfd5b645fb4cde65e366a"
+    },
+    "verifier": {
+      "bytes": 3303,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/affinity_addendum.py",
+      "sha256": "5225a70e0025c64b94d9468f035d990c6c3727252407dc52bc0269a525097fdc"
+    }
+  },
+  "execution_cpu": 234,
+  "identity": "e706dac5d7287c99f4c7462ddf35418538f0807ae5cc4ce2d1e35ce36bfebe92",
+  "plan_identity": "71605407bddfcb24328ccd80c0333057785e1b58641a4414c70af91afb9972af",
+  "prior_cpu": 212,
+  "reason": "OriginalCPU212 and initial alternatives failed host-only eligibility; no numerical timing samples collected before selectingCPU234.",
+  "schema": "pure-tensor-execution-affinity-v1",
+  "selection": "All allowed singleton CPUs except207; three3s intervals each<=5%busy; choose minimum(maximum busy,sum busy,cpu).",
+  "timing_authorization": "HELD pending separate root quiet-window handoff; this addendum authorizes selection only.",
+  "unchanged": [
+    "binary hashes",
+    "old-bound parser",
+    "all1392records",
+    "all86436outputs",
+    "21pairs",
+    "alternating order",
+    "timer boundary",
+    "validation",
+    "bootstrap",
+    "original reference on207"
+  ]
+}

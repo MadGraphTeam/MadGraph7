@@ -1,0 +1,149 @@
+{
+  "all_compiler_children_exited": true,
+  "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)\n",
+  "command": [
+    "cargo",
+    "build",
+    "--manifest-path",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-performance-v1/crate/Cargo.toml",
+    "--locked",
+    "--offline",
+    "--release",
+    "--bins",
+    "--message-format=json-render-diagnostics",
+    "-j1"
+  ],
+  "cpu_affinity": [
+    212
+  ],
+  "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+  "environment": {
+    "CARGO_BUILD_BUILD_DIR": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-performance-v1/build",
+    "CARGO_BUILD_JOBS": "1",
+    "CARGO_ENCODED_RUSTFLAGS": null,
+    "CARGO_TARGET_DIR": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-performance-v1/target",
+    "CC": "gcc",
+    "CXX": "g++",
+    "FC": "gfortran",
+    "RUSTFLAGS": null,
+    "TMPDIR": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp"
+  },
+  "executables": {
+    "tensor-capture": {
+      "bytes": 49185312,
+      "path": ".benchmark-work/experiments/ninjars-mp-tensor-allocation-performance-v1/target/release/tensor-capture",
+      "sha256": "93a9906a884e2c3feacc8ff4098cad85428f3030ec92f06ee3bb68ebb430d958"
+    },
+    "tensor-kernel": {
+      "bytes": 21835336,
+      "path": ".benchmark-work/experiments/ninjars-mp-tensor-allocation-performance-v1/target/release/tensor-kernel",
+      "sha256": "01fc6058946909a39735c9cfcb17ee3330ef5a1db2dd931902015b057cd44daf"
+    }
+  },
+  "exit_code": 0,
+  "finished_utc": "2026-10-20T21:43:55.633163+00:00",
+  "kernel_dynamic_sha256": "17aa36f5190166c6bbbb40b9307eebf29479f1b5dd755fe7a47db5b7cdda4cc8",
+  "kernel_symbol_matches": {
+    "License": [
+      "0000000000462270 t <once_cell::imp::OnceCell<symbolica::license::LicenseManager>>::initialize::<<once_cell::sync::OnceCell<symbolica::license::LicenseManager>>::get_or_init<<symbolica::license::LicenseManager>::new>::{closure#0}, <once_cell::sync::OnceCell<_>>::get_or_init::Void>",
+      "000000000059a000 t core::ptr::drop_glue::<std::thread::lifecycle::spawn_unchecked<<symbolica::license::LicenseManager>::check_offline_license_registration<<symbolica::license::LicenseManager>::check_registration>::{closure#0}, ()>::{closure#1}>",
+      "000000000059a070 t core::ptr::drop_glue::<std::thread::lifecycle::spawn_unchecked<<symbolica::license::LicenseManager>::check_license_key::{closure#0}, ()>::{closure#1}>",
+      "00000000005a70b0 T std::sys::backtrace::__rust_begin_short_backtrace::<<symbolica::license::LicenseManager>::check_offline_license_registration<<symbolica::license::LicenseManager>::check_registration>::{closure#0}, ()>",
+      "00000000005a7360 T std::sys::backtrace::__rust_begin_short_backtrace::<std::thread::lifecycle::spawn_unchecked<<symbolica::license::LicenseManager>::check_offline_license_registration<<symbolica::license::LicenseManager>::check_registration>::{closure#0}, ()>::{closure#1}::{closure#0}::{closure#0}, ()>",
+      "00000000005a7360 T std::sys::backtrace::__rust_begin_short_backtrace::<std::thread::lifecycle::spawn_unchecked<<symbolica::license::LicenseManager>::check_license_key::{closure#0}, ()>::{closure#1}::{closure#0}::{closure#0}, ()>",
+      "00000000005a7390 T std::sys::backtrace::__rust_begin_short_backtrace::<<symbolica::license::LicenseManager>::check_license_key::{closure#0}, ()>",
+      "00000000006dc450 t <once_cell::imp::OnceCell<symbolica::license::LicenseManager>>::initialize::<<once_cell::sync::OnceCell<symbolica::license::LicenseManager>>::get_or_init<<symbolica::license::LicenseManager>::new>::{closure#0}, <once_cell::sync::OnceCell<_>>::get_or_init::Void>::{closure#0}",
+      "00000000007134d0 t <symbolica::license::LicenseManager>::check_registration::{closure#3}",
+      "000000000072ee70 t <<once_cell::imp::OnceCell<symbolica::license::LicenseManager>>::initialize<<once_cell::sync::OnceCell<symbolica::license::LicenseManager>>::get_or_init<<symbolica::license::LicenseManager>::new>::{closure#0}, <once_cell::sync::OnceCell<_>>::get_or_init::Void>::{closure#0} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+      "000000000072ee90 t <std::thread::lifecycle::spawn_unchecked<<symbolica::license::LicenseManager>::check_offline_license_registration<<symbolica::license::LicenseManager>::check_registration>::{closure#0}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+      "000000000072f000 t <std::thread::lifecycle::spawn_unchecked<<symbolica::license::LicenseManager>::check_license_key::{closure#0}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+      "00000000007a5060 T <symbolica::license::LicenseManager>::check_impl",
+      "00000000007a5900 T <symbolica::license::LicenseManager>::is_licensed",
+      "00000000007a5a80 t <symbolica::license::LicenseManager>::check_license_key",
+      "00000000007a7500 t <symbolica::license::LicenseManager>::new",
+      "00000000007a7a90 t <symbolica::license::LicenseManager>::connect",
+      "00000000011927b0 t <<symbolica::license::LicenseManager>::check_registration as core::ops::function::FnOnce<(alloc::string::String,)>>::call_once"
+    ],
+    "SymbolicaAmplitude": [],
+    "SymbolicaCuts": [],
+    "SymbolicaHighCuts": [],
+    "SymbolicaMasters": [],
+    "amplitude::": [],
+    "evaluate_batch_with_inputs": [],
+    "geometry::": [],
+    "license": [
+      "0000000000462270 t <once_cell::imp::OnceCell<symbolica::license::LicenseManager>>::initialize::<<once_cell::sync::OnceCell<symbolica::license::LicenseManager>>::get_or_init<<symbolica::license::LicenseManager>::new>::{closure#0}, <once_cell::sync::OnceCell<_>>::get_or_init::Void>",
+      "0000000000579220 t core::ptr::drop_glue::<core::option::Option<symbolica::license::LibraryUnlockGuard>>",
+      "000000000059a000 t core::ptr::drop_glue::<std::thread::lifecycle::spawn_unchecked<<symbolica::license::LicenseManager>::check_offline_license_registration<<symbolica::license::LicenseManager>::check_registration>::{closure#0}, ()>::{closure#1}>",
+      "000000000059a070 t core::ptr::drop_glue::<std::thread::lifecycle::spawn_unchecked<<symbolica::license::LicenseManager>::check_license_key::{closure#0}, ()>::{closure#1}>",
+      "00000000005a70b0 T std::sys::backtrace::__rust_begin_short_backtrace::<<symbolica::license::LicenseManager>::check_offline_license_registration<<symbolica::license::LicenseManager>::check_registration>::{closure#0}, ()>",
+      "00000000005a7360 T std::sys::backtrace::__rust_begin_short_backtrace::<std::thread::lifecycle::spawn_unchecked<<symbolica::license::LicenseManager>::check_offline_license_registration<<symbolica::license::LicenseManager>::check_registration>::{closure#0}, ()>::{closure#1}::{closure#0}::{closure#0}, ()>",
+      "00000000005a7360 T std::sys::backtrace::__rust_begin_short_backtrace::<std::thread::lifecycle::spawn_unchecked<<symbolica::license::LicenseManager>::check_license_key::{closure#0}, ()>::{closure#1}::{closure#0}::{closure#0}, ()>",
+      "00000000005a7390 T std::sys::backtrace::__rust_begin_short_backtrace::<<symbolica::license::LicenseManager>::check_license_key::{closure#0}, ()>",
+      "00000000005b3a30 t std::sys::thread_local::native::eager::destroy::<core::cell::RefCell<core::option::Option<symbolica::license::RestrictedThreadPermit>>>",
+      "00000000006dc450 t <once_cell::imp::OnceCell<symbolica::license::LicenseManager>>::initialize::<<once_cell::sync::OnceCell<symbolica::license::LicenseManager>>::get_or_init<<symbolica::license::LicenseManager>::new>::{closure#0}, <once_cell::sync::OnceCell<_>>::get_or_init::Void>::{closure#0}",
+      "00000000007134d0 t <symbolica::license::LicenseManager>::check_registration::{closure#3}",
+      "0000000000727470 t symbolica::license::signed::parse_expiration::{closure#0}",
+      "000000000072ee70 t <<once_cell::imp::OnceCell<symbolica::license::LicenseManager>>::initialize<<once_cell::sync::OnceCell<symbolica::license::LicenseManager>>::get_or_init<<symbolica::license::LicenseManager>::new>::{closure#0}, <once_cell::sync::OnceCell<_>>::get_or_init::Void>::{closure#0} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+      "000000000072ee90 t <std::thread::lifecycle::spawn_unchecked<<symbolica::license::LicenseManager>::check_offline_license_registration<<symbolica::license::LicenseManager>::check_registration>::{closure#0}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+      "000000000072f000 t <std::thread::lifecycle::spawn_unchecked<<symbolica::license::LicenseManager>::check_license_key::{closure#0}, ()>::{closure#1} as core::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}",
+      "00000000007a5060 T <symbolica::license::LicenseManager>::check_impl",
+      "00000000007a5900 T <symbolica::license::LicenseManager>::is_licensed",
+      "00000000007a5a80 t <symbolica::license::LicenseManager>::check_license_key",
+      "00000000007a7500 t <symbolica::license::LicenseManager>::new",
+      "00000000007a7a90 t <symbolica::license::LicenseManager>::connect",
+      "0000000000000090 D symbolica::license::LIBRARY_UNLOCKS::{K#0}::{closure#0}::__RUST_STD_INTERNAL_VAL",
+      "00000000000000b8 d symbolica::license::RESTRICTED_THREAD_PERMIT::{K#0}::{closure#0}::__RUST_STD_INTERNAL_VAL",
+      "00000000000002f0 B symbolica::license::INTERNAL_LICENSE_BYPASS_DEPTH::{K#0}::{closure#1}::__RUST_STD_INTERNAL_VAL",
+      "00000000012ba848 d symbolica::license::LICENSE_MANAGER",
+      "00000000012ba858 D symbolica::license::APPLICATION_LICENSED",
+      "00000000012bc190 B symbolica::license::LICENSED",
+      "0000000001010da0 t symbolica::license::signed::decode_offline",
+      "0000000001011360 t symbolica::license::signed::parse_expiration",
+      "0000000001011840 t symbolica::license::signed::decode_offline_signature",
+      "0000000001190690 t <symbolica::license::APPLICATION_LICENSED::{closure#0} as core::ops::function::FnOnce<()>>::call_once",
+      "0000000001190790 t <symbolica::license::signed::parse_expiration::{closure#0} as core::ops::function::FnOnce<()>>::call_once",
+      "00000000011927b0 t <<symbolica::license::LicenseManager>::check_registration as core::ops::function::FnOnce<(alloc::string::String,)>>::call_once"
+    ],
+    "oneloopmaster": []
+  },
+  "kernel_symbols_sha256": "7c2cfa49c688062224ef687828c6358b8c37d2b2ecbec2b35c19feab8b8587c5",
+  "numerical_execution": false,
+  "plan_identity": "71605407bddfcb24328ccd80c0333057785e1b58641a4414c70af91afb9972af",
+  "production_changes": false,
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.1\nLLVM version: 22.1.8\n",
+  "schema": "pure-tensor-build-v1",
+  "sources": {
+    "Cargo.lock": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25",
+    "Cargo.toml": "8748a4d8820c1580c9c520eb249abe4bf61d1305f90b802814bfdc5dbf87f427",
+    "src/allocation.rs": "525d5083904cd0257938c128e0e44f2d202de0e31f82b411f45e2a004ff8e5e1",
+    "src/capture.rs": "c0966de8df4a7a2fbc88d16bb135da9483ed844e9b1e86ff70731f28552cc73a",
+    "src/common.rs": "f2729527b649b98b6272d38a9eeeab7dffaa5f1d507b1667f0cf9ac4a1568d9f",
+    "src/kernel.rs": "d01da637a77fb79de4616ae5a9f278c1217176540c7e04e56290fc9d9c2b679c",
+    "src/original.rs": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55"
+  },
+  "started_utc": "2026-10-20T21:34:53.590590+00:00",
+  "status": "compiled-not-executed",
+  "verified_frozen_inputs": {
+    "original/Cargo.lock": {
+      "bytes": 78237,
+      "sha256": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25"
+    },
+    "original/Cargo.toml": {
+      "bytes": 1343,
+      "sha256": "a025c54a99707cf3f950c1a24aaa4144f3f78941f2c00472dc83122ff39360e4"
+    },
+    "original/src/tensor.rs": {
+      "bytes": 16731,
+      "sha256": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55"
+    },
+    "tensor.rs": {
+      "bytes": 17547,
+      "sha256": "525d5083904cd0257938c128e0e44f2d202de0e31f82b411f45e2a004ff8e5e1"
+    },
+    "tensor_capture_tests.rs": {
+      "bytes": 11781,
+      "sha256": "38354ecdff8568c877f465c2a6cce18120d737ad962ee5375039cfec15dfec53"
+    }
+  }
+}

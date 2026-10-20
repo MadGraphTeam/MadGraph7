@@ -1,0 +1,41 @@
+--- run.py
++++ run_cpu234.py
+@@ -9,6 +9,7 @@
+ import json
+ import os
+ from pathlib import Path
++from affinity_addendum import verify_addendum
+ import re
+ import subprocess
+ import time
+@@ -120,7 +121,7 @@
+ 
+ def main():
+     parser = argparse.ArgumentParser()
+-    parser.add_argument('action', choices=['capture', 'kernel'])
++    parser.add_argument('action', choices=['kernel'])
+     parser.add_argument('--build', required=True, type=Path)
+     parser.add_argument('--authorized-run', required=True)
+     parser.add_argument('--trace-result', type=Path)
+@@ -128,7 +129,8 @@
+     assert Path.cwd() == ROOT
+     assert args.authorized_run.strip(), 'retain the explicit coordination/quiet-window description'
+     assert Path(os.environ['TMPDIR']).resolve().is_relative_to(ROOT)
+-    os.sched_setaffinity(0, {212})
++    verify_addendum()
++    os.sched_setaffinity(0, {234})
+     build_path = args.build.resolve()
+     build = verify_build(build_path)
+     plan = json.loads((HERE / 'plan.json').read_text())
+@@ -170,9 +172,10 @@
+     record = {'schema': 'pure-tensor-execution-v1', 'action': args.action, 'started_utc': now(),
+               'status': 'running', 'coordination': args.authorized_run, 'command': command,
+               'cpu_affinity': sorted(os.sched_getaffinity(0)),
+-              'thread_siblings': Path('/sys/devices/system/cpu/cpu212/topology/thread_siblings_list').read_text().strip(),
++              'thread_siblings': Path('/sys/devices/system/cpu/cpu234/topology/thread_siblings_list').read_text().strip(),
+               'build': binding(build_path), 'executable': binding(executable), 'trace_preparation': trace_binding,
+               'plan': binding(HERE / 'plan.json'), 'controller': binding(Path(__file__).resolve()),
++              'execution_affinity': binding(HERE / 'execution-affinity.json'),
+               'frozen_input': binding(source), 'production_changed': False, 'acceptance_evidence': False}
+     record['host_before'] = {name: Path('/proc' + '/' + name).read_text() for name in ('stat', 'loadavg')}
+     record['processes_before'] = subprocess.check_output(['ps', '-eo', 'pid,ppid,psr,pcpu,etime,args'], text=True)

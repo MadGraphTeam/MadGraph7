@@ -1,0 +1,9 @@
+{
+  "status": "superseded-before-compilation",
+  "reason": "Trace wrapper must return original dense tensor outputs to engine, matching the fixed plan literally. Both outputs were already compared exactly. No compiled or executed evidence exists for this draft.",
+  "files": {
+    "allocation-driving-capture.rs": "c2b9fda47b35069a61f7082a8478c8f8bceee0ca1cdd9dfbc1c0f63c6f7d0d1a",
+    "initial-build-inputs.json": "b9709c72f4a7d2a4d553edd9d9694feeda0ed8d133ad7d3f943012438e65872a"
+  },
+  "utc": "2026-10-20T21:18:33.076080+00:00"
+}

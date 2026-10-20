@@ -1,0 +1,35 @@
+
+Dynamic section at offset 0x12b2940 contains 32 entries:
+  Tag        Type                         Name/Value
+ 0x000000000000001d (RUNPATH)            Library runpath: [/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/outputs/out/lib]
+ 0x0000000000000001 (NEEDED)             Shared library: [libgcc_s.so.1]
+ 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [ld-linux-x86-64.so.2]
+ 0x000000000000001e (FLAGS)              BIND_NOW
+ 0x000000006ffffffb (FLAGS_1)            Flags: NOW PIE
+ 0x0000000000000015 (DEBUG)              0x0
+ 0x0000000000000007 (RELA)               0x1dc0
+ 0x0000000000000008 (RELASZ)             357000 (bytes)
+ 0x0000000000000009 (RELAENT)            24 (bytes)
+ 0x000000006ffffff9 (RELACOUNT)          14755
+ 0x0000000000000017 (JMPREL)             0x59048
+ 0x0000000000000002 (PLTRELSZ)           480 (bytes)
+ 0x0000000000000003 (PLTGOT)             0x12b8670
+ 0x0000000000000014 (PLTREL)             RELA
+ 0x0000000000000006 (SYMTAB)             0x358
+ 0x000000000000000b (SYMENT)             24 (bytes)
+ 0x0000000000000005 (STRTAB)             0x16cc
+ 0x000000000000000a (STRSZ)              1780 (bytes)
+ 0x000000006ffffef5 (GNU_HASH)           0x1280
+ 0x0000000000000004 (HASH)               0x129c
+ 0x0000000000000019 (INIT_ARRAY)         0x1274608
+ 0x000000000000001b (INIT_ARRAYSZ)       40 (bytes)
+ 0x000000000000001a (FINI_ARRAY)         0x1274600
+ 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)
+ 0x000000000000000c (INIT)               0x1273250
+ 0x000000000000000d (FINI)               0x127326c
+ 0x000000006ffffff0 (VERSYM)             0xfd0
+ 0x000000006ffffffe (VERNEED)            0x10dc
+ 0x000000006fffffff (VERNEEDNUM)         4
+ 0x0000000000000000 (NULL)               0x0

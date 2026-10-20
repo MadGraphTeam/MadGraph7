@@ -1,0 +1,82 @@
+   Compiling madloop-ninjars v0.1.0 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-performance-v1/crate)
+warning: unused import: `FloatLike`
+ --> src/common.rs:1:31
+  |
+1 | use ninjars::{Complex, Float, FloatLike, FourMomentum};
+  |                               ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `float_json`
+ --> src/capture.rs:4:14
+  |
+4 | use common::{float_json,z_json,zs_json,q_json};
+  |              ^^^^^^^^^^
+
+warning: unused import: `HashSet`
+  --> src/capture.rs:11:33
+   |
+11 | use std::collections::{BTreeMap,HashSet};
+   |                                 ^^^^^^^
+
+warning: function `same` is never used
+  --> src/common.rs:12:8
+   |
+12 | pub fn same(a: &[Z], b: &[Z]) {
+   |        ^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `read_float` is never used
+  --> src/common.rs:27:8
+   |
+27 | pub fn read_float(v: &Value) -> Float {
+   |        ^^^^^^^^^^
+
+warning: function `read_z` is never used
+  --> src/common.rs:34:8
+   |
+34 | pub fn read_z(v: &Value) -> Z { assert_eq!(v.as_array().unwrap().len(),2); Z::new(read_float(&v[0]),read_float(&v[1])) }
+   |        ^^^^^^
+
+warning: function `read_zs` is never used
+  --> src/common.rs:35:8
+   |
+35 | pub fn read_zs(v: &Value) -> Vec<Z> { v.as_array().unwrap().iter().map(read_z).collect() }
+   |        ^^^^^^^
+
+warning: function `read_q` is never used
+  --> src/common.rs:36:8
+   |
+36 | pub fn read_q(v: &Value) -> Q { assert_eq!(v.as_array().unwrap().len(),4); Q::from(std::array::from_fn(|i|read_z(&v[i]))) }
+   |        ^^^^^^
+
+warning: `madloop-ninjars` (bin "tensor-capture") generated 8 warnings (run `cargo fix --bin "tensor-capture" -p madloop-ninjars` to apply 3 suggestions)
+warning: function `float_json` is never used
+  --> src/common.rs:16:8
+   |
+16 | pub fn float_json(a: &Float) -> Value {
+   |        ^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `z_json` is never used
+  --> src/common.rs:24:8
+   |
+24 | pub fn z_json(a: &Z) -> Value { json!([float_json(&a.re),float_json(&a.im)]) }
+   |        ^^^^^^
+
+warning: function `zs_json` is never used
+  --> src/common.rs:25:8
+   |
+25 | pub fn zs_json(a: &[Z]) -> Value { Value::Array(a.iter().map(z_json).collect()) }
+   |        ^^^^^^^
+
+warning: function `q_json` is never used
+  --> src/common.rs:26:8
+   |
+26 | pub fn q_json(q: &Q) -> Value { Value::Array(q.components().iter().map(|v| z_json(v)).collect()) }
+   |        ^^^^^^
+
+warning: `madloop-ninjars` (bin "tensor-kernel") generated 5 warnings (1 duplicate)
+    Finished `release` profile [optimized] target(s) in 9m 01s

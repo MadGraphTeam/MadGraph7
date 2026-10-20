@@ -625,3 +625,12 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   opportunities, but neither proves their stored arithmetic/exception behavior
   nor measures a speedup. Strict environment-query sharing covers only modest
   regions. Both remain research leads, with the negative DP timing unchanged.
+- The isolated MP allocation patch now has a fixed twenty-one-pair callback
+  measurement: ratio 0.907561, with a paired 95% interval of
+  [0.898288, 0.912750]. All forty-two blocks reproduce 86,436 complex outputs
+  exactly in value, tracked precision and signed zero. Unsubtracted dispatch
+  control overhead is 0.00070086% of the baseline median. Independent and root
+  offline audits reproduce the result. The old-bound parser, rejected CPU
+  preflights and explicit affinity change remain in the sealed evidence.
+  This is a 9.24% kernel gain, not a full-process result or production change.
+  A separate corrected-parser combination must pass its own validation first.

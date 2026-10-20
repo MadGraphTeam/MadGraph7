@@ -213,3 +213,11 @@ historical parser prevent interpreting it as a pure precision experiment.
 No numerator-only retry is introduced. The source-only guard/fusion census in
 `experiments/symmetric-factorization-dp/guard-sharing-study/` also remains an
 unimplemented research lead.
+
+The allocation-only generic tensor experiment measures a 9.24% callback gain
+over twenty-one fixed alternating pairs: ratio 0.907561, 95% interval
+[0.898288, 0.912750]. Every output's value, precision and sign matches exactly.
+Independent and root checks reproduce the raw analysis; see
+`experiments/ninjars-mp-tensor-allocation-performance-v1/verify.py`.
+It uses the retained historical parser and is not a full-process measurement
+or production promotion. The final eight-process performance gate remains open.
