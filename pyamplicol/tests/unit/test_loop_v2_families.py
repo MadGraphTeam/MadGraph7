@@ -430,12 +430,18 @@ def test_family_sets_equal_recola_tensor_integrals(loop_sm_models, entry):
 APPENDIX_B = json.loads((FIXTURES / "appendix_b_counts.json").read_text())
 
 
+def _largest_ring(entry):
+    return max(int(bucket.split(":")[0]) for bucket in entry["families_by_N_rank"])
+
+
 def _appendix_b_cases():
     for config, entries in APPENDIX_B["configurations"].items():
         for entry in entries:
-            legs = len(entry["incoming"]) + len(entry["outgoing"])
+            # Heptagon processes run nightly; their largest-first trie nodes
+            # depend on the cost model's hash seed (see the fixture).
+            heptagons = _largest_ring(entry) >= 7
             marks = [
-                pytest.mark.loop_nightly if legs >= 7 else pytest.mark.loop_physics
+                pytest.mark.loop_nightly if heptagons else pytest.mark.loop_physics
             ]
             yield pytest.param(
                 config, entry, marks=marks, id=f"{config}:{entry['process']}"
@@ -546,7 +552,7 @@ def test_counts_equal_design_appendix_b(loop_sm_models, config, entry):
         counts["dress_structured"] += min(t.cost(rows) for _f, t in candidates)
         counts["dress_dense"] += min(t.cost(rows, DENSE) for _f, t in candidates)
     fields = ["skeletons", "dress_structured", "dress_dense"]
-    if len(families.legs) < 7:  # see the fixture's trie_nodes_seed_dependent
+    if _largest_ring(entry) < 7:  # see the fixture's trie_nodes_seed_dependent
         fields.append("trie_nodes_largest")
     assert {f: counts[f] for f in fields if f in entry} == {
         f: entry[f] for f in fields if f in entry
