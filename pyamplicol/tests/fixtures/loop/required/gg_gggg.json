@@ -1,0 +1,460 @@
+{
+  "process": "g g > g g g g QED=0 [virt=QCD]",
+  "name": "gg_gggg",
+  "pdgs": [
+    21,
+    21,
+    21,
+    21,
+    21,
+    21
+  ],
+  "correction": "QCD",
+  "born_orders": {
+    "QCD": 4,
+    "QED": 0
+  },
+  "loop_orders": {
+    "QCD": 6,
+    "QED": 0
+  },
+  "scheme": "qcd",
+  "scheme_description": "QCD corrections in the MG5 loop_sm-no_b_mass model: alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, massless b/tau/light fermions, all widths zero, five-flavour alpha_s renormalization with decoupled top, six quark flavours in loops, Feynman gauge.",
+  "source": "MG5_aMC_v3_7_0 / Recola2 2.3.0 / OpenLoops 2.1.5 independent references",
+  "scope": "Independent provider references at exact on-shell decimal points; binary64 provider arithmetic; timings are single-run by-products, not benchmarks.",
+  "convention": "MadLoop/BLHA C_eps=(4pi)^eps/Gamma(1-eps); F_MadLoop=F_Recola+pi^2/6*D; OpenLoops truepoles=1, polenorm=0; physical couplings, no alpha extraction; initial spin/colour average and final identical-particle factor included",
+  "normalization": {
+    "initial_average": 256,
+    "final_symmetry": 24,
+    "denominator": 6144
+  },
+  "normalization_denominator": 6144,
+  "points": [
+    [
+      [
+        "655.36",
+        "0",
+        "0",
+        "655.36"
+      ],
+      [
+        "655.36",
+        "0",
+        "0",
+        "-655.36"
+      ],
+      [
+        "94.921241505625212928",
+        "-9.8231381331968",
+        "-81.649264541008135520256",
+        "47.401958251720287633408"
+      ],
+      [
+        "465.154064623758787072",
+        "147.8911877331968",
+        "439.851352191836167520256",
+        "32.051340094941536366592"
+      ],
+      [
+        "495.284693870616",
+        "-138.0680496",
+        "-448.088807650828032",
+        "159.563661653338176"
+      ],
+      [
+        "255.36",
+        "0",
+        "89.88672",
+        "-239.01696"
+      ]
+    ],
+    [
+      [
+        "409.6",
+        "0",
+        "0",
+        "409.6"
+      ],
+      [
+        "409.6",
+        "0",
+        "0",
+        "-409.6"
+      ],
+      [
+        "147.65034383852904448",
+        "-24.896386777088",
+        "-130.45395104156223799296",
+        "64.51790928670249648128"
+      ],
+      [
+        "289.34979374771095552",
+        "86.949442777088",
+        "275.66297919923775799296",
+        "13.15368547584214351872"
+      ],
+      [
+        "222.59986241376",
+        "-62.053056",
+        "-201.38822815767552",
+        "71.71400523745536"
+      ],
+      [
+        "159.6",
+        "0",
+        "56.1792",
+        "-149.3856"
+      ]
+    ],
+    [
+      [
+        "640",
+        "0",
+        "0",
+        "640"
+      ],
+      [
+        "640",
+        "0",
+        "0",
+        "-640"
+      ],
+      [
+        "97.01692865075617792",
+        "-10.430731108352",
+        "-83.61401293191423197184",
+        "48.08514463732902592512"
+      ],
+      [
+        "454.16221384268382208",
+        "144.083467108352",
+        "429.59327357921535197184",
+        "30.86892100507481407488"
+      ],
+      [
+        "479.44585750656",
+        "-133.652736",
+        "-433.75926064730112",
+        "154.46093435759616"
+      ],
+      [
+        "249.375",
+        "0",
+        "87.78",
+        "-233.415"
+      ]
+    ]
+  ],
+  "mu_r": [
+    "1000",
+    "700",
+    "1400"
+  ],
+  "point_construction": {
+    "construction": "tools/loop_reference/exact_points.py: deterministic exact terminating-decimal sequential construction; mass shells and momentum conservation exact",
+    "cuts": {
+      "min_2pipj_over_s": "1/1000",
+      "resonance_exclusion": "|s_ij-M^2| >= M^2/10 for final particle-antiparticle pairs",
+      "resonances": [
+        "91.188",
+        "125",
+        "173"
+      ]
+    },
+    "sqrt_s": [
+      "1310.72",
+      "819.2",
+      "1280"
+    ]
+  },
+  "parameters": {
+    "aS": "0.118",
+    "aEWM1": "132.507",
+    "Gf": "0.0000116639",
+    "MZ": "91.188",
+    "MH": "125",
+    "MT": "173",
+    "ymt": "173"
+  },
+  "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0"
+  },
+  "derived_parameters": {
+    "MW": "80.4190024457561601055171371731",
+    "alpha": "0.00754677111397888413442308708219"
+  },
+  "active_flavours": 5,
+  "loop_quark_flavours": 6,
+  "rows": [
+    {
+      "born": 0.0004355415238256076,
+      "finite": -0.0007879827146853155,
+      "single_pole": -0.0005278615090884661,
+      "double_pole": -0.00014723267759605418,
+      "providers": {
+        "recola": {
+          "born": 0.0004355415238256076,
+          "finite": -0.0007879827146853155,
+          "single_pole": -0.0005278615090884661,
+          "double_pole": -0.00014723267759605418,
+          "seconds": 64.764416,
+          "raw": {
+            "born": 0.0004355415238256076,
+            "finite": -0.0005457946675542844,
+            "single_pole": -0.0005278615090884661,
+            "double_pole": -0.00014723267759605418
+          },
+          "universal_double_pole_relative_error": 2.8604949714864196e-12
+        },
+        "openloops": {
+          "born": 0.0004355415238256151,
+          "finite": -0.0007879827146807443,
+          "single_pole": -0.0005278615090860302,
+          "double_pole": -0.0001472326775956446,
+          "accuracy": -1.0,
+          "seconds": 8.82980162,
+          "universal_double_pole_relative_error": 6.130421067754072e-14
+        }
+      },
+      "provider_relative_errors": {
+        "openloops": {
+          "born": 1.7300773144631897e-14,
+          "finite": 5.801159231594209e-12,
+          "single_pole": 4.614613831437643e-12,
+          "double_pole": 2.7818856683055274e-12
+        }
+      },
+      "provider_strict_relative_errors": {
+        "openloops": {
+          "born": 1.7300773144631897e-14,
+          "finite": 5.801159231594209e-12,
+          "single_pole": 4.614613831437643e-12,
+          "double_pole": 2.7818856683055274e-12
+        }
+      }
+    },
+    {
+      "born": 0.001636466155013011,
+      "finite": -0.003085169900920232,
+      "single_pole": -0.002086617692601762,
+      "double_pole": -0.0005531993635941252,
+      "providers": {
+        "recola": {
+          "born": 0.001636466155013011,
+          "finite": -0.003085169900920232,
+          "single_pole": -0.002086617692601762,
+          "double_pole": -0.0005531993635941252,
+          "seconds": 64.6588215,
+          "raw": {
+            "born": 0.001636466155013011,
+            "finite": -0.002175193421985497,
+            "single_pole": -0.002086617692601762,
+            "double_pole": -0.0005531993635941252
+          },
+          "universal_double_pole_relative_error": 8.075669181362674e-12
+        },
+        "openloops": {
+          "born": 0.0016364661550131037,
+          "finite": -0.0030851699011459834,
+          "single_pole": -0.002086617692648001,
+          "double_pole": -0.0005531993635876759,
+          "accuracy": -1.0,
+          "seconds": 9.59112239,
+          "universal_double_pole_relative_error": 3.639097812419478e-12
+        }
+      },
+      "provider_relative_errors": {
+        "openloops": {
+          "born": 5.6712267272045134e-14,
+          "finite": 7.317304477412075e-11,
+          "single_pole": 2.2159603426257806e-11,
+          "double_pole": 1.165812657648774e-11
+        }
+      },
+      "provider_strict_relative_errors": {
+        "openloops": {
+          "born": 5.6712267272045134e-14,
+          "finite": 7.317304477412075e-11,
+          "single_pole": 2.2159603426257806e-11,
+          "double_pole": 1.165812657648774e-11
+        }
+      }
+    },
+    {
+      "born": 0.0004585125697025689,
+      "finite": -0.001167973494996605,
+      "single_pole": -0.0006666425437529738,
+      "double_pole": -0.000154997927076544,
+      "providers": {
+        "recola": {
+          "born": 0.0004585125697025689,
+          "finite": -0.001167973494996605,
+          "single_pole": -0.0006666425437529738,
+          "double_pole": -0.000154997927076544,
+          "seconds": 63.6616536,
+          "raw": {
+            "born": 0.0004585125697025689,
+            "finite": -0.0009130121244575406,
+            "single_pole": -0.0006666425437529738,
+            "double_pole": -0.000154997927076544
+          },
+          "universal_double_pole_relative_error": 2.4417608706049034e-12
+        },
+        "openloops": {
+          "born": 0.00045851256970259446,
+          "finite": -0.0011679734949896108,
+          "single_pole": -0.0006666425437503228,
+          "double_pole": -0.0001549979270761301,
+          "accuracy": -1.0,
+          "seconds": 8.91546324,
+          "universal_double_pole_relative_error": 2.8434456603975125e-13
+        }
+      },
+      "provider_relative_errors": {
+        "openloops": {
+          "born": 5.5686502070368765e-14,
+          "finite": 5.988310731935162e-12,
+          "single_pole": 3.97661798933528e-12,
+          "double_pole": 2.670495613765486e-12
+        }
+      },
+      "provider_strict_relative_errors": {
+        "openloops": {
+          "born": 5.5686502070368765e-14,
+          "finite": 5.988310731935162e-12,
+          "single_pole": 3.97661798933528e-12,
+          "double_pole": 2.670495613765486e-12
+        }
+      }
+    }
+  ],
+  "primary_provider": "recola",
+  "universal_double_pole_factor": -0.33804509912718567,
+  "maximum_provider_relative_error": 7.317304477412075e-11,
+  "error_metric": "|a-b|/max(|a|,|b|,|Born|*coupling/(2pi)) for Laurent coefficients, |a-b|/max(|a|,|b|) for Born; strict relative errors also listed per row",
+  "maximum_universal_double_pole_relative_error": 8.075669181362674e-12,
+  "tolerance": 2e-08,
+  "validation_status": "passed",
+  "validated_providers": [
+    "recola",
+    "openloops"
+  ],
+  "excluded_providers": {},
+  "providers": {
+    "recola": {
+      "provider": "recola",
+      "process_name": "gg_gggg",
+      "host": "itphlies",
+      "cpu": 314,
+      "points_file": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/required/gg_gggg/points.json",
+      "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
+      "settings": {
+        "commands": [
+          "mass W 80.4190024457561601055171371731 0",
+          "mass Z 91.188 0",
+          "mass H 125 0",
+          "mass top 173 0",
+          "mass bottom 0 0",
+          "mass charm 0 0",
+          "mass strange 0 0",
+          "mass up 0 0",
+          "mass down 0 0",
+          "mass tau 0 0",
+          "mass muon 0 0",
+          "mass electron 0 0",
+          "alpha0 0.00754677111397888413442308708219",
+          "alphas 0.118 1000 5",
+          "legs 6",
+          "born_gs 4",
+          "loop_gs 6",
+          "pow_lo 4",
+          "pow_nlo 5",
+          "process g g -> g g g g",
+          "generate"
+        ],
+        "collier_cache": "on",
+        "dynamic_settings": 1,
+        "compute_ir_poles": 1,
+        "delta_uv": 0,
+        "delta_ir": [
+          0,
+          0
+        ],
+        "mu_uv=mu_ir=mu_r": true
+      },
+      "version": "Recola2 (supplied 2.3.0 tree, self-reported 2.2.5) / SM model 2.2.3 / Collier 1.2.8",
+      "generation_seconds": 2123.9127,
+      "initial_call_seconds": 65.1839111,
+      "process_wall_seconds": 2382.4175455560326,
+      "evaluation_seconds": [
+        64.764416,
+        64.6588215,
+        63.6616536
+      ]
+    },
+    "openloops": {
+      "provider": "openloops",
+      "process_name": "gg_gggg",
+      "host": "itphlies",
+      "cpu": 364,
+      "points_file": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/required/gg_gggg/points.json",
+      "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
+      "settings": {
+        "commands": [
+          "int truepoles 1",
+          "int polenorm 0",
+          "int ct_on 1",
+          "int r2_on 1",
+          "int iop_on 0",
+          "int nf 6",
+          "int nq_nondecoupled 5",
+          "int coupling_qcd_0 4",
+          "int coupling_qcd_1 1",
+          "int coupling_ew_0 0",
+          "int coupling_ew_1 0",
+          "int ew_scheme 1",
+          "int ew_renorm_scheme 1",
+          "int complex_mass_scheme 0",
+          "double gmu 0.0000116639",
+          "double mass(23) 91.188",
+          "double width(23) 0",
+          "double mass(24) 80.4190024457561601055171371731",
+          "double width(24) 0",
+          "double mass(25) 125",
+          "double width(25) 0",
+          "double mass(6) 173",
+          "double width(6) 0",
+          "double mass(5) 0",
+          "double width(5) 0",
+          "double mass(15) 0",
+          "double alpha_s 0.118",
+          "register 11 21 21 -> 21 21 21 21"
+        ]
+      },
+      "version": "OpenLoops 2.1.5",
+      "library": {
+        "name": "ppjjjj",
+        "loops": "lt",
+        "git_revision": "d3d5302",
+        "process_api_version": "2",
+        "date": "2022-06-29-10-34-49",
+        "hash": "133a4991b6c4ad66c6e46cc9dfbdb8cb"
+      },
+      "start_seconds": 0.001166765,
+      "initial_call_seconds": 12.8843157,
+      "process_wall_seconds": 40.52199380798265,
+      "evaluation_seconds": [
+        8.82980162,
+        9.59112239,
+        8.91546324
+      ]
+    }
+  }
+}
