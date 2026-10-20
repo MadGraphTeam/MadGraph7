@@ -335,35 +335,107 @@ def _bose_history_routes(
 
 @dataclass(frozen=True, slots=True)
 class BoseCorrelationScope:
-    """Existing named requests and their proved representative column routes."""
+    """Validated actual source owners and their named column routes.
 
+    Construction checks the paired SourceIR and spectator catalogs once. Binding
+    then retains these exact immutable preparations, including on arithmetic
+    rebinds; copying only a route cannot confer source capability.
+    """
+
+    base_transport: Any = field(repr=False)
+    representative: Any = field(repr=False)
+    member: Any = field(repr=False)
+    representative_directed: Any = field(repr=False)
+    member_directed: Any = field(repr=False)
+    representative_spin: tuple = field(repr=False)
+    member_spin: tuple = field(repr=False)
     representative_requests: tuple
     member_requests: tuple
     selected_history_ids: tuple[str, ...]
-    history_routes: tuple[int, ...]
+    history_routes: tuple[int, ...] = field(init=False)
+
+    def __post_init__(self):
+        base = self.base_transport
+        if (
+            not isinstance(base, IdentityFlavorTransport)
+            or not base.permutes_external_legs
+            or base.bose_scalar_bindings is None
+        ):
+            raise ValueError("correlation extension requires an admitted Bose relation")
+        for source, prepared, expected in (
+            (
+                self.representative,
+                base.representative_plan,
+                base.representative_request,
+            ),
+            (self.member, base.member_plan, base.member_request),
+        ):
+            if (
+                not isinstance(source, NativeSourceModelProgram)
+                or source.prepared is not prepared
+            ):
+                raise ValueError(
+                    "Bose correlation scope has a different prepared owner"
+                )
+            if _request(base.symmetry, source)[0] != expected:
+                raise ValueError("Bose correlation scope changes its source request")
+        plan, binding = base.symmetry.plan, base.bose_scalar_bindings
+        if (
+            binding.program is not plan.structure.scalars
+            or binding.fixed_parameters != plan.structure.fixed_parameters
+        ):
+            raise ValueError("Bose correlation scope changes its paired scalar owner")
+        left, right = _bose_source_catalogues(
+            self.representative,
+            self.member,
+            self.representative_directed,
+            self.member_directed,
+            self.representative_spin,
+            self.member_spin,
+            base.mapping.permutation,
+        )
+        object.__setattr__(self, "representative_spin", left)
+        object.__setattr__(self, "member_spin", right)
+        for name in (
+            "representative_requests", "member_requests", "selected_history_ids"
+        ):
+            object.__setattr__(self, name, tuple(getattr(self, name)))
+        object.__setattr__(
+            self,
+            "history_routes",
+            _bose_history_routes(
+                self.representative_directed,
+                self.member_directed,
+                self.representative_requests,
+                self.member_requests,
+                self.selected_history_ids,
+                base.mapping.permutation,
+            ),
+        )
 
     def require_catalogues(self, transport):
+        base = self.base_transport
         if (
-            transport.representative_directed is None
-            or transport.member_directed is None
-            or transport.representative_directed.plan
-            is not transport.representative_plan
-            or transport.member_directed.plan is not transport.member_plan
-            or transport.representative_directed.bare.plan
-            is not transport.representative_plan.bare
-            or transport.member_directed.bare.plan is not transport.member_plan.bare
+            transport.symmetry is not base.symmetry
+            or transport.bose_scalar_bindings is not base.bose_scalar_bindings
+            or transport.mapping != base.mapping
+            or transport.representative_request != base.representative_request
+            or transport.member_request != base.member_request
+            or transport.orders != base.orders
+            or transport.representative_plan is not base.representative_plan
+            or transport.member_plan is not base.member_plan
+            or transport.representative_directed is not self.representative_directed
+            or transport.member_directed is not self.member_directed
         ):
-            raise ValueError("Bose correlation scope has a different directed owner")
-        routes = _bose_history_routes(
-            transport.representative_directed,
-            transport.member_directed,
-            self.representative_requests,
-            self.member_requests,
-            self.selected_history_ids,
-            transport.mapping.permutation,
-        )
-        if routes != self.history_routes:
-            raise ValueError("Bose history routes differ from their actual catalogues")
+            raise ValueError("Bose correlation scope has a different admitted owner")
+        for actual, expected in (
+            (transport.representative_spin, self.representative_spin),
+            (transport.member_spin, self.member_spin),
+        ):
+            if len(actual) != len(expected) or any(
+                left is not right for left, right in zip(actual, expected, strict=True)
+            ):
+                raise ValueError("Bose source classes differ from their actual proof")
 
     def member_histories(self, transport):
         indices = {item.id: index for index, item in enumerate(self.member_requests)}
@@ -768,56 +840,25 @@ class IdentityFlavorTransport:
         This checks request/source transport and does not repeat local-rule
         algebra or promote an ordinary admission through saved-plan presence.
         """
-        if not self.permutes_external_legs or self.bose_scalar_bindings is None:
-            raise ValueError("correlation extension requires an admitted Bose relation")
-        if (
-            representative.prepared is not self.representative_plan
-            or member.prepared is not self.member_plan
-        ):
-            raise ValueError("Bose correlation scope has a different prepared owner")
-        for source, expected in (
-            (representative, self.representative_request),
-            (member, self.member_request),
-        ):
-            if _request(self.symmetry, source)[0] != expected:
-                raise ValueError("Bose correlation scope changes its source request")
-        plan, binding = self.symmetry.plan, self.bose_scalar_bindings
-        if (
-            binding.program is not plan.structure.scalars
-            or binding.fixed_parameters != plan.structure.fixed_parameters
-        ):
-            raise ValueError("Bose correlation scope changes its paired scalar owner")
-        left_spin, right_spin = _bose_source_catalogues(
+        scope = BoseCorrelationScope(
+            self,
             representative,
             member,
             representative_directed,
             member_directed,
-            representative_spin,
-            member_spin,
-            self.mapping.permutation,
-        )
-        left_requests, right_requests = (
+            tuple(representative_spin),
+            tuple(member_spin),
             tuple(representative_histories),
             tuple(member_histories),
-        )
-        selected = tuple(selected_history_ids)
-        routes = _bose_history_routes(
-            representative_directed,
-            member_directed,
-            left_requests,
-            right_requests,
-            selected,
-            self.mapping.permutation,
+            tuple(selected_history_ids),
         )
         return replace(
             self,
-            representative_directed=representative_directed,
-            member_directed=member_directed,
-            representative_spin=left_spin,
-            member_spin=right_spin,
-            bose_correlations=BoseCorrelationScope(
-                left_requests, right_requests, selected, routes
-            ),
+            representative_directed=scope.representative_directed,
+            member_directed=scope.member_directed,
+            representative_spin=scope.representative_spin,
+            member_spin=scope.member_spin,
+            bose_correlations=scope,
         )
 
     def _require_binding(self, representative, directed):
@@ -910,7 +951,11 @@ class NativeIdentityFlavorProgram:
         return values[:, permutation, :]
 
     def _spin_sources(self, sources):
-        """Transport already-phased native rows; values remain untouched."""
+        """Route producer rows already phased by NativeSpinSourcePlan.
+
+        Public literal vectors reach that existing SourceIR preparation first.
+        This low-level key permutation never repeats its phase or changes values.
+        """
         if not self.transport.permutes_external_legs:
             return sources
         from collections.abc import Mapping
