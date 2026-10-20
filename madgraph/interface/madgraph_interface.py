@@ -2836,10 +2836,13 @@ class CompleteForCmd(cmd.CompleteCmd):
             return
 
         if text.startswith('--'):
+            filters = ['--diagram_filter=%s' % name for name in
+                       misc.from_plugin_import(self.plugin_path,
+                                'new_diagram_filter', keyname=None) or []]
             return self.list_completion(text, ['--no_crossing', 
                                                '--no_warning=duplicate',
                                                '--diagram_filter',
-                                               '--standalone']) 
+                                               '--standalone'] + filters)
 
         try:
             return self.model_completion(text, ' '.join(args[1:]),line, formatting)
@@ -4003,10 +4006,25 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
             warning_duplicate = False
             args.remove('--no_warning=duplicate')
 
+        # '--diagram_filter' uses PLUGIN/user_filter.py (historical behaviour);
+        # '--diagram_filter=NAME' uses the `new_diagram_filter` entry NAME of
+        # a plugin: new_diagram_filter = {'NAME': remove_diag}
         diagram_filter = False
-        if '--diagram_filter' in args:
-            diagram_filter = True
-            args.remove('--diagram_filter')
+        for arg in list(args):
+            if arg == '--diagram_filter':
+                diagram_filter = True
+                args.remove(arg)
+            elif arg.startswith('--diagram_filter='):
+                args.remove(arg)
+                filter_name = arg.split('=', 1)[1]
+                diagram_filter = misc.from_plugin_import(self.plugin_path,
+                                     'new_diagram_filter', filter_name,
+                                     warning=True,
+                                     info='Diagram filter from PLUGIN: %(plug)s')
+                if not diagram_filter:
+                    raise self.InvalidCmd('No plugin provides the diagram '
+                              'filter "%s" (see new_diagram_filter in the '
+                              'plugin __init__.py).' % filter_name)
         
         standalone_only = False
         if '--standalone' in args:

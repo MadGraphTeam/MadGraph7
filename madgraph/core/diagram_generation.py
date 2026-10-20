@@ -1366,7 +1366,7 @@ class Amplitude(base_objects.PhysicsObject):
             res = self.apply_squared_order_constraints(res)
 
         if diagram_filter:
-            res = self.apply_user_filter(res)
+            res = self.apply_user_filter(res, diagram_filter)
 
         # 4 gluon specials demo (dedicated aloha not implemented yet)
         #if True:
@@ -1503,11 +1503,14 @@ class Amplitude(base_objects.PhysicsObject):
 
         return res
 
-    def apply_user_filter(self, diag_list):
+    def apply_user_filter(self, diag_list, diagram_filter=True):
         """Applies the user specified squared order constraints on the diagram
         list in argument."""
 
-        if True:
+        if callable(diagram_filter):
+            # function provided by a plugin (--diagram_filter=PLUGINNAME)
+            remove_diag = diagram_filter
+        elif True:
             remove_diag = misc.plugin_import('user_filter', 
                                              'user filter required to be defined in PLUGIN/user_filter.py with the function remove_diag(ONEDIAG) which returns True if the diagram has to be removed',
                                              fcts=['remove_diag'])
@@ -2520,7 +2523,7 @@ class MultiProcess(base_objects.PhysicsObject):
         self['ignore_six_quark_processes'] = ignore_six_quark_processes
         self['use_numerical'] = optimize
         self['loop_filter'] = loop_filter
-        self['diagram_filter'] = diagram_filter # only True/False so far
+        self['diagram_filter'] = diagram_filter # True (PLUGIN/user_filter.py) or a plugin function
         self['merge_crossing'] = merge_crossing
         
         if isinstance(argument, base_objects.ProcessDefinition) or \
