@@ -1,0 +1,419 @@
+{
+ "processes": {
+  "gg": "g g > t t~ [virt=QCD]",
+  "uu": "u u~ > t t~ [virt=QCD]"
+ },
+ "source": "MG5_aMC_v3_7_0/models/loop_sm-no_b_mass (MadLoop standalone, Feynman gauge, complex_mass_scheme False)",
+ "scope": "Internal massive top in QCD loops and counterterms (gg) and top-loop gluon self-energy (uu); binary64 independent MadLoop references; no timing claim",
+ "provenance": "workspace/reference/generate_top_pair_model.py and run_top_pair_model.py; diagnostic CT split by generated SKIPLOOPEVAL plus CT index selection only",
+ "convention": "MadLoop finite part, Cepsilon=(4pi)^epsilon/Gamma(1-epsilon); aS fixed (no running) at MU_R",
+ "points_scope": "Exact on-shell CM points: massless gluons/quarks, p_t^2=173^2 exactly in terminating decimals",
+ "points": [
+  [
+   [
+    "279.929",
+    "0",
+    "0",
+    "279.929"
+   ],
+   [
+    "279.929",
+    "0",
+    "0",
+    "-279.929"
+   ],
+   [
+    "279.929",
+    "105.63408",
+    "132.0426",
+    "140.84544"
+   ],
+   [
+    "279.929",
+    "-105.63408",
+    "-132.0426",
+    "-140.84544"
+   ]
+  ],
+  [
+   [
+    "418.705625",
+    "0",
+    "0",
+    "418.705625"
+   ],
+   [
+    "418.705625",
+    "0",
+    "0",
+    "-418.705625"
+   ],
+   [
+    "418.705625",
+    "134.21562",
+    "-137.265975",
+    "329.43834"
+   ],
+   [
+    "418.705625",
+    "-134.21562",
+    "137.265975",
+    "-329.43834"
+   ]
+  ],
+  [
+   [
+    "636.9716",
+    "0",
+    "0",
+    "636.9716"
+   ],
+   [
+    "636.9716",
+    "0",
+    "0",
+    "-636.9716"
+   ],
+   [
+    "636.9716",
+    "-367.81704",
+    "294.253632",
+    "-392.338176"
+   ],
+   [
+    "636.9716",
+    "367.81704",
+    "-294.253632",
+    "392.338176"
+   ]
+  ]
+ ],
+ "mu_r": [
+  "1000",
+  "1000",
+  "1000"
+ ],
+ "parameters": {
+  "aS": "0.118",
+  "aEWM1": "132.507",
+  "Gf": "0.0000116639",
+  "MZ": "91.188",
+  "MH": "125",
+  "MT": "173",
+  "ymt": "173",
+  "MU_R": "1000"
+ },
+ "fixed_parameters": {
+  "MB": "0",
+  "ymb": "0",
+  "MTA": "0",
+  "ymtau": "0",
+  "WT": "0",
+  "WW": "0",
+  "WZ": "0",
+  "WH": "0"
+ },
+ "component_scope": "bare = full minus generated CT sum; uv = uv_vertex + wf; uv_mass = top-mass UV insertions (Identity two-point); r2_quark_two_point = R2_QQ_1+R2_QQ_2 insertions",
+ "rows": {
+  "gg": [
+   {
+    "born": 0.9255713899699278,
+    "madloop_status": 236,
+    "madloop_accuracy": 1.2103705399717102e-14,
+    "components": {
+     "bare": {
+      "finite": 0.3628677511826045,
+      "single_pole": -0.1465097500193179,
+      "double_pole": -0.10429495742389042
+     },
+     "uv": {
+      "finite": -0.18333140290644936,
+      "single_pole": -0.17112648370821246,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.05686083943209104,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "full": {
+      "finite": 0.12267550884406456,
+      "single_pole": -0.31763623372753036,
+      "double_pole": -0.10429495742389042
+     },
+     "uv_vertex": {
+      "finite": 0.19401344967598774,
+      "single_pole": -0.09000818348963185,
+      "double_pole": 0.0
+     },
+     "wf": {
+      "finite": -0.3773448525824371,
+      "single_pole": -0.08111830021858142,
+      "double_pole": 0.0
+     },
+     "uv_mass": {
+      "finite": 0.15335084628153026,
+      "single_pole": 0.031669266838240666,
+      "double_pole": 0.0
+     },
+     "r2_quark_two_point": {
+      "finite": 0.03506962189415344,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    }
+   },
+   {
+    "born": 2.732395483815305,
+    "madloop_status": 236,
+    "madloop_accuracy": 1.189629381395704e-14,
+    "components": {
+     "bare": {
+      "finite": 1.15378700098415,
+      "single_pole": -0.3719217842442367,
+      "double_pole": -0.30789096739367267
+     },
+     "uv": {
+      "finite": -0.562942079022006,
+      "single_pole": -0.5096722813027779,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.1712921129895262,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "full": {
+      "finite": 0.4195528089726168,
+      "single_pole": -0.8815940655470146,
+      "double_pole": -0.30789096739367267
+     },
+     "uv_vertex": {
+      "finite": 0.5510242581080809,
+      "single_pole": -0.27020152888547605,
+      "double_pole": 0.0
+     },
+     "wf": {
+      "finite": -1.1139663371300872,
+      "single_pole": -0.23947075241730148,
+      "double_pole": 0.0
+     },
+     "uv_mass": {
+      "finite": 0.4309834756474237,
+      "single_pole": 0.08900459974047469,
+      "double_pole": 0.0
+     },
+     "r2_quark_two_point": {
+      "finite": 0.1009524034866033,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    }
+   },
+   {
+    "born": 1.160264188325759,
+    "madloop_status": 236,
+    "madloop_accuracy": 7.803598155067102e-15,
+    "components": {
+     "bare": {
+      "finite": 1.0976933742191786,
+      "single_pole": 0.11946202265291303,
+      "double_pole": -0.1307405408521016
+     },
+     "uv": {
+      "finite": -0.39137579358121216,
+      "single_pole": -0.24788237269014862,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.08436651827422208,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "full": {
+      "finite": 0.6219510623637429,
+      "single_pole": -0.1284203500372356,
+      "double_pole": -0.1307405408521016
+     },
+     "uv_vertex": {
+      "finite": 0.08165062431043271,
+      "single_pole": -0.14619528536073584,
+      "double_pole": 0.0
+     },
+     "wf": {
+      "finite": -0.4730264178916442,
+      "single_pole": -0.10168708732941241,
+      "double_pole": 0.0
+     },
+     "uv_mass": {
+      "finite": 0.030677395196020123,
+      "single_pole": 0.006335345633380685,
+      "double_pole": 0.0
+     },
+     "r2_quark_two_point": {
+      "finite": 0.03163075417807681,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    }
+   }
+  ],
+  "uu": [
+   {
+    "born": 0.798941584567205,
+    "madloop_status": 236,
+    "madloop_accuracy": 4.8442436073459885e-14,
+    "components": {
+     "bare": {
+      "finite": 0.39569236901392424,
+      "single_pole": 0.010176317509740906,
+      "double_pole": -0.04001159809657062
+     },
+     "uv": {
+      "finite": -0.25552043573968264,
+      "single_pole": -0.16504784214835377,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.030373362700526558,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "full": {
+      "finite": 0.10979857057371514,
+      "single_pole": -0.15487152463861287,
+      "double_pole": -0.04001159809657062
+     },
+     "uv_vertex": {
+      "finite": 0.03509944790930829,
+      "single_pole": -0.10503044500349784,
+      "double_pole": 0.0
+     },
+     "wf": {
+      "finite": -0.29061988364899105,
+      "single_pole": -0.06001739714485591,
+      "double_pole": 0.0
+     },
+     "uv_mass": {
+      "finite": 0.0,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "r2_quark_two_point": {
+      "finite": 0.0,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    }
+   },
+   {
+    "born": 0.8745189733699417,
+    "madloop_status": 236,
+    "madloop_accuracy": 3.865918537545961e-14,
+    "components": {
+     "bare": {
+      "finite": 0.48913596715742186,
+      "single_pole": 0.020140506115068763,
+      "double_pole": -0.04379657082095506
+     },
+     "uv": {
+      "finite": -0.2796918741676925,
+      "single_pole": -0.18066085463643947,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.031512039080234464,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "full": {
+      "finite": 0.17793205390949496,
+      "single_pole": -0.1605203485213707,
+      "double_pole": -0.04379657082095506
+     },
+     "uv_vertex": {
+      "finite": 0.03841974650515648,
+      "single_pole": -0.11496599840500693,
+      "double_pole": 0.0
+     },
+     "wf": {
+      "finite": -0.31811162067284887,
+      "single_pole": -0.06569485623143258,
+      "double_pole": 0.0
+     },
+     "uv_mass": {
+      "finite": 0.0,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "r2_quark_two_point": {
+      "finite": 0.0,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    }
+   },
+   {
+    "born": 0.7100386384289357,
+    "madloop_status": 236,
+    "madloop_accuracy": 3.493089436382471e-14,
+    "components": {
+     "bare": {
+      "finite": 0.6312900341798224,
+      "single_pole": 0.17454517614760448,
+      "double_pole": -0.035559271394346975
+     },
+     "uv": {
+      "finite": -0.22708716855895672,
+      "single_pole": -0.1466819945016809,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.024938819092611045,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "full": {
+      "finite": 0.37926404652825463,
+      "single_pole": 0.027863181645923586,
+      "double_pole": -0.035559271394346975
+     },
+     "uv_vertex": {
+      "finite": 0.03119372515405257,
+      "single_pole": -0.09334308741016045,
+      "double_pole": 0.0
+     },
+     "wf": {
+      "finite": -0.2582808937130092,
+      "single_pole": -0.05333890709152037,
+      "double_pole": 0.0
+     },
+     "uv_mass": {
+      "finite": 0.0,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "r2_quark_two_point": {
+      "finite": 0.0,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    }
+   }
+  ]
+ },
+ "amplitude_counts": {
+  "gg": {
+   "r2": 19,
+   "r2_quark_two_point": 2,
+   "uv": 48,
+   "uv_mass": 4,
+   "wf": 6
+  },
+  "uu": {
+   "r2": 9,
+   "uv": 16,
+   "wf": 2
+  }
+ }
+}
