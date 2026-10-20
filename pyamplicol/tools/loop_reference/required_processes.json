@@ -7,15 +7,17 @@
       "parameters": {"aS": "0.118", "aEWM1": "132.507", "Gf": "0.0000116639", "MZ": "91.188", "MH": "125", "MT": "173", "ymt": "173"},
       "fixed_parameters": {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", "WT": "0", "WW": "0", "WZ": "0", "WH": "0"},
       "electroweak_inputs": "alpha_fixed",
+      "complex_mass_scheme": false,
       "active_flavours": 5,
       "loop_quark_flavours": 6
     },
     "ew-gmu": {
-      "description": "Full NLO EW (all one-loop graphs of the selected order, QCD-EW mixed included) in the G_mu scheme with on-shell real masses, matching OpenLoops ew_scheme=1/ew_renorm_scheme=1 and the MG5 loop_qcd_qed_sm_Gmu default restriction (massless light fermions, diagonal CKM). All widths zero (complex-mass scheme then reduces to the real on-shell scheme); stable top; Feynman gauge.",
+      "description": "Full NLO EW (all one-loop graphs of the selected order, QCD-EW mixed included) in the G_mu scheme with on-shell real masses, matching OpenLoops ew_scheme=1/ew_renorm_scheme=1 and the MG5 loop_qcd_qed_sm_Gmu default restriction (massless light fermions, diagonal CKM). Real on-shell mass renormalization (MadLoop complex_mass_scheme False, Recola set_on_shell_scheme, OpenLoops complex_mass_scheme=0) with all widths zero; stable top; Feynman gauge. Recola's default complex-mass scheme keeps absorptive self-energy parts in its counterterms even at zero widths and is therefore not used.",
       "madloop_model": "{reference}/models/loop_qcd_qed_sm_Gmu_py3",
       "parameters": {"aS": "0.118", "Gf": "0.0000116639", "MZ": "91.188", "MW": "80.419", "MH": "125", "MT": "173", "ymt": "173"},
       "fixed_parameters": {"MB": "0", "ymb": "0", "MTA": "0", "ymtau": "0", "WT": "0", "WW": "0", "WZ": "0", "WH": "0", "WTau": "0"},
       "electroweak_inputs": "gmu",
+      "complex_mass_scheme": false,
       "active_flavours": 5,
       "loop_quark_flavours": 6
     }
@@ -103,6 +105,17 @@
       "madloop": {"process": "g g > t t~ e- e+ g QED=2 [virt=QCD]"},
       "recola": {"process": "g g -> t t~ e- e+ g"},
       "openloops": {"process": "21 21 -> 6 -6 11 -11 21", "library": "ppllttj"}
+    },
+    {
+      "name": "gg_ttxemep_ew",
+      "role": "diagnostic",
+      "pdgs": [21, 21, 6, -6, 11, -11],
+      "born_orders": {"QCD": 2, "QED": 2},
+      "correction": "EW",
+      "scheme": "ew-gmu",
+      "madloop": {"process": "g g > t t~ e- e+ QCD=2 QED=2 [virt=QCD QED] QCD^2==4 QED^2==6"},
+      "recola": {"process": "g g -> t t~ e- e+"},
+      "openloops": {"process": "21 21 -> 6 -6 11 -11", "library": "pplltt_ew"}
     },
     {
       "name": "gg_ttxemepg_ew",
