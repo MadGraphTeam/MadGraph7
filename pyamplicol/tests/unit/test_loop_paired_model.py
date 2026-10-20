@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 from dataclasses import replace
 from decimal import Decimal, localcontext
@@ -110,11 +111,27 @@ def test_full_ew_scalar_program_can_prepare_unsummed_model_ir(loop_gmu_ufo):
 # expressions) is rejected. Real paired sources compile through the generic
 # source path; this legacy-control composition needs an explicit ownership
 # decision before these controls can run again.
-_LEGACY_CONTROL_OWNERSHIP = pytest.mark.xfail(
-    raises=ValueError,
-    strict=True,
-    reason="41ccde87 rejects paired sources over the independent control model",
-)
+_OWNERSHIP_ERROR = "ordinary native coupling overrides its source binding"
+
+
+def _legacy_control_ownership(test):
+    """Strict xfail on exactly the ownership rejection; any other error fails."""
+
+    @functools.wraps(test)
+    def checked(*args, **kwargs):
+        try:
+            return test(*args, **kwargs)
+        except ValueError as error:
+            if str(error) != _OWNERSHIP_ERROR:
+                raise AssertionError(f"unexpected ValueError: {error}") from error
+            raise
+
+    return pytest.mark.xfail(
+        raises=ValueError,
+        strict=True,
+        reason=f"41ccde87 rejects paired sources over the independent control "
+        f"model: {_OWNERSHIP_ERROR}",
+    )(checked)
 
 
 @pytest.mark.parametrize(
@@ -125,7 +142,7 @@ _LEGACY_CONTROL_OWNERSHIP = pytest.mark.xfail(
         ("arbitrary", 60, "generic", Decimal("3e-55")),
     ],
 )
-@_LEGACY_CONTROL_OWNERSHIP
+@_legacy_control_ownership
 def test_paired_qcd_preserves_components_and_native_field_helpers(
     raw, paired, arithmetic, precision, engine, tolerance
 ):
@@ -189,7 +206,7 @@ def _modified_coupling(raw, expression):
     "arithmetic,precision",
     [("double", None), ("double-double", None), ("arbitrary", 60)],
 )
-@_LEGACY_CONTROL_OWNERSHIP
+@_legacy_control_ownership
 def test_inactive_ct_helper_and_zero_value_diagnostic_are_checked(
     raw, arithmetic, precision
 ):
@@ -230,7 +247,7 @@ def test_inactive_ct_helper_and_zero_value_diagnostic_are_checked(
         )
 
 
-@_LEGACY_CONTROL_OWNERSHIP
+@_legacy_control_ownership
 def test_external_field_branch_keeps_ct_dependency_diagnostic(raw):
     payload = raw.to_dict()
     particle = next(
