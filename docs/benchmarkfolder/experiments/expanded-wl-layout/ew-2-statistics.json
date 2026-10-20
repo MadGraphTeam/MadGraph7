@@ -1,0 +1,55 @@
+{
+  "passed": true,
+  "status": "passed",
+  "runtime_ratio": 0.9336897060083018,
+  "ratio_confidence_interval_95": [
+    0.8944139167359254,
+    0.9591234459234668
+  ],
+  "maximum_ratio": 1.0,
+  "bootstrap": {
+    "method": "paired percentile",
+    "resamples": 10000,
+    "seed": 410083
+  },
+  "measurements": {
+    "baseline": {
+      "samples": [
+        0.001301230478,
+        0.0013063349280000001,
+        0.001304625438,
+        0.000801018075,
+        0.000807428773,
+        0.0008170444369999999,
+        0.0008107634359999999,
+        0.0008535628706666666,
+        0.0008266347706666667
+      ],
+      "median": 0.0008266347706666667,
+      "minimum": 0.000801018075,
+      "maximum": 0.0013063349280000001,
+      "stdev": 0.00024278977760681863,
+      "median_absolute_deviation": 2.561669566666664e-05
+    },
+    "candidate": {
+      "samples": [
+        0.00124804066,
+        0.0012683962083333334,
+        0.0012101214503333333,
+        0.000756802645,
+        0.000771820376,
+        0.000766352785,
+        0.0007634385103333334,
+        0.0007579877259999999,
+        0.000773015084
+      ],
+      "median": 0.000771820376,
+      "minimum": 0.000756802645,
+      "maximum": 0.0012683962083333334,
+      "stdev": 0.0002391598136551841,
+      "median_absolute_deviation": 1.3832650000000085e-05
+    }
+  },
+  "scope": "Exploratory isolated-copy full-process comparison with concurrent host tasks; strict benefit threshold ratio<1",
+  "case": "ew-2"
+}

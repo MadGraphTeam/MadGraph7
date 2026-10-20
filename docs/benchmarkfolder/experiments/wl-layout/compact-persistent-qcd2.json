@@ -1,0 +1,73 @@
+{
+  "passed": true,
+  "status": "passed",
+  "runtime_ratio": 0.9164334874357736,
+  "ratio_confidence_interval_95": [
+    0.9127814432374846,
+    0.9212823958776014
+  ],
+  "maximum_ratio": 1.0,
+  "bootstrap": {
+    "method": "paired percentile",
+    "resamples": 10000,
+    "seed": 410083
+  },
+  "measurements": {
+    "baseline": {
+      "samples": [
+        0.0013648311575,
+        0.00137491557125,
+        0.0013830239899999999,
+        0.0013711158062500001,
+        0.0013757943487499999,
+        0.0013636294275,
+        0.00136359599
+      ],
+      "median": 0.0013711158062500001,
+      "minimum": 0.00136359599,
+      "maximum": 0.0013830239899999999,
+      "stdev": 7.417381513827993e-06,
+      "median_absolute_deviation": 6.284648750000182e-06
+    },
+    "candidate": {
+      "samples": [
+        0.00125739491875,
+        0.0012565364400000001,
+        0.00125579955125,
+        0.0012583415725,
+        0.0012773049087499999,
+        0.00125320392875,
+        0.0012534154037500001
+      ],
+      "median": 0.0012565364400000001,
+      "minimum": 0.00125320392875,
+      "maximum": 0.0012773049087499999,
+      "stdev": 8.356931848028505e-06,
+      "median_absolute_deviation": 1.8051324999998099e-06
+    }
+  },
+  "evidence_root": "experiments/persistent-workers/ninja-parity-final-20261020",
+  "scope": "Exploratory warmed blocks with original Ninja in both source versions; full eight-process acceptance remains outstanding.",
+  "source_files_sha256": {
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-baseline-6-0.json": "8b785ea21473193e29e27656aed20f7a4019f5410c8bb9c338157c695b93601b",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-baseline-6-1.json": "5ef24caf117e322bc82c1e9312b5a6ccb5323d19ac986ab9d616a3bd307911c8",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-baseline-6-2.json": "26531a39ae0f56f9aafcbeeeeaf0f7bf7aa67f1985b27fba8c8b64a1cf4012d9",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-baseline-6-3.json": "980a5bba3a840e543bcb1802ec76a135b0bb7ce01ef548bd3a2bc3f3a3d00471",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-baseline-6-4.json": "28a2014a3315407f33320bef6890a0c34752574b3a77ae973c9b066b8d883d30",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-baseline-6-5.json": "31623f7e68cc07f818737bd86b7d8a097d1ff57f3193412e9a496ce9641b8688",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-baseline-6-6.json": "2c1e3643e1f91bdf23b0c5cf7224320d0d3f9e99b3b6e3850f43ba0b475b4f9d",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-baseline-6-calibration.json": "8444170f00601e9d0db9c829deb931c598f14075905a8a1319224846bbba74dc",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-baseline-6-fresh.json": "6827517fe4b32bab068ebb0d94ac20291beacd5a98429be5e0e30050429c9050",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-baseline-6-parity.json": "2a1f2cffccafc5eedde360ceecb75329452a5e859ff0c00f5c8c88fbe2a24412",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-candidate-6-0.json": "18064741be6690a18eefd3ab816486d5b32d30c0a1c80b5c23e3774a9617b166",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-candidate-6-1.json": "c139cecd4e0cd6884fc455e909a1df35a8eb5edb745912c8018861d4d882de15",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-candidate-6-2.json": "ce3a01ec958fa2a3b9d15358c5ae2a90ef7206c8a957385fdd3b32fa12a21bbb",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-candidate-6-3.json": "f004f0e3e4278d62fb5e4ee82aff76a3a06b5ce1f7f4214554767a47d0c2e461",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-candidate-6-4.json": "9e942021c8ad554c245867bc0e8e060ba737cfe08fe63c50e76e581ee3723682",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-candidate-6-5.json": "05d606430516c0875f0089d60909685074a45902aa18b27cf8d24bda11b137af",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-candidate-6-6.json": "4f1df470d1d6b67b956e6b1f6aed22bee48143ddafd68165cc842c3bb9027ce2",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-candidate-6-calibration.json": "5c1ab2ffb4cd982c20c32923e1cfe089b677631a22524f4a28310ef594bf9480",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-candidate-6-fresh.json": "14430137ca0e4fe319da53e6a572a24b562b21fe93a652b008462d366ddbc409",
+    "experiments/persistent-workers/ninja-parity-final-20261020/data/qcd-2-candidate-6-parity.json": "7fc063646de342d217e067695803a262b7753a2fc414b21aea08977ba96592e6"
+  }
+}

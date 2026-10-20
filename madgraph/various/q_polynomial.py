@@ -509,6 +509,8 @@ C        ARGUMENTS
         # Start the loop on the elements i,j of the vector OUT(i,coef,j)
         lines.append("C Welcome to the computational heart of MadLoop...")
         if loop_over_vertex_coefs_first:
+            # Traverse coefficients within each last-index array plane. Keeping
+            # M and K outside I preserves the summation order of every output.
             lines.append("OUT(:,:,:)=%s"%self.czero)
             lines.append(
     """DO J=1,OUT_SIZE
@@ -516,9 +518,9 @@ C        ARGUMENTS
         DO K=1,IN_SIZE
           UPDATER_COEF = B(J,M,K)
           IF (UPDATER_COEF.EQ.%s) CYCLE
-          DO L=0,%d
-            NEW_POSITION = COMB_COEF_POS(L,M)
-            DO I=1,LCUT_SIZE
+          DO I=1,LCUT_SIZE
+            DO L=0,%d
+              NEW_POSITION = COMB_COEF_POS(L,M)
               OUT(J,NEW_POSITION,I)=OUT(J,NEW_POSITION,I) + A(K,L,I)*UPDATER_COEF
             ENDDO
           ENDDO
@@ -580,13 +582,16 @@ C        ARGUMENTS
 """%{'sub_prefix':self.sub_prefix,'proc_prefix':self.proc_prefix,
                             'r_1':r_1,'r_2':r_2,'coef_format':self.coef_format})
         
-        # Start the loop on the elements i,j of the vector OUT(i,coef,j)
+        # Traverse the first array index contiguously. Each fixed output still
+        # receives the same arithmetic statements in ascending K order.
         lines.append("DO I=1,LCUT_SIZE")
-        lines.append("  DO J=1,OUT_SIZE")
-        lines.append("    DO K=0,%d"%(get_number_of_coefs_for_rank(r_2+r_1)-1))
+        lines.append("  DO K=0,%d"%(get_number_of_coefs_for_rank(r_2+r_1)-1))
+        lines.append("    DO J=1,OUT_SIZE")
         lines.append("      OUT(J,K,I)=%s"%self.czero)
         lines.append("    ENDDO")
-        lines.append("    DO K=1,IN_SIZE")
+        lines.append("  ENDDO")
+        lines.append("  DO K=1,IN_SIZE")
+        lines.append("    DO J=1,OUT_SIZE")
         
         # Now we write the lines defining the coefs of OUT(j,*,i) from those
         # of A(k,*,i) and B(j,*,k)

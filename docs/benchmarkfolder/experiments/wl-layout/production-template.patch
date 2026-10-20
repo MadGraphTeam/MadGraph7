@@ -1,0 +1,15 @@
+--- a/madgraph/various/q_polynomial.py
++++ b/madgraph/various/q_polynomial.py
+@@ -516,9 +516,9 @@
+         DO K=1,IN_SIZE
+           UPDATER_COEF = B(J,M,K)
+           IF (UPDATER_COEF.EQ.%s) CYCLE
+-          DO L=0,%d
+-            NEW_POSITION = COMB_COEF_POS(L,M)
+-            DO I=1,LCUT_SIZE
++          DO I=1,LCUT_SIZE
++            DO L=0,%d
++              NEW_POSITION = COMB_COEF_POS(L,M)
+               OUT(J,NEW_POSITION,I)=OUT(J,NEW_POSITION,I) + A(K,L,I)*UPDATER_COEF
+             ENDDO
+           ENDDO

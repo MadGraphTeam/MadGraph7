@@ -1,0 +1,13 @@
+{
+  "case": "qcd-2",
+  "cpu": 2,
+  "loops": 70,
+  "initialization_seconds": 0.193948095,
+  "timed_seconds": 10.016382009,
+  "exploratory_only": true,
+  "concurrent_builds": true,
+  "flags": "-w -fPIC -g -pg; existing polynomial routines retain -O3",
+  "scope": "gprof samples generated executable Fortran; dynamic reducer/library samples excluded",
+  "executable_sha256": "213c0b84f8543098094e89f78c6f6622c8e3be3af8281158c16ee0d181faf0a9",
+  "status_histogram": "  216                 7000\n"
+}

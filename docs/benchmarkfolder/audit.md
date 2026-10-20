@@ -127,9 +127,30 @@ for qcd-2 and `0.868791` for qcd-3, relative to their unmodified copies. Concurr
 builds caused substantial noise, so these are preliminary observations, not accepted
 speed claims. Paired-bootstrap 95% ratio intervals of `[0.913864, 1.033940]` and
 `[0.398845, 1.111719]` leave a strict speed-benefit gate unresolved. Production
-retention is conditional on isolated repeated timing and
-the full process gates. Scripts, generated diffs and sample-level evidence are
-retained in `experiments/wl-layout`.
+retention was initially conditional on further timing. A subsequent seven-pair
+persistent-worker experiment on qcd-2 gives a ratio of `0.91643`, with interval
+`[0.91278, 0.92128]`, and exact fresh/reused-process numerical agreement.
+This supports retaining the compact change for the final benchmark; it does
+not establish the eight-process acceptance gate. Scripts, generated diffs and
+sample-level evidence are retained in `experiments/wl-layout` and
+`experiments/persistent-workers/ninja-parity-final-20261020`.
+
+Sampling the EW two-body process subsequently identified the expanded
+`UPDATE_WL_1_1` routine as 28.72% of full-executable samples. Expanded routines
+now traverse their contiguous first output index inside both clearing and
+arithmetic loops. For every fixed output, the sequence of summation terms stays
+unchanged. An independent compiled convolution verifies 11,250 exact bit-pattern
+comparisons per precision, including zero dimensions, inactive regions, sparse
+inputs, cancellation, signed zeros, and scales from `1e-100` to `1e100`.
+All 41 polynomial tests and the four focused optimized export comparisons pass.
+
+Nine paired full-evaluation experiments using original Ninja and identical
+100-point streams show ratios `0.933690` for ew-2 and `0.970802` for qcd-2;
+their paired 95% intervals are `[0.894414, 0.959123]` and
+`[0.942238, 0.980781]`. Every printed coefficient, accuracy, and status agrees
+exactly. These shared-host exploratory measurements support retaining the
+expanded change. Final legacy regression and NinjaRS performance gates still
+apply to every core process. Evidence is in `experiments/expanded-wl-layout`.
 
 ## Limits and optimization follow-up
 

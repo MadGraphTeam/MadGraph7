@@ -1,0 +1,45 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 5K of event 'cpu-clock:u'
+# Event count (approx.): 29819091750
+#
+# Overhead  Command  Shared Object         Symbol                                                                                                                                                                                                     
+# ........  .......  ....................  ...........................................................................................................................................................................................................
+#
+    28.72%  check    check                 [.] ml5_0_update_wl_1_1_
+     4.20%  check    check                 [.] ml5_0_update_wl_2_0_
+     3.13%  check    check                 [.] <ninjars::fast::engine::FastAmplitude>::evaluate_up_to_n1::<ninjars::fast::tensor::TensorNumerator, ninjars_symbolica::oneloop_native::OneLoopNativeMasters>
+     2.83%  check    check                 [.] ml5_0_update_wl_0_1_
+     2.09%  check    check                 [.] <ninjars::fast::engine::FastAmplitude>::bubbles::<ninjars::fast::tensor::TensorNumerator>
+     2.04%  check    check                 [.] update_as_param_
+     1.99%  check    check                 [.] ml5_0_ninjars_loop_
+     1.62%  check    check                 [.] ml5_0_build_kinematic_matrix_
+     1.62%  check    libm.so.6             [.] __ieee754_log_fma
+     1.58%  check    check                 [.] ml5_0_sloopmatrix_
+     1.52%  check    libm.so.6             [.] __x2y2m1
+     1.47%  check    check                 [.] ml5_0_create_loop_coefs_
+     1.45%  check    check                 [.] <ninjars::fast::tensor::TensorNumerator as ninjars::fast::numerator::FastNumerator>::t3_expansion
+     1.13%  check    libc.so.6             [.] msort_with_tmp.part.0
+     1.11%  check    check                 [.] <ninjars::fast::tensor::TensorNumerator as ninjars::fast::numerator::FastNumerator>::t2_expansion
+     1.06%  check    check                 [.] ffv1l2_1_
+     1.06%  check    check                 [.] oneloop::native::generated_c0::helper_3::<f64>
+     1.04%  check    libm.so.6             [.] hypot@@GLIBC_2.35
+     1.01%  check    check                 [.] <ninjars_symbolica::oneloop_native::OneLoopNativeMasters as ninjars::fast::masters::FastMasters>::evaluate
+     1.01%  check    libm.so.6             [.] __csqrt
+     0.99%  check    check                 [.] ml5_0_merge_wl_
+     0.94%  check    check                 [.] ml5_0_update_wl_1_0_
+     0.91%  check    check                 [.] ffv2_5l2_1_
+     0.88%  check    check                 [.] ffv2_4l3_1_
+     0.84%  check    check                 [.] ffv2_4l2_1_
+     0.84%  check    libc.so.6             [.] __memmove_avx512_unaligned_erms
+     0.83%  check    libgfortran.so.5.0.0  [.] _gfortrani_set_fpu_except_flags
+     0.79%  check    libm.so.6             [.] __log1p_fma
+     0.78%  check    check                 [.] oneloop::native::generated_c0::helper_31::<f64>
+
+
+#
+# (Tip: To see call chains by final symbol taking CPU time (bottom up) use perf report -G)
+#

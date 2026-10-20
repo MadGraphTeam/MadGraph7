@@ -1,0 +1,36 @@
+{
+  "recording": "Retrospective snapshot of retained observed-run copies; not contemporaneous compilation provenance",
+  "original_execution_source": ".benchmark-work/outputs/candidate/<case> before expanded generator promotion",
+  "script": "observed-run.py",
+  "script_sha256": "3a400ee33283b94971a5107520bdee9f949b50551f7164ede7f6e8b4168f3f4d",
+  "cases": {
+    "ew-2": {
+      "original": {
+        "retained_path": ".benchmark-work/experiments/expanded-wl-layout/ew-2/original",
+        "polynomial_sha256": "ccb1f8c6b67a3e8e38dec850a961cf511a0b0c8e7622756ab449b346062c04a8",
+        "executable_sha256": "db557a4a064d7793ac455ab7aa21406d5fdd7e3925e2fe0fb6696d8e440c3701",
+        "generated_sources_sha256": "9713db572020a6c67c95a8bf8fd48b044029f964a3eafcf6497c04c7277e7ce5"
+      },
+      "interchange": {
+        "retained_path": ".benchmark-work/experiments/expanded-wl-layout/ew-2/interchange",
+        "polynomial_sha256": "b7e35b4e7bc6488f6382818273bb910977c25888dc9b8dc7cef547a817471a02",
+        "executable_sha256": "061bf51ab9fb44a77eec1a1a136a8494a583ac462dbd0567c27698304f5a3978",
+        "generated_sources_sha256": "d414a31ded3b80195e75b9198b030db993cce741d23de0223c2c21ed965c9e76"
+      }
+    },
+    "qcd-2": {
+      "original": {
+        "retained_path": ".benchmark-work/experiments/expanded-wl-layout/qcd-2/original",
+        "polynomial_sha256": "82c5f09790d50b1b1979f4eb3afb88bfc7f74ba45af555c63b93e97184709f7b",
+        "executable_sha256": "e43a90f44a280c11fc628be3df291f8b4d0f14842adf6300ec09e1068a8892eb",
+        "generated_sources_sha256": "e60575f3433003afa50af7787599f460a840473cbf78f9d351dc1733735c0ffc"
+      },
+      "interchange": {
+        "retained_path": ".benchmark-work/experiments/expanded-wl-layout/qcd-2/interchange",
+        "polynomial_sha256": "fc052ea8b84fcab06eae53ac8703577893e5e505a016e9679ecd25d82b1e6923",
+        "executable_sha256": "416933f8f5ad54c02215b327ad04dbc8def09de9142549fd9bf3a29bd18422c7",
+        "generated_sources_sha256": "159848df447208d423091f0d6e945cdffaa5de9fa623be7e44b968371736276d"
+      }
+    }
+  }
+}

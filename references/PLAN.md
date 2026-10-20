@@ -220,6 +220,18 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   representative parity including genuine QP rescues, exact protocol identity,
   complete paired series, and all numerical/status checks. These changes avoid
   redundant initialization without excluding any timed physical evaluation.
+- Focused-control and benchmark-validation milestone `f0a3da575` was pushed.
+  Representative persistent-worker validation now passes all 18 combinations,
+  including actual QP rescues, with bitwise-identical printed results. Native
+  runtime linking is receiving an additional directed-rounding regression;
+  representative parity will be refreshed after that correction.
+- Compact and expanded wavefunction traversal changes preserve the arithmetic
+  order of each output. All 41 polynomial tests and focused export comparisons
+  pass, including 2,880 compact and 11,250 expanded exact comparisons per
+  precision. Subsequent paired measurements resolve representative benefits:
+  compact qcd-2 ratio 0.91643, expanded ew-2 ratio 0.933690 and qcd-2 ratio
+  0.970802, with all 95% interval upper bounds below one. Final regeneration,
+  all-process legacy regression and the NinjaRS runtime gates remain required.
 - The complete eight-process correctness gate, measured optimization gate and
   all final performance gates remain outstanding. The styled report currently
   labels missing measurements as pending.

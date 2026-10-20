@@ -1,0 +1,54 @@
+--- original/polynomial.f
++++ interchange/polynomial.f
+@@ -779,9 +779,9 @@
+           DO K=1,IN_SIZE
+             UPDATER_COEF = B(J,M,K)
+             IF (UPDATER_COEF.EQ.(0.0D0,0.0D0)) CYCLE
+-            DO L=0,14
+-              NEW_POSITION = COMB_COEF_POS(L,M)
+-              DO I=1,LCUT_SIZE
++            DO I=1,LCUT_SIZE
++              DO L=0,14
++                NEW_POSITION = COMB_COEF_POS(L,M)
+                 OUT(J,NEW_POSITION,I)=OUT(J,NEW_POSITION,I) + A(K,L,I)
+      $           *UPDATER_COEF
+               ENDDO
+@@ -811,9 +811,9 @@
+           DO K=1,IN_SIZE
+             UPDATER_COEF = B(J,M,K)
+             IF (UPDATER_COEF.EQ.CMPLX(0.0E0_16,0.0E0_16,KIND=16)) CYCLE
+-            DO L=0,14
+-              NEW_POSITION = COMB_COEF_POS(L,M)
+-              DO I=1,LCUT_SIZE
++            DO I=1,LCUT_SIZE
++              DO L=0,14
++                NEW_POSITION = COMB_COEF_POS(L,M)
+                 OUT(J,NEW_POSITION,I)=OUT(J,NEW_POSITION,I) + A(K,L,I)
+      $           *UPDATER_COEF
+               ENDDO
+@@ -953,9 +953,9 @@
+           DO K=1,IN_SIZE
+             UPDATER_COEF = B(J,M,K)
+             IF (UPDATER_COEF.EQ.(0.0D0,0.0D0)) CYCLE
+-            DO L=0,34
+-              NEW_POSITION = COMB_COEF_POS(L,M)
+-              DO I=1,LCUT_SIZE
++            DO I=1,LCUT_SIZE
++              DO L=0,34
++                NEW_POSITION = COMB_COEF_POS(L,M)
+                 OUT(J,NEW_POSITION,I)=OUT(J,NEW_POSITION,I) + A(K,L,I)
+      $           *UPDATER_COEF
+               ENDDO
+@@ -985,9 +985,9 @@
+           DO K=1,IN_SIZE
+             UPDATER_COEF = B(J,M,K)
+             IF (UPDATER_COEF.EQ.CMPLX(0.0E0_16,0.0E0_16,KIND=16)) CYCLE
+-            DO L=0,34
+-              NEW_POSITION = COMB_COEF_POS(L,M)
+-              DO I=1,LCUT_SIZE
++            DO I=1,LCUT_SIZE
++              DO L=0,34
++                NEW_POSITION = COMB_COEF_POS(L,M)
+                 OUT(J,NEW_POSITION,I)=OUT(J,NEW_POSITION,I) + A(K,L,I)
+      $           *UPDATER_COEF
+               ENDDO

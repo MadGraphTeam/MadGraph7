@@ -335,11 +335,13 @@ C     Now the routines to update the wavefunctions
       INTEGER LCUT_SIZE,IN_SIZE,OUT_SIZE
 
       DO I=1,LCUT_SIZE
-        DO J=1,OUT_SIZE
-          DO K=0,4
+        DO K=0,4
+          DO J=1,OUT_SIZE
             OUT(J,K,I)=(0.0D0,0.0D0)
           ENDDO
-          DO K=1,IN_SIZE
+        ENDDO
+        DO K=1,IN_SIZE
+          DO J=1,OUT_SIZE
             OUT(J,0,I)=OUT(J,0,I)+A(K,0,I)*B(J,0,K)
             OUT(J,1,I)=OUT(J,1,I)+A(K,0,I)*B(J,1,K)
             OUT(J,2,I)=OUT(J,2,I)+A(K,0,I)*B(J,2,K)
@@ -359,11 +361,13 @@ C     Now the routines to update the wavefunctions
       INTEGER LCUT_SIZE,IN_SIZE,OUT_SIZE
 
       DO I=1,LCUT_SIZE
-        DO J=1,OUT_SIZE
-          DO K=0,4
+        DO K=0,4
+          DO J=1,OUT_SIZE
             OUT(J,K,I)=CMPLX(0.0E0_16,0.0E0_16,KIND=16)
           ENDDO
-          DO K=1,IN_SIZE
+        ENDDO
+        DO K=1,IN_SIZE
+          DO J=1,OUT_SIZE
             OUT(J,0,I)=OUT(J,0,I)+A(K,0,I)*B(J,0,K)
             OUT(J,1,I)=OUT(J,1,I)+A(K,0,I)*B(J,1,K)
             OUT(J,2,I)=OUT(J,2,I)+A(K,0,I)*B(J,2,K)
@@ -383,11 +387,13 @@ C     Now the routines to update the wavefunctions
       INTEGER LCUT_SIZE,IN_SIZE,OUT_SIZE
 
       DO I=1,LCUT_SIZE
-        DO J=1,OUT_SIZE
-          DO K=0,14
+        DO K=0,14
+          DO J=1,OUT_SIZE
             OUT(J,K,I)=(0.0D0,0.0D0)
           ENDDO
-          DO K=1,IN_SIZE
+        ENDDO
+        DO K=1,IN_SIZE
+          DO J=1,OUT_SIZE
             OUT(J,0,I)=OUT(J,0,I)+A(K,0,I)*B(J,0,K)
             OUT(J,1,I)=OUT(J,1,I)+A(K,0,I)*B(J,1,K)+A(K,1,I)*B(J,0,K)
             OUT(J,2,I)=OUT(J,2,I)+A(K,0,I)*B(J,2,K)+A(K,2,I)*B(J,0,K)
@@ -417,11 +423,13 @@ C     Now the routines to update the wavefunctions
       INTEGER LCUT_SIZE,IN_SIZE,OUT_SIZE
 
       DO I=1,LCUT_SIZE
-        DO J=1,OUT_SIZE
-          DO K=0,14
+        DO K=0,14
+          DO J=1,OUT_SIZE
             OUT(J,K,I)=CMPLX(0.0E0_16,0.0E0_16,KIND=16)
           ENDDO
-          DO K=1,IN_SIZE
+        ENDDO
+        DO K=1,IN_SIZE
+          DO J=1,OUT_SIZE
             OUT(J,0,I)=OUT(J,0,I)+A(K,0,I)*B(J,0,K)
             OUT(J,1,I)=OUT(J,1,I)+A(K,0,I)*B(J,1,K)+A(K,1,I)*B(J,0,K)
             OUT(J,2,I)=OUT(J,2,I)+A(K,0,I)*B(J,2,K)+A(K,2,I)*B(J,0,K)
@@ -451,11 +459,13 @@ C     Now the routines to update the wavefunctions
       INTEGER LCUT_SIZE,IN_SIZE,OUT_SIZE
 
       DO I=1,LCUT_SIZE
-        DO J=1,OUT_SIZE
-          DO K=0,0
+        DO K=0,0
+          DO J=1,OUT_SIZE
             OUT(J,K,I)=(0.0D0,0.0D0)
           ENDDO
-          DO K=1,IN_SIZE
+        ENDDO
+        DO K=1,IN_SIZE
+          DO J=1,OUT_SIZE
             OUT(J,0,I)=OUT(J,0,I)+A(K,0,I)*B(J,0,K)
           ENDDO
         ENDDO
@@ -471,11 +481,13 @@ C     Now the routines to update the wavefunctions
       INTEGER LCUT_SIZE,IN_SIZE,OUT_SIZE
 
       DO I=1,LCUT_SIZE
-        DO J=1,OUT_SIZE
-          DO K=0,0
+        DO K=0,0
+          DO J=1,OUT_SIZE
             OUT(J,K,I)=CMPLX(0.0E0_16,0.0E0_16,KIND=16)
           ENDDO
-          DO K=1,IN_SIZE
+        ENDDO
+        DO K=1,IN_SIZE
+          DO J=1,OUT_SIZE
             OUT(J,0,I)=OUT(J,0,I)+A(K,0,I)*B(J,0,K)
           ENDDO
         ENDDO
@@ -491,11 +503,13 @@ C     Now the routines to update the wavefunctions
       INTEGER LCUT_SIZE,IN_SIZE,OUT_SIZE
 
       DO I=1,LCUT_SIZE
-        DO J=1,OUT_SIZE
-          DO K=0,4
+        DO K=0,4
+          DO J=1,OUT_SIZE
             OUT(J,K,I)=(0.0D0,0.0D0)
           ENDDO
-          DO K=1,IN_SIZE
+        ENDDO
+        DO K=1,IN_SIZE
+          DO J=1,OUT_SIZE
             OUT(J,0,I)=OUT(J,0,I)+A(K,0,I)*B(J,0,K)
             OUT(J,1,I)=OUT(J,1,I)+A(K,1,I)*B(J,0,K)
             OUT(J,2,I)=OUT(J,2,I)+A(K,2,I)*B(J,0,K)
@@ -515,11 +529,13 @@ C     Now the routines to update the wavefunctions
       INTEGER LCUT_SIZE,IN_SIZE,OUT_SIZE
 
       DO I=1,LCUT_SIZE
-        DO J=1,OUT_SIZE
-          DO K=0,4
+        DO K=0,4
+          DO J=1,OUT_SIZE
             OUT(J,K,I)=CMPLX(0.0E0_16,0.0E0_16,KIND=16)
           ENDDO
-          DO K=1,IN_SIZE
+        ENDDO
+        DO K=1,IN_SIZE
+          DO J=1,OUT_SIZE
             OUT(J,0,I)=OUT(J,0,I)+A(K,0,I)*B(J,0,K)
             OUT(J,1,I)=OUT(J,1,I)+A(K,1,I)*B(J,0,K)
             OUT(J,2,I)=OUT(J,2,I)+A(K,2,I)*B(J,0,K)
@@ -539,11 +555,13 @@ C     Now the routines to update the wavefunctions
       INTEGER LCUT_SIZE,IN_SIZE,OUT_SIZE
 
       DO I=1,LCUT_SIZE
-        DO J=1,OUT_SIZE
-          DO K=0,14
+        DO K=0,14
+          DO J=1,OUT_SIZE
             OUT(J,K,I)=(0.0D0,0.0D0)
           ENDDO
-          DO K=1,IN_SIZE
+        ENDDO
+        DO K=1,IN_SIZE
+          DO J=1,OUT_SIZE
             OUT(J,0,I)=OUT(J,0,I)+A(K,0,I)*B(J,0,K)
             OUT(J,1,I)=OUT(J,1,I)+A(K,1,I)*B(J,0,K)
             OUT(J,2,I)=OUT(J,2,I)+A(K,2,I)*B(J,0,K)
@@ -573,11 +591,13 @@ C     Now the routines to update the wavefunctions
       INTEGER LCUT_SIZE,IN_SIZE,OUT_SIZE
 
       DO I=1,LCUT_SIZE
-        DO J=1,OUT_SIZE
-          DO K=0,14
+        DO K=0,14
+          DO J=1,OUT_SIZE
             OUT(J,K,I)=CMPLX(0.0E0_16,0.0E0_16,KIND=16)
           ENDDO
-          DO K=1,IN_SIZE
+        ENDDO
+        DO K=1,IN_SIZE
+          DO J=1,OUT_SIZE
             OUT(J,0,I)=OUT(J,0,I)+A(K,0,I)*B(J,0,K)
             OUT(J,1,I)=OUT(J,1,I)+A(K,1,I)*B(J,0,K)
             OUT(J,2,I)=OUT(J,2,I)+A(K,2,I)*B(J,0,K)
