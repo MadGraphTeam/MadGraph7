@@ -100,12 +100,7 @@ def test_unsupported_loop_request_does_not_silently_generate_tree(tmp_path) -> N
     processes = ProcessSet((ProcessRequest.parse("u u~ > d d~"),))
     plan = backend.plan(processes)
     assert plan.estimated_coverage["contribution_kind"] == "virtual"
-    assert any(
-        "color.accuracy='full'" in reason for reason in plan.unsupported_features
-    )
-    assert any(
-        "emit_api_bundle=false" in reason for reason in plan.unsupported_features
-    )
-    with pytest.raises(GenerationError, match="public loop generation"):
+    assert any("only tree data" in reason for reason in plan.unsupported_features)
+    with pytest.raises(GenerationError, match="only tree data"):
         backend.generate(processes, tmp_path / "unsupported")
     assert not (tmp_path / "unsupported").exists()

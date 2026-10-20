@@ -192,7 +192,8 @@ Virtual model resolution retains shared exclusions and original issue records,
 while deferring tree-only scalar registry diagnostics to the source scalar
 frontend. A source accepted for loop preparation can therefore remain unsupported
 by tree kernels; tree requests continue to reject that capability. Dry-run still
-requires an already compiled model or matching cache and never generates graphs.
+requires an already compiled model or matching cache; its subsequent graph
+planning does not certify numerical execution.
 
 The supplied MadLoop `loop_sm` has a known source reference mismatch: the four-G0
 vertex `V_1001` points at the three-slot constant tensor `SSS1`. A broad prepared
