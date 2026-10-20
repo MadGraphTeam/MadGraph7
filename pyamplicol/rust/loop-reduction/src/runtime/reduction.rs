@@ -11,7 +11,7 @@ use symbolica::{atom::Atom, domains::float::Real, evaluate::EvaluationDomain};
 pub type DecimalMomentum = [DecimalComplex; 4];
 pub type RawLane = (u64, String, Option<[DecimalComplex; 3]>);
 
-struct Reductions<T: Carrier>
+pub(super) struct Reductions<T: Carrier>
 where
     Complex<T>: Real + EvaluationDomain,
 {
@@ -29,7 +29,7 @@ impl<T: Carrier> Reductions<T>
 where
     Complex<T>: Real + EvaluationDomain,
 {
-    pub fn new(
+    pub(super) fn new(
         expressions: &[String; 3],
         parameters: &[String],
         n: usize,
@@ -133,7 +133,7 @@ where
             .collect())
     }
 
-    fn evaluate_native(
+    pub(super) fn evaluate_native(
         &mut self,
         ids: &[u64],
         shifts: &[FourMomentum<Complex<T>>],
@@ -407,8 +407,8 @@ impl PolynomialPlan {
 
 /// All-lane diagnostics plus compact successful values; failed numbers stay hidden.
 pub struct ReductionBatch {
-    values: Batch,
-    statuses: Vec<(u64, String)>,
+    pub(super) values: Batch,
+    pub(super) statuses: Vec<(u64, String)>,
 }
 impl ReductionBatch {
     pub fn statuses(&self) -> &[(u64, String)] {
