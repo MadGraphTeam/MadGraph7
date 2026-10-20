@@ -1,0 +1,792 @@
+{
+  "schema": "candidate-representative-retention-v2",
+  "acceptance_evidence": false,
+  "scope": "Four complete guarded QP tensor-factor candidate representative runs, exact runtime bindings and three-role proof",
+  "files": {
+    "docs/benchmarkfolder/policy-v2/representative-proof-abi3-tensor-factor-v1.json": {
+      "bytes": 4823217,
+      "sha256": "8330b8b0ce04e4e8de8c8954e2a5d30f32c13ad618742eeb7587bc82452ddcd1"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-retention-abi3-tensor-factor-v1/README.md": {
+      "bytes": 1779,
+      "sha256": "433f0f8d2f3e543522f273838bbeb41f42d8a349095bb7d9690bd7180dd239b7"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-retention-abi3-tensor-factor-v1/validation.json": {
+      "bytes": 3152,
+      "sha256": "ec6099e0251f44625f3df4f12a82254c8f2b8c16684d39796c83e67c972ce139"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-retention-abi3-tensor-factor-v1/verify.py": {
+      "bytes": 2910,
+      "sha256": "c0e7c02a1f59b985a3f770a4e4a13401a73034972955dc77aa9c0698d606f53a"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/binding-spec.json": {
+      "bytes": 694,
+      "sha256": "9c244d8a3d3f3dd92f424a2c28d32314990156fef19127f9db9adf0c36b32b21"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/builds/control-forced-qp-candidate-1/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "c4d3e83531f7d752eafaa05d5029e77432922eaa9a992c48c70d160762d237fb"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/builds/control-forced-qp-candidate-1/MadLoop_makefile_definitions": {
+      "bytes": 2392,
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/builds/control-forced-qp-candidate-1/build.json": {
+      "bytes": 353479,
+      "sha256": "27879c7eba26a5f7cf9b9feb2a2a2bba310f2814f534b65895bde1063a3ac9aa"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/builds/control-forced-qp-candidate-1/compiled-sources.json": {
+      "bytes": 22497,
+      "sha256": "d30d783d1823436bd3803e1eac9b316c8f29a6d94ecb3047e673facb8c39cfad"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/builds/control-forced-qp-candidate-1/make_opts": {
+      "bytes": 2781,
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/builds/control-forced-qp-candidate-1/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/builds/control-forced-qp-candidate-1/worker.f": {
+      "bytes": 4672,
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/builds/control-forced-qp-candidate-8/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "e1492b6fc1da822601c02af53e52b2c51c4e2dde1c02a0bcada2547d5a8b0a4f"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/builds/control-forced-qp-candidate-8/MadLoop_makefile_definitions": {
+      "bytes": 2392,
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/builds/control-forced-qp-candidate-8/build.json": {
+      "bytes": 353479,
+      "sha256": "135388d722759e56362d29dfea634a4435a516a522f26a3b1022e7a4d8da2916"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/builds/control-forced-qp-candidate-8/compiled-sources.json": {
+      "bytes": 22497,
+      "sha256": "d30d783d1823436bd3803e1eac9b316c8f29a6d94ecb3047e673facb8c39cfad"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/builds/control-forced-qp-candidate-8/make_opts": {
+      "bytes": 2781,
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/builds/control-forced-qp-candidate-8/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/builds/control-forced-qp-candidate-8/worker.f": {
+      "bytes": 4672,
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/data/control-forced-qp-candidate-1-0.json": {
+      "bytes": 359145,
+      "sha256": "94decd43a04a7b1dab92afdb8163551804bb5e8afa4fff41bf96c7491acfa2ef"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/data/control-forced-qp-candidate-1-1.json": {
+      "bytes": 359146,
+      "sha256": "723069c742414003f905f96c1ef2709228d3525194a61c9340abb26bcaa65795"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/data/control-forced-qp-candidate-1-calibration.json": {
+      "bytes": 359080,
+      "sha256": "4c7a2ad4d24b349fd5fac023d24bbb505169a24326f78b3e76c50e44b1100c40"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/data/control-forced-qp-candidate-1-fresh.json": {
+      "bytes": 359041,
+      "sha256": "2e4e41839c94f50a7f30358c16e23cc995398a2f7bd128022c98f5e3ff26db4c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/data/control-forced-qp-candidate-1-parity.json": {
+      "bytes": 269,
+      "sha256": "80be8fb73f34ec05390d283b3c46cd7875a8e0de045410254d84e83c703b1e00"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/data/control-forced-qp-candidate-8-0.json": {
+      "bytes": 359144,
+      "sha256": "7d8e09f8469c00c05a6c4d498be10d8b75f4a511889ab41e4915a9fb7b17c87a"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/data/control-forced-qp-candidate-8-1.json": {
+      "bytes": 359142,
+      "sha256": "dbab260a0f32fd4f7679a5ee0f6022b86b4fdfcfc69bcb56592fe1a3d578fb7c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/data/control-forced-qp-candidate-8-calibration.json": {
+      "bytes": 359076,
+      "sha256": "50fe02e195dbc7e0ea2fdc4776298c09065380df1fb476fd2186d18f313d8049"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/data/control-forced-qp-candidate-8-fresh.json": {
+      "bytes": 359024,
+      "sha256": "ba161201cf232fad72ae2b3a77990de00911c8b968469f4d4191889b5e321331"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/data/control-forced-qp-candidate-8-parity.json": {
+      "bytes": 269,
+      "sha256": "80be8fb73f34ec05390d283b3c46cd7875a8e0de045410254d84e83c703b1e00"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/input-spec.json": {
+      "bytes": 850,
+      "sha256": "0375743953d930881c26395096830d4a9db50f54afdc496205fc538dae5732cf"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/inputs/candidate/control-forced-qp/MadLoopParams-1.dat": {
+      "bytes": 13353,
+      "sha256": "c4d3e83531f7d752eafaa05d5029e77432922eaa9a992c48c70d160762d237fb"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/inputs/candidate/control-forced-qp/MadLoopParams-8.dat": {
+      "bytes": 13353,
+      "sha256": "e1492b6fc1da822601c02af53e52b2c51c4e2dde1c02a0bcada2547d5a8b0a4f"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/inputs/candidate/control-forced-qp/compilation.json": {
+      "bytes": 177255,
+      "sha256": "dfb54235faaf107691a790697fd977573dddd1bf7b85b2bdee3bed97d73cc1bb"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/inputs/candidate/control-forced-qp/compiled-source-manifests/fa261cc7365167babad0d4040e50f64280ad22dac2950ce5a59b38f203957858.json": {
+      "bytes": 22497,
+      "sha256": "6d4d79ec8bfabfff759781415f123569e19397f5e9f23714f9348a26607a74df"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/inputs/candidate/control-forced-qp/compiled-sources.json": {
+      "bytes": 22497,
+      "sha256": "6d4d79ec8bfabfff759781415f123569e19397f5e9f23714f9348a26607a74df"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/inputs/candidate/control-forced-qp/generation.json": {
+      "bytes": 171448,
+      "sha256": "56ae836550a93985053d0576003b9dcea898c16d7769ae7bc152095aa693657d"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/inputs/candidate/control-forced-qp/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/logs/compile-control-forced-qp-candidate-1.log": {
+      "bytes": 10320,
+      "sha256": "5ffc7bfdac6e3cce4b461adcbba9dd2bff687a703cb6dc66427593a37cc3dfc7"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/logs/compile-control-forced-qp-candidate-8.log": {
+      "bytes": 10320,
+      "sha256": "0551b969089adc4c465d1c24c301ee66c0cb89ecb493e31440d8b204f027e557"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/logs/fresh-control-forced-qp-candidate-1.log": {
+      "bytes": 5671,
+      "sha256": "1ec6824c7679533e2a3aca99717d3c88ec223334f6f3d7f667f48a15418b158d"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/logs/fresh-control-forced-qp-candidate-8.log": {
+      "bytes": 5084,
+      "sha256": "47a763d30bebe342f3b85d56edb4b8d7e9af8f7314885b9887c0e24f1919d1d2"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/logs/worker-control-forced-qp-candidate-1.log": {
+      "bytes": 5671,
+      "sha256": "1ec6824c7679533e2a3aca99717d3c88ec223334f6f3d7f667f48a15418b158d"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/logs/worker-control-forced-qp-candidate-8.log": {
+      "bytes": 5084,
+      "sha256": "11fa046f5b3f3b81bb152895f509c417a1ac7f3c9ac622b219e3587c961dad13"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/points/control-forced-qp.dat": {
+      "bytes": 3883,
+      "sha256": "ff50a8b1cd8a2149a4fe0445a2f1776f120dfefcd73bc647e73af9061616031e"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/protocol.json": {
+      "bytes": 2954,
+      "sha256": "7e4024d99033fe0cafb89ce321022d112ad7fde20c840c1c84714837f9040feb"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/role-bindings.json": {
+      "bytes": 425138,
+      "sha256": "1b693b3491f6426723348cca34a4be0860905e52bc8404b82ffe490eb62a363e"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/run-status.json": {
+      "bytes": 163,
+      "sha256": "7dcd6db050820fb44fb9736cb7b3ec43d148e5634ea7ba6310a293f0785a97d1"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/sources/ninjars_benchmark.py": {
+      "bytes": 49893,
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/sources/ninjars_benchmark_references_v2.py": {
+      "bytes": 18761,
+      "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/sources/ninjars_benchmark_worker.f": {
+      "bytes": 4704,
+      "sha256": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020/sources/ninjars_benchmark_workers.py": {
+      "bytes": 44582,
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/binding-spec.json": {
+      "bytes": 1056,
+      "sha256": "fbcf80d76741e09236d18d7afe3b3ff4c5e6556ae6e223be086d5ac450017dbe"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-1/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "d556639418de37d1d132fdc3968fe2a48469da7fe2ca04dfa95c5112096c1cb4"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-1/MadLoop_makefile_definitions": {
+      "bytes": 2392,
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-1/build.json": {
+      "bytes": 353474,
+      "sha256": "b50dee6da5cae43ad348267115e815027df57e1da6664931606dd4c2ced00071"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-1/compiled-sources.json": {
+      "bytes": 15697,
+      "sha256": "af351e56a2e3eebb37920a44c3f762184a7f89b94308d082b6787d75a5fb903b"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-1/make_opts": {
+      "bytes": 2781,
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-1/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-1/worker.f": {
+      "bytes": 4672,
+      "sha256": "bdf04fbb2ac60fca6b2c7ce69caeb02025852e928a97262e16a7144becb96a61"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-6/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-6/MadLoop_makefile_definitions": {
+      "bytes": 2392,
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-6/build.json": {
+      "bytes": 353473,
+      "sha256": "db91560f41f5f1f1a90cc4996efc3d59beb78c6be44663a4a80687ce27b2623d"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-6/compiled-sources.json": {
+      "bytes": 15697,
+      "sha256": "af351e56a2e3eebb37920a44c3f762184a7f89b94308d082b6787d75a5fb903b"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-6/make_opts": {
+      "bytes": 2781,
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-6/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-6/worker.f": {
+      "bytes": 4672,
+      "sha256": "bdf04fbb2ac60fca6b2c7ce69caeb02025852e928a97262e16a7144becb96a61"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-7/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "6d8692489d9e1415c899ec5a4bf0cae94987a171cf1812f25e2109f1b6917cbd"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-7/MadLoop_makefile_definitions": {
+      "bytes": 2392,
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-7/build.json": {
+      "bytes": 353431,
+      "sha256": "cd905f9774f3cef4288ac1d9c366a90516d8052f2a7d9ee8ad05222771e756e1"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-7/compiled-sources.json": {
+      "bytes": 15697,
+      "sha256": "af351e56a2e3eebb37920a44c3f762184a7f89b94308d082b6787d75a5fb903b"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-7/make_opts": {
+      "bytes": 2781,
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-7/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-7/worker.f": {
+      "bytes": 4672,
+      "sha256": "bdf04fbb2ac60fca6b2c7ce69caeb02025852e928a97262e16a7144becb96a61"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-8/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-8/MadLoop_makefile_definitions": {
+      "bytes": 2392,
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-8/build.json": {
+      "bytes": 353474,
+      "sha256": "472077ec520e6ea04a849f4a0e0e4310ac82857424545967439d4658bcb8de42"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-8/compiled-sources.json": {
+      "bytes": 15697,
+      "sha256": "af351e56a2e3eebb37920a44c3f762184a7f89b94308d082b6787d75a5fb903b"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-8/make_opts": {
+      "bytes": 2781,
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-8/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/builds/control-gg-h-candidate-8/worker.f": {
+      "bytes": 4672,
+      "sha256": "bdf04fbb2ac60fca6b2c7ce69caeb02025852e928a97262e16a7144becb96a61"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-1-0.json": {
+      "bytes": 359337,
+      "sha256": "ab1ece7ac6ecbeeedfe28047701474267fa7283b09aa441667a869cd5ee319f8"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-1-1.json": {
+      "bytes": 359334,
+      "sha256": "5a5ad195c42d0359e4d1f35a1486a35bac01b8fe265f76dfc7754156dca04caf"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-1-calibration.json": {
+      "bytes": 359280,
+      "sha256": "bb872dfb30c065192707939968a103c109941cf092fa17b18863c26092500b11"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-1-fresh.json": {
+      "bytes": 359224,
+      "sha256": "4068e7cec4bb7712b7b2f31c5642fd6d7f9a90356df837e94add30e4d6b6bc46"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-1-parity.json": {
+      "bytes": 269,
+      "sha256": "dc62caa9cd5b21be0efe548ba4bcc23309a1392d4f52b84ad322b33bdfa98aeb"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-6-0.json": {
+      "bytes": 359315,
+      "sha256": "0f70271be30c04ce66aae02d8b0ec9466be11f77d0f0720663b70a4cbb2476e8"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-6-1.json": {
+      "bytes": 359315,
+      "sha256": "48429b64c3272cfac1454fb7927de03ecc3445e6bef25f0fa5a2032769fa9706"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-6-calibration.json": {
+      "bytes": 359249,
+      "sha256": "1a64c77ba8db5e0555e0d2cd7658ed63e7946d0d0677aa418927f9958f353d4e"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-6-fresh.json": {
+      "bytes": 359201,
+      "sha256": "3e23ea6fb125a3a4f204401084ec9e8dd6f328fe63b5b614dd1b1c331cabbd19"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-6-parity.json": {
+      "bytes": 269,
+      "sha256": "dc62caa9cd5b21be0efe548ba4bcc23309a1392d4f52b84ad322b33bdfa98aeb"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-7-0.json": {
+      "bytes": 359287,
+      "sha256": "fed235174d86b00911f84f5bf51529c936fd5363b08d0bf173a8bb87286e067b"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-7-1.json": {
+      "bytes": 359276,
+      "sha256": "6bacec3c0fcb5c776372d88709e847d16e20765e024f336bc791b1abac2e3a20"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-7-calibration.json": {
+      "bytes": 359210,
+      "sha256": "0b0b9d529b7df854fc8c67044a0d81488438022c048d16b17ba1ad643da4d4bb"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-7-fresh.json": {
+      "bytes": 359163,
+      "sha256": "e10d17d0436ae8c5615ade06500cea958cd25e7d1664f018888a5234ce5f764c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-7-parity.json": {
+      "bytes": 269,
+      "sha256": "dc62caa9cd5b21be0efe548ba4bcc23309a1392d4f52b84ad322b33bdfa98aeb"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-8-0.json": {
+      "bytes": 359314,
+      "sha256": "3a73a012ce5c7c8e72e6dca5f11bf1c6525800252a16890ccd4c65d8ed47bac8"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-8-1.json": {
+      "bytes": 359324,
+      "sha256": "cbcf07bda56f3cd226e8a65041c5eb8a51a9660bc53ce0d1a7515d37df768376"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-8-calibration.json": {
+      "bytes": 359248,
+      "sha256": "8431629c5ef4d23ce70c464f6e95f027313184396cbba6f828ec72ac58507b1a"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-8-fresh.json": {
+      "bytes": 359210,
+      "sha256": "7294070560842e0ea979b24ca7fc31d9daaaa4a8d85783ec076d7ce5e9d05cbb"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/data/control-gg-h-candidate-8-parity.json": {
+      "bytes": 269,
+      "sha256": "dc62caa9cd5b21be0efe548ba4bcc23309a1392d4f52b84ad322b33bdfa98aeb"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/input-spec.json": {
+      "bytes": 841,
+      "sha256": "15740239b041717a00963def28a0d9d0225722f4f283ba1f06e2fb4f4409c399"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/inputs/candidate/control-gg-h/MadLoopParams-1.dat": {
+      "bytes": 13353,
+      "sha256": "d556639418de37d1d132fdc3968fe2a48469da7fe2ca04dfa95c5112096c1cb4"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/inputs/candidate/control-gg-h/MadLoopParams-6.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/inputs/candidate/control-gg-h/MadLoopParams-7.dat": {
+      "bytes": 13353,
+      "sha256": "6d8692489d9e1415c899ec5a4bf0cae94987a171cf1812f25e2109f1b6917cbd"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/inputs/candidate/control-gg-h/MadLoopParams-8.dat": {
+      "bytes": 13353,
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/inputs/candidate/control-gg-h/compilation.json": {
+      "bytes": 177255,
+      "sha256": "60efed8bdf685ea3443025a977a32499f89e629b65de89c9f5292da86e8ecaa6"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/inputs/candidate/control-gg-h/compiled-source-manifests/7bf9eac7615e1f90502dc938c49e02866e6a8a0a8ef40880ccc00fbdc583670d.json": {
+      "bytes": 15697,
+      "sha256": "a823d133757f30ca388e17bf6b827367460ce69eae77aa930d51053d0c971094"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/inputs/candidate/control-gg-h/compiled-sources.json": {
+      "bytes": 15697,
+      "sha256": "a823d133757f30ca388e17bf6b827367460ce69eae77aa930d51053d0c971094"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/inputs/candidate/control-gg-h/generation.json": {
+      "bytes": 171447,
+      "sha256": "c7cb6a9b917c30ed93f2d345d321a57998fa23f9492671f4d87005c125de8204"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/inputs/candidate/control-gg-h/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/logs/compile-control-gg-h-candidate-1.log": {
+      "bytes": 9399,
+      "sha256": "3b40542a1d792a1e212e50c6a3777fd1f57cd555e83d95c99b90caa75d0467af"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/logs/compile-control-gg-h-candidate-6.log": {
+      "bytes": 9399,
+      "sha256": "09f68464aa8be7a27345ce3ccae99b1bdb016695ab9e87c37a2209a5e747985f"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/logs/compile-control-gg-h-candidate-7.log": {
+      "bytes": 9399,
+      "sha256": "237f40a53789568e6b2aac5e133a43723888bf86b2942535fac652cb4b226b89"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/logs/compile-control-gg-h-candidate-8.log": {
+      "bytes": 9399,
+      "sha256": "24e49068697d94a26257592e7bac4c7f06a6506db8234996f887722306e34234"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/logs/fresh-control-gg-h-candidate-1.log": {
+      "bytes": 7880,
+      "sha256": "1cc68b810ac6e289ad46876bc5c86bd32e9e280d4b6d199e4e0cf043c88767fd"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/logs/fresh-control-gg-h-candidate-6.log": {
+      "bytes": 10435,
+      "sha256": "2e0f6f253efc7718220fbaecc563e62b50f6171f3fcd10c098aa596424d1604d"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/logs/fresh-control-gg-h-candidate-7.log": {
+      "bytes": 9688,
+      "sha256": "36a68962552a92c5712512fc8438403c357eee45343f22e6ed9a8564aa37aa77"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/logs/fresh-control-gg-h-candidate-8.log": {
+      "bytes": 6048,
+      "sha256": "7ff70153269ed2448bc881cb68245d6299004ed1eb7177b3fe2c3c684207a98b"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/logs/worker-control-gg-h-candidate-1.log": {
+      "bytes": 7880,
+      "sha256": "1cc68b810ac6e289ad46876bc5c86bd32e9e280d4b6d199e4e0cf043c88767fd"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/logs/worker-control-gg-h-candidate-6.log": {
+      "bytes": 10435,
+      "sha256": "ba3357c5b954470e0984f347a04597481676df364fcbeb738799dfd3eea1b525"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/logs/worker-control-gg-h-candidate-7.log": {
+      "bytes": 9688,
+      "sha256": "36a68962552a92c5712512fc8438403c357eee45343f22e6ed9a8564aa37aa77"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/logs/worker-control-gg-h-candidate-8.log": {
+      "bytes": 6048,
+      "sha256": "7ff70153269ed2448bc881cb68245d6299004ed1eb7177b3fe2c3c684207a98b"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/points/control-gg-h.dat": {
+      "bytes": 2937,
+      "sha256": "bccf515472fc9e4526ace2243c2a65afdc4fc040b85d9c88eced34bbe7e5b6ba"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/protocol.json": {
+      "bytes": 2956,
+      "sha256": "3ed7e5c3b3c7dc7032d4cad4d0c311fd516c5025567a7e1471e2a95d49b7ecd6"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/role-bindings.json": {
+      "bytes": 814108,
+      "sha256": "e20d2be385214a45e4a4dc4ef6c65483e4eb34a311d3225268282ca31c03cba6"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/run-status.json": {
+      "bytes": 153,
+      "sha256": "2dac3d41580d746a5b4c12d942d5a2ae3ad146221791fb56e0624a22535ec8a6"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/sources/ninjars_benchmark.py": {
+      "bytes": 49893,
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/sources/ninjars_benchmark_references_v2.py": {
+      "bytes": 18761,
+      "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/sources/ninjars_benchmark_worker.f": {
+      "bytes": 4704,
+      "sha256": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/sources/ninjars_benchmark_workers.py": {
+      "bytes": 44582,
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/binding-spec.json": {
+      "bytes": 448,
+      "sha256": "f656e994bebbfa0e6a80260ccf6783ba9f0bea080068141a973174c43932decb"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/builds/control-mixed-candidate-8/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/builds/control-mixed-candidate-8/MadLoop_makefile_definitions": {
+      "bytes": 2392,
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/builds/control-mixed-candidate-8/build.json": {
+      "bytes": 353473,
+      "sha256": "8b1a89c082d84d8e126825a3579c0d2057a0f8dc161a19aeaa6e41ccd45e3792"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/builds/control-mixed-candidate-8/compiled-sources.json": {
+      "bytes": 44420,
+      "sha256": "ffaea7f846c5c00d2468711b44405bbdb1ab8a62947da4598b6a90c325b3183b"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/builds/control-mixed-candidate-8/make_opts": {
+      "bytes": 2781,
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/builds/control-mixed-candidate-8/param_card.dat": {
+      "bytes": 4537,
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/builds/control-mixed-candidate-8/worker.f": {
+      "bytes": 4672,
+      "sha256": "b9bd062210c3ef434fbbf7e05ee0201f424e15bf6df747bd865dc561baab8d41"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/data/control-mixed-candidate-8-0.json": {
+      "bytes": 367275,
+      "sha256": "f50abe9bf5f189535c94f370118ebbf7af9adcb0d62052476655162688d6f0c8"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/data/control-mixed-candidate-8-1.json": {
+      "bytes": 367275,
+      "sha256": "f28c0828ed6e008b598c721c0fded4f8ed185db7dd0db051d5c71f504e7dd36c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/data/control-mixed-candidate-8-calibration.json": {
+      "bytes": 367209,
+      "sha256": "351ea19b03706b409a51359b6910a056646e13b064c6b322d334867d0535dc6c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/data/control-mixed-candidate-8-fresh.json": {
+      "bytes": 367165,
+      "sha256": "e3028061b6e3fa6981b1b956fbc13c2a636256d3c9141a4759530b5e02710701"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/data/control-mixed-candidate-8-parity.json": {
+      "bytes": 269,
+      "sha256": "45adbe62205d78850113cf47181a3a924f8f9c3ce9217f0762d3b7b9e5a40056"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/input-spec.json": {
+      "bytes": 827,
+      "sha256": "af9735fa806c1d802bca5902681f8882f7f78f68faeca7066d44295d6f7198c8"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/inputs/candidate/control-mixed/MadLoopParams-8.dat": {
+      "bytes": 13353,
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/inputs/candidate/control-mixed/compilation.json": {
+      "bytes": 177254,
+      "sha256": "67582fc2248d0cd0104916cd77f1ae6879303cee585b6e25943df6e96b508b31"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/inputs/candidate/control-mixed/compiled-source-manifests/8fa29502d8307cfc8996766bd8c27caad0df9c23cb254273380cbc79758e6dda.json": {
+      "bytes": 44420,
+      "sha256": "a02830bb0430494b5dcaf3464955a0c9b847e5c8f1237afa32a0377c6571c68e"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/inputs/candidate/control-mixed/compiled-sources.json": {
+      "bytes": 44420,
+      "sha256": "a02830bb0430494b5dcaf3464955a0c9b847e5c8f1237afa32a0377c6571c68e"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/inputs/candidate/control-mixed/generation.json": {
+      "bytes": 171447,
+      "sha256": "b86c29e8dbc0af3dc8e352d1c8907501474935fb46bb576d824ec4a5590369ff"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/inputs/candidate/control-mixed/param_card.dat": {
+      "bytes": 4537,
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/logs/compile-control-mixed-candidate-8.log": {
+      "bytes": 9383,
+      "sha256": "b0f7a6cc192c6e0c3785e632eb6cdd627b9d75beb9b0fc224a28468d71cf4e22"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/logs/fresh-control-mixed-candidate-8.log": {
+      "bytes": 3839,
+      "sha256": "5171c8ccaea5b72108d68ae8acf6b530ba9dfe51aed1b811b3aeab285688edff"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/logs/worker-control-mixed-candidate-8.log": {
+      "bytes": 3839,
+      "sha256": "5171c8ccaea5b72108d68ae8acf6b530ba9dfe51aed1b811b3aeab285688edff"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/points/control-mixed.dat": {
+      "bytes": 3883,
+      "sha256": "c0640d8258fea3bec32d28da8eb7a9bb8bbc50210efd2e22bf030c3dabf35527"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/protocol.json": {
+      "bytes": 2939,
+      "sha256": "aea3e5dd0a82bffd6bed0f0731cd4910b0778089dc62945e195cda209fb2b029"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/role-bindings.json": {
+      "bytes": 239618,
+      "sha256": "cdb6bef4b167887687a861ab355dcd54679b308ad6d1bb63391f358e89443bc6"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/run-status.json": {
+      "bytes": 155,
+      "sha256": "b5ba3221002974630e54da1f49c439e8c904964e45549166a364d9eb7bcf07d6"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/sources/ninjars_benchmark.py": {
+      "bytes": 49893,
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/sources/ninjars_benchmark_references_v2.py": {
+      "bytes": 18761,
+      "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/sources/ninjars_benchmark_worker.f": {
+      "bytes": 4704,
+      "sha256": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-mixed-20261020/sources/ninjars_benchmark_workers.py": {
+      "bytes": 44582,
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/binding-spec.json": {
+      "bytes": 488,
+      "sha256": "5d7da3ebc4194a0412542da439ce6b7fdf10daaef85b341fcb90c850545c48ef"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/builds/control-forced-qp-candidate-6/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "c99d8ee8d6e142c4a1407509d6750f2a19e5d2c3eb59a270598082b27ab529fa"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/builds/control-forced-qp-candidate-6/MadLoop_makefile_definitions": {
+      "bytes": 2392,
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/builds/control-forced-qp-candidate-6/build.json": {
+      "bytes": 353479,
+      "sha256": "9dd901a0414e69943e04b3328609863b4d9e7b9a34eb187149855c106b33c238"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/builds/control-forced-qp-candidate-6/compiled-sources.json": {
+      "bytes": 22497,
+      "sha256": "d30d783d1823436bd3803e1eac9b316c8f29a6d94ecb3047e673facb8c39cfad"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/builds/control-forced-qp-candidate-6/make_opts": {
+      "bytes": 2781,
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/builds/control-forced-qp-candidate-6/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/builds/control-forced-qp-candidate-6/worker.f": {
+      "bytes": 4672,
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/data/control-forced-qp-candidate-6-0.json": {
+      "bytes": 359112,
+      "sha256": "97f49f9092288f92b25364d9ee173f07053edaacc15141d04b713b3bc1b7c1bb"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/data/control-forced-qp-candidate-6-1.json": {
+      "bytes": 359111,
+      "sha256": "33799836874af2ff37a8ad792620cb41a9c2347e2b4c7834e59292e9f005b4d3"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/data/control-forced-qp-candidate-6-calibration.json": {
+      "bytes": 359044,
+      "sha256": "8b0e63cb51ffe0fa4ea501d01852061ebfabfaecf474d1d284fd3bd4c3e232d5"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/data/control-forced-qp-candidate-6-fresh.json": {
+      "bytes": 358996,
+      "sha256": "31d7d1c07f74ebf4a49f1882c3f362c3f8d6e57a831173ce94f3a9be0b4204e2"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/data/control-forced-qp-candidate-6-parity.json": {
+      "bytes": 269,
+      "sha256": "80be8fb73f34ec05390d283b3c46cd7875a8e0de045410254d84e83c703b1e00"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/input-spec.json": {
+      "bytes": 919,
+      "sha256": "ab3c3b2aa4f0eb7462da5cc2df99c49db271884562f30f6b7d9e0cf71556c117"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/inputs/candidate/control-forced-qp/MadLoopParams-6.dat": {
+      "bytes": 13353,
+      "sha256": "c99d8ee8d6e142c4a1407509d6750f2a19e5d2c3eb59a270598082b27ab529fa"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/inputs/candidate/control-forced-qp/compilation.json": {
+      "bytes": 177255,
+      "sha256": "dfb54235faaf107691a790697fd977573dddd1bf7b85b2bdee3bed97d73cc1bb"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/inputs/candidate/control-forced-qp/compiled-source-manifests/fa261cc7365167babad0d4040e50f64280ad22dac2950ce5a59b38f203957858.json": {
+      "bytes": 22497,
+      "sha256": "6d4d79ec8bfabfff759781415f123569e19397f5e9f23714f9348a26607a74df"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/inputs/candidate/control-forced-qp/compiled-sources.json": {
+      "bytes": 22497,
+      "sha256": "6d4d79ec8bfabfff759781415f123569e19397f5e9f23714f9348a26607a74df"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/inputs/candidate/control-forced-qp/generation.json": {
+      "bytes": 171448,
+      "sha256": "56ae836550a93985053d0576003b9dcea898c16d7769ae7bc152095aa693657d"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/inputs/candidate/control-forced-qp/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/logs/compile-control-forced-qp-candidate-6.log": {
+      "bytes": 10340,
+      "sha256": "16d430c1d32c988066df33817783e214476f8a42fac7254407f18a36266fe6b2"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/logs/fresh-control-forced-qp-candidate-6.log": {
+      "bytes": 10301,
+      "sha256": "8ecd29fe775d40410c08c636b520116b5f82db07068fa18a73005bff716bf8f6"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/logs/worker-control-forced-qp-candidate-6.log": {
+      "bytes": 10301,
+      "sha256": "24a69a60f589453f8ac4605478f8bff72a8e857cda8492795da2b1068f95c15a"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/points/control-forced-qp.dat": {
+      "bytes": 3883,
+      "sha256": "1810d50e8b67fcebfabdeb132a84ee2c5df1cf7333e55b6f38a9115291f9ed57"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/protocol.json": {
+      "bytes": 2967,
+      "sha256": "f37fc7cd7d90c96eb32b549751e04d8511a8f9be8ed1112d4bac4b14a1e26a33"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/role-bindings.json": {
+      "bytes": 214737,
+      "sha256": "a673a4e88e861a72f0cd765a9eefb3e4a68c282e281ee169b4e3118e8d4d80d7"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/run-status.json": {
+      "bytes": 163,
+      "sha256": "7dcd6db050820fb44fb9736cb7b3ec43d148e5634ea7ba6310a293f0785a97d1"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/sources/ninjars_benchmark.py": {
+      "bytes": 49893,
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/sources/ninjars_benchmark_references_v2.py": {
+      "bytes": 18761,
+      "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/sources/ninjars_benchmark_worker.f": {
+      "bytes": 4704,
+      "sha256": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79"
+    },
+    "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020/sources/ninjars_benchmark_workers.py": {
+      "bytes": 44582,
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca"
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020.json": {
+      "bytes": 544695,
+      "sha256": "0e2ccc6b1e9d5b3d052b95aaacc1664722f5d7b21d867ac694f04909a4e71d74"
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/representative-candidate-abi3-tensor-factor-v1-ggh-20261020.json": {
+      "bytes": 1052955,
+      "sha256": "1b68a4739107026383130a6f9b7306dd36dd284d328e38f1e884aa1d28304ace"
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/representative-candidate-abi3-tensor-factor-v1-mixed-20261020.json": {
+      "bytes": 299523,
+      "sha256": "e29f7a78ba22dd9bde18840aceb6750b8e47d79e2d61ff7baa168a079990554c"
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020.json": {
+      "bytes": 274656,
+      "sha256": "365f31fc911980357b41b01eb0c9d073a63794f175af5dc4ddfe2706c1f52c6d"
+    }
+  },
+  "identity_sha256": "fc0ab5cf8b5001ab776bc48a1cffcb772c09bfbd9001b14fe814b3e703c4b82b"
+}

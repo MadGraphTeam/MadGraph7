@@ -1,0 +1,175 @@
+--- original/src/tensor.rs
++++ prototype/src/tensor.rs
+@@ -117,11 +117,21 @@
+     }
+ }
+ 
++// Allocation-only expansion of the pinned Complex<T>::mul expression.
++// The four scalar products, operand order and two additions are unchanged.
++#[inline]
++fn borrowed_product<T: FloatLike>(a: &Complex<T>, b: &Complex<T>) -> Complex<T> {
++    Complex::new(
++        a.re.clone() * &b.re - a.im.clone() * &b.im,
++        a.re.clone() * &b.im + a.im.clone() * &b.re,
++    )
++}
++
+ fn minkowski<T: Real>(a: &[Complex<T>; 4], b: &[Complex<T>; 4]) -> Complex<T>
+ where
+     Complex<T>: Real,
+ {
+-    a[0].clone() * &b[0] - a[1].clone() * &b[1] - a[2].clone() * &b[2] - a[3].clone() * &b[3]
++    borrowed_product(&a[0], &b[0]) - borrowed_product(&a[1], &b[1]) - borrowed_product(&a[2], &b[2]) - borrowed_product(&a[3], &b[3])
+ }
+ 
+ fn components<T: Clone>(v: &FourMomentum<T>) -> [T; 4] {
+@@ -148,14 +158,14 @@
+         .validate("numerator output", output.len())?;
+         let count = self.degrees.len();
+         let mut values = std::mem::take(&mut self.values_work);
+-        values.resize(count, self.zero.clone());
++        values.resize_with(count, || self.zero.clone());
+         for (request, out) in requests.iter().zip(output.iter_mut()) {
+             let coefficients = self.lane_coefficients(request.id.lane)?;
+             let q = components(request.q);
+-            values[0] = self.one.clone();
++            values[0].set_from(&self.one);
+             for i in 1..count {
+                 let (parent, c) = self.parents[i];
+-                values[i] = values[parent].clone() * &q[c];
++                values[i] = borrowed_product(&values[parent], &q[c]);
+             }
+             let mut total = self.zero.clone();
+             let mut mu_power = self.one.clone();
+@@ -163,7 +173,7 @@
+                 let (offset, size) = self.block(k);
+                 let mut block = self.zero.clone();
+                 for (c, v) in coefficients[offset..offset + size].iter().zip(&values) {
+-                    block += c.clone() * v;
++                    block += borrowed_product(c, v);
+                 }
+                 total += block * &mu_power;
+                 mu_power *= request.mu_squared;
+@@ -238,7 +248,7 @@
+         let at = |j: usize, a: usize, l: usize| (j * xs + a) * mus + l;
+         let count = self.degrees.len();
+         let mut series = std::mem::take(&mut self.series_work);
+-        series.resize(count * size, self.zero.clone());
++        series.resize_with(count * size, || self.zero.clone());
+         for (row, request) in requests.iter().enumerate() {
+             let coefficients = self.lane_coefficients(request.id.lane)?;
+             let v: Vec<[Complex<T>; 4]> = request.vectors.iter().map(components).collect();
+@@ -258,7 +268,7 @@
+                                 v[1][c].clone(),
+                                 v[0][c].clone(),
+                                 z(),
+-                                request.parameters[0].clone() * e4,
++                                borrowed_product(&request.parameters[0], e4),
+                                 z(),
+                                 z(),
+                                 e4.clone(),
+@@ -270,9 +280,9 @@
+                                 v[2][c].clone(),
+                                 v[0][c].clone(),
+                                 v[1][c].clone(),
+-                                request.parameters[0].clone() * e4,
+-                                request.parameters[1].clone() * e4,
+-                                request.parameters[2].clone() * e4,
++                                borrowed_product(&request.parameters[0], e4),
++                                borrowed_product(&request.parameters[1], e4),
++                                borrowed_product(&request.parameters[2], e4),
+                                 e4.clone(),
+                             ]
+                         }
+@@ -280,9 +290,9 @@
+                 })
+                 .collect();
+             for value in series.iter_mut() {
+-                *value = self.zero.clone();
+-            }
+-            series[at(0, 0, 0)] = self.one.clone();
++                value.set_from(&self.zero);
++            }
++            series[at(0, 0, 0)].set_from(&self.one);
+             for i in 1..count {
+                 let (parent, c) = self.parents[i];
+                 let f = &factors[c];
+@@ -295,25 +305,25 @@
+                             if a + 2 * l > j {
+                                 break;
+                             }
+-                            let mut acc = f[0].clone() * &source[at(j, a, l)];
++                            let mut acc = borrowed_product(&f[0], &source[at(j, a, l)]);
+                             if j >= 1 {
+-                                acc += f[1].clone() * &source[at(j - 1, a, l)];
++                                acc += borrowed_product(&f[1], &source[at(j - 1, a, l)]);
+                                 if shape == Shape::T2 && a >= 1 {
+-                                    acc += f[2].clone() * &source[at(j - 1, a - 1, l)];
++                                    acc += borrowed_product(&f[2], &source[at(j - 1, a - 1, l)]);
+                                 }
+                             }
+                             if j >= 2 && shape != Shape::Mu {
+-                                acc += f[3].clone() * &source[at(j - 2, a, l)];
++                                acc += borrowed_product(&f[3], &source[at(j - 2, a, l)]);
+                                 if shape == Shape::T2 {
+                                     if a >= 1 {
+-                                        acc += f[4].clone() * &source[at(j - 2, a - 1, l)];
++                                        acc += borrowed_product(&f[4], &source[at(j - 2, a - 1, l)]);
+                                     }
+                                     if a >= 2 {
+-                                        acc += f[5].clone() * &source[at(j - 2, a - 2, l)];
++                                        acc += borrowed_product(&f[5], &source[at(j - 2, a - 2, l)]);
+                                     }
+                                 }
+                                 if l >= 1 {
+-                                    acc += f[6].clone() * &source[at(j - 2, a, l - 1)];
++                                    acc += borrowed_product(&f[6], &source[at(j - 2, a, l - 1)]);
+                                 }
+                             }
+                             target[at(j, a, l)] = acc;
+@@ -340,9 +350,9 @@
+                         let previous = &g_powers[k - 1];
+                         let mut s = vec![self.zero.clone(); depth + 1];
+                         for j in 0..=depth {
+-                            let mut acc = g0.clone() * &previous[j];
++                            let mut acc = borrowed_product(&g0, &previous[j]);
+                             if j >= 2 {
+-                                acc -= beta.clone() * &previous[j - 2];
++                                acc -= borrowed_product(&beta, &previous[j - 2]);
+                             }
+                             s[j] = acc;
+                         }
+@@ -365,7 +375,7 @@
+                                 let s = &series[i * size..(i + 1) * size];
+                                 let mut term = self.zero.clone();
+                                 for j1 in 0..=j {
+-                                    term += s[at(j1, 0, 0)].clone() * &g[j - j1];
++                                    term += borrowed_product(&s[at(j1, 0, 0)], &g[j - j1]);
+                                 }
+                                 acc += term * c;
+                             }
+@@ -391,7 +401,7 @@
+                                 if j < 0 || j as usize > depth || a + 2 * l > j as usize {
+                                     continue;
+                                 }
+-                                acc += series[i * size + at(j as usize, a, l)].clone() * c;
++                                acc += borrowed_product(&series[i * size + at(j as usize, a, l)], c);
+                             }
+                         }
+                         out[column] = acc;
+@@ -403,3 +413,15 @@
+         Ok(())
+     }
+ }
++
++#[cfg(test)]
++#[path = "tensor_dense_reference.rs"]
++mod dense_reference;
++
++#[cfg(test)]
++#[path = "tensor_allocation_tests.rs"]
++mod allocation_tests;
++
++#[cfg(test)]
++#[path = "tensor_capture_tests.rs"]
++mod capture_tests;

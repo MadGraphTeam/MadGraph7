@@ -1,0 +1,16 @@
+{
+  "source": "HEPTools/ninjars",
+  "files": {
+    "Cargo.lock": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25",
+    "Cargo.toml": "a025c54a99707cf3f950c1a24aaa4144f3f78941f2c00472dc83122ff39360e4",
+    "include/mninjars.f90": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+    "include/ninjars.h": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+    "install.log": "2aab298298ba2bdddb69c254d49cf2e7632b08a957fe6927966384d66c427ba1",
+    "lib/libninjars.a": "1199bc84570bee76a6b162a86fd5c191479236b2c0617fe4bf250d5de0d9df32",
+    "lib/mninjars.mod": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+    "lib/ninjars-config.json": "2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7",
+    "lib/ninjars-link-before.txt": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+    "lib/ninjars-native-libs.txt": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871"
+  },
+  "scope": "Read-only fingerprint of existing installed ABI3 prefix; private materialized copy only. No Cargo or installer invocation."
+}

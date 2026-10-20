@@ -1,0 +1,10 @@
+{
+  "status": "complete",
+  "requested_cases": [
+    "control-gg-h"
+  ],
+  "completed_cases": [
+    "control-gg-h"
+  ],
+  "acceptance_eligible": false
+}

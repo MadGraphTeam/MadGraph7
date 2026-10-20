@@ -557,12 +557,25 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   Their physical inputs are preserved, model postimages match the retained
   correction exactly, and every library/module/link signature matches the prior
   certified runtime. Independent live rehashing confirms one common complete
-  runtime group per backend. New representative and variant proof collection
-  remains pending. A fresh relocated internal-copy build also passes with only
-  its private installation hidden; its numerical runtime phase is next.
+  runtime group per backend. Refreshed representative validation now passes
+  eight targets across all four backends, with exact fresh-process parity and
+  actual CutTools, Ninja and NinjaRS QP execution. A fresh relocated internal-copy
+  build passes DP, genuine QP and checked-stability evaluations with its private
+  installation hidden; all 48 coefficient comparisons pass. Complete generated
+  control/variant and eight-process validation remains outstanding.
 - Separate DP factorization passes all six original/capture-only/factored
   100-point Ninja/NinjaRS streams. Capture-only results are exact; changed
   association remains within the original tolerance. Both backends still
   rescue points 44 and 80, so the rescue-reduction hypothesis is negative.
   Pure Fortran kernel timing has mixed results and does not justify promotion;
   an uninstrumented full-process timing plan remains held.
+- An isolated allocation-only MP tensor prototype preserves all recorded values,
+  tracked precisions and signed zeros in 1,392 actual reduction requests, along
+  with exact 256/384-bit convergence outputs. Its original failing NaN assignment
+  test and diagnosis remain retained: arbitrary NaN-source assignment is outside
+  the implemented finite zero/one scratch-reset domain. The prototype is not
+  installed or in production, and its runtime benefit has not been measured.
+- A separate capture-only experiment is separating DP numerator inputs, QP
+  numerator inputs and reduction geometry at the two QCD3 rescue points. It must
+  first preserve all 100 complete results, accuracy estimates and statuses.
+  No mixed-precision controller or reporting change is authorized by this probe.

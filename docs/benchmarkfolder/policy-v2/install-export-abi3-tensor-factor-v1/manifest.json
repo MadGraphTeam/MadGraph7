@@ -1,0 +1,179 @@
+{
+  "schema": "internal-copy-validation-seal-v1",
+  "numerical_revision": "f4bffc61ed67e5d083b80ff9901768d4d5779989",
+  "acceptance_eligible": false,
+  "files": {
+    "MadLoop_makefile_definitions": {
+      "sha256": "2841f0ab1b796f5b3a4f05fd1483c571a41e4701d38fb34ed04faab929067149",
+      "bytes": 471
+    },
+    "PLAN.md": {
+      "sha256": "1d5c3d307da1ffb57f4ec5e3489e7946631caffd7e9edd0fbb97559f0ab51a7b",
+      "bytes": 3812
+    },
+    "PS.input": {
+      "sha256": "1546f2c7158a65657056f899af160234d8b555e3583b5e9be7a21b294e6d25db",
+      "bytes": 485
+    },
+    "README.md": {
+      "sha256": "b0045236ae9c35c88678fbbf47ec485c6de84d6f173495e68ca33a95bc3c929c",
+      "bytes": 3283
+    },
+    "build.log": {
+      "sha256": "7cbf3dcf17405ffe7ce1ba98faf8d20727edd5b48c6f58c05cb92c8c20159dc7",
+      "bytes": 7220
+    },
+    "check_sa.diagnostic.f": {
+      "sha256": "e90c2387631b719e517eee4d634fa221f6e23ba5a11c785840e8d205502205de",
+      "bytes": 23836
+    },
+    "check_sa.generated.f": {
+      "sha256": "b210100c2002048993dc2bd22fcafa9ba0f4e95bdab0be9df9df06245c4273dd",
+      "bytes": 23590
+    },
+    "dp-MadLoopParams.dat": {
+      "sha256": "416b9a4e5cdb592649c22bbc46444a6e85893ecc82b2f09421efe6362dfcb7a4",
+      "bytes": 13352
+    },
+    "dp.log": {
+      "sha256": "72b62be740aba4fe1b034fb9b83fe2db8227ff3868b155e2f3df7147e5788e19",
+      "bytes": 12318
+    },
+    "dynamic-symbols.txt": {
+      "sha256": "1bdf0d9d1fcb9c02d7c0e23a3ecde12300a02b4b324653b36d1bc001508b0690",
+      "bytes": 14049
+    },
+    "export.log": {
+      "sha256": "8dca8afaa066580f9dd04ac85545da73ad4e5dde230e58cbf0f845e0073ff1fd",
+      "bytes": 11330
+    },
+    "inputs/copied-assets/mninjars.f90": {
+      "sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+      "bytes": 8497
+    },
+    "inputs/copied-assets/mninjars.mod": {
+      "sha256": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+      "bytes": 1986
+    },
+    "inputs/copied-assets/ninjars-config.json": {
+      "sha256": "2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7",
+      "bytes": 354
+    },
+    "inputs/copied-assets/ninjars-link-before.txt": {
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+      "bytes": 8
+    },
+    "inputs/copied-assets/ninjars-native-libs.txt": {
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+      "bytes": 48
+    },
+    "inputs/copied-assets/ninjars.h": {
+      "sha256": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+      "bytes": 4120
+    },
+    "inputs/generated/SubProcesses/P0_uux_zgg/CT_interface.f": {
+      "sha256": "271a35cb6a97ff234d2164de5858641f59caf31b2fab323ccb2603e21560c71c",
+      "bytes": 49151
+    },
+    "inputs/generated/SubProcesses/P0_uux_zgg/check_sa.f": {
+      "sha256": "e90c2387631b719e517eee4d634fa221f6e23ba5a11c785840e8d205502205de",
+      "bytes": 23836
+    },
+    "inputs/generated/SubProcesses/P0_uux_zgg/loop_matrix.f": {
+      "sha256": "c37b21823c19f7c84b640a11641a5e438169609b50d3ef166c011c4752df1f50",
+      "bytes": 98314
+    },
+    "inputs/generated/SubProcesses/P0_uux_zgg/mp_coef_construction_1.f": {
+      "sha256": "6be7358c85c2ecd6f2f90026b1a71b9ec1cc190bb39facb77b560417b22d6a54",
+      "bytes": 112814
+    },
+    "inputs/generated/SubProcesses/P0_uux_zgg/mp_compute_loop_coefs.f": {
+      "sha256": "9242baba47f8fd629123e981489dbfea7763cb2a658e769919f4d8a9cae1ff5c",
+      "bytes": 13409
+    },
+    "inputs/generated/SubProcesses/P0_uux_zgg/polynomial.f": {
+      "sha256": "b67b726188862c8c55d98479126e21ea78a150925dd624fb993940f481c001e5",
+      "bytes": 192072
+    },
+    "inputs/source-identities/6f40c8baac1ca763292daf25ec04eb66b5866629ffcb6b7ec24e127c657f3b90.json": {
+      "sha256": "66bbd54df0ca4c431c0ed8f139d13d49385bd98a81097ce64db996814b14bd47",
+      "bytes": 168525
+    },
+    "installation-input.json": {
+      "sha256": "d534cbece21ca14a122e347e2722ea51d2f0f434d7a68459df858fc9941fcc24",
+      "bytes": 1126
+    },
+    "ldd.txt": {
+      "sha256": "cb28677a9cab644e64542a15f310719103e25c385b03550c0d0b928cc7948b11",
+      "bytes": 1256
+    },
+    "make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "param_card.generated.dat": {
+      "sha256": "61894bc225f62224521081571bb987ae519f355ac33921f47bd3a5cf1b1ec05f",
+      "bytes": 3468
+    },
+    "plan.json": {
+      "sha256": "cad4f49fb5a25e60232e2b28ea5c5af0f406670ee506570d39842ba7ffa44f43",
+      "bytes": 755
+    },
+    "prepare-controller.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "prepared.json": {
+      "sha256": "06c13d439b40adf809830695c3144fee4307e77ff8c2db7a76f0b0965f487d6f",
+      "bytes": 272192
+    },
+    "qp-MadLoopParams.dat": {
+      "sha256": "a81316a6c2bbb3a809a3fafd06857c92151e40ecfd06fbc35c527475a2419c74",
+      "bytes": 13352
+    },
+    "qp.log": {
+      "sha256": "bb8f7536c48285eb16d8d0b0a47e7c7198ceefe8bed188a0a880bdb8e27efa47",
+      "bytes": 13602
+    },
+    "reference-input.json": {
+      "sha256": "7c6914b27a7096d2111c3bdba96c4f967028c7bb3fd5528347a0ba271e8462e7",
+      "bytes": 1972
+    },
+    "runtime-results.json": {
+      "sha256": "91342e5af555a0f9c34d0a679764a5fe0c313df906a392a7c2fd5bc6d06b9532",
+      "bytes": 3168
+    },
+    "source-preflight.json": {
+      "sha256": "12949275ece300890dd9b66b1d666b79c22b11c0ca29f4b468650177c180c800",
+      "bytes": 673
+    },
+    "source_preflight.py": {
+      "sha256": "914b06286c67e7d614ab98edc83937c30f78a4392a8f9ea7f59f6fddb9d59c3b",
+      "bytes": 2665
+    },
+    "stable-MadLoopParams.dat": {
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+      "bytes": 13353
+    },
+    "stable.log": {
+      "sha256": "62a844ec0616534f6554e0ee7c4f724964d540e9c63e0b5aa77b65b4cdd63ca4",
+      "bytes": 12319
+    },
+    "standalone.mg5": {
+      "sha256": "70bcd1a8bc54cc4ea8ab50d8517c1b1af4215030f0ed788ff6d9353ab650e327",
+      "bytes": 572
+    },
+    "validate.py": {
+      "sha256": "40d4904205deb7bf7fe603eb66f0cffd29c86a52ffa78ea5509c679f05443674",
+      "bytes": 14200
+    },
+    "verify.py": {
+      "sha256": "e17eed31d55028bdd106c50c8dba11dbc34c761f5bf4f8b68bcc452d29b38090",
+      "bytes": 5019
+    }
+  }
+}

@@ -1,0 +1,171 @@
+Running MG7 in debug mode
+********************************************************************************
+*                                                                              *
+*                               W E L C O M E to                               *
+*                              M A D G R A P H 7                               *
+*                                                                              *
+*                                                                              *
+*                                  ..........                                  *
+*                                @          ....                               *
+*                              @               ...                             *
+*                            @    M         M    .                             *
+*                           @     MM       MM    ..                            *
+*                           .     M  M   M  M  ..                              *
+*                           ..    M   M M   M ..                               *
+*                            .    M    M    M.                                 *
+*                            ...               7777777                         *
+*                              ....                 7                          *
+*                                 ................ 7                           *
+*                                                 7                            *
+*                                                7                             *
+*                                                                              *
+*                   VERSION 0.2.1                 2026-09-24                   *
+*                  GIT v0.2.1-518-gf4bffc61e  madloop_ninjars                  *
+*                                                                              *
+*                 The MadGraph7 Development Team - Find us at                  *
+*                        http://madgraph.phys.ucl.ac.be/                       *
+*                                      and                                     *
+*                      http://amcatnlo.web.cern.ch/amcatnlo/                   *
+*                                                                              *
+*                         Type 'help' for in-line help.                        *
+*                 Type 'tutorial' to learn how MadGraph7 works                 *
+*                                                                              *
+********************************************************************************
+load MG7 configuration from input/mg7_configuration.txt 
+fastjet-config does not seem to correspond to a valid fastjet-config executable (v3+). We will use fjcore instead.
+ Please set the 'fastjet'variable to the full (absolute) /PATH/TO/fastjet-config (including fastjet-config).
+ MadGraph7> set fastjet /PATH/TO/fastjet-config
+
+eMELA-config does not seem to correspond to a valid eMELA-config executable.
+ Please set the 'fastjet'variable to the full (absolute) /PATH/TO/eMELA-config (including eMELA-config).
+ MadGraph7> set eMELA /PATH/TO/eMELA-config
+
+set ninja to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib
+set ninjars to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/HEPTools/ninjars/lib
+set collier to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier
+lhapdf-config does not seem to correspond to a valid lhapdf-config executable. 
+Please set the 'lhapdf' variable to the (absolute) /PATH/TO/lhapdf-config (including lhapdf-config).
+Note that you can still compile and run aMC@NLO with the built-in PDFs
+ MadGraph7> set lhapdf /PATH/TO/lhapdf-config
+
+No valid eps viewer found. Please set in ./input/mg7_configuration.txt
+No valid web browser found. Please set in ./input/mg7_configuration.txt
+Using default gzip "gzip". Set another one in ./input/mg7_configuration.txt
+import /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/install-export-abi3-tensor-factor-v1/standalone.mg5
+The import format was not given, so we guess it as command
+set automatic_html_opening False
+This option will be the default in any output that you are going to create in this session.
+In order to keep this changes permanent please run 'save options'
+set auto_update 0
+save options auto_update
+save configuration file to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/input/mg7_configuration.txt
+set nb_core 1
+This option will be the default in any output that you are going to create in this session.
+In order to keep this changes permanent please run 'save options'
+set ninja None
+save options ninja
+save configuration file to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/input/mg7_configuration.txt
+set collier None
+save options collier
+save configuration file to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/input/mg7_configuration.txt
+set ninjars /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-tensor-factor-v1/private/HEPTools/ninjars/lib
+set ninjars to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-tensor-factor-v1/private/HEPTools/ninjars/lib
+save options ninjars
+save configuration file to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/input/mg7_configuration.txt
+set output_dependencies internal
+save options output_dependencies
+save configuration file to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/input/mg7_configuration.txt
+set loop_optimized_output True
+set loop optimized output to True
+set complex_mass_scheme False
+Complex mass already desactivated.
+import model loop_sm
+INFO: Details of the model import are written in /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/models/loop_sm/loop_sm_debug.log 
+INFO: failed to load model from pickle file. Try importing UFO from File 
+[1;60mINFO: This model [version 1.2] is provided by V. Hirschi (email: valentin.hirschi@gmail.com). Please cite n/a [0m
+INFO: load particles 
+INFO: load vertices 
+INFO: Restrict model loop_sm with file models/loop_sm/restrict_default.dat . 
+INFO: Use 'explain_restriction' to see what that card removes from the model. 
+INFO: Change particles name to pass to MG7 convention 
+Defined multiparticle p = g u c d s u~ c~ d~ s~
+Defined multiparticle j = g u c d s u~ c~ d~ s~
+Defined multiparticle l+ = e+ mu+
+Defined multiparticle l- = e- mu-
+Defined multiparticle vl = ve vm vt
+Defined multiparticle vl~ = ve~ vm~ vt~
+Defined multiparticle all = g gh gh~ d u s c d~ u~ s~ c~ a ve vm vt e- mu- ve~ vm~ vt~ e+ mu+ b t b~ t~ z w+ h w- ta- ta+
+generate u u~ > z g g [virt=QCD]
+[1;32mDEBUG: Generating process: u u~ > z g g [ virt = QCD ]  [0m
+INFO: Chosen coupling orders configuration: (QCD=*,QED=1) 
+[1;32mDEBUG: Coupling order combinations considered: (QCD,QED,WEIGHTED) [0m
+[1;32mDEBUG:  > Born : (4,2,W8) [0m
+[1;32mDEBUG:  > loop : (6,2,W10) [0m
+[1;32mDEBUG: A total of 58 loop diagrams were identified with equivalent ones. [0m
+INFO: Contributing diagrams generated: 8 Born, 206(+58) loops, 112 R2, 208 UV 
+Process generated in 3.370 s
+output standalone_fortran /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-tensor-factor-v1/standalone
+INFO: initialize a new standalone directory: standalone 
+INFO: Generating Helas calls for process: u u~ > z g g [ virt = QCD ] 
+[1;32mDEBUG: 298 loop wavefunctions have been reused, for a total of 388 ones [0m
+[1;32mDEBUG: Computing the loop and Born color basis [0m
+INFO: Processing color information for loop process: u u~ > z g g [ virt = QCD ] 
+INFO: Processing color information for born process: u u~ > z g g [ virt = QCD ] 
+INFO: Creating color matrix  loop process: u u~ > z g g [ virt = QCD ] 
+INFO: Creating files in directory /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-tensor-factor-v1/standalone/SubProcesses/P0_uux_zgg 
+[1;32mDEBUG: adding in aloha model 1 lorentz struct [0m
+ALOHA: aloha creates FFV1 set of routines with options: L1,P0[0m
+ALOHA: aloha creates FFV1 set of routines with options: L3[0m
+ALOHA: aloha creates FFV1 set of routines with options: L2,P0[0m
+ALOHA: aloha creates FFV1 set of routines with options: L3[0m
+ALOHA: aloha creates FFV1 set of routines with options: L2[0m
+ALOHA: aloha creates VVV1 set of routines with options: L2,P0[0m
+ALOHA: aloha creates FFV1 set of routines with options: L1[0m
+ALOHA: aloha creates VVVV1 set of routines with options: L2,P0[0m
+ALOHA: aloha creates VVVV3 set of routines with options: L2,P0[0m
+ALOHA: aloha creates VVVV4 set of routines with options: L2,P0[0m
+ALOHA: aloha creates FFV2 set of routines with options: L2[0m
+ALOHA: aloha creates FFV5 set of routines with options: L2[0m
+ALOHA: aloha creates FFV2 set of routines with options: L1[0m
+ALOHA: aloha creates FFV5 set of routines with options: L1[0m
+ALOHA: aloha creates GHGHG set of routines with options: L2[0m
+ALOHA: aloha creates GHGHG set of routines with options: L1[0m
+ALOHA: aloha creates FFV3 set of routines with options: L2[0m
+ALOHA: aloha creates FFV3 set of routines with options: L1[0m
+INFO: Computing diagram color coefficients 
+INFO: Particles with .true. are generated off-shell: ['.false.', '.false.', '.false.', '.false.', '.false.'] 
+INFO: Drawing loop Feynman diagrams for Process: u u~ > z g g [ virt = QCD ] 
+INFO: Generating born Feynman diagrams for Process: u u~ > z g g [ virt = QCD ] 
+Generated helas calls for 1 subprocesses (230 diagrams) in 0.996 s
+Wrote files for 20 OPP calls in 1.891 s
+Export UFO model to MG4 format
+[1;32mDEBUG: wanted_couplings: CTparan not supporting merging -> will be problematic for NLO [0m
+[1;32mDEBUG: No PDF directory do not cfeate ElectroweakFlux.inc [0m
+ALOHA: aloha starts to compute helicity amplitudes
+ALOHA: aloha creates FFV2 routines[0m
+ALOHA: aloha creates FFV5 routines[0m
+ALOHA: aloha creates FFV1 routines[0m
+ALOHA: aloha creates VVV1 routines[0m
+ALOHA: aloha creates VVVV1 set of routines with options: L2,P0[0m
+ALOHA: aloha creates VVVV3 set of routines with options: L2,P0[0m
+ALOHA: aloha creates VVVV4 set of routines with options: L2,P0[0m
+ALOHA: aloha creates GHGHG set of routines with options: L2[0m
+ALOHA: aloha creates FFV3 set of routines with options: L2[0m
+ALOHA: aloha creates R2_QQ_1 routines[0m
+ALOHA: aloha creates R2_GG_1 routines[0m
+ALOHA: aloha creates R2_GG_2 routines[0m
+ALOHA: aloha creates R2_GGZ routines[0m
+ALOHA: aloha creates R2_GGVV routines[0m
+ALOHA: aloha creates R2_GGGVa routines[0m
+ALOHA: aloha creates R2_GG_3 routines[0m
+ALOHA: aloha creates FFV2_5 routines[0m
+ALOHA: aloha creates FFV2_3 routines[0m
+ALOHA: aloha creates R2_GG_1_R2_GG_2 routines[0m
+ALOHA: aloha creates R2_GG_1_R2_GG_3 routines[0m
+ALOHA: aloha creates 38 routines in  0.935 s
+INFO: Use Fortran compiler gfortran 
+INFO: Use c++ compiler g++ 
+INFO: Running make for Source directory 
+Output to directory /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-tensor-factor-v1/standalone done.
+quit
+quit

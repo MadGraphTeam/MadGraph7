@@ -1,0 +1,386 @@
+{
+  "schema": "isolated-mp-tensor-allocation-retention-v1",
+  "files": {
+    "README.md": {
+      "sha256": "1b12f6d335100271e260bc9d7b872102f71a8a6e4287150da70e626e1093cfcc",
+      "bytes": 4359
+    },
+    "build-attempt-1-allocation-tests.rs": {
+      "sha256": "616772daff2c9b14b5c00bcc2093dc5a2158eaa414b5f9cf22a12498294c0a62",
+      "bytes": 11075
+    },
+    "build-attempt-1.jsonl": {
+      "sha256": "b2db81ff00f46863c06babdbe70b8cba58b78519c357dacb5763421004d22d0b",
+      "bytes": 474677
+    },
+    "build-attempt-1.stderr": {
+      "sha256": "e152774f3a108fb6f830856a215c8cdfd741d7d6d7ab9ecb32fd1c38cd988a25",
+      "bytes": 242
+    },
+    "build-attempt-2.jsonl": {
+      "sha256": "5023f6956625b49076e41728256c6f66def73006004cc209a33ea4589069e38f",
+      "bytes": 472905
+    },
+    "build-attempt-2.stderr": {
+      "sha256": "53917d0087c9aaa99dcb47d590d575daf6cc96d5a88b2369394863c985453188",
+      "bytes": 227
+    },
+    "build-attempt-3.jsonl": {
+      "sha256": "6cba2bd0bec005d8e3957fb8c90c450c36ac6cc1a0b787cc7c5f45ab6e8eb2ea",
+      "bytes": 472905
+    },
+    "build-attempt-3.stderr": {
+      "sha256": "bc60bc4d2f198427d487189c25a74505a8a6ba14b4435044de6723e1157eb831",
+      "bytes": 227
+    },
+    "build-context.json": {
+      "sha256": "7454e94d030beecb7ecc060349ca02f7cff3576dbc1c86711c994cc331000712",
+      "bytes": 6042
+    },
+    "build.sh": {
+      "sha256": "da71efac6714705734994dc2f5346488c6eee04e448a9edcb959b67cb9d3a6c7",
+      "bytes": 679
+    },
+    "capture-all-1/result.json": {
+      "sha256": "1f5ad9ba5ad79f48444f668471c32901e466689991ed9912e5c2e1b731ff88a5",
+      "bytes": 5906
+    },
+    "capture-all-1/started.json": {
+      "sha256": "e9b73e2daa93952b39c9305b93211a89bf77f50892ee7b4669b654079ec10119",
+      "bytes": 5543
+    },
+    "capture-all-1/stderr.log": {
+      "sha256": "ff4d4b278344a9ddea2291234744f6d5116765aa7c6f32018eece53b03f6946c",
+      "bytes": 48837
+    },
+    "capture-all-1/stdout.log": {
+      "sha256": "a33efc1e3f2413a0f62a557e05679a95f06f90982d564430dfc7e9d4ead7d919",
+      "bytes": 1449
+    },
+    "correctness.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "correctness.stdout": {
+      "sha256": "51b7d2bacec875ba1b3c667830ceab7866e462b6e4e8bbce697e753f3ba677e8",
+      "bytes": 3048
+    },
+    "dependency/complex.rs": {
+      "sha256": "97ab86b7514906abdd56802ca9c749633be96053fd81a90a7f178ebeee08790a",
+      "bytes": 39433
+    },
+    "dependency/multiprecision.rs": {
+      "sha256": "ed49b16eff4521a7fadd61bf623c4753a6d60522eb0b8dee9856814d892464d1",
+      "bytes": 36307
+    },
+    "dependency/rug-float-traits.rs": {
+      "sha256": "90b501d01a7ec0678c0208b602b30617e9bb5d7ac671561435dae3968458451e",
+      "bytes": 12228
+    },
+    "golden-1/result.json": {
+      "sha256": "d658d9bc7037d7505d467818ad17142e452448548804eacb4702c7cc15200c4b",
+      "bytes": 5693
+    },
+    "golden-1/started.json": {
+      "sha256": "8b4032518b6ef1683d9f0f92bcceb347485b330b80338ce2a7a2d69058f11e2e",
+      "bytes": 5328
+    },
+    "golden-1/stderr.log": {
+      "sha256": "3dc8cec8c43ed095e685bd6e7663a5612a13e24b3a904932375f3984bd200dd7",
+      "bytes": 2841
+    },
+    "golden-1/stdout.log": {
+      "sha256": "c6f1e44422b907ee9edb4a9f7cd5502b6eac037f12f2c92a6299d794204450fd",
+      "bytes": 1445
+    },
+    "independent-source-review.md": {
+      "sha256": "e0d92682d711610263a843c250e58a45f2cfab234c1cd5bed06710c4fd75d111",
+      "bytes": 1644
+    },
+    "input-inventory.json": {
+      "sha256": "8c0144c88a93f6843e20ee39b688c68a4af0013d5ba03aa89ac23d59dc282702",
+      "bytes": 2557
+    },
+    "original/.gitignore": {
+      "sha256": "75b7dbb02a9764029bd6e213d34359fa93b3241ba7e74ebf4b9b13dc3fbc27aa",
+      "bytes": 97
+    },
+    "original/Cargo.lock": {
+      "sha256": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25",
+      "bytes": 78237
+    },
+    "original/Cargo.toml": {
+      "sha256": "a025c54a99707cf3f950c1a24aaa4144f3f78941f2c00472dc83122ff39360e4",
+      "bytes": 1343
+    },
+    "original/Makefile": {
+      "sha256": "3373a4dea5f02c76b13a86b2d323b0f39d2d080e2acb3e682d692d528836838f",
+      "bytes": 1653
+    },
+    "original/UPSTREAM.md": {
+      "sha256": "fed6015ef5ebae4f35cd8c8d83855c9b87a381f60013e62d927e280790b92c54",
+      "bytes": 1428
+    },
+    "original/build.rs": {
+      "sha256": "fa389383328261938398f067a18ad860ef21e0bb4bc15c95b24be3e0a6704342",
+      "bytes": 375
+    },
+    "original/examples/replay.rs": {
+      "sha256": "6381e93e652fec4547949a7a2a4c05e7b6955fe817862e97f42e83f2d0182200",
+      "bytes": 6450
+    },
+    "original/mninjars.f90": {
+      "sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+      "bytes": 8497
+    },
+    "original/ninjars-link-before.txt": {
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+      "bytes": 8
+    },
+    "original/ninjars-native-libs.txt": {
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+      "bytes": 48
+    },
+    "original/ninjars.h": {
+      "sha256": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+      "bytes": 4120
+    },
+    "original/smoke.f90": {
+      "sha256": "913e96e53e2ba15a71679559d0a2b79b3a12cc7640286ab1a86d1db260e2919a",
+      "bytes": 2398
+    },
+    "original/src/guarded.rs": {
+      "sha256": "0c7ac81fe597083e13b069e74a978161d56a101ca8b58bad4b8adaa04ad0d94c",
+      "bytes": 9559
+    },
+    "original/src/guarded_fenv.c": {
+      "sha256": "79e47e68003e6660cfc0d67318b1069e0f2f8958a7a6d642020543670ffbb427",
+      "bytes": 621
+    },
+    "original/src/guarded_tests.rs": {
+      "sha256": "9566681f2b67e82f5fed8f3186c362820b7991624296d04c905491b230f3769d",
+      "bytes": 11621
+    },
+    "original/src/lib.rs": {
+      "sha256": "ed9f72b3af2fd829dee9b0d30290c4fa0accca3ebcd2fc4f57638efd7f502a04",
+      "bytes": 51235
+    },
+    "original/src/retry_tests.rs": {
+      "sha256": "2492364fb5877d3ea34088b2f33e3a55c27ba77bafe7871c4d91f78aa41fb10e",
+      "bytes": 5695
+    },
+    "original/src/tensor.rs": {
+      "sha256": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55",
+      "bytes": 16731
+    },
+    "original/tests/data/cases/madloop-four-photon-top-box-0.json": {
+      "sha256": "9aea91e4e6c70b0f5984b2070e7aef8a77699260dacac1a9b3c9d65f23189796",
+      "bytes": 7704
+    },
+    "original/tests/data/cases/madloop-gg-hh-top-box-2.json": {
+      "sha256": "c9271b79b2a4df2155ee8855fda3ffc6090f37261711468efd3126cf6665d5a3",
+      "bytes": 5142
+    },
+    "original/tests/data/cases/madloop-gg-hh-top-triangle-0.json": {
+      "sha256": "5178de553b5dcfa0fcca616748943a63f2933399203f7d7040ba9c98aa3b4ea2",
+      "bytes": 2317
+    },
+    "original/tests/data/cases/madloop-gg-hhh-top-box-8.json": {
+      "sha256": "3f14438d72237acbd9c74f8ba813fa6fd04c2aa1af2cdde143134146a650a489",
+      "bytes": 4976
+    },
+    "original/tests/data/cases/madloop-gg-hhh-top-pentagon-26.json": {
+      "sha256": "af571c4df618dafad08dc0acdb345f39d0446a2ec814f03b7cc2ee5a25d727ca",
+      "bytes": 7781
+    },
+    "original/tests/data/cases/madloop-gg-hhh-top-triangle-0.json": {
+      "sha256": "98483fd5759713618d7dfa784d604b83a7f03b241a5402d9a808af3655920353",
+      "bytes": 2285
+    },
+    "original/tests/data/cases/madloop-hgg-top-triangle-0.json": {
+      "sha256": "8a70a0fc3569676b2601dbeb36b16cb70817b40df8eb3e762e4ed1899246d590",
+      "bytes": 3453
+    },
+    "original/tests/data/compensated/corrected-results.json": {
+      "sha256": "f868eb5d279ef0ef68aefcf34704a094cb4452447aff857c7650358b623dfa94",
+      "bytes": 1734
+    },
+    "original/tests/data/compensated/expansion-results.json": {
+      "sha256": "8bdf9a439db23f793ca38f774997d866d6a0fa279e00a086d81cee21a3d67b76",
+      "bytes": 1350447
+    },
+    "original/tests/data/compensated/inputs.json": {
+      "sha256": "1fb7ea9413efd25053dfdab357baf9ee973d8df3b6452fbaa280b684aea177b9",
+      "bytes": 27152
+    },
+    "original/tests/data/convergence.json": {
+      "sha256": "b34d6ef194a5297914050ceb6ffd25f5402c0150898921d2dcaf65471e55ec93",
+      "bytes": 10189
+    },
+    "original/tests/data/ninja/madloop-four-photon-top-box-0.json": {
+      "sha256": "dc34ad2683fbe535140c63bba564b8f6e8e74ce3c64eb17ef3cfa96baa5a6dde",
+      "bytes": 13356
+    },
+    "original/tests/data/ninja/madloop-gg-hh-top-box-2.json": {
+      "sha256": "d893de26b4e2e4edbeb4d6ba3122a6cd231bd5842719b3b8b2c4a84ee5e67dcc",
+      "bytes": 13271
+    },
+    "original/tests/data/ninja/madloop-gg-hh-top-triangle-0.json": {
+      "sha256": "669b92538382201f26487865cd44a1d8eea03b13ed7b99dcdae21bd7662cca95",
+      "bytes": 12534
+    },
+    "original/tests/data/ninja/madloop-gg-hhh-top-box-8.json": {
+      "sha256": "c49f6d9db0c09602c6e663e60499a9b5126b9ca66d1738f6b5bac5846afda572",
+      "bytes": 13325
+    },
+    "original/tests/data/ninja/madloop-gg-hhh-top-pentagon-26.json": {
+      "sha256": "e4b1522302bab1592924b251a7ee153c94623726d68b2d552e6211a4b0b3ded3",
+      "bytes": 13393
+    },
+    "original/tests/data/ninja/madloop-gg-hhh-top-triangle-0.json": {
+      "sha256": "7905a646d4bb23daf1b0506b662913f60796c87dfcbbd556c5bd957f7eba3bd2",
+      "bytes": 12531
+    },
+    "original/tests/data/ninja/madloop-hgg-top-triangle-0.json": {
+      "sha256": "a50906866f8e8812c02365cff98cb56a20639537f1804d290edbd8020ed9d30b",
+      "bytes": 12610
+    },
+    "original/tests/data/provenance.json": {
+      "sha256": "f77b7cee3079a95f001a3cc7d6a9f0aa1f8a1b51f3668b0d709552c67016d18b",
+      "bytes": 4897
+    },
+    "original/tests/fenv_helpers.c": {
+      "sha256": "cdb2df81ddcfc898f00dae4d74a78f0d6436aaa6c9ea3e5991bf11616b8bbd8d",
+      "bytes": 549
+    },
+    "original/tests/replay.py": {
+      "sha256": "9c475d4fa7c17c200eafda7a1e0e6e0bb0f4392de2c89a9e26a302f69089a2b9",
+      "bytes": 2449
+    },
+    "prepare.py": {
+      "sha256": "848b6f8ee8e0d0fcee85d6b9b44694fc5c2fa6ef15fff4c07caeed8246d0dfdc",
+      "bytes": 6692
+    },
+    "provenance.json": {
+      "sha256": "27261a2d0ed894d721c91aad91afb6d92d60d58f05998f46c2a3f7ffe9e571f6",
+      "bytes": 6339
+    },
+    "run-correctness.sh": {
+      "sha256": "b124929b03871a3f8c058c9874c541beb4426b8a26a1dde1d6172aa94d14d893",
+      "bytes": 585
+    },
+    "run.py": {
+      "sha256": "868827193db34b53f7d34b0bdf93e604724c915192ec79dc1e973f10ad973e05",
+      "bytes": 4384
+    },
+    "scalar-build.sh": {
+      "sha256": "a45ffade936ad4b260b003f4201beb0e0a1f65a449ac720f28aeac254c53f89b",
+      "bytes": 760
+    },
+    "scalar-build.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "scalar-build.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "scalar-diagnostic.rs": {
+      "sha256": "e031590742f965205841753ed53626ab015ab0958fb25c91f18b2577a82147ce",
+      "bytes": 2061
+    },
+    "scalar-diagnostic.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "scalar-diagnostic.stdout": {
+      "sha256": "54305d057d9783d9b28795cfc71aeb2bce05508b90f8a4e58fcc13cd968d7ad9",
+      "bytes": 1666
+    },
+    "scalar-launch-premature.stderr": {
+      "sha256": "b19d8b72a339d87c7f098967efc65476292e4f2e36957adef489e3d7086ca80f",
+      "bytes": 132
+    },
+    "scalar-launch-premature.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "scalar-result.json": {
+      "sha256": "807a1de346b8ab669132d26bd055443c0087badde5bc43e91d742b5e88e62e57",
+      "bytes": 1032
+    },
+    "summarize.py": {
+      "sha256": "d8bbd57a5ff0463ae4654c738c8374034f0b7f8b3244488941610b8c974a717a",
+      "bytes": 6938
+    },
+    "summary.json": {
+      "sha256": "e89b0920806de42af8cb88f7b9e6f6c4afce20b9baa13181de5d6989af0b22a5",
+      "bytes": 2345
+    },
+    "tensor.patch": {
+      "sha256": "7451a1460040b4dc1fd34c3603b7a1fb6c3ddc86ff1337bd834a3798dd09c336",
+      "bytes": 8370
+    },
+    "tensor.rs": {
+      "sha256": "525d5083904cd0257938c128e0e44f2d202de0e31f82b411f45e2a004ff8e5e1",
+      "bytes": 17547
+    },
+    "tensor_allocation_tests.rs": {
+      "sha256": "73703def29114280d188ff396a9177eb26fb8ab6e81516286fd3db47869e55ad",
+      "bytes": 11495
+    },
+    "tensor_capture_tests.rs": {
+      "sha256": "38354ecdff8568c877f465c2a6cce18120d737ad962ee5375039cfec15dfec53",
+      "bytes": 11781
+    },
+    "unit-1/result.json": {
+      "sha256": "3914e6ec5e0ac47496b0607094ae8c6e74b3bf0a6f39dee81a0d9ab67347a639",
+      "bytes": 5579
+    },
+    "unit-1/started.json": {
+      "sha256": "5d17aaad22a098fb986f64e9948e39050de5e9a67048669b3bcf35720b98076a",
+      "bytes": 5212
+    },
+    "unit-1/stderr.log": {
+      "sha256": "c77f9926e330c5669b38e7238158ef47c015fba92e9858adc026a404b9b21549",
+      "bytes": 732
+    },
+    "unit-1/stdout.log": {
+      "sha256": "d5073b4659c6d3236ffb91fecd4e82ec59d26ad8d93e5b7cc9bdeafa05ad53c7",
+      "bytes": 10775
+    },
+    "unit-1/tensor_allocation_tests.rs": {
+      "sha256": "01c8f61c02e3469b410b2fec21963073cb32f7e706f0c46a28796acaebc97a8a",
+      "bytes": 11091
+    },
+    "unit-2/result.json": {
+      "sha256": "cc25a3560c3b089ee562e0a1c43241b6ee04f7368504e3210def97ec7453eff7",
+      "bytes": 5577
+    },
+    "unit-2/started.json": {
+      "sha256": "0e3ac332f56a9dcfcb0b89a1c2dee2ecbf5e63f81e31a18ccb2a048db0ca467f",
+      "bytes": 5212
+    },
+    "unit-2/stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "unit-2/stdout.log": {
+      "sha256": "54d10b1aed1bbd55204d7c92b39c3f8403061c43b63d161f817698dba94e567d",
+      "bytes": 10650
+    },
+    "verify.py": {
+      "sha256": "6768233539cd235c6cbac2a70d01b27f51b5335bf1f4083c30f495652bfbf760",
+      "bytes": 1760
+    }
+  },
+  "passed_correctness": true,
+  "acceptance_evidence": false,
+  "performance_measured": false,
+  "production_changed": false,
+  "excluded": [
+    "Disposable build/cache/executable files remain inside .benchmark-work; original build products are represented by hashes only.",
+    "__pycache__ files are not evidence."
+  ],
+  "identity": "51646828d605e97cd74d84d8b3d840619deeabf342a7f4c91a7b3e5c04df99dd"
+}

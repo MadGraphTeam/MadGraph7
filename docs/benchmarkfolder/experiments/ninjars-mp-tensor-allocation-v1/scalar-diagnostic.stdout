@@ -1,0 +1,16 @@
+arbitrary NaN source: bits=2, previous=(-inf+-0i), set_from sign=true, clone sign=false
+arbitrary NaN source: bits=2, previous=(-0+-0i), set_from sign=true, clone sign=false
+arbitrary NaN source: bits=2, previous=(-3.0+-0i), set_from sign=true, clone sign=false
+arbitrary NaN source: bits=53, previous=(-inf+-0i), set_from sign=true, clone sign=false
+arbitrary NaN source: bits=53, previous=(-0+-0i), set_from sign=true, clone sign=false
+arbitrary NaN source: bits=53, previous=(-3.0000000000000000+-0i), set_from sign=true, clone sign=false
+arbitrary NaN source: bits=113, previous=(-inf+-0i), set_from sign=true, clone sign=false
+arbitrary NaN source: bits=113, previous=(-0+-0i), set_from sign=true, clone sign=false
+arbitrary NaN source: bits=113, previous=(-3.00000000000000000000000000000000000+-0i), set_from sign=true, clone sign=false
+arbitrary NaN source: bits=256, previous=(-inf+-0i), set_from sign=true, clone sign=false
+arbitrary NaN source: bits=256, previous=(-0+-0i), set_from sign=true, clone sign=false
+arbitrary NaN source: bits=256, previous=(-3.000000000000000000000000000000000000000000000000000000000000000000000000000000+-0i), set_from sign=true, clone sign=false
+arbitrary NaN source: bits=384, previous=(-inf+-0i), set_from sign=true, clone sign=false
+arbitrary NaN source: bits=384, previous=(-0+-0i), set_from sign=true, clone sign=false
+arbitrary NaN source: bits=384, previous=(-3.00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000+-0i), set_from sign=true, clone sign=false
+exact_products=245 exact_actual_zero_one_resets=70 unrelated_arbitrary_nan_copy_mismatches=15

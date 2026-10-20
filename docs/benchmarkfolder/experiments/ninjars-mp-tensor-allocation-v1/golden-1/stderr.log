@@ -1,0 +1,22 @@
+golden madloop-four-photon-top-box-0.json lane "four-photon-top-box-0-madloop-sqrt_s_200": exact original numerator values/expansions
+golden madloop-four-photon-top-box-0.json lane "four-photon-top-box-0-madloop-sqrt_s_500": exact original numerator values/expansions
+golden madloop-four-photon-top-box-0.json lane "four-photon-top-box-0-madloop-sqrt_s_800": exact original numerator values/expansions
+golden madloop-gg-hh-top-box-2.json lane "gg-hh-top-box-2-madloop-sqrt_s_312.5": exact original numerator values/expansions
+golden madloop-gg-hh-top-box-2.json lane "gg-hh-top-box-2-madloop-sqrt_s_416.7": exact original numerator values/expansions
+golden madloop-gg-hh-top-box-2.json lane "gg-hh-top-box-2-madloop-sqrt_s_650": exact original numerator values/expansions
+golden madloop-gg-hh-top-triangle-0.json lane "gg-hh-top-triangle-0-madloop-sqrt_s_312.5": exact original numerator values/expansions
+golden madloop-gg-hh-top-triangle-0.json lane "gg-hh-top-triangle-0-madloop-sqrt_s_416.7": exact original numerator values/expansions
+golden madloop-gg-hh-top-triangle-0.json lane "gg-hh-top-triangle-0-madloop-sqrt_s_650": exact original numerator values/expansions
+golden madloop-gg-hhh-top-box-8.json lane "gg-hhh-top-box-8-madloop-sqrt_s_450": exact original numerator values/expansions
+golden madloop-gg-hhh-top-box-8.json lane "gg-hhh-top-box-8-madloop-sqrt_s_525": exact original numerator values/expansions
+golden madloop-gg-hhh-top-box-8.json lane "gg-hhh-top-box-8-madloop-sqrt_s_600": exact original numerator values/expansions
+golden madloop-gg-hhh-top-pentagon-26.json lane "gg-hhh-top-pentagon-26-madloop-sqrt_s_450": exact original numerator values/expansions
+golden madloop-gg-hhh-top-pentagon-26.json lane "gg-hhh-top-pentagon-26-madloop-sqrt_s_525": exact original numerator values/expansions
+golden madloop-gg-hhh-top-pentagon-26.json lane "gg-hhh-top-pentagon-26-madloop-sqrt_s_600": exact original numerator values/expansions
+golden madloop-gg-hhh-top-triangle-0.json lane "gg-hhh-top-triangle-0-madloop-sqrt_s_450": exact original numerator values/expansions
+golden madloop-gg-hhh-top-triangle-0.json lane "gg-hhh-top-triangle-0-madloop-sqrt_s_525": exact original numerator values/expansions
+golden madloop-gg-hhh-top-triangle-0.json lane "gg-hhh-top-triangle-0-madloop-sqrt_s_600": exact original numerator values/expansions
+golden madloop-hgg-top-triangle-0.json lane "hgg-top-triangle-0-madloop-rest_frame": exact original numerator values/expansions
+golden madloop-hgg-top-triangle-0.json lane "hgg-top-triangle-0-madloop-boosted_a": exact original numerator values/expansions
+golden madloop-hgg-top-triangle-0.json lane "hgg-top-triangle-0-madloop-boosted_b": exact original numerator values/expansions
+golden exact lanes=21; expansion/value counts={"mu": 24, "numerator_values": 48, "t2": 1554, "t3": 1056}

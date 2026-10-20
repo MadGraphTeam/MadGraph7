@@ -1,0 +1,13 @@
+{
+  "report": "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020",
+  "outputs": {
+    "control-gg-h-candidate-1": ".benchmark-work/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/workers/control-gg-h-candidate-1/outputs/candidate/control-gg-h",
+    "control-gg-h-candidate-6": ".benchmark-work/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/workers/control-gg-h-candidate-6/outputs/candidate/control-gg-h",
+    "control-gg-h-candidate-7": ".benchmark-work/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/workers/control-gg-h-candidate-7/outputs/candidate/control-gg-h",
+    "control-gg-h-candidate-8": ".benchmark-work/policy-v2/representative-runs/representative-candidate-abi3-tensor-factor-v1-ggh-20261020/workers/control-gg-h-candidate-8/outputs/candidate/control-gg-h"
+  },
+  "role_map": {
+    "baseline": "original",
+    "candidate": "candidate_corrected"
+  }
+}

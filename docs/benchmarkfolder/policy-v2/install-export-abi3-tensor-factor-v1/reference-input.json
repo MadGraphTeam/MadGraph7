@@ -1,0 +1,60 @@
+{
+  "source": "docs/benchmarkfolder/experiments/symmetric-factorization-production/dev-qcd3-v1/result.json",
+  "source_sha256": "98ad14915bdd28a34bb1ef0d992b6b72c2153edfab4e2825395cc1143a307414",
+  "parameter_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+  "points_sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41",
+  "rows": [
+    {
+      "order": 0,
+      "coefficients": [
+        0.0005110983996055295,
+        -0.0005693001757712936,
+        -0.0003548208238692289,
+        -8.31876303355237e-05
+      ]
+    },
+    {
+      "order": 1,
+      "coefficients": [
+        0.0005110983996055295,
+        -0.0005693001757712936,
+        -0.0003548208238692289,
+        -8.31876303355237e-05
+      ]
+    }
+  ],
+  "scope": "Retained first unchanged QCD3 point and every physical/total split-order row from exact legacy Ninja6 fresh development control. New relocated internal run additionally compares all three backend8 modes pairwise. No full-stream acceptance claim.",
+  "shared_numerical_settings": {
+    "iregimode": 2,
+    "iregirecy": true,
+    "ctmoderun": -1,
+    "mlstabthres": 1e-09,
+    "nrotations_dp": 0,
+    "nrotations_qp": 0,
+    "improvepspoint": 2,
+    "ctlooplibrary": 2,
+    "ctstabthres": 0.01,
+    "ctmodeinit": 1,
+    "checkcycle": 3,
+    "maxattempts": 10,
+    "zerothres": 1e-09,
+    "osthres": 1e-08,
+    "doublecheckhelicityfilter": true,
+    "writeoutfilters": true,
+    "useloopfilter": false,
+    "helicityfilterlevel": 2,
+    "loopinitstartover": false,
+    "helinitstartover": false,
+    "useqpintegrandforninja": true,
+    "useqpintegrandforcuttools": true,
+    "colliermode": 1,
+    "colliercomputeuvpoles": true,
+    "colliercomputeirpoles": true,
+    "collierrequiredaccuracy": 1e-12,
+    "colliercanoutput": false,
+    "collierglobalcache": -1,
+    "collierusecacheforpoles": false,
+    "collieruseinternalstabilitytest": true,
+    "selected_backend_qp_integrand": true
+  }
+}
