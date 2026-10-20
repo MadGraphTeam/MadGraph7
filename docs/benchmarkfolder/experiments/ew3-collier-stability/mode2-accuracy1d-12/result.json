@@ -1,0 +1,192 @@
+{
+  "acceptance_eligible": false,
+  "settings": {
+    "COLLIERMode": 2,
+    "COLLIERRequiredAccuracy": "1d-12"
+  },
+  "command": [
+    "taskset",
+    "-c",
+    "5",
+    "./check_fresh",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/points/ew-3.dat",
+    "1"
+  ],
+  "executable_sha256": "d16a5f7f4dc4d143eec32491c455c80954ad7a72227775f2788d5f5fb97d262f",
+  "points_sha256": "c030e6c68d53e9ecc1e2ac5ee99e4f81d97a80268dcbe3a0dc76065655a492a1",
+  "parameter_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+  "status_counts": {
+    "217": 96,
+    "410": 4
+  },
+  "unstable_points": [
+    {
+      "point": 37,
+      "order": 0,
+      "status": 410,
+      "coefficients": [
+        4.685573138447431e-07,
+        -2.323816873231711e-09,
+        3.5967341642998145e-09,
+        -1.1255741048833972e-09
+      ],
+      "accuracy": 1.0042540881117036e-09
+    },
+    {
+      "point": 61,
+      "order": 0,
+      "status": 410,
+      "coefficients": [
+        4.976461277425097e-05,
+        -1.4819811938462721e-06,
+        5.659401373845001e-07,
+        -1.1954516100969647e-07
+      ],
+      "accuracy": 5.407196466154177e-09
+    },
+    {
+      "point": 90,
+      "order": 0,
+      "status": 410,
+      "coefficients": [
+        6.434743989563619e-06,
+        1.871231417697728e-08,
+        4.0288453016790455e-08,
+        -1.545762064398092e-08
+      ],
+      "accuracy": 1.1828045309181275e-09
+    },
+    {
+      "point": 92,
+      "order": 0,
+      "status": 410,
+      "coefficients": [
+        1.0887795643094733e-05,
+        2.1604955706204624e-08,
+        7.078714899915222e-08,
+        -2.615479574531242e-08
+      ],
+      "accuracy": 4.113245975019906e-09
+    }
+  ],
+  "comparisons": {
+    "baseline-1": {
+      "passed": false,
+      "worst_tolerance_fraction": 1.4997293207930695,
+      "failures": [
+        {
+          "point": 49,
+          "order": 0,
+          "coefficient": 1,
+          "tolerance_fraction": 1.4997293207930695,
+          "values": [
+            1.3897204907716513e-08,
+            1.3897207029632442e-08
+          ]
+        },
+        {
+          "point": 49,
+          "order": 1,
+          "coefficient": 1,
+          "tolerance_fraction": 1.4997293207930695,
+          "values": [
+            1.3897204907716513e-08,
+            1.3897207029632442e-08
+          ]
+        }
+      ]
+    },
+    "baseline-6": {
+      "passed": false,
+      "worst_tolerance_fraction": 8.3701464347614,
+      "failures": [
+        {
+          "point": 49,
+          "order": 0,
+          "coefficient": 1,
+          "tolerance_fraction": 1.4997296177877724,
+          "values": [
+            1.3897204907716513e-08,
+            1.3897207029632862e-08
+          ]
+        },
+        {
+          "point": 49,
+          "order": 1,
+          "coefficient": 1,
+          "tolerance_fraction": 1.4997296177877724,
+          "values": [
+            1.3897204907716513e-08,
+            1.3897207029632862e-08
+          ]
+        },
+        {
+          "point": 78,
+          "order": 0,
+          "coefficient": 1,
+          "tolerance_fraction": 8.3701464347614,
+          "values": [
+            -4.209697580359714e-09,
+            -4.209693409437393e-09
+          ]
+        },
+        {
+          "point": 78,
+          "order": 1,
+          "coefficient": 1,
+          "tolerance_fraction": 8.3701464347614,
+          "values": [
+            -4.209697580359714e-09,
+            -4.209693409437393e-09
+          ]
+        }
+      ]
+    },
+    "candidate-8": {
+      "passed": false,
+      "worst_tolerance_fraction": 8.370146335162957,
+      "failures": [
+        {
+          "point": 49,
+          "order": 0,
+          "coefficient": 1,
+          "tolerance_fraction": 1.4997295944023625,
+          "values": [
+            1.3897204907716513e-08,
+            1.3897207029632829e-08
+          ]
+        },
+        {
+          "point": 49,
+          "order": 1,
+          "coefficient": 1,
+          "tolerance_fraction": 1.4997295944023625,
+          "values": [
+            1.3897204907716513e-08,
+            1.3897207029632829e-08
+          ]
+        },
+        {
+          "point": 78,
+          "order": 0,
+          "coefficient": 1,
+          "tolerance_fraction": 8.370146335162957,
+          "values": [
+            -4.209697580359714e-09,
+            -4.209693409437443e-09
+          ]
+        },
+        {
+          "point": 78,
+          "order": 1,
+          "coefficient": 1,
+          "tolerance_fraction": 8.370146335162957,
+          "values": [
+            -4.209697580359714e-09,
+            -4.209693409437443e-09
+          ]
+        }
+      ]
+    }
+  }
+}

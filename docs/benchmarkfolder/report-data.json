@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_utc": "2026-10-20 \u00b7 14:46 UTC",
+  "generated_utc": "2026-10-20 \u00b7 15:37 UTC",
   "config": {
     "schema_version": 1,
     "seed": 410083,
@@ -518,8 +518,8 @@
     "baseline_source_integrity": {
       "revision": "27147b3300f556a75661a886e92bdbe00558ee25",
       "all_tracked_files_match_git_archive": true,
-      "files_checked": 5964,
-      "last_reverified_utc": "2026-10-20T13:53:43.744959+00:00"
+      "files_checked": 6009,
+      "last_reverified_utc": "2026-10-20T15:36:17.683488+00:00"
     },
     "report_style_source_sha256": "31fe3c52ada017dd1f7e923a646f65d19c1e9d1edba54fe84a50348c1ee67967",
     "ninjars_abi_version": 2,
@@ -537,12 +537,13 @@
       "repetitions": 7,
       "measurements": 196,
       "all_three_gates": "passed",
+      "implementation_scope": "Recorded implementation before generated MP model arithmetic corrections; recertification of the repaired generator is outstanding",
       "original_run_status": "failed",
       "outstanding_next_case": "ew-3"
     },
     "outstanding_findings": [
       "Zgg: an exploratory seven-repeat series gave a NinjaRS/original-Ninja ratio of 2.269, above the 1.05 target. Concurrent task activity excludes this series from acceptance timing; the slowdown remains under investigation.",
-      "tt~gamma: the series stopped on original Collier status 410 at points 68 and 74. Separate finite-part discrepancies at points 49 and 78 remain under investigation. The complete failed run is retained."
+      "tt~gamma: tighter Collier integral accuracy removes the original status-410 flags. Corrections to generated MP complex constructors, pi and real casts pass analytic controls and all six backend comparisons at 100 fixed points in a fresh CLI export (largest tolerance fraction 0.000913). The original failed run remains retained; final recertification and explicit corrected-reference accounting are outstanding."
     ]
   },
   "host_cpu": "AMD EPYC 9754 128-Core Processor",
@@ -25434,6 +25435,6 @@
     "docs/benchmarkfolder/points/qcd-3.json": "4a8633b45f2f6020af0f4c529276795e6663ca0b86662b647834a8d9bad23880",
     "docs/benchmarkfolder/points/qcd-4.dat": "d66b0c04ee3d8e6ed90ef1fbf97abb9cd444d9ea1f84a508850688bff317b52d",
     "docs/benchmarkfolder/points/qcd-4.json": "3fe89adca7af12f2fdadba12e47161929fd8faef2228e8aef804766565e30644",
-    "docs/benchmarkfolder/provenance.json": "e80269c63fe9c5b4f1a9b34d798751c0bab037ed1e5c5ece2b67e9b10b9dc54d"
+    "docs/benchmarkfolder/provenance.json": "342787cc8ade1962c26dbc545793653a94a346a5b878ef3474d25f4eeb2b5ed6"
   }
 }

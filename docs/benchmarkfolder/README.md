@@ -115,8 +115,10 @@ The styling is attributed in the source to the
 [pyamplicol reference report](https://github.com/MadGraphTeam/pyamplicol/blob/loop/docs/performance_reports/loop/benchmarks.typ).
 The final PDF must also be visually inspected.
 
-The current report is an intermediate snapshot: four of eight core cases pass
-both correctness and performance. The seven-target series for `qcd-1`, `ew-1`,
+The current report is an intermediate snapshot: four of eight core cases passed
+both correctness and performance for their recorded implementation. These are
+historical results pending recertification after the model-precision correction
+described below. The seven-target series for `qcd-1`, `ew-1`,
 `qcd-2` and `ew-2` contains 196 accepted measurements. The subsequent `ew-3`
 calibration failed on original Collier and remains outstanding, together with
 the two four-body cases and QCD three-body performance.
@@ -133,3 +135,24 @@ promotion:
 python tools/ninjars_benchmark_extract.py verify --destination \
   docs/benchmarkfolder/experiments/persistent-workers/runtime-v1-core-small-completed-20261020
 ```
+
+## Generated model precision correction
+
+The EW3 investigation found numerical defects before loop reduction: generated
+quadruple-precision helpers used default-kind complex constructors, mistyped pi
+constants, and default-kind real casts. These are corrected in `export_v4.py` and
+`ufo_expression_parsers.py`; the UFO input and parameter card are unchanged.
+Compiled analytic tests exercise branch continuation, threshold sides, and
+binary128 inputs distinguishable only beyond double precision. The same helpers
+also occur in QCD counterterms.
+
+The original archive and its timings remain unchanged. Original higher-precision
+answers affected by these defects must remain visible as numerical discrepancies.
+Final correctness needs separately identified, minimally corrected original
+exports alongside all four corrected candidate backends. Performance continues
+to use the unmodified original Ninja denominator. The existing frozen seven-target
+protocol has not yet been revised to encode this distinction, so its earlier
+accepted results do not certify the repaired implementation.
+
+See `experiments/ew3-collier-stability/` for the failed original runs, precision
+diagnostics, independent audit, fresh CLI export, and benchmark policy review.

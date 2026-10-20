@@ -1,0 +1,65 @@
+{
+  "scope": "Copied generated helper functions only; no production/model change",
+  "source": ".benchmark-work/outputs/candidate/ew-3/Source/MODEL/model_functions.f",
+  "source_sha256": "2e83c5986a2fab8d2672eb7c3e9d948da3cbfaa250f1c5bb18803535aa08c01b",
+  "compiler": "GNU Fortran (GCC) 15.3.0",
+  "command": [
+    "gfortran",
+    "-O3",
+    "-ffixed-line-length-132",
+    "original.f",
+    "fixed.f",
+    "probe.f90",
+    "-o",
+    "probe"
+  ],
+  "kind_fixes": 12,
+  "passed": true,
+  "tests": [
+    {
+      "name": "REGLOG_1",
+      "old_absolute_error": "7.689300634975752507295068897018741216E-0009",
+      "fixed_absolute_error": "0.000000000000000000000000000000000000E+0000"
+    },
+    {
+      "name": "REGSQRT_1",
+      "old_absolute_error": "4.271833658662535327938464242395044798E-0009",
+      "fixed_absolute_error": "0.000000000000000000000000000000000000E+0000"
+    },
+    {
+      "name": "REGLOG_2",
+      "old_absolute_error": "7.689300634975752507295068897018741216E-0009",
+      "fixed_absolute_error": "0.000000000000000000000000000000000000E+0000"
+    },
+    {
+      "name": "REGSQRT_2",
+      "old_absolute_error": "4.271833658662535327938464204691820420E-0009",
+      "fixed_absolute_error": "0.000000000000000000000000000000000000E+0000"
+    },
+    {
+      "name": "REGLOGP_SHEET",
+      "old_absolute_error": "1.998623963357142177491221128694050419E-0004",
+      "fixed_absolute_error": "0.000000000000000000000000000000000000E+0000"
+    },
+    {
+      "name": "REGLOGM_SHEET",
+      "old_absolute_error": "1.998623963357142177491221128694050419E-0004",
+      "fixed_absolute_error": "0.000000000000000000000000000000000000E+0000"
+    },
+    {
+      "name": "GRREGLOG_SHEET",
+      "old_absolute_error": "1.998623963357142177491221128694050419E-0004",
+      "fixed_absolute_error": "0.000000000000000000000000000000000000E+0000"
+    }
+  ],
+  "files_sha256": {
+    "original.f": "94799f5192ef7c2dc8cebf61efe0118d24e056ae5397daafca6fd05c0d2d99e3",
+    "fixed.f": "6a70a5c30dd97b7dd97934c2e59ac79430f0f703af8ea31640735a0adf83bd97",
+    "probe.f90": "41273a65f82c090b9e30bb8e7e8a5185271f2c7e3b4f90c26f00b8233feeec2b"
+  },
+  "origins": [
+    "madgraph/iolibs/export_v4.py:13049",
+    "madgraph/iolibs/export_v4.py:13052",
+    "madgraph/iolibs/export_v4.py:13044"
+  ]
+}

@@ -1,0 +1,280 @@
+{
+  "acceptance_eligible": false,
+  "couplings": 20,
+  "internal_parameters": true,
+  "model_archive_sha256": "a95bcaf8697832f7a610cafe3f9d7f52940bce0ee9cde1e359a649c3d954be92",
+  "parameter_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+  "executable_sha256": "ff7c57480c93e81ef3b2ea9f723fa60934534bf61169fda16c684bcf2e189966",
+  "command": [
+    "gfortran",
+    "-ffixed-line-length-132",
+    "-I/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/persistent-workers/runtime-v1-core-small-20261020/ew-3-baseline-7/outputs/baseline/ew-3/Source/MODEL",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ew3-collier-stability/internal-parameters/probe.f",
+    "-L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/persistent-workers/runtime-v1-core-small-20261020/ew-3-baseline-7/outputs/baseline/ew-3/lib",
+    "-lmodel",
+    "-o",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ew3-collier-stability/internal-parameters/probe"
+  ],
+  "differences": [
+    {
+      "name": "MDL_SWCOUP_UV_EW_FIN_",
+      "double": [
+        0.02208791642656019,
+        0.0
+      ],
+      "quadruple": [
+        0.022087918360325476,
+        0.0
+      ],
+      "absolute_difference": 1.933765286787903e-09,
+      "relative_difference": 8.75485527989523e-08
+    },
+    {
+      "name": "MDL_ECOUP_DGMUA0_UV_EW_FIN_",
+      "double": [
+        0.032514138260934855,
+        0.0
+      ],
+      "quadruple": [
+        0.032514140448358916,
+        0.0
+      ],
+      "absolute_difference": 2.1874240613284357e-09,
+      "relative_difference": 6.727608453320934e-08
+    },
+    {
+      "name": "MDL_AAWCFT_UV_EW_FIN_",
+      "double": [
+        0.005739943649614423,
+        0.0
+      ],
+      "quadruple": [
+        0.005739943781771936,
+        0.0
+      ],
+      "absolute_difference": 1.3215751323153446e-10,
+      "relative_difference": 2.302418251050136e-08
+    },
+    {
+      "name": "MDL_ZZWCFT_UV_EW_FIN_",
+      "double": [
+        -0.009919877981223523,
+        0.0
+      ],
+      "quadruple": [
+        -0.009919877884910057,
+        0.0
+      ],
+      "absolute_difference": 9.631346588323542e-11,
+      "relative_difference": 9.709138163346245e-09
+    },
+    {
+      "name": "MDL_TWCFT_BAR_UV_EW_L_FIN_",
+      "double": [
+        -0.0241972938823608,
+        0.0
+      ],
+      "quadruple": [
+        -0.024197293711134077,
+        0.0
+      ],
+      "absolute_difference": 1.7122672377190007e-10,
+      "relative_difference": 7.0762757440707e-09
+    },
+    {
+      "name": "MDL_TWCFT_UV_EW_L_FIN_",
+      "double": [
+        -0.0241972938823608,
+        0.0
+      ],
+      "quadruple": [
+        -0.024197293711134077,
+        0.0
+      ],
+      "absolute_difference": 1.7122672377190007e-10,
+      "relative_difference": 7.0762757440707e-09
+    },
+    {
+      "name": "MDL_ZAWCFT_UV_EW_FIN_",
+      "double": [
+        0.022653347067970165,
+        -0.0
+      ],
+      "quadruple": [
+        0.022653346959683945,
+        -0.0
+      ],
+      "absolute_difference": 1.0828622026837209e-10,
+      "relative_difference": 4.780142199007724e-09
+    },
+    {
+      "name": "MDL_TMASS_UV_EW_FIN_",
+      "double": [
+        4.425839382967471,
+        0.0
+      ],
+      "quadruple": [
+        4.425839404109656,
+        0.0
+      ],
+      "absolute_difference": 2.1142184891687066e-08,
+      "relative_difference": 4.77698871587055e-09
+    },
+    {
+      "name": "MDL_TWCFT_BAR_UV_EW_R_FIN_",
+      "double": [
+        -0.035040914188521524,
+        0.0
+      ],
+      "quadruple": [
+        -0.035040914029302435,
+        0.0
+      ],
+      "absolute_difference": 1.5921908930183193e-10,
+      "relative_difference": 4.543805234224964e-09
+    },
+    {
+      "name": "MDL_TWCFT_UV_EW_R_FIN_",
+      "double": [
+        -0.035040914188521524,
+        0.0
+      ],
+      "quadruple": [
+        -0.035040914029302435,
+        0.0
+      ],
+      "absolute_difference": 1.5921908930183193e-10,
+      "relative_difference": 4.543805234224964e-09
+    },
+    {
+      "name": "MDL_ECOUP_A0_UV_EW_FIN_",
+      "double": [
+        -0.008924759284399036,
+        0.0
+      ],
+      "quadruple": [
+        -0.008924759321535048,
+        0.0
+      ],
+      "absolute_difference": 3.713601127997013e-11,
+      "relative_difference": 4.161009831420617e-09
+    },
+    {
+      "name": "MDL_EWCFT_BAR_UV_EW_L_FIN_",
+      "double": [
+        -0.007285127606662477,
+        -0.0
+      ],
+      "quadruple": [
+        -0.007285127630104349,
+        -0.0
+      ],
+      "absolute_difference": 2.344187170766343e-11,
+      "relative_difference": 3.217770902296143e-09
+    },
+    {
+      "name": "MDL_EWCFT_UV_EW_L_FIN_",
+      "double": [
+        -0.007285127606662477,
+        -0.0
+      ],
+      "quadruple": [
+        -0.007285127630104349,
+        -0.0
+      ],
+      "absolute_difference": 2.344187170766343e-11,
+      "relative_difference": 3.217770902296143e-09
+    },
+    {
+      "name": "MDL_AZWCFT_UV_EW_FIN_",
+      "double": [
+        -0.035533909972194674,
+        0.0
+      ],
+      "quadruple": [
+        -0.035533910082206174,
+        0.0
+      ],
+      "absolute_difference": 1.1001149990974568e-10,
+      "relative_difference": 3.0959581890998994e-09
+    },
+    {
+      "name": "MDL_EWCFT_BAR_UV_EW_R_FIN_",
+      "double": [
+        -0.0007361523278835836,
+        -0.0
+      ],
+      "quadruple": [
+        -0.0007361523297702788,
+        -0.0
+      ],
+      "absolute_difference": 1.8866952271323623e-12,
+      "relative_difference": 2.562914156260455e-09
+    },
+    {
+      "name": "MDL_EWCFT_UV_EW_R_FIN_",
+      "double": [
+        -0.0007361523278835836,
+        -0.0
+      ],
+      "quadruple": [
+        -0.0007361523297702788,
+        -0.0
+      ],
+      "absolute_difference": 1.8866952271323623e-12,
+      "relative_difference": 2.562914156260455e-09
+    },
+    {
+      "name": "MDL_G0WCFT_UV_EW_FIN_",
+      "double": [
+        -0.0446344745769158,
+        0.0
+      ],
+      "quadruple": [
+        -0.044634474550811876,
+        0.0
+      ],
+      "absolute_difference": 2.6103924577469684e-11,
+      "relative_difference": 5.848377252091637e-10
+    },
+    {
+      "name": "MDL_ZMASS2_UV_EW_FIN_",
+      "double": [
+        -374.73311512809823,
+        0.0
+      ],
+      "quadruple": [
+        -374.73311499707324,
+        0.0
+      ],
+      "absolute_difference": 1.3102498996886425e-07,
+      "relative_difference": 3.496488158621232e-10
+    },
+    {
+      "name": "MDL_R2SFF_FIN_",
+      "double": [
+        0.00295908143587821,
+        0.0
+      ],
+      "quadruple": [
+        0.00295908143587821,
+        0.0
+      ],
+      "absolute_difference": 0.0,
+      "relative_difference": 0.0
+    },
+    {
+      "name": "MDL_R2VV_FIN_",
+      "double": [
+        0.009608848878248947,
+        0.0
+      ],
+      "quadruple": [
+        0.009608848878248947,
+        0.0
+      ],
+      "absolute_difference": 0.0,
+      "relative_difference": 0.0
+    }
+  ]
+}

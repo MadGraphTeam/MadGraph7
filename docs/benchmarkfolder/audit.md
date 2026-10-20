@@ -49,6 +49,33 @@ calibration and hides final timings until the required repetition count is reach
 Its correctness calculation independently compares all backend pairs and all four
 coefficients in every point/order slot, rather than trusting a pass flag alone.
 
+## Generated MP model arithmetic
+
+The EW3 discrepancy investigation identified errors upstream of reduction.
+The model exporter used 19 two-argument `CMPLX` calls without `KIND=16`, including
+trajectory construction, and six incorrect pi literals. The MP expression parser
+also cast real binary128 inputs through default-kind `REAL`. These have been
+corrected with explicit kinds and the full-precision pi literal.
+
+`tests/unit_tests/iolibs/test_model_function_precision.py` compiles actual exported
+helpers and parsed expressions. Its controls include axis logarithms/square
+roots, both continuation sheets, the massless B0 continuation, a trajectory on
+both sides of a two-particle threshold, and `2^-100` input differences. The
+independent `mp-helper-audit` evidence shows the original axis error around
+`8e-9`, continuation error around `2e-4`, and a wrong square-root sign below
+threshold. Corrections reproduce the analytic binary128 controls.
+
+The untouched original benchmark remains a timing reference, while its affected
+QP answers remain documented numerical failures. Previously accepted process
+results need recertification with the repaired model generator, including QCD
+counterterms that use the same helpers.
+
+The separate legacy `MP_B0F` helper cache compares inputs approximately at relative
+`1e-14`. This existing behavior is outside the present correction and remains an
+audit limitation for arbitrary changed QP model inputs; the core EW model uses
+expanded expressions rather than this helper. NinjaRS's oneloopmaster bridge
+does not use that generated-model cache.
+
 ## Rational-term diagnostic convention
 
 The arbitrary-precision four-photon rank-four box replay agrees with original

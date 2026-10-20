@@ -716,9 +716,9 @@ class UFOExpressionParserMPFortran(UFOExpressionParserFortran):
         elif p[1] == 'sec': p[0] = '1e0_16/sin' + p[2]
         elif p[1] == 'acsc': p[0] = 'asin(1e0_16/' + p[2] + ')'
         elif p[1] == 'asec': p[0] = 'acos(1e0_16/' + p[2] + ')'
-        elif p[1] in ['atan', 'cmath.atan'] : p[0] = 'atan(real' + p[2]+')'
-        elif p[1] in ['tan', 'cmath.tan']: p[0] = 'tan(real' + p[2]+')'
-        elif p[1] == 're': p[0] = 'real' + p[2]
+        elif p[1] in ['atan', 'cmath.atan'] : p[0] = 'atan(real' + p[2][:-1]+',KIND=16))'
+        elif p[1] in ['tan', 'cmath.tan']: p[0] = 'tan(real' + p[2][:-1]+',KIND=16))'
+        elif p[1] == 're': p[0] = 'real' + p[2][:-1]+',KIND=16)'
         elif p[1] == 'im': p[0] = 'imag' + p[2]
         elif p[1] == 'arg': p[0] = 'mp_arg(CMPLX(' + p[2] + ',KIND=16))'
         elif p[1] == 'cmath.sqrt' or p[1] == 'sqrt': p[0] = 'sqrt(CMPLX(' + p[2] + ',KIND=16))'
@@ -736,9 +736,9 @@ class UFOExpressionParserMPFortran(UFOExpressionParserFortran):
         
         if p[2] == '.real':
             if p[1].startswith('('):
-                p[0] = 'real' +p[1]
+                p[0] = 'real' +p[1][:-1]+',KIND=16)'
             else:
-                p[0] = 'real(%s)' % p[1]
+                p[0] = 'real(%s,KIND=16)' % p[1]
         elif p[2] == '.imag':
             if p[1].startswith('('):
                 p[0] = 'imag' +p[1]

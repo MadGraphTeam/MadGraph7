@@ -113,6 +113,8 @@
   #data.summary.performance_passed / #data.summary.cases performance gates passed.
   Missing or incomplete observations remain pending. Measurements and validation are
   reported separately; an empty card is never treated as a speedup.
+  These results describe the recorded implementation before the model-precision
+  correction; the repaired generator requires a fresh validation series.
 ]
 
 #pagebreak()

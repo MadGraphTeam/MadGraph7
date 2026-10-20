@@ -283,3 +283,30 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   Numerator and integral precision are being isolated using the original
   backends and unchanged physical points. These diagnostic variants are not
   acceptance evidence and do not relax comparison or stability thresholds.
+- Those EW discrepancies have now been traced to generated MP model code before
+  reduction. Nineteen default-kind `CMPLX` constructors round to single precision;
+  six continuation constants contain a mistyped pi; the MP expression parser
+  also emits default-kind `REAL` casts for real inputs. The production generators
+  now specify kind 16 and the correct binary128 pi literal. Compiled mathematical
+  controls cover axis inputs, logarithmic sheets, a threshold-crossing square-root
+  trajectory, a massless B0 continuation, and inputs differing by `2^-100`.
+  An independent audit reproduced the defects and reviewed the corrections.
+- A fresh actual CLI EW3 export with both generator corrections builds, retains
+  the exact original parameter card, and changes only `model_functions.f` and
+  `mp_intparam_definition.inc` among generated model sources. Its 100-point
+  four-backend diagnostic now passes all six coefficient comparisons; the
+  largest tolerance fraction is 0.000913. NinjaRS uses 98 DP evaluations and
+  two genuine QP rescues. Scoped original-plus-helper-only references also
+  agree across CutTools, Ninja and Collier. Full final-policy recertification
+  of this export and the other seven cases remains required.
+  Existing QCD model counterterms also call these helpers, so previously accepted
+  measurements are historical evidence for their recorded source, not final
+  validation of the corrected generator.
+- Benchmark accounting after this numerical repair must keep the original source,
+  measurements and numerical discrepancies intact. The performance denominator
+  remains the literal original MadLoop+Ninja timing. Correctness must additionally
+  compare all corrected candidate backends with separately identified original
+  exports carrying only the two generated model corrections, with exact source
+  hashes and all 100 points/orders. No incorrect original QP value is silently
+  relabelled or excluded. A versioned correctness policy and refreshed worker
+  proof are required before promoting new final measurements.

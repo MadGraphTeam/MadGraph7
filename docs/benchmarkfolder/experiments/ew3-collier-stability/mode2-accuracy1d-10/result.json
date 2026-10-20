@@ -1,0 +1,204 @@
+{
+  "acceptance_eligible": false,
+  "settings": {
+    "COLLIERMode": 2,
+    "COLLIERRequiredAccuracy": "1d-10"
+  },
+  "command": [
+    "taskset",
+    "-c",
+    "5",
+    "./check_fresh",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/points/ew-3.dat",
+    "1"
+  ],
+  "executable_sha256": "d16a5f7f4dc4d143eec32491c455c80954ad7a72227775f2788d5f5fb97d262f",
+  "points_sha256": "c030e6c68d53e9ecc1e2ac5ee99e4f81d97a80268dcbe3a0dc76065655a492a1",
+  "parameter_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+  "status_counts": {
+    "217": 95,
+    "410": 5
+  },
+  "unstable_points": [
+    {
+      "point": 61,
+      "order": 0,
+      "status": 410,
+      "coefficients": [
+        4.976461277425097e-05,
+        -1.4819811944573624e-06,
+        5.659401373852602e-07,
+        -1.19545161009434e-07
+      ],
+      "accuracy": 8.939347932230535e-09
+    },
+    {
+      "point": 68,
+      "order": 0,
+      "status": 410,
+      "coefficients": [
+        6.889238406532695e-07,
+        -4.380613292768506e-09,
+        5.989361897557476e-09,
+        -1.6549412683629845e-09
+      ],
+      "accuracy": 3.5097139705505496e-08
+    },
+    {
+      "point": 74,
+      "order": 0,
+      "status": 410,
+      "coefficients": [
+        2.809495079862348e-07,
+        -1.1182824329969437e-09,
+        1.5326584038268356e-09,
+        -6.749003411658987e-10
+      ],
+      "accuracy": 2.451011295003883e-09
+    },
+    {
+      "point": 90,
+      "order": 0,
+      "status": 410,
+      "coefficients": [
+        6.434743989563619e-06,
+        1.8712314176907533e-08,
+        4.028845301682512e-08,
+        -1.545762064398889e-08
+      ],
+      "accuracy": 1.187412547627427e-09
+    },
+    {
+      "point": 92,
+      "order": 0,
+      "status": 410,
+      "coefficients": [
+        1.0887795643094733e-05,
+        2.1604955706704558e-08,
+        7.078714899919754e-08,
+        -2.615479574528806e-08
+      ],
+      "accuracy": 4.067462215563798e-09
+    }
+  ],
+  "comparisons": {
+    "baseline-1": {
+      "passed": false,
+      "worst_tolerance_fraction": 1.499730125251283,
+      "failures": [
+        {
+          "point": 49,
+          "order": 0,
+          "coefficient": 1,
+          "tolerance_fraction": 1.499730125251283,
+          "values": [
+            1.3897204907715374e-08,
+            1.3897207029632442e-08
+          ]
+        },
+        {
+          "point": 49,
+          "order": 1,
+          "coefficient": 1,
+          "tolerance_fraction": 1.499730125251283,
+          "values": [
+            1.3897204907715374e-08,
+            1.3897207029632442e-08
+          ]
+        }
+      ]
+    },
+    "baseline-6": {
+      "passed": false,
+      "worst_tolerance_fraction": 8.37014691283353,
+      "failures": [
+        {
+          "point": 49,
+          "order": 0,
+          "coefficient": 1,
+          "tolerance_fraction": 1.4997304222459855,
+          "values": [
+            1.3897204907715374e-08,
+            1.3897207029632862e-08
+          ]
+        },
+        {
+          "point": 49,
+          "order": 1,
+          "coefficient": 1,
+          "tolerance_fraction": 1.4997304222459855,
+          "values": [
+            1.3897204907715374e-08,
+            1.3897207029632862e-08
+          ]
+        },
+        {
+          "point": 78,
+          "order": 0,
+          "coefficient": 1,
+          "tolerance_fraction": 8.37014691283353,
+          "values": [
+            -4.209697580359953e-09,
+            -4.209693409437393e-09
+          ]
+        },
+        {
+          "point": 78,
+          "order": 1,
+          "coefficient": 1,
+          "tolerance_fraction": 8.37014691283353,
+          "values": [
+            -4.209697580359953e-09,
+            -4.209693409437393e-09
+          ]
+        }
+      ]
+    },
+    "candidate-8": {
+      "passed": false,
+      "worst_tolerance_fraction": 8.370146813235086,
+      "failures": [
+        {
+          "point": 49,
+          "order": 0,
+          "coefficient": 1,
+          "tolerance_fraction": 1.4997303988605757,
+          "values": [
+            1.3897204907715374e-08,
+            1.3897207029632829e-08
+          ]
+        },
+        {
+          "point": 49,
+          "order": 1,
+          "coefficient": 1,
+          "tolerance_fraction": 1.4997303988605757,
+          "values": [
+            1.3897204907715374e-08,
+            1.3897207029632829e-08
+          ]
+        },
+        {
+          "point": 78,
+          "order": 0,
+          "coefficient": 1,
+          "tolerance_fraction": 8.370146813235086,
+          "values": [
+            -4.209697580359953e-09,
+            -4.209693409437443e-09
+          ]
+        },
+        {
+          "point": 78,
+          "order": 1,
+          "coefficient": 1,
+          "tolerance_fraction": 8.370146813235086,
+          "values": [
+            -4.209697580359953e-09,
+            -4.209693409437443e-09
+          ]
+        }
+      ]
+    }
+  }
+}
