@@ -315,7 +315,8 @@ class PolicyV2Test(unittest.TestCase):
     def publish_fixture(self, mutate=None):
         timing = self.make_series("timed", "both", [1, 6, 7, 8], 7)
         refs = self.make_series("refs", "baseline", [1, 6, 7], 2)
-        proof = {"entries": [{"role": item["role"], "binding": copy.deepcopy(item)}
+        proof = {"entries": [{"role": item["role"], "binding": copy.deepcopy(item),
+                             "status_counts": self.runtime_counts(item["backend"])}
                             for group in (timing, refs) for item in group["targets"].values()]}
         if mutate:
             mutate(timing, refs)
@@ -348,16 +349,49 @@ class PolicyV2Test(unittest.TestCase):
         item["libraries"]["libiregi.a"] = "unexpected linked reduction library"
         self.assertNotEqual(policy.reducer_signature(item), expected)
 
-    def test_metadata_and_mixed_representative_runtime_are_rejected(self):
+    @staticmethod
+    def runtime_counts(backend):
+        counts = {str(210 + backend): 100}
+        if backend != 7:
+            counts[str({1: 329, 6: 328, 8: 322}[backend])] = 1
+        return counts
+
+    def test_metadata_tampering_is_rejected(self):
         item = self.runtime_item()
-        other = copy.deepcopy(item)
-        other["libraries"]["ninjars_lib/libninjars.a"] = "changed"
-        with self.assertRaisesRegex(RuntimeError, "mixes reduction runtime"):
-            policy.proof_runtime_signatures([{"binding": item}, {"binding": other}])
         metadata = next(iter(item["runtime_metadata"].values()))
         self.put(policy.path(metadata["path"]), "corruption")
         with self.assertRaisesRegex(RuntimeError, "Changed bound evidence"):
             policy.reducer_signature(item)
+
+    def test_distinct_full_runtime_groups_each_need_dp_and_qp(self):
+        first = self.runtime_item()
+        second = copy.deepcopy(first)
+        second["libraries"]["libiregi.a"] = "additional capability"
+        entries = [{"binding": first, "status_counts": self.runtime_counts(8)},
+                   {"binding": second, "status_counts": self.runtime_counts(8)}]
+        groups = policy.proof_runtime_signatures(entries)["candidate_corrected/8"]
+        self.assertEqual(len(groups), 2)
+        for group in groups.values():
+            self.assertEqual(group["precisions"], ["dp", "qp"])
+            self.assertEqual(len(group["entry_indexes"]), 1)
+        policy.validate_proven_runtimes({"entries": entries}, {"targets": {"target": second}})
+        entries[1]["status_counts"] = {"218": 100}
+        with self.assertRaisesRegex(RuntimeError, "group lacks DP/QP"):
+            policy.proof_runtime_signatures(entries)
+
+    def test_dp_and_qp_cannot_be_unioned_across_runtime_signatures(self):
+        first = self.runtime_item()
+        second = copy.deepcopy(first)
+        second["libraries"]["ninjars_lib/libninjars.a"] = "different Rust archive"
+        entries = [{"binding": first, "status_counts": {"218": 100}},
+                   {"binding": second, "status_counts": {"322": 100}}]
+        with self.assertRaisesRegex(RuntimeError, "group lacks DP/QP"):
+            policy.proof_runtime_signatures(entries)
+
+    def test_collier_runtime_group_requires_dp_but_has_no_qp_requirement(self):
+        item = self.runtime_item(backend=7)
+        groups = policy.proof_runtime_signatures([{"binding": item, "status_counts": {"217": 10}}])
+        self.assertEqual(next(iter(groups["candidate_corrected/7"].values()))["precisions"], ["dp"])
 
     def test_missing_ninjars_interface_or_runtime_refresh_is_rejected(self):
         item = self.runtime_item()

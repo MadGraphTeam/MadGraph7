@@ -463,13 +463,27 @@ def refresh_runtime_bindings(filename, correction_path, destination):
 
 def proof_runtime_signatures(entries):
     signatures = {}
-    for entry in entries:
+    for index, entry in enumerate(entries):
         item = entry["binding"]
         key = f"{item['role']}/{item['backend']}"
         signature = reducer_signature(item)
-        if key in signatures and signatures[key] != signature:
-            raise RuntimeError("Representative proof mixes reduction runtime identities")
-        signatures[key] = signature
+        group = signatures.setdefault(key, {}).setdefault(signature["identity_sha256"],
+            {"signature": signature, "precisions": set(), "entry_indexes": []})
+        group["entry_indexes"].append(index)
+        counts = entry.get("status_counts", {})
+        if not counts:
+            raise RuntimeError("Representative runtime has no retained numerical statuses")
+        for code, count in counts.items():
+            if not isinstance(count, int) or count <= 0:
+                raise RuntimeError("Invalid representative runtime status count")
+            bench.validate_status(int(code), item["backend"])
+            group["precisions"].add({2: "dp", 3: "qp"}[int(code) // 100])
+    for key, groups in signatures.items():
+        required = {"dp"} if key.endswith("/7") else {"dp", "qp"}
+        for identity, group in groups.items():
+            if not required.issubset(group["precisions"]):
+                raise RuntimeError(f"Representative runtime group lacks DP/QP coverage: {key}: {identity}")
+            group["precisions"] = sorted(group["precisions"])
     return signatures
 
 
@@ -477,7 +491,9 @@ def validate_proven_runtimes(proof, bindings):
     signatures = proof_runtime_signatures(proof["entries"])
     for item in bindings["targets"].values():
         key = f"{item['role']}/{item['backend']}"
-        if signatures.get(key) != reducer_signature(item):
+        signature = reducer_signature(item)
+        group = signatures.get(key, {}).get(signature["identity_sha256"])
+        if group is None or group["signature"] != signature:
             raise RuntimeError(f"Reduction runtime differs from refreshed representative proof: {key}")
 
 
@@ -725,7 +741,7 @@ def create_proof(policy_path, binding_paths, output=None):
                                                data["answer_dimensions"]["born_orders"] == 0)
             coverage[role]["split_orders"] |= data["answer_dimensions"]["loop_orders"] > 1
             entries.append({"role": role, "case": case_id, "backend": backend, **parity,
-                            "binding": binding})
+                            "binding": binding, "status_counts": data["status_counts"]})
     runtimes = proof_runtime_signatures(entries)
     for role, covered in coverage.items():
         qp = {1, 6, 8} if role == "candidate_corrected" else {1, 6}

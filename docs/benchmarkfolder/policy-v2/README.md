@@ -111,10 +111,12 @@ final candidate generator identity; historical v1 proof is insufficient.
 
 `policy.json` is the superseded pre-proof policy retained with the initial
 implementation commit. `policy-offline.json` retains the subsequent in-memory
-proof-validation revision. Neither has a completed dataset. `policy-runtime.json`
-adds strict reduction-runtime binding to the refreshed proof. Validation still
-needs no disposable work directory. The collection adapter and numerical data
-are unchanged.
+proof-validation revision. `policy-runtime.json` added strict reduction-runtime
+binding but rejected the original exports' different IREGI capabilities.
+`policy-runtime-groups.json` retains each complete runtime configuration as its
+own independently validated group. These earlier revisions have no completed
+dataset. Validation still needs no disposable work directory. The collection
+adapter and numerical data are unchanged.
 
 After implementation review/freeze, seal the policy:
 
@@ -122,7 +124,7 @@ After implementation review/freeze, seal the policy:
 python tools/ninjars_benchmark_policy_v2.py policy \
   --correction docs/benchmarkfolder/policy-v2/model-correction.json \
   --config docs/benchmarkfolder/policy-v2/cases.json \
-  --output docs/benchmarkfolder/policy-v2/policy-runtime.json
+  --output docs/benchmarkfolder/policy-v2/policy-runtime-groups.json
 ```
 
 The timing adapter writes `binding-spec.json` with the report path, role map and
@@ -154,8 +156,11 @@ python tools/ninjars_benchmark_policy_v2.py runtime-bind \
 This checks the existing executable, source and library hashes against the live
 worker, preserves its original binding, and retains external Fortran modules and
 NinjaRS native-link metadata. It does not reevaluate physics or rewrite measured
-data. Every role/backend must use one identical runtime signature throughout
-the proof and final timing/reference series. The signature includes all linked
+data. Each distinct full signature forms a separate group for its role/backend.
+Each group independently needs fresh/persistent DP and actual QP parity for
+CutTools, Ninja and NinjaRS; Collier needs DP. Evidence from different signatures
+cannot supply each other's precision coverage. Every final timing/reference
+target must match a completely covered group. The signature includes all linked
 reduction/scalar libraries, modules, native-link metadata and numerical linker
 definitions; only process-specific MODEL and DHELAS archives are excluded.
 Changing a Rust archive or scalar library requires refreshed representative
@@ -163,12 +168,12 @@ evidence even if the generator tree is unchanged.
 
 ```sh
 python tools/ninjars_benchmark_policy_v2.py proof \
-  --policy docs/benchmarkfolder/policy-v2/policy-runtime.json \
+  --policy docs/benchmarkfolder/policy-v2/policy-runtime-groups.json \
   --bindings representative-runtime-bindings-1.json representative-runtime-bindings-2.json \
   --output docs/benchmarkfolder/policy-v2/representative-proof.json
 
 python tools/ninjars_benchmark_policy_v2.py publish \
-  --policy docs/benchmarkfolder/policy-v2/policy-runtime.json \
+  --policy docs/benchmarkfolder/policy-v2/policy-runtime-groups.json \
   --proof docs/benchmarkfolder/policy-v2/representative-proof.json \
   --bindings timing-runtime-bindings.json corrected-reference-runtime-bindings.json \
   --output docs/benchmarkfolder/policy-v2/datasets

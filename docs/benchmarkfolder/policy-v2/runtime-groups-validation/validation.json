@@ -1,0 +1,23 @@
+{
+  "command": [
+    "python",
+    "-m",
+    "unittest",
+    "tests.unit_tests.various.test_ninjars_benchmark_policy_v2",
+    "tests.unit_tests.various.test_ninjars_benchmark_workers",
+    "tests.unit_tests.various.test_ninjars_benchmark_extract",
+    "tests.unit_tests.loop.test_ninjars_report_v2",
+    "-q"
+  ],
+  "exit_code": 0,
+  "tests_passed": 60,
+  "independent_review": "audit_fortran independently reviewed and passed40 policy/report tests; root reviewed exact signatures, per-group precision coverage and publication membership.",
+  "reason": "Original qcd1/2/3 and ew1/2/3 exports lack IREGI; original qcd4/ew4 and controls link IREGI. Distinct complete runtime inventories remain separate exact signatures.",
+  "requirements": "Every full runtime signature independently needs fresh/reused DP and QP coverage, except Collier DP only. Final targets must match a covered exact signature; all libraries, metadata and link inputs remain bound. Role-level loop-induced and mixed-order controls remain required.",
+  "files": {
+    "tools/ninjars_benchmark_policy_v2.py": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a",
+    "tests/unit_tests/various/test_ninjars_benchmark_policy_v2.py": "806cd19ee63f31f2af66079905469959ba3e83ef519b103dc0e7c4feb6d909d5",
+    "docs/benchmarkfolder/policy-v2/policy-runtime-groups.json": "d31d7e5c02c3c128891f8a60c656238b1b45dc0619efd13a7d9ab05c982100dd",
+    "docs/benchmarkfolder/policy-v2/runtime-groups-validation/tests.log": "34f5692f4d8a74b7b0477d9f6c3a9ab53c82bff003236cc814bf67df71c0c36c"
+  }
+}
