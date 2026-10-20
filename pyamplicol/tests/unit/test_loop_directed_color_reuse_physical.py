@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Physical witnesses for same-process full-bank LC/NLC reprojection.
+"""Physical witnesses for a named owner's full-bank LC/NLC reprojection.
 
 The independent projection oracle is test_loop_directed_color_reuse. These
 retained controls compare ordinary identity amplitudes and physical source sums;
@@ -76,7 +76,8 @@ def test_reused_actual_bank_keeps_complete_projected_sources_and_directions(
     from pyamplicol.loops import directed_color_projection
     from pyamplicol.loops.spin_sources import NativeSpinSourcePlan
 
-    key = ("ddgg", accuracy)
+    process_name = retained.get("process_name", "ddgg")
+    key = (process_name, accuracy)
     prepared = retained["prepared"][key]
     bank = prepared.bare.color_bank
     original = retained["models"][key]
@@ -216,6 +217,7 @@ def test_reused_actual_bank_keeps_complete_projected_sources_and_directions(
         # treating survival as a physical requirement of LC or NLC.
         print(
             "SAME_PROCESS_PROJECTED_ORDERED_PHYSICAL",
+            process_name,
             accuracy,
             arithmetic,
             "max_imaginary",

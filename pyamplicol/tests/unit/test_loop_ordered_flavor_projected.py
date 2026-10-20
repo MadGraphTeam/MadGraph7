@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: 0BSD
-"""Projected numerical witnesses remain distinct from exact flavour admission."""
+"""Independent numerical currents remain distinct from exact flavour admission.
+
+The two owners may share proved colour rectangles. Their numerical comparison
+does not constitute an independent colour-projection calculation.
+"""
 
 from decimal import Decimal, localcontext
 
@@ -26,6 +30,8 @@ def _actual_family_pair(pair, accuracy):
     if any(key not in pair["prepared"] for key in keys):
         pytest.skip("both actual projected complete-family banks are required")
     models = tuple(pair["models"][key] for key in keys)
+    assert models[0].bare.process is not models[1].bare.process
+    assert models[0].bare.model_state.plan is not models[1].bare.model_state.plan
     plans = tuple(pair["prepared"][key] for key in keys)
     banks = tuple(plan.bare.color_bank for plan in plans)
     for key, model, plan, bank in zip(keys, models, plans, banks, strict=True):
@@ -118,9 +124,12 @@ def test_independent_projected_ordered_members_keep_components_sources_and_direc
                     spin_sources=sources.prepare_decimal(vectors, ids),
                 )
                 assert all(
-                    lane == identity and status == "success"
+                    len(statuses) == len(result.channels)
+                    and all(
+                        lane == identity and status == "success"
+                        for lane, status in statuses
+                    )
                     for identity, statuses in zip(ids, result.statuses, strict=True)
-                    for lane, status in statuses
                 )
                 values = {name: _decimals(getattr(result, name)) for name in NAMES}
                 for name in NAMES[:-2]:
