@@ -1,0 +1,15 @@
+{
+  "all_samples_retained": true,
+  "backend": 6,
+  "cpu": 185,
+  "loops": 1,
+  "original_first_on_odd_pairs": true,
+  "pairs": 21,
+  "plan_sha256": "93739adaafb2ab08d70ade7ca63d2ffa4f72eb85b152f901e44a3cdb5312e8ba",
+  "point_sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41",
+  "points": 100,
+  "preparation_sha256": "e7de5ff4f0bbdd68c30c689d0ff372adaae7595494667687afc6f94a77a89f59",
+  "quiet_confirmed": true,
+  "reference_sha256": "6a9263e63cc221922b0d63301ba6429f6e46488c24de9e872bb01c26df32255f",
+  "runner_sha256": "c06ca65f1e4b92aef22ccff0c25a51b8286e3f11dffd4416715a6f163fdb05cc"
+}

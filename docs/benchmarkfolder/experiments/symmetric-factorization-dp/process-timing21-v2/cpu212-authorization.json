@@ -1,0 +1,9 @@
+{
+  "scope": "new preflight before any sample; unchanged fixed21 protocol",
+  "authorization": "Root authorized CPU212 after CPU5 preflight rejection; busy unrelated CPU5 driver PID1988220 parent1987237 is not disturbed. Repro compilation held. Same fixed21 order, inputs and thresholds.",
+  "previous_attempt": "quiet-cpu5-20261020-v1",
+  "previous_preflight_sha256": "a588c2ad8e751ce68d7b76c90f569e0b823322d0481efd7dbbfa416e0d6a5222",
+  "previous_amplitude_launches": 0,
+  "target_cpu": 212,
+  "exposed_thread_siblings": "212"
+}

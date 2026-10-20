@@ -192,3 +192,8 @@ Complete eight-process validation remains outstanding.
 The current NinjaRS QCD3 diagnostic is about twice the candidate Ninja time;
 the final performance requirement is unresolved. DP tensor factorization and
 MP tensor allocation experiments remain isolated from production.
+The separate DP factorization's fixed 21-pair process study finds no gain:
+runtime ratio 1.013546, with a 95% interval of [0.996598, 1.030949]. All
+16,800 coefficient comparisons pass and the two rescue points are unchanged.
+Its complete negative result and rejected preflights are retained under
+`experiments/symmetric-factorization-dp/process-timing21-v2/`.

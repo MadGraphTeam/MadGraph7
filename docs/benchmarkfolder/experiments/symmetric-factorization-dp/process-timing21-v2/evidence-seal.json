@@ -1,0 +1,1465 @@
+{
+  "bytes": 7057125,
+  "directories": [
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-plan-v1",
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1",
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2"
+  ],
+  "files": {
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-plan-v1/PLAN.md": {
+      "bytes": 6403,
+      "sha256": "f0e2409a36e7c1d1037ee2a763770831b0639e5c25cde07d75a722c56ebb3430"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-plan-v1/inventory-initial.py": {
+      "bytes": 3781,
+      "sha256": "6517f950a004351c22a3e4bc491a2795b1e78502694f953c65c9422315685c81"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-plan-v1/inventory-v2.json": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-plan-v1/inventory-v2.py": {
+      "bytes": 5457,
+      "sha256": "25c6bad3b076862508a64d58565e3543c52baa5825923066522bde9752f1c86c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-plan-v1/inventory-v2.stderr": {
+      "bytes": 522,
+      "sha256": "6058b8795e9f5020a1c8db9f2834df0ce1b162b61cd3c0c4bb4dfdaac2e12147"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-plan-v1/inventory-v3.json": {
+      "bytes": 62790,
+      "sha256": "5d3e5fe955ee416486062e873a2e2fbc38bf9f5b1a9c9b637c8afee88eb5e5e3"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-plan-v1/inventory-v3.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-plan-v1/inventory.json": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-plan-v1/inventory.py": {
+      "bytes": 5467,
+      "sha256": "9121a151c2f3e615dd4d6ec47c5794dcb270f82b56ed14b18cae85648f001abd"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-plan-v1/inventory.stderr": {
+      "bytes": 516,
+      "sha256": "e3e9ebacb0c5e8f1b1b30d7e4b85d7034b2939d6cb1190cc7e19ec48773a28b4"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/PLAN.md": {
+      "bytes": 4187,
+      "sha256": "d6b523e49597f0b6bbb278366d607d97c7b2f2e457910b3af81526df93ee944d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/factor/build.log": {
+      "bytes": 10112,
+      "sha256": "1788b121055031f0827ddd6d269531440efefdd0554384a3b942bd35b491633a"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/factor/check_sa.f": {
+      "bytes": 4175,
+      "sha256": "224391bcc102970b6474341db9739553764f363261f3c7bdadd120e114f0c50a"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/factor/coef_construction_1.f": {
+      "bytes": 98518,
+      "sha256": "3c0a3e4d1be7e5cc1f8bb15a27eb7a658bd49910cff7033105d1a2b2aff2bc3b"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/factor/coef_specs.inc": {
+      "bytes": 120,
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/factor/compiled-sources.json": {
+      "bytes": 29259,
+      "sha256": "163c12c460c0a17d2b232e599f961a3d302c4204f2900915aaf5bfa350c84076"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/factor/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "1dca06ff691666dab8f666692137cd040e407c276417611d5fcc744f5f82f19d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/factor/makefile": {
+      "bytes": 9618,
+      "sha256": "a31ec183615b59e6367ef43a2fd01e051b2180eb19f4b76339ba70d34e3a06ab"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/factor/polynomial.f": {
+      "bytes": 227383,
+      "sha256": "5ba2a8e300c9f5b430510e94b3136190f481e933793738fb5ad8a1e8dd9979e0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/original/build.log": {
+      "bytes": 2025,
+      "sha256": "688573354c27f1fe60600d826fccfc2949f50df9068149fef8571d8c63faba8b"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/original/check_sa.f": {
+      "bytes": 4175,
+      "sha256": "224391bcc102970b6474341db9739553764f363261f3c7bdadd120e114f0c50a"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/original/coef_construction_1.f": {
+      "bytes": 84846,
+      "sha256": "ec25695bedf1f52a895e19e0ee8a27f692823cb351cf4cd2d5a62d3a911ecf35"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/original/coef_specs.inc": {
+      "bytes": 120,
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/original/compiled-sources.json": {
+      "bytes": 29259,
+      "sha256": "b8b13c277a63a05e5eb57300998feb5e608f2dfb157c46af62a16387d0f9a3ec"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/original/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "1dca06ff691666dab8f666692137cd040e407c276417611d5fcc744f5f82f19d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/original/makefile": {
+      "bytes": 9618,
+      "sha256": "a31ec183615b59e6367ef43a2fd01e051b2180eb19f4b76339ba70d34e3a06ab"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/original/polynomial.f": {
+      "bytes": 193063,
+      "sha256": "2b994cd39c3e8729f4d48a1d3e08d2c337d288619cda320625f00375c7e66b92"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/preparation.json": {
+      "bytes": 7042,
+      "sha256": "10370f0c15126bbc5b97311472e84902a06accd10ba35d6fcc78c2fea600fd63"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/prepare.log": {
+      "bytes": 76,
+      "sha256": "24646d48d3a858b921c9f8d8815eb5c15a2756efd42235361cfc03df448e7537"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v1/prepare.py": {
+      "bytes": 4618,
+      "sha256": "5894880db50f8277d56b2d06d7741702908469097c5ab8ba70be74beefd271f7"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/PLAN.md": {
+      "bytes": 4641,
+      "sha256": "93739adaafb2ab08d70ade7ca63d2ffa4f72eb85b152f901e44a3cdb5312e8ba"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/README.md": {
+      "bytes": 4600,
+      "sha256": "784b3f21e43c174e28cb36f85780df32091cb8641c63310135b187720aad1562"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/cpu-idle-survey-20261020-v1.json": {
+      "bytes": 206866,
+      "sha256": "8117a128a8c9f59db31cecb8e01a7c420a4fc3a1dcf53711665a21d6ed703fea"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/cpu185-authorization.json": {
+      "bytes": 828,
+      "sha256": "7b52d7783ffded62c5f0533577f81975df69e831f49a2f24d0b43560bc09d3fb"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/cpu212-authorization.json": {
+      "bytes": 531,
+      "sha256": "907880002352da84f92b3ce5bc3497a81e1b42556d88e097fe5872ac7fd0f321"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/factor/build.log": {
+      "bytes": 10112,
+      "sha256": "53a97de08509ccb3928690ab1d64e4f900d08c4c0c35d379127d3ed9a9ad4158"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/factor/check_sa.f": {
+      "bytes": 4175,
+      "sha256": "224391bcc102970b6474341db9739553764f363261f3c7bdadd120e114f0c50a"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/factor/coef_construction_1.f": {
+      "bytes": 98518,
+      "sha256": "3c0a3e4d1be7e5cc1f8bb15a27eb7a658bd49910cff7033105d1a2b2aff2bc3b"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/factor/coef_specs.inc": {
+      "bytes": 120,
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/factor/compiled-sources.json": {
+      "bytes": 29259,
+      "sha256": "163c12c460c0a17d2b232e599f961a3d302c4204f2900915aaf5bfa350c84076"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/factor/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "1dca06ff691666dab8f666692137cd040e407c276417611d5fcc744f5f82f19d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/factor/makefile": {
+      "bytes": 9618,
+      "sha256": "a31ec183615b59e6367ef43a2fd01e051b2180eb19f4b76339ba70d34e3a06ab"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/factor/polynomial.f": {
+      "bytes": 227383,
+      "sha256": "5ba2a8e300c9f5b430510e94b3136190f481e933793738fb5ad8a1e8dd9979e0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/original/build.log": {
+      "bytes": 2025,
+      "sha256": "aee996a7b079af6de79388ffb3c417885e48b7785585773c8cc0b20a93f2cfec"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/original/check_sa.f": {
+      "bytes": 4175,
+      "sha256": "224391bcc102970b6474341db9739553764f363261f3c7bdadd120e114f0c50a"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/original/coef_construction_1.f": {
+      "bytes": 84846,
+      "sha256": "ec25695bedf1f52a895e19e0ee8a27f692823cb351cf4cd2d5a62d3a911ecf35"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/original/coef_specs.inc": {
+      "bytes": 120,
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/original/compiled-sources.json": {
+      "bytes": 29259,
+      "sha256": "b8b13c277a63a05e5eb57300998feb5e608f2dfb157c46af62a16387d0f9a3ec"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/original/loop_max_coefs.inc": {
+      "bytes": 61,
+      "sha256": "1dca06ff691666dab8f666692137cd040e407c276417611d5fcc744f5f82f19d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/original/makefile": {
+      "bytes": 9618,
+      "sha256": "a31ec183615b59e6367ef43a2fd01e051b2180eb19f4b76339ba70d34e3a06ab"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/original/polynomial.f": {
+      "bytes": 193063,
+      "sha256": "2b994cd39c3e8729f4d48a1d3e08d2c337d288619cda320625f00375c7e66b92"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/preparation.json": {
+      "bytes": 73319,
+      "sha256": "e7de5ff4f0bbdd68c30c689d0ff372adaae7595494667687afc6f94a77a89f59"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/prepare.log": {
+      "bytes": 76,
+      "sha256": "24646d48d3a858b921c9f8d8815eb5c15a2756efd42235361cfc03df448e7537"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/prepare.py": {
+      "bytes": 6488,
+      "sha256": "5cfb9c1a420d5b5af7bc8b5c45bd4d04ebae6e773b43d4d9c13667b0e796cc39"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/activity.jsonl": {
+      "bytes": 58216,
+      "sha256": "b31ddb00b46015075161e0360f9c5877cc142d76f69108273e4690852f9c3438"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-01-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-01-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-01-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-01-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-01-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-01-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "3fcb17fa816ad3bbb1a7d71dcdd97221361b7f43a53046c35f0deb1302a2d46c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-01-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-01-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-01-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-01-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-01-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-01-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-01-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "09ee2f73aff5f735c90e8543ce70fab6d277ef4003d360d917cef704401c76c9"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-01-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-02-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-02-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-02-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-02-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-02-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-02-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "06b081f454f7ac7511461b553704de9de20f1d2f2d14d9e357622aca6910cbe1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-02-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-02-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-02-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-02-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-02-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-02-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-02-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "63e87ea58c273a857ea88a8328ee3d7a1246f0c33651bfaa612099240f258d55"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-02-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-03-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-03-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-03-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-03-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-03-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-03-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "c3918fe2dea65b4f83c131dee540c71a3fd436dcc448a06cebb42a3d9415b800"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-03-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-03-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-03-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-03-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-03-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-03-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-03-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "d0fc2f02907773c5f810765d00bf83048354c8d174c212d8a6bac306fe63de57"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-03-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-04-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-04-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-04-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-04-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-04-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-04-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "83e5511ff209af80f6f616e46b0753c81c12b1701b19b31da60e50757d827e77"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-04-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-04-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-04-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-04-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-04-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-04-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-04-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "fee44f86f53f40ce24eb1ce50972576336a22c6e507acbd57a022e754d495cc4"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-04-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-05-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-05-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-05-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-05-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-05-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-05-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "a53528a2edf4e99c7fe3e625a0d2617b8a68dd185ae6d0f2a754a14ff45f05b9"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-05-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-05-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-05-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-05-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-05-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-05-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-05-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "650e6f19d570a923ec978e37a0b9e58590ca31557db3962209dae0bffdf6a91a"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-05-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-06-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-06-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-06-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-06-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-06-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-06-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "076ffce220e1c1154188dbfaebaf2a8e7856f30cae0791eba8b3313e84c4455c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-06-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-06-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-06-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-06-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-06-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-06-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-06-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "db468878d32f7ff93c99b6e28e023bb7c845ab4fba26669a5bc6f94758c3e487"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-06-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-07-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-07-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-07-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-07-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-07-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-07-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "6922e8f510a38e2cf6a0e3ed33ed8efb37370a89a8886ef0b3696efa4b8e1630"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-07-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-07-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-07-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-07-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-07-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-07-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-07-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "cf198a6db286f28347787b357715b8ca2afbe9def04c50e8ddbcdad210ec38a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-07-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-08-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-08-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-08-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-08-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-08-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-08-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "aba493b3a133561cc1b964865d4ec323bc46f7843c6480f5628c8732431a9883"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-08-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-08-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-08-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-08-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-08-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-08-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-08-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "df4272a43db013c5bacbbd6de3fb45bce36ac0f8b0c0bfea4502d063a0c95cfb"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-08-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-09-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-09-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-09-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-09-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-09-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-09-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "551f068caeecfee3ea3cad7be40b9ed585c45d528d9863eab37f2243ca202d01"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-09-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-09-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-09-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-09-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-09-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-09-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-09-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "7b16dea892b54fe4848b879dd3bc01c777ce4039c00c18e636cdca95c7a4e6d8"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-09-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-10-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-10-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-10-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-10-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-10-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-10-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "d13490ceb7e0154062ff6c7980060094fc3781c09e847229397613579525cbcf"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-10-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-10-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-10-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-10-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-10-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-10-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-10-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "28006b13dc402ad9a4d24feb857479395d2599f566f91e3b1679e29fa1f95447"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-10-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-11-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-11-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-11-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-11-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-11-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-11-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "9b61df32e0e2aa9095fc7e9fb5b3ee360eb81899cd86de24b246280d60ef818f"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-11-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-11-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-11-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-11-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-11-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-11-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-11-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "5bbffac87a72019387a374f381e89742c5b1704150cb5a2f16620391d1612c70"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-11-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-12-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-12-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-12-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-12-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-12-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-12-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "69c0f821c33d213bc567a306429594241afd12f8df079a6a2578b9b19b5ec499"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-12-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-12-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-12-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-12-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-12-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-12-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-12-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "6aac7ef6288c0388fce3dae62a6a1801f199e7382db9841b9b7526d483e51550"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-12-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-13-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-13-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-13-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-13-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-13-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-13-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "09427f5b2ef5accf84a99d161320fc919dbdafa0f219071274f04896dce0f9f8"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-13-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-13-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-13-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-13-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-13-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-13-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-13-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "d5c297b9da84b56109321ebf349b38647e651428a60e3dab063d9e9b86d7d487"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-13-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-14-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-14-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-14-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-14-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-14-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-14-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "b4ca523ac8ee4e11c9d2a49ecda5f4d61467063df5e56e8a8a6dfd3d88215595"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-14-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-14-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-14-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-14-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-14-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-14-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-14-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "220eb02a07be0418cc52f3a169bfd7c48a89e70de1343b12bec4fd1f3953d286"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-14-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-15-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-15-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-15-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-15-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-15-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-15-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "3b21470f6bfba29cc0a758f3e51a2824a47b6d3aa9bda3cb5bd952d79a422734"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-15-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-15-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-15-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-15-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-15-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-15-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-15-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "6f425a527c5bfd7c697c9d85ccd037c83880272621ca8990052a91dadca7806d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-15-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-16-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-16-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-16-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-16-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-16-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-16-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "f609484c05eea6b6984d8e3c358051268bdbc475dfbf6ef174a282d0da361619"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-16-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-16-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-16-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-16-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-16-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-16-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-16-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "057d632a85b58262f6a78d7995c492d76efd1ef69922e1cb8ceee48b15cb13c4"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-16-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-17-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-17-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-17-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-17-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-17-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-17-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "d6982f7237065482ce95d5814857e578ec5eda792a5643c13dff73ab00db0589"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-17-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-17-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-17-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-17-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-17-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-17-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-17-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "51000b88220a3ccac9058574a3896996bf0eac2be052580e17460d06d6cb08ad"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-17-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-18-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-18-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-18-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-18-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-18-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-18-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "63fb57ebefca3477c91c6b31992d27d00f9673211816ee9b320baa82adf63ba6"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-18-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-18-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-18-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-18-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-18-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-18-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-18-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "b49d6fd02ba09c8ddb24e86e9f51462776a7f78d916aad417e38e7f4db84905c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-18-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-19-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-19-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-19-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-19-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-19-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-19-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "ad97dfe4a5279ad3954dcaedd74c39a54b2650e7e081b9c28d027831ef80ec29"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-19-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-19-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-19-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-19-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-19-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-19-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-19-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "48319d81e8ef3247f4e8e13402717596c79f0658814447ef0cb9c9eb3405739f"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-19-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-20-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-20-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-20-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-20-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-20-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-20-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "d742fa6cbb48014905b817831aad760f4535ded4532a4a6a6ec8a12eeb91819a"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-20-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-20-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-20-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-20-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-20-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-20-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-20-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "a97678cc27fea1248e27852a74eb7ac9fd8e2c764440af92079b9098f4207b7b"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-20-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-21-factor/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-21-factor/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-21-factor/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-21-factor/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-21-factor/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-21-factor/timing.dat": {
+      "bytes": 53,
+      "sha256": "8aa835c2d56a72fb709587102805e44f3fb15dc0818e09391eac589e287f166e"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-21-factor/values.dat": {
+      "bytes": 31000,
+      "sha256": "a91bad81959313617688597885e65774b990a07a98bc94218f3f2898a83b034d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-21-original/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-21-original/dimensions.dat": {
+      "bytes": 37,
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-21-original/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-21-original/run.log": {
+      "bytes": 8226,
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-21-original/timed_status.dat": {
+      "bytes": 54,
+      "sha256": "2b3d5436da4e0343188ecdcb7df46dc42c2081166920499007d8c13891e5d3d0"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-21-original/timing.dat": {
+      "bytes": 53,
+      "sha256": "057a7203866e74b5957adb2a9acdd6ed80370ad095acdeaa0b76f66b5c580d04"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/pair-21-original/values.dat": {
+      "bytes": 31000,
+      "sha256": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/post-run-verification.json": {
+      "bytes": 67391,
+      "sha256": "0f61696df05bb210056a4326360a3be56b2c19762ad2a17ca71affce66cb8320"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/post-run-verification.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/preflight.json": {
+      "bytes": 1738,
+      "sha256": "cc7fa1d74d655de0ffbcf16c149231c8d1a3b09fc2b2c3be2974ef015947411e"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/protocol.json": {
+      "bytes": 617,
+      "sha256": "1222ea9d95406b960fffe74d20db692f3963e345c005ffbf4fe76a777d7e6717"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/result.json": {
+      "bytes": 2773827,
+      "sha256": "aef7949c915382085127ae5fd9ca35cd2d89578982ec70887a4afcd26a536e57"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/run_pairs.py": {
+      "bytes": 9128,
+      "sha256": "c06ca65f1e4b92aef22ccff0c25a51b8286e3f11dffd4416715a6f163fdb05cc"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu185-20261020-v1/runner.log": {
+      "bytes": 453,
+      "sha256": "20e96833d054c21ee144b19aae8a36a643a3ad579bb4beb0b5b19ced41a89c5d"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu212-20261020-v1/preflight.json": {
+      "bytes": 1742,
+      "sha256": "2efa00f757d374c0e34b2fc08d35f1cdadbc49f86e54f2901edbe5708b2eba52"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu212-20261020-v1/runner.log": {
+      "bytes": 566,
+      "sha256": "e75b4bea5ac576479d8cb0ed0b2c0ffd8a576b25578dba46d712d97b26298c8c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu5-20261020-v1/preflight.json": {
+      "bytes": 2193,
+      "sha256": "a588c2ad8e751ce68d7b76c90f569e0b823322d0481efd7dbbfa416e0d6a5222"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/quiet-cpu5-20261020-v1/runner.log": {
+      "bytes": 566,
+      "sha256": "e75b4bea5ac576479d8cb0ed0b2c0ffd8a576b25578dba46d712d97b26298c8c"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/run_pairs.py": {
+      "bytes": 9128,
+      "sha256": "c06ca65f1e4b92aef22ccff0c25a51b8286e3f11dffd4416715a6f163fdb05cc"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/verify_result.py": {
+      "bytes": 9139,
+      "sha256": "ef8b6bf86b3addeb4fcc14633ff60f35cea13b623b8c1c7e2d63d628ad02e572"
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/verify_seal.py": {
+      "bytes": 1239,
+      "sha256": "239f1f91e8f6bdb5aee2daa69543ecac384b60cbaeb6362c395f94bc86102ab4"
+    }
+  },
+  "schema": "dp-factor-process-timing21-evidence-v1",
+  "scope": "Source plan, both preparations, rejected CPU5/212 no-sample attempts, single host survey, authorized CPU185 fixed21 numerical series and read-only verification. No production DP promotion.",
+  "sealed_utc": "2026-10-20T21:33:04.677746+00:00"
+}

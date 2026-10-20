@@ -1,0 +1,21 @@
+{
+  "authorization": "Root selected CPU185 from single retained host-only five-second survey before any amplitude samples. Unchanged preflight, fixed21 order/inputs/counts/thresholds; all prior failures retain no samples. Other task-owned compilation/evaluation held, reference207 allowed.",
+  "selection": {
+    "cpu": 185,
+    "package": 1,
+    "core": 105,
+    "exposed_siblings": [
+      185
+    ],
+    "allowed_siblings": [
+      185
+    ],
+    "minimum_idle": 1.0
+  },
+  "survey_sha256": "8117a128a8c9f59db31cecb8e01a7c420a4fc3a1dcf53711665a21d6ed703fea",
+  "prior_rejected_attempts": {
+    "quiet-cpu5-20261020-v1": "a588c2ad8e751ce68d7b76c90f569e0b823322d0481efd7dbbfa416e0d6a5222",
+    "quiet-cpu212-20261020-v1": "2efa00f757d374c0e34b2fc08d35f1cdadbc49f86e54f2901edbe5708b2eba52"
+  },
+  "prior_amplitude_samples": 0
+}
