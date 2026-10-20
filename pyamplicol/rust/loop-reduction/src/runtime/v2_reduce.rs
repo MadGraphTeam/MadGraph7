@@ -25,24 +25,23 @@
 //! coefficient; its masters are evaluated uncached by `SymbolicaMasters`.
 //!
 //! **Reduction-direction check.** [`ReductionFrame`] re-reduces the same
-//! numerators in a dihedrally relabelled frame of the propagator cycle,
-//! by default with the loop momentum reversed. Families must be given in
-//! loop-cycle order (oneloopmaster 09b2c74 misclassifies some soft boxes
-//! otherwise); a dihedral relabelling keeps that order, so every master request
-//! of either frame keeps consecutive propagators adjacent. Without `shift` the
-//! coefficients are reused exactly (degree-odd blocks change sign under
-//! `q -> -q`) and box, triangle and tadpole masters are cache hits; bubbles
-//! whose two masses swap order are evaluated anew.
+//! numerators in a dihedrally relabelled frame of the propagator cycle, by
+//! default [`ReductionFrame::REVERSED`] (loop momentum reversed). Families
+//! must be given in loop-cycle order (oneloopmaster 09b2c74 misclassifies some
+//! soft boxes otherwise); a dihedral relabelling keeps that order, so every
+//! master request of either frame keeps consecutive propagators adjacent.
+//! Without `shift` the coefficients are reused exactly (odd-degree blocks
+//! change sign under `q -> -q`), and box, triangle and tadpole masters are
+//! cache hits; bubbles whose two masses swap order are evaluated anew.
 //!
-//! **Finite-only mode.** `poles = false` returns only the finite part; pole
-//! columns are absent, not zero. On this NinjaRS pin nothing in the reduction
-//! itself is pole-only: the reduction coefficients multiply every Laurent
-//! order of the masters, and oneloopmaster returns `[finite, 1/ε, 1/ε²]` from
-//! one evaluation of each master. The skipped work is the pole bookkeeping
-//! (contraction into the pole columns is three multiply-adds per master and
-//! stays inside NinjaRS) and the pole outputs and comparisons of the check.
-//! Numerators are four-dimensional and ε-free here; pole-only ε sectors and
-//! counterterm columns belong to the callers that own them.
+//! **Finite-only mode.** `poles = false` returns only the finite column; the
+//! pole columns are absent, not zero, also in the check.
+//! Nothing else is pole-only on this NinjaRS pin: the reduction coefficients
+//! multiply every Laurent order of the masters, the fast engine contracts
+//! all three orders internally (three multiply-adds per master), and
+//! oneloopmaster returns `[finite, 1/ε, 1/ε²]` from one evaluation of each
+//! master. Numerators are four-dimensional and ε-free here; pole-only ε
+//! sectors, counterterm columns and the IR-pole check belong to their owners.
 
 use super::master_cache::{MasterCache, MasterStatistics};
 use super::reduction::{ReductionBatch, Reductions};
@@ -74,10 +73,13 @@ pub struct ReductionFrame {
 
 impl ReductionFrame {
     /// The loop direction reversed: `q -> -q` with the cycle traversed
-    /// backwards from the same first propagator.
+    /// backwards from the second propagator, so that every family of two or
+    /// more propagators also changes its first line (with rotation 0 a bubble
+    /// keeps its order, and its reversed reduction is often bitwise equal to
+    /// the direct one). The coefficients are reused exactly.
     pub const REVERSED: Self = Self {
         reverse: true,
-        rotation: 0,
+        rotation: 1,
         shift: false,
     };
 
@@ -778,7 +780,8 @@ mod tests {
 
     #[test]
     fn frames_are_dihedral_relabellings() {
-        assert_eq!(ReductionFrame::REVERSED.order(4), [0, 3, 2, 1]);
+        assert_eq!(ReductionFrame::REVERSED.order(4), [1, 0, 3, 2]);
+        assert_eq!(ReductionFrame::REVERSED.order(2), [1, 0]);
         let frame = ReductionFrame {
             reverse: false,
             rotation: 6,

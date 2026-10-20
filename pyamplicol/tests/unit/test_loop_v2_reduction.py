@@ -130,6 +130,42 @@ _TOPS = (
 )
 
 
+def _five_gluon_program(**options):
+    """gg -> ggg in the control model, as the inherited QCD controls."""
+    from symbolica import E, S
+
+    from pyamplicol.loops.control_models import qcd_qed_control_model
+
+    model = qcd_qed_control_model()
+    process = physical_process.build_loop_process(
+        model.process(("g", "g"), ("g", "g", "g")),
+        selected_corrections=["QCD"],
+        perturbative_orders={"QCD": 1},
+        born_order_bounds={"QCD": 3, "QED": 0},
+        loop_order_bounds={"QCD": 5, "QED": 0},
+    )
+    alpha_s, top_mass = S("loop_model_input::alpha_s", "loop_model_input::top_mass")
+    strong = (4 * E("pi") * alpha_s) ** E("1/2")
+    expressions = {"UFO::MB": E("0"), "UFO::MC": E("0"), "UFO::MT": top_mass}
+    for name in ("GC_10", "GC_11", "GC_12"):
+        coupling = model.coupling(name)
+        expressions[coupling.symbol.get_name()] = coupling.expression.replace(
+            S("UFO::G"), strong
+        )
+    return physical_process.NativeBareProcessProgram(
+        process,
+        state_kinds=("epsilon",) * 2 + ("epsilon_bar",) * 3,
+        initial_average=E("1536"),
+        model_expressions=expressions,
+        model_inputs=(alpha_s, top_mass),
+        **options,
+    )
+
+
+# The massless five-point momenta of the u u~ -> ggg reference.
+_FIVE_GLUONS = (_five_gluon_program, "quark_three_gluon_qcd.json")
+
+
 @pytest.fixture(scope="module")
 def captured(native):
     cache = {}
@@ -137,7 +173,11 @@ def captured(native):
     def capture(process, arithmetic="double", precision=None, engine="fast"):
         key = (process, arithmetic, precision, engine)
         if key not in cache:
-            factory, fixture = {"gg_gg": _GLUONS, "gg_ttx": _TOPS}[process]
+            factory, fixture = {
+                "gg_gg": _GLUONS,
+                "gg_ttx": _TOPS,
+                "gg_ggg": _FIVE_GLUONS,
+            }[process]
             cache[key] = _capture(
                 native, factory, fixture, arithmetic, precision, engine
             )
@@ -253,3 +293,35 @@ def test_generic_engine_from_exponent_arrays_equals_legacy_extended_precision(
     for new, reversed_, old in zip(direct, check, legacy, strict=True):
         assert _lane_relative(new, old, 3) < Decimal(tolerance)
         assert _lane_relative(reversed_, new, 3) < Decimal(tolerance)
+
+
+@pytest.mark.loop_nightly
+def test_master_hit_rate_on_five_gluons(native, captured, record_property):
+    """Report the cache hit rate of one gg -> ggg batch (about 7 min capture)."""
+    groups, _ = captured("gg_ggg")
+    reducer = native.V2Reducer("double", None, "fast")
+    uncached = native.V2Reducer("double", None, "fast", cache_masters=False)
+    rates = {}
+    for check in (False, True):
+        direct, reversed_ = reducer.reduce(groups, check=check)
+        plain, plain_reversed = uncached.reduce(groups, check=check)
+        for a, b in zip(
+            direct + (reversed_ or []), plain + (plain_reversed or []), strict=True
+        ):
+            assert a.values.to_decimal() == b.values.to_decimal()
+        statistics = reducer.take_master_statistics()
+        uncached.take_master_statistics()
+        requests = sum(s["requests"] for s in statistics.values())
+        evaluated = sum(s["evaluated"] for s in statistics.values())
+        assert evaluated == reducer.cached_masters
+        rates["with_check" if check else "direct"] = {
+            "requests": requests,
+            "distinct": evaluated,
+            "hit_rate": 1 - evaluated / requests,
+            "per_family": statistics,
+        }
+    record_property("gg_ggg_master_cache", rates)
+    print(f"gg->ggg master cache, {len(groups)} families: {rates}")
+    assert rates["direct"]["hit_rate"] > 0.9
+    # The reversed frame finds every master but swapped unequal-mass bubbles.
+    assert rates["with_check"]["distinct"] == rates["direct"]["distinct"]

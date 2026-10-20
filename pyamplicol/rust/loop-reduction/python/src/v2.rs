@@ -72,10 +72,11 @@ impl V2Reducer {
         })
     }
     /// Returns `(direct, check)`: one `ReductionBatch` per group, and the
-    /// same for the relabelled frame when `check` is set (else None).
+    /// same for the relabelled frame when `check` is set (else None). The
+    /// default frame is `ReductionFrame::REVERSED`.
     /// Without `poles` the batches hold only the finite column. Cached
     /// masters are dropped first unless `keep_masters`.
-    #[pyo3(signature = (groups, *, poles=true, check=false, reverse=true, rotation=0, shift=false, keep_masters=false))]
+    #[pyo3(signature = (groups, *, poles=true, check=false, reverse=true, rotation=1, shift=false, keep_masters=false))]
     #[allow(clippy::too_many_arguments, clippy::type_complexity)]
     fn reduce(
         &mut self,

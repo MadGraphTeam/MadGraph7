@@ -310,6 +310,18 @@ The dependency coefficient-head evaluator rejects nonfinite input/output for
 the whole batch; this engine has no new partial coefficient-evaluation API and
 is not certified for the optional rescue wrapper. Upstream reduction failures
 still retain original lane IDs and hide their numerical values.
+`runtime::V2Reducer` (Python `V2Reducer`) is the loop engine v2 adapter
+(`docs/development/loop_v2/DESIGN.md` §11.1–11.2). Each family group passes
+dense four-dimensional tensor coefficients in NinjaRS's layout
+(`v2_tensor_monomials(rank)`) with shifts, masses, scales and the exact
+invariant matrix. Lanes of all groups are bucketed by (propagators, true
+rank) and reduced by upstream `TensorNumerator`s, with masters behind a
+canonicalising cache (`runtime::MasterCache`), or by the generic engine from
+one exponent-array template per bucket in DoubleFloat/arbitrary precision.
+`check=True` re-reduces every lane in a dihedrally relabelled frame (default:
+loop direction reversed) with the same coefficients and cached masters and
+returns both results; `poles=False` returns the finite column only. Families
+must be in loop-cycle order.
 The main workspace excludes this experimental workspace and has no NinjaRS path
 dependency, so its normal builds do not require the `upstream` symlink.
 
