@@ -1,0 +1,222 @@
+{
+  "case": "qcd-3",
+  "points": 100,
+  "orders": [
+    0,
+    1
+  ],
+  "coefficient_order": [
+    "Born",
+    "finite",
+    "single pole",
+    "double pole"
+  ],
+  "relative_tolerance": 1e-07,
+  "scale_tolerance": 1e-10,
+  "input_records": {
+    "baseline-1": {
+      "path": "baseline-qcd-3-1-calibration.json",
+      "sha256": "49575b84626b3c17bd082c33bebb67666f539a3beff5b96203e05fdacc7be1b2"
+    },
+    "baseline-6": {
+      "path": "baseline-qcd-3-6-calibration.json",
+      "sha256": "9a9f710f2b2bff09c3dc75eefac02d41a97e4fd46c0ba3267d17caf51aa86f5d"
+    },
+    "baseline-7": {
+      "path": "baseline-qcd-3-7-calibration.json",
+      "sha256": "a8af65f276899cd64a77668cdf2589259f8e873df5902606adf1d0d5da51d14d"
+    },
+    "candidate-8": {
+      "path": "candidate-qcd-3-8-calibration.json",
+      "sha256": "fd8c7e015de7dae93ec0b4d92216b4bfd62112aeae414c08ba24e6e9ac32afca"
+    }
+  },
+  "comparisons": {
+    "strict-baseline": {
+      "passed": true,
+      "acceptance_eligible": false,
+      "scope": "Strict common-setting calibration numerical comparison; not a repeated timing series",
+      "pairs": [
+        {
+          "pair": [
+            "baseline-1",
+            "baseline-6"
+          ],
+          "passed": true,
+          "comparisons": 800,
+          "max_point_scaled_difference": 1.0026719792597707e-09,
+          "maximum_tolerance_fraction": 0.12673070716305299,
+          "worst_comparison": {
+            "point": 89,
+            "order": 0,
+            "coefficient": 1,
+            "values": [
+              7.137241932783806e-07,
+              7.137242024392448e-07
+            ],
+            "tolerance": 7.228606542185287e-14
+          },
+          "failures": []
+        },
+        {
+          "pair": [
+            "baseline-1",
+            "baseline-7"
+          ],
+          "passed": true,
+          "comparisons": 800,
+          "max_point_scaled_difference": 1.002669383402747e-09,
+          "maximum_tolerance_fraction": 0.1267303790649322,
+          "worst_comparison": {
+            "point": 89,
+            "order": 0,
+            "coefficient": 1,
+            "values": [
+              7.137241932783806e-07,
+              7.137242024392211e-07
+            ],
+            "tolerance": 7.22860654218505e-14
+          },
+          "failures": []
+        },
+        {
+          "pair": [
+            "baseline-6",
+            "baseline-7"
+          ],
+          "passed": true,
+          "comparisons": 800,
+          "max_point_scaled_difference": 6.475361138908746e-11,
+          "maximum_tolerance_fraction": 0.10126587653709843,
+          "worst_comparison": {
+            "point": 67,
+            "order": 0,
+            "coefficient": 1,
+            "values": [
+              2.15825535075487e-08,
+              2.158255398856714e-08
+            ],
+            "tolerance": 4.750054575067933e-15
+          },
+          "failures": []
+        }
+      ]
+    },
+    "default-ninjars-diagnostic": {
+      "passed": true,
+      "acceptance_eligible": false,
+      "scope": "Calibration diagnostic; candidate NinjaRS uses different stability settings",
+      "pairs": [
+        {
+          "pair": [
+            "baseline-1",
+            "candidate-8"
+          ],
+          "passed": true,
+          "comparisons": 800,
+          "max_point_scaled_difference": 3.856465819496751e-09,
+          "maximum_tolerance_fraction": 0.6754856368541229,
+          "worst_comparison": {
+            "point": 67,
+            "order": 0,
+            "coefficient": 1,
+            "values": [
+              2.1582553991961478e-08,
+              2.1582550783367838e-08
+            ],
+            "tolerance": 4.750054575407367e-15
+          },
+          "failures": []
+        },
+        {
+          "pair": [
+            "baseline-6",
+            "candidate-8"
+          ],
+          "passed": true,
+          "comparisons": 800,
+          "max_point_scaled_difference": 3.776479291159701e-09,
+          "maximum_tolerance_fraction": 0.573505176709036,
+          "worst_comparison": {
+            "point": 67,
+            "order": 0,
+            "coefficient": 1,
+            "values": [
+              2.15825535075487e-08,
+              2.1582550783367838e-08
+            ],
+            "tolerance": 4.750054526966088e-15
+          },
+          "failures": []
+        },
+        {
+          "pair": [
+            "baseline-7",
+            "candidate-8"
+          ],
+          "passed": true,
+          "comparisons": 800,
+          "max_point_scaled_difference": 3.841232902548788e-09,
+          "maximum_tolerance_fraction": 0.6747710474384839,
+          "worst_comparison": {
+            "point": 67,
+            "order": 0,
+            "coefficient": 1,
+            "values": [
+              2.158255398856714e-08,
+              2.1582550783367838e-08
+            ],
+            "tolerance": 4.750054575067933e-15
+          },
+          "failures": []
+        }
+      ]
+    }
+  },
+  "statuses": {
+    "baseline-1": {
+      "numerical": {
+        "329": 52,
+        "211": 48
+      },
+      "timed": {
+        "211": 48,
+        "329": 52
+      },
+      "mlstabthres": 1e-09,
+      "collierrequiredaccuracy": 1e-10
+    },
+    "baseline-6": {
+      "numerical": {
+        "216": 98,
+        "328": 2
+      },
+      "timed": {
+        "216": 98,
+        "328": 2
+      },
+      "mlstabthres": 1e-09,
+      "collierrequiredaccuracy": 1e-10
+    },
+    "baseline-7": {
+      "numerical": {
+        "217": 100
+      },
+      "timed": {
+        "217": 100
+      },
+      "mlstabthres": 1e-09,
+      "collierrequiredaccuracy": 1e-10
+    },
+    "candidate-8": {
+      "numerical": {
+        "218": 100
+      },
+      "timed": {
+        "218": 100
+      },
+      "mlstabthres": 0.001,
+      "collierrequiredaccuracy": 1e-08
+    }
+  }
+}

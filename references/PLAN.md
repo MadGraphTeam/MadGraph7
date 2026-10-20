@@ -201,6 +201,25 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   consistency across repetitions, adjacent original-Ninja/NinjaRS timing pairs,
   and rejection of mixed executables/settings. Initialization timing and
   incremental compilation are explicitly distinguished in the report.
-- The complete eight-process correctness gate, export/forced-rescue controls,
-  measured optimization gate and all final performance gates remain outstanding.
-  The styled report currently labels missing measurements as pending.
+- Installer/export validation milestone `ca62a8680` was pushed. Additional
+  controls now pass rotations, changes of mass and renormalization scale,
+  retained-versus-fresh context checks, and near-singular full-QP rescue against
+  CutTools and original Ninja. A separate deliberately sub-ulp stability
+  diagnostic rejects original Ninja; its returned coefficients agree, and the
+  rejection remains visible in the retained evidence.
+- Default stability settings do not guarantee the requested cross-backend
+  accuracy at high multiplicity. The common core configuration now uses
+  `MLStabThres=1e-9` and `COLLIERRequiredAccuracy=1e-10` for every backend,
+  including the untouched baseline. Physical inputs and comparison tolerances
+  are unchanged. All three original backends pass the strict 100-point QCD
+  three-body calibration, including 52 CutTools and two Ninja QP rescues.
+  Default-setting discrepancies and strict-setting checks are retained separately.
+- Persistent Fortran benchmark workers are being validated against fresh
+  processes so initialization is performed once per backend and all timed
+  repetitions still evaluate the complete point stream. Promotion requires
+  representative parity including genuine QP rescues, exact protocol identity,
+  complete paired series, and all numerical/status checks. These changes avoid
+  redundant initialization without excluding any timed physical evaluation.
+- The complete eight-process correctness gate, measured optimization gate and
+  all final performance gates remain outstanding. The styled report currently
+  labels missing measurements as pending.

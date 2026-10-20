@@ -1,0 +1,26 @@
+{
+  "passed": false,
+  "failures": [],
+  "numerical_agreement_passed": true,
+  "measurement_validation_failures": {
+    "candidate-6": "Backend 6 returned unexpected status 420; initialization, failure or a different backend was used"
+  },
+  "coefficient_comparisons": 240,
+  "maximum_tolerance_fraction": 9.828942861581429e-08,
+  "maximum_point_scaled_absolute_difference": 4.745860607829199e-15,
+  "observed_ninjars_rescue": true,
+  "observed_ninjars_full_qp_rescue_322": true,
+  "status_counts": {
+    "candidate-1": {
+      "329": 10
+    },
+    "candidate-6": {
+      "420": 10
+    },
+    "candidate-8": {
+      "322": 10
+    }
+  },
+  "relative_tolerance": 1e-07,
+  "scale_tolerance": 1e-10
+}

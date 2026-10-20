@@ -1,0 +1,304 @@
+{
+  "source": "candidate",
+  "case": "control-gg-h",
+  "backend": 1,
+  "repetition": 0,
+  "loops": 1,
+  "cpu": 0,
+  "cold_seconds": 0.07183389,
+  "seconds": 0.006093322,
+  "seconds_per_point": 0.0006093322,
+  "process_wall_seconds": 0.12781167298089713,
+  "status_counts": {
+    "211": 10
+  },
+  "timed_status_counts": {
+    "211": 10
+  },
+  "points_sha256": "bccf515472fc9e4526ace2243c2a65afdc4fc040b85d9c88eced34bbe7e5b6ba",
+  "parameter_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+  "executable_sha256": "f9c6cf6adce45de0d372693f63458ff9f1ae47e80af5f104ae1fcbc236543bb7",
+  "madloop_card_sha256": "71a9daebcc922a4d22f2e017f4cfadbef02db82ac91c8e1d0a623d9391cdfdd8",
+  "shared_numerical_settings": {
+    "iregimode": 2,
+    "iregirecy": true,
+    "ctmoderun": -1,
+    "mlstabthres": 0.001,
+    "nrotations_dp": 0,
+    "nrotations_qp": 0,
+    "improvepspoint": 2,
+    "ctlooplibrary": 2,
+    "ctstabthres": 0.01,
+    "ctmodeinit": 1,
+    "checkcycle": 3,
+    "maxattempts": 10,
+    "zerothres": 1e-09,
+    "osthres": 1e-08,
+    "doublecheckhelicityfilter": true,
+    "writeoutfilters": true,
+    "useloopfilter": false,
+    "helicityfilterlevel": 2,
+    "loopinitstartover": false,
+    "helinitstartover": false,
+    "useqpintegrandforninja": true,
+    "useqpintegrandforcuttools": true,
+    "colliermode": 1,
+    "colliercomputeuvpoles": true,
+    "colliercomputeirpoles": true,
+    "collierrequiredaccuracy": 1e-08,
+    "colliercanoutput": false,
+    "collierglobalcache": -1,
+    "collierusecacheforpoles": false,
+    "collieruseinternalstabilitytest": true,
+    "selected_backend_qp_integrand": true
+  },
+  "answer_dimensions": {
+    "allocated": 1,
+    "loop_orders": 1,
+    "born_orders": 0
+  },
+  "git_revision": "d47f0bc4f3fd47f8bf6e62c50447cbd5300d9561",
+  "recorded_utc": "2026-10-20T12:55:52.112922+00:00",
+  "rows": [
+    {
+      "point": 1,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261322548295,
+        2.9059459998183136e-15,
+        5.676703084183847e-28
+      ],
+      "accuracy": 1.0996164030917754e-09
+    },
+    {
+      "point": 1,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261322548295,
+        2.9059459998183136e-15,
+        5.676703084183847e-28
+      ],
+      "accuracy": 1.0996164030917754e-09
+    },
+    {
+      "point": 2,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261322422128,
+        -6.701792635185503e-16,
+        4.8615089665956496e-27
+      ],
+      "accuracy": 2.967531557682183e-10
+    },
+    {
+      "point": 2,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261322422128,
+        -6.701792635185503e-16,
+        4.8615089665956496e-27
+      ],
+      "accuracy": 2.967531557682183e-10
+    },
+    {
+      "point": 3,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.00937026132255352,
+        9.253335650247333e-16,
+        2.951953457450859e-28
+      ],
+      "accuracy": 1.1865637729356074e-10
+    },
+    {
+      "point": 3,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.00937026132255352,
+        9.253335650247333e-16,
+        2.951953457450859e-28
+      ],
+      "accuracy": 1.1865637729356074e-10
+    },
+    {
+      "point": 4,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261322777084,
+        8.438104076003115e-16,
+        6.170213906627179e-28
+      ],
+      "accuracy": 2.6798562872582822e-11
+    },
+    {
+      "point": 4,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261322777084,
+        8.438104076003115e-16,
+        6.170213906627179e-28
+      ],
+      "accuracy": 2.6798562872582822e-11
+    },
+    {
+      "point": 5,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261322237106,
+        -8.534246360661663e-15,
+        3.7209548975202474e-27
+      ],
+      "accuracy": 4.0714914004457754e-11
+    },
+    {
+      "point": 5,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261322237106,
+        -8.534246360661663e-15,
+        3.7209548975202474e-27
+      ],
+      "accuracy": 4.0714914004457754e-11
+    },
+    {
+      "point": 6,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261322750085,
+        -1.7580318563096767e-16,
+        1.750034843822779e-28
+      ],
+      "accuracy": 5.492233496535874e-10
+    },
+    {
+      "point": 6,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261322750085,
+        -1.7580318563096767e-16,
+        1.750034843822779e-28
+      ],
+      "accuracy": 5.492233496535874e-10
+    },
+    {
+      "point": 7,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261322012814,
+        5.65228744055979e-17,
+        3.1585397594730973e-27
+      ],
+      "accuracy": 1.8004024397206924e-11
+    },
+    {
+      "point": 7,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261322012814,
+        5.65228744055979e-17,
+        3.1585397594730973e-27
+      ],
+      "accuracy": 1.8004024397206924e-11
+    },
+    {
+      "point": 8,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261322690785,
+        5.617946242056738e-17,
+        2.813499034836215e-28
+      ],
+      "accuracy": 3.984830316732551e-10
+    },
+    {
+      "point": 8,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261322690785,
+        5.617946242056738e-17,
+        2.813499034836215e-28
+      ],
+      "accuracy": 3.984830316732551e-10
+    },
+    {
+      "point": 9,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261323124534,
+        -1.0391156023472692e-15,
+        5.425035871977882e-28
+      ],
+      "accuracy": 4.1806702345641213e-10
+    },
+    {
+      "point": 9,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261323124534,
+        -1.0391156023472692e-15,
+        5.425035871977882e-28
+      ],
+      "accuracy": 4.1806702345641213e-10
+    },
+    {
+      "point": 10,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261323135641,
+        9.177295681943941e-17,
+        2.966111905753686e-28
+      ],
+      "accuracy": 4.6402883780199934e-10
+    },
+    {
+      "point": 10,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        0.0,
+        0.009370261323135641,
+        9.177295681943941e-17,
+        2.966111905753686e-28
+      ],
+      "accuracy": 4.6402883780199934e-10
+    }
+  ]
+}

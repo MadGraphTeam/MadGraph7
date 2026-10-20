@@ -3,23 +3,62 @@
   "case": "qcd-1",
   "backend": 8,
   "repetition": 0,
-  "loops": 198,
-  "cpu": 0,
-  "cold_seconds": 0.00763062,
-  "seconds": 0.801422673,
-  "seconds_per_point": 4.0475892575757576e-05,
-  "process_wall_seconds": 0.8235663080122322,
+  "loops": 250,
+  "cpu": 2,
+  "cold_seconds": 0.007143017,
+  "seconds": 1.000399953,
+  "seconds_per_point": 4.0015998120000004e-05,
+  "process_wall_seconds": 1.0219229030190036,
   "status_counts": {
     "218": 100
   },
   "timed_status_counts": {
-    "218": 19800
+    "218": 25000
   },
   "points_sha256": "bd8a00c863710123dd62cb5e079dcd11d2aebdcf49d8128313bbd6ecc6de1099",
   "parameter_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
-  "executable_sha256": "22c8c92fdc7b8ebb031fc4a0d77b0445745f5c14475d43066f30b3e28c08e506",
-  "git_revision": "165fd1b1682e0b66014f96e2fd43a6af164b4db9",
-  "recorded_utc": "2026-10-20T12:25:18.413947+00:00",
+  "executable_sha256": "7e7a27105ec25d716bc93bc0fda4cbfdd59e0dafd27616802b1fa8a0b5f1b705",
+  "madloop_card_sha256": "94ba14f918b35b1368b40345ea10fa0dc80618a159c2dca8aba842cff1f11d63",
+  "shared_numerical_settings": {
+    "iregimode": 2,
+    "iregirecy": true,
+    "ctmoderun": -1,
+    "mlstabthres": 0.001,
+    "nrotations_dp": 0,
+    "nrotations_qp": 0,
+    "improvepspoint": 2,
+    "ctlooplibrary": 2,
+    "ctstabthres": 0.01,
+    "ctmodeinit": 1,
+    "checkcycle": 3,
+    "maxattempts": 10,
+    "zerothres": 1e-09,
+    "osthres": 1e-08,
+    "doublecheckhelicityfilter": true,
+    "writeoutfilters": true,
+    "useloopfilter": false,
+    "helicityfilterlevel": 2,
+    "loopinitstartover": false,
+    "helinitstartover": false,
+    "useqpintegrandforninja": true,
+    "useqpintegrandforcuttools": true,
+    "colliermode": 1,
+    "colliercomputeuvpoles": true,
+    "colliercomputeirpoles": true,
+    "collierrequiredaccuracy": 1e-08,
+    "colliercanoutput": false,
+    "collierglobalcache": -1,
+    "collierusecacheforpoles": false,
+    "collieruseinternalstabilitytest": true,
+    "selected_backend_qp_integrand": true
+  },
+  "answer_dimensions": {
+    "allocated": 1,
+    "loop_orders": 1,
+    "born_orders": 1
+  },
+  "git_revision": "ca62a86805435fe8675d65e1da5c6db404bde5e3",
+  "recorded_utc": "2026-10-20T13:02:06.390794+00:00",
   "rows": [
     {
       "point": 1,
@@ -2423,5 +2462,5 @@
     }
   ],
   "paired_baseline_candidate": false,
-  "measurement_run_id": "2026-10-20T12:25:13.933635+00:00"
+  "measurement_run_id": "2026-10-20T13:02:04.785873+00:00"
 }

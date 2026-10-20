@@ -7,6 +7,10 @@
   "relative_tolerance": 1e-7,
   "scale_tolerance": 1e-10,
   "max_runtime_ratio": 1.05,
+  "madloop_parameters": {
+    "MLStabThres": 1e-9,
+    "COLLIERRequiredAccuracy": 1e-10
+  },
   "cases": [
     {"id": "qcd-1", "model": "loop_sm", "process": "u u~ > z [virt=QCD]", "nfinal": 1},
     {"id": "ew-1", "model": "loop_qcd_qed_sm_Gmu", "process": "u d~ > w+ [virt=QED]", "nfinal": 1},

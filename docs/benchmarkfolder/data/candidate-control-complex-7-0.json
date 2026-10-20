@@ -1,0 +1,303 @@
+{
+  "source": "candidate",
+  "case": "control-complex",
+  "backend": 7,
+  "repetition": 0,
+  "loops": 1,
+  "cpu": 0,
+  "cold_seconds": 0.124557131,
+  "seconds": 0.032801668,
+  "seconds_per_point": 0.0032801668,
+  "process_wall_seconds": 0.22132998192682862,
+  "status_counts": {
+    "217": 10
+  },
+  "timed_status_counts": {
+    "217": 10
+  },
+  "points_sha256": "81d6dd8e303246ef120dd4156760ab6fb1a0347d56624b691cc43091d63b5749",
+  "parameter_card_sha256": "1511223edb8e5e1a5ad12baee88c013f94a32161491e6889b05a35e022c9eaa4",
+  "executable_sha256": "55066ec030812ae5f28057a3dcb3f82fc74c7a21af0ee79882cbd0335ee2a3f0",
+  "madloop_card_sha256": "04b0196f9b6c6afbacceeac23c19a1dfe5d2534fa78dfcb6b8ff02f4dd5f4bfd",
+  "shared_numerical_settings": {
+    "iregimode": 2,
+    "iregirecy": true,
+    "ctmoderun": -1,
+    "mlstabthres": 0.001,
+    "nrotations_dp": 0,
+    "nrotations_qp": 0,
+    "improvepspoint": 2,
+    "ctlooplibrary": 2,
+    "ctstabthres": 0.01,
+    "ctmodeinit": 1,
+    "checkcycle": 3,
+    "maxattempts": 10,
+    "zerothres": 1e-09,
+    "osthres": 1e-08,
+    "doublecheckhelicityfilter": true,
+    "writeoutfilters": true,
+    "useloopfilter": false,
+    "helicityfilterlevel": 2,
+    "loopinitstartover": false,
+    "helinitstartover": false,
+    "useqpintegrandforninja": true,
+    "useqpintegrandforcuttools": true,
+    "colliermode": 1,
+    "colliercomputeuvpoles": true,
+    "colliercomputeirpoles": true,
+    "collierrequiredaccuracy": 1e-08,
+    "colliercanoutput": false,
+    "collierglobalcache": -1,
+    "collierusecacheforpoles": false,
+    "collieruseinternalstabilitytest": true
+  },
+  "answer_dimensions": {
+    "allocated": 1,
+    "loop_orders": 1,
+    "born_orders": 1
+  },
+  "git_revision": "d47f0bc4f3fd47f8bf6e62c50447cbd5300d9561",
+  "recorded_utc": "2026-10-20T12:56:00.545705+00:00",
+  "rows": [
+    {
+      "point": 1,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.02605297346562465,
+        0.0015399198481961577,
+        -0.00043173909067072895,
+        -0.00012522990173365967
+      ],
+      "accuracy": 2.788678728376873e-13
+    },
+    {
+      "point": 1,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.02605297346562465,
+        0.0015399198481961577,
+        -0.00043173909067072895,
+        -0.00012522990173365967
+      ],
+      "accuracy": 2.788678728376873e-13
+    },
+    {
+      "point": 2,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.021621043019260953,
+        0.0008892480887237652,
+        -0.0002955947493756259,
+        -0.00010392675892652989
+      ],
+      "accuracy": 3.0070199569534797e-13
+    },
+    {
+      "point": 2,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.021621043019260953,
+        0.0008892480887237652,
+        -0.0002955947493756259,
+        -0.00010392675892652989
+      ],
+      "accuracy": 3.0070199569534797e-13
+    },
+    {
+      "point": 3,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.006418073938098906,
+        0.00036436619024963953,
+        -1.6009558753054386e-05,
+        -3.0850020618489864e-05
+      ],
+      "accuracy": 7.936066605112394e-14
+    },
+    {
+      "point": 3,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.006418073938098906,
+        0.00036436619024963953,
+        -1.6009558753054386e-05,
+        -3.0850020618489864e-05
+      ],
+      "accuracy": 7.936066605112394e-14
+    },
+    {
+      "point": 4,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.007198101727845066,
+        0.0002687911133604444,
+        -2.9766313573214855e-05,
+        -3.459941235637779e-05
+      ],
+      "accuracy": 1.2604472751306935e-13
+    },
+    {
+      "point": 4,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.007198101727845066,
+        0.0002687911133604444,
+        -2.9766313573214855e-05,
+        -3.459941235637779e-05
+      ],
+      "accuracy": 1.2604472751306935e-13
+    },
+    {
+      "point": 5,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.02466670218264702,
+        0.001305115131809019,
+        -0.0003840848513569066,
+        -0.00011856645440114886
+      ],
+      "accuracy": 2.7501470476925724e-13
+    },
+    {
+      "point": 5,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.02466670218264702,
+        0.001305115131809019,
+        -0.0003840848513569066,
+        -0.00011856645440114886
+      ],
+      "accuracy": 2.7501470476925724e-13
+    },
+    {
+      "point": 6,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.0063634170380785626,
+        0.0003756589334001043,
+        -1.4730621762741053e-05,
+        -3.058729904363205e-05
+      ],
+      "accuracy": 7.318502232196285e-14
+    },
+    {
+      "point": 6,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.0063634170380785626,
+        0.0003756589334001043,
+        -1.4730621762741053e-05,
+        -3.058729904363205e-05
+      ],
+      "accuracy": 7.318502232196285e-14
+    },
+    {
+      "point": 7,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.021737997449128816,
+        0.0009030652912800602,
+        -0.00029866722007014285,
+        -0.00010448892860666309
+      ],
+      "accuracy": 3.0767116979151597e-13
+    },
+    {
+      "point": 7,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.021737997449128816,
+        0.0009030652912800602,
+        -0.00029866722007014285,
+        -0.00010448892860666309
+      ],
+      "accuracy": 3.0767116979151597e-13
+    },
+    {
+      "point": 8,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.006055121176297232,
+        0.0005224681460359047,
+        -3.8999364791518184e-08,
+        -2.9105400613623174e-05
+      ],
+      "accuracy": 5.724794874167997e-14
+    },
+    {
+      "point": 8,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.006055121176297232,
+        0.0005224681460359047,
+        -3.8999364791518184e-08,
+        -2.9105400613623174e-05
+      ],
+      "accuracy": 5.724794874167997e-14
+    },
+    {
+      "point": 9,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.022484127651218704,
+        0.0009949759513648367,
+        -0.00031881830396095364,
+        -0.00010807538341234942
+      ],
+      "accuracy": 2.9114628619196013e-13
+    },
+    {
+      "point": 9,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.022484127651218704,
+        0.0009949759513648367,
+        -0.00031881830396095364,
+        -0.00010807538341234942
+      ],
+      "accuracy": 2.9114628619196013e-13
+    },
+    {
+      "point": 10,
+      "order": 0,
+      "status": 217,
+      "coefficients": [
+        0.012578132845411151,
+        0.00022728657517332321,
+        -0.00010934411622872151,
+        -6.045982975041683e-05
+      ],
+      "accuracy": 9.976495415191808e-13
+    },
+    {
+      "point": 10,
+      "order": 1,
+      "status": 217,
+      "coefficients": [
+        0.012578132845411151,
+        0.00022728657517332321,
+        -0.00010934411622872151,
+        -6.045982975041683e-05
+      ],
+      "accuracy": 9.976495415191808e-13
+    }
+  ]
+}

@@ -14,6 +14,11 @@ from pathlib import Path
 import statistics
 import subprocess
 
+try:
+    from tools import ninjars_benchmark as benchmark
+except ModuleNotFoundError:  # Direct invocation from tools/.
+    import ninjars_benchmark as benchmark
+
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "docs/benchmarkfolder"
@@ -47,12 +52,33 @@ class Inputs:
         return json.loads(content)
 
 
-def summarize(runs, expected_repetitions, expected_points):
+def summarize(runs, expected_repetitions, expected_points, report=None,
+              protocol_cache=None, reader=None):
     if not runs:
         return {"status": "pending", "repetitions": 0, "median_us": None,
                 "cold_seconds": None, "dp": None, "qp": None, "timed_calls": None,
                 "status_counts": {}, "accuracy_counts": {}, "cpus": [],
                 "minimum_us": None, "maximum_us": None, "mad_us": None}
+    complete = len(runs) >= expected_repetitions
+    for key in ("executable_sha256", "shared_numerical_settings"):
+        identities = {json.dumps(run.get(key), sort_keys=True) for run in runs}
+        if len(identities) != 1:
+            raise ValueError(f"Mixed {key} across timing repetitions")
+        if complete and any(key not in run for run in runs):
+            raise ValueError(f"Missing {key} in completed timing repetitions")
+    if len({run["cpu"] for run in runs}) != 1:
+        raise ValueError("Different pinned CPUs across timing repetitions")
+    protocol_fields = ("benchmark_protocol", "protocol_identity_sha256",
+                       "protocol_validation_sha256")
+    if len({tuple(run.get(key) for key in protocol_fields) for run in runs}) != 1:
+        raise ValueError("Mixed benchmark protocols or validation across timing repetitions")
+    try:
+        for run in runs:
+            benchmark.validate_benchmark_protocol(
+                run, report, required=complete, minimum_repetitions=expected_repetitions,
+                cache=protocol_cache, reader=reader)
+    except RuntimeError as error:
+        raise ValueError(str(error)) from error
     values, cold, timed, accuracy = [], [], Counter(), Counter()
     for run in runs:
         values.append(finite(run["seconds_per_point"], "seconds per point", True) * 1e6)
@@ -73,7 +99,6 @@ def summarize(runs, expected_repetitions, expected_points):
         dp += count if h == 2 else 0
         qp += count if h == 3 else 0
     median = statistics.median(values)
-    complete = len(runs) >= expected_repetitions
     return {
         "status": "measured" if len(runs) >= expected_repetitions else "partial",
         "repetitions": len(runs), "median_us": median if complete else None,
@@ -139,6 +164,7 @@ def correctness(groups, config):
 
 def build_snapshot(report, work, timestamp=None):
     inputs = Inputs(ROOT)
+    protocol_cache = {}
     config = inputs.read(report / "cases.json")
     provenance = inputs.read(report / "provenance.json")
     cases = []
@@ -164,9 +190,16 @@ def build_snapshot(report, work, timestamp=None):
                 groups[source, backend] = runs
         summaries = {
             source: {str(b): summarize(groups[source, b], config["repetitions"],
-                                      config["points_per_case"]) for b in BACKENDS}
+                                      config["points_per_case"], report,
+                                      protocol_cache, inputs.read) for b in BACKENDS}
             for source in ("baseline", "candidate")
         }
+        protocols = {
+            tuple(run.get(key) for key in ("benchmark_protocol", "protocol_identity_sha256",
+                                           "protocol_validation_sha256"))
+            for runs in groups.values() for run in runs}
+        if len(protocols) > 1:
+            raise ValueError(f"Mixed benchmark protocols or validation within {case_id}")
         reference = summaries["baseline"]["6"]["median_us"]
         for b in BACKENDS:
             row = summaries["candidate"][str(b)]
@@ -189,6 +222,9 @@ def build_snapshot(report, work, timestamp=None):
             baseline_runs, candidate_runs = groups["baseline", 6], groups["candidate", 8]
             if len({r["cpu"] for r in baseline_runs + candidate_runs}) != 1:
                 raise ValueError(f"Different performance CPUs for {case_id}")
+            if len({json.dumps(r["shared_numerical_settings"], sort_keys=True)
+                    for r in baseline_runs + candidate_runs}) != 1:
+                raise ValueError(f"Different performance numerical settings for {case_id}")
             if ([r.get("measurement_run_id") for r in baseline_runs] !=
                     [r.get("measurement_run_id") for r in candidate_runs]):
                 raise ValueError(f"Different paired measurement runs for {case_id}")
@@ -200,13 +236,14 @@ def build_snapshot(report, work, timestamp=None):
         else:
             performance = {"status": "pending", "runtime_ratio": None,
                            "ratio_confidence_interval_95": None}
-        preparation = {
-            source: {
-                stage: inputs.read(work / "outputs" / source / case_id / f"{stage}.json",
-                                   optional=True)
-                for stage in ("generation", "compilation")}
-            for source in ("baseline", "candidate")
-        }
+        preparation = {}
+        for source in ("baseline", "candidate"):
+            preparation[source] = {}
+            for stage in ("generation", "compilation"):
+                retained = report / "inputs" / source / case_id / f"{stage}.json"
+                path = retained if retained.exists() else (
+                    work / "outputs" / source / case_id / f"{stage}.json")
+                preparation[source][stage] = inputs.read(path, optional=True)
         point_info = inputs.read(report / "points" / f"{case_id}.json", optional=True)
         hashes = sorted({r["points_sha256"] for group in groups.values() for r in group})
         cards = sorted({r["parameter_card_sha256"] for group in groups.values() for r in group})

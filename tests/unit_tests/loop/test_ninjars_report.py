@@ -1,5 +1,6 @@
 """Report regression tests: missing, incomplete, stale and disagreeing evidence."""
 import copy
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -23,6 +24,16 @@ class NinjaRSReportTest(unittest.TestCase):
         }
         self.write(self.docs / "cases.json", self.config)
         self.write(self.docs / "provenance.json", {})
+        descriptor = {
+            "schema": "fresh-process-v1",
+            "sources": {name: hashlib.sha256(b"fixture").hexdigest()
+                        for name in ("ninjars_benchmark.py", "ninjars_benchmark_driver.f")}}
+        self.protocol_identity = report.benchmark.content_digest(descriptor)
+        protocol = self.docs / "inputs/benchmark-protocols" / self.protocol_identity
+        self.write(protocol.with_suffix(".json"), descriptor)
+        protocol.mkdir()
+        for name in descriptor["sources"]:
+            (protocol / name).write_bytes(b"fixture")
 
     @staticmethod
     def write(path, value):
@@ -36,12 +47,15 @@ class NinjaRSReportTest(unittest.TestCase):
         code = {1: 211, 6: 216, 7: 217, 8: 218}[backend]
         return {
             "source": source, "case": "qcd-1", "backend": backend,
+            "benchmark_protocol": "fresh-process-v1",
+            "protocol_identity_sha256": self.protocol_identity,
             "repetition": repetition, "seconds_per_point": backend * 1e-6,
             "cold_seconds": 0.5, "loops": 1, "cpu": 3,
             "timed_status_counts": {str(code): 2}, "status_counts": {str(code): 2},
             "points_sha256": "points", "parameter_card_sha256": "parameters",
             "paired_baseline_candidate": True, "measurement_run_id": "paired",
             "executable_sha256": source, "git_revision": "revision",
+            "shared_numerical_settings": {"ctmoderun": -1, "mlstabthres": 1e-3},
             "rows": [{"point": p, "order": o, "status": code, "accuracy": 1e-12,
                       "coefficients": [1.0, 2.0, 3.0, 4.0]}
                      for p in (1, 2) for o in (0, 1)],
@@ -113,3 +127,79 @@ class NinjaRSReportTest(unittest.TestCase):
         self.write(self.docs / "data/candidate-qcd-1-8-0.json", changed)
         with self.assertRaisesRegex(ValueError, "Unexpected reducer"):
             self.snapshot()
+
+    def test_every_backend_rejects_mixed_executables_and_settings(self):
+        self.populate(7)
+        for backend in report.BACKENDS:
+            for key, changed in (
+                    ("executable_sha256", "rebuilt-executable"),
+                    ("shared_numerical_settings", {"ctmoderun": 1}),
+                    ("cpu", 9)):
+                with self.subTest(backend=backend, key=key):
+                    path = self.docs / "data" / f"candidate-qcd-1-{backend}-6.json"
+                    original = self.run_record("candidate", backend, 6)
+                    record = copy.deepcopy(original)
+                    record[key] = changed
+                    self.write(path, record)
+                    with self.assertRaisesRegex(ValueError, "Mixed|Different pinned"):
+                        self.snapshot()
+                    self.write(path, original)
+
+    def test_completed_timings_require_recorded_settings(self):
+        self.populate(7)
+        for rep in range(7):
+            record = self.run_record("candidate", 7, rep)
+            del record["shared_numerical_settings"]
+            self.write(self.docs / "data" / f"candidate-qcd-1-7-{rep}.json", record)
+        with self.assertRaisesRegex(ValueError, "Missing shared_numerical_settings"):
+            self.snapshot()
+
+    def test_mixed_timing_protocol_or_validation_is_rejected(self):
+        self.populate(7)
+        path = self.docs / "data/candidate-qcd-1-8-6.json"
+        for field, value in (("benchmark_protocol", "persistent-worker-v1"),
+                             ("protocol_identity_sha256", "0"*64),
+                             ("protocol_validation_sha256", "1"*64)):
+            changed = self.run_record("candidate", 8, 6)
+            changed[field] = value
+            self.write(path, changed)
+            with self.assertRaisesRegex(ValueError, "Mixed benchmark protocols"):
+                self.snapshot()
+
+    def test_unlabelled_legacy_probes_cannot_become_final_timings(self):
+        self.populate(7)
+        for rep in range(7):
+            path = self.docs / "data" / f"candidate-qcd-1-8-{rep}.json"
+            changed = self.run_record("candidate", 8, rep)
+            del changed["benchmark_protocol"], changed["protocol_identity_sha256"]
+            self.write(path, changed)
+        with self.assertRaisesRegex(ValueError, "unsupported benchmark_protocol"):
+            self.snapshot()
+
+    def test_persistent_timings_require_complete_promotion_evidence(self):
+        self.populate(7)
+        for rep in range(7):
+            path = self.docs / "data" / f"candidate-qcd-1-8-{rep}.json"
+            changed = self.run_record("candidate", 8, rep)
+            changed.update(benchmark_protocol="persistent-worker-v1",
+                           protocol_validation_sha256="1"*64,
+                           protocol_run_manifest_sha256="2"*64)
+            self.write(path, changed)
+        with self.assertRaisesRegex(ValueError, "complete validated repetition"):
+            self.snapshot()
+
+    def test_retained_preparation_is_used_without_disposable_outputs(self):
+        retained = {"seconds": 18.2, "build_kind": "clean-subprocess",
+                    "preexisting_subprocess_objects": 0}
+        self.write(self.docs / "inputs/baseline/qcd-1/compilation.json", retained)
+        # Retained metadata remains authoritative if a later experiment changes
+        # the disposable build tree or the tree is removed altogether.
+        path = self.work / "outputs/baseline/qcd-1/compilation.json"
+        self.write(path, {"seconds": 0.1, "build_kind": "incremental"})
+        self.assertEqual(
+            self.snapshot()["cases"][0]["preparation"]["baseline"]["compilation"],
+            retained)
+        path.unlink()
+        self.assertEqual(
+            self.snapshot()["cases"][0]["preparation"]["baseline"]["compilation"],
+            retained)

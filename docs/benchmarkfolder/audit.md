@@ -37,7 +37,8 @@ the full process comparison or performance gate.
 `tests/unit_tests/loop/test_ninjars_fortran.py` contains four compiled tests, including
 present/absent module cleanup and color-flow combinations. These tests passed during
 the integration audit. `vendor/ninjars/src/lib.rs` contains bridge and scalar reuse
-tests; all seven passed after the sampling-scale and shared-worker fixes. The full
+tests; all nine passed, including ABI2 buffer-length validation, after the
+sampling-scale and shared-worker fixes. The full
 process benchmark remains independently governed by the data and status tables in
 the generated report.
 
@@ -102,6 +103,33 @@ for amplitude and interference modes, DP/QP, rank sequence `2,0,3,1,0`, and
 direction modes `1,2,4,5`; both variants agree exactly. Experiment scripts, diffs
 and timing JSON are retained under `experiments/ninja-scratch` alongside this
 report, with generated build trees kept in `.benchmark-work`.
+
+## Profile-driven wavefunction update optimization
+
+Executable sampling of the original `qcd-2` and `qcd-3` outputs identified compact
+`UPDATE_WL` contractions as the dominant Fortran cost. Their leading rank-two
+updates accounted for 40.08% and 32.29% of executable self samples, respectively.
+The qcd-3 rank-three update added 18.41%. These percentages exclude dynamically
+linked reducer/master-integral code and do not represent total wall time.
+The profiles, CSV and reproduction script are retained in
+`experiments/fortran-profile`.
+
+The generator now interchanges only the innermost coefficient and last-array-index
+loops in compact updates, keeping each output's arithmetic accumulation order
+unchanged. Compiled tests compare the generated DP and QP routines with the legacy
+order across rank pairs, all dimensions from one to four, sparse coefficients and
+large/small complex inputs: 2,880 full-array comparisons per precision are exact.
+Copied generated outputs also agree exactly on all printed quantities and statuses
+at all 100 stored qcd-2 and qcd-3 points.
+
+Seven alternating exploratory pairs on CPU 2 gave median ratios of `0.940346`
+for qcd-2 and `0.868791` for qcd-3, relative to their unmodified copies. Concurrent
+builds caused substantial noise, so these are preliminary observations, not accepted
+speed claims. Paired-bootstrap 95% ratio intervals of `[0.913864, 1.033940]` and
+`[0.398845, 1.111719]` leave a strict speed-benefit gate unresolved. Production
+retention is conditional on isolated repeated timing and
+the full process gates. Scripts, generated diffs and sample-level evidence are
+retained in `experiments/wl-layout`.
 
 ## Limits and optimization follow-up
 

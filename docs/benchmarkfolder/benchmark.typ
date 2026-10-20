@@ -23,6 +23,14 @@
   let value = c.preparation.at(source).at(stage)
   if value == none { none } else { value.seconds }
 }
+#let build-time(c, source) = {
+  let value = c.preparation.at(source).compilation
+  if value == none { fmt(none) } else {
+    let kind = value.at("build_kind", default: "unknown")
+    let marker = ("clean-subprocess": "C", incremental: "I").at(kind, default: "?")
+    [#fmt(value.seconds, digits: 2) #text(size: 6.5pt, fill: grey)[#marker]]
+  }
+}
 #let timing-card(c, backend) = {
   let t = c.timings.candidate.at(backend)
   let ref = c.timings.baseline.at("6")
@@ -45,7 +53,7 @@
       }
     ]
     v(6pt)
-    text(size: 7.2pt, fill: navy, weight: "bold")[Init + warm #fmt(t.cold_seconds, digits: 3) s]
+    text(size: 7.2pt, fill: navy, weight: "bold")[ML init + warm #fmt(t.cold_seconds, digits: 3) s]
     linebreak()
     text(size: 6.9pt, fill: grey)[#t.repetitions retained repetitions]
     linebreak()
@@ -121,8 +129,9 @@ Full model names and MG5aMC process commands are listed with the reproducibility
   *Timing boundary.* Timed calls include the MadLoop numerator, loop reduction,
   scalar integrals, assembly and normal stability checks or rescues, together with
   per-point scale/coupling updates and return-code counting. Output is written after
-  the timed region. “Init + warm” includes helicity initialization and one complete
-  additional point-stream pass; it is not the time of a single first call.
+  the timed region. “ML init + warm” begins at the first MadLoop evaluation and
+  includes helicity initialization and one complete additional point-stream pass.
+  It excludes parameter-card/model initialization, input reading and allocation.
 ]
 #v(7pt)
 #small[
@@ -179,12 +188,12 @@ Full model names and MG5aMC process commands are listed with the reproducibility
 #section-label[PREPARATION · SEPARATE WALL CLOCKS]
 = Generation, compilation and initialization
 #tab((1.2fr, 1fr, 1fr, 1fr, 1fr, 1.05fr),
-  table.header(th[Process], th[Original gen.], th[Original build], th[Candidate gen.], th[Candidate build], th[NinjaRS init + warm]),
+  table.header(th[Process], th[Original gen.], th[Original build], th[Candidate gen.], th[Candidate build], th[NinjaRS ML init + warm]),
   ..data.cases.map(c => (
     label(c.id), fmt(prepare(c, "baseline", "generation"), digits: 2),
-    fmt(prepare(c, "baseline", "compilation"), digits: 2),
+    build-time(c, "baseline"),
     fmt(prepare(c, "candidate", "generation"), digits: 2),
-    fmt(prepare(c, "candidate", "compilation"), digits: 2),
+    build-time(c, "candidate"),
     fmt(c.timings.candidate.at("8").cold_seconds, digits: 3),
   )).flatten(),
 )
@@ -192,17 +201,19 @@ Full model names and MG5aMC process commands are listed with the reproducibility
 #small[
   All preparation values are seconds. Generation is the recorded CLI model import,
   process generation and standalone export invocation; it can include library work
-  performed by export. Build is the most recently recorded `make -j4 check` invocation,
-  so it must not be interpreted as a clean rebuild unless its log establishes that.
-  Initialization is the median of the completed timed-run preparations. Generation
-  and compilation have no performance acceptance gate.
+  performed by export. Build is the retained `make -j4 check` invocation:
+  *C* begins with no subprocess object files; *I* is incremental; *?* was not classified.
+  A clean subprocess build does not include rebuilding external libraries.
+  ML initialization plus warming is the median of the completed run preparations
+  beginning at their first MadLoop call; parameter-card/model setup is excluded.
+  Generation and compilation have no performance acceptance gate.
 ]
 #v(8pt)
 = Measurement method
 The process list is fixed in `cases.json`. For two-to-many scattering, the harness
 constructs deterministic RAMBO-derived on-shell momenta at #config.energy_gev GeV,
 including the generated external masses. For 2 → 1, a physical on-shell resonance
-is produced with distinct longitudinal boosts. Momentum conservation and masses
+is produced with distinct three-dimensional boosts. Momentum conservation and masses
 are checked before measurements; each case uses a different deterministic seed.
 
 The same retained text point stream and parameter-card SHA-256 hashes are required

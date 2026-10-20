@@ -1,0 +1,7 @@
+{
+  "status": "not-recorded",
+  "revision": null,
+  "reason": "Generation predates source-identity recording; current HEAD is not evidence.",
+  "dirty_patch_sha256": null,
+  "identity_sha256": "4762235b38d33bc5b14614f7e8409c42f1211063db34ee0e10c7f2eb51603a1b"
+}
