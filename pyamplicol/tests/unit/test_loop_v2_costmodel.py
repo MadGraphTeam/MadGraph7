@@ -130,3 +130,19 @@ def test_g0_verdict_follows_the_headroom(tmp_path: Path) -> None:
     slow = tmp_path / "slow.json"
     slow.write_text(json.dumps(_synthetic_report(50.0)))
     assert costmodel.main([str(slow)]) == 1
+
+
+def test_robust_lanes_avoids_a_collapse_in_any_report() -> None:
+    def calibrations(*rates: float):
+        return [
+            costmodel.Calibration(lanes, (rate, rate), (), 0.0, 0.0)
+            for lanes, rate in zip((8, 16, 32), rates, strict=True)
+        ]
+
+    # Best at 8 lanes in two code generations, collapsed at 8 in the third.
+    reports = [
+        calibrations(1.4, 1.34, 1.2),
+        calibrations(1.9, 1.75, 1.5),
+        calibrations(0.8, 1.9, 1.8),
+    ]
+    assert costmodel.robust_lanes(reports) == 16

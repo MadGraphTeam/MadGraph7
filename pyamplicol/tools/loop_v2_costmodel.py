@@ -229,6 +229,24 @@ def recommended_lanes(calibrations: Sequence[Calibration]) -> Calibration:
     )
 
 
+def robust_lanes(reports: Sequence[Sequence[Calibration]]) -> int:
+    """Lane count that stays closest to each report's best lower-end throughput.
+
+    With reports from several code generations (baseline, AVX2, AVX-512) this
+    is the lane count whose worst ratio to the best of its report is highest.
+    """
+    common = set.intersection(*({c.lanes for c in report} for report in reports))
+
+    def worst(lanes: int) -> float:
+        return min(
+            next(c for c in report if c.lanes == lanes).throughput[0]
+            / max(c.throughput[0] for c in report)
+            for report in reports
+        )
+
+    return max(sorted(common), key=worst)
+
+
 def dispatch_seconds(calibration: Calibration, nodes: int, edges: int) -> float:
     """Per-point dispatch: every node and edge call is shared by the lanes."""
     return (
@@ -376,11 +394,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     status = 0
     summary = []
+    per_report: list[list[Calibration]] = []
     for path in args.benchmarks:
         report = json.loads(path.read_text())
         features = report.get("target_features")
         calibrations = [calibrate(report, lanes) for lanes in lane_counts(report)]
         chosen = recommended_lanes(calibrations)
+        per_report.append(calibrations)
         text, passed = report_text(str(path), features, calibrations)
         print(text)
         status |= 0 if passed else 1
@@ -431,6 +451,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "seconds": seconds,
             }
         summary.append(entry)
+    if len(args.benchmarks) > 1:
+        lanes = robust_lanes(per_report)
+        print(f"lane count robust across all reports: {lanes}")
     if args.json is not None:
         args.json.write_text(json.dumps(summary, indent=1) + "\n")
     return status

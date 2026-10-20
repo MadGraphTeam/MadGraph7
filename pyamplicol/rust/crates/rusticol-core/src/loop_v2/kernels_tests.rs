@@ -460,3 +460,77 @@ fn binary64_blocked_matches_pattern_kernel() {
         assert!((r - b).abs() <= 1e-14 * scale, "{r} vs {b}");
     }
 }
+
+/// Runs the fused and split forms of one segment in carrier `T`; returns both outputs in f64.
+fn fused_and_split<T: FloatLike>(
+    data: &[Vec<Rational>; 4],
+    convert: impl Fn(&Rational) -> T,
+    to_f64: impl Fn(&T) -> f64,
+) -> [Vec<f64>; 2] {
+    let products = MonomialProducts::new(2, 1);
+    let segment = Segment::new(4, 4, 4, 4, &products, 3);
+    let [input, current, factor, vertex] = data
+        .each_ref()
+        .map(|values| values.iter().map(&convert).collect::<Vec<T>>());
+    let links: Vec<RowLink> = (0..4)
+        .map(|r| RowLink {
+            output: (r / 2) as u32,
+            input: r as u32,
+            block: (r % 2) as u32,
+        })
+        .collect();
+    let zero = convert(&Rational::from(0));
+    let mut fused = vec![zero.clone(); 2 * segment.output_row_len() * lane_vector_len(L)];
+    fused_edge::<T, L>(
+        &segment,
+        &FusedPattern::dense(&segment),
+        &input,
+        &factor,
+        &links,
+        &mut fused,
+    );
+    let mut accumulator =
+        vec![zero.clone(); 2 * segment.accumulator_row_len() * lane_vector_len(L)];
+    split_edge::<T, L>(&segment, &input, &current, &links, &mut accumulator);
+    let mut split = vec![zero; 2 * segment.output_row_len() * lane_vector_len(L)];
+    split_vertex::<T, L>(
+        &segment,
+        &VertexPattern::dense(&segment),
+        &vertex,
+        2,
+        &accumulator,
+        &mut split,
+    );
+    [fused, split].map(|values| values.iter().map(&to_f64).collect())
+}
+
+#[test]
+fn extended_precision_carriers_match_exact_arithmetic() {
+    use symbolica::domains::float::{DoubleFloat, Float, RealLike};
+
+    let mut rng = Lcg(0xcafe);
+    let products = MonomialProducts::new(2, 1);
+    let segment = Segment::new(4, 4, 4, 4, &products, 3);
+    let data = [
+        rng.lane_vectors(4 * segment.input_row_len()),
+        rng.lane_vectors(2 * segment.current),
+        rng.lane_vectors(2 * FusedPattern::dense(&segment).entries().len()),
+        rng.lane_vectors(VertexPattern::dense(&segment).entries().len()),
+    ];
+    let exact = fused_and_split(&data, Rational::clone, Rational::to_f64);
+    let double_float = fused_and_split(
+        &data,
+        |r| DoubleFloat::from(r.to_f64()),
+        |x: &DoubleFloat| x.to_f64(),
+    );
+    let float = fused_and_split(&data, |r| Float::with_val(200, r.to_f64()), Float::to_f64);
+    // The carriers see the inputs rounded to binary64; compare at that level.
+    for (form, reference) in exact.iter().enumerate() {
+        let scale = reference.iter().fold(0.0f64, |m, x| m.max(x.abs()));
+        for result in [&double_float[form], &float[form]] {
+            for (r, x) in reference.iter().zip(result) {
+                assert!((r - x).abs() <= 1e-14 * scale, "{r} vs {x}");
+            }
+        }
+    }
+}
