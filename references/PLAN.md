@@ -634,3 +634,9 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   preflights and explicit affinity change remain in the sealed evidence.
   This is a 9.24% kernel gain, not a full-process result or production change.
   A separate corrected-parser combination must pass its own validation first.
+- User requested a pause on 2026-10-20. The goal is paused after preserving
+  active compilation/reference jobs with SIGSTOP and recording their exact
+  identities. Fresh corrected-transport installation and both CLI exports
+  passed; copied-output runtime checks remain pending. See `references/PAUSE.md`
+  before resuming; do not silently restart jobs or reuse timing intervals that
+  span the pause.
