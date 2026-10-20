@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "failures": [],
+  "input_sha256": {
+    "baseline-1": "ed638ebdc5007091c9b097082a97032e51379dbe70fac2ab16572bcc574dd5a8",
+    "candidate-1": "0adbd4858fdeed29ee7b2cf506c43c5d64e842b66bf641003426a6fb65046d76",
+    "baseline-6": "9f71eb425af8d4f6915e6571b1959c663afa74ea37387cd6335bb98e989723f5",
+    "candidate-6": "9bff4a2448c104987eaead01b38b70cd073b57d088c788711651f983f9377bd2",
+    "baseline-7": "6a2e4a628659dcf6f99cbba1269d1bddda406b0231bb63766713291531c2bef6",
+    "candidate-7": "d3a8d70210be51006d50fd3254e2947ef25f03a99f7245aecd7539c082f213af"
+  }
+}

@@ -183,6 +183,17 @@ Full model names and MG5aMC process commands are listed with the reproducibility
   *unresolved*, not a pass. Each pair uses the same CPU, points and parameter card;
   measurement order alternates between repetitions.
 ]
+#if data.provenance.at("outstanding_findings", default: ()).len() > 0 {
+  v(7pt)
+  note[
+    *Outstanding diagnostics.* These are retained investigations, separate from
+    accepted timing series.
+    #for finding in data.provenance.outstanding_findings [
+      #parbreak()
+      #finding
+    ]
+  ]
+}
 
 #pagebreak()
 #section-label[PREPARATION · SEPARATE WALL CLOCKS]
@@ -319,7 +330,7 @@ joins the retained worker. See `audit.md` for scope, evidence and remaining limi
   Full dependency revisions, source archive and model hashes are in `provenance.json`.
   Full point/card hashes, per-run executable hashes when recorded, raw timings,
   Laurent coefficients, statuses and run logs remain with the benchmark inputs.
-  `report-data.json` includes a SHA-256 manifest of every JSON input used to build it.
+  `report-data.json` includes a SHA-256 manifest of the inputs used to build it.
 ]
 #v(7pt)
 = Rebuild the measurements and report
@@ -327,14 +338,17 @@ joins the retained worker. See `audit.md` for scope, evidence and remaining limi
 source .ninjars-build/dev-env.sh
 python tools/ninjars_benchmark.py generate --source both
 python tools/ninjars_benchmark.py build --source both
-python tools/ninjars_benchmark.py measure --source both
-python tools/ninjars_benchmark.py compare
-python tools/ninjars_benchmark.py performance
+python tools/ninjars_benchmark_workers.py measure --source both \
+  --cases all --cpu 207 --repetitions 7 --clean-build --run-id core
+python tools/ninjars_benchmark_workers.py promote --runs \
+  docs/benchmarkfolder/experiments/persistent-workers/core
 python tools/ninjars_report.py --compile
 ```
 #small[
   Run from the repository root after installing the pinned libraries and preparing
-  the untouched baseline checkout. Per-case selection uses `--cases qcd-1`.
+  the untouched baseline checkout. Choose an allowed quiet CPU; 207 is this run's
+  choice. Refresh representative protocol validation as described in
+  `persistent-workers.md`. Per-case selection uses `--cases qcd-1`.
   Failed and unresolved performance comparisons exit unsuccessfully and retain
   their JSON evidence. The report generator rejects stale summaries and mismatched
   input streams instead of silently combining them.

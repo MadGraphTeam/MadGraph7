@@ -455,5 +455,26 @@
     "last_reverified_utc": "2026-10-20T13:53:43.744959+00:00"
   },
   "report_style_source_sha256": "31fe3c52ada017dd1f7e923a646f65d19c1e9d1edba54fe84a50348c1ee67967",
-  "ninjars_abi_version": 2
+  "ninjars_abi_version": 2,
+  "accepted_core_series": {
+    "cases": [
+      "qcd-1",
+      "ew-1",
+      "qcd-2",
+      "ew-2"
+    ],
+    "source": "docs/benchmarkfolder/experiments/persistent-workers/runtime-v1-core-small-completed-20261020",
+    "manifest_sha256": "6eb99ea586aba5330e2c987156b995b5b16e767ead896ba796a884692f96b276",
+    "derivation_sha256": "2013a32cab88ea791afe170e95db45260e163a3303a8d70c7baf1fd2ff5912fa",
+    "cpu": 207,
+    "repetitions": 7,
+    "measurements": 196,
+    "all_three_gates": "passed",
+    "original_run_status": "failed",
+    "outstanding_next_case": "ew-3"
+  },
+  "outstanding_findings": [
+    "Zgg: an exploratory seven-repeat series gave a NinjaRS/original-Ninja ratio of 2.269, above the 1.05 target. Concurrent task activity excludes this series from acceptance timing; the slowdown remains under investigation.",
+    "tt~gamma: the series stopped on original Collier status 410 at points 68 and 74. Separate finite-part discrepancies at points 49 and 78 remain under investigation. The complete failed run is retained."
+  ]
 }

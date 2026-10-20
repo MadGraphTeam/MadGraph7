@@ -38,7 +38,7 @@ class Inputs:
         self.root = root
         self.files = {}
 
-    def read(self, path, optional=False):
+    def read_bytes(self, path, optional=False):
         if not path.exists():
             if optional:
                 return None
@@ -49,7 +49,11 @@ class Inputs:
         except ValueError:
             name = str(path)
         self.files[name] = hashlib.sha256(content).hexdigest()
-        return json.loads(content)
+        return content
+
+    def read(self, path, optional=False):
+        content = self.read_bytes(path, optional)
+        return json.loads(content) if content is not None else None
 
 
 def summarize(runs, expected_repetitions, expected_points, report=None,
@@ -249,9 +253,20 @@ def build_snapshot(report, work, timestamp=None):
         cards = sorted({r["parameter_card_sha256"] for group in groups.values() for r in group})
         if len(hashes) > 1 or len(cards) > 1:
             raise ValueError(f"Mixed numerical inputs within {case_id}")
+        point_hash = next(iter(hashes), None)
+        if point_info is not None:
+            point_data = inputs.read_bytes(report / "points" / f"{case_id}.dat")
+            retained_hash = hashlib.sha256(point_data).hexdigest()
+            if (retained_hash != point_info["sha256"] or
+                    (point_hash is not None and point_hash != retained_hash)):
+                raise ValueError(f"Retained point stream differs from its evidence for {case_id}")
+            if (point_info["points"] != config["points_per_case"] or
+                    int(point_data.splitlines()[0]) != config["points_per_case"]):
+                raise ValueError(f"Retained point count differs for {case_id}")
+            point_hash = retained_hash
         cases.append(dict(case, timings=summaries, agreement=agreement,
                           performance=performance, preparation=preparation,
-                          point_info=point_info, point_hash=next(iter(hashes), None),
+                          point_info=point_info, point_hash=point_hash,
                           parameter_hash=next(iter(cards), None)))
     stats = {
         "cases": len(cases),

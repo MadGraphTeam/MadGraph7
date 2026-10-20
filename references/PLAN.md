@@ -262,3 +262,24 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   per-evaluation scalar-result reuse and further Fortran QP sparsity work are
   being investigated in isolated prototypes without changing thresholds,
   precision or physical inputs.
+- The first four core cases now pass all four-backend numerical comparisons,
+  original-versus-optimized legacy regression, and seven-repetition runtime
+  gates. NinjaRS/original-Ninja median ratios are 0.846545 (`qcd-1`),
+  0.924495 (`ew-1`), 0.890040 (`qcd-2`), and 1.037710 (`ew-2`); their respective
+  95% interval upper bounds are 0.852432, 0.931509, 0.900480 and 1.043532.
+  Measurements use CPU 207 with other task-owned computation stopped.
+  The shared host is not claimed to be exclusive.
+- That series stopped during `ew-3` calibration when original Collier returned
+  status 410 at points 68 and 74. Its entire failed run, including raw rejected
+  outputs, is preserved. A separately audited extraction retains every completed
+  case, every backend and all 196 repetitions without modifying the failed
+  source run or its protocol. Frozen validators and eight extraction tests pass;
+  promotion independently passes agreement, legacy regression and performance
+  for all four completed cases. The Typst report now shows 4/8 correctness and
+  4/8 performance gates, with the remaining cases outstanding.
+- EW three-body diagnostics also find finite-part discrepancies at points 49
+  and 78 between double- and higher-precision evaluations. Tighter Collier
+  integral accuracy removes the two status-410 flags but not these discrepancies.
+  Numerator and integral precision are being isolated using the original
+  backends and unchanged physical points. These diagnostic variants are not
+  acceptance evidence and do not relax comparison or stability thresholds.

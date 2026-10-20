@@ -1,0 +1,26 @@
+{
+  "published": true,
+  "manifest_sha256": "6eb99ea586aba5330e2c987156b995b5b16e767ead896ba796a884692f96b276",
+  "gates": {
+    "qcd-1": {
+      "agreement": "passed",
+      "legacy_agreement": "passed",
+      "performance": "passed"
+    },
+    "ew-1": {
+      "agreement": "passed",
+      "legacy_agreement": "passed",
+      "performance": "passed"
+    },
+    "qcd-2": {
+      "agreement": "passed",
+      "legacy_agreement": "passed",
+      "performance": "passed"
+    },
+    "ew-2": {
+      "agreement": "passed",
+      "legacy_agreement": "passed",
+      "performance": "passed"
+    }
+  }
+}

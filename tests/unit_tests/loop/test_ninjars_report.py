@@ -203,3 +203,20 @@ class NinjaRSReportTest(unittest.TestCase):
         self.assertEqual(
             self.snapshot()["cases"][0]["preparation"]["baseline"]["compilation"],
             retained)
+
+    def test_unmeasured_points_are_hashed_and_stale_streams_rejected(self):
+        content = b"2\nretained point fixture\n"
+        checksum = hashlib.sha256(content).hexdigest()
+        self.write(self.docs / "points/qcd-1.json", {"points": 2, "sha256": checksum})
+        path = self.docs / "points/qcd-1.dat"
+        path.write_bytes(content)
+        result = self.snapshot()
+        self.assertEqual(result["cases"][0]["point_hash"], checksum)
+        self.assertEqual(result["cases"][0]["performance"]["status"], "pending")
+        path.write_bytes(content + b"changed\n")
+        with self.assertRaisesRegex(ValueError, "Retained point stream differs"):
+            self.snapshot()
+        path.write_bytes(content)
+        self.populate(1)
+        with self.assertRaisesRegex(ValueError, "Retained point stream differs"):
+            self.snapshot()

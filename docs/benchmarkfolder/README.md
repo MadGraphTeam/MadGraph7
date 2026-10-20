@@ -114,3 +114,22 @@ This regenerates `report-data.json` and compiles `benchmark.typ` to
 The styling is attributed in the source to the
 [pyamplicol reference report](https://github.com/MadGraphTeam/pyamplicol/blob/loop/docs/performance_reports/loop/benchmarks.typ).
 The final PDF must also be visually inspected.
+
+The current report is an intermediate snapshot: four of eight core cases pass
+both correctness and performance. The seven-target series for `qcd-1`, `ew-1`,
+`qcd-2` and `ew-2` contains 196 accepted measurements. The subsequent `ew-3`
+calibration failed on original Collier and remains outstanding, together with
+the two four-body cases and QCD three-body performance.
+
+The complete failed run is retained under
+`experiments/persistent-workers/runtime-v1-core-small-20261020`. Its completed
+prefix is derived, without numerical changes, under
+`runtime-v1-core-small-completed-20261020` in the same directory. The derivation
+preserves the entire original failed run, rejects incomplete cases or omitted
+completed cases, and uses the unchanged numerical protocol validator before
+promotion:
+
+```sh
+python tools/ninjars_benchmark_extract.py verify --destination \
+  docs/benchmarkfolder/experiments/persistent-workers/runtime-v1-core-small-completed-20261020
+```
