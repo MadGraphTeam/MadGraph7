@@ -84,11 +84,28 @@ source plans; it cannot be attached afterward to a different prepared owner.
 
 Actual LC/NLC/formal-full owner controls cover absent/foreign continuation,
 paired mutable metadata substitution, changed components, typed ports, formal
-records and degrees. Paired identity source catalogues retain the same model
-and source ownership checks. Nonempty colour histories remain rejected for
-this projected transport slice. Saved-artifact admission applies these checks
-before permitting representative selection, and validates the retained identity
-history restriction again at the native boundary.
+records and degrees. Projected nonempty histories additionally require both
+actual complete-family banks. Each bank must belong to its own model/formal
+owner; the pair must agree on formal Nc, accuracy, order sectors, complete typed
+history families, their common degrees and every requested family assignment.
+Each source class must retain the exact ordinary bank object. This comparison
+does not identify raw current columns or replace the species/scalar proof.
+
+Binding and saving require the actually paired directed plan for projected
+nonidentity histories, including direct construction and rebind. An ordinary-only
+relation cannot acquire this capability. Existing safe fixed-full or projected
+identity-only composition is preserved; whenever admission retained a directed
+plan, equal-valued replacement is rejected. Native loading uses the existing
+complete-family convention and its full typed validator.
+
+Thirty actual owner/source/writer/compatibility checks and six mapped LC/NLC
+all-carrier physical cases pass against independent member currents. Normal
+mapped checkpoints are saved. The native ingress test passes the actual
+identity/complete plans and seven malformed-family controls; the unified
+Python/SDK build and normal source staging pass. Nine saved full/LC/NLC cases
+cover all three carriers, complete components and totals. Public LC/NLC
+selection, sources, complex totals and a genuine subset AP rescue pass, as does
+the NLC binary64 standalone SDK client with owned outputs.
 
 ## Saved artifacts and public selection
 
@@ -120,7 +137,8 @@ member uses the same exact scalar owner and parameter-update guards.
 
 Unproved candidates remain independent. LC/NLC and formally continued full-colour
 requests may reuse a representative after the exact projected owner and component
-checks above. Their admitted colour histories are identity histories only. The
+checks above. Nonidentity colour histories also need the paired complete-family
+authority described above. The
 existing canonical LC partition is prepared before capturing any model or source
 plan. If dependency canonicalization is unavailable for an otherwise executable
 correlated request, optional flavour grouping leaves that request independent;
@@ -155,8 +173,8 @@ retain their separate ownership during rebind, point compaction and rescue.
 
 The exercised source composition is QCD `d d~ -> g g` and `s s~ -> g g`, with
 classes `(3,)`, `(4,)` and `(3,4)`. Fixed-full-colour owners cover
-identity/ordered/swapped histories; formal LC/NLC/full owners currently admit
-identity histories only. The full
+identity/ordered/swapped histories; formal LC/NLC/full owners also admit
+nonidentity histories when the actual paired complete-family gate passes. The full
 retained QCD proof rejects the tested u/c substitution; photon-order scope rejects
 the tested d/s and u/c substitutions. Such processes remain independently
 generated. A matching default tree value is never a replacement for the proof.
@@ -208,7 +226,7 @@ formal-full coefficients agree with the earlier independently saved fixed-full
 owners after matching the source inputs, including the bottom-mass convention;
 no tolerance or normalization adjustment is used.
 
-The public projected controls exercise ordinary and signed resolved LC/NLC in
+The earlier public projected controls exercise ordinary and signed resolved LC/NLC in
 double, DoubleFloat and ArbPrec70, including all components, orders and poles,
 empty/singleton/irregular batches and opaque IDs. Independently saved identity
 source catalogues cover ordinary, both single-vector classes and their joint
@@ -221,8 +239,9 @@ complete buffer lengths and shapes, and retains owned results after `clear`.
 These are correctness controls, not generation or runtime measurements.
 
 The identity-port transport is model-R2 with UV and external fields, exact species
-substitution and unchanged external ports. Charge conjugation and nonidentity
-projected colour histories remain uncertified. The separate ordinary Bose
+substitution and unchanged external ports. Projected nonidentity histories now
+pass the source, native, saved/public and SDK gates above. Charge conjugation
+remains uncertified. The separate ordinary Bose
 extension below admits only its explicitly proved external-port action.
 Saved member selection uses the shared native artifact loader; it introduces no
 new manifest or hash.
@@ -413,8 +432,8 @@ sums, across LC/NLC and all three carriers. All nine blocks, both terms, swapped
 conjugation, exact parameter/source updates, complex/zero sources and opaque
 IDs survive. The paired executors share the proved colour support; the separate
 complete tensor controls provide the independent colour-projection oracle.
-Saved/public/SDK numerical validation of these new banks remains pending.
-Colour reuse does not admit shared numerical amplitudes: nonidentity projected
-flavour admission still needs its separate exact species/scalar/request/source
-proof. Existing numerical mapping guards remain unchanged. No benchmark cells
-were retimed.
+Saved full/LC/NLC numerical validation passes all three carriers; public LC/NLC
+and NLC binary64 SDK transport pass with the actual paired numerical admission.
+Colour reuse alone does not admit shared numerical amplitudes. The separate
+species/scalar/request/source and paired-family proof above now admits the
+tested nonidentity projected source transport. No benchmark cells were retimed.
