@@ -1,0 +1,17 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--release",
+    "--locked",
+    "--bin",
+    "master-weights",
+    "--manifest-path",
+    ".benchmark-work/experiments/qcd3-point67-masters/bridge/Cargo.toml"
+  ],
+  "source_sha256": "cec831d706ff2c4ff1f2f861cc023d400edf0c1fba6ba5f3c14314a66e2b724c",
+  "lock_sha256": "4d9e5147381f2e27d2a81967c0a678a1a85d533d56b9b3ddbb8a85228db69471",
+  "executable_sha256": "1bd444c9839bd48929d2f6eb855b03ffd80c6f4b5a5c15446b2501b84dc06d74",
+  "manifest": "[package]\nname = \"point67-master-oracle\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.96\"\nlicense = \"GPL-3.0-or-later\"\npublish = false\n\n[workspace]\n\n\n[dependencies]\nserde_json = {version=\"1\", features=[\"float_roundtrip\"]}\nninjars = { git = \"https://github.com/alphal00p/ninjars\", rev = \"0d0d7e7a8033431b60a8580731084742e0655cda\" }\nninjars-symbolica = { git = \"https://github.com/alphal00p/ninjars\", rev = \"0d0d7e7a8033431b60a8580731084742e0655cda\", features = [\"native-masters\"] }\nsymbolica = { version = \"3.0.1\", default-features = false, features = [\"integer-gmp\", \"float-mpfr\", \"bincode\", \"serde\", \"tracing_max_level_info\"] }\n\n[patch.crates-io]\nsymbolica = { git = \"https://github.com/alphal00p/symbolica.git\", rev = \"e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8\" }\nnumerica = { git = \"https://github.com/alphal00p/symbolica.git\", rev = \"e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8\" }\ngraphica = { git = \"https://github.com/alphal00p/symbolica.git\", rev = \"e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8\" }\nsymbolica-typst-plugin = { git = \"https://github.com/symbolica-dev/symbolica-typst-plugin\", rev = \"57b7455b37c30f4f87353c0073e49f5225e937ab\" }\n\n[profile.release]\nlto = \"thin\"\ncodegen-units = 1\n\n\n[[bin]]\nname = \"master-weights\"\npath = \"src/weights.rs\"\n",
+  "provenance_note": "Build command retained from executed shell; hashes observed after successful build and run."
+}

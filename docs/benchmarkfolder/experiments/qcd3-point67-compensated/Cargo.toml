@@ -1,0 +1,18 @@
+[package]
+name = "point67-compensated"
+version = "0.1.0"
+edition = "2024"
+[workspace]
+[dependencies]
+ninjars = { path = "ninjars" }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+[patch.crates-io]
+symbolica = { git = "https://github.com/alphal00p/symbolica.git", rev = "e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8" }
+numerica = { git = "https://github.com/alphal00p/symbolica.git", rev = "e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8" }
+graphica = { git = "https://github.com/alphal00p/symbolica.git", rev = "e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8" }
+symbolica-typst-plugin = { git = "https://github.com/symbolica-dev/symbolica-typst-plugin", rev = "57b7455b37c30f4f87353c0073e49f5225e937ab" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+

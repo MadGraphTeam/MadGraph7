@@ -1,0 +1,18 @@
+{
+  "command": [
+    "cargo",
+    "build",
+    "--release",
+    "--locked",
+    "--manifest-path",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/qcd3-point67-masters/bridge/Cargo.toml"
+  ],
+  "sources": {
+    "Cargo.toml": "5e0fd18c73dc657a8cf8afd46f6763affbf2912a34e1c365a0c6d64698a742cf",
+    "Cargo.lock": "4d9e5147381f2e27d2a81967c0a678a1a85d533d56b9b3ddbb8a85228db69471",
+    "main.rs": "0bf2ee6f19a58b784ebafc563c31affead061e9cff3b1be403f76a6ff95c013b"
+  },
+  "input_sha256": "1fb7ea9413efd25053dfdab357baf9ee973d8df3b6452fbaa280b684aea177b9",
+  "full_oracle_sha256": "cdbe7627ecacf7b68821c6d7ad3cfcbabe7c463a893bac38ccd01fb49d876d23",
+  "executable_sha256": "2c6936d969a0a89ebf601b8073481d9b67e4b161fe4c04f45a55b7fcfeb6b486"
+}

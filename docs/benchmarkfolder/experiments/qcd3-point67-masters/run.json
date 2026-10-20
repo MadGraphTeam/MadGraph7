@@ -1,0 +1,18 @@
+{
+  "command": [
+    "taskset",
+    "-c",
+    "207",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/qcd3-point67-masters/target/release/point67-master-oracle",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/qcd3-point67-dp/oracle-inputs.json",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/qcd3-point67-masters/results.json"
+  ],
+  "source_sha256": "0bf2ee6f19a58b784ebafc563c31affead061e9cff3b1be403f76a6ff95c013b",
+  "executable_sha256": "2c6936d969a0a89ebf601b8073481d9b67e4b161fe4c04f45a55b7fcfeb6b486",
+  "input_sha256": "1fb7ea9413efd25053dfdab357baf9ee973d8df3b6452fbaa280b684aea177b9",
+  "full_oracle_sha256": "cdbe7627ecacf7b68821c6d7ad3cfcbabe7c463a893bac38ccd01fb49d876d23",
+  "cpu": 207,
+  "elapsed_seconds": 1.9999223300255835,
+  "complete": true,
+  "results_sha256": "3df85e0871329345eee0d62c93b7e0cabd9bceb69edc234e481f8791a6eab831"
+}

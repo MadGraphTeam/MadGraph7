@@ -1,0 +1,24 @@
+{
+  "commands": [
+    [
+      "cargo",
+      "metadata",
+      "--offline",
+      "--format-version=1",
+      "--manifest-path",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/qcd3-point67-compensated/bridge/Cargo.toml"
+    ],
+    [
+      "cargo",
+      "build",
+      "--release",
+      "--locked",
+      "--manifest-path",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/qcd3-point67-compensated/bridge/Cargo.toml"
+    ]
+  ],
+  "executable_sha256": "2dc21977caba23357954af882248f2e8f3ec4b1733acacfa110a804a26dd148f",
+  "manifest_sha256": "4e72a052d2d282aea395c3056dc24b9583a90474ad3fe23454bfa49cb35c443a",
+  "lock_sha256": "a6de3a84f4e45ca7b3f519e4d301a2604acaec1bfa4cd0f25ef71a446c497a78",
+  "source_sha256": "5c06f510550f9e222433aa977f359ecb2935bf47b911460024f32525eace0602"
+}

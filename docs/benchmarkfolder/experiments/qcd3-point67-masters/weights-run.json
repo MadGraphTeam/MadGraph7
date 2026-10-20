@@ -1,0 +1,13 @@
+{
+  "command": [
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/qcd3-point67-masters/target/release/master-weights",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/qcd3-point67-dp/oracle-inputs.json",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/qcd3-point67-masters/results.json",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/qcd3-point67-masters/weights.json"
+  ],
+  "executable_sha256": "1bd444c9839bd48929d2f6eb855b03ffd80c6f4b5a5c15446b2501b84dc06d74",
+  "source_sha256": "cec831d706ff2c4ff1f2f861cc023d400edf0c1fba6ba5f3c14314a66e2b724c",
+  "inputs_sha256": "1fb7ea9413efd25053dfdab357baf9ee973d8df3b6452fbaa280b684aea177b9",
+  "capture_sha256": "3df85e0871329345eee0d62c93b7e0cabd9bceb69edc234e481f8791a6eab831",
+  "results_sha256": "ce15edb1b52b369f3d661c84c99e9e79207cf6350c204ce3bae0a1dc532d179d"
+}

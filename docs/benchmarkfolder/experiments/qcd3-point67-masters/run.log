@@ -1,0 +1,21 @@
+loop 3 direction 1
+┌────────────────────────────────────────────────────────┐
+│ You are running a restricted Symbolica instance.       │
+│                                                        │
+│ For non-commercial use only, limited to one            │
+│ Symbolica thread per user.                             │
+│                                                        │
+├─ Unlock all cores ─────────────────────────────────────┤
+│                                                        │
+│ Hobbyists and students: free annual key                │
+│ https://symbolica.io/license/#get-hobbyist-license     │
+│                                                        │
+│ Free 30-day professional trial:                        │
+│ https://symbolica.io/license/#get-trial-license        │
+│                                                        │
+└────────────────────────────────────────────────────────┘
+loop 52 direction 1
+loop 71 direction 1
+loop 3 direction 2
+loop 52 direction 2
+loop 71 direction 2

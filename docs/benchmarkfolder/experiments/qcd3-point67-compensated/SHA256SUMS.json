@@ -1,0 +1,20 @@
+{
+  "note": "Post-completion manifest; excludes itself and Python bytecode. Historical commands and build-source observation times remain explicitly recorded.",
+  "files": {
+    "Cargo.lock": "a6de3a84f4e45ca7b3f519e4d301a2604acaec1bfa4cd0f25ef71a446c497a78",
+    "Cargo.toml": "4e72a052d2d282aea395c3056dc24b9583a90474ad3fe23454bfa49cb35c443a",
+    "README.md": "4198a56076987567d63cf2032137780b50d8e7b3b84b9813a786dba64a1a72b1",
+    "accumulator.rs": "3af1b847e60070c9aedd4ae296e936b2122e6f0dbac8dbc6242881c452f0738a",
+    "build.json": "989aadce3d400e0b95429888091eca247b197b43e4d02415580d7b3160856e87",
+    "build.log": "6751317c5a760714d6e50d5ceb03ebe8d582f5274890008bf0ceae1e3babce03",
+    "engine.patch": "6af39414f28ab08b8ea802da194aa523bc49ab15ad1ac5166e5d2165b079d50f",
+    "main.rs": "1c904c015dc12bfb3d5a6b202f23aa266f0a72853816060c6d443dd3fe03a975",
+    "mode-0.json": "5dec0a2883fef0b11cc9c7914b44b11561c7e88efe0e6b466c932385212f266e",
+    "mode-1.json": "fee9b38582ba56edf37abc173ed9b02553d6ff9d2682d1870498ea35051d1538",
+    "mode-2.json": "a20ab03ad6ff6fa162e2b03416d28cab621b3aa363472d3826bfaf93d588b7cb",
+    "prototype.py": "d5008e0850bc9feaf393fda6d3cff8bcdd712a803c034d07493dddee23099e7c",
+    "run.json": "67d6279614b9ead9eafb462149e73aae51552342a396d97b78f1d3fa89d1523e",
+    "source.json": "5c06f510550f9e222433aa977f359ecb2935bf47b911460024f32525eace0602",
+    "summary.json": "8f3a180cd2a223685d05d98ea3d6f63fb837f4544c434120ac4e6c4dd8234cfa"
+  }
+}
