@@ -3,20 +3,28 @@
 
 The committed reference was produced by ``tools/developer/madgraph_split_orders.py``
 from MadGraph 3.7.0 standalone output of the UFO ``sm`` model (default
-restriction, t-channel widths kept) at the momenta it records.
+restriction, t-channel widths kept) at the momenta it records. Processes with
+electroweak triple-gauge vertices are absent: the recurrence lane disagrees
+with MadGraph and with its own eager lane there, independently of coupling
+orders.
 """
 
 from __future__ import annotations
 
 import json
 import math
-from decimal import Decimal
+from decimal import Decimal, localcontext
+from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
 from pyamplicol import Generator, ModelSource, Runtime, TreeOrderEvaluation
 from pyamplicol.api.errors import CompatibilityError
+from pyamplicol.artifacts.process_groups import (
+    initial_process_groups,
+    write_process_groups,
+)
 from pyamplicol.cli.main import main as cli_main
 from pyamplicol.config import (
     ColorConfig,
@@ -29,6 +37,7 @@ from pyamplicol.config import (
     ProcessConfig,
     RunConfig,
 )
+from pyamplicol.generation.process_grouping import GroupingBasis, GroupMember
 
 REFERENCE = (
     Path(__file__).resolve().parents[1] / "fixtures/tree/madgraph-split-orders.json"
@@ -89,38 +98,42 @@ def _runtime(
     return Runtime.load(artifact)
 
 
-def _assert_matches_madgraph(
-    result: TreeOrderEvaluation, reference, *, interference: bool
-) -> None:
-    """Compare squared orders that are (not) interference between distinct
-    amplitude orders, relative to the summed magnitude of all partials."""
+def _assert_matches_madgraph(result: TreeOrderEvaluation, reference) -> None:
+    """Every squared order and the total agree with MadGraph, relative to the
+    summed magnitude of all partials."""
 
     expected_orders = tuple(
         tuple(sorted((name, power) for name, power in order.items() if power))
         for order in reference["squared_orders"]
     )
-    assert set(result.orders) == set(expected_orders)
-    mixed = {
-        sector.order
-        for sector in result.sectors
-        if any(left != right for left, right in sector.pairs)
-    }
-    compared = [order for order in expected_orders if (order in mixed) == interference]
-    assert compared
+    assert result.orders == tuple(sorted(expected_orders))
     for point, partials in enumerate(reference["partials"]):
         scale = math.fsum(abs(value) for value in partials)
+        total = complex(result.total[point])
+        assert abs(total.real - math.fsum(partials)) <= 1e-12 * scale, point
         for order, expected in zip(expected_orders, partials, strict=True):
-            if order not in compared:
-                continue
             actual = complex(result.for_order(order)[point])
             assert actual.imag == 0.0
             assert abs(actual.real - expected) <= 1e-12 * scale, (point, order)
 
 
-@pytest.mark.parametrize(
-    "process",
-    ["u u~ > d d~", "g g > t t~", "u u~ > e- e+ g", "u u~ > d d~ g"],
+# Diagonal orders, QCD x EW interference between different fermion-line
+# pairings (s/t/u channels, identical quarks, three lines) and single-order
+# processes, whose only partial is the total.
+_MADGRAPH_PROCESSES = (
+    "u u~ > d d~",
+    "u u~ > u u~",
+    "u d > u d",
+    "u u > u u",
+    "u u~ > d d~ g",
+    "u u~ > u u~ g",
+    "u u~ > u u~ u u~",
+    "g g > t t~",
+    "u u~ > e- e+ g",
 )
+
+
+@pytest.mark.parametrize("process", _MADGRAPH_PROCESSES)
 def test_partials_match_madgraph_and_keep_the_total(
     sm_model: ModelSource, tmp_path: Path, process: str
 ) -> None:
@@ -131,7 +144,7 @@ def test_partials_match_madgraph_and_keep_the_total(
     result = runtime.evaluate_orders(points)
 
     assert result.total == runtime.evaluate(points)
-    _assert_matches_madgraph(result, reference, interference=False)
+    _assert_matches_madgraph(result, reference)
     for total, summed in zip(result.total, result.sum_orders(), strict=True):
         assert math.isclose(complex(summed).real, complex(total).real, rel_tol=1e-13)
     assert all(
@@ -141,25 +154,80 @@ def test_partials_match_madgraph_and_keep_the_total(
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "pre-existing tree-engine sign: the recurrence's QCD amplitude of "
-        "coloured four-fermion processes has the opposite sign to its "
-        "electroweak amplitude, so totals and QCD x EW interference differ "
-        "from MadGraph (diagonal orders agree)"
-    ),
-)
-@pytest.mark.parametrize("process", ["u u~ > d d~", "u u~ > d d~ g"])
-def test_interference_partials_match_madgraph(
-    sm_model: ModelSource, tmp_path: Path, process: str
+def test_leading_colour_lanes_agree_on_mixed_order_totals(
+    sm_model: ModelSource, tmp_path: Path
 ) -> None:
-    reference = _reference(process)
-    runtime = _runtime(sm_model, process, tmp_path / "artifact")
+    """Topology replay, all-flow union and on-the-fly construction sign
+    identical quarks joined by gluons and electroweak bosons alike."""
 
-    _assert_matches_madgraph(
-        runtime.evaluate_orders(reference["points"]), reference, interference=True
+    process = "u u~ > u u~ g"
+    replay = _runtime(sm_model, process, tmp_path / "replay", accuracy="lc")
+    points = replay._backend.validation_momenta()
+    expected = replay.evaluate(points)
+    for name, execution_mode, layout in (
+        ("union", "recurrence", "all-flow-union"),
+        ("on-the-fly", "on-the-fly", "topology-replay"),
+    ):
+        runtime = _runtime(
+            sm_model,
+            process,
+            tmp_path / name,
+            accuracy="lc",
+            execution_mode=execution_mode,
+            lc_flow_layout=layout,
+        )
+        for actual, reference in zip(runtime.evaluate(points), expected, strict=True):
+            assert complex(actual) == pytest.approx(complex(reference), rel=1e-13)
+    _assert_matches_exact(replay, points)
+
+
+def test_process_group_members_scale_partials_like_totals(
+    sm_model: ModelSource, tmp_path: Path
+) -> None:
+    artifact = tmp_path / "artifact"
+    representative = _runtime(sm_model, "u d > u d", artifact)
+    process_id = representative.physics.process_id
+    factor = Fraction(3, 2)
+    member = GroupMember(
+        process_id="u_d_scaled_member",
+        expression="u~ d~ > u~ d~",
+        pdgs=(-2, -1, -2, -1),
+        initial_count=2,
+        factor=factor,
+        permutation=(0, 1, 2, 3),
+        conjugated=True,
+        basis=GroupingBasis.NUMERICAL,
+        generated=False,
     )
+    write_process_groups(
+        artifact,
+        initial_process_groups(
+            [(process_id, "u d > u d", (2, 1, 2, 1))], {process_id: [member]}
+        ),
+    )
+    scaled = Runtime.load(artifact, process="u~ d~ > u~ d~")
+    assert scaled.process_group_factor == factor and scaled.charge_conjugated
+    points = _reference("u d > u d")["points"]
+
+    for precision in (16, 32):
+        expected = representative.evaluate_orders(points, precision=precision)
+        result = scaled.evaluate_orders(points, precision=precision)
+
+        assert result.orders == expected.orders
+        assert result.total == scaled.evaluate(points, precision=precision)
+        for values, reference_values in zip(
+            result.values, expected.values, strict=True
+        ):
+            for value, reference in zip(values, reference_values, strict=True):
+                if precision == 16:
+                    assert complex(value) == pytest.approx(
+                        1.5 * complex(reference), rel=1e-15
+                    )
+                    continue
+                with localcontext() as context:
+                    context.prec = 2 * precision
+                    exact = reference * factor.numerator / factor.denominator
+                assert abs(value - exact) <= Decimal("1e-30") * abs(exact)
 
 
 def test_exact_partials_agree_and_keep_the_exact_total(
