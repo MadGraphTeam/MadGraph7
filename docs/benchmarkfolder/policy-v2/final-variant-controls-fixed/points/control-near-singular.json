@@ -1,0 +1,29 @@
+{
+  "points": 10,
+  "sha256": "1810d50e8b67fcebfabdeb132a84ee2c5df1cf7333e55b6f38a9115291f9ed57",
+  "provenance": {
+    "parent_points": "docs/benchmarkfolder/policy-v2/final-variant-controls-fixed/points/control-forced-qp.dat",
+    "parent_points_sha256": "ff50a8b1cd8a2149a4fe0445a2f1776f120dfefcd73bc647e73af9061616031e",
+    "scattering_angles_radians": [
+      0.01,
+      0.007,
+      0.005,
+      0.003,
+      0.002,
+      0.001,
+      0.0007,
+      0.0005,
+      0.0003,
+      0.0001
+    ],
+    "energy_gev": 1000.0,
+    "external_masses": [
+      0.0,
+      0.0,
+      173.0,
+      173.0
+    ],
+    "max_relative_conservation_residual": 0.0,
+    "max_relative_mass_shell_residual": 1.164153218269348e-16
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "stage": "clone writable-alias preflight",
+  "outcome": "rejected read-only imported mpmodule.mod before any build or amplitude evaluation",
+  "cause": "Guard included imported module symlinks, even though no MODULE of that name is declared in subprocess sources.",
+  "loop_evaluations": 0,
+  "source_mutations": 0,
+  "retry_namespace": "docs/benchmarkfolder/policy-v2/final-variant-controls-fixed",
+  "files": {
+    "docs/benchmarkfolder/policy-v2/final-variant-controls/prepare-failure.log": {
+      "bytes": 988,
+      "sha256": "c9cddef459322b2321620834d943cb586d3abb0a325cecab2ecbd4a121694fee"
+    },
+    "docs/benchmarkfolder/policy-v2/final-variant-controls/execute.py": {
+      "bytes": 13685,
+      "sha256": "d0765a71e380627e75f153c81bea860df63a6020d34ff04ffd701afe5d1edb6b"
+    },
+    "docs/benchmarkfolder/policy-v2/final-variant-controls/README.md": {
+      "bytes": 2284,
+      "sha256": "1deeb96499ea336ce30406d216e1053cdd8042ff766a68cc562153289f9688a0"
+    },
+    "docs/benchmarkfolder/policy-v2/final-variant-controls/controls.json": {
+      "bytes": 1164,
+      "sha256": "e623e89f58e048efdc9b6f79075cb12b61fb5c8d3abc432b8e37f9cbc51602cb"
+    }
+  }
+}

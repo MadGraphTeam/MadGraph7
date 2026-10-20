@@ -1,8 +1,15 @@
 # Fresh generation after the empty-prefix NLO correction
 
-This namespace is prepared for the committed ABI3/terminal generator after the
-NLO empty-prefix declaration correction. The prior13 standalone exports remain
+All thirteen CLI exports and clean subprocess builds completed at
+`b44d20e725f1ec68589df20284e4ce9116e9e2ab`, after the NLO empty-prefix declaration
+correction. The prior13 standalone exports remain
 in `../generation-abi3-terminal`; they are not modified or silently relabelled.
+
+`summary.json` indexes the completed builds. The independent inventory at
+`../final-runtime-audit-fixed/inventory.json` rechecks source, executable and
+dependency hashes and finds one common full numerical runtime group for all
+thirteen exports. This supports the prepared representative coverage; it does
+not replace amplitude comparisons or performance measurements.
 
 Run from the repository root after committing the numerical fix:
 

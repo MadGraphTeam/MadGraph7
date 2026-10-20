@@ -1,0 +1,1047 @@
+{
+  "schema": "fixed-abi3-generation-evidence-v1",
+  "source_revision": "b44d20e725f1ec68589df20284e4ce9116e9e2ab",
+  "count": 260,
+  "files": {
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/README.md": {
+      "bytes": 1499,
+      "sha256": "956977b58a71394a82ea73e5b3145a3c870154d519b27aedce30e87a08ff22d2"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/cases.json": {
+      "bytes": 1096,
+      "sha256": "2f2259b54374ddb47e12de9be067748ad39e5919cde86067a4178e1e39dc8874"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/commands/candidate-control-complex.mg5": {
+      "bytes": 809,
+      "sha256": "16cf832b42ebd62367d503013fc3babf799afca6cafadd76fde2d29ac5835738"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/commands/candidate-control-forced-qp.mg5": {
+      "bytes": 704,
+      "sha256": "221d3feabd4889028bedab68d728dd71cf210239b33bd064d34ed78d2e580ef2"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/commands/candidate-control-gg-h.mg5": {
+      "bytes": 699,
+      "sha256": "73f7cd0918146415e0b9461ad585d6239198c15e4da475a93c120db5954f70d0"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/commands/candidate-control-gg-hh.mg5": {
+      "bytes": 702,
+      "sha256": "f115b38e37287d1db4bb7d86a9cfbf59e20f5cbe7976aaa3104137bdb22e6884"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/commands/candidate-control-mixed.mg5": {
+      "bytes": 820,
+      "sha256": "7d38ccb22504aca2e3d48598a9c8b511e12d5948f4034e6fe6cbc5144be3ac48"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/commands/candidate-ew-1.mg5": {
+      "bytes": 793,
+      "sha256": "11e4da01dcd91792a59864f66146dab222ad112ac900f2730d33bab49697c435"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/commands/candidate-ew-2.mg5": {
+      "bytes": 799,
+      "sha256": "adbb1e1c6807442d067375ffce7e0072c533b9eaa7258b6c87e436afa6ae3346"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/commands/candidate-ew-3.mg5": {
+      "bytes": 798,
+      "sha256": "cdf2713e2de248bc3210be432534303288c081c5a64867385981ffd3af33f508"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/commands/candidate-ew-4.mg5": {
+      "bytes": 803,
+      "sha256": "6d5285f618eb04dd7d66f61d4cd66242c0983211a8dda3802e68ed049d25bf67"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/commands/candidate-qcd-1.mg5": {
+      "bytes": 690,
+      "sha256": "317b5708b09088de2380519ba926edcb829bebafda7a3a5e307929603af47361"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/commands/candidate-qcd-2.mg5": {
+      "bytes": 692,
+      "sha256": "769f0bd16a2563414a94998861911b64306a679251d923fe405fc8acbd2ac93b"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/commands/candidate-qcd-3.mg5": {
+      "bytes": 694,
+      "sha256": "11bc0e0a7292d4a4a6c18770e7b04151948899fd914bb7173ab0dae51ed5e92a"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/commands/candidate-qcd-4.mg5": {
+      "bytes": 696,
+      "sha256": "6372ef7abe9d2f574fc3b10317e03641cbdd23824d380188dbb67c664747f240"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/controls.json": {
+      "bytes": 1070,
+      "sha256": "48c893ced9e9960c056555a7cec4f24062a05d7b8455464e4db8f6e2923082fe"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-complex/compilation.json": {
+      "bytes": 177254,
+      "sha256": "61149b25a7dc90e911d667b63c8b295c72b3ffd07138ab995071f607911616b9"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-complex/compiled-source-manifests/febe59cdc1454ee725f318b437d76ddf964117228e63a8ade60381f11405518c.json": {
+      "bytes": 40557,
+      "sha256": "cc709204a2b269458fcec584d6e364e435b42510a05b60cd8e0a645ab50ff384"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-complex/compiled-sources.json": {
+      "bytes": 40557,
+      "sha256": "cc709204a2b269458fcec584d6e364e435b42510a05b60cd8e0a645ab50ff384"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-complex/generation.json": {
+      "bytes": 171447,
+      "sha256": "0c3da6c160561bac001382115a595fa1b502565e618ba40b41074fc3c1e6d73e"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-complex/param_card.dat": {
+      "bytes": 4396,
+      "sha256": "1511223edb8e5e1a5ad12baee88c013f94a32161491e6889b05a35e022c9eaa4"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-forced-qp/compilation.json": {
+      "bytes": 177255,
+      "sha256": "93e1336153b10fe23de1fd73b0780b27ec991de793b8602f58ddc7af99d85a48"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-forced-qp/compiled-source-manifests/4e4d05ee8c7c01d770ad3bd404242408a56aef150191fd3ae7e9ba3c82905ef9.json": {
+      "bytes": 22496,
+      "sha256": "24671d2e86469a4061bfc06969dbff92bdff07f45d86ad5532bcb7b89e17e3d2"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-forced-qp/compiled-sources.json": {
+      "bytes": 22496,
+      "sha256": "24671d2e86469a4061bfc06969dbff92bdff07f45d86ad5532bcb7b89e17e3d2"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-forced-qp/generation.json": {
+      "bytes": 171447,
+      "sha256": "5b18d24843138bac074b32b7b985b6a4f9591ecc48dc8dcb3396c1dcf29306f4"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-forced-qp/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-gg-h/compilation.json": {
+      "bytes": 177254,
+      "sha256": "8f4552dca940af1b6c03a4414d05d366a9b9fdd1efdff84da0a7c3d6eeabf06e"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-gg-h/compiled-source-manifests/a6ad12f8d57e8f2865deae08984c97ac54ee3e07f232bb910b5f644adcf36386.json": {
+      "bytes": 15697,
+      "sha256": "63d504c0862c46a596c21e2bcb998d211fa493e30d1272ed57f546fcd191dedf"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-gg-h/compiled-sources.json": {
+      "bytes": 15697,
+      "sha256": "63d504c0862c46a596c21e2bcb998d211fa493e30d1272ed57f546fcd191dedf"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-gg-h/generation.json": {
+      "bytes": 171448,
+      "sha256": "2b91adec37cf9bb580d0f2c2687a397633e356bac61911aee02379ed50c85748"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-gg-h/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-gg-hh/compilation.json": {
+      "bytes": 177254,
+      "sha256": "0b29f3bc6a842593c260973c7dbf93f01eafbebf3d8c9711255474429efd41e2"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-gg-hh/compiled-source-manifests/d21a0afa2337fcfdab3a2157bde412787a848088ae80e2dd10b284a7df9cfd30.json": {
+      "bytes": 16317,
+      "sha256": "93ebdbe956642e3bc880849452def92dea90558d841bd60677c021c94f60f139"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-gg-hh/compiled-sources.json": {
+      "bytes": 16317,
+      "sha256": "93ebdbe956642e3bc880849452def92dea90558d841bd60677c021c94f60f139"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-gg-hh/generation.json": {
+      "bytes": 171448,
+      "sha256": "5339f1bb854172a22f34ac3b27f143bd3706bb021452bde547d9017076bf0467"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-gg-hh/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-mixed/compilation.json": {
+      "bytes": 177254,
+      "sha256": "3365f4f25da40ce4ec13b3c1e3c2d2756fc12b2114da627ffeb742d50fb51101"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-mixed/compiled-source-manifests/2e88e4212da43aecc71b38ae789021d3d58571fa3da62aaaaf916e67a64c31d1.json": {
+      "bytes": 44420,
+      "sha256": "623260773c091410c9818a5ff9684166a38d82f73749f610017d99181eed5724"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-mixed/compiled-sources.json": {
+      "bytes": 44420,
+      "sha256": "623260773c091410c9818a5ff9684166a38d82f73749f610017d99181eed5724"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-mixed/generation.json": {
+      "bytes": 171447,
+      "sha256": "32231fd80fcbd41ee7b6d8c3bd81f5e3635f0610b267de2044e87ed987590979"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/control-mixed/param_card.dat": {
+      "bytes": 4537,
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-1/compilation.json": {
+      "bytes": 177253,
+      "sha256": "146acfc35c83e08180517eacad4a15d47cda7364dc32a8a19bd98b736e607edc"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-1/compiled-source-manifests/70205648cd249ab83fe270b096109f6c5f5e58f31a2297fe907566daa8cf2c72.json": {
+      "bytes": 23655,
+      "sha256": "48a59bba80bc5a18d72730a2e6b61fe59f70db90b63595d5e23cff83d8c7ca73"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-1/compiled-sources.json": {
+      "bytes": 23655,
+      "sha256": "48a59bba80bc5a18d72730a2e6b61fe59f70db90b63595d5e23cff83d8c7ca73"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-1/generation.json": {
+      "bytes": 171448,
+      "sha256": "034d27246221c7ec864698a938cf3bb324e1a00a6b8e1eb985aa2f4a2014819d"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-1/param_card.dat": {
+      "bytes": 4537,
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-2/compilation.json": {
+      "bytes": 177254,
+      "sha256": "53f9f9ceeb3619116e688f092d6b03759038b5f3cdebf327c34f74d496e556c2"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-2/compiled-source-manifests/d72cebd1974954b4c010a6a4c8aed9983e80264ef5ac03cd94e754a3a6abd23c.json": {
+      "bytes": 40557,
+      "sha256": "6892bf84dc91530a2b378880b144541b65f547172ae8a88852870a7f64769bea"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-2/compiled-sources.json": {
+      "bytes": 40557,
+      "sha256": "6892bf84dc91530a2b378880b144541b65f547172ae8a88852870a7f64769bea"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-2/generation.json": {
+      "bytes": 171447,
+      "sha256": "be8c299cb38cb3e805eeab39db6761c3f343b8e1af6efa2beabe18df3123aff2"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-2/param_card.dat": {
+      "bytes": 4537,
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-3/compilation.json": {
+      "bytes": 177254,
+      "sha256": "809ecc38a5c3d24d1580790dc8ddfb347b4c885ac9f1f84723fe76bff3a64146"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-3/compiled-source-manifests/164d6025e769ff36a7140a36f9670ae37a5726fc0a4db383ffb0683a7954bcd4.json": {
+      "bytes": 63907,
+      "sha256": "3b796bbd345a69c950d74114259e8cfb0da9f27aec1c0e76d6fa331df8e0a56f"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-3/compiled-sources.json": {
+      "bytes": 63907,
+      "sha256": "3b796bbd345a69c950d74114259e8cfb0da9f27aec1c0e76d6fa331df8e0a56f"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-3/generation.json": {
+      "bytes": 171448,
+      "sha256": "52bc387a199e856e6ef504ef03fb7c377dc80b195ccb7af7e8306e3e6d6db167"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-3/param_card.dat": {
+      "bytes": 4537,
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-4/compilation.json": {
+      "bytes": 177255,
+      "sha256": "6b96c0ccb667ecb65bb3df37b5f3978673743da3ea675970327e594f0eceb5e4"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-4/compiled-source-manifests/5730417fc22c444ed44940918b36543a2d395dfa78cc4e7af18df3581ddc49b2.json": {
+      "bytes": 56343,
+      "sha256": "1deba0cdeee8d2ae3f462d30027750c5bf096027768e847107f536d14dd1a0ae"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-4/compiled-sources.json": {
+      "bytes": 56343,
+      "sha256": "1deba0cdeee8d2ae3f462d30027750c5bf096027768e847107f536d14dd1a0ae"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-4/generation.json": {
+      "bytes": 171448,
+      "sha256": "fce0827a982a44fa532e2a8d3aaa260461000401cbe775bfbffe2dc26062db80"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/ew-4/param_card.dat": {
+      "bytes": 4537,
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-1/compilation.json": {
+      "bytes": 177254,
+      "sha256": "b4e136b9ea2e46b4efacdb62979b75a93b8175878edc0a94f78f4c659660ccf7"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-1/compiled-source-manifests/0bfb7ff29849840c383555490adfa55010c0e13cea8528bfbe6a43fcdf0f07ed.json": {
+      "bytes": 16774,
+      "sha256": "abda462b1834f04af44597a76e31e6dd90d294fa5b27a14581dda7b497dd874c"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-1/compiled-sources.json": {
+      "bytes": 16774,
+      "sha256": "abda462b1834f04af44597a76e31e6dd90d294fa5b27a14581dda7b497dd874c"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-1/generation.json": {
+      "bytes": 171447,
+      "sha256": "d57199d4b223557e255293124152d8282175509a19fda6f22ccca6d69e12d0a9"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-1/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-2/compilation.json": {
+      "bytes": 177253,
+      "sha256": "dc98fa8aab5d6b040323d3c64135c83cae123c731cfebb6c45e5e66010b1bf0b"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-2/compiled-source-manifests/0f63e3d8a494b405e43bfd5fe701aacb3c635c233d713eb0352c7a75beb36cdd.json": {
+      "bytes": 22496,
+      "sha256": "a070b5f67bf865ff7b6118fa3001c44d616500dbe11b4f1086c16b0fa5690db9"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-2/compiled-sources.json": {
+      "bytes": 22496,
+      "sha256": "a070b5f67bf865ff7b6118fa3001c44d616500dbe11b4f1086c16b0fa5690db9"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-2/generation.json": {
+      "bytes": 171447,
+      "sha256": "29e912fc3f96bb6136d4d2fb1ac60340f7ef86e601636049ce51761e51581f1f"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-2/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-3/compilation.json": {
+      "bytes": 177254,
+      "sha256": "88bcaecbbff1994fb66c4be06bbf9709f9db12e7782e72ee74641eb8ba0f0239"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-3/compiled-source-manifests/c5b9e82f8e88867ae9e3c90167f3a54864231689ea6d8e8ba7d7fe09b953b210.json": {
+      "bytes": 29258,
+      "sha256": "ade8d9a9aa8a0c535695657fd1282d7b945ad83ae7693a257c0752e2f5429ebd"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-3/compiled-sources.json": {
+      "bytes": 29258,
+      "sha256": "ade8d9a9aa8a0c535695657fd1282d7b945ad83ae7693a257c0752e2f5429ebd"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-3/generation.json": {
+      "bytes": 171448,
+      "sha256": "be09d0af97bde4872534ed5a7cb2c5cc67a9ffec85546005cd1760e0b4c252fe"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-3/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-4/compilation.json": {
+      "bytes": 177255,
+      "sha256": "f26be7e354f8c135c372e182c838ba938096cc6760ed8761b3811c2a00e764b4"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-4/compiled-source-manifests/cfbfe773cd3e628bbbbfe7a18058018b794e36410ac1cb05e33435e375134d31.json": {
+      "bytes": 31147,
+      "sha256": "9334f54674a63acb3dcec84dbb7214e6353cfac27aa0d3f40481f1e6bc0c0b20"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-4/compiled-sources.json": {
+      "bytes": 31147,
+      "sha256": "9334f54674a63acb3dcec84dbb7214e6353cfac27aa0d3f40481f1e6bc0c0b20"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-4/generation.json": {
+      "bytes": 171447,
+      "sha256": "b812c76b79f9aa24ec53d5f0a836c5bb789333abb456f56664bdde6bb2530bcc"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/candidate/qcd-4/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/0785364e97304bb8da456d366cc2140499cc7ade94e0aea23f67461ffe78034e.json": {
+      "bytes": 168525,
+      "sha256": "36a066a629d3fd316eda3915c07a1318fd0a2487a9c1918d645f05961a5b166d"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/0a9009413571957afcd649b63fff420bf7195617c0e8288d31eadf6be93fee86.json": {
+      "bytes": 168525,
+      "sha256": "73f283d2afa65481e3802343b277b8b202ccc935ef68188aa001fe3d2c0366f2"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/0c3b0f58abe5afb445b66cd7d4fdaac272535a54de5105ba314576f72ca92f16.json": {
+      "bytes": 168525,
+      "sha256": "96b499c6abef8fb50684bc084d0f6ad591b79a3a57efaf82db33d3eabbdd9777"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/10d4fb2a299d079c39faa72ef14d70d12b101d45f7308dd2f464ba7907c57ddb.json": {
+      "bytes": 168525,
+      "sha256": "e50b66e9db54daf558fa31fc3e807be4ee6fcaec5b9192577a50112b26370c65"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/125f4b0db1b4a1c4035148c6cf20ccc811abb8a5173c6521a9c399e0fae36636.json": {
+      "bytes": 168525,
+      "sha256": "2c765bcd6502018faec8681da50a3cd0bd8f0eb1b5c5e3d83e275a3657e01e92"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/3745113bb978ed8640a73b3375fd1398dfcfe5470ea4af37c5c927ef55f69ec5.json": {
+      "bytes": 168525,
+      "sha256": "784d1f2671e657b9235e799e082c5fd52d3b5b0712625284bf6d5f0fc6665f13"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/4749fd6756c5066b9601fa7ed7cae4b8b6bc5e2290a70d3477cb99114e8c3319.json": {
+      "bytes": 168525,
+      "sha256": "8f71d2931c50275c1426ba9b6a9f76b87b55adc5db0a4b10250c7163d31f6f1d"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/4b3a44069aafef3e0565ad02f6bd99d26130c5cd16244762d91b6134aed18182.json": {
+      "bytes": 168525,
+      "sha256": "a4f8327185f9e6f2f6cb2e3db7104e0a13486071b4aed2d81149e330662c6137"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/4ed0b3e03dce6641ba4d17dd20b531854910c093ecdde039851941fe83c7f8b1.json": {
+      "bytes": 168525,
+      "sha256": "94971f8f6ea16e2e9fe3fd467d217cc8fe31bc8beb1cbb3920908d542d62c7c9"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/5549b513129df04f2cab4f059cfc813341fb6e285a6ee13cf5115d446686e455.json": {
+      "bytes": 168525,
+      "sha256": "5035893f2e465a2bc8cfc355c0e77382030f0ad94cfecd80a3ff8524631eb14d"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/58ac4e713b37eaad3e982dd9b1083d713a0ecfd9166e24f5e3e7794c4f532218.json": {
+      "bytes": 168525,
+      "sha256": "88dd29c78cde4410b85ca1584f20a8cc01a2b2853b9e51d0c77cfcc57a1e7e56"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/59c21cf4abeb046bb72a504b40d2119c208b3b1e0abfeca426b794926984e0d6.json": {
+      "bytes": 168525,
+      "sha256": "b13c0984d1baf0b818814661430f4ecd6ac69a9c4c39596f34adf440b6e442b6"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/72126fbf4154e8eefb0162dfb7f4f69f7a22fcf3806f243050e56e929f62c3c2.json": {
+      "bytes": 168525,
+      "sha256": "a9fd255c1c03115023a4c57021d9e2d4f4622820d5a491fa8855f983c6ffeb45"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/7694de9492b20917ebfe6a54c523f45a19185256a4baa902c5301b7a6eff686b.json": {
+      "bytes": 168525,
+      "sha256": "fef68ed76a2cf91b06f8f4034ccdb8fe85f05e9d8bbe5c80d919d22c99f83882"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/78dd30326efb037b415a5615b8671296af73472a4799edb966ea7a7efb3a0da3.json": {
+      "bytes": 168525,
+      "sha256": "7601302b2c6d62ee3168bdb6960e331838cb48b9832704024e3d68bd537c28eb"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/8f38ac647fa4f3e850147608fc4e52c7c5611721140d1e3b59d07273d248d693.json": {
+      "bytes": 168525,
+      "sha256": "4a53c2d38c77cea2d0d7fb20aa90e3f0ec159f9d363398c24e1504105ddd04bd"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/996ed97e79e7c88eadd2fa691b9a99e1989a62c841c4c53800fe140bb7b1f309.json": {
+      "bytes": 168525,
+      "sha256": "7f66484446293fe1fd24e0c3b746f16cd7dbd24dff91257fc69d3e0f0c818494"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/a50cd881e5ece24753207913af57da6afd91988cceb1dd15bf3cdaa2c9faff1e.json": {
+      "bytes": 168525,
+      "sha256": "b7de1504e8d187d6cae54326e6363d07782c9686bfcb1316b56b3a9f0d09fdc1"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/aa289a1685ff8feaca4add484c00cf5f690b9b73b0baf7d088d7e6a1a6f48f1c.json": {
+      "bytes": 168525,
+      "sha256": "c2604720a14497a850628b02a4de59c9a7eff6d0564dc8b0e43b63c7cdefd445"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/afc9358cc3173fdc93e13df3fe555830d3b460ae26a64c9049730925accec220.json": {
+      "bytes": 168525,
+      "sha256": "62b92417c3ce5d53cc1d1e50eaccd172819c95ca67bb39b13bd0fdb38ff3cb41"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/b72c1a3f8aa851be3a01cb8fcb73ca31ef048bc6bd2464513c0aa55969f03a60.json": {
+      "bytes": 168525,
+      "sha256": "36de97fff23a290481810dea6dd33e26f99a9ed48434436aa523a5436a257efe"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/bad6840f20550852df085e7533686754d414b2d240a77dd446590a4a3a149ec8.json": {
+      "bytes": 168525,
+      "sha256": "eaf06b9862d9f7f7cf686610d3643f17da65658abf52315bfe90b5432d13cbc2"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/c09ad34bf25d0b1329f26ff37beb460d95af1e1962ad05f13621b50593ba9e36.json": {
+      "bytes": 168525,
+      "sha256": "59f4197a3611434586247fb5a6f0ce08a5144b30eb51831b23f439a2e0a4ccea"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/ce7963c7a31f8866ac6f25d065046b48565456016440eacb8d3867e39f76f498.json": {
+      "bytes": 168525,
+      "sha256": "5cdab2090ce845e87e2e47c286e22d73658a5c002356ef0e97dd607dc0f3779d"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/d0c04f9ebfb2d269c30e78cdce875ea5583fea749a6dc7bcc3cf9a97f03ecb5f.json": {
+      "bytes": 168525,
+      "sha256": "0571de32c37a1118500bbb7b054d5fb5af1675959f767736b9650407b1ccbcbe"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/inputs/source-identities/dc15f6f2fdcb1c3744f7781242a4fd1e5935ef0f9c418b38dcd065b49cc72ece.json": {
+      "bytes": 168525,
+      "sha256": "d85531eb1e7b637f2203c70fcdb86db1c00f76a671d857c24d61d3f1f3acf7a6"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/compile-candidate-control-complex.log": {
+      "bytes": 9440,
+      "sha256": "f10a308aa603a8319ad393acbf3e5b4b11b91b0d4151ee9ffab84d56387e461e"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/compile-candidate-control-forced-qp.log": {
+      "bytes": 10359,
+      "sha256": "b6fe55faedd54929b2a2688ab7836f9c86a0f14e2b6f4428769bcf3b681a8619"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/compile-candidate-control-gg-h.log": {
+      "bytes": 9455,
+      "sha256": "b0d132794f6eef242f33f7b1f41718dec19a85e777d7089ce57046db08108d9c"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/compile-candidate-control-gg-hh.log": {
+      "bytes": 9458,
+      "sha256": "0221bcbaf0784ca99006ef72e5598d64133d67157397939ca0ccc0ad9769014f"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/compile-candidate-control-mixed.log": {
+      "bytes": 9434,
+      "sha256": "c10e10a17319e22d1018a42f3c5b9cd19c9d661cff7bab7a4f846fa1a2b952de"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/compile-candidate-ew-1.log": {
+      "bytes": 9407,
+      "sha256": "69fe03f5ba16fc1f4017b62a44587da93e235adea512ba93cae65c385f261a74"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/compile-candidate-ew-2.log": {
+      "bytes": 9407,
+      "sha256": "22c124937b709502dcd42490d37afdfd469b6a71c5f7e01213bc1cd8126ff01c"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/compile-candidate-ew-3.log": {
+      "bytes": 10326,
+      "sha256": "1f7403cf4ec273bb0330bcc28ec20cd40b6e455dc33c38bca5326adf4f4ddc13"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/compile-candidate-ew-4.log": {
+      "bytes": 18115,
+      "sha256": "33388aa4359b917afeac4d51faa883fd1eebcf0d7320ab3168836dedd2bcc68a"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/compile-candidate-qcd-1.log": {
+      "bytes": 9410,
+      "sha256": "9a0796c9eae63750b32f2d0f23133901963df81adca0be641d9cb2fc06548f4c"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/compile-candidate-qcd-2.log": {
+      "bytes": 10323,
+      "sha256": "98be9f6c97c99631b56e3d613ce75d63f67df9542162caa184e05307c7979e42"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/compile-candidate-qcd-3.log": {
+      "bytes": 10323,
+      "sha256": "818191eb101bc42439c6820a0a30e89c7ff5f1c39aca2a57f251ac95275eae43"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/compile-candidate-qcd-4.log": {
+      "bytes": 12161,
+      "sha256": "3f7714eb2e6d07c70dbf2a187bd93d8f25dcba980ec9cf64c98d3eb06a5b9330"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/generate-candidate-control-complex.log": {
+      "bytes": 14641,
+      "sha256": "ab65b20b8e11fee17bd1650b5d8d4d6772457d9293093e7aa632faf853f11ac0"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/generate-candidate-control-forced-qp.log": {
+      "bytes": 11018,
+      "sha256": "2c96ce6e1a9102deed1e530addca3706b1eaa7f3cccbb2cf80eeb588fd1e6376"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/generate-candidate-control-gg-h.log": {
+      "bytes": 9795,
+      "sha256": "74a880aaa048e1f44504997df0399f52967cc5749824f7e1e72f47eab94f33f1"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/generate-candidate-control-gg-hh.log": {
+      "bytes": 9909,
+      "sha256": "0a74340778afee8c360c086ed1406c7fd698aec69353f55f5c1773fa3cadd788"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/generate-candidate-control-mixed.log": {
+      "bytes": 14767,
+      "sha256": "db568e952dd103dfb98e19148ebfb21f96adbbac8e5977843058b0cc8fa1cda5"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/generate-candidate-ew-1.log": {
+      "bytes": 11487,
+      "sha256": "2137eff3cafe425255a2e273493cf398801f4ef790dacca6e68b6e7e39e2b31a"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/generate-candidate-ew-2.log": {
+      "bytes": 13928,
+      "sha256": "ce2a481f2ac82e8646b63096b0ce337a14baa85e90cc781b1fb6afd73b7522d9"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/generate-candidate-ew-3.log": {
+      "bytes": 17775,
+      "sha256": "16d0fbe604f43806687fd2d049389e32d4b17d36fc98ce90c75b4c34adfdbb54"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/generate-candidate-ew-4.log": {
+      "bytes": 15848,
+      "sha256": "e17c1c57c137e9faeb3cffa17d6a59a4d27f01dec1aa98b331609b254c3d72dd"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/generate-candidate-qcd-1.log": {
+      "bytes": 9789,
+      "sha256": "588314839649c24bf5ed44d63ce85dd23a14e975639ef07a50c2e3ab2c4a0c81"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/generate-candidate-qcd-2.log": {
+      "bytes": 10958,
+      "sha256": "6740718eeb87bf5fff46ff7a76ecfa97111f8c1f74c63634ab0ae8649f186b0b"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/generate-candidate-qcd-3.log": {
+      "bytes": 11630,
+      "sha256": "83a05b3a08b95f0cdd29a3a58f100a40e974cfa94726d81d6c007d42f77fd258"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/generate-candidate-qcd-4.log": {
+      "bytes": 11895,
+      "sha256": "6d9c9365fb2fe0f97346c4ae44d48fa7ab738534d54f51b0b4a91702a54c127b"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/masses-candidate-control-complex.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/masses-candidate-control-forced-qp.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/masses-candidate-control-gg-h.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/masses-candidate-control-gg-hh.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/masses-candidate-control-mixed.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/masses-candidate-ew-1.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/masses-candidate-ew-2.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/masses-candidate-ew-3.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/masses-candidate-ew-4.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/masses-candidate-qcd-1.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/masses-candidate-qcd-2.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/masses-candidate-qcd-3.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/logs/masses-candidate-qcd-4.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/manifests/control-complex-generated.json": {
+      "bytes": 40558,
+      "sha256": "ecbd82c0230b2f507daf0d2c7b7d410da0c146172d6c2dccd8a84ba22fdbd11e"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/manifests/control-forced-qp-generated.json": {
+      "bytes": 22497,
+      "sha256": "9a8c128aef71400142db2a5534bc59cab6e0f6df73180936fc5eb6669e9db1a7"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/manifests/control-gg-h-generated.json": {
+      "bytes": 15698,
+      "sha256": "7bced59b6ba3a80eec2d03c29bf47f54cc17d8daffdb7f41a6d61e2817f28cb4"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/manifests/control-gg-hh-generated.json": {
+      "bytes": 16318,
+      "sha256": "9904be6dd426e756d35c185cba5822970beacb4f5a90797a01b2d3551d6d3ddb"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/manifests/control-mixed-generated.json": {
+      "bytes": 44421,
+      "sha256": "54e2e45fcf3ddab64c4f450c2ba48b46bd5f2c66dd8b6674a88bd4f8d1849bc4"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/manifests/ew-1-generated.json": {
+      "bytes": 23656,
+      "sha256": "9671f89c3a2e422e283651e95532446eb892a65a6a254acc9036ae5a7c6d2649"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/manifests/ew-2-generated.json": {
+      "bytes": 40558,
+      "sha256": "9ace0db8cac064f28a7d5ad1f62b7cc9dcb8be3cf9830569d556a784d7b1b475"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/manifests/ew-3-generated.json": {
+      "bytes": 63908,
+      "sha256": "e1e738cd3c3d294cf792a6e44d14ccfbd88ac11813f72eb814df80143971cfb0"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/manifests/ew-4-generated.json": {
+      "bytes": 56344,
+      "sha256": "1bef67c060125878d7a3e89cd3b98baad90e74bc600bc508e750a9d327009420"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/manifests/qcd-1-generated.json": {
+      "bytes": 16775,
+      "sha256": "df138e1b7c41ea20b189a732568b91a915bc633121fb39d6c2efe67a4604b1d0"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/manifests/qcd-2-generated.json": {
+      "bytes": 22497,
+      "sha256": "3d7c67cbce978b353977b97bf8f3eaa51411be51283d892dc1e58390ac685092"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/manifests/qcd-3-generated.json": {
+      "bytes": 29259,
+      "sha256": "db418c5ffc72c69088d23ebbf1f55f6976a2054332a13cbc42bbe9f14fd8fd34"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/manifests/qcd-4-generated.json": {
+      "bytes": 31148,
+      "sha256": "89d07693c6d16c42e4b93d47d21ccd2f23dcc8e2606bdb346d4bd42b51eeffd4"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-complex/after/Source/MODEL/model_functions.f": {
+      "bytes": 32826,
+      "sha256": "540fa790dd74fd4f5a9bed7b2e3be0d1fe5c7ae3a3512dbf1f735312bf418a82"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-complex/after/Source/MODEL/mp_intparam_definition.inc": {
+      "bytes": 243415,
+      "sha256": "963f549a42ab87d578200de1804e6e9447b03ffd79463faf973e9e1694787285"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-complex/before/Source/MODEL/model_functions.f": {
+      "bytes": 32608,
+      "sha256": "2e83c5986a2fab8d2672eb7c3e9d948da3cbfaa250f1c5bb18803535aa08c01b"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-complex/before/Source/MODEL/mp_intparam_definition.inc": {
+      "bytes": 238989,
+      "sha256": "109196fa7f9236753459e606bc435dad5269b965af67df2138ccc8f516c0953a"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-complex/manifest.json": {
+      "bytes": 10948,
+      "sha256": "de34da0dfece031550be1b8b4639a70bc49492052a93058c6048357dbbc01bc5"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-complex/model_functions.f.patch": {
+      "bytes": 7277,
+      "sha256": "c1a29d007e2366846b7fffc262cc03b18f4726d92f4455f84a27ca5961c6d93a"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-complex/mp_intparam_definition.inc.patch": {
+      "bytes": 224197,
+      "sha256": "b68764e81f9c46f69ea91c9044d5da288a62faca60f92fbf6d0fcc85ba0a8f6f"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-forced-qp/after/Source/MODEL/model_functions.f": {
+      "bytes": 32184,
+      "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-forced-qp/before/Source/MODEL/model_functions.f": {
+      "bytes": 31974,
+      "sha256": "a9678291451097495295fb6f894f3fd4c162addca0844f82393db59b69bc981e"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-forced-qp/manifest.json": {
+      "bytes": 9973,
+      "sha256": "0ecad6e590bb212d1c364d4030cc8b8ddb06d730be09bda20d41b51c76a5195f"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-forced-qp/model_functions.f.patch": {
+      "bytes": 6960,
+      "sha256": "690234b29b5c1e3d67f939da2250ae6332588bd24e29f6adeadf0864b43a58a3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-gg-h/after/Source/MODEL/model_functions.f": {
+      "bytes": 32184,
+      "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-gg-h/before/Source/MODEL/model_functions.f": {
+      "bytes": 31974,
+      "sha256": "a9678291451097495295fb6f894f3fd4c162addca0844f82393db59b69bc981e"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-gg-h/manifest.json": {
+      "bytes": 9943,
+      "sha256": "81b80993b15eb8635b4265e69c80656d94ec9fb9b40f162e97d8ec53611c68f4"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-gg-h/model_functions.f.patch": {
+      "bytes": 6960,
+      "sha256": "690234b29b5c1e3d67f939da2250ae6332588bd24e29f6adeadf0864b43a58a3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-gg-hh/after/Source/MODEL/model_functions.f": {
+      "bytes": 32184,
+      "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-gg-hh/before/Source/MODEL/model_functions.f": {
+      "bytes": 31974,
+      "sha256": "a9678291451097495295fb6f894f3fd4c162addca0844f82393db59b69bc981e"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-gg-hh/manifest.json": {
+      "bytes": 9951,
+      "sha256": "1f9d13ceb4519d834d758740a9a07f8a2250d444ca254c4e848734810e886b89"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-gg-hh/model_functions.f.patch": {
+      "bytes": 6960,
+      "sha256": "690234b29b5c1e3d67f939da2250ae6332588bd24e29f6adeadf0864b43a58a3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-mixed/after/Source/MODEL/model_functions.f": {
+      "bytes": 32826,
+      "sha256": "540fa790dd74fd4f5a9bed7b2e3be0d1fe5c7ae3a3512dbf1f735312bf418a82"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-mixed/after/Source/MODEL/mp_intparam_definition.inc": {
+      "bytes": 305835,
+      "sha256": "30114ab6dba3718a9a6e28b278d86b446a9f8a090f1b468bf3322ee831b2dcdd"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-mixed/before/Source/MODEL/model_functions.f": {
+      "bytes": 32608,
+      "sha256": "2e83c5986a2fab8d2672eb7c3e9d948da3cbfaa250f1c5bb18803535aa08c01b"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-mixed/before/Source/MODEL/mp_intparam_definition.inc": {
+      "bytes": 299985,
+      "sha256": "09fa937e36dfaea8bd1d268a21fc48dddee7aa93ad2be23362afdde4de4dfd02"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-mixed/manifest.json": {
+      "bytes": 11530,
+      "sha256": "87cb1cf143acc128a952c325cf0739b940a9077a084b035dca2a10219986ba21"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-mixed/model_functions.f.patch": {
+      "bytes": 7277,
+      "sha256": "c1a29d007e2366846b7fffc262cc03b18f4726d92f4455f84a27ca5961c6d93a"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/control-mixed/mp_intparam_definition.inc.patch": {
+      "bytes": 293364,
+      "sha256": "3d9d530d3bc39f790a3dd27a6638261a88668bc35b3b92abaec5b7e9183ef1e6"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-1/after/Source/MODEL/model_functions.f": {
+      "bytes": 32826,
+      "sha256": "540fa790dd74fd4f5a9bed7b2e3be0d1fe5c7ae3a3512dbf1f735312bf418a82"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-1/after/Source/MODEL/mp_intparam_definition.inc": {
+      "bytes": 153933,
+      "sha256": "b3425f1dbeeb6cf64173bce645a69e82fa10e583e0d54e1be600b6552c47de70"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-1/before/Source/MODEL/model_functions.f": {
+      "bytes": 32608,
+      "sha256": "2e83c5986a2fab8d2672eb7c3e9d948da3cbfaa250f1c5bb18803535aa08c01b"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-1/before/Source/MODEL/mp_intparam_definition.inc": {
+      "bytes": 151467,
+      "sha256": "831feec539d13a55894e76d9a36617f9d82e28fc633577e001261f061e1d3bf5"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-1/manifest.json": {
+      "bytes": 10859,
+      "sha256": "f44b244701dc5b23e1c3b6b52d086f15dfb74fffe455e192cc9ca89ce542c2c2"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-1/model_functions.f.patch": {
+      "bytes": 7277,
+      "sha256": "c1a29d007e2366846b7fffc262cc03b18f4726d92f4455f84a27ca5961c6d93a"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-1/mp_intparam_definition.inc.patch": {
+      "bytes": 126652,
+      "sha256": "6a216e29d873d2a3e13b13fed7861e113d1af5da179478c9d82d6172d1d8fba9"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-2/after/Source/MODEL/model_functions.f": {
+      "bytes": 32826,
+      "sha256": "540fa790dd74fd4f5a9bed7b2e3be0d1fe5c7ae3a3512dbf1f735312bf418a82"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-2/after/Source/MODEL/mp_intparam_definition.inc": {
+      "bytes": 240121,
+      "sha256": "a0f95c22b3aeef58c3f1692f58a60550525a54dcedb1056a8321becf3c4082e1"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-2/before/Source/MODEL/model_functions.f": {
+      "bytes": 32608,
+      "sha256": "2e83c5986a2fab8d2672eb7c3e9d948da3cbfaa250f1c5bb18803535aa08c01b"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-2/before/Source/MODEL/mp_intparam_definition.inc": {
+      "bytes": 235631,
+      "sha256": "5f1cbe08f23b2f1e20b5afc25bc35295a0517deb0e5972d170afe83f37c04fa8"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-2/manifest.json": {
+      "bytes": 10871,
+      "sha256": "3ff4fe74dc597f852e17ab60fdaca5a7f8b5fe2415f72a9ac67694781423180a"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-2/model_functions.f.patch": {
+      "bytes": 7277,
+      "sha256": "c1a29d007e2366846b7fffc262cc03b18f4726d92f4455f84a27ca5961c6d93a"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-2/mp_intparam_definition.inc.patch": {
+      "bytes": 220495,
+      "sha256": "79275602cf33ae2924f7dddd6146bd957a785a5dc0e06c023749228c986bf5b2"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-3/after/Source/MODEL/model_functions.f": {
+      "bytes": 32826,
+      "sha256": "540fa790dd74fd4f5a9bed7b2e3be0d1fe5c7ae3a3512dbf1f735312bf418a82"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-3/after/Source/MODEL/mp_intparam_definition.inc": {
+      "bytes": 418463,
+      "sha256": "258ecab1758b539252a4843e97a81accadf77a491e29ec06a25b4419def7cced"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-3/before/Source/MODEL/model_functions.f": {
+      "bytes": 32608,
+      "sha256": "2e83c5986a2fab8d2672eb7c3e9d948da3cbfaa250f1c5bb18803535aa08c01b"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-3/before/Source/MODEL/mp_intparam_definition.inc": {
+      "bytes": 409989,
+      "sha256": "4a76de68e37b83360f3ac8f61b490e5eff49413c46a099c6a2f52abe9cf33ab1"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-3/manifest.json": {
+      "bytes": 11465,
+      "sha256": "bdf01957e2dbb8e3524ecc3f2d0bd4ca0c75603247475f79cfadbcead527229f"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-3/model_functions.f.patch": {
+      "bytes": 7277,
+      "sha256": "c1a29d007e2366846b7fffc262cc03b18f4726d92f4455f84a27ca5961c6d93a"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-3/mp_intparam_definition.inc.patch": {
+      "bytes": 430977,
+      "sha256": "1176f3273aeefb2bb6f60e7bf162de11d130d1e75d2b439557e01674e7bb1e5d"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-4/after/Source/MODEL/model_functions.f": {
+      "bytes": 32826,
+      "sha256": "540fa790dd74fd4f5a9bed7b2e3be0d1fe5c7ae3a3512dbf1f735312bf418a82"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-4/after/Source/MODEL/mp_intparam_definition.inc": {
+      "bytes": 240179,
+      "sha256": "05405216127e4f21d6f9cfca8f0864c6c228ad5262a5222f8f0329fc44e8ba13"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-4/before/Source/MODEL/model_functions.f": {
+      "bytes": 32608,
+      "sha256": "2e83c5986a2fab8d2672eb7c3e9d948da3cbfaa250f1c5bb18803535aa08c01b"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-4/before/Source/MODEL/mp_intparam_definition.inc": {
+      "bytes": 235689,
+      "sha256": "e7a785fd086ebf040f04d00a0447271cdcaf9d4502ebed8ff28e8a49c52d38f5"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-4/manifest.json": {
+      "bytes": 11463,
+      "sha256": "ed6362edb1d8a36e267e36b426f179ed7e79b10db040ae6e1def30b67d71d4b8"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-4/model_functions.f.patch": {
+      "bytes": 7277,
+      "sha256": "c1a29d007e2366846b7fffc262cc03b18f4726d92f4455f84a27ca5961c6d93a"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/ew-4/mp_intparam_definition.inc.patch": {
+      "bytes": 220495,
+      "sha256": "87ac6e38742fddfc23280c64bdab04a1f9cc5ff180bc97d9da8c0c7fe70d3a8d"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-1/after/Source/MODEL/model_functions.f": {
+      "bytes": 32184,
+      "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-1/before/Source/MODEL/model_functions.f": {
+      "bytes": 31974,
+      "sha256": "a9678291451097495295fb6f894f3fd4c162addca0844f82393db59b69bc981e"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-1/manifest.json": {
+      "bytes": 9915,
+      "sha256": "d83f100a370889c195d60e93f9e0800b72682d2f1248d69bce434c2e8836fbf2"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-1/model_functions.f.patch": {
+      "bytes": 6960,
+      "sha256": "690234b29b5c1e3d67f939da2250ae6332588bd24e29f6adeadf0864b43a58a3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-2/after/Source/MODEL/model_functions.f": {
+      "bytes": 32184,
+      "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-2/before/Source/MODEL/model_functions.f": {
+      "bytes": 31974,
+      "sha256": "a9678291451097495295fb6f894f3fd4c162addca0844f82393db59b69bc981e"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-2/manifest.json": {
+      "bytes": 9925,
+      "sha256": "6cac9bb123d084a4de38b14949d097ce0990b6ace9e5b4167343de54c45e23e3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-2/model_functions.f.patch": {
+      "bytes": 6960,
+      "sha256": "690234b29b5c1e3d67f939da2250ae6332588bd24e29f6adeadf0864b43a58a3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-3/after/Source/MODEL/model_functions.f": {
+      "bytes": 32184,
+      "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-3/before/Source/MODEL/model_functions.f": {
+      "bytes": 31974,
+      "sha256": "a9678291451097495295fb6f894f3fd4c162addca0844f82393db59b69bc981e"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-3/manifest.json": {
+      "bytes": 9925,
+      "sha256": "1e3fc6d01cc2933256d7df39609923e5a5c70d5f6b50e7484e51c6c9fdf647e1"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-3/model_functions.f.patch": {
+      "bytes": 6960,
+      "sha256": "690234b29b5c1e3d67f939da2250ae6332588bd24e29f6adeadf0864b43a58a3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-4/after/Source/MODEL/model_functions.f": {
+      "bytes": 32184,
+      "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-4/before/Source/MODEL/model_functions.f": {
+      "bytes": 31974,
+      "sha256": "a9678291451097495295fb6f894f3fd4c162addca0844f82393db59b69bc981e"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-4/manifest.json": {
+      "bytes": 9927,
+      "sha256": "54f3590a3471d290629ce58232c8c95ddd2a0aed5b94b7a259888019cdab53bf"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/model-deltas/qcd-4/model_functions.f.patch": {
+      "bytes": 6960,
+      "sha256": "690234b29b5c1e3d67f939da2250ae6332588bd24e29f6adeadf0864b43a58a3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/control-complex.dat": {
+      "bytes": 3883,
+      "sha256": "81d6dd8e303246ef120dd4156760ab6fb1a0347d56624b691cc43091d63b5749"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/control-complex.json": {
+      "bytes": 195,
+      "sha256": "a0ebc2c9fc19c8ab3b1270e6cf8fce7a1c77389bc016fb5a568f31179c9a0d95"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/control-forced-qp.dat": {
+      "bytes": 3883,
+      "sha256": "ff50a8b1cd8a2149a4fe0445a2f1776f120dfefcd73bc647e73af9061616031e"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/control-forced-qp.json": {
+      "bytes": 199,
+      "sha256": "912a857be2c9b5ab1d5b7576f471b5d073335372822ac8c7abdd2826012fc2e3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/control-gg-h.dat": {
+      "bytes": 2937,
+      "sha256": "bccf515472fc9e4526ace2243c2a65afdc4fc040b85d9c88eced34bbe7e5b6ba"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/control-gg-h.json": {
+      "bytes": 188,
+      "sha256": "4be5d7e553fab561a298db33b0223fa8baffb16c3db572951716991cfed236c2"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/control-gg-hh.dat": {
+      "bytes": 3883,
+      "sha256": "a1fb9b0af7a351bf383a0ab5302f0be46f8053c1da33941e291fc5a0e2ec02b4"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/control-gg-hh.json": {
+      "bytes": 199,
+      "sha256": "dd15ef6e4d0505fde9d2c306e4b6ffc4023689e02452febf7a1bf137fe074a5f"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/control-mixed.dat": {
+      "bytes": 3883,
+      "sha256": "c0640d8258fea3bec32d28da8eb7a9bb8bbc50210efd2e22bf030c3dabf35527"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/control-mixed.json": {
+      "bytes": 195,
+      "sha256": "d287d41e1ff36d348c2abf712630652cae502bf78a1ff3fb35d41a78997154ef"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/ew-1.dat": {
+      "bytes": 29269,
+      "sha256": "5869f48fc0546031f7c50ee8f68a4b0104fa6da66bc3b434e47d1422edcbb576"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/ew-1.json": {
+      "bytes": 190,
+      "sha256": "f126362207bc1560dc9a7b851f464c2f9b1ca3c82c93c793e0a0d3880223b157"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/ew-2.dat": {
+      "bytes": 38804,
+      "sha256": "ed6f3f83033372061ed6de45c05a366aeeb68a63ddd006998682f406174e7b53"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/ew-2.json": {
+      "bytes": 196,
+      "sha256": "b80d47abd7982b32c6a9e910272cf91cfe108e7a9ec5741dba3007ca15b7238a"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/ew-3.dat": {
+      "bytes": 48558,
+      "sha256": "c030e6c68d53e9ecc1e2ac5ee99e4f81d97a80268dcbe3a0dc76065655a492a1"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/ew-3.json": {
+      "bytes": 209,
+      "sha256": "0605b14aa85f769b5ca08e4e31796e934cc3ac56b9837e0dd49dac93b27e59d4"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/ew-4.dat": {
+      "bytes": 58298,
+      "sha256": "75a3765dca97afa14e5efb795cb1a9fa1ff9e0475ebcb79a883b6a2a4e84ba5a"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/ew-4.json": {
+      "bytes": 214,
+      "sha256": "55779b55b2031bb47e6393f1c42d09c67626546eb3e277d9a104c466342f30be"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/qcd-1.dat": {
+      "bytes": 29223,
+      "sha256": "bd8a00c863710123dd62cb5e079dcd11d2aebdcf49d8128313bbd6ecc6de1099"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/qcd-1.json": {
+      "bytes": 190,
+      "sha256": "02aa21db269db26e655d531bb29c8bd307e50c434a3bb01891442248c1b0a3ac"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/qcd-2.dat": {
+      "bytes": 38804,
+      "sha256": "6efb8cb1752f37badd187e17aff2103eb6814402dbaeaa598165a83d22bd0b63"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/qcd-2.json": {
+      "bytes": 200,
+      "sha256": "dbde7aad1084ae47a61ed252628a709b5c5cb28611dd2ac402931c45e7f99105"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/qcd-3.dat": {
+      "bytes": 48552,
+      "sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/qcd-3.json": {
+      "bytes": 208,
+      "sha256": "4a8633b45f2f6020af0f4c529276795e6663ca0b86662b647834a8d9bad23880"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/qcd-4.dat": {
+      "bytes": 58316,
+      "sha256": "d66b0c04ee3d8e6ed90ef1fbf97abb9cd444d9ea1f84a508850688bff317b52d"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/points/qcd-4.json": {
+      "bytes": 220,
+      "sha256": "3fe89adca7af12f2fdadba12e47161929fd8faef2228e8aef804766565e30644"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/protected-inputs-before.json": {
+      "bytes": 951365,
+      "sha256": "929e57fba1f6d1235be343f5d7213ce70681183cda5af57bc92c88ecaf357dc3"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/regenerate.py": {
+      "bytes": 13638,
+      "sha256": "40b81e4513dbb8476ec4a74e81844b547784a92559d814b196a37056eba26ca7"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/status.json": {
+      "bytes": 7334973,
+      "sha256": "7fc08c93e492a52e6207603fecdd6ecacaecf12110e0e535d9ec7f78a05d8fa9"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/summarize.py": {
+      "bytes": 4462,
+      "sha256": "afd7c91b7ccbc7c59fac50d6e3d4f51f00138f42a960902a39a888d1530e9baf"
+    },
+    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal-fixed/summary.json": {
+      "bytes": 69576,
+      "sha256": "2b7ef5c0e920c48335de5b174859fcdbbeb5f92320cf9cc9c85eb4575ed559e5"
+    }
+  }
+}

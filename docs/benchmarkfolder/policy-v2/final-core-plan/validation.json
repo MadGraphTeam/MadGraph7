@@ -1,0 +1,24 @@
+{
+  "schema": "held-core-plan-static-check-v2",
+  "status": "passed",
+  "numerical_launch": false,
+  "core_cases": [
+    "qcd-1",
+    "ew-1",
+    "qcd-2",
+    "ew-2",
+    "qcd-3",
+    "ew-3",
+    "qcd-4",
+    "ew-4"
+  ],
+  "points_per_case": 100,
+  "targets_per_case": 7,
+  "repetitions": 7,
+  "expected_timed_records": 392,
+  "cpu": 207,
+  "shell_syntax": "passed",
+  "python_preflight_syntax": "passed",
+  "destinations_absent": true,
+  "configuration_matches_frozen_core_policy": true
+}

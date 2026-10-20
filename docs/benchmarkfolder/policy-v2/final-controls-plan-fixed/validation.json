@@ -1,0 +1,21 @@
+{
+  "schema": "held-generated-controls-static-check-v2",
+  "status": "passed",
+  "numerical_launch": false,
+  "cases": [
+    "control-gg-h",
+    "control-gg-hh",
+    "control-mixed",
+    "control-complex"
+  ],
+  "candidate_targets_reused": 5,
+  "corrected_original_targets_reused": 6,
+  "new_candidate_targets": 11,
+  "new_corrected_original_targets": 6,
+  "total_corrected_targets": 28,
+  "comparisons_per_case_per_repetition": 21,
+  "repetitions": 2,
+  "python_syntax": "passed",
+  "shell_syntax": "passed",
+  "full_stream_sizes_verified": true
+}

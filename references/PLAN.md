@@ -427,3 +427,19 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   thirteen focused tests, including real compilation with NLO flags, and two
   FKS exporter checks. New archived standalone/NLO validation and fresh final
   generation use separate namespaces after this correction.
+- All thirteen corrected exports clean-build at `b44d20e7`; an independent
+  inventory verifies their sources, executable hashes and one shared complete
+  reduction runtime group. The refreshed archived internal standalone and
+  NLO checks pass, including all twenty poles and soft/collinear tests. The
+  final representative and generated-control collection plans are ready.
+  Rotation, changing-mass/scale and fresh-context controls are prepared with
+  exact retained point streams and driver-only changes to isolated copies.
+  A rejected read-only-module guard is retained separately from the corrected
+  preparation. No new core numerical or performance gate is inferred from
+  these builds.
+- Diagnostic CPU profiling now binds to exact measured workers and retains
+  raw outputs/recordings. The report reader requires profile membership in its
+  dataset, rechecks source/runtime identities and recomputes rows and sample
+  categories. Seventeen report tests pass; the eight-page layout fixture is
+  compiled and visually checked. Final measured profiles and the completed
+  benchmark PDF remain outstanding.
