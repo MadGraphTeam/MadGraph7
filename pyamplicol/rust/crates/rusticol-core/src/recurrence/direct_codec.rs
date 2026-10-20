@@ -3,13 +3,14 @@
 //! Deterministic little-endian codec for recurrence direct-plan v2.
 
 use super::direct_plan::{
-    DirectAmplitudeDestinationDescriptor, DirectClosureRow, DirectContributionRow,
-    DirectCurrentDescriptor, DirectDestinationOperation, DirectExecutorRole, DirectFinalizationRow,
-    DirectMomentumFormDescriptor, DirectMomentumTerm, DirectNodeKind, DirectRecurrencePlan,
-    DirectRecurrencePlanParts, DirectReplayTargetDescriptor, DirectResolvedHelicityDescriptor,
-    DirectResolvedSourceSelection, DirectRowGroupDescriptor, DirectSelectorDomainDescriptor,
-    DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow, DirectSourceProjectionRow,
-    DirectSourceRow, DirectSourceStateAssignment,
+    DirectAmplitudeDestinationDescriptor, DirectAmplitudeOrders, DirectClosureRow,
+    DirectContributionRow, DirectCurrentDescriptor, DirectDestinationOperation, DirectExecutorRole,
+    DirectFinalizationRow, DirectMomentumFormDescriptor, DirectMomentumTerm, DirectNodeKind,
+    DirectRecurrencePlan, DirectRecurrencePlanParts, DirectReplayTargetDescriptor,
+    DirectResolvedHelicityDescriptor, DirectResolvedSourceSelection, DirectRowGroupDescriptor,
+    DirectSelectorDomainDescriptor, DirectSourceDispatchVariantDescriptor,
+    DirectSourceEmbeddingRow, DirectSourceProjectionRow, DirectSourceRow,
+    DirectSourceStateAssignment,
 };
 use super::{
     CheckedTableRange, ClosureCandidateDomainCertificateV1, ClosureExecutionProofGroupV2,
@@ -21,7 +22,7 @@ use crate::{RusticolError, RusticolResult};
 use std::io::Write;
 
 const MAGIC: &[u8; 8] = b"PACRDAP2";
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 const MAX_ROWS: u64 = u32::MAX as u64;
 
 fn invalid(message: impl Into<String>) -> RusticolError {
@@ -115,6 +116,11 @@ impl<W: Write> Writer<W> {
             self.optional_u32(*value)?;
         }
         Ok(())
+    }
+
+    fn string(&mut self, label: &str, value: &str) -> RusticolResult<()> {
+        self.count(label, value.len())?;
+        self.raw(value.as_bytes())
     }
 
     fn digest_slice(&mut self, label: &str, values: &[SemanticDigest]) -> RusticolResult<()> {
@@ -220,6 +226,12 @@ impl<'a> Reader<'a> {
         (0..count)
             .map(|_| self.optional_u32(label))
             .collect::<RusticolResult<Vec<_>>>()
+    }
+
+    fn string(&mut self, label: &str) -> RusticolResult<String> {
+        let count = self.count(label, 1)?;
+        let bytes = self.take(count, label)?;
+        String::from_utf8(bytes.to_vec()).map_err(|_| invalid(format!("{label} is not UTF-8")))
     }
 
     fn digest_vec(&mut self, label: &str) -> RusticolResult<Vec<SemanticDigest>> {
@@ -536,6 +548,17 @@ pub(crate) fn encode_recurrence_direct_plan_v2_to_writer<W: Write>(
     for value in plan.exact_factors() {
         writer.exact(*value)?;
     }
+    let orders = plan.amplitude_orders();
+    writer.count("amplitude coupling-order names", orders.names().len())?;
+    for name in orders.names() {
+        writer.string("amplitude coupling-order name", name)?;
+    }
+    writer.u32(orders.component_count())?;
+    writer.u32_slice("amplitude coupling-order powers", &orders.powers)?;
+    writer.u32_slice(
+        "closure amplitude coupling-order components",
+        orders.closure_components(),
+    )?;
     for row in plan.closure_proofs().contributions() {
         writer.u32(row.id())?;
         writer.u32(row.target_sector_id())?;
@@ -979,6 +1002,15 @@ pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRe
     for _ in 0..exact_factor_count {
         exact_factors.push(reader.exact("exact factor")?);
     }
+    let order_name_count = reader.count("amplitude coupling-order names", 8)?;
+    let amplitude_orders = DirectAmplitudeOrders {
+        names: (0..order_name_count)
+            .map(|_| reader.string("amplitude coupling-order name"))
+            .collect::<RusticolResult<_>>()?,
+        component_count: reader.u32("amplitude coupling-order components")?,
+        powers: reader.u32_vec("amplitude coupling-order powers")?,
+        closure_components: reader.u32_vec("closure amplitude coupling-order components")?,
+    };
     let mut closure_proof_contributions = Vec::with_capacity(closure_proof_contribution_count);
     for _ in 0..closure_proof_contribution_count {
         closure_proof_contributions.push(ClosureProofContributionV2::new(
@@ -1136,6 +1168,7 @@ pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRe
         public_helicities,
         exact_factors,
         closure_proofs,
+        amplitude_orders,
     })?;
     if plan.runtime_layout_digest() != expected_runtime_layout_digest {
         return Err(invalid("runtime-layout digest mismatch"));

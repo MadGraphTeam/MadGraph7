@@ -11,19 +11,21 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::arena::{DirectArenaLayout, recurrence_direct_arena_layout};
+use super::construct::TemplateCatalog;
 use super::direct_helicity_dispatch::{
     DirectHelicityDispatch, DirectHelicityDispatchDescriptor, DirectHelicityDispatchParts,
     DirectHelicityRowGroupDescriptor, DirectHelicitySupportDomainDescriptor,
 };
 use super::direct_plan::{
     DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE, DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
-    DIRECT_NONE_U32, DirectAmplitudeDestinationDescriptor, DirectClosureRow, DirectContributionRow,
-    DirectCurrentDescriptor, DirectDestinationOperation, DirectExecutorRole, DirectFinalizationRow,
-    DirectMomentumFormDescriptor, DirectMomentumTerm, DirectNodeKind, DirectRecurrencePlan,
-    DirectRecurrencePlanParts, DirectReplayTargetDescriptor, DirectResolvedHelicityDescriptor,
-    DirectResolvedSourceSelection, DirectRowGroupDescriptor, DirectSelectorDomainDescriptor,
-    DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow, DirectSourceProjectionRow,
-    DirectSourceRow, DirectSourceStateAssignment,
+    DIRECT_NONE_U32, DirectAmplitudeDestinationDescriptor, DirectAmplitudeOrders, DirectClosureRow,
+    DirectContributionRow, DirectCurrentDescriptor, DirectDestinationOperation, DirectExecutorRole,
+    DirectFinalizationRow, DirectMomentumFormDescriptor, DirectMomentumTerm, DirectNodeKind,
+    DirectRecurrencePlan, DirectRecurrencePlanParts, DirectReplayTargetDescriptor,
+    DirectResolvedHelicityDescriptor, DirectResolvedSourceSelection, DirectRowGroupDescriptor,
+    DirectSelectorDomainDescriptor, DirectSourceDispatchVariantDescriptor,
+    DirectSourceEmbeddingRow, DirectSourceProjectionRow, DirectSourceRow,
+    DirectSourceStateAssignment,
 };
 use super::helicity_support::{
     AllFlowHelicityMask, AllFlowHelicitySupportProjection, project_all_flow_helicity_support,
@@ -1329,6 +1331,7 @@ fn build_direct_parts(
     }
 
     let closure_component_coefficients = templates.closure_component_coefficient_catalog()?;
+    let (order_names, closure_term_orders) = closure_term_amplitude_orders(program, templates)?;
     let closure_stage = program
         .currents()
         .iter()
@@ -1795,8 +1798,96 @@ fn build_direct_parts(
         public_helicities,
         exact_factors,
         closure_proofs,
+        amplitude_orders: lower_amplitude_orders(
+            order_names,
+            &closure_term_orders,
+            &closure_drafts,
+        )?,
     };
     Ok((parts, relation_report, lowered_helicity_support))
+}
+
+/// Exact coupling powers of every closure term over the template catalogue's
+/// ascending coupling-order names: the parents' current powers plus the
+/// closure template's local powers.
+fn closure_term_amplitude_orders(
+    program: &RecurrenceProgram,
+    templates: &ValidatedRecurrenceTemplateInput,
+) -> RusticolResult<(Vec<String>, Vec<Box<[u32]>>)> {
+    let catalog = TemplateCatalog::new(templates.input())?;
+    let names = catalog
+        .coupling_order_names()
+        .iter()
+        .map(|name| (*name).to_owned())
+        .collect::<Vec<_>>();
+    let mut orders = Vec::with_capacity(program.closure_terms().len());
+    for (term_index, closure) in program.closure_terms().iter().enumerate() {
+        if closure.id() as usize != term_index {
+            return Err(invalid("closure term IDs are not dense"));
+        }
+        let template = templates
+            .input()
+            .closures
+            .get(closure.closure_template_id() as usize)
+            .ok_or_else(|| invalid("closure coupling-order template is absent"))?;
+        let mut powers = catalog.coupling_orders(template.coupling_order_set_id)?;
+        for &parent_id in closure.parent_current_ids() {
+            let parent = program
+                .currents()
+                .get(parent_id as usize)
+                .ok_or_else(|| invalid(format!("parent current {parent_id} is absent")))?;
+            let parent_powers = parent.key().coupling_orders();
+            if parent_powers.len() != powers.len() {
+                return Err(invalid(
+                    "closure parent coupling orders have the wrong dimension",
+                ));
+            }
+            for (total, power) in powers.iter_mut().zip(parent_powers) {
+                *total = total
+                    .checked_add(*power)
+                    .ok_or_else(|| invalid("closure coupling order exceeds u32"))?;
+            }
+        }
+        orders.push(powers.into_boxed_slice());
+    }
+    Ok((names, orders))
+}
+
+fn lower_amplitude_orders(
+    names: Vec<String>,
+    closure_term_orders: &[Box<[u32]>],
+    closure_drafts: &[ClosureDraft],
+) -> RusticolResult<DirectAmplitudeOrders> {
+    let components = closure_term_orders
+        .iter()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .enumerate()
+        .map(|(index, powers)| {
+            Ok((
+                powers,
+                u32_len("amplitude coupling-order component", index)?,
+            ))
+        })
+        .collect::<RusticolResult<BTreeMap<_, _>>>()?;
+    let closure_components = closure_drafts
+        .iter()
+        .map(|draft| {
+            closure_term_orders
+                .get(draft.semantic_closure_id as usize)
+                .and_then(|powers| components.get(powers).copied())
+                .ok_or_else(|| invalid("closure amplitude coupling order is absent"))
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    Ok(DirectAmplitudeOrders {
+        names,
+        component_count: u32_len("amplitude coupling-order component", components.len())?,
+        powers: components
+            .keys()
+            .flat_map(|powers| powers.iter().copied())
+            .collect(),
+        closure_components,
+    })
 }
 
 fn checked_projection_mask(

@@ -3415,7 +3415,6 @@ impl<'a> TemplateCatalog<'a> {
         self.coupling_names.len()
     }
 
-    #[allow(dead_code)]
     pub(super) fn coupling_order_names(&self) -> &[&'a str] {
         &self.coupling_names
     }

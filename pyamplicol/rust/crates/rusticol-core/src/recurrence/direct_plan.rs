@@ -324,6 +324,99 @@ pub struct DirectResolvedSourceSelection {
     pub dispatch_variant_id: u32,
 }
 
+/// Exact amplitude coupling-order component of every closure row.
+///
+/// `powers` stores the distinct component vectors over the ascending model
+/// coupling-order `names`, component-major and in ascending lexicographic
+/// order. Closure row `r` contributes to component `closure_components[r]`.
+/// Totals ignore this table; squared-order partials pair its components.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct DirectAmplitudeOrders {
+    pub names: Vec<String>,
+    pub component_count: u32,
+    pub powers: Vec<u32>,
+    pub closure_components: Vec<u32>,
+}
+
+impl DirectAmplitudeOrders {
+    /// One component for a model without coupling orders.
+    pub fn without_coupling_orders(closure_count: usize) -> Self {
+        Self {
+            names: Vec::new(),
+            component_count: u32::from(closure_count != 0),
+            powers: Vec::new(),
+            closure_components: vec![0; closure_count],
+        }
+    }
+
+    pub fn names(&self) -> &[String] {
+        &self.names
+    }
+
+    pub const fn component_count(&self) -> u32 {
+        self.component_count
+    }
+
+    /// Coupling powers of one component, aligned with [`Self::names`].
+    pub fn component(&self, component: u32) -> Option<&[u32]> {
+        let width = self.names.len();
+        let start = (component as usize).checked_mul(width)?;
+        (component < self.component_count).then(|| &self.powers[start..start + width])
+    }
+
+    pub fn closure_components(&self) -> &[u32] {
+        &self.closure_components
+    }
+
+    fn validate(&self, closure_count: usize) -> RusticolResult<()> {
+        if self.names.iter().any(String::is_empty)
+            || self.names.windows(2).any(|pair| pair[0] >= pair[1])
+        {
+            return Err(invalid(
+                "amplitude coupling-order names must be nonempty and strictly ascending",
+            ));
+        }
+        let expected_powers = (self.component_count as usize)
+            .checked_mul(self.names.len())
+            .ok_or_else(|| invalid("amplitude coupling-order table overflows usize"))?;
+        if self.powers.len() != expected_powers {
+            return Err(invalid(
+                "amplitude coupling-order powers do not match their component table",
+            ));
+        }
+        if self.closure_components.len() != closure_count {
+            return Err(invalid(
+                "every closure row requires one amplitude coupling-order component",
+            ));
+        }
+        if (closure_count == 0) != (self.component_count == 0) {
+            return Err(invalid(
+                "amplitude coupling-order components must exist exactly for closures",
+            ));
+        }
+        for component in 1..self.component_count {
+            if self.component(component - 1) >= self.component(component) {
+                return Err(invalid(
+                    "amplitude coupling-order components must be distinct and ascending",
+                ));
+            }
+        }
+        let mut used = vec![false; self.component_count as usize];
+        for &component in &self.closure_components {
+            *used
+                .get_mut(component as usize)
+                .ok_or_else(|| invalid("closure amplitude coupling-order component is absent"))? =
+                true;
+        }
+        if used.contains(&false) {
+            return Err(invalid(
+                "amplitude coupling-order component has no closure row",
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DirectRecurrencePlanParts {
     pub strategy: RecurrenceStrategy,
@@ -368,6 +461,7 @@ pub struct DirectRecurrencePlanParts {
     pub public_helicities: Vec<i32>,
     pub exact_factors: Vec<ExactComplexRational>,
     pub closure_proofs: ClosureProofMetadataV2,
+    pub amplitude_orders: DirectAmplitudeOrders,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -681,6 +775,10 @@ impl DirectRecurrencePlan {
 
     pub const fn closure_proofs(&self) -> &ClosureProofMetadataV2 {
         &self.parts.closure_proofs
+    }
+
+    pub const fn amplitude_orders(&self) -> &DirectAmplitudeOrders {
+        &self.parts.amplitude_orders
     }
 
     pub fn into_parts(self) -> DirectRecurrencePlanParts {
@@ -1712,6 +1810,7 @@ fn validate_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<()> {
     validate_row_groups(parts)?;
     validate_contribution_initialization(parts)?;
     validate_closure_proofs(parts)?;
+    parts.amplitude_orders.validate(parts.closures.len())?;
     Ok(())
 }
 
@@ -2416,6 +2515,21 @@ fn digest_parts(parts: &DirectRecurrencePlanParts) -> RusticolResult<SemanticDig
             .expected_semantic_completeness_digest()
             .as_bytes(),
     );
+    let orders = &parts.amplitude_orders;
+    count!(orders.names);
+    for name in &orders.names {
+        count!(name.as_bytes());
+        hash.update(name.as_bytes());
+    }
+    hash.update(orders.component_count.to_le_bytes());
+    count!(orders.powers);
+    for value in &orders.powers {
+        hash.update(value.to_le_bytes());
+    }
+    count!(orders.closure_components);
+    for value in &orders.closure_components {
+        hash.update(value.to_le_bytes());
+    }
     SemanticDigest::new(hash.finalize().into())
 }
 
