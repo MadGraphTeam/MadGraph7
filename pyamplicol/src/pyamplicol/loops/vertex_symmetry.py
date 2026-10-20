@@ -15,18 +15,43 @@ from collections.abc import Mapping
 from itertools import pairwise
 
 
-def symmetric_boson_slots(model, interactions, *, coupling_expressions=None):
+def _local_momentum_frame(diagram):
+    """Identify the canonical edge coordinates of a bare one-vertex star."""
+    if len(diagram.vertices) != 1 or diagram.loop_count != 0 or diagram.internal_edges:
+        raise ValueError("Bose conservation requires a bare one-vertex interchange")
+    basis = diagram.loop_momentum_basis
+    return (
+        tuple(basis.loop_edges),
+        tuple(basis.external_edges),
+        tuple(basis.dependent_externals),
+        tuple(
+            (edge, tuple(signature.loops), tuple(signature.external))
+            for edge, signature in sorted(basis.edge_signatures.items())
+        ),
+        tuple(
+            (edge.id, edge.external_index, edge.external_state, edge.particle_pdg)
+            for edge in diagram.external_edges
+        ),
+    )
+
+
+def symmetric_boson_slots(
+    model, interactions, *, coupling_expressions=None, conserve_momentum=False
+):
     """Return full-permutation slot classes proved on the actual model rules.
 
     Only identical self-conjugate bosons are candidates. Adjacent transpositions
     generate the full symmetric group; an orbit under a smaller group would not
     justify erasing individual slot labels. All unproved slots remain distinct.
     The complete colour, Lorentz and coupling product is compared, before any
-    kinematic, parameter or on-shell substitution. An optional exact expansion
+    numerical, parameter or on-shell substitution. An optional exact expansion
     of native coupling aliases is useful when the complete vertex carries
     distinct names for equal source coefficients. Its caller must retain the
     checked source scalar owner, including every active diagnostic; this local
     tensor comparison neither evaluates nor discards scalar diagnostics.
+    ``conserve_momentum`` additionally applies the dependency's exact routing
+    to this one-vertex star. The original and swapped external coordinates and
+    signed routing must agree; no mass-shell or other kinematic identity is used.
     """
     from symbolica import Replacement
     from symbolica.community import hepkit as hep
@@ -80,12 +105,12 @@ def symmetric_boson_slots(model, interactions, *, coupling_expressions=None):
         original_slots = [
             data["target_slot"] for _, data in json.loads(diagram.to_json())["edges"]
         ]
-        original = (
-            diagram.apply_feynman_rules()
-            .vertices[0]
-            .numerator_expression()
-            .to_expression()
-        )
+        original_diagram = diagram.apply_feynman_rules()
+        original = original_diagram.vertices[0].numerator_expression().to_expression()
+        if conserve_momentum:
+            original_frame = _local_momentum_frame(original_diagram)
+            basis = original_diagram.loop_momentum_basis
+            original = basis.route_expression(original)
         if replacements:
             original = original.replace_multiple(replacements)
         labels = list(range(len(rule.particles)))
@@ -121,6 +146,14 @@ def symmetric_boson_slots(model, interactions, *, coupling_expressions=None):
                 expression = (
                     transformed.vertices[0].numerator_expression().to_expression()
                 )
+                if conserve_momentum:
+                    if _local_momentum_frame(transformed) != original_frame:
+                        raise ValueError(
+                            "native Bose interchange changed momentum coordinates"
+                        )
+                    # Route both vertex tensors with the SAME original basis.
+                    # No edge numerator, projector or overall factor enters.
+                    expression = basis.route_expression(expression)
                 if replacements:
                     expression = expression.replace_multiple(replacements)
                 if (expression - original).expand() != 0:
