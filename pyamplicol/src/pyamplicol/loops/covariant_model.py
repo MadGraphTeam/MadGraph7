@@ -39,6 +39,19 @@ def _flag(fields, name):
     return bool(fields.get(name[0], fields.get(name[1], name[2])))
 
 
+def source_goldstone(fields):
+    """MadGraph's UFO convention: any truthy GoldstoneBoson/goldstoneboson/goldstone.
+
+    A false constructor default in one spelling must not hide a true flag in
+    another (e.g. legacy ``goldstone = True``). ufo_model_loader PR3 exposes the
+    same interpretation; prefer it once a release provides it.
+    """
+    return any(
+        bool(fields.get(name))
+        for name in ("GoldstoneBoson", "goldstoneboson", "goldstone")
+    )
+
+
 def _reference(raw, ref, collection):
     if ref.get("kind") != "reference" or ref.get("collection") != collection:
         raise ValueError(f"expected a source {collection} reference")
@@ -349,7 +362,7 @@ def build_covariant_structure(
             y_charge=fields.get("Y"),
             y_charge_right=fields.get("YRight"),
             propagating=_flag(fields, ("Propagating", "propagating", True)),
-            goldstoneboson=_flag(fields, ("GoldstoneBoson", "goldstoneboson", False)),
+            goldstoneboson=source_goldstone(fields),
         )
         if not particle["propagating"]:
             raise NotImplementedError(
