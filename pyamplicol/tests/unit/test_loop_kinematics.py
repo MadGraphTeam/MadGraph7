@@ -179,7 +179,7 @@ def test_exact_invariant_input_plan_preserves_lightlike_relations(native, proces
 def test_family_order_binds_identical_propagators_before_combining_numerators(
     native, processes
 ):
-    by_family = {}
+    by_family, boxes = {}, 0
     for graph in processes["quarks"].loops:
         recurrence = build_open_loop_recurrence(graph, routing="family")
         plan = build_loop_kinematics(recurrence, family_order=True)
@@ -187,6 +187,16 @@ def test_family_order_binds_identical_propagators_before_combining_numerators(
         signature = (plan.shifts, plan.masses_squared, plan.s_matrix)
         previous = by_family.setdefault(graph.family.family_index, signature)
         assert signature == previous
+        # Family denominators follow the loop cycle: neighbours share a vertex.
+        ends = {
+            edge.id: {edge.source, edge.target} for edge in graph.native.internal_edges
+        }
+        ids = plan.edge_ids
+        assert all(
+            ends[a] & ends[b] for a, b in zip(ids, ids[1:] + ids[:1], strict=True)
+        )
+        boxes += len(ids) == 4
+    assert boxes
     recurrence = build_open_loop_recurrence(processes["dy"].loops[0])
     with pytest.raises(ValueError, match="family momentum routing"):
         build_loop_kinematics(recurrence, family_order=True)

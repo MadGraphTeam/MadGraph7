@@ -60,6 +60,27 @@ class LoopKinematicPlan:
         ).save()
 
 
+def _cycle_order(edges):
+    """Positions of the one-loop cycle edges in traversal order (by incidence)."""
+    incident = {}
+    for position, edge in enumerate(edges):
+        for vertex in {edge.source, edge.target}:
+            incident.setdefault(vertex, []).append(position)
+    if len(edges) < 3:
+        return list(range(len(edges)))
+    if any(len(positions) != 2 for positions in incident.values()):
+        raise ValueError("loop edges do not form a simple cycle")
+    order, vertex = [0], edges[0].target
+    while len(order) < len(edges):
+        position = next(p for p in incident[vertex] if p != order[-1])
+        if position == order[0]:
+            raise ValueError("loop edges do not form one simple cycle")
+        order.append(position)
+        edge = edges[position]
+        vertex = edge.target if edge.source == vertex else edge.source
+    return order
+
+
 def build_loop_kinematics(
     recurrence: Any,
     *,
@@ -72,6 +93,8 @@ def build_loop_kinematics(
     For ``p_i = a_i*q+b_i`` with ``a_i=+/-1``, the denominator is
     ``(q+a_i*b_i)**2-m_i**2-mu2``. Any other dependence is unsupported, never
     silently rescaled. Repeated cycle denominators are rejected explicitly.
+    ``family_order`` binds the family denominators in loop-cycle order,
+    normalized on family indices; otherwise the native graph edge order is kept.
     """
     from symbolica import E, Replacement
     from symbolica.community import tensor as t
@@ -98,7 +121,19 @@ def build_loop_kinematics(
             raise NotImplementedError(
                 "family binding requires a bijective denominator map"
             )
-        edges = [edges[i] for i in sorted(range(len(edges)), key=mapping.__getitem__)]
+        # Family denominators follow the loop cycle: every box (and every box
+        # pinched from a larger cycle) reaches the masters with consecutive
+        # propagators adjacent, as in the conventional D0 argument order.
+        # oneloopmaster 09b2c74 misclassifies a soft-divergent massive box in a
+        # non-adjacent labelling (finite in binary64, NaN in DoubleFloat).
+        # The cycle order is unique up to rotation and reflection, so it is
+        # normalized on family indices and identical for all family graphs.
+        cycle = [mapping[i] for i in _cycle_order(edges)]
+        start = cycle.index(0)
+        forward = cycle[start:] + cycle[:start]
+        order = min(forward, forward[:1] + forward[:0:-1])
+        by_index = {mapping[i]: edge for i, edge in enumerate(edges)}
+        edges = [by_index[index] for index in order]
     for edge in edges:
         vector = edge.momentum_expression(dimension=4).to_tensor(library).to_dense()
         components = tuple(vector[i] for i in range(4))

@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from dataclasses import replace
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -303,22 +302,6 @@ def test_counterterms_with_internal_massive_top(
         )
 
 
-_KNOWN_MASTER_FAILURES = {
-    # oneloopmaster 09b2c74 returns a non-finite D0 for the two exactly on-shell
-    # infrared boxes with adjacent internal top masses (box11 is reached only
-    # after its chart exchange). The published fix alphal00p/oneloopmaster#10
-    # (cd945f4) passes this test in all three carriers.
-    "gg": "oneloopmaster D0 adjacent-mass IR chart (oneloopmaster#10)",
-    # The soft-divergent box family with internal masses (m, m, 0, m) and
-    # on-shell top legs returns MasterFailed at the third point (also with #10).
-    # NOT attributed yet: at the other two points the bare loop is finite but
-    # disagrees with MadLoop (it lacks part of the soft single pole), with both
-    # reduction engines. Once the master failure is gone this test compares and
-    # therefore reports that discrepancy instead of hiding it.
-    "ee": "MasterFailed for the soft (m,m,0,m) box; bare also unattributed",
-}
-
-
 @pytest.mark.parametrize("arithmetic,precision,tolerance", _CARRIERS)
 @pytest.mark.parametrize("key", ["gg", "ee"])
 def test_complete_with_internal_massive_top(
@@ -327,14 +310,7 @@ def test_complete_with_internal_massive_top(
     _prepared, program = programs(key)
     program = _carrier(program, arithmetic, precision)
     data = reference(key)
-    try:
-        result = program.evaluate_decimal(*_inputs(data))
-    except ArithmeticError as error:
-        # Only the identified dependency failure is reported as expected; any
-        # other failure, or a finite wrong result, fails normally.
-        if not re.search(r"loop reduction failed.*MasterFailed", str(error)):
-            raise
-        pytest.xfail(_KNOWN_MASTER_FAILURES[key])
+    result = program.evaluate_decimal(*_inputs(data))
     assert all(status == "success" for row in result.statuses for _, status in row)
     _compare(result, data["rows"][key], _COMPONENTS)
     _check_exact_identities(result, key, tolerance)

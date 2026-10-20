@@ -1515,8 +1515,12 @@ lowered source kernels are rechecked against generated ALOHA `R2_QQ_2_0`
 with MadLoop including the isolated mass insertions. Counterterms of
 colour-singlet scalar couplings to an ordered fundamental pair (e.g. QCD
 corrections of quark Yukawa/Goldstone vertices) use the same exact FFS bases and
-physical frame as the tree vertices; `e+ e- > t t~ h` counterterm components
-match MadLoop. Other two-point chiral, reversed-endpoint or momentum-leg tensors
+physical frame as the tree vertices; `e+ e- > t t~ h` matches MadLoop for
+every component. Family denominators reach the reducer in loop-cycle order
+(`kinematics.py`), the conventional D0 argument order: oneloopmaster 09b2c74
+misevaluates a soft-divergent box with massive emitters, such as the
+(m, m, 0, m) boxes of these processes, when its propagators are labelled
+non-adjacently (finite without the soft pole in binary64, NaN in DoubleFloat). Other two-point chiral, reversed-endpoint or momentum-leg tensors
 remain outside this admission. Scalar source coefficients,
 loop groups, matching and all process-level cancellations are independent gates.
 
