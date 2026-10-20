@@ -143,14 +143,10 @@ def test_real_writer_emits_virtual_bundle_without_tree_umami_provider(
 
 
 def test_installed_virtual_bundle_clients_preserve_mixed_order_resolved_axes(
-    saved_loop_fixture, tmp_path
+    saved_loop_fixture, installed_virtual_bundle, tmp_path
 ):
     fixture = str(saved_loop_fixture("sdk-mixed-source"))
-    # An installed wheel (target directory with bin/rusticol-config) is a
-    # release-build product, not a test fixture; it is supplied explicitly.
-    installed = os.environ.get("PYAMPLICOL_VIRTUAL_BUNDLE_INSTALL")
-    if not installed:
-        pytest.skip("set PYAMPLICOL_VIRTUAL_BUNDLE_INSTALL to an installed wheel")
+    installed = str(installed_virtual_bundle)
     make = shutil.which("make")
     assert make is not None, "the installed SDK client check requires make"
     artifact = tmp_path / "artifact"

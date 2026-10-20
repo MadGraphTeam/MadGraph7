@@ -12,13 +12,13 @@ exact identities.
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import replace
 from decimal import Decimal, localcontext
-from pathlib import Path
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.loop_physics
 
 _POLES = ("finite", "single_pole", "double_pole")
 _COMPONENTS = (
@@ -34,10 +34,10 @@ _QCD = ({"QCD": 2, "QED": 0}, {"QCD": 4, "QED": 0})
 # exact infrared double pole in units of alpha_s/(2 pi) * Born: -2 C_A for two
 # external gluons, -2 C_F for two massless quarks, none for massive emitters.
 _PROCESSES = {
-    "gg": ("top-pair-model.json", (21, 21), (6, -6), (0, 0, 173, 173), _QCD, "-6"),
-    "uu": ("top-pair-model.json", (2, -2), (6, -6), (0, 0, 173, 173), _QCD, "-8/3"),
+    "gg": ("top-pair-model", (21, 21), (6, -6), (0, 0, 173, 173), _QCD, "-6"),
+    "uu": ("top-pair-model", (2, -2), (6, -6), (0, 0, 173, 173), _QCD, "-8/3"),
     "ee": (
-        "top-pair-higgs-model.json",
+        "top-pair-higgs-model",
         (-11, 11),
         (6, -6, 25),
         (0, 0, 173, 173, 125),
@@ -53,17 +53,13 @@ _CARRIERS = [
 
 
 @pytest.fixture(scope="module")
-def reference():
+def reference(loop_reference):
     cache = {}
 
     def load(key):
         name, _incoming, _outgoing, masses, _orders, _double = _PROCESSES[key]
         if name not in cache:
-            data = json.loads(
-                (
-                    Path(__file__).resolve().parents[1] / "fixtures/loop" / name
-                ).read_text()
-            )
+            data = loop_reference(name)
             with localcontext() as context:
                 context.prec = 60
                 for point in data["points"]:
@@ -81,18 +77,12 @@ def reference():
 
 
 @pytest.fixture(scope="module")
-def programs(reference):
-    symbolica = pytest.importorskip("symbolica")
-    if not symbolica.is_licensed():
-        pytest.skip("licensed native generation required")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+def programs(loop_native, loop_sm_ufo, reference):
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
     from pyamplicol.models.loop_import import load_raw_loop_model
 
-    view = prepare_loop_sm_scalar_declarations(load_raw_loop_model(path))
+    view = prepare_loop_sm_scalar_declarations(load_raw_loop_model(loop_sm_ufo))
     models, cache = {}, {}
 
     def program(key):

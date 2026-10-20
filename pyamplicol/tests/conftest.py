@@ -59,6 +59,9 @@ _EXTERNAL_INPUTS: dict[str, tuple[tuple[str, ...], tuple[Path, ...]]] = {
         ("PYAMPLICOL_LOOP_SAVED_FIXTURES",),
         (_WORKSPACE / "fixtures",),
     ),
+    # An installed wheel (target directory with bin/rusticol-config) is a
+    # release-build product of the checkout under test, so it has no default.
+    "installed_virtual_bundle": (("PYAMPLICOL_VIRTUAL_BUNDLE_INSTALL",), ()),
 }
 
 

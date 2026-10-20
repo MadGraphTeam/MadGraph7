@@ -31,7 +31,7 @@ def _policy(*levels):
 
 @pytest.mark.parametrize("kind", ["program", "runtime"])
 def test_native_policy_precedes_binding_and_stays_with_atomic_owner(
-    native_policy_fixture, kind
+    saved_loop_fixture, native_policy_fixture, kind
 ):
     root, native = native_policy_fixture
     if kind == "program":
@@ -39,9 +39,7 @@ def test_native_policy_precedes_binding_and_stays_with_atomic_owner(
         path = root / "resolved-guard.pacbin"
     else:
         factory = native.NativeVirtualRuntime
-        path = root / "resolved-artifact"
-        if not path.is_dir():
-            pytest.skip("public guard artifact has not been wrapped yet")
+        path = saved_loop_fixture("source-binding-rescue/resolved-artifact")
     primary_policy = _policy(
         ("double-double", None), ("arbitrary", 60), ("arbitrary", 80)
     )

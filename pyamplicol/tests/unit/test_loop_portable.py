@@ -17,10 +17,6 @@ pytestmark = pytest.mark.loop_physics
 
 @pytest.fixture(scope="module")
 def portable_control(loop_sm_ufo, loop_native, tmp_path_factory):
-    symbolica = pytest.importorskip("symbolica")
-    backend = loop_native
-    if not symbolica.is_licensed() or not hasattr(backend, "PortableLoopPlan"):
-        pytest.skip("licensed generation and native portable bridge required")
     source = str(loop_sm_ufo)
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.loops.physical_counterterms import (
@@ -404,11 +400,7 @@ def test_native_order_semantics(portable_control, tmp_path, mutation, message):
     ],
 )
 def extended_control(loop_sm_ufo, loop_native, request, tmp_path_factory):
-    symbolica = pytest.importorskip("symbolica")
-    backend = loop_native
     source = str(loop_sm_ufo)
-    if not symbolica.is_licensed() or not hasattr(backend, "PortableLoopPlan"):
-        pytest.skip("licensed source model and native portable bridge required")
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.loops.physical_counterterms import (
         gluon_scattering_model_virtual_program,
@@ -569,14 +561,14 @@ def test_direct_sectors_and_nonzero_fields_survive_portable_rebinding(
 
 
 @pytest.mark.deferred_direct_r2
+@pytest.mark.parametrize("extended_control", ["direct_gg"], indirect=True)
 def test_native_direct_metadata_rejects_mixed_or_uncertified_sectors(
     extended_control, tmp_path
 ):
     from pyamplicol.loops.portable import PortableLoopPlan
 
     original, source, _ = extended_control
-    if original.r2_strategy != "direct":
-        pytest.skip("direct-only capability check")
+    assert original.r2_strategy == "direct"
 
     def change_squared_order(data):
         # Keep the generic pair-sum invariant while leaving the certified gg order.

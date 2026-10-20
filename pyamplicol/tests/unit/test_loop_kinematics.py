@@ -142,8 +142,6 @@ def test_exact_invariant_input_plan_preserves_lightlike_relations(
     recurrence = build_open_loop_recurrence(processes["dy"].loops[0])
     plan = build_loop_kinematics(recurrence)
     backend = loop_native
-    if not hasattr(backend, "ExactPolynomialEvaluator"):
-        pytest.skip("exact native kinematics evaluator not built")
     from decimal import Decimal, localcontext
 
     with localcontext() as context:

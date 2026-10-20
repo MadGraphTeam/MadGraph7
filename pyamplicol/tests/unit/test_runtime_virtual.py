@@ -48,9 +48,6 @@ def test_exact_input_transport_and_rejection():
 @pytest.fixture(scope="module")
 def source_artifact(saved_loop_fixture, loop_native):
     path = str(saved_loop_fixture("source-public-v3/gg"))
-    native = loop_native
-    if not hasattr(native, "NativeVirtualRuntime"):
-        pytest.skip("native source artifact consumer is not built")
     fixture = (
         Path(__file__).resolve().parents[2]
         / "tools/loop_reference/gluon_scattering_qcd.json"

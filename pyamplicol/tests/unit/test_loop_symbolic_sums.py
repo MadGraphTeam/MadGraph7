@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
 pytest.importorskip("symbolica")
@@ -25,6 +23,7 @@ def _sequential(terms):
     return sum(terms, E("0"))
 
 
+@pytest.mark.loop_fast
 def test_symbolic_sum_equals_sequential_addition():
     from symbolica import E, S
 
@@ -79,22 +78,13 @@ def _states(monkeypatch, build, summation):
 
 
 @pytest.fixture(scope="module")
-def loop_sm():
-    symbolica = pytest.importorskip("symbolica")
-    if not symbolica.is_licensed():
-        pytest.skip("native generation requires licensed Symbolica")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to the original loop_sm model")
+def loop_sm(loop_sm_ufo):
     from pyamplicol.models.loop_import import load_raw_loop_model
 
-    return load_raw_loop_model(path)
+    return load_raw_loop_model(loop_sm_ufo)
 
 
-def _source_program(raw, outgoing, born, loop, *, directed=False):
-    import _loop_reduction as backend
-
+def _source_program(backend, raw, outgoing, born, loop, *, directed=False):
     from pyamplicol.loops.compiler import prepare_loop_request_model
 
     def build():
@@ -135,11 +125,14 @@ def _gluon_program(raw):
     return build
 
 
+@pytest.mark.loop_physics
 @pytest.mark.parametrize(
     "case",
     ["uu~>dd~ directed", "uu~>dd~g", "gg>gg model R2"],
 )
-def test_projectors_equal_sequential_accumulation(loop_sm, monkeypatch, case):
+def test_projectors_equal_sequential_accumulation(
+    loop_native, loop_sm, monkeypatch, case
+):
     """Born, dual-weight, family, UV/R2/field and directed projectors agree.
 
     The reference re-runs the same compilation with every collected target
@@ -149,8 +142,10 @@ def test_projectors_equal_sequential_accumulation(loop_sm, monkeypatch, case):
     from pyamplicol.loops.symbolic_sums import symbolic_sum
 
     build = {
-        "uu~>dd~ directed": _source_program(loop_sm, (1, -1), 2, 4, directed=True),
-        "uu~>dd~g": _source_program(loop_sm, (1, -1, 21), 3, 5),
+        "uu~>dd~ directed": _source_program(
+            loop_native, loop_sm, (1, -1), 2, 4, directed=True
+        ),
+        "uu~>dd~g": _source_program(loop_native, loop_sm, (1, -1, 21), 3, 5),
         "gg>gg model R2": _gluon_program(loop_sm),
     }[case]
     calls = []

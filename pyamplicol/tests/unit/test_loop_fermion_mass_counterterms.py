@@ -2,12 +2,13 @@
 """Massive Dirac identity two-point counterterms: exact gate and ALOHA control."""
 
 import json
-import os
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+pytestmark = pytest.mark.loop_fast
 
 _MASS_VERTICES = {"V_R2CC", "V_R2BB", "V_R2TT", "V_UVcMass", "V_UVbMass", "V_UVtMass"}
 
@@ -21,13 +22,8 @@ def _structure(value, spins=(2, 2)):
 
 
 @pytest.fixture(scope="module")
-def source():
-    symbolica = pytest.importorskip("symbolica")
-    if not symbolica.is_licensed():
-        pytest.skip("source local tensors require licensed Symbolica")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+def source(loop_sm_ufo):
+    path = str(loop_sm_ufo)
     from ufo_model_loader.model import Model
 
     from pyamplicol.loops.model import CovariantKernelCatalogue, build_loop_model

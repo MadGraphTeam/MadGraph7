@@ -97,9 +97,6 @@ def test_real_public_generation_roundtrips_two_processes_and_cli(
 ):
     # Publication must use an authentic staged extension and build metadata.
     # Deliberately do not replace target_info, identity or the runtime loader.
-    native = loop_native
-    if not hasattr(native, "NativeVirtualRuntime"):
-        pytest.skip("native public virtual runtime is not built")
     card, output = public_request
     processes = ProcessSet(
         (

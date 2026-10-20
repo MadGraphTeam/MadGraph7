@@ -252,8 +252,7 @@ def test_actual_source_artifact_cli_keeps_ap_load_and_empty_axes(
 ):
     artifact = str(saved_loop_fixture("source-public-v3/gg"))
     native = loop_native
-    if not hasattr(native, "NativeVirtualRuntime"):
-        pytest.skip("native virtual artifact consumer is not built")
+    assert native.NativeVirtualRuntime
     momenta = tmp_path / "empty.json"
     parameters = tmp_path / "parameters.json"
     momenta.write_text("[]")
@@ -297,8 +296,7 @@ def test_actual_source_artifact_cli_emits_batched_physical_coefficients(
 ):
     artifact = str(saved_loop_fixture("source-public-v3/gg"))
     native = loop_native
-    if not hasattr(native, "NativeVirtualRuntime"):
-        pytest.skip("native virtual artifact consumer is not built")
+    assert native.NativeVirtualRuntime
     from .test_loop_physical_gluons import _expected
 
     fixture = (

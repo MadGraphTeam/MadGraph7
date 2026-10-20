@@ -18,11 +18,7 @@ pytestmark = pytest.mark.loop_physics
 
 @pytest.fixture(scope="module")
 def source_control(loop_sm_ufo, loop_native, tmp_path_factory):
-    symbolica = pytest.importorskip("symbolica")
-    backend = loop_native
     source = str(loop_sm_ufo)
-    if not symbolica.is_licensed() or not hasattr(backend, "PortableLoopPlan"):
-        pytest.skip("licensed source generation and native portable bridge required")
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.portable import write_loop_pacbin
     from pyamplicol.models.loop_import import load_raw_loop_model

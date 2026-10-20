@@ -124,18 +124,20 @@ def test_python_portable_binding_uses_saved_weight_schedule(
     ],
 )
 def test_actual_signed_lc_weights_preserve_resolved_axes(
-    weight_artifacts, arithmetic, precision, engine, tolerance
+    saved_loop_fixture, weight_artifacts, arithmetic, precision, engine, tolerance
 ):
     from decimal import Decimal, localcontext
 
     from .test_loop_color_components_native import _close
 
-    native, root, points = weight_artifacts
-    if not (root / "gg-lc-weighted.pacbin").exists():
-        pytest.skip("retain the actual gg LC weighted and original schedules")
+    native, _root, points = weight_artifacts
     options = dict(arithmetic=arithmetic, precision=precision, reduction_engine=engine)
-    weighted = native.NativeLoopProgram(str(root / "gg-lc-weighted.pacbin"), **options)
-    original = native.NativeLoopProgram(str(root / "gg-lc-original.pacbin"), **options)
+    weighted = native.NativeLoopProgram(
+        str(saved_loop_fixture("dual-born-weights/gg-lc-weighted.pacbin")), **options
+    )
+    original = native.NativeLoopProgram(
+        str(saved_loop_fixture("dual-born-weights/gg-lc-original.pacbin")), **options
+    )
     plan = json.loads(weighted.metadata_json())
     helicities = len(plan["helicities"])
     components = len(plan["born_color_components"]["ids"])
