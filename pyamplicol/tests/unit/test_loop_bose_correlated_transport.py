@@ -226,6 +226,12 @@ def test_matching_substitutions_cannot_replace_source_authority(
     # Valid history routes alone cannot certify substituted source classes.
     admitted = _admit(control)
     with pytest.raises(ValueError):
+        replace(
+            admitted.bose_correlations,
+            representative_spin=changed_classes[0],
+            member_spin=changed_classes[1],
+        )
+    with pytest.raises(ValueError):
         promoted = replace(
             control["relation"],
             representative_directed=admitted.representative_directed,
