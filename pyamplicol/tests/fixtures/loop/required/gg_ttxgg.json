@@ -557,13 +557,27 @@
         "production": {
           "settings": {
             "requested_relative_accuracy": "MadLoop MLStabThres (production setting)",
-            "stability_check": "MadLoop default (CTModeRun=-1 after initialization)"
+            "stability_check": "MadLoop default (CTModeRun=-1 after initialization)",
+            "fortran_flags": {
+              "export_make_opts": {
+                "GLOBAL_FLAG": "-O",
+                "ALOHA_FLAG": "",
+                "MATRIX_FLAG": ""
+              },
+              "mg5_production": {
+                "GLOBAL_FLAG": "-O",
+                "ALOHA_FLAG": "",
+                "MATRIX_FLAG": ""
+              },
+              "production_build": true,
+              "source": "MG5_aMC run-card defaults global_flag/aloha_flag/matrix_flag (CommonRunCmd.update_make_opts of an optimised MG5 run); MadLoop's own makefile adds -O3 for polynomial.f"
+            }
           },
           "version": "MadLoop/MG5_aMC 3.7.0",
           "evaluation_seconds": [
-            7.58260566,
-            7.4115241,
-            7.50522913
+            5.21795655,
+            5.28177717,
+            5.2905753
           ],
           "statuses": [
             216,
@@ -595,8 +609,8 @@
               "double_pole": 1.8012802245827394e-13
             }
           ],
-          "initial_call_seconds": 53.5598263,
-          "cpu": 316
+          "initial_call_seconds": 38.6339899,
+          "cpu": 250
         }
       }
     },

@@ -543,13 +543,27 @@
         "production": {
           "settings": {
             "requested_relative_accuracy": "MadLoop MLStabThres (production setting)",
-            "stability_check": "MadLoop default (CTModeRun=-1 after initialization)"
+            "stability_check": "MadLoop default (CTModeRun=-1 after initialization)",
+            "fortran_flags": {
+              "export_make_opts": {
+                "GLOBAL_FLAG": "-O",
+                "ALOHA_FLAG": "",
+                "MATRIX_FLAG": ""
+              },
+              "mg5_production": {
+                "GLOBAL_FLAG": "-O",
+                "ALOHA_FLAG": "",
+                "MATRIX_FLAG": ""
+              },
+              "production_build": true,
+              "source": "MG5_aMC run-card defaults global_flag/aloha_flag/matrix_flag (CommonRunCmd.update_make_opts of an optimised MG5 run); MadLoop's own makefile adds -O3 for polynomial.f"
+            }
           },
           "version": "MadLoop/MG5_aMC 3.7.0",
           "evaluation_seconds": [
-            0.007922243,
-            0.006687388,
-            0.009017957
+            0.004384707,
+            0.004460327,
+            0.004484347
           ],
           "statuses": [
             216,
@@ -557,20 +571,20 @@
             216
           ],
           "estimated_accuracies": [
-            6.432524141850894e-12,
-            1.339634075277286e-12,
+            6.4331205558830845e-12,
+            1.3399939501128147e-12,
             2.2840627140004537e-12
           ],
           "relative_deviation_from_reference_run": [
             {
               "born": 0.0,
-              "finite": 0.0,
+              "finite": 1.1623652918197187e-16,
               "single_pole": 0.0,
               "double_pole": 0.0
             },
             {
               "born": 0.0,
-              "finite": 0.0,
+              "finite": 5.376312484097372e-15,
               "single_pole": 0.0,
               "double_pole": 0.0
             },
@@ -581,8 +595,8 @@
               "double_pole": 0.0
             }
           ],
-          "initial_call_seconds": 0.476692655,
-          "cpu": 312
+          "initial_call_seconds": 0.125460453,
+          "cpu": 250
         }
       }
     },

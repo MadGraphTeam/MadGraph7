@@ -562,13 +562,27 @@
         "production": {
           "settings": {
             "requested_relative_accuracy": "MadLoop MLStabThres (production setting)",
-            "stability_check": "MadLoop default (CTModeRun=-1 after initialization)"
+            "stability_check": "MadLoop default (CTModeRun=-1 after initialization)",
+            "fortran_flags": {
+              "export_make_opts": {
+                "GLOBAL_FLAG": "-O",
+                "ALOHA_FLAG": "",
+                "MATRIX_FLAG": ""
+              },
+              "mg5_production": {
+                "GLOBAL_FLAG": "-O",
+                "ALOHA_FLAG": "",
+                "MATRIX_FLAG": ""
+              },
+              "production_build": true,
+              "source": "MG5_aMC run-card defaults global_flag/aloha_flag/matrix_flag (CommonRunCmd.update_make_opts of an optimised MG5 run); MadLoop's own makefile adds -O3 for polynomial.f"
+            }
           },
           "version": "MadLoop/MG5_aMC 3.7.0",
           "evaluation_seconds": [
-            0.272732656,
-            0.30033346,
-            0.285225988
+            0.220311358,
+            0.247787325,
+            0.24642181
           ],
           "statuses": [
             216,
@@ -577,7 +591,7 @@
           ],
           "estimated_accuracies": [
             8.19064608286804e-10,
-            1.1631535815781502e-10,
+            1.1631699543664704e-10,
             4.1220625939187956e-10
           ],
           "relative_deviation_from_reference_run": [
@@ -589,7 +603,7 @@
             },
             {
               "born": 0.0,
-              "finite": 6.760530581457866e-13,
+              "finite": 6.811643463878127e-13,
               "single_pole": 4.482528004384226e-12,
               "double_pole": 5.776344837570118e-15
             },
@@ -600,8 +614,8 @@
               "double_pole": 7.486591735470222e-11
             }
           ],
-          "initial_call_seconds": 4.06920774,
-          "cpu": 331
+          "initial_call_seconds": 3.21213208,
+          "cpu": 250
         }
       }
     },
