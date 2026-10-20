@@ -1,0 +1,195 @@
+ AO2PI=   1.8780283284843650E-002
+ *****************************************************
+ *               MadGraph/MadEvent                   *
+ *        --------------------------------           *
+ *          http://madgraph.hep.uiuc.edu             *
+ *          http://madgraph.phys.ucl.ac.be           *
+ *          http://madgraph.roma2.infn.it            *
+ *        --------------------------------           *
+ *                                                   *
+ *          PARAMETER AND COUPLING VALUES            *
+ *                                                   *
+ *****************************************************
+
+  External Params
+  ---------------------------------
+  
+ MU_R =    91.188000000000002     
+ mdl_MB =    4.7000000000000002     
+ mdl_MT =    173.00000000000000     
+ mdl_MTA =    1.7769999999999999     
+ mdl_MZ =    91.188000000000002     
+ mdl_MH =    125.00000000000000     
+ aEWM1 =    132.50700000000001     
+ mdl_Gf =    1.1663900000000000E-005
+ aS =   0.11799999999999999     
+ mdl_ymb =    4.7000000000000002     
+ mdl_ymt =    173.00000000000000     
+ mdl_ymtau =    1.7769999999999999     
+ mdl_WT =    1.4915000000000000     
+ mdl_WZ =    2.4414039999999999     
+ mdl_WW =    2.0476000000000001     
+ mdl_WH =    6.3823389999999999E-003
+  Internal Params
+  ---------------------------------
+  
+ mdl_lhv =    1.0000000000000000     
+ mdl_conjg__CKM3x3 =    1.0000000000000000     
+ mdl_conjg__CKM22 =    1.0000000000000000     
+ mdl_CKM3x3 =    1.0000000000000000     
+ mdl_CKM33 =    1.0000000000000000     
+ mdl_CKM22 =    1.0000000000000000     
+ mdl_Ncol =    3.0000000000000000     
+ mdl_CA =    3.0000000000000000     
+ mdl_TF =   0.50000000000000000     
+ mdl_CF =    1.3333333333333333     
+ mdl_complexi =                (0.0000000000000000,1.0000000000000000)
+ mdl_MZ__exp__2 =    8315.2513440000002     
+ mdl_MZ__exp__4 =    69143404.913893804     
+ mdl_sqrt__2 =    1.4142135623730951     
+ mdl_MH__exp__2 =    15625.000000000000     
+ mdl_Ncol__exp__2 =    9.0000000000000000     
+ mdl_MB__exp__2 =    22.090000000000003     
+ mdl_MT__exp__2 =    29929.000000000000     
+ mdl_aEW =    7.5467711139788835E-003
+ mdl_MW =    80.419002445756163     
+ mdl_sqrt__aEW =    8.6872153846781555E-002
+ mdl_ee =   0.30795376724436879     
+ mdl_MW__exp__2 =    6467.2159543705357     
+ mdl_sw2 =   0.22224648578577766     
+ mdl_cw =   0.88190334743339216     
+ mdl_sqrt__sw2 =   0.47143025548407230     
+ mdl_sw =   0.47143025548407230     
+ mdl_g1 =   0.34919219678733299     
+ mdl_gw =   0.65323293034757990     
+ mdl_v =    246.21845810181637     
+ mdl_v__exp__2 =    60623.529110035903     
+ mdl_lam =   0.12886910601690263     
+ mdl_yb =    2.6995554250465490E-002
+ mdl_yt =   0.99366614581500623     
+ mdl_ytau =    1.0206617000654717E-002
+ mdl_muH =    88.388347648318430     
+ mdl_AxialZUp =  -0.18517701861793787     
+ mdl_AxialZDown =   0.18517701861793787     
+ mdl_VectorZUp =    7.5430507588273299E-002
+ mdl_VectorZDown =  -0.13030376310310560     
+ mdl_VectorAUp =   0.20530251149624587     
+ mdl_VectorADown =  -0.10265125574812294     
+ mdl_VectorWmDxU =   0.23095271737156670     
+ mdl_AxialWmDxU =  -0.23095271737156670     
+ mdl_VectorWpUxD =   0.23095271737156670     
+ mdl_AxialWpUxD =  -0.23095271737156670     
+ mdl_I1x33 =          (2.69955542504654901E-002,0.0000000000000000)
+ mdl_I2x33 =               (0.99366614581500623,0.0000000000000000)
+ mdl_I3x33 =               (0.99366614581500623,0.0000000000000000)
+ mdl_I4x33 =          (2.69955542504654901E-002,0.0000000000000000)
+ mdl_Vector_tbGp =              (-0.96667059156454072,0.0000000000000000)
+ mdl_Axial_tbGp =              (-1.0206617000654716,-0.0000000000000000)
+ mdl_Vector_tbGm =               (0.96667059156454072,0.0000000000000000)
+ mdl_Axial_tbGm =              (-1.0206617000654716,-0.0000000000000000)
+ mdl_gw__exp__2 =   0.42671326129048615     
+ mdl_cw__exp__2 =   0.77775351421422245     
+ mdl_ee__exp__2 =    9.4835522759998875E-002
+ mdl_sw__exp__2 =   0.22224648578577769     
+ mdl_yb__exp__2 =    7.2875994928982540E-004
+ mdl_yt__exp__2 =   0.98737240933884918     
+  Internal Params evaluated point by point
+  ----------------------------------------
+  
+ mdl_sqrt__aS =   0.34351128074635334     
+ mdl_G__exp__4 =    2.1987899468922913     
+ mdl_G__exp__2 =    1.4828317324943823     
+ mdl_R2MixedFactor_FIN_ =   -2.5040377713124864E-002
+ mdl_G__exp__3 =    1.8056676068262196     
+ mdl_MU_R__exp__2 =    8315.2513440000002     
+  Couplings of loop_sm
+  ---------------------------------
+  
+         GC_5 =   0.00000E+00   0.12177E+01
+    R2_DDZ_V3 =   0.00000E+00   0.68702E-03
+    R2_UUZ_V2 =  -0.00000E+00  -0.72127E-02
+        GC_22 =   0.00000E+00   0.28804E+00
+        GC_23 =  -0.00000E+00  -0.27437E-01
+  ========================================================================================== 
+ {                                                                                          }
+ {       [32m                                                                            [0m       }
+ {       [32m                               ,,                                           [0m       }
+ {       [32m`7MMM.     ,MMF'             `7MM  `7MMF'                                   [0m       }
+ {       [32m  MMMb    dPMM                 MM    MM                                     [0m       }
+ {       [32m  M YM   ,M MM   ,6"Yb.   ,M""bMM    MM         ,pW"Wq.   ,pW"Wq.`7MMpdMAo. [0m       }
+ {       [32m  M  Mb  M' MM  8)   MM ,AP    MM    MM        6W'   `Wb 6W'   `Wb MM   `Wb [0m       }
+ {       [32m  M  YM.P'  MM   ,pm9MM 8MI    MM    MM      , 8M     M8 8M     M8 MM    M8 [0m       }
+ {       [32m  M  `YM'   MM  8M   MM `Mb    MM    MM     ,M YA.   ,A9 YA.   ,A9 MM   ,AP [0m       }
+ {       [32m.JML. `'  .JMML.`Moo9^Yo.`Wbmd"MML..JMMmmmmMMM  `Ybmd9'   `Ybmd9'  MMbmmd'  [0m       }
+ {       [32m                                                                   MM       [0m       }
+ {       [32m                                                                 .JMML.     [0m       }
+ {       [32m[0mv0.2.1 (2026-09-24), Ref: arXiv:1103.0621v2, arXiv:1405.0301[32m                [0m       }
+ {       [32m                                                                            [0m       }
+ {                                                                                          }
+  ========================================================================================== 
+ ===============================================================
+ INFO: MadLoop read these parameters from ./MadLoop5_resources/MadLoopParams.dat                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          
+ ===============================================================
+  > MLReductionLib            = 8
+  > CTModeRun                 =            1
+  > MLStabThres               =    1.0000000000000001E-009
+  > NRotations_DP             =            0
+  > NRotations_QP             =            0
+  > CTStabThres               =    1.0000000000000000E-002
+  > CTLoopLibrary             =            2
+  > CTModeInit                =            1
+  > CheckCycle                =            3
+  > MaxAttempts               =           10
+  > UseLoopFilter             =  F
+  > HelicityFilterLevel       =            2
+  > ImprovePSPoint            =            2
+  > DoubleCheckHelicityFilter =  T
+  > LoopInitStartOver         =  F
+  > HelInitStartOver          =  F
+  > ZeroThres                 =    1.0000000000000001E-009
+  > OSThres                   =    1.0000000000000000E-008
+  > WriteOutFilters           =  T
+  > UseQPIntegrandForNinja    =  T
+  > UseQPIntegrandForNinjaRS  =  T
+  > UseQPIntegrandForCutTools =  T
+  > IREGIMODE                 =            2
+  > IREGIRECY                 =  T
+  > COLLIERMode               =            1
+  > COLLIERRequiredAccuracy   =    1.0000000000000000E-010
+  > COLLIERCanOutput          =  F
+  > COLLIERComputeUVpoles     =  T
+  > COLLIERComputeIRpoles     =  T
+  > COLLIERGlobalCache        =           -1
+  > COLLIERUseCacheForPoles   =  F
+  > COLLIERUseInternalStabilityTest =  T
+ ===============================================================
+ PS Point #           1  done.
+ PS Point #           2  done.
+ PS Point #           3  done.
+
+  Phase space point:
+
+ ---------------------------------
+ n  E  px py pz m
+ 1   0.4559400E+02  0.0000000E+00  0.0000000E+00  0.4559400E+02  0.0000000E+00
+ 2   0.4559400E+02  0.0000000E+00  0.0000000E+00 -0.4559400E+02  0.0000000E+00
+ 3   0.9118800E+02  0.0000000E+00  0.0000000E+00  0.0000000E+00  0.9118800E+02
+ ---------------------------------
+ Detailed result for each coupling orders combination.
+ All Born contributions are of split orders (QCD=0)
+ ---------------------------------
+ All loop contributions are of split orders (QCD=2)
+ ---------------------------------
+ Unknown numerical stability because MadLoop is in the initialization stage.
+ MadLoop return code   =   130
+ ---------------------------------
+ ---------------------------------
+ Matrix element born   =    110.81538588507335       GeV^           2
+ Matrix element finite =    5.1878888212627627       GeV^           2
+ Matrix element 1eps   =   -8.3245773569637684       GeV^           2
+ Matrix element 2eps   =   -5.5497182379758465       GeV^           2
+ ---------------------------------
+ finite / (born*ao2pi) =    2.4928058681191461     
+ 1eps   / (born*ao2pi) =   -4.0000000000000000     
+ 2eps   / (born*ao2pi) =   -2.6666666666666670     
+ ---------------------------------

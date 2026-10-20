@@ -4,6 +4,7 @@
 vendor/ninjars/target/
 vendor/ninjars/smoke
 vendor/ninjars/ninjars-native-libs.txt
+vendor/ninjars/ninjars-link-before.txt
 __pycache__
 *.o
 *.pyc

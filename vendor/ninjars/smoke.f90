@@ -1,12 +1,24 @@
 program smoke
   use mninjars
+  use, intrinsic :: ieee_arithmetic
   implicit none
   complex(KI_NRS) :: c(1),m(1),r(0:2),r1
   real(KI_NRS) :: p(0:3,1),s(1,1)
   complex(KI_QNRS) :: qc(1),qm(1),qr(0:2),qr1
   real(KI_QNRS) :: qp(0:3,1),qs(1,1),delta
   integer :: status
+  real(KI_QNRS), volatile :: rounding_x,rounding_y,rounding_sum
+  type(ieee_round_type) :: original_rounding
   character(len=512) :: message
+  ! Rust staticlib compiler_builtins must not replace the Fortran runtime:
+  ! those helpers ignore the caller's directed IEEE rounding mode.
+  call ieee_get_rounding_mode(original_rounding)
+  rounding_x=1.0_KI_QNRS
+  rounding_y=2.0_KI_QNRS**(-114)
+  call ieee_set_rounding_mode(ieee_up)
+  rounding_sum=rounding_x+rounding_y
+  call ieee_set_rounding_mode(original_rounding)
+  if (rounding_sum /= nearest(1.0_KI_QNRS,1.0_KI_QNRS)) stop 8
   c = cmplx(1,0,kind=KI_NRS)
   m = cmplx(4,0,kind=KI_NRS)
   p = 0

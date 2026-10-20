@@ -25,8 +25,8 @@ From the MadGraph7 prompt, run::
 The installer builds the pinned sources in ``vendor/ninjars/Cargo.lock``, tests
 the installed Fortran interface in double and quadruple precision, and saves the
 ``ninjars`` library path. It requires Rust/Cargo 1.96 or later, GNU make, C/C++
-and Fortran compilers, and the GMP/MPFR numerical build dependencies. The
-Fortran compiler must support ``REAL(16)``. The repository's pinned Nix
+compilers, GNU Fortran on Linux, and the GMP/MPFR numerical build dependencies.
+The Fortran compiler must support ``REAL(16)``. The repository's pinned Nix
 development shell provides these tools.
 
 Select NinjaRS in the generated ``Cards/MadLoopParams.dat``::
@@ -66,3 +66,24 @@ Both standalone Fortran and aMC@NLO exports support NinjaRS. With
 ``set output_dependencies internal``, the exporter copies its archive, Fortran
 module and link metadata into the output directory. The generated makefiles
 still require the target platform's native compiler/runtime libraries.
+
+The linker must resolve GNU Fortran's arithmetic helpers before loading the
+Rust static archive. Otherwise Rust's compiler builtins can replace the
+``REAL(16)`` helpers and change directed IEEE rounding. Generated standalone
+and aMC@NLO makefiles enforce this ordering using ``ninjars-config.json``.
+The installer also checks directed quadruple-precision rounding. An older
+installation without this link-order metadata must be rebuilt with
+``install ninjars --force``, followed by regeneration or relinking of its
+generated processes.
+
+For a manual Fortran link, use both installed flag files in this order::
+
+    gfortran caller.f90 -I"$PREFIX/lib" \
+      $(cat "$PREFIX/lib/ninjars-link-before.txt") \
+      "$PREFIX/lib/libninjars.a" \
+      $(cat "$PREFIX/lib/ninjars-native-libs.txt") -o caller
+
+Here ``PREFIX`` is the NinjaRS installation directory, usually
+``HEPTools/ninjars``. The current validated compiler-runtime policy is
+GNU Fortran on Linux and places ``-lgcc_s`` before the archive. Additional
+platforms require validation of their compiler-runtime resolution.

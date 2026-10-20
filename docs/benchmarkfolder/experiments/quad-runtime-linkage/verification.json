@@ -1,0 +1,149 @@
+{
+  "passed": true,
+  "compiler": "GNU Fortran (GCC) 15.3.0",
+  "target": "x86_64-unknown-linux-gnu",
+  "commands": [
+    [
+      "gfortran",
+      "-O3",
+      "-frounding-math",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/quad-runtime-linkage/quad-rounding.f90",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/quad-runtime-linkage/abi-stub.f90",
+      "-o",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/quad-runtime-verification/quad-rounding-baseline"
+    ],
+    [
+      "gfortran",
+      "-O3",
+      "-frounding-math",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/quad-runtime-linkage/quad-rounding.f90",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/HEPTools/ninjars/lib/libninjars.a",
+      "-ldl",
+      "-lgcc_s",
+      "-lutil",
+      "-lrt",
+      "-lpthread",
+      "-lm",
+      "-ldl",
+      "-lc",
+      "-o",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/quad-runtime-verification/quad-rounding-rust-first"
+    ],
+    [
+      "gfortran",
+      "-O3",
+      "-frounding-math",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/quad-runtime-linkage/quad-rounding.f90",
+      "-lgcc_s",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/HEPTools/ninjars/lib/libninjars.a",
+      "-ldl",
+      "-lgcc_s",
+      "-lutil",
+      "-lrt",
+      "-lpthread",
+      "-lm",
+      "-ldl",
+      "-lc",
+      "-o",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/quad-runtime-verification/quad-rounding-gcc-first"
+    ],
+    [
+      "gfortran",
+      "-O3",
+      "-frounding-math",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/quad-runtime-linkage/quad-helpers.f90",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/quad-runtime-linkage/abi-stub.f90",
+      "-o",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/quad-runtime-verification/quad-helpers-baseline"
+    ],
+    [
+      "gfortran",
+      "-O3",
+      "-frounding-math",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/quad-runtime-linkage/quad-helpers.f90",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/HEPTools/ninjars/lib/libninjars.a",
+      "-ldl",
+      "-lgcc_s",
+      "-lutil",
+      "-lrt",
+      "-lpthread",
+      "-lm",
+      "-ldl",
+      "-lc",
+      "-o",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/quad-runtime-verification/quad-helpers-rust-first"
+    ],
+    [
+      "gfortran",
+      "-O3",
+      "-frounding-math",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/quad-runtime-linkage/quad-helpers.f90",
+      "-lgcc_s",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/HEPTools/ninjars/lib/libninjars.a",
+      "-ldl",
+      "-lgcc_s",
+      "-lutil",
+      "-lrt",
+      "-lpthread",
+      "-lm",
+      "-ldl",
+      "-lc",
+      "-o",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/quad-runtime-verification/quad-helpers-gcc-first"
+    ]
+  ],
+  "installed_archive_sha256": "72a820a1fb74904e9b3d3a43562132b365a947304ac41abced46f5d407a0c816",
+  "prefix_flags": [
+    "-lgcc_s"
+  ],
+  "suffix_flags": [
+    "-ldl",
+    "-lgcc_s",
+    "-lutil",
+    "-lrt",
+    "-lpthread",
+    "-lm",
+    "-ldl",
+    "-lc"
+  ],
+  "symbols": {
+    "quad-rounding-baseline": [
+      "                 U __addtf3@GCC_4.3.0"
+    ],
+    "quad-rounding-rust-first": [
+      "00000000032a9ba0 t __addtf3"
+    ],
+    "quad-rounding-gcc-first": [
+      "                 U __addtf3@GCC_4.3.0"
+    ],
+    "quad-helpers-baseline": [
+      "                 U __addtf3@GCC_4.3.0",
+      "                 U __divtf3@GCC_4.3.0",
+      "                 U __extenddftf2@GCC_4.3.0",
+      "                 U __floatditf@GCC_4.3.0",
+      "                 U __multf3@GCC_4.3.0",
+      "                 U __subtf3@GCC_4.3.0",
+      "                 U __trunctfdf2@GCC_4.3.0"
+    ],
+    "quad-helpers-rust-first": [
+      "00000000032aa9f0 t __addtf3",
+      "00000000032aa830 t __divtf3",
+      "00000000032aaa00 t __extenddftf2",
+      "00000000032aaae0 t __floatditf",
+      "00000000032a9ec0 t __multf3",
+      "00000000032a9ce0 t __subtf3",
+      "00000000032aa5b0 t __trunctfdf2"
+    ],
+    "quad-helpers-gcc-first": [
+      "                 U __addtf3@GCC_4.3.0",
+      "                 U __divtf3@GCC_4.3.0",
+      "                 U __extenddftf2@GCC_4.3.0",
+      "                 U __floatditf@GCC_4.3.0",
+      "                 U __multf3@GCC_4.3.0",
+      "                 U __subtf3@GCC_4.3.0",
+      "                 U __trunctfdf2@GCC_4.3.0"
+    ]
+  },
+  "coverage": "Four IEEE rounding modes; quad arithmetic/comparisons/conversions, quad complex multiplication/division, tiny/huge inputs, exception flags.",
+  "interpretation": "Prefix restores GNU baseline output exactly. Raw archive link changes directed rounding. This is correctness evidence, not a speed claim."
+}

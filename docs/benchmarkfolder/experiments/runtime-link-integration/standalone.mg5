@@ -1,0 +1,9 @@
+set automatic_html_opening False
+set ninja None
+set collier None
+set ninjars ./HEPTools/ninjars/lib
+import model loop_sm
+set output_dependencies internal
+generate u u~ > z [virt=QCD]
+output standalone_fortran .benchmark-work/experiments/runtime-link-integration/standalone -f
+quit

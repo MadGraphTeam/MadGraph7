@@ -1,0 +1,13 @@
+test_cli_dispatch_is_local_and_saves_only_after_success (tests.unit_tests.various.test_ninjars_install.TestNinjaRSInstaller.test_cli_dispatch_is_local_and_saves_only_after_success) ... ok
+test_exporter_rejects_library_without_module (tests.unit_tests.various.test_ninjars_install.TestNinjaRSInstaller.test_exporter_rejects_library_without_module) ... ok
+test_failed_rebuild_preserves_previous_installation (tests.unit_tests.various.test_ninjars_install.TestNinjaRSInstaller.test_failed_rebuild_preserves_previous_installation) ... ok
+test_local_sources_are_copied_and_original_is_unchanged (tests.unit_tests.various.test_ninjars_install.TestNinjaRSInstaller.test_local_sources_are_copied_and_original_is_unchanged) ... ok
+test_madloop_card_round_trip_keeps_id8_and_qp_option (tests.unit_tests.various.test_ninjars_install.TestNinjaRSInstaller.test_madloop_card_round_trip_keeps_id8_and_qp_option) ... ok
+test_metadata_requires_compatible_abi (tests.unit_tests.various.test_ninjars_install.TestNinjaRSInstaller.test_metadata_requires_compatible_abi) ... ok
+test_missing_tool_and_bad_job_count_fail_before_build (tests.unit_tests.various.test_ninjars_install.TestNinjaRSInstaller.test_missing_tool_and_bad_job_count_fail_before_build) ... ok
+test_publish_and_idempotent_install (tests.unit_tests.various.test_ninjars_install.TestNinjaRSInstaller.test_publish_and_idempotent_install) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.169s
+
+OK

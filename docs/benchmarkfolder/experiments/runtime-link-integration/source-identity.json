@@ -1,0 +1,18 @@
+{
+  "git_revision_at_snapshot": "f934704f8614ca56f10d59e17f2b3318cddbc243",
+  "observation": "Captured after exports; generator and runtime sources were explicitly frozen by their owners before these exports. This is not a generation-time Git capture. Exact generated-source hashes are retained separately.",
+  "source_hashes": {
+    "madgraph/various/q_polynomial.py": "cba8f223357a2f884ac06b7fd2597876ce9bd1a377d77adc025eaa6cb192f882",
+    "madgraph/various/ninjars_install.py": "ad5eebfdbdd273dd245bc3fe0b050575df366925c7619c784cb6b06d0c7c70af",
+    "madgraph/loop/loop_exporters.py": "7cfa103ed68883328f71244d5a9cd77292f93935eee4b7c3feaacf55ae89e59c",
+    "madgraph/iolibs/export_fks.py": "d21470b6bdfbfae276c6fa7710765baf171a8f8f3868df90fc3edcf8b4367a2e",
+    "vendor/ninjars/Makefile": "61469c6b674e9853ee85ec70c3515b460ba31a1eb0e56f0231b63595f6465348",
+    "vendor/ninjars/smoke.f90": "942c6640020868e04e9deda026f7cec5a7f45a0a576b4fb9eeef4536413c115b",
+    "vendor/ninjars/src/lib.rs": "f2be25c06b93be3b71fd483fa51e55a9aca3ac6d55b1e77995b8e9714190411d",
+    "vendor/ninjars/mninjars.f90": "221c76db293213657fea5c6fc8a62b110f17173971704f3b7ea7b4ce87c04732",
+    "HEPTools/ninjars/lib/ninjars-config.json": "89cea270ad081f2df49f06734d4fd18cf96fbd1daa12009a33a4fa52f7df5d1f",
+    "HEPTools/ninjars/lib/libninjars.a": "72a820a1fb74904e9b3d3a43562132b365a947304ac41abced46f5d407a0c816"
+  },
+  "source_patch_sha256": "f52af5f6b359ca685a29203cb8b6f40304b1ce1411a95a27be12ff0fb755ae61",
+  "compiler": "GNU Fortran (GCC) 15.3.0"
+}

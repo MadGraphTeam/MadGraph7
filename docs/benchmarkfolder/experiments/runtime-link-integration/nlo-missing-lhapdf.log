@@ -1,0 +1,52 @@
+INFO: ************************************************************
+*                                                          *
+*           W E L C O M E  to  M A D G R A P H 7           *
+*                       a M C @ N L O                      *
+*                                                          *
+*                        ..........                        *
+*                      @          ....                     *
+*                    @               ...                   *
+*                  @    M         M    .                   *
+*                 @     MM       MM    ..                  *
+*                 .     M  M   M  M  ..                    *
+*                 ..    M   M M   M ..                     *
+*                  .    M    M    M.                       *
+*                  ...                   7777777           *
+*                    ....                     7            *
+*                       .................... 7             *
+*                                           7              *
+*                                          7               *
+*                                                          *
+*         VERSION 5.0.2.1                                  *
+*                                                          *
+*       The MadGraph7 Development Team - Find us at        *
+*                 http://amcatnlo.cern.ch                  *
+*                                                          *
+*               Type 'help' for in-line help.              *
+*                                                          *
+************************************************************ 
+INFO: load configuration from /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/runtime-link-integration/nlo/Cards/amcatnlo_configuration.txt  
+INFO: load configuration from /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/input/mg7_configuration.txt  
+INFO: load configuration from /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/runtime-link-integration/nlo/Cards/amcatnlo_configuration.txt  
+No valid eps viewer found. Please set in ./input/mg7_configuration.txt
+No valid web browser found. Please set in ./input/mg7_configuration.txt
+Using default gzip "gzip". Set another one in ./input/mg7_configuration.txt
+import command /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/runtime-link-integration/nlo-compile.mg5
+set automatic_html_opening False
+set nb_core 1
+compile FO -f
+[1;34mWARNING: bc command not available. Forbids to run the shower. please install it if you want to run the shower. (sudo apt-get install bc) [0m
+stty: 'standard input': Inappropriate ioctl for device
+stty: 'standard input': Inappropriate ioctl for device
+INFO: will run in mode: NLO 
+INFO: Compiling the code 
+[1;31mCommand "import command /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/runtime-link-integration/nlo-compile.mg5" interrupted in sub-command:
+"compile FO -f" with error:
+Exception : lhapdf executable (lhapdf-config) is not found on your system. Please install it and/or indicate the path to the correct executable in input/mg7_configuration.txt
+Please report this bug on https://bugs.launchpad.net/mg5amcnlo
+More information is found in '/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/runtime-link-integration/nlo/run_01_tag_1_debug.log'.
+Please attach this file to your report.[0m
+quit
+INFO:  
+[1;34mcommand not executed: quit[0m
+launch in debug mode

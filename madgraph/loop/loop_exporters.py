@@ -1987,6 +1987,8 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 if tir in ['ninja','pjfry','golem','samurai','collier','ninjars']:
                     # It is cleaner to use the original location of the libraries
                     copied_ninjars = tir == 'ninjars' and self.dependencies == 'internal'
+                    if tir == 'ninjars':
+                        link_tir_libs.extend(ninjars_install.pre_link_flags(libpath))
                     if copied_ninjars:
                         link_tir_libs.append('-L$(LIBDIR) -lninjars')
                         tir_libs.append('$(LIBDIR)libninjars.a')
@@ -2131,7 +2133,8 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 sources = [pjoin(libpath, 'libninjars.a'),
                            pjoin(module_dir, 'mninjars.mod'),
                            pjoin(libpath, ninjars_install.CONFIG_NAME),
-                           pjoin(libpath, 'ninjars-native-libs.txt')]
+                           pjoin(libpath, 'ninjars-native-libs.txt'),
+                           pjoin(libpath, 'ninjars-link-before.txt')]
                 header = pjoin(libpath, os.pardir, 'include', 'ninjars.h')
                 if os.path.isfile(header):
                     sources.append(header)

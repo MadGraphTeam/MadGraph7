@@ -39,6 +39,7 @@ class TestNinjaRSInstaller(unittest.TestCase):
             (lib / 'libninjars.a').write_text('new working archive')
             (lib / 'mninjars.mod').write_text('Fortran module')
             (lib / 'ninjars-native-libs.txt').write_text('-lgmp -lmpfr -lpthread\n')
+            (lib / 'ninjars-link-before.txt').write_text('-lgcc_s\n')
 
     def test_publish_and_idempotent_install(self):
         with mock.patch.object(ninjars_install.shutil, 'which', return_value='/bin/tool'), \
@@ -47,6 +48,10 @@ class TestNinjaRSInstaller(unittest.TestCase):
             config = ninjars_install.read_config(libdir)
             self.assertTrue(config['quad_precision'])
             self.assertEqual(config['native_libs'], ['-lgmp', '-lmpfr', '-lpthread'])
+            self.assertEqual(config['link_before'], ['-lgcc_s'])
+            smoke_link = run.call_args_list[1].args[0]
+            self.assertLess(smoke_link.index('-lgcc_s'), next(
+                i for i, arg in enumerate(smoke_link) if arg.endswith('/libninjars.a')))
             self.assertTrue((self.prefix / 'lib' / 'libninjars.a').is_file())
             self.assertTrue((self.prefix / 'ninjars' / 'Cargo.lock').is_file())
             self.assertTrue((self.prefix / 'ninjars' / 'install.log').is_file())
@@ -121,6 +126,10 @@ class TestNinjaRSInstaller(unittest.TestCase):
                                      'native_libs': 'bad'}))
         with self.assertRaisesRegex(MadGraph5Error, 'link metadata'):
             ninjars_install.read_config(lib)
+        config.write_text(json.dumps({'abi_version': ninjars_install.ABI_VERSION,
+                                     'native_libs': []}))
+        with self.assertRaisesRegex(MadGraph5Error, 'compiler-runtime.*metadata'):
+            ninjars_install.read_config(lib)
         self.assertFalse(ninjars_install.supports_quad_precision(lib))
 
     def test_cli_dispatch_is_local_and_saves_only_after_success(self):
@@ -151,6 +160,7 @@ class TestNinjaRSInstaller(unittest.TestCase):
         (lib / 'libninjars.a').write_text('archive')
         (lib / ninjars_install.CONFIG_NAME).write_text(json.dumps(
             {'abi_version': ninjars_install.ABI_VERSION, 'native_libs': [],
+             'link_before': ['-lgcc_s'], 'link_order_version': 1,
              'quad_precision': True}))
         exporter = object.__new__(LoopProcessOptimizedExporterFortranSA)
         exporter.tir_available_dict = {'ninjars': True}
@@ -162,6 +172,7 @@ class TestNinjaRSInstaller(unittest.TestCase):
             str(self.root), str(lib), 'libninjars.a', 'ninjars'), str(lib))
         exporter.dependencies = 'internal'
         (lib / 'ninjars-native-libs.txt').write_text('-lgmp\n')
+        (lib / 'ninjars-link-before.txt').write_text('-lgcc_s\n')
         include = self.root / 'include'
         include.mkdir()
         (include / 'ninjars.h').write_text('/* header */\n')
@@ -172,7 +183,7 @@ class TestNinjaRSInstaller(unittest.TestCase):
         shutil.rmtree(include)
         self.assertTrue(ninjars_install.supports_quad_precision(copied))
         for name in ('libninjars.a', 'mninjars.mod', 'ninjars-config.json',
-                     'ninjars-native-libs.txt', 'ninjars.h'):
+                     'ninjars-native-libs.txt', 'ninjars-link-before.txt', 'ninjars.h'):
             self.assertTrue((copied / name).is_file(), name)
             self.assertFalse((copied / name).is_symlink(), name)
 

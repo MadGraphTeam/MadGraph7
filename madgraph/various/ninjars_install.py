@@ -39,7 +39,19 @@ def read_config(libdir):
             any(not isinstance(flag, str) or '\n' in flag or '\r' in flag
                 for flag in flags)):
         raise MadGraph5Error("Invalid NinjaRS native link metadata in %s" % libdir)
+    before = config.get('link_before')
+    if (config.get('link_order_version') != 1 or
+            not isinstance(before, list) or not before or
+            any(not isinstance(flag, str) or '\n' in flag or '\r' in flag
+                for flag in before)):
+        raise MadGraph5Error("Missing or invalid NinjaRS compiler-runtime link metadata "
+                             "in %s; run 'install ninjars --force'." % libdir)
     return config
+
+
+def pre_link_flags(libdir):
+    """Resolve the Fortran compiler runtime before Rust's builtin symbols."""
+    return read_config(libdir)['link_before']
 
 
 def native_link_flags(libdir):
@@ -164,7 +176,7 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
     shutil.copytree(Path(mg_root) / 'vendor' / 'ninjars', bridge,
                    ignore=shutil.ignore_patterns(
                        'target', '.git', '*.o', '*.mod', '*.a', 'build.log',
-                       'ninjars-native-libs.txt', 'smoke'))
+                       'ninjars-native-libs.txt', 'ninjars-link-before.txt', 'smoke'))
     provenance = _prepare_overrides(bridge, stage, options)
     environment = os.environ.copy()
     environment['CARGO_BUILD_JOBS'] = str(jobs)
@@ -186,17 +198,20 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
     libdir = installed / 'lib'
     try:
         native_libs = shlex.split((libdir / 'ninjars-native-libs.txt').read_text())
+        link_before = shlex.split((libdir / 'ninjars-link-before.txt').read_text())
     except (OSError, ValueError) as error:
         raise MadGraph5Error("NinjaRS build did not produce native link metadata. "
                              "See %s" % log) from error
     config = {'abi_version': ABI_VERSION, 'quad_precision': True,
               'native_libs': native_libs, 'local_sources': provenance,
-              'fortran_compiler': compiler}
+              'fortran_compiler': compiler, 'link_before': link_before,
+              'link_order_version': 1,
+              'compiler_runtime': 'gnu-linux-libgcc_s-before-rust'}
     (libdir / CONFIG_NAME).write_text(json.dumps(config, indent=2) + '\n')
     # This exercises the installed Fortran module and both numerical domains.
     smoke = stage / 'smoke'
-    _run([compiler, '-I' + str(libdir), str(bridge / 'smoke.f90'),
-          str(libdir / 'libninjars.a')] + native_libs + ['-o', str(smoke)],
+    _run([compiler, '-I' + str(libdir), str(bridge / 'smoke.f90')] +
+         link_before + [str(libdir / 'libninjars.a')] + native_libs + ['-o', str(smoke)],
          bridge, log, environment)
     _run([str(smoke)], bridge, log, environment)
     shutil.copy2(log, installed / 'install.log')
@@ -216,7 +231,7 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
     common_lib = prefix / 'lib'
     common_lib.mkdir(exist_ok=True)
     for name in ('libninjars.a', 'mninjars.mod', CONFIG_NAME,
-                 'ninjars-native-libs.txt'):
+                 'ninjars-native-libs.txt', 'ninjars-link-before.txt'):
         link = common_lib / name
         if link.is_symlink() or not link.exists():
             temporary = common_lib / ('.' + name + '.ninjars')

@@ -7,7 +7,7 @@ CARGO_TARGET_DIR ?= $(CURDIR)/target
 export CARGO_TARGET_DIR
 FFLAGS ?= -O3 -fPIC
 
-.PHONY: all rust install check clean
+.PHONY: all rust compiler-runtime install check clean
 all: libninjars.a
 
 rust:
@@ -18,19 +18,23 @@ rust:
 mninjars.o: mninjars.f90
 	$(FC) $(FFLAGS) -c $< -o $@
 
-libninjars.a: rust mninjars.o
+compiler-runtime:
+	@$(FC) --version | head -n 1 | grep -q 'GNU Fortran' || { echo 'NinjaRS currently validates compiler-runtime isolation with GNU Fortran on Linux'; exit 1; }
+	@case "$$($(FC) -dumpmachine)" in *-linux-*) printf '%s\n' '-lgcc_s' > ninjars-link-before.txt ;; *) echo 'NinjaRS compiler-runtime isolation is currently validated on Linux'; exit 1 ;; esac
+
+libninjars.a: rust mninjars.o compiler-runtime
 	cp "$(CARGO_TARGET_DIR)/release/libmadloop_ninjars.a" $@
 	$(AR) rcs $@ mninjars.o
 
 install: libninjars.a
 	mkdir -p "$(PREFIX)/lib" "$(PREFIX)/include"
-	cp libninjars.a mninjars.mod ninjars-native-libs.txt "$(PREFIX)/lib/"
+	cp libninjars.a mninjars.mod ninjars-native-libs.txt ninjars-link-before.txt "$(PREFIX)/lib/"
 	cp ninjars.h "$(PREFIX)/include/"
 
 check: libninjars.a
 	$(CARGO) test --locked -- --test-threads=1
-	$(FC) $(FFLAGS) smoke.f90 -I. -L. -lninjars $$(cat ninjars-native-libs.txt) -o smoke
+	$(FC) $(FFLAGS) smoke.f90 -I. $$(cat ninjars-link-before.txt) -L. -lninjars $$(cat ninjars-native-libs.txt) -o smoke
 	./smoke
 
 clean:
-	rm -f mninjars.o mninjars.mod libninjars.a smoke build.log ninjars-native-libs.txt
+	rm -f mninjars.o mninjars.mod libninjars.a smoke build.log ninjars-native-libs.txt ninjars-link-before.txt
