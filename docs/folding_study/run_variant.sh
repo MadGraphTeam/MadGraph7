@@ -5,6 +5,7 @@ S=/private/tmp/claude-503/-Users-omattelaer-Documents-git-workspace-MadGraph7--c
 cp $D/Cards/FKS_params.dat.orig $D/Cards/FKS_params.dat
 [ -n "$EXTRA" ] && printf "$EXTRA\n" >> $D/Cards/FKS_params.dat
 cat > $D/launch_$TAG.mg5 <<EOL
+set nb_core ${NB:-18}
 launch $D -n $TAG
 shower=OFF
 set nevents $NEV

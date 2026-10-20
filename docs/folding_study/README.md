@@ -27,21 +27,28 @@ The other facts that matter are:
 
 ## 2. What was implemented (Template/NLO)
 
-Every new switch is in `FKS_params.dat` and off by default; with the defaults, the cross section and events are identical to before.
+**What remains in the code** (commit 8f7d7b6d9c and later). Two `FKS_params.dat` switches, both **on by default**:
 
 | switch | meaning |
 |---|---|
-| `FoldTransform` | node map for ξ and y. 0: today's lattice; 1: tent (baker) map; **2: cubic t²(3−2t), weights 6t(1−t), a randomized rule of Simpson order**; 3: quintic; 4: t − sin(2πt)/2π. |
-| `FoldLattice` | N > 0: rank-1 (Fibonacci) lattice with N points in (ξ, y), a quasi-random rule, instead of the product lattice. |
-| `FoldRealOnce` | H-event contributions (real ME and n+1-body MC terms) on one image only, picked according to the image weights and rescaled to their sum. S terms stay on all images. |
-| `FoldSumSets` | S terms of **all** FKS sets summed at every image. H terms still come from the set picked by MC, divided by its probability. |
-| `FoldDump` | study only: 1 = evaluate the rules of `fold_dump.dat` on the same Born points; 2 = the same, with replica r forced onto FKS set r. |
+| `FoldCubic` | When ξ_i or y_ij is folded (run_card `folding` > 1), its images t = (U+k−1)/n are moved to s = t²(3−2t), with weights 6t(1−t): a randomly shifted rule of Simpson order. It is applied in `get_random_x_next_fold`, only to the folded ξ_i and y_ij, so a 1,1,1 run is unchanged by it. |
+| `FoldSumSets` | The S terms of **all** sets of FKS configurations are summed at every image. The H terms (and the real-emission ME) still come from the set picked by MC, divided by its probability. |
 
-The randomized rules and both tricks are exact: every node is uniformly distributed (the transforms carry their jacobians), and the image or set used for the H events is drawn with a known probability.
+Both are exact:
+* every image is uniformly distributed, since the transform carries its jacobian;
+* the set used for the H events is drawn with a known probability.
 
-The deterministic composite Simpson rule is available only in the dump (`FoldTransform` 5 in `fold_dump.dat`), since a fixed rule cannot be exact on average.
+**Study-only options, removed after the study.** They are still in commit 336b599bb7, which the dump tables of section 3 used:
+* `FoldTransform` 1, 3, 4: tent, quintic and sin² maps;
+* `FoldLattice`: rank-1 lattices;
+* `FoldRealOnce`;
+* `FoldDump`: the dump of section 3, including the deterministic composite Simpson rule.
 
-Two pre-existing issues were fixed along the way:
+The study scripts (`analyse_dump*.py`, `run_dump.sh`, `fold_dump*.dat`) need that commit.
+
+**Merge of #305.** gscale and the Born kept across folds are merged on this branch. With FoldSumSets, the resets of the Born cache between FKS sets and before writing the event became check requests.
+
+Pre-existing issues fixed along the way (also kept):
 * `weight_lines_allocated` grew the contribution arrays one entry at a time. That is O(n²), and `icontr_sum` is n×n, so it was 28× slower with 2000 images per point. It now grows geometrically.
 * `add_wgt` now works on copies of its weights. Callers pass literal `0d0`, and rescaling them in place crashed with SIGBUS.
 
@@ -188,6 +195,55 @@ Plots: `rS_vs_cpu.png` (t t̄ and e+e- j) and `rS_vs_cpu_ee4b.png`. The grey cur
 * On e+e- j (cubic 2,2,1 + SumSets + RealOnce), σ came out 3% low: 1147 ± 7 pb against 1183. On a fixed grid in a single channel it agrees within 1.4σ, but it doubles the error.
 * The H weight of a point sits on one image and becomes heavy-tailed. MINT's inverse-variance combination of iterations then favours the low-fluctuating ones.
 * It also doubles the MINT2 upper-bound failures (t t̄ 8,4,1: 0.17% → 0.40%; the default 1,1,1 has 0.8%).
+
+## 4b. After merging #305 (gscale + Born kept across folds)
+
+Setup:
+* e+e- → b b̄ b b̄ was regenerated with the merged code;
+* each variant ran side by side with the pre-merge code, both concurrently on 9 cores, so the two see the same machine load;
+* seed 21, 10k events.
+
+Plots: `rS_vs_cpu_ee4b_305_shift.png` (open = before, filled = after) and `rS_vs_cpu_ee4b_305.png`.
+
+| folding | method | r_S | r | CPU/event before | after | CPU/N_eff before | after | gain |
+|---|---|---|---|---|---|---|---|---|
+| 1,1,1 | lattice | 0.284 | 0.318 | 23.7 ms | 18.2 ms | 179 ms | 137 ms | x1.30 |
+| 1,1,1 | SumSets | 0.272 | 0.322 | 34.5 ms | 26.2 ms | 273 ms | 207 ms | x1.32 |
+| 2,2,1 | lattice | 0.245 | 0.300 | 90.7 ms | 66.1 ms | 568 ms | 413 ms | x1.37 |
+| 2,2,1 | lattice+SumSets | 0.202 | 0.273 | 133 ms | 93.2 ms | 647 ms | 453 ms | x1.43 |
+| 2,2,1 | cubic | 0.223 | 0.286 | 92.4 ms | 67.7 ms | 509 ms | 370 ms | x1.38 |
+| 2,2,1 | cubic+SumSets | 0.183 | 0.261 | 140 ms | 100 ms | 616 ms | 439 ms | x1.40 |
+| 4,4,1 | lattice+SumSets | 0.164 | 0.259 | 568 ms | 380 ms | 2.45 s | 1.64 s | x1.49 |
+| 4,4,1 | cubic | 0.214 | 0.279 | 376 ms | 268 ms | 2.02 s | 1.38 s | x1.47 |
+| 4,4,1 | cubic+SumSets | 0.142 | 0.245 | 597 ms | 425 ms | 2.36 s | 1.63 s | x1.45 |
+| 8,4,1 | lattice | 0.214 | 0.278 | 865 ms | 614 ms | 4.39 s | 3.12 s | x1.41 |
+
+Findings:
+* Every point moves left by ×1.30 (1,1,1) to ×1.49 (4,4,1), and FoldSumSets gains as much as or more than its counterpart without it.
+* r and σ are identical for the lattice variants, since gscale is exact.
+* The cubic variants move by a statistical amount only: the cubic map is now coded in `get_random_x_next_fold`, the rounding differs, and the sample decorrelates.
+
+**p p > z j j after #305.** Setup:
+* regenerated with the merged code on nic6;
+* one 32-core job per variant, the old code (the directories of the first scan) and the new code side by side, 16 cores each;
+* plots `rS_vs_cpu_zjj_305_shift.png` and `rS_vs_cpu_zjj_305.png`.
+
+| folding | method | r_S | r | CPU/event before | after | CPU/N_eff before | after | gain |
+|---|---|---|---|---|---|---|---|---|
+| 1,1,1 | lattice | 0.216 | 0.361 | 372 ms | 311 ms | 5 s | 4.04 s | x1.24 |
+| 1,1,1 | SumSets | 0.191 | 0.357 | 823 ms | 651 ms | 9.84 s | 7.98 s | x1.23 |
+| 2,2,1 | lattice | 0.142 | 0.336 | 1.54 s | 1.22 s | 14.3 s | 11.4 s | x1.26 |
+| 2,2,1 | lattice+SumSets | 0.110 | 0.344 | 3.13 s | 2.24 s | 33.2 s | 23 s | x1.45 |
+| 2,2,1 | cubic | 0.143 | 0.340 | 1.56 s | 1.22 s | 15.6 s | 11.9 s | x1.31 |
+| 2,2,1 | cubic+SumSets | 0.113 | 0.335 | 3.62 s | 2.72 s | 31.9 s | 24.8 s | x1.29 |
+| 4,4,1 | lattice+SumSets | 0.099 | 0.329 | 13.1 s | 9.53 s | 115 s | 81.8 s | x1.41 |
+| 4,4,1 | cubic | 0.106 | 0.334 | 6.21 s | 4.87 s | 56.4 s | 44.3 s | x1.27 |
+| 4,4,1 | cubic+SumSets | 0.092 | 0.333 | 14.1 s | 10.8 s | 129 s | 96.8 s | x1.33 |
+| 8,4,1 | lattice | 0.112 | 0.330 | 12.9 s | 10.1 s | 113 s | 86.7 s | x1.30 |
+
+Findings:
+* The gains are ×1.23–1.45. The largest are for the FoldSumSets variants with the lattice rule.
+* σ, r_S and r agree within statistics. Here even the lattice runs differ slightly, because the gscale rescaling changes the last bits of the Born and the sample decorrelates.
 
 ## 5. Conclusions
 
