@@ -54,7 +54,7 @@ jobs:
   # (the in-process wiring, the madspace bootstrap, the MG7Cmd run interface).
   # A unit test, but it lives here rather than in unittest.yml because
   # MG7CmdTest imports the real launcher and self-skips without madspace.
-  # test_auto_width_engine.py (compute_widths: the integrator option, its
+  # test_auto_width_engine.py (compute_widths: the --engine argument, its
   # dispatch and the alpha_s of a decay) and test_auto_width_nlo.py (the NLO widths
   # with MC@NLO, the options of an 'auto' width, the precompiled headers of the
   # build) are run in the same job: they need the launcher module too.

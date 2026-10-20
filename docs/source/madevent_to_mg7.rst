@@ -221,11 +221,11 @@ decaying particle, with the same two-loop running as MadEvent. The widths of the
 integrators agree within the integration error (the ``--precision_channel`` of
 ``compute_widths``, 1% by default, is the relative precision aimed at for each channel).
 
-The integrator is chosen with the ``auto_width_engine`` option, ``madspace`` by default, or
-for one call with ``--engine``::
+The integrator is madspace. The ``--engine=madevent`` flag of ``compute_widths`` (or of an
+``auto`` width of the card, ``DECAY 6 auto --engine=madevent``) selects the Fortran MadEvent
+integration of the former releases instead::
 
-    set auto_width_engine madevent
-    compute_widths t --body_decay=3 --engine=madspace
+    compute_widths t --body_decay=3 --engine=madevent
 
 MG7 goes back to MadEvent on its own, with a warning, if madspace cannot compute the widths
 and no engine was asked for with ``--engine``. The complex mass scheme is not available in

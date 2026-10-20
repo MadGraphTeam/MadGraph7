@@ -59,30 +59,9 @@ class AutoWidthEngineTest(unittest.TestCase):
         self.card = pjoin(self.tmp, 'param_card.dat')
         with open(self.card, 'w') as stream:
             stream.write(self.cmd._curr_model.write_param_card())
-        self.cmd.options['auto_width_engine'] = 'madspace'
 
     def tearDown(self):
-        self.cmd.options['auto_width_engine'] = 'madspace'
         shutil.rmtree(self.tmp, ignore_errors=True)
-
-    # ------------------------------------------------------------------ option
-
-    def test_madspace_is_the_default(self):
-        self.assertEqual(self.cmd.options_madgraph['auto_width_engine'], 'madspace')
-
-    def test_set_the_engine(self):
-        self.cmd.do_set('auto_width_engine madevent')
-        self.assertEqual(self.cmd.options['auto_width_engine'], 'madevent')
-        self.cmd.do_set('auto_width_engine MadSpace')
-        self.assertEqual(self.cmd.options['auto_width_engine'], 'madspace')
-        self.cmd.do_set('auto_width_engine madevent')
-        self.cmd.do_set('auto_width_engine default')
-        self.assertEqual(self.cmd.options['auto_width_engine'], 'madspace')
-
-    def test_set_an_unknown_engine(self):
-        with self.assertRaises(madgraph.InvalidCmd):
-            self.cmd.do_set('auto_width_engine fortran')
-        self.assertEqual(self.cmd.options['auto_width_engine'], 'madspace')
 
     # --------------------------------------------------------------- arguments
 
@@ -146,22 +125,21 @@ class AutoWidthEngineTest(unittest.TestCase):
         update.assert_called()
         self.assertEqual(update.call_args[0][0], {25: [[[5, -5], 4.3e-3]]})
 
-    def test_the_option_selects_madevent(self):
-        self.cmd.options['auto_width_engine'] = 'madevent'
-        madspace = mock.Mock()
-        with self.assertRaises(StopAtMadEvent):
-            self.run_compute_widths('', madspace)
-        madspace.assert_not_called()
-
-    def test_the_argument_beats_the_option(self):
+    def test_the_argument_selects_madevent(self):
         madspace = mock.Mock()
         with self.assertRaises(StopAtMadEvent):
             self.run_compute_widths('--engine=madevent', madspace)
         madspace.assert_not_called()
 
-        self.cmd.options['auto_width_engine'] = 'madevent'
+    def test_the_argument_selects_madspace(self):
         madspace, _, _, _ = self.run_compute_widths('--engine=madspace')
         self.assertEqual(madspace.call_count, 1)
+
+    def test_there_is_no_engine_option(self):
+        """The engine is chosen by the argument of compute_widths only."""
+        self.assertNotIn('auto_width_engine', self.cmd.options_madgraph)
+        self.assertNotIn('auto_width_engine', self.cmd._set_options)
+        self.assertFalse(hasattr(self.cmd, 'set2_auto_width_engine'))
 
     def test_the_engine_is_not_given_to_decay_diagram(self):
         """decay_diagram shares the arguments of compute_widths but would not

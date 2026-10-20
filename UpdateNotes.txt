@@ -8,9 +8,9 @@ ANNOUNCEMENT:
    OM: compute_widths (and the 'auto' widths of a param_card) integrates the
        N-body decays (N>2) with madspace instead of MadEvent: 6 s instead of
        26 s for the Higgs of heft up to 3 bodies, with a more precise result.
-       Choose with 'set auto_width_engine madspace|madevent' (default
-       madspace) or 'compute_widths ... --engine=madevent'. Falls back to
-       MadEvent, with a warning, if madspace cannot do it. The precompiled
+       'compute_widths ... --engine=madevent' (or 'DECAY 6 auto
+       --engine=madevent') selects the former MadEvent integration. Falls
+       back to MadEvent, with a warning, if madspace cannot do it. The precompiled
        standard headers (new 'make PCH=1' of madmatrix, clang only) halve the
        build of many small processes: used by mg7 runs of 4 subprocess
        directories or more.

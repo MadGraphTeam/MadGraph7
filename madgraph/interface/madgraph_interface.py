@@ -1073,7 +1073,9 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("        are for every two-body decay, not only the coloured ones, and need a")
         logger.info("        model with loop information (loop_qcd_qed_sm).")
         logger.info("  --engine=X: integrator of the N-body decays (N>2): madspace or madevent")
-        logger.info("        default: the auto_width_engine option (madspace)")
+        logger.info("        default: madspace (the phase-space library of the mg7 output, with madevent")
+        logger.info("        as fallback when it is unusable). madevent is the Fortran integration of the")
+        logger.info("        former releases; it is the only one for the complex mass scheme.")
         logger.info("")
         logger.info("  In a param_card, a width set to auto takes the same options:")
         logger.info("        DECAY 6 auto --nlo --body_decay=3   (DECAY 6 auto@NLO is 'auto --nlo')")
@@ -3456,8 +3458,6 @@ class CompleteForCmd(cmd.CompleteCmd):
                 return self.list_completion(text, [str(i) for i in range(100)] + ['default'] )
             elif args[1] == 'run_mode':
                 return self.list_completion(text, [str(i) for i in range(3)] + ['default'])
-            elif args[1] == 'auto_width_engine':
-                return self.list_completion(text, ['madspace', 'madevent', 'default'])
             elif args[1] == 'cluster_type':
                 return self.list_completion(text, list(cluster.from_name.keys()) + ['default'])
             elif args[1] in ['cluster_queue', 'cluster_walltime',\
@@ -3802,8 +3802,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'nlo_mixed_expansion',
                     'color_basis',
                     'merge_same_topologies',
-                    'merge_quartic_vertices',
-                    'auto_width_engine'
+                    'merge_quartic_vertices'
                     ]
     _valid_color_basis = ['auto', 'trace', 'ddm']
     _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only',
@@ -3890,8 +3889,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'apply_flavor_grouping': True,
                           'color_basis': 'auto',
                           'merge_same_topologies': True,
-                          'merge_quartic_vertices': False,
-                          'auto_width_engine': 'madspace'
+                          'merge_quartic_vertices': False
                         }
 
     options_madevent = {'automatic_html_opening':True,
@@ -11815,36 +11813,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         self.check_set(args)
         self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0]) 
 
-    def help_set2_auto_width_engine(self):
-        logger.info("auto_width_engine <madspace|madevent>",'$MG:color:GREEN')
-        logger.info(" > (default: madspace) Integrator of the N-body decays (N>2)")
-        logger.info(" >   behind 'compute_widths' and the 'auto' widths of a card.")
-        logger.info(" > madspace: the madspace phase-space library of the mg7 output.")
-        logger.info(" >           Falls back to madevent if madspace is unusable.")
-        logger.info(" > madevent: the Fortran MadEvent integration of the former releases.")
-        logger.info(" > Override it for one call with 'compute_widths ... --engine=X'.")
-
-    def set2_auto_width_engine(self, args, log=True):
-        """Choose the integrator of the N-body decays computed by
-        'compute_widths' (and by the 'auto' widths of the param_card).
-
-        Both give the same widths: the 2-loop alpha_s is run to the mass of the
-        decaying particle in either of them, and the cuts are off. madspace is
-        the default; madevent is kept for the models madspace cannot export and
-        for reproducing results of earlier releases.
-
-        Example: set auto_width_engine madevent
-        """
-        args = ['auto_width_engine'] + args
-        self.check_set(args)
-        value = args[1].lower()
-        if value not in ('madspace', 'madevent'):
-            raise self.InvalidCmd(
-                "auto_width_engine takes madspace or madevent, not '%s'" % args[1])
-        self.options[args[0]] = value
-        if log:
-            logger.info('set auto_width_engine to %s' % value)
-
     def help_set2_merge_quartic_vertices(self):
         logger.info("merge_quartic_vertices <value>",'$MG:color:GREEN')
         logger.info(" > (default: False) [pure gluon amplitudes]")
@@ -13469,7 +13437,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             logger.info('No need for N body-decay (N>2). Results are in %s' % opts['output'])
             return decay_info, particles, opts
 
-        engine = opts['engine'] or self.options.get('auto_width_engine', 'madspace')
+        engine = opts['engine'] or 'madspace'
         if engine == 'madspace' and (self.options.get('complex_mass_scheme') or
                                      aloha.complex_mass):
             # the mg7 output has no complex mass scheme: its matrix elements
@@ -13488,7 +13456,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     # asked for explicitly: do not hide that it does not work
                     raise
                 logger.warning('The width integration with madspace failed (%s).\n'
-                               'Falling back to madevent. Use \'set auto_width_engine madevent\' '
+                               'Falling back to madevent. Use --engine=madevent '
                                'to select it and silence this message.', error)
                 logger.debug('madspace width failure', exc_info=True)
             else:
