@@ -702,7 +702,7 @@ c
       logical firsttime,passcuts,passcuts_nbody,passcuts_n1body
       integer i,j,ifl,proc_map(0:fks_configs,0:fks_configs)
      $     ,nFKS_picked_nbody,nFKS_in,nFKS_out,izero,ione,itwo,mohdr
-     $     ,iFKS,sum
+     $     ,iFKS,sum,kset,kset_lo,kset_hi
       double precision xx(ndimmax),vegas_wgt,f(nintegrals),jac,p(0:3
      $     ,nexternal),rwgt,vol,sig,x(99),MC_int_wgt,vol1,probne,gfactsf
      $     ,gfactcl,replace_MC_subt,sudakov_damp,sigintF,n1body_wgt
@@ -783,8 +783,15 @@ c "npNLO".
          do i=1,nndim
             x_save(i,ifold_counter)=x(i)
          enddo
-         if (ifl.eq.0)
-     &        call get_MC_integer(1,proc_map(0,0),proc_map(0,1),vol1)
+         if (ifl.eq.0) then
+            call get_MC_integer(1,proc_map(0,0),proc_map(0,1),vol1)
+            if (FoldDump.eq.2) then
+c For studies: the replica r of each rule uses the set r of FKS
+c configurations
+               proc_map(0,1)=mod(fold_dump_rep-1,proc_map(0,0))+1
+               call get_MC_integer_forced(1,proc_map(0,1),vol1)
+            endif
+         endif
 
 c The nbody contributions
          if (abrv.eq.'real') goto 11
@@ -807,8 +814,9 @@ c For sum=0, determine nFKSprocess so that the soft limit gives a non-zero Born
          endif
 c Also the Born needs to be included in the Importance Sampling over the
 c FKS configurations (for the shower scale) (multiply by
-c 1/proc_map(0,0)*vol1)
-         jac=jac/(proc_map(0,0)*vol1)
+c 1/proc_map(0,0)*vol1). Not needed when the S-event contributions of all
+c the sets of FKS configurations are summed.
+         if (.not.FoldSumSets) jac=jac/(proc_map(0,0)*vol1)
          call generate_momenta(nndim,iconfig,jac,x,p)
          if (p_born(0,1).lt.0d0) goto 12
          call compute_prefactors_nbody(vegas_wgt)
@@ -844,12 +852,37 @@ c always exactly the same momenta in computation of Born when computed
 c for different nFKSprocess.
          if(sum.eq.0) calculatedBorn=.false.
          nbody=.false.
-         do i=1,proc_map(proc_map(0,1),0)
+c With FoldSumSets, the S-event contributions of all the sets of FKS
+c configurations are included, while the H-event ones only come from the
+c set picked (and are divided by its probability). With FoldRealOnce, the
+c H-event contributions only come from one of the folded images.
+         if (FoldSumSets) then
+            kset_lo=1
+            kset_hi=proc_map(0,0)
+         else
+            kset_lo=proc_map(0,1)
+            kset_hi=proc_map(0,1)
+         endif
+         do kset=kset_lo,kset_hi
+c The Born momenta of the various sets (and of the one used for the
+c n-body contributions) need not be exactly the same
+         if (FoldSumSets) calculatedBorn=.false.
+         fold_h_keep=(.not.FoldRealOnce .or.
+     $        ifold_counter.eq.fold_real_img) .and.
+     $        kset.eq.proc_map(0,1)
+         fold_h_scale=1d0
+         if (FoldRealOnce) fold_h_scale=fold_real_scale
+         if (FoldSumSets) fold_h_scale=fold_h_scale/vol1
+         do i=1,proc_map(kset,0)
             wgt_me_real=0d0
             wgt_me_born=0d0
-            iFKS=proc_map(proc_map(0,1),i)
+            iFKS=proc_map(kset,i)
             call update_fks_dir(iFKS)
-            jac=1d0/vol1
+            if (FoldSumSets) then
+               jac=1d0
+            else
+               jac=1d0/vol1
+            endif
             probne=1d0
             gfactsf=1.d0
             gfactcl=1.d0
@@ -920,8 +953,11 @@ c by the call to compute_MC_subt_term) through the 'replace_MC_subt'.
                replace_MC_subt=(1d0-gfactcl)*(1d0-gfactsf)*probne
                call compute_soft_collinear_counter_term(replace_MC_subt)
             endif
-c Include the real-emission contribution.
-            if (passcuts_n1body) then
+c Include the real-emission contribution. With FoldRealOnce, only one
+c image has H events (and without MC@NLO-Delta, there is nothing else in
+c the real emission).
+            if (passcuts_n1body .and. (fold_h_keep .or.
+     $           probne.ne.1d0)) then
                pass_cuts_check=.true.
                call set_cms_stuff(mohdr)
                if (ickkw.eq.3) call set_FxFx_scale(-3,p)
@@ -935,10 +971,14 @@ c subtraction terms.
             call include_shape_in_shower_scale(p,iFKS,ifold_counter)
             call set_colour_connections(iFKS,ifold_counter)
          enddo
+         enddo
+         fold_h_keep=.true.
+         fold_h_scale=1d0
+c The event is written with the Born of the picked set
+         if (FoldSumSets) calculatedBorn=.false.
  12      continue
       elseif(ifl.eq.2) then
-         if (ifold_counter .ne.
-     $       ifold(ifold_energy)*ifold(ifold_yij)*ifold(ifold_phi)) then
+         if (ifold_counter .ne. n_fold_images) then
             write (*,*) "ERROR in folding parameters (driver_mintMC.f)"
      $           ,ifold_counter,ifold_energy,ifold_yij,ifold_phi
             write (*,*) ifold(:)
@@ -961,6 +1001,8 @@ c Sum the contributions that can be summed before taking the ABS value
 c Update the shower starting scale for the S-events after we have
 c determined which contributions are identical.
          call update_shower_scale_Sevents(ifold_counter,ifold_picked)
+         if (FoldDump.ne.0) call write_fold_dump(ifold_counter
+     $        ,proc_map(0,1),proc_map(0,0),vol1)
          call fill_mint_function_NLOPS(f,n1body_wgt)
          call fill_MC_integer(1,proc_map(0,1),n1body_wgt*vol1)
       endif
@@ -1328,7 +1370,8 @@ c     if there are no soft singularities at all, just do something trivial
       implicit none
       include 'nexternal.inc'
       include 'fks_info.inc'
-      integer i_soft,isoft,i
+      include 'orders.inc'
+      integer i_soft,isoft,i,orders(nsplitorders)
       logical found_S
       i_soft=0
       found_S=.false.
@@ -1346,7 +1389,10 @@ c     if there are no soft singularities at all, just do something trivial
       if (found_S .and. i_soft.eq.0) then
          ! add an artificial contribution
          call update_fks_dir(isoft)
-         call add_wgt(2,1d-199,0d0,0d0)
+c (the coupling orders argument was missing here, so that the weights
+c were read from the wrong arguments)
+         call amp_split_pos_to_orders(1,orders)
+         call add_wgt(2,orders,1d-199,0d0,0d0)
       endif
       return
       end

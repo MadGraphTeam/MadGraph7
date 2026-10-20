@@ -160,6 +160,49 @@
 ! Default :: .True.
 !
 ! ==========================================================================
+! Folding (MC@NLO only, used together with the 'folding' run_card entry)
+! ==========================================================================
+!
+! Where the folded images of a MINT point are put in the xi_i and y_ij
+! directions. 0: the default lattice, equally spaced and equally
+! weighted. 1: as 0 after the tent map t -> 1-|2t-1|. 2: cubic
+! transform t^2(3-2t) with weights 6t(1-t), a randomly shifted rule of
+! Simpson order for smooth integrands. 3: quintic transform with weights
+! 30t^2(1-t)^2. 4: t-sin(2 pi t)/(2 pi) with weights 1-cos(2 pi t).
+! Every choice is exact on average: only the fluctuations change.
+#FoldTransform
+0
+! Default :: 0
+!
+! When larger than 0: number of points of a rank-1 (Fibonacci) lattice in
+! the (xi_i,y_ij) plane used instead of the product lattice. The folding
+! in xi_i and y_ij of the run_card should then be 1.
+#FoldLattice
+0
+! Default :: 0
+!
+! When .true., the H-event contributions (real-emission matrix element
+! and MC counterterms with n+1-body kinematics) are included for one
+! image only, picked according to the image weights and rescaled to
+! their sum, while the S-event contributions are summed over all
+! images. The real-emission matrix element is then evaluated only once
+! per point (except with MC@NLO-Delta, where it also enters the S events).
+! Exact on average, but the H-event weights get a heavier tail (more
+! upper-bound failures in event generation); experimental.
+#FoldRealOnce
+.false.
+! Default :: .false.
+!
+! When .true., the S-event contributions of all the sets of FKS
+! configurations (one set per soft singularity) are summed for every
+! folded image, instead of a single set picked at random for each
+! point. The H-event contributions keep coming from the picked set only,
+! so that the real-emission matrix element is not evaluated more often.
+#FoldSumSets
+.false.
+! Default :: .false.
+!
+! ==========================================================================
 ! Combination of matrix elements
 ! ==========================================================================
 !

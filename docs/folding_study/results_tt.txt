@@ -1,0 +1,13 @@
+s21A       xs=6.409e+02 +- 4.2e+00 pb N=20000 r=0.2250 Neff=6052 CPU(M0,M1,M2)=4,8,19 real(M1,M2)=1,2 wall=32s CPU12/Neff=0.0044
+s21B       xs=6.339e+02 +- 2.8e+00 pb N=20000 r=0.1973 Neff=7330 CPU(M0,M1,M2)=4,34,54 real(M1,M2)=4,5 wall=71s CPU12/Neff=0.0120
+s21C       xs=6.383e+02 +- 2.4e+00 pb N=20000 r=0.1948 Neff=7454 CPU(M0,M1,M2)=5,337,688 real(M1,M2)=44,66 wall=3691s CPU12/Neff=0.1376
+s21D       xs=6.362e+02 +- 2.4e+00 pb N=20000 r=0.1922 Neff=7579 CPU(M0,M1,M2)=6,147,165 real(M1,M2)=20,18 wall=265s CPU12/Neff=0.0412
+s21E       xs=6.409e+02 +- 2.2e+00 pb N=20000 r=0.1941 Neff=7486 CPU(M0,M1,M2)=11,335,361 real(M1,M2)=32,26 wall=499s CPU12/Neff=0.0930
+s21F       xs=6.445e+02 +- 3.4e+00 pb N=20000 r=0.1883 Neff=7773 CPU(M0,M1,M2)=9,260,497 real(M1,M2)=15,27 wall=424s CPU12/Neff=0.0974
+s21G       xs=6.351e+02 +- 3.4e+00 pb N=20000 r=0.1925 Neff=7567 CPU(M0,M1,M2)=9,67,114 real(M1,M2)=4,6 wall=250s CPU12/Neff=0.0239
+s21H       xs=6.361e+02 +- 3.2e+00 pb N=20000 r=0.1874 Neff=7818 CPU(M0,M1,M2)=4,188,316 real(M1,M2)=6,7 wall=334s CPU12/Neff=0.0645
+s21I       xs=6.399e+02 +- 2.5e+00 pb N=20000 r=0.1979 Neff=7301 CPU(M0,M1,M2)=5,30,39 real(M1,M2)=4,4 wall=63s CPU12/Neff=0.0095
+s21J       xs=6.378e+02 +- 3.5e+00 pb N=20000 r=0.2111 Neff=6677 CPU(M0,M1,M2)=9,18,29 real(M1,M2)=1,1 wall=53s CPU12/Neff=0.0070
+t21G       xs=6.351e+02 +- 3.4e+00 pb N=20000 r=0.1925 Neff=7567 CPU(M0,M1,M2)=9,68,123 real(M1,M2)=4,6 wall=156s CPU12/Neff=0.0252
+t21J       xs=6.378e+02 +- 3.5e+00 pb N=20000 r=0.2111 Neff=6677 CPU(M0,M1,M2)=10,18,31 real(M1,M2)=1,2 wall=89s CPU12/Neff=0.0074
+t21K       xs=6.418e+02 +- 2.3e+00 pb N=20000 r=0.1984 Neff=7275 CPU(M0,M1,M2)=9,65,76 real(M1,M2)=6,5 wall=89s CPU12/Neff=0.0194
