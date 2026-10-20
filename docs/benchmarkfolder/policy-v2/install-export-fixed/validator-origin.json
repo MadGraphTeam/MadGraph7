@@ -1,0 +1,23 @@
+{
+  "source": "docs/benchmarkfolder/policy-v2/install-export",
+  "revision": "85795ccbb68fa38721d8cb1eade5b4e938c3ba7d",
+  "adaptation": "New immutable work/report namespace and committed classifier-fixed archive. Same numerical checks.",
+  "files": {
+    "prepare.py": {
+      "original_sha256": "666d59ab13a6a2dd54ad7d172dff3e7566e084e04b36ac6ba96ba21ff3d3a397",
+      "new_sha256": "9b845f31fd656f244ec7fdbb68c63573dfcd06a409a6913c517bd7944962b662"
+    },
+    "export.py": {
+      "original_sha256": "681a77394418d515bfb745e883cd9c1c70bbd0c9761967b22128ad3c4d7e536a",
+      "new_sha256": "681a77394418d515bfb745e883cd9c1c70bbd0c9761967b22128ad3c4d7e536a"
+    },
+    "runtime_validator.py": {
+      "original_sha256": "cbf6167000b5224bb3c00e1fbc1a4f9d97715bcfc3d3dfa724b8db7940e1fac9",
+      "new_sha256": "1a2cb162aa096546bf515e04192a44ddcaf065e4a39ef46d8c47779f524ea074"
+    },
+    "nlo-compile.mg5": {
+      "original_sha256": "881f912c0be0830bf776afce99251f993b450c203d0c9be4806ac70705ef67cd",
+      "new_sha256": "881f912c0be0830bf776afce99251f993b450c203d0c9be4806ac70705ef67cd"
+    }
+  }
+}

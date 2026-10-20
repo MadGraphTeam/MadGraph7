@@ -361,3 +361,12 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   flags, 39 polynomial tests and two exporter checks. Clean NLO regeneration
   and execution remain required; no NLO success is inferred from the CLI's zero
   exit code.
+- Clean regeneration at `85795ccbb` now passes the full relocated internal
+  standalone and NLO checks. The private pinned-download installation is hidden
+  during execution and library-path overrides are removed. Standalone DP/QP/
+  stability results agree with the retained CutTools reference; the NLO build
+  passes all 20 pole checks and its soft/collinear tests with zero failures.
+  Versioned GNU binary128 imports resolve in both NLO executables. The successful
+  attempt is retained separately from the initial failure. This closes the
+  classifier/export regression for the recorded source; final eight-process
+  acceptance and any later numerical-archive recertification remain outstanding.

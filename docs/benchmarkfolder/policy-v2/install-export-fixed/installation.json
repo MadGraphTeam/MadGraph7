@@ -1,0 +1,29 @@
+{
+  "revision": "85795ccbb68fa38721d8cb1eade5b4e938c3ba7d",
+  "archive_sha256": "b39844da7fc0a58f90051efe39e3d822395f1a50086f3c6b9ef4fc324630be22",
+  "command": [
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-fixed/source/bin/madgraph",
+    "--plain",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/install-export-fixed/install.mg5"
+  ],
+  "exit_code": 0,
+  "seconds": 66.58309552702121,
+  "cli_card_sha256": "da5a6d8e07eaf855b0b57ac269b1650d66a408472051a77e2ab3e3dba2b40637",
+  "cli_log_sha256": "c84b12448ff64c6fa1147404ed936560a7f71d017e58501806afcac97a1a1b84",
+  "installed": ".benchmark-work/policy-v2/install-export-fixed/source/HEPTools/ninjars",
+  "files": {
+    "lib/libninjars.a": "72a820a1fb74904e9b3d3a43562132b365a947304ac41abced46f5d407a0c816",
+    "lib/mninjars.mod": "6287900997f38309c54b5dd7e77195ec4330e4c8e7f8d34ec6f73424c821edfa",
+    "include/mninjars.f90": "221c76db293213657fea5c6fc8a62b110f17173971704f3b7ea7b4ce87c04732",
+    "include/ninjars.h": "11fc2ef05b222bd208c91145f90b9f7b80ced5668c5b60f30ac1bf17a5395f0e",
+    "lib/ninjars-config.json": "89cea270ad081f2df49f06734d4fd18cf96fbd1daa12009a33a4fa52f7df5d1f",
+    "lib/ninjars-link-before.txt": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+    "lib/ninjars-native-libs.txt": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+    "Cargo.lock": "91b8b87dd40e38994df5ae0298c7af7423b83aee57bec63c9e5e9752c2bf1295",
+    "Cargo.toml": "c35b877c1a1e0e137437f8a2864cd4af7b4e09e5a0c1d6def66cf523d95c8b7e",
+    "install.log": "fefb534b833eaa61c7b2fe65ee047a618574a2e7e816d05dabc3f70b39cddaa0"
+  },
+  "reference_source_overrides": false,
+  "passed": true
+}

@@ -1,0 +1,239 @@
+{
+  "schema": 1,
+  "status": "passed_installation_and_internal_exports",
+  "source_revision": "85795ccbb68fa38721d8cb1eade5b4e938c3ba7d",
+  "files": {
+    "Cargo.lock": {
+      "sha256": "91b8b87dd40e38994df5ae0298c7af7423b83aee57bec63c9e5e9752c2bf1295",
+      "bytes": 78230
+    },
+    "Cargo.toml": {
+      "sha256": "c35b877c1a1e0e137437f8a2864cd4af7b4e09e5a0c1d6def66cf523d95c8b7e",
+      "bytes": 1238
+    },
+    "README.md": {
+      "sha256": "07bcde71dbedaf113e9483d161de2d175fa0794008104cf31025bc0d607304c3",
+      "bytes": 2662
+    },
+    "check_sa-generated.f": {
+      "sha256": "caf9524eef2cec0388b4b4288140ca5fd6adb8c3661ccf647992072a1189767d",
+      "bytes": 23590
+    },
+    "check_sa-stability.f": {
+      "sha256": "642ba4f13447912095c02993bc709fa0998a57ea02ae13e9bf37bde5a7bf736d",
+      "bytes": 23688
+    },
+    "compiled-source-hashes.json": {
+      "sha256": "d60d8ca8fcaa70abf1b6b97e3ac66b1b2e4f2d1cd5a31785f372e331ac72081d",
+      "bytes": 187005
+    },
+    "export.py": {
+      "sha256": "681a77394418d515bfb745e883cd9c1c70bbd0c9761967b22128ad3c4d7e536a",
+      "bytes": 3347
+    },
+    "exports.json": {
+      "sha256": "4a8615633e92c6212141a1e8269114c09f08b12cefb0b93599c6036273063f18",
+      "bytes": 2066
+    },
+    "generated-source-hashes.json": {
+      "sha256": "4650b45974958e7490a59ce2041e8e8047cd143b4cd22f6c417627b6c417652a",
+      "bytes": 186503
+    },
+    "install-cli.log": {
+      "sha256": "c84b12448ff64c6fa1147404ed936560a7f71d017e58501806afcac97a1a1b84",
+      "bytes": 6955
+    },
+    "install.log": {
+      "sha256": "fefb534b833eaa61c7b2fe65ee047a618574a2e7e816d05dabc3f70b39cddaa0",
+      "bytes": 4140
+    },
+    "install.mg5": {
+      "sha256": "da5a6d8e07eaf855b0b57ac269b1650d66a408472051a77e2ab3e3dba2b40637",
+      "bytes": 256
+    },
+    "installation-hidden.json": {
+      "sha256": "1a67709cc363364e916c00d82fc5ef3cd9cc3cf8a3d29c632a20434c6153c30a",
+      "bytes": 650
+    },
+    "installation.json": {
+      "sha256": "a3a1ff5e2f4e625d8dbe87e63cad9d52d94b051c490b7d534b8ec488a7185063",
+      "bytes": 1854
+    },
+    "ninjars-config.json": {
+      "sha256": "89cea270ad081f2df49f06734d4fd18cf96fbd1daa12009a33a4fa52f7df5d1f",
+      "bytes": 354
+    },
+    "ninjars-link-before.txt": {
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+      "bytes": 8
+    },
+    "ninjars-native-libs.txt": {
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+      "bytes": 48
+    },
+    "nlo-after-compile-MadLoopParams.dat": {
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+      "bytes": 13353
+    },
+    "nlo-after-compile-param_card.dat": {
+      "sha256": "ccbf142ec9dfb368c4a5ea80bc6d7c5dc60951384b470c308896c56da66b70ba",
+      "bytes": 3332
+    },
+    "nlo-after-compile-run_card.dat": {
+      "sha256": "bb8c6a3225522209064a225c2fea33334018cd29c8fc6bc298f2c9c67f56eafc",
+      "bytes": 14731
+    },
+    "nlo-check_poles-ldd.txt": {
+      "sha256": "92d4c96fd11723398a3d1c45878954f6643287189381c9c9c52c2c1646e87f03",
+      "bytes": 1256
+    },
+    "nlo-check_poles-nm.txt": {
+      "sha256": "4281d32dbb1cf9f25c94591d818eeb60e21622bfb0065241052b379e2d6d09c9",
+      "bytes": 579
+    },
+    "nlo-check_poles.log": {
+      "sha256": "a04ca0ce9f05ff4ba340c22a70d11dfa055eda8c52387491e11bce8ee6f18bc7",
+      "bytes": 22762
+    },
+    "nlo-compile.log": {
+      "sha256": "5adf7caf2159000add0dbbcca1ceaf9fa0caff4e27e91fe04e9eb1fc07174a42",
+      "bytes": 3880
+    },
+    "nlo-compile.mg5": {
+      "sha256": "881f912c0be0830bf776afce99251f993b450c203d0c9be4806ac70705ef67cd",
+      "bytes": 19
+    },
+    "nlo-export.log": {
+      "sha256": "f45dfd3cfc2e8aea9b4e84e9689e6393ce9fa6bee74158d4afeffdf04f735d02",
+      "bytes": 11469
+    },
+    "nlo-madevent_mintFO-ldd.txt": {
+      "sha256": "237cce80ba928061862647391646c2ac6f12d0b921ab305d0beac3d494d68c18",
+      "bytes": 1256
+    },
+    "nlo-madevent_mintFO-nm.txt": {
+      "sha256": "4281d32dbb1cf9f25c94591d818eeb60e21622bfb0065241052b379e2d6d09c9",
+      "bytes": 579
+    },
+    "nlo-make_opts": {
+      "sha256": "4a3a2d05b7120e47a33b75246e084340c727b8e62dc537dd7a4ce5f932a9ba99",
+      "bytes": 3218
+    },
+    "nlo-relocated-MadLoopParams.dat": {
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+      "bytes": 13353
+    },
+    "nlo-relocated-param_card.dat": {
+      "sha256": "ccbf142ec9dfb368c4a5ea80bc6d7c5dc60951384b470c308896c56da66b70ba",
+      "bytes": 3332
+    },
+    "nlo-relocated-run_card.dat": {
+      "sha256": "bb8c6a3225522209064a225c2fea33334018cd29c8fc6bc298f2c9c67f56eafc",
+      "bytes": 14731
+    },
+    "nlo-test_ME.log": {
+      "sha256": "99a63e6f1f0b64eeb1f9241a9d61abbcf7532698f63babb733543b696e3f5125",
+      "bytes": 4540
+    },
+    "nlo.mg5": {
+      "sha256": "66475b7b06d3fe58cc9753373784096c6244924bd6c9333f39bfb618c06cacb1",
+      "bytes": 443
+    },
+    "prepare.py": {
+      "sha256": "9b845f31fd656f244ec7fdbb68c63573dfcd06a409a6913c517bd7944962b662",
+      "bytes": 3700
+    },
+    "relocation.json": {
+      "sha256": "6fc75113a72e954a69ad6824310e8e517a8dcea0c8a7bf20cb9d759d6b745f2b",
+      "bytes": 2753
+    },
+    "runtime-results.json": {
+      "sha256": "044f49156ca3b9ed5e86f4a30a424c78467a7ae6167bb9bd9e8d1cc8c412a978",
+      "bytes": 2089
+    },
+    "runtime_validator.py": {
+      "sha256": "1a2cb162aa096546bf515e04192a44ddcaf065e4a39ef46d8c47779f524ea074",
+      "bytes": 14133
+    },
+    "standalone-MadLoop_makefile_definitions": {
+      "sha256": "2841f0ab1b796f5b3a4f05fd1483c571a41e4701d38fb34ed04faab929067149",
+      "bytes": 471
+    },
+    "standalone-dp-MadLoopParams.dat": {
+      "sha256": "416b9a4e5cdb592649c22bbc46444a6e85893ecc82b2f09421efe6362dfcb7a4",
+      "bytes": 13352
+    },
+    "standalone-dp-result.dat": {
+      "sha256": "12b3721582f457d427c8fe9a388907219566da5212db60440fefde8eb45960eb",
+      "bytes": 904
+    },
+    "standalone-dp.log": {
+      "sha256": "790287fbed98f9a9ce0afd615701fc326dd98f11621db43dae2d3cc72ff9635c",
+      "bytes": 10452
+    },
+    "standalone-export.log": {
+      "sha256": "f3bdf9d355f6b2adb391473ad5572d3e130eadedac8ef2193184b5fc6e97ec81",
+      "bytes": 9954
+    },
+    "standalone-ldd.txt": {
+      "sha256": "54f77c603cd58113933baba248e86897143a0b742b4c5f6e61e750d33d661887",
+      "bytes": 1256
+    },
+    "standalone-nm.txt": {
+      "sha256": "4281d32dbb1cf9f25c94591d818eeb60e21622bfb0065241052b379e2d6d09c9",
+      "bytes": 579
+    },
+    "standalone-qp-MadLoopParams.dat": {
+      "sha256": "a81316a6c2bbb3a809a3fafd06857c92151e40ecfd06fbc35c527475a2419c74",
+      "bytes": 13352
+    },
+    "standalone-qp-result.dat": {
+      "sha256": "8db97b56ba34768b8679634f5d46d6d35269fd8a7c4970a585d6d30762df9aaa",
+      "bytes": 904
+    },
+    "standalone-qp.log": {
+      "sha256": "98d0103136226db91aaf2fb1a6c55616616bade1aa64fb4774ad63f9f70cd029",
+      "bytes": 11736
+    },
+    "standalone-relocated-MadLoopParams.dat": {
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+      "bytes": 13353
+    },
+    "standalone-relocated-param_card.dat": {
+      "sha256": "61894bc225f62224521081571bb987ae519f355ac33921f47bd3a5cf1b1ec05f",
+      "bytes": 3468
+    },
+    "standalone-relocated-run_card.dat": {
+      "sha256": "941f2c02c9ad04216484558aeaa124c7c3901e7236aade829876803538983ae4",
+      "bytes": 9175
+    },
+    "standalone-results.json": {
+      "sha256": "9ee85a9643e7dbe24940b7104e6fbd06211329af38d696bd6e7d831e7ffeed31",
+      "bytes": 549
+    },
+    "standalone-stability-build.log": {
+      "sha256": "6b578441d053b77f8fdf85436c6dea72a5cabb4c23c0492e2d8888b3f0bc3fd0",
+      "bytes": 6227
+    },
+    "standalone-stable-MadLoopParams.dat": {
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+      "bytes": 13353
+    },
+    "standalone-stable-result.dat": {
+      "sha256": "5b040bc34871747bcb08eb483d7bd7f94535317ff158b467877ebbb7daa831af",
+      "bytes": 904
+    },
+    "standalone-stable.log": {
+      "sha256": "1f44388d1001070ee0572269c64ab2593eaf72f13e4e0e9945a7150838723de9",
+      "bytes": 10484
+    },
+    "standalone.mg5": {
+      "sha256": "e9c23a65e7e65f4c7cbb9f0ba2e16ad184aeeac05ae01d75c7e553d7e1736b04",
+      "bytes": 474
+    },
+    "validator-origin.json": {
+      "sha256": "325ffc782e7728fa975a260cc818777d341125905c273b537fcdc55fa18a5cc4",
+      "bytes": 1099
+    }
+  }
+}

@@ -1,0 +1,67 @@
+INFO: ************************************************************
+*                                                          *
+*           W E L C O M E  to  M A D G R A P H 7           *
+*                       a M C @ N L O                      *
+*                                                          *
+*                        ..........                        *
+*                      @          ....                     *
+*                    @               ...                   *
+*                  @    M         M    .                   *
+*                 @     MM       MM    ..                  *
+*                 .     M  M   M  M  ..                    *
+*                 ..    M   M M   M ..                     *
+*                  .    M    M    M.                       *
+*                  ...                   7777777           *
+*                    ....                     7            *
+*                       .................... 7             *
+*                                           7              *
+*                                          7               *
+*                                                          *
+*         VERSION 5.0.2.1                                  *
+*                                                          *
+*       The MadGraph7 Development Team - Find us at        *
+*                 http://amcatnlo.cern.ch                  *
+*                                                          *
+*               Type 'help' for in-line help.              *
+*                                                          *
+************************************************************ 
+INFO: load configuration from /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-fixed/nlo-relocated/Cards/amcatnlo_configuration.txt  
+INFO: load configuration from /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-fixed/source/input/mg7_configuration.txt  
+INFO: load configuration from /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-fixed/nlo-relocated/Cards/amcatnlo_configuration.txt  
+No valid eps viewer found. Please set in ./input/mg7_configuration.txt
+No valid web browser found. Please set in ./input/mg7_configuration.txt
+Using default gzip "gzip". Set another one in ./input/mg7_configuration.txt
+import command /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/install-export-fixed/nlo-compile.mg5
+compile FO -f
+[1;34mWARNING: bc command not available. Forbids to run the shower. please install it if you want to run the shower. (sudo apt-get install bc) [0m
+stty: 'standard input': Inappropriate ioctl for device
+stty: 'standard input': Inappropriate ioctl for device
+INFO: will run in mode: NLO 
+INFO: Compiling the code 
+INFO: Using built-in libraries for PDFs 
+[1mINFO: For gauge cancellation, the width of 'Z' has been set to zero. [0m
+INFO: Compiling source... 
+INFO:           ...done, continuing with P* directories 
+INFO: Compiling StdHEP (can take a couple of minutes) ... 
+[1;34mWARNING: StdHep failed to compiled. This forbids to run NLO+PS with PY6 and Herwig6 [0m
+INFO: details on the compilation error are available if the code is run with --debug flag 
+INFO: Compiling CutTools (can take a couple of minutes) ... 
+INFO:           ...done. 
+INFO: Compiling IREGI (can take a couple of minutes) ... 
+INFO:           ...done. 
+INFO: Compiling directories... 
+INFO: Compiling on 384 cores 
+INFO:  Compiling P0_uux_z... 
+INFO:     P0_uux_z done. 
+INFO: Checking test output: 
+INFO: P0_uux_z 
+INFO:  Result for test_ME: 
+INFO:    Passed. 
+INFO:  Result for check_poles: 
+INFO:    Poles successfully cancel for 20 points over 20 (tolerance=1.0e-05) 
+INFO:  
+quit
+INFO:  
+quit
+INFO:  
+launch in debug mode
