@@ -481,13 +481,29 @@ def test_loop_sm_catalogue_structure(compiled, catalogue):
     quartic = [binding for binding in catalogue.segments if binding.vertex == "V_4"]
     assert quartic and all(len(binding.attached_legs) == 2 for binding in quartic)
 
-    signs = {}
+    # Closures are pure traces: the closed-loop -1 of ghosts and fermions is
+    # the skeleton's epsilon_s (DESIGN.md §3.3), never part of the kernel.
+    assert [binding.species for binding in catalogue.closures] == sorted(
+        catalogue.loop_species
+    )
+    point = ExactPoint(compiled, seed=29)
     for binding in catalogue.closures:
-        signs.setdefault(binding.species, set()).add(binding.sign)
         kernel = catalogue.kernels[binding.kernel_id]
         assert kernel.contract_kind == "loop-closure"
-        assert len(kernel.inputs) == binding.dimension
-    assert signs[gluon] == {1} and signs[ghost] == {-1} and signs[top] == {-1, 1}
+        dimension = binding.dimension
+        matrix = point.vector(dimension * dimension)
+        values = _kernel_inputs(kernel, point, loop=matrix)
+        (value,) = kernel.exact_expressions
+        trace = sum(
+            (matrix[index * (dimension + 1)] for index in range(dimension)),
+            point.E("0"),
+        )
+        assert _zero(_substitute(value, values) - trace)
+    assert {
+        binding.dimension
+        for binding in catalogue.closures
+        if binding.species in (gluon, ghost, top)
+    } == {1, 4}
 
 
 def test_tree_kernel_variants_differ_exactly_by_self_contractions(compiled, full_model):
@@ -578,19 +594,41 @@ def test_tree_kernel_variants_differ_exactly_by_self_contractions(compiled, full
             assert _zero(_substitute(f, values) - _substitute(t, values))
 
 
-def test_prepared_tree_catalog_carries_its_variant(compiled):
+def test_prepared_tree_catalog_carries_its_variant(compiled, full_model):
     from pyamplicol.loops.v2.catalogue import (
         compile_tree_kernel_variant,
         prepared_tree_kernel_catalog,
     )
+    from pyamplicol.models.contracts import CompiledModelIR
+    from pyamplicol.models.prepared_catalog import build_prepared_kernel_catalog
 
     assert compile_tree_kernel_variant(compiled, "transverse") is compiled
+    full_ir = full_model.compiled.ir
+    assert (compiled.ir.tree_kernel_variant, full_ir.tree_kernel_variant) == (
+        "transverse",
+        "full",
+    )
+    # The variant is part of the IR's serialized identity; the transverse form
+    # is unchanged from before the flag existed.
+    assert "tree_kernel_variant" not in compiled.ir.to_dict()
+    assert CompiledModelIR.from_dict(full_ir.to_dict()) == full_ir
+    assert compile_tree_kernel_variant(full_model.compiled, "full") is (
+        full_model.compiled
+    )
+    assert compile_tree_kernel_variant(full_model.compiled, "transverse").ir == (
+        compiled.ir
+    )
+
     transverse = prepared_tree_kernel_catalog(compiled, "transverse")
     full = prepared_tree_kernel_catalog(compiled, "full")
     assert (transverse.tree_kernel_variant, full.tree_kernel_variant) == (
         "transverse",
         "full",
     )
+    # Derived from the IR, not stamped by the loop helper.
+    assert build_prepared_kernel_catalog(full_model).tree_kernel_variant == "full"
+    assert "tree_kernel_variant" not in transverse.resolver_manifest()
+    assert full.resolver_manifest()["tree_kernel_variant"] == "full"
     assert [binding.key for binding in transverse.vertex_bindings] == [
         binding.key for binding in full.vertex_bindings
     ]
@@ -685,3 +723,19 @@ def test_symjit_and_exact_evaluators(compiled, catalogue):
                     actual_re, actual_im = value.to_decimal_tuple()
                     assert abs(Decimal(actual_re) - Decimal(re)) <= Decimal("1e-50")
                     assert abs(Decimal(actual_im) - Decimal(im)) <= Decimal("1e-50")
+
+
+def test_built_in_models_refuse_the_full_variant():
+    """Built-in kernels are transverse only; ``full`` must not return them."""
+
+    from pyamplicol.loops.v2.catalogue import (
+        LoopKernelCatalogueError,
+        compile_tree_kernel_variant,
+    )
+    from pyamplicol.models.loading import compile_model_source
+
+    builtin = compile_model_source("built-in-sm", use_cache=False)
+    assert builtin.ir.tree_kernel_variant == "transverse"
+    assert compile_tree_kernel_variant(builtin, "transverse") is builtin
+    with pytest.raises(LoopKernelCatalogueError, match="built-in"):
+        compile_tree_kernel_variant(builtin, "full")

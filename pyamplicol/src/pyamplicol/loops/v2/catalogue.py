@@ -42,7 +42,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import permutations, product
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
 
 from ..._internal.physics.symbols import ModelSymbolRegistry, symbols
 from ...models import compiler_symbolica as _sym
@@ -175,10 +175,14 @@ class LoopPropagatorNumeratorBinding:
 
 @dataclass(frozen=True, slots=True)
 class LoopClosureBinding:
-    """Signed trace over the cut index of a loop line of ``species``."""
+    """Trace over the cut index of a loop line of ``species``.
+
+    The closure is a pure trace. The closed fermion- and ghost-loop -1 is part
+    of the skeleton's Wick sign epsilon_s (DESIGN.md §3.3, sewing rule), so it
+    is applied there exactly once and never here.
+    """
 
     species: int
-    sign: int
     kernel_id: int
     dimension: int
 
@@ -242,7 +246,13 @@ class LoopKernelCatalogue:
             raise LoopKernelCatalogueError(
                 "loop kernels must have unique sorted canonical signatures"
             )
-        bindings = (
+        bindings: tuple[
+            LoopSegmentBinding
+            | LoopPropagatorNumeratorBinding
+            | LoopClosureBinding
+            | CountertermSiteBinding,
+            ...,
+        ] = (
             *self.segments,
             *self.propagator_numerators,
             *self.closures,
@@ -258,7 +268,7 @@ class LoopKernelCatalogue:
             ),
             (
                 "closure",
-                tuple((binding.species, binding.sign) for binding in self.closures),
+                tuple(binding.species for binding in self.closures),
             ),
             (
                 "counterterm site",
@@ -267,10 +277,14 @@ class LoopKernelCatalogue:
         ):
             if len(keys) != len(set(keys)):
                 raise LoopKernelCatalogueError(f"loop {context} keys must be unique")
-        for binding in (*self.segments, *self.propagator_numerators):
-            kernel = self.kernels[binding.kernel_id]
+        polynomials: tuple[LoopSegmentBinding | LoopPropagatorNumeratorBinding, ...] = (
+            *self.segments,
+            *self.propagator_numerators,
+        )
+        for polynomial in polynomials:
+            kernel = self.kernels[polynomial.kernel_id]
             if kernel.output_layout != tuple(
-                entry.label() for entry in binding.entries
+                entry.label() for entry in polynomial.entries
             ):
                 raise LoopKernelCatalogueError(
                     "loop binding entries disagree with their kernel output layout"
@@ -338,12 +352,21 @@ def compile_tree_kernel_variant(
 ) -> CompiledModel:
     """Return ``compiled`` with its tree kernels in ``variant``.
 
-    Compiled models carry the transverse variant. The full variant recompiles
-    the model IR; only the eligible massless Yang-Mills kernels change.
+    The variant is recorded in the compiled IR (and so in its serialized form
+    and in every prepared catalog built from it). Switching variant recompiles
+    the UFO payload; only the eligible massless Yang-Mills kernels change.
+    Built-in sources lower only the transverse triple-gluon current, so any
+    other variant is refused rather than silently returned transverse.
     """
 
-    if variant == "transverse" or compiled.source.get("kind") == "built-in-sm":
+    if compiled.ir.tree_kernel_variant == variant:
         return compiled
+    if compiled.source.get("kind") == "built-in-sm":
+        raise LoopKernelCatalogueError(
+            f"built-in model {compiled.name!r} only provides the "
+            f"{compiled.ir.tree_kernel_variant!r} tree kernel variant; compile "
+            f"a UFO model for the {variant!r} variant"
+        )
     return replace(
         compiled,
         ir=compile_ufo_model_ir(compiled.model, tree_kernel_variant=variant),
@@ -359,7 +382,7 @@ def prepared_tree_kernel_catalog(
     """Prepared tree kernel catalog of ``compiled`` in ``variant``."""
 
     model = CompiledUFOModel(compile_tree_kernel_variant(compiled, variant))
-    return replace(build_prepared_kernel_catalog(model), tree_kernel_variant=variant)
+    return build_prepared_kernel_catalog(model)
 
 
 @dataclass(frozen=True, slots=True)
@@ -386,10 +409,12 @@ class LoopKernelEvaluator:
     ) -> list[Any]:
         """Evaluate one input row in arbitrary precision."""
 
-        return self.evaluator.evaluate_complex_with_prec(list(row), decimal_digits)
+        return list(
+            self.evaluator.evaluate_complex_with_prec(list(row), decimal_digits)
+        )
 
     def exact_state(self) -> bytes:
-        return self.evaluator.save()
+        return bytes(self.evaluator.save())
 
 
 def compile_loop_kernel(kernel: PreparedKernelSpec) -> LoopKernelEvaluator:
@@ -469,7 +494,10 @@ class _CatalogueBuilder:
         )
         self.lorentz = {
             str(record["name"]): record
-            for record in compiled.model.get("lorentz_structures", ())
+            for record in cast(
+                "Iterable[Mapping[str, object]]",
+                compiled.model.get("lorentz_structures", ()),
+            )
         }
         self.candidates: dict[str, _Candidate] = {}
         self.proof_classes: dict[str, set[str]] = {}
@@ -486,7 +514,7 @@ class _CatalogueBuilder:
         return self.by_pdg[pdg].ghost_number != 0
 
     def conjugation_closure(self, pdgs: Iterable[int]) -> tuple[int, ...]:
-        species = set()
+        species: set[int] = set()
         for pdg in pdgs:
             if pdg not in self.by_pdg:
                 raise LoopKernelCatalogueError(f"loop species {pdg} is not a particle")
@@ -615,7 +643,7 @@ class _CatalogueBuilder:
             *self.parameter_descriptors,
         )
         context = f"segment {term.vertex}/{term.id} {loop_in}->{loop_out}"
-        metadata = {
+        metadata: dict[str, Any] = {
             "vertex": term.vertex,
             "particles": tuple(term.particles),
             "attached_legs": attached,
@@ -801,37 +829,27 @@ class _CatalogueBuilder:
 
     def add_closures(self, pdg: int) -> None:
         dimension = int(self.model.current_dimension(pdg, 0))
-        if self.is_ghost(pdg):
-            signs: tuple[int, ...] = (-1,)
-        elif self.model.is_fermion(pdg):
-            # A fermion cut line either closes a fermion loop or belongs to an
-            # open line through the loop; the skeleton's Wick sign decides.
-            signs = (-1, 1)
-        else:
-            signs = (1,)
         values = formal_components(self.model, "loop-current", dimension * dimension)
         trace = sum(
             (values[index * (dimension + 1)] for index in range(dimension)),
             _sym.E("0"),
         )
-        for sign in signs:
-            exact = canonical_expressions((sign * trace,), context="loop closure")
-            inputs = used_input_descriptors(
-                (sign * trace,),
-                component_descriptors(self.model, "loop-current", values),
+        exact = canonical_expressions((trace,), context="loop closure")
+        inputs = used_input_descriptors(
+            (trace,),
+            component_descriptors(self.model, "loop-current", values),
+        )
+        candidate = self._candidate("loop-closure", exact, inputs, ("scalar:c0",))
+        self.pending.append(
+            _PendingBinding(
+                candidate,
+                lambda kernel_id: LoopClosureBinding(
+                    species=pdg,
+                    kernel_id=kernel_id,
+                    dimension=dimension,
+                ),
             )
-            candidate = self._candidate("loop-closure", exact, inputs, ("scalar:c0",))
-            self.pending.append(
-                _PendingBinding(
-                    candidate,
-                    lambda kernel_id, sign=sign: LoopClosureBinding(
-                        species=pdg,
-                        sign=sign,
-                        kernel_id=kernel_id,
-                        dimension=dimension,
-                    ),
-                )
-            )
+        )
 
     # -- counterterm sites -------------------------------------------------
 
@@ -1019,7 +1037,7 @@ class _CatalogueBuilder:
             closures=tuple(
                 sorted(
                     select(LoopClosureBinding),
-                    key=lambda item: (item.species, item.sign),
+                    key=lambda item: item.species,
                 )
             ),
             counterterm_sites=tuple(
