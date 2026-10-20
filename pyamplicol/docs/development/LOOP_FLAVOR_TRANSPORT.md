@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: 0BSD -->
 
-# Identity-order loop flavour transport
+# Exact loop flavour and external-port transport
 
 `loops.flavor_transport.IdentityFlavorTransport.admit` connects an existing
 `FlavorSymmetry` to two actual `NativeSourceModelProgram` instances. The
@@ -220,12 +220,85 @@ mapped and independently saved LC/NLC ordinary/resolved/source values, verifies
 complete buffer lengths and shapes, and retains owned results after `clear`.
 These are correctness controls, not generation or runtime measurements.
 
-The supported transport is model-R2 with UV and external fields, exact species
-substitution and unchanged external ports. Nonidentity external permutations,
-charge conjugation and nonidentity projected colour histories remain uncertified.
+The identity-port transport is model-R2 with UV and external fields, exact species
+substitution and unchanged external ports. Charge conjugation and nonidentity
+projected colour histories remain uncertified. The separate ordinary Bose
+extension below admits only its explicitly proved external-port action.
 Saved member selection uses the shared native artifact loader; it introduces no
 new manifest or hash.
 The original fixed-full-colour control does not use formal whole-rule or paired
 diagnostic lowering. Those paths are covered by the separately owned formal
 prerequisite above; unsupported dimensional continuations and unproved scheme
 changes remain outside its certified domain.
+
+## Explicit ordinary Bose members
+
+An explicitly supplied `LegMapping` can permute identical self-conjugate bosons
+on the same incoming or outgoing side, within full-colour ordinary interference.
+This is an additional retained-source admission and saved-member transport. The
+public generator's automatic flavour-grouping search still proposes unchanged
+external ports; it does not add a permutation search or infer a relation from
+numerical equality.
+
+Admission preserves the complete species proof and checks the actual external
+states, normalization, correction orders and model-owned fields. Every eligible
+ordinary and UV/R2 local rule is compared independently under the existing
+adjacent-transposition Bose proof. Native coupling aliases expand through their
+exact source-owned scalar expressions, with every Laurent coefficient and
+paired diagnostic retained. When momentum conservation is necessary, both
+vertex tensors are routed with the same original dependency momentum basis;
+external wavefunctions and propagator factors never enter this local proof.
+
+For a fixed-colour source rule, an opt-in dependency tensor-component comparison
+can establish an equality that symbolic expression expansion cannot reduce.
+Both tensors retain the same complete typed external interface, and every
+component remains an exact Symbolica expression. This does not substitute
+parameter values, epsilon or a named formal colour invariant. An actual formal
+colour continuation never selects this fixed-representation fallback. The
+external-field insertion multiset is recomputed from its source owner before
+checking permutation covariance; dropping an entire symmetric orbit cannot
+pass by symmetry alone.
+
+The selected member uses the established relation
+`q[r] = p[permutation[r]]`. One native batch binding permutes exact momentum
+strings before either ordinary or verified evaluation. Scales, opaque original
+point IDs and global parameter snapshots keep their identities; a rescue subset
+reuses this already bound input. An independent non-involutive three-cycle
+control distinguishes this direction from its inverse and detects omitted or
+repeated application. Identical-boson physical amplitudes alone cannot do that.
+
+Capabilities belong to the selected member. A nonidentity member currently
+exposes ordinary inclusive evaluation; resolved outputs, colour histories and
+vector sources require their own axis/source proof and are rejected. The saved
+representative keeps its real resolved and correlated plans. Inspection exposes
+both selected-process capabilities and `representative_physics`, so a richer
+representative does not imply an unproved member capability. SDK discovery and
+evaluation use the same selected capability decision.
+
+The existing typed runtime record carries the admitted permutation, and the
+artifact loader checks it against the existing process-group relation. Old
+typed readers deny unknown runtime-record fields, so they reject this new
+nonidentity descriptor instead of silently evaluating it as an identity map.
+There is no additional manifest, provenance mechanism or public loop-amplitude
+API.
+
+The exercised complete source pair is the independently generated fixed-full
+QCD `d d~ -> g g` / `s s~ -> g g`, with the two outgoing gluon ports exchanged.
+Every selected ordinary and local counterterm group passes the exact rule proof,
+and both actual 18-insertion external-field multisets pass their source-owner
+checks. Born, bare, UV, R2, local-UV, external-field and total coefficients agree
+in double, DoubleFloat and ArbPrec70, including exact parameter changes, empty
+batches and reordered points. Separate fixed-component controls reject physical
+asymmetry, a changed typed interface and an epsilon-squared coefficient whose
+formal-colour difference vanishes at three colours. An actual formal owner
+checks that its local proof never selects the fixed-component fallback.
+
+Current saved/public controls compare every component, order and pole against
+the independently saved member in all three carriers, including irregular
+batches, opaque IDs and invalid permutation records. Public selection preserves
+the real representative's resolved/history/source discovery while rejecting
+these unproved member operations. One underflowing binary64 scale is rescued
+with ArbPrec60/80, retaining its original point identity. The safe Rust SDK
+checks ordinary coefficients, selected capability discovery, rejected resolved
+and correlated calls, and result ownership after clearing/dropping the handle.
+These are correctness controls, not updated performance measurements.
