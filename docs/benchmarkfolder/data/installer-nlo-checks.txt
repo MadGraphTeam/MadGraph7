@@ -1,0 +1,17 @@
+Sum of all orders:      Soft test  1 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  2; QED:  2;      Soft test  1 PASSED. Fraction of failures: 0.00
+Sum of all orders: Collinear test  1 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  2; QED:  2; Collinear test  1 PASSED. Fraction of failures: 0.00
+Sum of all orders:      Soft test  2 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  2; QED:  2;      Soft test  2 PASSED. Fraction of failures: 0.00
+Sum of all orders: Collinear test  2 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  2; QED:  2; Collinear test  2 PASSED. Fraction of failures: 0.00
+Sum of all orders:      Soft test  3 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  2; QED:  2;      Soft test  3 PASSED. Fraction of failures: 0.00
+Sum of all orders: Collinear test  3 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  2; QED:  2; Collinear test  3 PASSED. Fraction of failures: 0.00
+Sum of all orders:      Soft test  4 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  2; QED:  2;      Soft test  4 PASSED. Fraction of failures: 0.00
+Sum of all orders: Collinear test  4 PASSED. Fraction of failures: 0.00
+Split-order  2: QCD:  2; QED:  2; Collinear test  4 PASSED. Fraction of failures: 0.00 
+INFO:    Poles successfully cancel for 20 points over 20 (tolerance=1.0e-05) 

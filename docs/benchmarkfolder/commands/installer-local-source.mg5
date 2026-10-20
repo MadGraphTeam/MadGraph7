@@ -1,0 +1,4 @@
+install ninjars --prefix=./HEPTools/ninjars-local-smoke --source=../references/ninjars --oneloop-source=../references/oneloopmaster --jobs=4
+set ninjars ./HEPTools/ninjars/lib
+save options ./input/mg7_configuration.txt ninjars
+quit

@@ -3516,8 +3516,7 @@ Beware that this can be dangerous for local multicore runs.""")
                 run_card = self.run_card
             if run_card['nhel'] == 0:
                 if 'MLReductionLib' in self.MadLoopparam.user_set and \
-                    (self.MadLoopparam.get('MLReductionLib').startswith('1') or
-                     self.MadLoopparam.get('MLReductionLib').startswith('6')):
+                    self.MadLoopparam.get('MLReductionLib').startswith(('1', '6', '8')):
                     logger.warning(
     """You chose to set the preferred reduction technique in MadLoop to be OPP (see parameter MLReductionLib).
     Beware that this can bring significant slowdown; the optimal choice --when not MC over helicity-- being to first start with TIR reduction.""")
@@ -3525,8 +3524,7 @@ Beware that this can be dangerous for local multicore runs.""")
                 self.MadLoopparam.set('MLReductionLib','7|6|1', changeifuserset=False)
             else:
                 if 'MLReductionLib' in self.MadLoopparam.user_set and \
-                    not (self.MadLoopparam.get('MLReductionLib').startswith('1') or
-                         self.MadLoopparam.get('MLReductionLib').startswith('6')):
+                    not self.MadLoopparam.get('MLReductionLib').startswith(('1', '6', '8')):
                     logger.warning(
     """You chose to set the preferred reduction technique in MadLoop to be different than OPP (see parameter MLReductionLib).
     Beware that this can bring significant slowdown; the optimal choice --when MC over helicity-- being to first start with OPP reduction.""")

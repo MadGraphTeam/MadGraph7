@@ -174,13 +174,33 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
 - DP and MP each pass 21 retained tensor lanes against original Ninja's complete
   Laurent coefficients. The generic MP engine's separate rational diagnostic uses
   its documented basis-dependent split; MadLoop consumes the complete finite term.
-- Copied-dependency standalone export survives relocation and removal of external
-  library search paths. Full NLO export, compilation and 20/20 pole-cancellation
-  checks pass; final ABI2 relinking and focused process controls are in progress.
+- Integration commit `d47f0bc4f` was pushed. Final ABI2 copied-dependency standalone
+  export survives relocation and removal of external library search paths.
+  Full NLO export, compilation, all soft/collinear checks and 20/20 pole-cancellation
+  checks pass. The actual local-source override also compiles and passes its
+  installed DP/QP smoke test; primary installation and reference sources are
+  unchanged. Commands and hashes are retained in `installer-validation.json`.
+- Independent installer review corrected loop-induced OPP advice to recognize
+  option 8 and documented upstream Symbolica worker licensing for concurrent
+  processes. EW model reuse/import now verifies the original recorded file
+  inventory and checksum, without changing that checksum's scope.
+- Four focused processes (loop-induced gg->H/HH, mixed QCD/QED orders and complex
+  masses) pass four-backend agreement and original-versus-candidate legacy
+  regression. Default full-QP NinjaRS rescue uses status 322: H=3 and U=2, with
+  the existing tens digit indicating QP numerator construction.
 - Original-Ninja scratch-allocation optimizations were tested in copied generated
   outputs: all 100 DP/QP outputs match exactly for qcd-1/qcd-2, but exploratory
   timings show no resolved full-evaluation benefit. The production patch is not
-  retained; further profiling is pending.
+  retained. Profiling instead identifies generated UPDATE_WL contractions as the
+  dominant Fortran cost. An accumulation-order-preserving loop interchange passes
+  2,880 DP and 2,880 QP exact comparisons and real-process regression. All eight
+  candidate processes have been regenerated; retention still requires resolved
+  timing evidence.
+- Independent benchmark review added exact split-order dimension checks, actual
+  parameter-card resolution checks, retained cards/build settings, numerical
+  consistency across repetitions, adjacent original-Ninja/NinjaRS timing pairs,
+  and rejection of mixed executables/settings. Initialization timing and
+  incremental compilation are explicitly distinguished in the report.
 - The complete eight-process correctness gate, export/forced-rescue controls,
   measured optimization gate and all final performance gates remain outstanding.
   The styled report currently labels missing measurements as pending.

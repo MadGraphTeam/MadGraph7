@@ -1,0 +1,2 @@
+install ninjars --force --jobs=2
+quit

@@ -39,6 +39,15 @@ also permits Ninja and CutTools fallback. ``UseQPIntegrandForNinjaRS`` controls
 whether the NinjaRS high-precision rescue receives a numerator recomputed in
 quadruple precision. The CLI checks accept ``--reduction=8``.
 
+High-precision rescue uses Symbolica and follows its licensing requirements.
+Symbolica's restricted mode permits one active Symbolica thread per user across
+all processes. NinjaRS shares one rescue worker among its contexts within each
+process and retains it until MadLoop exits. Concurrent MadGraph processes that
+use rescue therefore require a Symbolica license covering their active workers,
+or must run sequentially. Upstream license/permit failures can terminate a
+process before MadLoop can try another backend. If ``SYMBOLICA_LOCK_DIR`` is set,
+use the same directory for all processes belonging to the user.
+
 For local development, supply source checkouts explicitly::
 
     install ninjars --source=/path/to/ninjars --oneloop-source=/path/to/oneloopmaster --jobs=4 --force
