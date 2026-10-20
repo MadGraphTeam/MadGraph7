@@ -1,0 +1,11 @@
+{
+  "command": [
+    "make",
+    "-C",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/qcd3-point67-t3/guarded-bridge",
+    "-j2",
+    "all"
+  ],
+  "archive_sha256": "d0f42d52da8b87f6debdf84c765a76c9833d33efee7e70ea56ef0e5f0b1d2973",
+  "source_manifest_sha256": "f2e4321c9663126ceceef7cf446c4e86d58c1104f342a4a766a2375229037fac"
+}

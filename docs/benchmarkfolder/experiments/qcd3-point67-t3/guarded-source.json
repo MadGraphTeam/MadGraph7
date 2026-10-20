@@ -1,0 +1,14 @@
+{
+  "production_revision": "85795ccbb68fa38721d8cb1eade5b4e938c3ba7d",
+  "files": {
+    "Cargo.toml": "5007b461eb89331792abe6ab079da588e85084e298f38abfeb6b24403e1e98d7",
+    "Cargo.lock": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25",
+    "build.rs": "450ab2b10160aa8e71d38d2031a5f333a0056e8fa1fd0c7c2e1dd477b62cbc9e",
+    "src/guarded.rs": "34cfaa79005e8dd33acf503dd0f2e704520809226eeba026068c41be93edaa2d",
+    "src/guarded_fenv.c": "93a2e94bf12eccf46f591e77e372b9c3ff8a44c4c3ae6cfc98689a49ded1ac27",
+    "src/guarded_tests.rs": "9bacccfe868259c39aa2ee172b09415977cacd630480d13f4d04d44b1c6b4ad2",
+    "src/lib.rs": "7ef52d847e475b895850db24be783355520ec6dac0df9d51a84b0a093a0ca3c5",
+    "src/tensor.rs": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55"
+  },
+  "note": "Isolated ABI2 bridge. No installed production source or libraries changed."
+}

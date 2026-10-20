@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/common/build-cache/external/f7/d00a3ee9585371/release/deps/madloop_ninjars-5133f6c9476c7d48",
+    "guarded_unsafe",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "source_sha256": {
+    "src/lib.rs": "7ef52d847e475b895850db24be783355520ec6dac0df9d51a84b0a093a0ca3c5",
+    "src/guarded.rs": "34cfaa79005e8dd33acf503dd0f2e704520809226eeba026068c41be93edaa2d",
+    "src/guarded_fenv.c": "93a2e94bf12eccf46f591e77e372b9c3ff8a44c4c3ae6cfc98689a49ded1ac27",
+    "src/guarded_tests.rs": "db94d2cd21f045510d7f6ce64470e19587a6d09ff2f0bfa5636e344ecacbefc6"
+  },
+  "executable_sha256": "5c4548562eb69fc243a60dc6534040f5eb1e5da8f8b442cc4c08d7b2db467bac",
+  "log_sha256": "ed5435c5d1b9b47a49ff1a928dbfeab44b41147aa73a56563f775b5134588d45",
+  "passed": true,
+  "note": "Only DP arithmetic; normal finite inputs chosen to cause intermediate underflow/overflow in native fallback. Frozen archive d0f42d52 unchanged."
+}

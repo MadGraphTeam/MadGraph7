@@ -1,0 +1,15 @@
+{
+  "command": [
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/qcd3-point67-t3/target/release/point67-t3",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/qcd3-point67-dp/oracle-inputs.json",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/qcd3-point67-masters/results.json",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/qcd3-point67-masters/expansion-results.json",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/qcd3-point67-t3/results.json"
+  ],
+  "executable_sha256": "ebdad1b460f7c276bef7917c28a03b336d5058329539122c4ab274716c9729f8",
+  "input_sha256": "1fb7ea9413efd25053dfdab357baf9ee973d8df3b6452fbaa280b684aea177b9",
+  "master_capture_sha256": "3df85e0871329345eee0d62c93b7e0cabd9bceb69edc234e481f8791a6eab831",
+  "callback_capture_sha256": "8bdf9a439db23f793ca38f774997d866d6a0fa279e00a086d81cee21a3d67b76",
+  "results_sha256": "dc724fba0f4e8595967923d640c1c38a4e5e8eea4d4c1b64be1ef4e518c3fbe1",
+  "complete": true
+}

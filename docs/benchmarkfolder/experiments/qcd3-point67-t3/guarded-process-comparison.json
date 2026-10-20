@@ -1,0 +1,161 @@
+{
+  "all_232_inputs_and_paired_ninja_outputs_identical": true,
+  "directions": [
+    [
+      2.1582557045567742e-08,
+      -1.0520797420437307e-05,
+      -4.2184759713781e-06
+    ],
+    [
+      2.158255775434729e-08,
+      -1.0520797420083989e-05,
+      -4.2184759713780966e-06
+    ]
+  ],
+  "averaged_laurent": [
+    2.1582557399957516e-08,
+    -1.0520797420260648e-05,
+    -4.218475971378098e-06
+  ],
+  "stability_estimate": 2.1649470406554845e-10,
+  "mixed_tolerance": {
+    "relative": 1e-07,
+    "scale": 1e-10
+  },
+  "comparisons": [
+    {
+      "backend": 1,
+      "reference_path": "docs/benchmarkfolder/data/baseline-qcd-3-1-calibration.json",
+      "reference_sha256": "49575b84626b3c17bd082c33bebb67666f539a3beff5b96203e05fdacc7be1b2",
+      "reference_status": 329,
+      "components": [
+        {
+          "component": 0,
+          "value": 2.5917991762112186e-05,
+          "reference": 2.5917991762112186e-05,
+          "difference": 0.0,
+          "tolerance": 2.5943909753874295e-12,
+          "fraction": 0.0,
+          "passed": true
+        },
+        {
+          "component": 1,
+          "value": 2.1582557399957516e-08,
+          "reference": 2.1582553991961478e-08,
+          "difference": 3.4079960384280172e-15,
+          "tolerance": 4.7500549162069704e-15,
+          "fraction": 0.7174645553675791,
+          "passed": true
+        },
+        {
+          "component": 2,
+          "value": -1.0520797420260648e-05,
+          "reference": -1.0520797421140673e-05,
+          "difference": 8.800248805498553e-16,
+          "tolerance": 1.0546715412902784e-12,
+          "fraction": 0.0008344065864081613,
+          "passed": true
+        },
+        {
+          "component": 3,
+          "value": -4.218475971378098e-06,
+          "reference": -4.218475971378158e-06,
+          "difference": 6.013933925505532e-20,
+          "tolerance": 4.2443939631402706e-13,
+          "fraction": 1.4169122795227152e-07,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "backend": 6,
+      "reference_path": "docs/benchmarkfolder/data/baseline-qcd-3-6-calibration.json",
+      "reference_sha256": "9a9f710f2b2bff09c3dc75eefac02d41a97e4fd46c0ba3267d17caf51aa86f5d",
+      "reference_status": 216,
+      "components": [
+        {
+          "component": 0,
+          "value": 2.5917991762112186e-05,
+          "reference": 2.5917991762112186e-05,
+          "difference": 0.0,
+          "tolerance": 2.5943909753874295e-12,
+          "fraction": 0.0,
+          "passed": true
+        },
+        {
+          "component": 1,
+          "value": 2.1582557399957516e-08,
+          "reference": 2.15825535075487e-08,
+          "difference": 3.89240881752366e-15,
+          "tolerance": 4.7500549162069704e-15,
+          "fraction": 0.8194450140445616,
+          "passed": true
+        },
+        {
+          "component": 2,
+          "value": -1.0520797420260648e-05,
+          "reference": -1.0520797420955183e-05,
+          "difference": 6.945348294965306e-16,
+          "tolerance": 1.0546715412717294e-12,
+          "fraction": 0.0006585318768145164,
+          "passed": true
+        },
+        {
+          "component": 3,
+          "value": -4.218475971378098e-06,
+          "reference": -4.218475971378119e-06,
+          "difference": 2.0328790734103208e-20,
+          "tolerance": 4.2443939631402307e-13,
+          "fraction": 4.789562635006407e-08,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "backend": 7,
+      "reference_path": "docs/benchmarkfolder/data/baseline-qcd-3-7-calibration.json",
+      "reference_sha256": "a8af65f276899cd64a77668cdf2589259f8e873df5902606adf1d0d5da51d14d",
+      "reference_status": 217,
+      "components": [
+        {
+          "component": 0,
+          "value": 2.5917991762112186e-05,
+          "reference": 2.5917991762112186e-05,
+          "difference": 0.0,
+          "tolerance": 2.5943909753874295e-12,
+          "fraction": 0.0,
+          "passed": true
+        },
+        {
+          "component": 1,
+          "value": 2.1582557399957516e-08,
+          "reference": 2.158255398856714e-08,
+          "difference": 3.411390377380351e-15,
+          "tolerance": 4.7500549162069704e-15,
+          "fraction": 0.7181791447801672,
+          "passed": true
+        },
+        {
+          "component": 2,
+          "value": -1.0520797420260648e-05,
+          "reference": -1.0520797421155831e-05,
+          "difference": 8.951833821739183e-16,
+          "tolerance": 1.0546715412917944e-12,
+          "fraction": 0.0008487793091273421,
+          "passed": true
+        },
+        {
+          "component": 3,
+          "value": -4.218475971378098e-06,
+          "reference": -4.218475971378323e-06,
+          "difference": 2.244637310223896e-19,
+          "tolerance": 4.2443939631404347e-13,
+          "fraction": 5.288475409485987e-07,
+          "passed": true
+        }
+      ]
+    }
+  ],
+  "all_components_pass": true,
+  "note": "Point67 only, using retained historical identical-input legacy coefficients. Normal driver stops before rescue/final return code. This is not the required full100point/current-source validation or runtime acceptance."
+}

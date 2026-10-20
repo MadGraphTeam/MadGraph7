@@ -1,0 +1,19 @@
+{
+  "command": [
+    "taskset",
+    "-c",
+    "4",
+    "./check",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/points/qcd-3.dat"
+  ],
+  "executable_sha256": "309cbf0b1d0b1df06e64ff27421b1e14fe4d603e714a1f3cd000d97d0b00c057",
+  "archive_sha256": "5fbec8e920363586d9c7b0328824a7d27e7c7e9337e72f31bf80ee383143e054",
+  "driver_sha256": "4006a6c9662a7f8eb0906fd41b8a8a959619158d1870d0d3af20f769b738e100",
+  "loop_matrix_sha256": "c6c6465f2bfc1fc52ded10cc2b82c6650d3b28a4b2e959998e174a738f5d00ef",
+  "interface_sha256": "61125f39f551ae5e0374e9f21335c591e0466eb11d18190c218ff8ebee48ccd1",
+  "card_sha256": "227a2c3baf02afdbcd883a111d6291a77f0c7627e637539c5457912a2d0cbfca",
+  "point_file_sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41",
+  "reductions": 232,
+  "failed_ninjars": 0,
+  "failed_ninja": 0
+}

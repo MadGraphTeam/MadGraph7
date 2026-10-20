@@ -1,0 +1,10 @@
+make: Entering directory '/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/qcd3-point67-t3/guarded-bridge'
+   Compiling madloop-ninjars v0.1.0 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/qcd3-point67-t3/guarded-bridge)
+note: link against the following native artifacts when linking against this static library. The order and any duplication can be significant on some platforms
+
+note: native-static-libs: -ldl -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc
+
+    Finished `release` profile [optimized] target(s) in 1m 02s
+cp "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/qcd3-point67-t3/guarded-target/release/libmadloop_ninjars.a" libninjars.a
+ar rcs libninjars.a mninjars.o
+make: Leaving directory '/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/qcd3-point67-t3/guarded-bridge'

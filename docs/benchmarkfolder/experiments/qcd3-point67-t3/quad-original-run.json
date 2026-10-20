@@ -1,0 +1,28 @@
+{
+  "build_commands": [
+    [
+      "g++",
+      "-O3",
+      "-I/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/include",
+      "-c",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/qcd3-point67-t3/quad-original.cc",
+      "-o",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/qcd3-point67-t3/quad-original.o"
+    ],
+    [
+      "gfortran",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/qcd3-point67-t3/quad-original.o",
+      "-L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib",
+      "-lninja",
+      "-lstdc++",
+      "-Wl,-rpath,/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib",
+      "-o",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/qcd3-point67-t3/quad-original-callback"
+    ]
+  ],
+  "source_sha256": "5e0ec408737f3f670fd1b5e6d44f564b8d9a4cdc375e7d2f1f4e5a0e3d8d6c42",
+  "executable_sha256": "b7b03ee39f59fc93df0f3b90b0fbf4d9cb77c5a380916a97924de7380aa80f3f",
+  "input_sha256": "33a339576bff5ee0b88d9341c739d53ceeec72518fa59b12e3eff4ad01c7e906",
+  "libninja_sha256": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128",
+  "output_sha256": "274cdcfa4190d0e6bc1fdf7d0843df2f76b9adac1f1a92c12dab4f223fc79f89"
+}
