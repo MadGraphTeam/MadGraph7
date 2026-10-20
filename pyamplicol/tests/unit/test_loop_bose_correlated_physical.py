@@ -217,7 +217,7 @@ def test_actual_bose_sources_histories_all_components_and_both_terms(
                 native = mapped.evaluate_directed_native(
                     points, scales, point_ids=ids, spin_sources=sources
                 )
-                assert native.batch.point_ids == tuple(ids)
+                assert native.batch.point_ids == ids
                 for name in BLOCKS:
                     values = np.asarray(
                         getattr(native, name).to_decimal(), dtype=object
