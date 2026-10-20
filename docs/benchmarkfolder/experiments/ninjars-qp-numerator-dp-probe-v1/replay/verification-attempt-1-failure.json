@@ -1,0 +1,8 @@
+{
+  "stage": "offline verifier only",
+  "returncode": 1,
+  "engine_calls": 0,
+  "error": "AssertionError: analyze.compute() != json.loads(contrasts.json)",
+  "cause": "Python integer status-count keys become strings in JSON; normalize the recomputed object through the same JSON representation before exact comparison. Numerical values, raw data and contrasts remain unchanged.",
+  "first_manifest_sha256": "b72517183a364d2a5813f15077405567bd2dfef0223aa76f67580a0452781319"
+}

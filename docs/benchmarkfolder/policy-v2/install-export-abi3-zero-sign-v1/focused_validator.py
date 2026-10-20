@@ -37,9 +37,18 @@ def main():
     assert hidden.is_dir() and not (SOURCE / "HEPTools/ninjars").exists()
     identities = {}
     for name, expected in prepared["proposed_files"].items():
-        for directory in (ROOT / "vendor/ninjars", SOURCE / "vendor/ninjars", hidden):
+        for directory in (ROOT / "vendor/ninjars", SOURCE / "vendor/ninjars"):
             assert sha(directory / name) == expected, str(directory / name)
         identities[name] = expected
+    # The public installation publishes libraries/interfaces, not its build tree.
+    # Bind that tree through the archived installer input; inspect only the
+    # source/interface files that the installation actually publishes.
+    installation = json.loads((REPORT / "installation.json").read_text())
+    assert installation["archived_bridge_source_sha256"] == identities
+    published = {"Cargo.lock": "Cargo.lock", "Cargo.toml": "Cargo.toml",
+                 "mninjars.f90": "include/mninjars.f90", "ninjars.h": "include/ninjars.h"}
+    for source, installed in published.items():
+        assert sha(hidden / installed) == identities[source], installed
     command = [sys.executable, "-B", "-m", "unittest",
                "tests.unit_tests.loop.test_ninjars_fortran",
                "tests.unit_tests.various.test_ninjars_install",
@@ -58,7 +67,9 @@ def main():
             "bridge_result_sha256": sha(proof / "bridge-result.json"),
             "rust_tests_passed": 18, "requests_replayed": 1392,
             "unchanged_output_fields": 11136,
-            "tested_archived_and_installed_source_sha256": identities,
+            "tested_and_archived_build_input_sha256": identities,
+            "published_source_files": published,
+            "installation_sha256": sha(REPORT / "installation.json"),
             "execution": "Sealed Rust suite reused after exact source binding; installed smoke and relocated QP run are fresh.",
         },
     }, indent=2, allow_nan=False) + "\n")

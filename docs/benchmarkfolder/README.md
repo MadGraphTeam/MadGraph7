@@ -204,3 +204,12 @@ fixtures and all 1,392 stored requests pass; all 11,136 replayed output fields
 are unchanged. Source and evidence are in
 `experiments/ninjars-mp-transport-audit-v1/`. The installed-runtime refresh is
 still pending, so earlier runtime proofs retain their original archive identity.
+
+The complete stored-input eight-cell replay and independent audit are retained
+under `experiments/ninjars-qp-numerator-dp-probe-v1/replay/`. All 3,712 calls
+and 1,392 reproduction controls pass. Improved coefficients alone do not remove
+the dominant native/generic discrepancy; distinct scalar thresholds and the
+historical parser prevent interpreting it as a pure precision experiment.
+No numerator-only retry is introduced. The source-only guard/fusion census in
+`experiments/symmetric-factorization-dp/guard-sharing-study/` also remains an
+unimplemented research lead.

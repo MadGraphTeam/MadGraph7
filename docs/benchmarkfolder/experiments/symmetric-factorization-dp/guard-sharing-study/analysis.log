@@ -1,0 +1,32 @@
+{
+  "qcd-3": {
+    "target_calls": 136,
+    "targets_by_shape": {
+      "FFV1L1_2:rank2": 51,
+      "FFV1L1_2:rank3": 12,
+      "FFV1L2_1:rank2": 56,
+      "FFV1L2_1:rank3": 17
+    },
+    "region_totals": {
+      "two_vertices": 110,
+      "aloha_graph": 110,
+      "plus_create_loop_coefs_conditional": 1
+    }
+  },
+  "qcd-4": {
+    "target_calls": 1038,
+    "targets_by_shape": {
+      "FFV1L1_2:rank2": 269,
+      "FFV1L1_2:rank3": 184,
+      "FFV1L1_2:rank4": 48,
+      "FFV1L2_1:rank2": 277,
+      "FFV1L2_1:rank3": 198,
+      "FFV1L2_1:rank4": 62
+    },
+    "region_totals": {
+      "two_vertices": 830,
+      "aloha_graph": 806,
+      "plus_create_loop_coefs_conditional": 3
+    }
+  }
+}

@@ -613,3 +613,15 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   native path's different reciprocal arithmetic requires convergence and
   analytic pole checks. No native prototype, compilation or timing result is
   claimed by the source review and held plan.
+- The matched eight-cell stored-input replay now completes all 3,712 calls,
+  with 1,392 exact reproduction controls and an independent exact-dyadic audit.
+  Rounded QP coefficients on unchanged DP geometry leave the dominant native
+  versus generic discrepancy essentially unchanged. Distinct master thresholds
+  and the historical zero-sign parser remain explicit confounds. This does not
+  justify a numerator-only DP retry; no retry policy is changed. The replay's
+  separate seal retains all calls and the offline verifier's serialization
+  corrections without changing or rerunning numerical results.
+- A separate source-only Fortran census finds adjacent producer/updater fusion
+  opportunities, but neither proves their stored arithmetic/exception behavior
+  nor measures a speedup. Strict environment-query sharing covers only modest
+  regions. Both remain research leads, with the negative DP timing unchanged.

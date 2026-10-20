@@ -1,0 +1,8 @@
+{
+  "stage": "offline analysis only",
+  "engine_calls": 0,
+  "returncode": 1,
+  "error": "TypeError: both arguments should be Rational instances",
+  "cause": "Fraction constructed from numerator/denominator strings in sorting key; must explicitly convert retained decimal strings to integers. Raw replay and successful reproduction gates unchanged.",
+  "source_sha256": "f463b4d23acdadfdddaa8f38f59963b22cfb95a78cf72cdec7f2b273ab551481"
+}

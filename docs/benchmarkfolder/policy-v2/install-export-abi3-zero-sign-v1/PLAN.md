@@ -27,8 +27,10 @@ No compile or evaluation starts during the tensor experiment's quiet window.
    and run the NLO checks, requiring all twenty pole tests and soft/collinear
    tests. Bind executable, input and installed archive identities.
 5. Link the already sealed eighteen-test corrected transport suite and all
-   1,392 exact request replays to the archived/installed bridge source, rather
-   than substituting old sixteen-test source hashes. Preserve any failure and
+   1,392 exact request replays to the archived build inputs, compiled archive
+   and published interface sources, rather than substituting old sixteen-test
+   source hashes. The installation does not publish the Rust build source tree.
+   Preserve any failure and
    retry in a fresh attempt namespace. Seal successful evidence with an offline
    verifier before committing it.
 

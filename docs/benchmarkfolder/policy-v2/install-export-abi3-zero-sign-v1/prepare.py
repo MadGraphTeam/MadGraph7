@@ -47,6 +47,11 @@ def main():
         subprocess.run(["git", "archive", revision], cwd=ROOT, stdout=out, check=True)
     with tarfile.open(archive) as source:
         source.extractall(SOURCE, filter="tar")
+    proof = ROOT / "docs/benchmarkfolder/experiments/ninjars-mp-transport-audit-v1"
+    tested_sources = json.loads((proof / "bridge-prepared.json").read_text())["proposed_files"]
+    for name, expected in tested_sources.items():
+        if digest(SOURCE / "vendor/ninjars" / name) != expected:
+            raise RuntimeError("Archived bridge differs from tested corrected transport: " + name)
     # The prefix is inside this checkout so install does not write a user-level
     # configuration shared with the production or original benchmark checkout.
     prefix = SOURCE / "HEPTools"
@@ -77,6 +82,8 @@ def main():
                 "Cargo.lock", "Cargo.toml", "install.log")
     result = {
         "revision": revision, "archive_sha256": digest(archive),
+        "archived_bridge_source_sha256": tested_sources,
+        "archived_installer_sha256": digest(SOURCE / "madgraph/various/ninjars_install.py"),
         "execution_cpu": args.cpu, "cargo_jobs": 1, "purpose": "Correctness and installation refresh; not a performance sample",
         "command": command, "exit_code": completed.returncode,
         "seconds": time.perf_counter()-start,
