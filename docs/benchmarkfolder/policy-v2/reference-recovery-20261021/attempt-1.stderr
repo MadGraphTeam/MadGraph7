@@ -1,0 +1,22 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/reference-recovery-20261021/actions.py", line 127, in <module>
+    parser = argparse.ArgumentParser(description=__doc__)
+  File "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/argparse.py", line 1919, in __init__
+    self.add_argument(
+  File "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/argparse.py", line 1557, in add_argument
+    formatter = self._get_validation_formatter()
+  File "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/argparse.py", line 2740, in _get_validation_formatter
+    self._cached_formatter = self._get_formatter()
+  File "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/argparse.py", line 2732, in _get_formatter
+    formatter = self.formatter_class(prog=self.prog)
+  File "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/argparse.py", line 182, in __init__
+    self._set_color(color)
+  File "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/argparse.py", line 200, in _set_color
+    from _colorize import can_colorize, decolor, get_theme
+  File "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/_colorize.py", line 157, in <module>
+    @dataclass(frozen=True, kw_only=True)
+  File "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/dataclasses.py", line 1441, in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+  File "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/dataclasses.py", line 1222, in _process_class
+    text_sig = str(inspect.signature(
+AttributeError: module 'inspect' has no attribute 'signature' (consider renaming '/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/reference-recovery-20261021/inspect.py' since it has the same name as the standard library module named 'inspect' and prevents importing that standard library module)

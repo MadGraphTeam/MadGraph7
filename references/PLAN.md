@@ -695,3 +695,19 @@ resume metadata. The earlier pause note is a historical checkpoint.
   full-reference collection. All paused regression descendants are gone; new
   regression runs are independently logged. See the new resume ledger before
   using any older PID checkpoint.
+- Root reverified and pushed the corrected-parser/allocation candidate's
+  twenty-two tests, twenty-one golden lanes and both complete 1,392-request
+  exact replays. This is candidate correctness evidence; production still has
+  the eighteen-test original tensor bridge until a measured promotion.
+- Nineteen new MG7 boundary tests and the read-only upstream checker now pass
+  together with the existing installer/statistics tests (thirty tests total).
+  A three-line direct-Python diagnostic fix rejects an absent NinjaRS path with
+  the actionable installer message. Both requested upstream main pins remain
+  unchanged; a separate newer Symbolica arithmetic patch is recorded but not
+  independently substituted for NinjaRS's explicit dependency.
+- The controllerless original-reference worker was terminated only after exact
+  identity and missing-pipe-peer verification. Historical data are unchanged.
+  One fresh full-eight helper-reference collector runs on CPU207, QCD4/EW4
+  first, under the unchanged 24-hour timeout and frozen protocol. Its sealed
+  recovery ledger is separate from the live incomplete report. Final timing
+  remains held until its references and the final numerical source are ready.

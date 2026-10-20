@@ -1,0 +1,32 @@
+{
+  "schema": "authorized-full-eight-reference-restart-plan-v1",
+  "state": "ready-not-launched",
+  "root_authorization": "Preserve interrupted attempt, verify exact PID/startticks, terminate orphan, then one fresh full8 unchanged frozen collector onCPU207 with86400s timeout; no compositeadapter.",
+  "run_id": "corrected-original-core-v2-fresh-20261021",
+  "case_order": [
+    "qcd-4",
+    "ew-4",
+    "qcd-1",
+    "ew-1",
+    "qcd-2",
+    "ew-2",
+    "qcd-3",
+    "ew-3"
+  ],
+  "backends": [
+    1,
+    6,
+    7
+  ],
+  "cpu": 207,
+  "points_per_case": 100,
+  "repetitions": 2,
+  "acceptance_eligible": false,
+  "files_sha256": {
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/README.md": "cb5ba6992f4cb5823c854b25a8d651280770c2efcfdcc885ca48b78a6f5f14ae",
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/actions.py": "a87cbfe1e0a20f75e7c89e2d56279978298e6452f1c9439e03b23da4dade312c",
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/inspect.py": "2485e89dabd07c2512a707e82dc16c6178bae84616e3c2920a0d9b4874e27a6d",
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/pretermination-audit.json": "d1c37605ed28210641599488b4bada6558c8c874f4c5d6aaabf8ca4db9a2904f"
+  },
+  "identity_sha256": "dcca0f2d5fb77bc50688be7d47f223832a35bb249a8804825a2c46ad2ea55da4"
+}

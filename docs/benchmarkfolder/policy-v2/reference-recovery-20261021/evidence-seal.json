@@ -1,0 +1,73 @@
+{
+  "schema": "reference-recovery-and-held-core-preparation-evidence-v1",
+  "files": {
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/README.md": {
+      "sha256": "cb5ba6992f4cb5823c854b25a8d651280770c2efcfdcc885ca48b78a6f5f14ae",
+      "bytes": 2749
+    },
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/actions.py": {
+      "sha256": "a87cbfe1e0a20f75e7c89e2d56279978298e6452f1c9439e03b23da4dade312c",
+      "bytes": 5837
+    },
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/attempt-1.stderr": {
+      "sha256": "fb313efc01f8c75847fb50d46bd3235acdffb694e2544cc6251e3af66db31417",
+      "bytes": 2144
+    },
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/attempt-1.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/audit_interruption.py": {
+      "sha256": "2485e89dabd07c2512a707e82dc16c6178bae84616e3c2920a0d9b4874e27a6d",
+      "bytes": 6238
+    },
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/launch.json": {
+      "sha256": "6bf2df0c6f6f214e7c8d5811a0fa37135df9c9bd2867792e9b79083409f805d7",
+      "bytes": 1981
+    },
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/plan-before-procedure-retry.json": {
+      "sha256": "cbb864c293feff2b7fe2cd187c22858c10245fcde79147e31b15084a385220c4",
+      "bytes": 1320
+    },
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/plan.json": {
+      "sha256": "b86f6586fc5862898c3b862871d7c20292f416728674c834619828f4a5f443f2",
+      "bytes": 2070
+    },
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/posttermination-audit.json": {
+      "sha256": "62a57f009f25f7cc7bea35ec7834bbf6ad9c56ac5f9bd8b7b1b22272a8b9ed78",
+      "bytes": 69230
+    },
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/pretermination-audit.json": {
+      "sha256": "d1c37605ed28210641599488b4bada6558c8c874f4c5d6aaabf8ca4db9a2904f",
+      "bytes": 70595
+    },
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/termination.json": {
+      "sha256": "3f4ce1960de5a9433f4be38905168f683edf21781225abb5dcaa55af8497810b",
+      "bytes": 563
+    },
+    "docs/benchmarkfolder/policy-v2/reference-recovery-20261021/verify.py": {
+      "sha256": "da72c7e7abe590bac0c25b3cabadccd2f78fdc6576223f6f12a98059c98c2b89",
+      "bytes": 1866
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-plan-final-round-v1/README.md": {
+      "sha256": "3e8868decd6394114f097069417cdb21650dfe9db509a56a93976632caa4bf62",
+      "bytes": 4302
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-plan-final-round-v1/cpu-policy-review.json": {
+      "sha256": "92e9db6ae7cdcb86c26fd18ee78fe36bec30441db697ba9f1b240c01bfa6098c",
+      "bytes": 1154
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-plan-final-round-v1/preflight-help.txt": {
+      "sha256": "28d02e09d6f808a0c83fcd8cb103d41a1909aaa0134b72fa12f27ed914b31afd",
+      "bytes": 248
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-plan-final-round-v1/preflight.py": {
+      "sha256": "f3ed570cf24c88b98619617c37a3e884786d1ec7707e548a8b9c081588d8c854",
+      "bytes": 2176
+    }
+  },
+  "file_count": 16,
+  "bytes": 172473,
+  "state": "recovery-sealed-fresh-collector-live-final-timing-held",
+  "identity_sha256": "bc660bcc71e02b67ea3c5210205d6b43bcfd795913bf8d5f390adc814e0451d3"
+}

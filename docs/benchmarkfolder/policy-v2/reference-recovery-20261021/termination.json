@@ -1,0 +1,15 @@
+{
+  "schema": "exact-orphan-termination-v1",
+  "root_authorized": true,
+  "authorization": "Root authorized preserving the interrupted attempt and terminating this exact PID/start-ticks orphan before one fresh full-eight-case campaign.",
+  "pid": 2962065,
+  "start_ticks": 55987751,
+  "signal": "SIGKILL",
+  "utc": "2026-10-20T23:16:22.776028+00:00",
+  "result_state": "absent",
+  "group_members_before": [
+    2962065
+  ],
+  "pretermination_audit_sha256": "d1c37605ed28210641599488b4bada6558c8c874f4c5d6aaabf8ca4db9a2904f",
+  "old_report_status_edited": false
+}
