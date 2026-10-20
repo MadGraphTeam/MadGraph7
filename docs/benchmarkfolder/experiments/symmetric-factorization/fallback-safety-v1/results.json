@@ -1,0 +1,105 @@
+{
+  "complete": false,
+  "acceptance_eligible": false,
+  "cpu": 2,
+  "source_sha256": "32bafb07883777f2e4f9a633fd15118a5de2bb7c5384280ae81391b08eb721ab",
+  "factor_sha256": "fec33d37a7f668355dd9073462117aa330cc81329ed7c4a069000c4b0962e570",
+  "proof_sha256": "f5bc8c65680a028e79103f788fefc2356962350a9a7cffd8ffacbfad49510f42",
+  "generator_sha256": "4e584f4977f615fff35a5079ac7b7e4cd071cda99ee0b5faafa96dae4411c98e",
+  "compiler": {
+    "command": [
+      "gfortran",
+      "--version"
+    ],
+    "returncode": 0,
+    "seconds": 0.029829413047991693,
+    "output": "GNU Fortran (GCC) 15.3.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n"
+  },
+  "scope": "Exact public fallback with false entry-INEXACT, 6000 shape/rounding/exception fixtures per configuration; each supported enabled IEEE trap also forces fallback. No fast-path numerical or process/performance claim.",
+  "results": [
+    {
+      "name": "standalone-rank2-full",
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-c",
+          "constants.f",
+          "original.f",
+          "factor.f"
+        ],
+        "returncode": 0,
+        "seconds": 7.285626419936307,
+        "output": ""
+      },
+      "tests": {
+        "fallback_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.o",
+            "original.o",
+            "factor.o",
+            "fallback.f90",
+            "-o",
+            "fallback"
+          ],
+          "returncode": 0,
+          "seconds": 3.877784359967336,
+          "output": ""
+        },
+        "fallback": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v1/standalone-rank2-full/fallback"
+          ],
+          "returncode": 0,
+          "seconds": 7.42507882299833,
+          "output": " PASS        6000\n",
+          "executable_sha256": "c0caf56827b189eefd1243d9431107f1386d288fa973a923d6bb357c515367d3"
+        },
+        "traps_build": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.o",
+            "original.o",
+            "factor.o",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "returncode": 0,
+          "seconds": 2.251827950007282,
+          "output": ""
+        },
+        "traps": {
+          "command": [
+            "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v1/standalone-rank2-full/traps"
+          ],
+          "returncode": 0,
+          "seconds": 0.006061572930775583,
+          "output": " PASS           5\n",
+          "executable_sha256": "0f16b75305f93b8c6569fe4ae67f0abecbf9b73cad4e85c5ccfb47d411a7e467"
+        }
+      },
+      "sources": {
+        "original.f": "26929ebdcfe3d1f9948ea42505cd014840ae9b40fab8a91b5b18d4f89461f906",
+        "fallback.f90": "f99d00f67eed25e3d4671d1030c73906b11189e969dbdd507eca621d872699da",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "traps.f90": "c1144f3523abd81ee0c44e2499a25f5cf2234e1205a5affd59b21717614bf9fc",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "5d71afc6125bad39fcdcdf21a4e27e52baff74c670145799a675e9012d9f0495"
+      }
+    }
+  ]
+}

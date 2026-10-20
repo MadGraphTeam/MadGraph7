@@ -1,0 +1,7 @@
+# Independent full-QCD3 factor trace audit
+
+Read-only verification regenerated the changed source text using the retained FFV-only factor selector, checked parent/variant source inventories, executable and numerical-library identities, actual parameter-card search order, identical 100-point input, and all 200 point/order rows per variant. All 800 printed coefficients, accuracy estimates and return statuses are exact: 98 DP216 and 2 QP328. The trace resets after initialization immediately before the timed traversal and counts one increment per helper invocation after all guards; 6528 fast invocations and zero fallbacks are retained. No build or amplitude evaluation was performed by this audit.
+
+The first local audit stopped at an evidence-source assertion because canonical factor.py had subsequently gained an FFS selector; the retained FFV-only snapshot remained correct. The second local audit used the exact retained selector but mistakenly treated policy.delta(), which returns a set, as a dictionary; its stderr was `TypeError: 'set' object is not subscriptable` at the local audit's line 28 and its redirected log is empty. The corrected v3 audit passes. These are verifier scripting failures, not failed numerical comparisons, and both prior logs remain retained.
+
+The successful script is intended to run from the repository root against retained evidence plus the still-live isolated source/executable trees. This is a diagnostic changed-association control, not a final performance gate.

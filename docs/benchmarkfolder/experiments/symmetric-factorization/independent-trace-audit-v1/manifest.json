@@ -1,0 +1,28 @@
+{
+  "schema": "independent-factor-trace-audit-v1",
+  "passed": true,
+  "physics_evaluations_started": false,
+  "files": {
+    "docs/benchmarkfolder/experiments/symmetric-factorization/independent-trace-audit-v1/README.md": {
+      "sha256": "94c5a421c0502785caee2a2720741d77ba782ac56c544e059b42ce8186c89afe",
+      "bytes": 1508
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization/independent-trace-audit-v1/audit-factor-trace.py": {
+      "sha256": "8baceb81e0dec0a36d575023d8a83662621c92c34b2d9341ad5a9b03ffb52f19",
+      "bytes": 4639
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization/independent-trace-audit-v1/independent-qcd3-factor-trace-20261020-v2.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization/independent-trace-audit-v1/independent-qcd3-factor-trace-20261020-v3.log": {
+      "sha256": "63652a899f71664e0f99cc9ce5e51170de38a5c460de84178c40fdf14c8e2e18",
+      "bytes": 505
+    },
+    "docs/benchmarkfolder/experiments/symmetric-factorization/independent-trace-audit-v1/independent-qcd3-factor-trace-20261020.log": {
+      "sha256": "e0d9d3195371114369f8765b5def811d8f14635e9ccee87f725914291e6d6b51",
+      "bytes": 88
+    }
+  },
+  "identity_sha256": "5701fd2131d8c7fe86fab357beb555351714f08369b8bfe82fcec999074806bf"
+}

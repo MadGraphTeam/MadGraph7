@@ -1,0 +1,15 @@
+{
+  "relative_tolerance": 1e-07,
+  "scale_tolerance": 1e-10,
+  "formula": "abs(a-b) <= 1e-7*max(abs(a),abs(b)) + 1e-10*max(abs(all four coefficients of both variants at this point))",
+  "stability": {
+    "MLStabThres": 1e-09,
+    "COLLIERRequiredAccuracy": 1e-10
+  },
+  "backend": 6,
+  "points": 100,
+  "passes": 1,
+  "input_policy": "Byte-identical retained physics cards and all100 point stream",
+  "status_policy": "All rows require stable own Ninja DP/QP statuses; preserve and report every accuracy/status change. Added rescues require investigation; never loosen stability thresholds.",
+  "acceptance_eligible": false
+}

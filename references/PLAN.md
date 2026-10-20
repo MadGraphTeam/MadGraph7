@@ -505,3 +505,24 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   Retained source snapshots allow independent offline proof verification.
   Compiled oracle, stability and performance validation are still required;
   the factorization is not part of production.
+- The isolated compiled derivative-row factorization now passes 240 exact
+  stored-input fixtures covering 273,280 complex binary128 outputs, including
+  severe cancellation. Separate campaigns check 48,000 false-entry fallbacks,
+  152 true-entry guard rejections and forty enabled-trap controls. An independent
+  replay verifies the retained inputs, source hashes and arithmetic results.
+  A complete 100-point QCD3 comparison preserves all 800 printed coefficients,
+  accuracy estimates and statuses: 98 Ninja DP evaluations and two QP rescues.
+  Its trace records 6,528 accepted factor calls and no fallbacks. Seven
+  uninstrumented full-process pairs preserve all 5,600 compared coefficients
+  and rescue counts, but their median runtime ratio is 0.967791 with a 95%
+  interval of [0.946202, 1.008584]. This does not establish a speedup. The
+  complete inconclusive series is retained; a separate fixed 21-pair series
+  is being prepared to resolve the modest estimated gain. No production port
+  has been made.
+- Corrected-original reference collection completes the first six core streams,
+  then reaches the unchanged 7,200-second startup timeout during QCD4 CutTools
+  initialization, before any accepted QCD4 measurement. The failed full-suite
+  run and its earlier results are retained. A fresh full-eight-case retry is
+  running with an 86,400-second phase timeout and the same points, numerical
+  settings, CPU and frozen collection tools. Copied pre-existing output files
+  from the timed-out worker are not measurements.

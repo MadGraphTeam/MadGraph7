@@ -1,0 +1,201 @@
+{
+  "complete": true,
+  "numerical_validation_pending": true,
+  "acceptance_eligible": false,
+  "cpu": 4,
+  "results": [
+    {
+      "key": "nlo-MP_FFS1L1_2-rank2-full",
+      "rank": 2,
+      "terminal": false,
+      "vertex": "MP_FFS1L1_2",
+      "flags": [
+        "-O3",
+        "-w",
+        "-fPIC",
+        "-ffixed-line-length-132",
+        "-fno-automatic"
+      ],
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 1.9099556159926578,
+        "output": ""
+      },
+      "returncode": 0,
+      "seconds": 0.21282703999895602,
+      "raw_dump_sha256": "2cf0a557b14122173925ad5994a16577c33c27e3ea99c018f7235e3a5cc37a8d",
+      "gzip_sha256": "af893d977fe1562f32ef8384fff809e2f16d3f0ddc33603a258f4e5c5ca9f0f9",
+      "executable_sha256": "18c53cae89b81322162f7908acd9e51d1c503e32622e701115516b2b99b98acf",
+      "sources": {
+        "oracle.f90": "25337d46e0bce05f1809657bd31da202e8b30ce16c185878567fa186efa4a191",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "original.f": "26929ebdcfe3d1f9948ea42505cd014840ae9b40fab8a91b5b18d4f89461f906",
+        "traps.f90": "c1144f3523abd81ee0c44e2499a25f5cf2234e1205a5affd59b21717614bf9fc",
+        "factor.f": "53d6764406e66f7881b72eb3fdcc525209bfe6e6560cc98f5e2a82f1de7eca4d",
+        "fallback.f90": "f99d00f67eed25e3d4671d1030c73906b11189e969dbdd507eca621d872699da",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+      }
+    },
+    {
+      "key": "nlo-MP_FFS1L1_2-rank2-terminal",
+      "rank": 2,
+      "terminal": true,
+      "vertex": "MP_FFS1L1_2",
+      "flags": [
+        "-O3",
+        "-w",
+        "-fPIC",
+        "-ffixed-line-length-132",
+        "-fno-automatic"
+      ],
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 2.0709367899689823,
+        "output": ""
+      },
+      "returncode": 0,
+      "seconds": 0.15565834497101605,
+      "raw_dump_sha256": "7d9c1cbe3b6d9ef664d29ee442982b857d02ba19242f141e3d1ecc44b7032786",
+      "gzip_sha256": "1cb9ebbeeb589f331a9403474e29c285c843694a7b7d86afbd7aaf422c88b38a",
+      "executable_sha256": "8fa76f9798fd9145097b703169bd8244b3843d06c75fa902bbc15932acfda5e3",
+      "sources": {
+        "oracle.f90": "4c29fd3280988b1a3f98306471c2be9b04ccaf65895afeddfb0b8c27523eb22b",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "original.f": "07fc52f177cb39efb571d204867b93dee075647ae97347bc1141eb8e113d4026",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "fallback.f90": "877b149f3b2b9ad825b5255212eb7151d833049c719d036e2c419aab454de181",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "factor.f": "0911f1bb0911767484307cdf78300376b68f4e539e2038cd0bca1ffd3d056f55",
+        "traps.f90": "720a069288abceb3fee6dfdff3973352e463bb878cec8921d2b94ff22f3fda27"
+      }
+    },
+    {
+      "key": "nlo-MP_FFS1L2_1-rank2-full",
+      "rank": 2,
+      "terminal": false,
+      "vertex": "MP_FFS1L2_1",
+      "flags": [
+        "-O3",
+        "-w",
+        "-fPIC",
+        "-ffixed-line-length-132",
+        "-fno-automatic"
+      ],
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 1.9052317870082334,
+        "output": ""
+      },
+      "returncode": 0,
+      "seconds": 0.20731779793277383,
+      "raw_dump_sha256": "993ab33de8011c8483321f20794fbe1bae66bd2a60bed1745d603f74e604a6a0",
+      "gzip_sha256": "ab2739517ae3e26512b33f80f4cb72eab074751c86fc52d4c9f65f91aa1bfc63",
+      "executable_sha256": "5d160b8c4465b0f77c1ee45c18fe7c2c2b006c39935b5f75ec3c568d4a088afd",
+      "sources": {
+        "fallback.f90": "f99d00f67eed25e3d4671d1030c73906b11189e969dbdd507eca621d872699da",
+        "traps.f90": "c1144f3523abd81ee0c44e2499a25f5cf2234e1205a5affd59b21717614bf9fc",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "oracle.f90": "dce82b2a325f1fe899ac564ac9d8fc3b3a5b66152453de14236fe185af66d2ae",
+        "original.f": "26929ebdcfe3d1f9948ea42505cd014840ae9b40fab8a91b5b18d4f89461f906",
+        "factor.f": "5d71afc6125bad39fcdcdf21a4e27e52baff74c670145799a675e9012d9f0495"
+      }
+    },
+    {
+      "key": "nlo-MP_FFS1L2_1-rank2-terminal",
+      "rank": 2,
+      "terminal": true,
+      "vertex": "MP_FFS1L2_1",
+      "flags": [
+        "-O3",
+        "-w",
+        "-fPIC",
+        "-ffixed-line-length-132",
+        "-fno-automatic"
+      ],
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "oracle.f90",
+          "-o",
+          "oracle-check"
+        ],
+        "returncode": 0,
+        "seconds": 2.116938501014374,
+        "output": ""
+      },
+      "returncode": 0,
+      "seconds": 0.1576199809787795,
+      "raw_dump_sha256": "651ecaa4823507dc542424679127d2d0d9109548dec21dbbadab68bc60e3f99b",
+      "gzip_sha256": "b3fd58b6229df4a48c1ab10640446c7e52efda2eaba7d4b31ee0e29caefd1431",
+      "executable_sha256": "c4091527364ff0c444f41ce231e2829d2ad5e75b2f3ef07bb1d16156fbcdd516",
+      "sources": {
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "factor.f": "82c5cd782b2fc16d949eb94b9f575088abbaa2c9103bfeebe00c94b855aaa552",
+        "fallback.f90": "877b149f3b2b9ad825b5255212eb7151d833049c719d036e2c419aab454de181",
+        "oracle.f90": "e458189059f3b12c0cd934c76d83cd805be7e8fd96ad29ac0fda3f1b103d56ef",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "traps.f90": "720a069288abceb3fee6dfdff3973352e463bb878cec8921d2b94ff22f3fda27",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "original.f": "07fc52f177cb39efb571d204867b93dee075647ae97347bc1141eb8e113d4026"
+      }
+    }
+  ],
+  "proof_sha256": "f5bc8c65680a028e79103f788fefc2356962350a9a7cffd8ffacbfad49510f42",
+  "factor_sha256": "bbf048ffe9361a041af616f95e617e8ee38de541756ad3478d9fa0e238054239",
+  "oracle_driver_sha256": "48e9b74fca6252785ddbabb04a75fe1991edd9949355fa0e0f51a5d0287525eb",
+  "runner_sha256": "5130b9483386597906da6a2279cab2a7c166238b768eb4eb13571a36e44b61cd",
+  "scope": "Compiled stored-binary128 input/output dumps. Completion alone is not numerical validation; the independent exact Fraction oracle must validate each retained stream."
+}

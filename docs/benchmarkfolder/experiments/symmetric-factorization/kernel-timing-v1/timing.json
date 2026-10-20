@@ -1,0 +1,499 @@
+{
+  "complete": true,
+  "acceptance_eligible": false,
+  "cpu": 2,
+  "loops": 300,
+  "flags": [
+    "-O3",
+    "-w",
+    "-fPIC",
+    "-ffixed-line-length-132",
+    "-fno-automatic"
+  ],
+  "results": [
+    {
+      "key": "nlo-MP_FFV1L2_1-rank2-full",
+      "trial": 1,
+      "seconds": {
+        "original": [
+          0.143914,
+          0.142283,
+          0.14368199999999998,
+          0.14149299999999998,
+          0.14419899999999997,
+          0.142131,
+          0.14473200000000008
+        ],
+        "factor": [
+          0.074346,
+          0.07391900000000001,
+          0.07345199999999996,
+          0.07378700000000005,
+          0.07347499999999996,
+          0.07484200000000008,
+          0.07343699999999997
+        ]
+      },
+      "medians": {
+        "original": 0.14368199999999998,
+        "factor": 0.07378700000000005
+      },
+      "ratio": 0.513543798109715,
+      "oracle_sha256": "19372047ecaee751d01e83bcd97e60a6f3bfe79bcd0315e61c6d910b61f6945d",
+      "executable_sha256": "e518b6270def15e9fca7ddca3ceb99297618df04ee2d8d0634c168c2549039d5",
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "timing.f90",
+          "-o",
+          "timing"
+        ],
+        "returncode": 0,
+        "seconds": 1.4520426130620763,
+        "output": ""
+      },
+      "sources": {
+        "factor.f": "beb5314b6aafce29e896af340534776d95b29fc3107d7faf48970dd2da6c697a",
+        "traps.f90": "c1144f3523abd81ee0c44e2499a25f5cf2234e1205a5affd59b21717614bf9fc",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "fallback.f90": "f99d00f67eed25e3d4671d1030c73906b11189e969dbdd507eca621d872699da",
+        "original.f": "26929ebdcfe3d1f9948ea42505cd014840ae9b40fab8a91b5b18d4f89461f906",
+        "timing.f90": "8125c8c01859c8bcd4b62690da53759fc150865d0ba32a3ccb7033d3b3842d49",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+      }
+    },
+    {
+      "key": "nlo-MP_FFV1L2_1-rank2-full",
+      "trial": 2,
+      "seconds": {
+        "original": [
+          0.043537999999999855,
+          0.04330299999999987,
+          0.043345999999999885,
+          0.043425999999999965,
+          0.04353399999999996,
+          0.04329000000000005,
+          0.04353600000000002
+        ],
+        "factor": [
+          0.0322579999999999,
+          0.032273999999999914,
+          0.032347000000000126,
+          0.03215699999999977,
+          0.032142000000000115,
+          0.032235000000000014,
+          0.03225800000000012
+        ]
+      },
+      "medians": {
+        "original": 0.043425999999999965,
+        "factor": 0.0322579999999999
+      },
+      "ratio": 0.7428268779072428,
+      "oracle_sha256": "19372047ecaee751d01e83bcd97e60a6f3bfe79bcd0315e61c6d910b61f6945d",
+      "executable_sha256": "e518b6270def15e9fca7ddca3ceb99297618df04ee2d8d0634c168c2549039d5",
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "timing.f90",
+          "-o",
+          "timing"
+        ],
+        "returncode": 0,
+        "seconds": 1.4520426130620763,
+        "output": ""
+      },
+      "sources": {
+        "factor.f": "beb5314b6aafce29e896af340534776d95b29fc3107d7faf48970dd2da6c697a",
+        "traps.f90": "c1144f3523abd81ee0c44e2499a25f5cf2234e1205a5affd59b21717614bf9fc",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "fallback.f90": "f99d00f67eed25e3d4671d1030c73906b11189e969dbdd507eca621d872699da",
+        "original.f": "26929ebdcfe3d1f9948ea42505cd014840ae9b40fab8a91b5b18d4f89461f906",
+        "timing.f90": "8125c8c01859c8bcd4b62690da53759fc150865d0ba32a3ccb7033d3b3842d49",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+      }
+    },
+    {
+      "key": "nlo-MP_FFV1L2_1-rank2-terminal",
+      "trial": 1,
+      "seconds": {
+        "original": [
+          0.033106,
+          0.03305299999999999,
+          0.03298899999999999,
+          0.03303300000000001,
+          0.033028999999999975,
+          0.03299599999999997,
+          0.033069000000000015
+        ],
+        "factor": [
+          0.025532,
+          0.025394,
+          0.025288000000000005,
+          0.025261000000000006,
+          0.025257,
+          0.025255000000000027,
+          0.025245000000000017
+        ]
+      },
+      "medians": {
+        "original": 0.03303300000000001,
+        "factor": 0.025261000000000006
+      },
+      "ratio": 0.7647201283564921,
+      "oracle_sha256": "3043c8409cc8d73e58a7a3315eba3a5e3b8d925f346a28bf2d2c3dc9e17a61a6",
+      "executable_sha256": "5771faabceec9609b85e8fcc16d4a194629e7c1ab075d917ab013afa5506d86c",
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "timing.f90",
+          "-o",
+          "timing"
+        ],
+        "returncode": 0,
+        "seconds": 1.8437415190273896,
+        "output": ""
+      },
+      "sources": {
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "07fc52f177cb39efb571d204867b93dee075647ae97347bc1141eb8e113d4026",
+        "timing.f90": "8787bb227012a0e8001528adbe0f5b06ff1eb860199f05018721b50b075e52aa",
+        "traps.f90": "720a069288abceb3fee6dfdff3973352e463bb878cec8921d2b94ff22f3fda27",
+        "fallback.f90": "877b149f3b2b9ad825b5255212eb7151d833049c719d036e2c419aab454de181",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "8e02d478241fb168c2c4550d9985c033575db9c61c360cdef34c116a002e3d55"
+      }
+    },
+    {
+      "key": "nlo-MP_FFV1L2_1-rank2-terminal",
+      "trial": 2,
+      "seconds": {
+        "original": [
+          0.012469999999999981,
+          0.012485999999999997,
+          0.012465000000000004,
+          0.012458999999999998,
+          0.012471999999999928,
+          0.01247100000000001,
+          0.012469999999999981
+        ],
+        "factor": [
+          0.011548000000000003,
+          0.011531999999999987,
+          0.011519000000000001,
+          0.011585999999999985,
+          0.011529000000000011,
+          0.011561999999999961,
+          0.01154999999999995
+        ]
+      },
+      "medians": {
+        "original": 0.012469999999999981,
+        "factor": 0.011548000000000003
+      },
+      "ratio": 0.9260625501202903,
+      "oracle_sha256": "3043c8409cc8d73e58a7a3315eba3a5e3b8d925f346a28bf2d2c3dc9e17a61a6",
+      "executable_sha256": "5771faabceec9609b85e8fcc16d4a194629e7c1ab075d917ab013afa5506d86c",
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "timing.f90",
+          "-o",
+          "timing"
+        ],
+        "returncode": 0,
+        "seconds": 1.8437415190273896,
+        "output": ""
+      },
+      "sources": {
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "07fc52f177cb39efb571d204867b93dee075647ae97347bc1141eb8e113d4026",
+        "timing.f90": "8787bb227012a0e8001528adbe0f5b06ff1eb860199f05018721b50b075e52aa",
+        "traps.f90": "720a069288abceb3fee6dfdff3973352e463bb878cec8921d2b94ff22f3fda27",
+        "fallback.f90": "877b149f3b2b9ad825b5255212eb7151d833049c719d036e2c419aab454de181",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "8e02d478241fb168c2c4550d9985c033575db9c61c360cdef34c116a002e3d55"
+      }
+    },
+    {
+      "key": "nlo-MP_FFV1L2_1-rank4-full",
+      "trial": 1,
+      "seconds": {
+        "original": [
+          0.821654,
+          0.7578010000000002,
+          0.7840449999999999,
+          0.7618469999999999,
+          0.762181,
+          0.7653270000000001,
+          0.7580919999999995
+        ],
+        "factor": [
+          0.469933,
+          0.4373309999999999,
+          0.4402229999999996,
+          0.4480649999999997,
+          0.43910800000000005,
+          0.4443450000000002,
+          0.4519380000000002
+        ]
+      },
+      "medians": {
+        "original": 0.762181,
+        "factor": 0.4443450000000002
+      },
+      "ratio": 0.5829914416654315,
+      "oracle_sha256": "cbea947f593da504f213ac0613347a15b6a288378ef4be19405645dbc845d76f",
+      "executable_sha256": "f7050cf85ac9d01aee99b0c5047e66a7d6fd64c8bb1475db77b2fbc5d66618d4",
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "timing.f90",
+          "-o",
+          "timing"
+        ],
+        "returncode": 0,
+        "seconds": 1.662295950925909,
+        "output": ""
+      },
+      "sources": {
+        "fallback.f90": "3f6fa7436e036655fca667d564ddd82d50a55fb68dec7ed9fc1326f7ecbe70b6",
+        "traps.f90": "8bfdd6a8037a1f7836d403a59769e05f34abb22a1b96a195303df61529375c82",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "timing.f90": "075f99a20a47bfd79135479c7bf284dbaa32c2a7cf1e3df78c50631ee47c6117",
+        "original.f": "58e41bb28b1cb3afc8d57707060471065aad63c201af26b4d693a71df2d78705",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "a16412aada3f04860710e69129d11677257d70e1d84dd0796dae0f2e30a539db",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+      }
+    },
+    {
+      "key": "nlo-MP_FFV1L2_1-rank4-full",
+      "trial": 2,
+      "seconds": {
+        "original": [
+          0.24383299999999863,
+          0.24303100000000022,
+          0.24144699999999908,
+          0.2410300000000003,
+          0.23922499999999935,
+          0.23981900000000067,
+          0.2395340000000008
+        ],
+        "factor": [
+          0.14997499999999953,
+          0.15260099999999888,
+          0.15167100000000033,
+          0.14785200000000032,
+          0.146509,
+          0.14733700000000027,
+          0.14736500000000063
+        ]
+      },
+      "medians": {
+        "original": 0.2410300000000003,
+        "factor": 0.14785200000000032
+      },
+      "ratio": 0.6134174169190563,
+      "oracle_sha256": "cbea947f593da504f213ac0613347a15b6a288378ef4be19405645dbc845d76f",
+      "executable_sha256": "f7050cf85ac9d01aee99b0c5047e66a7d6fd64c8bb1475db77b2fbc5d66618d4",
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "timing.f90",
+          "-o",
+          "timing"
+        ],
+        "returncode": 0,
+        "seconds": 1.662295950925909,
+        "output": ""
+      },
+      "sources": {
+        "fallback.f90": "3f6fa7436e036655fca667d564ddd82d50a55fb68dec7ed9fc1326f7ecbe70b6",
+        "traps.f90": "8bfdd6a8037a1f7836d403a59769e05f34abb22a1b96a195303df61529375c82",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "timing.f90": "075f99a20a47bfd79135479c7bf284dbaa32c2a7cf1e3df78c50631ee47c6117",
+        "original.f": "58e41bb28b1cb3afc8d57707060471065aad63c201af26b4d693a71df2d78705",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "factor.f": "a16412aada3f04860710e69129d11677257d70e1d84dd0796dae0f2e30a539db",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+      }
+    },
+    {
+      "key": "nlo-MP_FFV1L2_1-rank4-terminal",
+      "trial": 1,
+      "seconds": {
+        "original": [
+          0.185253,
+          0.18458200000000002,
+          0.18652400000000002,
+          0.18751400000000007,
+          0.18984699999999988,
+          0.19008599999999998,
+          0.18793999999999977
+        ],
+        "factor": [
+          0.118085,
+          0.11646700000000004,
+          0.11699199999999998,
+          0.11775000000000002,
+          0.11961200000000005,
+          0.1189119999999999,
+          0.1210770000000001
+        ]
+      },
+      "medians": {
+        "original": 0.18751400000000007,
+        "factor": 0.118085
+      },
+      "ratio": 0.6297396461064237,
+      "oracle_sha256": "b53f6a349819fd6049ca81eef72791bdf6a0348f0a72c4be71c760ba4d532de2",
+      "executable_sha256": "a27d8c80c92fa5466c0f80c174e04f7707c5a811ed345452cf1f31e78bd30298",
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "timing.f90",
+          "-o",
+          "timing"
+        ],
+        "returncode": 0,
+        "seconds": 1.4638524900656193,
+        "output": ""
+      },
+      "sources": {
+        "factor.f": "04e5ac414bbed3ea34126d624070f077dbc5988099ba5dce55e3800d7cb70cfb",
+        "fallback.f90": "e970f5599f6aec100cc8d94740c6368197b6aa972c49e59cd5facc9304a92599",
+        "traps.f90": "c36edd24fa382d57a114a814d519b00c23dfcd862adf1234f3d2e3ab91c02d5e",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "9649e7c74e5f100577b05d63abf2c53e1424af3567e17d72305815913a6d7fef",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "timing.f90": "3c478a6448787000b1ee0ef8a0ecd6f936708d8bc1e6b1fe02c9f7b7326260be",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+      }
+    },
+    {
+      "key": "nlo-MP_FFV1L2_1-rank4-terminal",
+      "trial": 2,
+      "seconds": {
+        "original": [
+          0.055212999999999735,
+          0.054771000000000125,
+          0.055557999999999996,
+          0.05486499999999994,
+          0.054748999999999715,
+          0.05508399999999991,
+          0.055663999999999714
+        ],
+        "factor": [
+          0.05054200000000009,
+          0.05024300000000004,
+          0.05053300000000016,
+          0.05032399999999981,
+          0.050339000000000134,
+          0.05068499999999965,
+          0.050186000000000064
+        ]
+      },
+      "medians": {
+        "original": 0.05508399999999991,
+        "factor": 0.050339000000000134
+      },
+      "ratio": 0.9138588337811382,
+      "oracle_sha256": "b53f6a349819fd6049ca81eef72791bdf6a0348f0a72c4be71c760ba4d532de2",
+      "executable_sha256": "a27d8c80c92fa5466c0f80c174e04f7707c5a811ed345452cf1f31e78bd30298",
+      "build": {
+        "command": [
+          "gfortran",
+          "-O3",
+          "-w",
+          "-fPIC",
+          "-ffixed-line-length-132",
+          "-fno-automatic",
+          "constants.f",
+          "original.f",
+          "factor.f",
+          "timing.f90",
+          "-o",
+          "timing"
+        ],
+        "returncode": 0,
+        "seconds": 1.4638524900656193,
+        "output": ""
+      },
+      "sources": {
+        "factor.f": "04e5ac414bbed3ea34126d624070f077dbc5988099ba5dce55e3800d7cb70cfb",
+        "fallback.f90": "e970f5599f6aec100cc8d94740c6368197b6aa972c49e59cd5facc9304a92599",
+        "traps.f90": "c36edd24fa382d57a114a814d519b00c23dfcd862adf1234f3d2e3ab91c02d5e",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "original.f": "9649e7c74e5f100577b05d63abf2c53e1424af3567e17d72305815913a6d7fef",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "timing.f90": "3c478a6448787000b1ee0ef8a0ecd6f936708d8bc1e6b1fe02c9f7b7326260be",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+      }
+    }
+  ],
+  "factor_sha256": "fec33d37a7f668355dd9073462117aa330cc81329ed7c4a069000c4b0962e570",
+  "oracle_driver_sha256": "48e9b74fca6252785ddbabb04a75fe1991edd9949355fa0e0f51a5d0287525eb",
+  "runner_sha256": "3ff6cd5f37bf1b1e5e247740ec27885e07abbdff747af120d97a918476de0133",
+  "scope": "Synthetic complete guarded QP kernels, seven alternating pairs; dense/two-thirds-zero A with actual source-derived rounded B replaced by exactly phase-related stored derivative rows. Ordinary CPU-time diagnostics during concurrent host work, not a full-process speed or acceptance claim. No trace counters inside timed kernels. Each timed output is bit-identical to its own independently oracle-validated variant, not to the other variant."
+}

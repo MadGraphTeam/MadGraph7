@@ -1,0 +1,170 @@
+original.f:114:41:
+
+  114 |       ENDSUBROUTINE TEST_TERMINAL_WL_2_1(A,LCUT_SIZE,B,IN_SIZE
+      |                                         1
+Error: Expected label ‘test_update_wl_2_1_dense’ for END SUBROUTINE statement at (1)
+original.f:116:132:
+
+  116 |       USE TEST_POLYNOMIAL_CONSTANTS
+      |                                                                                                                                    1
+Error: Unexpected USE statement at (1)
+original.f:117:132:
+
+  117 |       USE, INTRINSIC :: IEEE_ARITHMETIC
+      |                                                                                                                                    1
+Error: Unexpected USE statement at (1)
+original.f:118:132:
+
+  118 |       USE, INTRINSIC :: IEEE_EXCEPTIONS
+      |                                                                                                                                    1
+Error: Unexpected USE statement at (1)
+original.f:119:20:
+
+  119 |       IMPLICIT NONE
+      |                    1
+Error: Duplicate IMPLICIT NONE statement at (1)
+original.f:120:15:
+
+  120 |       INTEGER I,J,K,L,M
+      |               1
+Error: Symbol ‘i’ at (1) already has basic type of INTEGER
+original.f:121:18:
+
+  121 |       COMPLEX*32 A(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
+      |                  1~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Error: Symbol ‘a’ at (1) already has basic type of COMPLEX
+original.f:122:18:
+
+  122 |       COMPLEX*32 B(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+      |                  1~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Error: Symbol ‘b’ at (1) already has basic type of COMPLEX
+original.f:123:18:
+
+  123 |       COMPLEX*32 OUT(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
+      |                  1~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Error: Symbol ‘out’ at (1) already has basic type of COMPLEX
+original.f:124:15:
+
+  124 |       INTEGER LCUT_SIZE,IN_SIZE,OUT_SIZE
+      |               1~~~~~~~~
+Error: Symbol ‘lcut_size’ at (1) already has basic type of INTEGER
+original.f:125:28:
+
+  125 |       TYPE(IEEE_ROUND_TYPE) WL_ROUNDING
+      |                            1
+Error: Derived type ‘ieee_round_type’ at (1) is being used before it is defined
+original.f:126:132:
+
+  126 |       LOGICAL WL_NEAREST
+      |                                                                                                                                    1
+Error: Unexpected data declaration statement at (1)
+original.f:127:132:
+
+  127 |       LOGICAL WL_SKIP_ZERO
+      |                                                                                                                                    1
+Error: Unexpected data declaration statement at (1)
+original.f:128:132:
+
+  128 |       LOGICAL WL_AZERO(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
+      |                                                                                                                                    1
+Error: Unexpected data declaration statement at (1)
+original.f:129:132:
+
+  129 |       INTEGER WL_I,WL_K,WL_L
+      |                                                                                                                                    1
+Error: Unexpected data declaration statement at (1)
+original.f:130:132:
+
+  130 |       LOGICAL WL_ALREADY,WL_HALT,WL_ENTRY_INEXACT
+      |                                                                                                                                    1
+Error: Unexpected data declaration statement at (1)
+original.f:131:15:
+
+  131 |       INTEGER NEW_POSITION
+      |               1~~~~~~~~~~~
+Error: Symbol ‘new_position’ at (1) already has basic type of INTEGER
+original.f:132:18:
+
+  132 |       COMPLEX*32 UPDATER_COEF
+      |                  1~~~~~~~~~~~
+Error: Symbol ‘updater_coef’ at (1) already has basic type of COMPLEX
+original.f:158:17:
+
+  158 |      $          WL_AZERO(WL_K,WL_L,WL_I)=A(WL_K,WL_L,WL_I).EQ.0
+      |                 1
+Error: Syntax error in IF-clause after (1)
+original.f:139:42:
+
+  139 |       IF(IEEE_SUPPORT_HALTING(IEEE_INEXACT)) CALL
+      |                                          1
+Error: Symbol ‘ieee_inexact’ at (1) has no IMPLICIT type
+original.f:136:44:
+
+  136 |       WL_NEAREST=WL_ROUNDING.EQ.IEEE_NEAREST
+      |                                            1
+Error: Symbol ‘ieee_nearest’ at (1) has no IMPLICIT type
+original.f:137:7:
+
+  137 |       WL_ALREADY=WL_ENTRY_INEXACT
+      |       1~~~~~~~~~
+Error: Symbol ‘wl_already’ at (1) has no IMPLICIT type
+original.f:137:33:
+
+  137 |       WL_ALREADY=WL_ENTRY_INEXACT
+      |                                 1
+Error: Symbol ‘wl_entry_inexact’ at (1) has no IMPLICIT type
+original.f:138:7:
+
+  138 |       WL_HALT=.TRUE.
+      |       1~~~~~~
+Error: Symbol ‘wl_halt’ at (1) has no IMPLICIT type
+original.f:154:14:
+
+  154 |           DO WL_I=1,LCUT_SIZE
+      |              1~~~
+Error: Symbol ‘wl_i’ at (1) has no IMPLICIT type
+original.f:153:12:
+
+  153 |         DO WL_K=1,IN_SIZE
+      |            1~~~
+Error: Symbol ‘wl_k’ at (1) has no IMPLICIT type
+original.f:155:16:
+
+  155 |             DO WL_L=0,14
+      |                1~~~
+Error: Symbol ‘wl_l’ at (1) has no IMPLICIT type
+original.f:136:7:
+
+  136 |       WL_NEAREST=WL_ROUNDING.EQ.IEEE_NEAREST
+      |       1~~~~~~~~~
+Error: Symbol ‘wl_nearest’ at (1) has no IMPLICIT type
+original.f:135:45:
+
+  135 |       CALL IEEE_GET_ROUNDING_MODE(WL_ROUNDING)
+      |                                             1
+Error: Symbol ‘wl_rounding’ at (1) has no IMPLICIT type; did you mean ‘wl_bounded’?
+original.f:170:13:
+
+  170 |             WL_SKIP_ZERO=.FALSE.
+      |             1~~~~~~~~~~~
+Error: Symbol ‘wl_skip_zero’ at (1) has no IMPLICIT type
+original.f:135:45:
+
+  135 |       CALL IEEE_GET_ROUNDING_MODE(WL_ROUNDING)
+      |                                             1
+Error: Symbol ‘wl_rounding’ at (1) has no IMPLICIT type; did you mean ‘wl_bounded’?
+original.f:139:42:
+
+  139 |       IF(IEEE_SUPPORT_HALTING(IEEE_INEXACT)) CALL
+      |                                          1
+Error: Symbol ‘ieee_inexact’ at (1) has no IMPLICIT type
+original.f:139:42:
+
+  139 |       IF(IEEE_SUPPORT_HALTING(IEEE_INEXACT)) CALL
+      |                                          1
+Error: Symbol ‘ieee_inexact’ at (1) has no IMPLICIT type
+original.f:176:21:
+
+  176 |                   IF(WL_AZERO(K,L,I)) CYCLE
+      |                     1
+Error: Function ‘wl_azero’ at (1) has no IMPLICIT type

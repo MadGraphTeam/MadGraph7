@@ -1,0 +1,80 @@
+{
+  "scope": "Only explicit isolated proof-selector extension to two proved FFS maps; generated FFV arithmetic unchanged.",
+  "old_factor_sha256": "fec33d37a7f668355dd9073462117aa330cc81329ed7c4a069000c4b0962e570",
+  "new_factor_sha256": "bbf048ffe9361a041af616f95e617e8ee38de541756ad3478d9fa0e238054239",
+  "proof_sha256": "f5bc8c65680a028e79103f788fefc2356962350a9a7cffd8ffacbfad49510f42",
+  "ffv_exact_source_comparisons": [
+    {
+      "vertex": "MP_FFV1L1_2",
+      "rank": 2,
+      "terminal": false,
+      "generated_sha256": "7ac2478073feeae43711e51384f932dee718cb3c819dce5e008cac894c3e069b"
+    },
+    {
+      "vertex": "MP_FFV1L1_2",
+      "rank": 2,
+      "terminal": true,
+      "generated_sha256": "53b19350ff92553a95fdc2b8d9f26381d776d9f5d1a9cac17bd65495619fb723"
+    },
+    {
+      "vertex": "MP_FFV1L1_2",
+      "rank": 3,
+      "terminal": false,
+      "generated_sha256": "65db477bc232fd5a358666d7293f44cf2595e78ef72f758ecb0b863c3cbc10df"
+    },
+    {
+      "vertex": "MP_FFV1L1_2",
+      "rank": 3,
+      "terminal": true,
+      "generated_sha256": "1c6209377203bfb1c3156af0be1efc6021f2ec33a5bb41c1e14a9f295117295e"
+    },
+    {
+      "vertex": "MP_FFV1L1_2",
+      "rank": 4,
+      "terminal": false,
+      "generated_sha256": "75401fd4aa3b14e1ddb74470d7e83935727f59e6884548f50c6c512da2f5a6d5"
+    },
+    {
+      "vertex": "MP_FFV1L1_2",
+      "rank": 4,
+      "terminal": true,
+      "generated_sha256": "2e23fef4318470fdf7073d62d04a7cfe58c084b6ba6e7fcd780f676f6206e2d3"
+    },
+    {
+      "vertex": "MP_FFV1L2_1",
+      "rank": 2,
+      "terminal": false,
+      "generated_sha256": "5e24f71150bba7a2ae9970ef4a2debf5f1126d163569bcb6444f9ddd74949aa1"
+    },
+    {
+      "vertex": "MP_FFV1L2_1",
+      "rank": 2,
+      "terminal": true,
+      "generated_sha256": "bb8a524375da88715ea0b3fd1364f48497631a2238548e8503598127831fa7c4"
+    },
+    {
+      "vertex": "MP_FFV1L2_1",
+      "rank": 3,
+      "terminal": false,
+      "generated_sha256": "a786f57136ce8ab20ef3a75ab8c7bcec1d79c56f7ca1e492329e11d1b02ecaf9"
+    },
+    {
+      "vertex": "MP_FFV1L2_1",
+      "rank": 3,
+      "terminal": true,
+      "generated_sha256": "b70ba256a7e28e8cb77e2364881895da5a59c6c0223f81d4217ef86a88381ea8"
+    },
+    {
+      "vertex": "MP_FFV1L2_1",
+      "rank": 4,
+      "terminal": false,
+      "generated_sha256": "7f0541f8185c9a604fbb69cb3fb844148653626fd064ee78a85e1827f00f574a"
+    },
+    {
+      "vertex": "MP_FFV1L2_1",
+      "rank": 4,
+      "terminal": true,
+      "generated_sha256": "6d6dcfdd9529a8ea8a04978fa5fe4b9a2cdc9c2253158e3e4ea6bce7ee26d7bd"
+    }
+  ]
+}

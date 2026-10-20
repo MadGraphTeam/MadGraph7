@@ -1,0 +1,42 @@
+{
+  "campaigns": [
+    {
+      "aggregate": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle/validation-nlo-v1.json",
+      "cases": 80,
+      "complex_outputs": 103040,
+      "exact_recomputed": true,
+      "generated_sources": 64,
+      "passed": true,
+      "streams": 8
+    },
+    {
+      "aggregate": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle/validation-rank3-v1.json",
+      "cases": 40,
+      "complex_outputs": 44800,
+      "exact_recomputed": true,
+      "generated_sources": 32,
+      "passed": true,
+      "streams": 4
+    },
+    {
+      "aggregate": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle/validation-sa-v1.json",
+      "cases": 80,
+      "complex_outputs": 103040,
+      "exact_recomputed": true,
+      "generated_sources": 64,
+      "passed": true,
+      "streams": 8
+    }
+  ],
+  "guard_campaigns": [
+    {
+      "campaign": "docs/benchmarkfolder/experiments/symmetric-factorization/true-entry-guards-v1",
+      "comparisons": 152,
+      "generated_sources": 64,
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "read_only": true,
+  "symbolica_processes": 0
+}

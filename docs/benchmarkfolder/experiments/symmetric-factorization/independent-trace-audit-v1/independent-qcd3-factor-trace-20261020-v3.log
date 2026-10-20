@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "raw_point_order_rows_per_variant": 200,
+  "printed_coefficients_exact": 800,
+  "status_counts": {
+    "216": 98,
+    "328": 2
+  },
+  "guard_totals": {
+    "fast": 6528,
+    "fallback": 0
+  },
+  "retained_factor_sha256": "fec33d37a7f668355dd9073462117aa330cc81329ed7c4a069000c4b0962e570",
+  "source_transform_reproduced": true,
+  "source_card_library_executable_bindings_verified": true,
+  "diagnostic_only": true,
+  "physics_evaluations_started": false,
+  "builds_started": false
+}

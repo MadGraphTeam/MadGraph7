@@ -1,0 +1,15 @@
+original 0 100 points complete {'216': 98, '328': 2}
+factor 0 100 points complete {'216': 98, '328': 2}
+factor 1 100 points complete {'216': 98, '328': 2}
+original 1 100 points complete {'216': 98, '328': 2}
+original 2 100 points complete {'216': 98, '328': 2}
+factor 2 100 points complete {'216': 98, '328': 2}
+factor 3 100 points complete {'216': 98, '328': 2}
+original 3 100 points complete {'216': 98, '328': 2}
+original 4 100 points complete {'216': 98, '328': 2}
+factor 4 100 points complete {'216': 98, '328': 2}
+factor 5 100 points complete {'216': 98, '328': 2}
+original 5 100 points complete {'216': 98, '328': 2}
+original 6 100 points complete {'216': 98, '328': 2}
+factor 6 100 points complete {'216': 98, '328': 2}
+All comparisons passed; paired statistics {'passed': False, 'status': 'unresolved', 'runtime_ratio': 0.9677909504751802, 'ratio_confidence_interval_95': [0.9462018442649089, 1.0085839876384635], 'maximum_ratio': 1.0, 'bootstrap': {'method': 'paired percentile', 'resamples': 10000, 'seed': 410083}, 'measurements': {'baseline': {'samples': [0.06902423668, 0.0655674449, 0.06316210983000001, 0.06460829245000001, 0.06590813186, 0.06706347087, 0.06269493118], 'median': 0.0655674449, 'minimum': 0.06269493118, 'maximum': 0.06902423668, 'stdev': 0.0022035330201288024, 'median_absolute_deviation': 0.001496025970000009}, 'candidate': {'samples': [0.06345557982, 0.0624502072, 0.06446478134, 0.06309856733000001, 0.0637042926, 0.06458360377, 0.06251967275], 'median': 0.06345557982, 'minimum': 0.0624502072, 'maximum': 0.06458360377, 'stdev': 0.000853018214793682, 'median_absolute_deviation': 0.0009359070699999916}}}
