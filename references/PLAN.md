@@ -350,3 +350,14 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   fixture data only; the previous measured report remains intact. Representative
   collection, final eight-process measurements and performance acceptance remain
   outstanding.
+- A fresh pinned-download CLI installation passed its compiled Fortran DP/QP
+  checks and reproduced the production Rust archive. Relocated standalone
+  exports with internal dependencies passed DP, QP and stability evaluations
+  while the installation path and external library environment were unavailable.
+  The corresponding clean NLO build exposed a classifier incompatibility with
+  `-fno-automatic`; the failed build and raw evidence are retained. An `ASSOCIATE`
+  expression now avoids forbidden saved local storage in the elemental function.
+  The fix passes 42,000 compiled binary128/input/IEEE comparisons including NLO
+  flags, 39 polynomial tests and two exporter checks. Clean NLO regeneration
+  and execution remain required; no NLO success is inferred from the CLI's zero
+  exit code.

@@ -444,7 +444,8 @@ end program
 class SparseQPWavefunctionUpdateTest(unittest.TestCase):
     """Preserve output bits, input bits and IEEE flags, including empty calls."""
 
-    def check_kernel(self, mode, rounding_math=False, reject_layout=False):
+    def check_kernel(self, mode, rounding_math=False, reject_layout=False,
+                     no_automatic=False):
         left, right = (1, 1) if mode == 'expanded' else (2, 1)
         with tempfile.TemporaryDirectory(prefix='madloop-sparse-qp-') as tmp:
             work = Path(tmp)
@@ -478,6 +479,8 @@ class SparseQPWavefunctionUpdateTest(unittest.TestCase):
             flags = ['-O3', '-fcheck=all', '-ffixed-line-length-132']
             if rounding_math:
                 flags.append('-frounding-math')
+            if no_automatic:
+                flags.append('-fno-automatic')
             build = subprocess.run(
                 ['gfortran', *flags, 'constants.f', 'old.f', 'new.f',
                  'driver.f90', '-o', 'check'], cwd=work, text=True,
@@ -497,3 +500,11 @@ class SparseQPWavefunctionUpdateTest(unittest.TestCase):
 
     def test_unrecognized_binary128_layout_uses_original_arithmetic(self):
         self.check_kernel('expanded', reject_layout=True)
+
+    def test_nlo_static_locals_preserve_bits_and_exception_flags(self):
+        # FKS compiles polynomial.f with -fno-automatic. A local scratch array
+        # in the implicitly PURE elemental classifier would acquire SAVE and
+        # fail compilation; exercise actual updates under those build flags.
+        for mode in ('expanded', 'compact'):
+            with self.subTest(mode=mode):
+                self.check_kernel(mode, rounding_math=True, no_automatic=True)

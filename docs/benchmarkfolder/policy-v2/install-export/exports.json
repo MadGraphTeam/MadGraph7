@@ -1,0 +1,37 @@
+{
+  "source_revision": "fd72f89146a8fed7f4dc45f9b1779afa6fb93c95",
+  "source_sha256": {
+    "madgraph/iolibs/export_v4.py": "25f529fe82df40ef0da3e748dd2024666b06e766a9a35527aec6b55f1198c4f5",
+    "madgraph/iolibs/ufo_expression_parsers.py": "062c1581be8768ea322dd6d20819d6896950e1ef695eeeb5f7861a472b4e075c",
+    "madgraph/various/q_polynomial.py": "d7e6ece70afca5cdc2bcaa626b4afe6bd77f7449ea44b49888c60b0bf1852712",
+    "madgraph/loop/loop_exporters.py": "06a82d5590bdc7b92196c8e50f1b91afa7bf303fd45589f40d9b808fd0b2f045",
+    "madgraph/iolibs/export_fks.py": "d21470b6bdfbfae276c6fa7710765baf171a8f8f3868df90fc3edcf8b4367a2e"
+  },
+  "installation_sha256": "9ea9f6f33cde1a901bbf66d3c477f82bbc6acdfd9b3a7f84543262b5986e0e60",
+  "exports": {
+    "standalone": {
+      "command": [
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export/source/bin/madgraph",
+        "--plain",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/install-export/standalone.mg5"
+      ],
+      "exit_code": 0,
+      "seconds": 171.5964178770082,
+      "card_sha256": "eb74d8177480889befb7d9dc4bef1ccd3795a733ddfc0bbaf9846448c38a216d",
+      "log_sha256": "ade5348650771a4c72281d6951ca8ec7b82cb9741e42ab8041a54c279b1ae313"
+    },
+    "nlo": {
+      "command": [
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export/source/bin/madgraph",
+        "--plain",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/install-export/nlo.mg5"
+      ],
+      "exit_code": 0,
+      "seconds": 14.266733985976316,
+      "card_sha256": "8efd5dccf853460ce66cac329f573f119e70ce1144960a7071608822a63141cf",
+      "log_sha256": "559209fd5990623578e7195f95a4c51a31526a06cb4b8edcb3353ba4e11d9721"
+    }
+  }
+}

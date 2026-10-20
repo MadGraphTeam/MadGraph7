@@ -1,0 +1,211 @@
+{
+  "schema": 1,
+  "status": "retained_failed_nlo_compile",
+  "source_revision": "fd72f89146a8fed7f4dc45f9b1779afa6fb93c95",
+  "files": {
+    "Cargo.lock": {
+      "sha256": "91b8b87dd40e38994df5ae0298c7af7423b83aee57bec63c9e5e9752c2bf1295",
+      "bytes": 78230
+    },
+    "Cargo.toml": {
+      "sha256": "c35b877c1a1e0e137437f8a2864cd4af7b4e09e5a0c1d6def66cf523d95c8b7e",
+      "bytes": 1238
+    },
+    "README.md": {
+      "sha256": "3dbf955f466b3f7007e79e47151c16143437c9ada39d87fa1fe1b5d29d24c66c",
+      "bytes": 2531
+    },
+    "check_sa-generated.f": {
+      "sha256": "caf9524eef2cec0388b4b4288140ca5fd6adb8c3661ccf647992072a1189767d",
+      "bytes": 23590
+    },
+    "check_sa-stability.f": {
+      "sha256": "642ba4f13447912095c02993bc709fa0998a57ea02ae13e9bf37bde5a7bf736d",
+      "bytes": 23688
+    },
+    "export.py": {
+      "sha256": "681a77394418d515bfb745e883cd9c1c70bbd0c9761967b22128ad3c4d7e536a",
+      "bytes": 3347
+    },
+    "exports.json": {
+      "sha256": "0bea19cdd1f5bbd5bf1207af2f9e22fbf65dbc0fd3bddf6a76b08e7e14bdb2ac",
+      "bytes": 2041
+    },
+    "failed-nlo-sources/V0_uux_z/makefile": {
+      "sha256": "874dcf19a74f3ade6c800de63a31e6a36e8b7b25e6a44efdf5746fb41dc7c362",
+      "bytes": 2148
+    },
+    "failed-nlo-sources/V0_uux_z/polynomial.f": {
+      "sha256": "420e75b01cd48b2ecaae09c81011ce604f034e29036da461e9de429ad24d917b",
+      "bytes": 24015
+    },
+    "failed-nlo-sources/test_ME.log": {
+      "sha256": "99a63e6f1f0b64eeb1f9241a9d61abbcf7532698f63babb733543b696e3f5125",
+      "bytes": 4540
+    },
+    "failure.json": {
+      "sha256": "92b9eaba87f9e2c4a5eb2ac18635730e509b625abf850a6700f721a12211ca86",
+      "bytes": 911
+    },
+    "generated-source-hashes.json": {
+      "sha256": "aaf4df8ff436b231e3a57f4c0a1be354f4da2328e3f88fe749f640e6fe7ee7bd",
+      "bytes": 186503
+    },
+    "install-cli.log": {
+      "sha256": "efac9ca061fca14ed7eae12ece2ca0c2b27b18f38420900b7865c4e323639843",
+      "bytes": 6876
+    },
+    "install.log": {
+      "sha256": "4c1a1a48147ea1029477831d87198f06d5b582f8d8502f4ca6c769e19a8d19f5",
+      "bytes": 13116
+    },
+    "install.mg5": {
+      "sha256": "1716bb969c0022564d78465e5369e82f8e2855ecb21e0a0b7adfc609fe86e4ab",
+      "bytes": 250
+    },
+    "installation-hidden.json": {
+      "sha256": "f293cbe08eacf3dd0717f12a3d1b89f35afdb1c204777f53f918dfe7dd788fb5",
+      "bytes": 632
+    },
+    "installation.json": {
+      "sha256": "9ea9f6f33cde1a901bbf66d3c477f82bbc6acdfd9b3a7f84543262b5986e0e60",
+      "bytes": 1837
+    },
+    "ninjars-config.json": {
+      "sha256": "89cea270ad081f2df49f06734d4fd18cf96fbd1daa12009a33a4fa52f7df5d1f",
+      "bytes": 354
+    },
+    "ninjars-link-before.txt": {
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+      "bytes": 8
+    },
+    "ninjars-native-libs.txt": {
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+      "bytes": 48
+    },
+    "nlo-compile.log": {
+      "sha256": "9c198e9fe6f83d27a849b35b55c4629e387393033b50359a0e539ce3b2e5577f",
+      "bytes": 13619
+    },
+    "nlo-compile.mg5": {
+      "sha256": "881f912c0be0830bf776afce99251f993b450c203d0c9be4806ac70705ef67cd",
+      "bytes": 19
+    },
+    "nlo-export.log": {
+      "sha256": "559209fd5990623578e7195f95a4c51a31526a06cb4b8edcb3353ba4e11d9721",
+      "bytes": 11367
+    },
+    "nlo-make_opts": {
+      "sha256": "4a3a2d05b7120e47a33b75246e084340c727b8e62dc537dd7a4ce5f932a9ba99",
+      "bytes": 3218
+    },
+    "nlo-relocated-MadLoopParams.dat": {
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+      "bytes": 13353
+    },
+    "nlo-relocated-param_card.dat": {
+      "sha256": "ccbf142ec9dfb368c4a5ea80bc6d7c5dc60951384b470c308896c56da66b70ba",
+      "bytes": 3332
+    },
+    "nlo-relocated-run_card.dat": {
+      "sha256": "bb8c6a3225522209064a225c2fea33334018cd29c8fc6bc298f2c9c67f56eafc",
+      "bytes": 14731
+    },
+    "nlo.mg5": {
+      "sha256": "8efd5dccf853460ce66cac329f573f119e70ce1144960a7071608822a63141cf",
+      "bytes": 431
+    },
+    "prepare.py": {
+      "sha256": "666d59ab13a6a2dd54ad7d172dff3e7566e084e04b36ac6ba96ba21ff3d3a397",
+      "bytes": 3694
+    },
+    "relocation.json": {
+      "sha256": "f08206e71ea786106fe7c0c0fb508adc418f390dd5a038b7fbb3fd337e5da5f3",
+      "bytes": 2741
+    },
+    "runtime_validator.py": {
+      "sha256": "cbf6167000b5224bb3c00e1fbc1a4f9d97715bcfc3d3dfa724b8db7940e1fac9",
+      "bytes": 14111
+    },
+    "standalone-MadLoop_makefile_definitions": {
+      "sha256": "2841f0ab1b796f5b3a4f05fd1483c571a41e4701d38fb34ed04faab929067149",
+      "bytes": 471
+    },
+    "standalone-dp-MadLoopParams.dat": {
+      "sha256": "416b9a4e5cdb592649c22bbc46444a6e85893ecc82b2f09421efe6362dfcb7a4",
+      "bytes": 13352
+    },
+    "standalone-dp-result.dat": {
+      "sha256": "12b3721582f457d427c8fe9a388907219566da5212db60440fefde8eb45960eb",
+      "bytes": 904
+    },
+    "standalone-dp.log": {
+      "sha256": "790287fbed98f9a9ce0afd615701fc326dd98f11621db43dae2d3cc72ff9635c",
+      "bytes": 10452
+    },
+    "standalone-export.log": {
+      "sha256": "ade5348650771a4c72281d6951ca8ec7b82cb9741e42ab8041a54c279b1ae313",
+      "bytes": 9864
+    },
+    "standalone-ldd.txt": {
+      "sha256": "0351ff52b7a7b6a60083fcea4c7deb2a434f0b83dd0d9d16ffba3135aeada31d",
+      "bytes": 1256
+    },
+    "standalone-nm.txt": {
+      "sha256": "4281d32dbb1cf9f25c94591d818eeb60e21622bfb0065241052b379e2d6d09c9",
+      "bytes": 579
+    },
+    "standalone-qp-MadLoopParams.dat": {
+      "sha256": "a81316a6c2bbb3a809a3fafd06857c92151e40ecfd06fbc35c527475a2419c74",
+      "bytes": 13352
+    },
+    "standalone-qp-result.dat": {
+      "sha256": "8db97b56ba34768b8679634f5d46d6d35269fd8a7c4970a585d6d30762df9aaa",
+      "bytes": 904
+    },
+    "standalone-qp.log": {
+      "sha256": "98d0103136226db91aaf2fb1a6c55616616bade1aa64fb4774ad63f9f70cd029",
+      "bytes": 11736
+    },
+    "standalone-relocated-MadLoopParams.dat": {
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+      "bytes": 13353
+    },
+    "standalone-relocated-param_card.dat": {
+      "sha256": "61894bc225f62224521081571bb987ae519f355ac33921f47bd3a5cf1b1ec05f",
+      "bytes": 3468
+    },
+    "standalone-relocated-run_card.dat": {
+      "sha256": "941f2c02c9ad04216484558aeaa124c7c3901e7236aade829876803538983ae4",
+      "bytes": 9175
+    },
+    "standalone-results.json": {
+      "sha256": "9ee85a9643e7dbe24940b7104e6fbd06211329af38d696bd6e7d831e7ffeed31",
+      "bytes": 549
+    },
+    "standalone-stability-build.log": {
+      "sha256": "05616c1de6070a9bc6bd98a4f4c6c405aa68cce12c8f3759623bc47b3b79acb3",
+      "bytes": 6089
+    },
+    "standalone-stable-MadLoopParams.dat": {
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+      "bytes": 13353
+    },
+    "standalone-stable-result.dat": {
+      "sha256": "5b040bc34871747bcb08eb483d7bd7f94535317ff158b467877ebbb7daa831af",
+      "bytes": 904
+    },
+    "standalone-stable.log": {
+      "sha256": "1f44388d1001070ee0572269c64ab2593eaf72f13e4e0e9945a7150838723de9",
+      "bytes": 10484
+    },
+    "standalone.mg5": {
+      "sha256": "eb74d8177480889befb7d9dc4bef1ccd3795a733ddfc0bbaf9846448c38a216d",
+      "bytes": 462
+    },
+    "validator-origin.json": {
+      "sha256": "48a3c21defcb6c1d2c45edb25cd13e7fb239b838f6b82108c7ce2e589df47a68",
+      "bytes": 379
+    }
+  }
+}
