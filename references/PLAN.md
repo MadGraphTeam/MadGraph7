@@ -640,3 +640,29 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   passed; copied-output runtime checks remain pending. See `references/PAUSE.md`
   before resuming; do not silently restart jobs or reuse timing intervals that
   span the pause.
+
+## Final improvement round and validation freeze (user resumed 2026-10-21)
+
+The user resumed the preserved work and asked to wind down optimization after
+the current round. Complete only the already prepared allocation/transport and
+Float256 native-dispatch studies, accepting changes only with numerical and
+measured evidence. Finish the offline reuse census without starting another
+cache or tensor algorithm prototype. Then freeze the implementation for an
+extensive regression and benchmark campaign.
+
+Add meaningful MG7 regression tests for uncovered interface, export, installer
+and reporting behavior. Retain the eight-process correctness/performance gates
+and extend the final report with loop-induced amplitudes, numerical stability
+comparisons, actual backend/rescue usage, and difficult-point precision controls.
+Keep performance samples separate from correctness/reference diagnostics and
+never count initialization intervals spanning the pause as measured speed.
+
+Consolidate all final changes on `madloop_ninjars`, retain reproducible inputs
+and measurements, and clean temporary/build files out of the publication set.
+Commit and push tested milestones. Claim achievement only after the original
+gates and the expanded validation pass; leave failed or unresolved gates visible.
+After achievement, wait for the user's instruction to open a pull request.
+
+The preserved job identities were checked before resuming the same processes.
+See `.benchmark-work/resume-20261020T2217Z.json` and each experiment's separate
+resume metadata. The earlier pause note is a historical checkpoint.

@@ -6,14 +6,6 @@
       "bytes": 1800,
       "sha256": "39b3e223c2be699818b291a080a8f68afc53277a295c5b2ad1791303ea029ab3"
     },
-    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal/__pycache__/regenerate.cpython-314.pyc": {
-      "bytes": 23216,
-      "sha256": "abb6bb44972e033a9c863f7568d7cb5427b27a5e1bc8556c87c2af0337e0b309"
-    },
-    "docs/benchmarkfolder/policy-v2/generation-abi3-terminal/__pycache__/summarize.cpython-314.pyc": {
-      "bytes": 7099,
-      "sha256": "3cd7494e5673f737b8445e6299f33531ff87183812bd1c1e00634c7d7187039f"
-    },
     "docs/benchmarkfolder/policy-v2/generation-abi3-terminal/cases.json": {
       "bytes": 1096,
       "sha256": "2f2259b54374ddb47e12de9be067748ad39e5919cde86067a4178e1e39dc8874"

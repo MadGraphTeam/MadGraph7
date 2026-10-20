@@ -5,7 +5,6 @@
   "reason": "No demonstrated runtime improvement",
   "files": {
     "README.md": "816583c78809d04b1f91b5cf95af6ec3dd3f25b63f55df4c7f6a8489a87f05ac",
-    "__pycache__/process-probe.cpython-314.pyc": "d6bab75813059bc16f9cbc7b68ca9697f3c035838009764614eece79d0b172fe",
     "build.json": "71e7577926cc91c4700bdfed7be2a7f8fbf40b16ba49e699b86e8cbdeec31495",
     "capture/actual-mp-requests.jsonl.gz": "5e6fd2c0bad620460af7742e19d4f34b1f2ce281af22e3623001c7ba74411312",
     "capture/build.json": "354b69f7da5d5d16f293eb3a9c0ed28d94fda641e7d6487f63899741da43583f",
