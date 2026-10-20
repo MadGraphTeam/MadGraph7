@@ -21,6 +21,7 @@ if TYPE_CHECKING:
         BenchmarkResult,
         BenchmarkStatistics,
         ResolvedEvaluation,
+        TreeOrderEvaluation,
     )
 
 
@@ -123,6 +124,50 @@ def _total_evaluation_summary(
             )
         )
     return cast(str, table.get_string())
+
+
+def _tree_order_summary(
+    evaluation: TreeOrderEvaluation,
+    *,
+    prettytable: Any,
+    color: bool,
+) -> str:
+    from .virtual import _order
+
+    table = prettytable.PrettyTable(("point", "squared coupling order", "partial"))
+    table.title = _paint("Squared coupling-order partials", "CYAN", enabled=color)
+    table.align = "l"
+    table.align["partial"] = "r"
+    table.hrules = prettytable.HRuleStyle.FRAME
+    for point, values in enumerate(evaluation.values):
+        for order, value in zip(evaluation.orders, values, strict=True):
+            table.add_row(
+                (
+                    point,
+                    _paint(_order(order), "MAGENTA", enabled=color),
+                    _paint(_evaluation_value_text(value), "GREEN", enabled=color),
+                )
+            )
+    pairs = prettytable.PrettyTable(("squared coupling order", "amplitude orders"))
+    pairs.title = _paint("Contributing amplitude-order pairs", "CYAN", enabled=color)
+    pairs.align = "l"
+    pairs.hrules = prettytable.HRuleStyle.FRAME
+    for sector in evaluation.sectors:
+        pairs.add_row(
+            (
+                _order(sector.order),
+                "; ".join(
+                    f"({_order(left)}) x ({_order(right)})"
+                    for left, right in sector.pairs
+                ),
+            )
+        )
+    total = _total_evaluation_summary(
+        cast(tuple[object, ...], evaluation.total),
+        prettytable=prettytable,
+        color=color,
+    )
+    return "\n\n".join((str(table.get_string()), str(pairs.get_string()), total))
 
 
 def _resolved_evaluation_summary(
@@ -3157,6 +3202,7 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
         BenchmarkResult,
         GenerationResult,
         ResolvedEvaluation,
+        TreeOrderEvaluation,
     )
     from pyamplicol.api.virtual_results import (
         ResolvedVirtualEvaluation,
@@ -3204,6 +3250,8 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
             prettytable=prettytable,
             color=color,
         )
+    if isinstance(value, TreeOrderEvaluation):
+        return _tree_order_summary(value, prettytable=prettytable, color=color)
     if isinstance(value, tuple) and all(_is_evaluation_value(item) for item in value):
         return _total_evaluation_summary(
             cast(tuple[object, ...], value),

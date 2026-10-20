@@ -1053,6 +1053,7 @@ class EvaluationConfig:
         default=None, metadata=_setting("path", nullable=True)
     )
     resolved: bool = field(default=False, metadata=_setting("bool"))
+    orders: bool = field(default=False, metadata=_setting("bool"))
     correlated_requests: Path | None = field(
         default=None, metadata=_setting("path", nullable=True)
     )
@@ -1096,6 +1097,12 @@ class EvaluationConfig:
             )
         if not isinstance(self.resolved, bool):
             raise ConfigurationError("evaluation.resolved must be a boolean")
+        if not isinstance(self.orders, bool):
+            raise ConfigurationError("evaluation.orders must be a boolean")
+        if self.orders and self.resolved:
+            raise ConfigurationError(
+                "evaluation.orders and evaluation.resolved are mutually exclusive"
+            )
         object.__setattr__(
             self,
             "correlated_requests",

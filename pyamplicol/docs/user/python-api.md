@@ -277,6 +277,29 @@ Input shape is:
 At LC, resolved shape is `(point, helicity, color_flow)`. At NLC/full,
 the color dimension has length one because color is contracted.
 
+## Split totals by squared coupling order
+
+Recurrence artifacts record the exact coupling orders of every amplitude
+contribution. `evaluate_orders` returns, in one pass, the unchanged total and
+one partial per squared coupling order, including the interference between
+different amplitude orders:
+
+```python
+split = runtime.evaluate_orders(points)
+print(split.amplitude_orders)  # e.g. ((("QCD", 2),), (("QED", 2),))
+print(split.orders)            # (("QCD", 2), ("QED", 2)), (("QCD", 4),), ...
+assert split.total == runtime.evaluate(points)
+qcd = split.for_order((("QCD", 4),))
+```
+
+`values` has shape `(point, squared order)`; each `sectors` entry lists its
+contributing ordered amplitude-order pairs, following the Born order axis of
+`VirtualEvaluation`. Orders count fundamental couplings, list every pairwise
+sum (also structurally vanishing interference) and omit zero powers.
+`sum_orders()` adds the partials explicitly; it equals `total` up to rounding.
+Selectors and `precision` behave as in `evaluate`. Compiled, eager and
+on-the-fly artifacts raise `CompatibilityError`.
+
 ## Retain completed OTF preparation
 
 For an on-the-fly runtime, `runtime.save(path)` writes the completed cache

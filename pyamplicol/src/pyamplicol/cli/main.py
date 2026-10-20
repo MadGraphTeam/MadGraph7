@@ -28,6 +28,7 @@ from .utilities import UtilityInvocation, example_card, execute_utility
 
 
 def _json_value(value: object) -> object:
+    from pyamplicol.api.results import TreeOrderEvaluation
     from pyamplicol.api.virtual_results import (
         ResolvedVirtualEvaluation,
         VirtualEvaluation,
@@ -45,6 +46,12 @@ def _json_value(value: object) -> object:
                 normalization="Cepsilon=(4*pi)^epsilon/Gamma(1-epsilon)",
                 shape=list(value.shape),
                 born_shape=list(value.born_shape),
+            )
+        if isinstance(value, TreeOrderEvaluation):
+            result.update(
+                contribution_kind="tree",
+                orders=_json_value(value.orders),
+                shape=list(value.shape),
             )
         return result
     if isinstance(value, Path):

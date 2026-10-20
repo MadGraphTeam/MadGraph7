@@ -16,6 +16,9 @@ from pyamplicol.config import (
     GenerationConfig,
     RunConfig,
 )
+from pyamplicol.loops.orders import canonical_order, squared_order
+from pyamplicol.loops.physical_orders import BornSquaredSector
+from pyamplicol.models.base import CouplingOrders
 
 from .requests import ProcessRequest, ProcessSet
 
@@ -590,6 +593,104 @@ class ResolvedEvaluation:
 
 
 @dataclass(frozen=True, slots=True)
+class TreeOrderEvaluation:
+    """Tree values split by squared coupling order: ``values[point][order]``.
+
+    ``sectors`` follow the Born order axis of the virtual results: canonical
+    squared orders in ascending order, each with its contributing ordered
+    amplitude-order pairs, including structurally vanishing interference.
+    Powers count fundamental couplings. ``total`` is exactly the
+    :meth:`pyamplicol.Runtime.evaluate` value; :meth:`sum_orders` sums the
+    partials explicitly and agrees with it up to rounding.
+    """
+
+    values: tuple[tuple[complex | Decimal, ...], ...]
+    total: tuple[complex | Decimal, ...]
+    sectors: tuple[BornSquaredSector, ...]
+    amplitude_orders: tuple[CouplingOrders, ...]
+
+    def __post_init__(self) -> None:
+        sectors = tuple(self.sectors)
+        amplitude_orders = tuple(
+            canonical_order(order) for order in self.amplitude_orders
+        )
+        if not sectors or not amplitude_orders:
+            raise ValueError("tree order results require order catalogues")
+        if len(set(amplitude_orders)) != len(amplitude_orders):
+            raise ValueError("duplicate amplitude coupling orders")
+        orders = tuple(sector.order for sector in sectors)
+        if list(orders) != sorted(set(orders)):
+            raise ValueError("squared coupling orders must be unique and ascending")
+        for sector in sectors:
+            if canonical_order(sector.order) != sector.order or not sector.pairs:
+                raise ValueError("squared coupling orders must be canonical")
+            if any(
+                left not in amplitude_orders
+                or right not in amplitude_orders
+                or squared_order(left, right) != sector.order
+                for left, right in sector.pairs
+            ):
+                raise ValueError(
+                    "amplitude-order pair does not match its squared order"
+                )
+        values = tuple(
+            tuple(
+                entry if isinstance(entry, Decimal) else complex(entry)
+                for entry in point
+            )
+            for point in self.values
+        )
+        total = tuple(
+            entry if isinstance(entry, Decimal) else complex(entry)
+            for entry in self.total
+        )
+        if len(values) != len(total):
+            raise ValueError("tree order values and totals differ in point count")
+        if any(len(point) != len(sectors) for point in values):
+            raise ValueError("tree order values do not match the squared-order axis")
+        object.__setattr__(self, "values", values)
+        object.__setattr__(self, "total", total)
+        object.__setattr__(self, "sectors", sectors)
+        object.__setattr__(self, "amplitude_orders", amplitude_orders)
+
+    @property
+    def orders(self) -> tuple[CouplingOrders, ...]:
+        return tuple(sector.order for sector in self.sectors)
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        return len(self.values), len(self.sectors)
+
+    def for_order(self, order: CouplingOrders) -> tuple[complex | Decimal, ...]:
+        """Per-point partial of one squared coupling order."""
+
+        wanted = canonical_order(order)
+        try:
+            index = self.orders.index(wanted)
+        except ValueError as error:
+            raise ValueError(
+                f"squared coupling order {wanted!r} is absent from the catalogue"
+            ) from error
+        return tuple(point[index] for point in self.values)
+
+    def sum_orders(self) -> tuple[complex | Decimal, ...]:
+        """Explicitly sum the squared-order axis, preserving decimal precision."""
+
+        totals: list[complex | Decimal] = []
+        for point in self.values:
+            if point and isinstance(point[0], Decimal):
+                totals.append(_exact_decimal_sum(cast(tuple[Decimal, ...], point)))
+            else:
+                totals.append(
+                    complex(
+                        math.fsum(complex(entry).real for entry in point),
+                        math.fsum(complex(entry).imag for entry in point),
+                    )
+                )
+        return tuple(totals)
+
+
+@dataclass(frozen=True, slots=True)
 class BenchmarkStatistics:
     """Distribution summary for repeated benchmark measurements."""
 
@@ -1076,5 +1177,6 @@ __all__ = [
     "ProcessPhysics",
     "ReductionGroup",
     "ResolvedEvaluation",
+    "TreeOrderEvaluation",
     "WarmUpResult",
 ]

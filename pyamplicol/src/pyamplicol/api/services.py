@@ -48,6 +48,7 @@ from .results import (
     HelicityConfiguration,
     ProcessPhysics,
     ResolvedEvaluation,
+    TreeOrderEvaluation,
     WarmUpResult,
 )
 from .virtual_results import (
@@ -920,6 +921,59 @@ class Runtime:
             stability=stability,
             on_failure=on_failure,
         )
+
+    def evaluate_orders(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str | HelicityConfiguration] | None = None,
+        color_flows: Sequence[str | ColorFlow] | None = None,
+        precision: int | None = None,
+    ) -> TreeOrderEvaluation:
+        """Return tree values split by squared coupling order.
+
+        Every squared coupling order of the generated amplitude, including
+        vanishing interference, is a separate ``values[point][order]`` column
+        alongside ``total``, which is exactly :meth:`evaluate`'s value for the
+        same selectors and precision. Orders follow the Born order axis of
+        virtual results (:attr:`VirtualEvaluation.born_orders`). Virtual
+        runtimes already return their order axes from :meth:`evaluate`.
+        """
+
+        if self.contribution_kind != "tree":
+            raise CompatibilityError(
+                "virtual results already carry Born and virtual order axes; "
+                "use evaluate()"
+            )
+        operation = getattr(self._backend, "evaluate_orders", None)
+        if not callable(operation):
+            raise CompatibilityError(
+                "runtime backend does not support squared coupling-order partials"
+            )
+        precision = _validate_precision(
+            getattr(self._backend, "default_precision", 16)
+            if precision is None
+            else precision
+        )
+        result = operation(
+            momenta,
+            helicities=_selector_ids(
+                helicities,
+                expected_type=HelicityConfiguration,
+                name="helicity",
+            ),
+            color_flows=_selector_ids(
+                color_flows,
+                expected_type=ColorFlow,
+                name="color-flow",
+            ),
+            precision=precision,
+        )
+        if not isinstance(result, TreeOrderEvaluation):
+            raise EvaluationError(
+                "runtime backend returned an invalid TreeOrderEvaluation"
+            )
+        return result
 
     def _diagnostic_project_onshell(
         self,
