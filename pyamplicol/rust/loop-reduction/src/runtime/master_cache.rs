@@ -131,14 +131,15 @@ fn canonicalise(family: FastMaster, row: &[C64], out: &mut [C64]) {
                     (rotation + k) % n
                 }
             };
-            for k in 0..sides {
-                candidate[k] = pair(line(k), line((k + 1) % n));
+            let (invariants, rest) = candidate.split_at_mut(masses);
+            for (k, slot) in invariants[..sides].iter_mut().enumerate() {
+                *slot = pair(line(k), line((k + 1) % n));
             }
-            for k in 0..diagonals {
-                candidate[sides + k] = pair(line(k), line(k + 2));
+            for (k, slot) in invariants[sides..].iter_mut().enumerate() {
+                *slot = pair(line(k), line(k + 2));
             }
-            for k in 0..n {
-                candidate[masses + k] = row[masses + line(k)];
+            for (k, slot) in rest[..n].iter_mut().enumerate() {
+                *slot = row[masses + line(k)];
             }
             candidate[arity - 1] = row[arity - 1];
             if first

@@ -292,6 +292,9 @@ impl<T: Carrier> BucketInput<T> {
     }
 }
 
+/// Lanes `(group, row)` per (propagators, true rank), in a fixed order.
+type Buckets = BTreeMap<(usize, usize), Vec<(usize, usize)>>;
+
 /// Status and raw Laurent coefficients of one lane.
 struct Outcome<T> {
     status: String,
@@ -307,7 +310,7 @@ trait BucketEngine<T> {
 fn reduce_groups<T: Carrier, E: BucketEngine<T>>(
     engine: &mut E,
     groups: &[Lanes<'_, T>],
-    buckets: &BTreeMap<(usize, usize), Vec<(usize, usize)>>,
+    buckets: &Buckets,
     frame: Option<ReductionFrame>,
 ) -> ExecutionResult<Vec<Vec<Option<Outcome<T>>>>> {
     let mut outcomes: Vec<Vec<Option<Outcome<T>>>> = groups
@@ -323,9 +326,7 @@ fn reduce_groups<T: Carrier, E: BucketEngine<T>>(
     Ok(outcomes)
 }
 
-fn buckets<T: Carrier>(
-    groups: &[Lanes<'_, T>],
-) -> ExecutionResult<BTreeMap<(usize, usize), Vec<(usize, usize)>>> {
+fn buckets<T: Carrier>(groups: &[Lanes<'_, T>]) -> ExecutionResult<Buckets> {
     let mut buckets = BTreeMap::<_, Vec<_>>::new();
     for (index, lanes) in groups.iter().enumerate() {
         let width = ncoeff(lanes.rank);
@@ -564,7 +565,7 @@ where
 }
 
 enum Engines {
-    Fast(FastEngine),
+    Fast(Box<FastEngine>),
     Double(GenericEngine<f64>),
     DoubleDouble(GenericEngine<DoubleFloat>),
     Arbitrary(GenericEngine<Float>),
@@ -590,7 +591,9 @@ impl V2Reducer {
     ) -> ExecutionResult<Self> {
         let (arithmetic, bits) = arithmetic_mode(arithmetic, precision)?;
         let engines = match (engine, arithmetic) {
-            ("fast", Arithmetic::Double) => Engines::Fast(FastEngine::new(cache_masters)?),
+            ("fast", Arithmetic::Double) => {
+                Engines::Fast(Box::new(FastEngine::new(cache_masters)?))
+            }
             ("fast", _) => return Err(error("fast engine supports only double arithmetic")),
             ("generic", Arithmetic::Double) => Engines::Double(GenericEngine {
                 reductions: HashMap::new(),
@@ -661,7 +664,7 @@ impl V2Reducer {
             }};
         }
         match &mut self.engines {
-            Engines::Fast(engine) => run!(engine, Double),
+            Engines::Fast(engine) => run!(engine.as_mut(), Double),
             Engines::Double(engine) => run!(engine, Double),
             Engines::DoubleDouble(engine) => run!(engine, DoubleDouble),
             Engines::Arbitrary(engine) => run!(engine, Arbitrary),
@@ -750,7 +753,7 @@ mod tests {
                         .zip(q)
                         .map(|(&e, x)| x.powi(e as i32))
                         .product();
-                    total + c.clone() * Complex::new(monomial, 0.)
+                    total + *c * Complex::new(monomial, 0.)
                 })
         };
         // Dyadic values keep every operation below exact in binary64.
