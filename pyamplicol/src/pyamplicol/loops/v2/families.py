@@ -439,11 +439,19 @@ class PrefixGraph:
 
 @dataclass(frozen=True, slots=True)
 class FamilySet:
+    """Admitted families, their routings and the logs of dropped families.
+
+    ``merged`` maps every member of a merged closed-loop flavour class to its
+    representative (design §4.3); routings use representatives only and a
+    closure's multiplicity is the class size.
+    """
+
     legs: tuple[ExternalLeg, ...]
     families: Mapping[FamilyKey, Family]
     prefixes: PrefixGraph
     scaleless: tuple[LoggedFamily, ...]
     rejected: tuple[LoggedFamily, ...]
+    merged: Mapping[str, str]
 
     def routing(self, closure: Closure) -> tuple[str, tuple[Position, ...]]:
         return self.prefixes.path(closure.state)
@@ -511,9 +519,13 @@ class _Recursion:
             for name in catalogue.loop_species()
             if catalogue.species(name).perturbative_orders & orders.corrections
         )
-        self.multiplicity = _closed_loop_classes(eligible, catalogue, blocks)
+        self.merged = _closed_loop_classes(eligible, catalogue, blocks)
+        sizes = defaultdict(int)
+        for representative in self.merged.values():
+            sizes[representative] += 1
+        self.multiplicity = dict(sizes)
         self.eligible = frozenset(
-            name for name in eligible if self.multiplicity.get(name, 1) > 0
+            name for name in eligible if self.merged.get(name, name) == name
         )
         self.attachments = cache(self._attachments)
         self.positions = cache(self._positions)
@@ -640,6 +652,7 @@ class _Recursion:
             tuple(
                 LoggedFamily(key, reason) for key, reason in sorted(rejected.items())
             ),
+            self.merged,
         )
 
     def _close(self, cut, positions, admitted, rejected) -> None:
@@ -682,16 +695,16 @@ class _Recursion:
 
 def _closed_loop_classes(
     eligible: frozenset[str], catalogue: LoopVertexCatalogue, blocks: BlockTable
-) -> dict[str, int]:
+) -> dict[str, str]:
     """Massless closed-quark multiplicity, generalised (design §4.3).
 
     Species of equal mass, spin and colour whose loop vertices are pairwise
     structurally identical (equal signatures) and never change the species
-    along the loop are merged into one representative carrying the class size;
-    the other members map to 0. Only vertices whose attached fields occur as
-    block currents of this process are compared, so the classes depend on the
-    process (an external flavour line or a flavour-sensitive attachment keeps
-    its species apart). Returns {species: multiplicity} for merged classes.
+    along the loop are merged into one representative. Only vertices whose
+    attached fields occur as block currents of this process are compared, so
+    the classes depend on the process (an external flavour line or a
+    flavour-sensitive attachment keeps its species apart). Returns
+    {member: representative} for the members of merged classes.
     """
     full = (1 << len(blocks.legs)) - 1
     fields = {block.field for mask in range(1, full) for block in blocks.currents(mask)}
@@ -737,17 +750,16 @@ def _closed_loop_classes(
         key = signature(name)
         if key is not None and key[3]:
             groups[key].append(name)
-    out: dict[str, int] = {}
+    out: dict[str, str] = {}
     for members in groups.values():
         if len(members) < 2 or members[0] in out:
             continue
         # The conjugate class takes the conjugate representative, so that
         # reading a merged routing backwards stays within representatives.
-        representative = members[0]
-        mirror = sorted(conjugate[name] for name in members)
-        out.update(dict.fromkeys(members, 0))
-        out.update(dict.fromkeys(mirror, 0))
-        out[representative] = out[conjugate[representative]] = len(members)
+        out.update(dict.fromkeys(members, members[0]))
+        out.update(
+            dict.fromkeys((conjugate[name] for name in members), conjugate[members[0]])
+        )
     return out
 
 
@@ -813,8 +825,6 @@ class ModelLoopCatalogue:
     """
 
     def __init__(self, model: Any):
-        from pyamplicol.loops.graphs import _species_orders_from_rules
-
         data = _model_data(model)
         self._species: dict[str, LoopSpecies] = {}
         coupling_orders = {
@@ -839,9 +849,13 @@ class ModelLoopCatalogue:
             }
             for order in sorted(orders):
                 rules.append((rule, order))
-        perturbative = _species_orders_from_rules(
-            (tuple(rule["particles"]), order) for rule, order in rules
-        )
+        # MadLoop's Particle.is_perturbating: a species is perturbative in an
+        # order when it enters a vertex of that single order.
+        perturbative: dict[str, set[str]] = defaultdict(set)
+        for rule, order in rules:
+            if len(order) == 1:
+                for name in rule["particles"]:
+                    perturbative[name].add(order[0][0])
         self._conjugate = {}
         for particle in data["particles"]:
             name = particle["name"]
