@@ -2,6 +2,7 @@
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import tempfile
@@ -137,6 +138,7 @@ class NinjaRSReportV2Test(unittest.TestCase):
         self.write("final-inputs/candidate/qcd-1/compiled-sources.json", manifest)
         result = self.snapshot(root)
         self.assertEqual(result["cases"][0]["preparation"]["candidate"]["generation"]["seconds"], 19.)
+        self.assertEqual(result["generation_inputs"], self.policy.relative(root))
         retained = str((root / "candidate/qcd-1/generation.json").relative_to(report.ROOT))
         self.assertIn(retained, result["inputs_sha256"])
         for field, value, message in (
@@ -219,6 +221,22 @@ class NinjaRSReportV2Test(unittest.TestCase):
         self.assertTrue((target / "benchmark.typ").exists())
         with self.assertRaisesRegex(ValueError, "exists"):
             report.render(self.dataset_path, target)
+
+    @unittest.skipUnless(shutil.which("typst"), "Typst is required for PDF reproducibility")
+    def test_pdf_is_identical_across_ambient_creation_epochs(self):
+        self.fixture()
+        reports = []
+        for index, epoch in enumerate(("0", "1893456000")):
+            target = self.root / f"reproducible-pdf-{index}"
+            with patch.object(self.policy, "validate_dataset", return_value=self.dataset), \
+                    patch.dict(os.environ, {"SOURCE_DATE_EPOCH": epoch}):
+                report.render(self.dataset_path, target,
+                              timestamp="2026-10-20 · 00:00 UTC", compile_pdf=True)
+            reports.append(target)
+        self.assertEqual((reports[0] / "report-data.json").read_bytes(),
+                         (reports[1] / "report-data.json").read_bytes())
+        self.assertEqual((reports[0] / "benchmark.pdf").read_bytes(),
+                         (reports[1] / "benchmark.pdf").read_bytes())
 
     def test_raw_coefficient_stream_and_status_corruption_rejected(self):
         rows = {"a": self.record("original", 6, 0)["rows"],

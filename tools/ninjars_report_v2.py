@@ -22,6 +22,9 @@ import ninjars_profile_v2 as profiler
 ROOT = bench.ROOT
 REPORT = ROOT / "docs/benchmarkfolder"
 BACKENDS = (1, 6, 7, 8)
+# Keep PDF metadata reproducible outside the repository's Nix environment too.
+# The actual snapshot date is recorded separately in generated_utc.
+PDF_CREATION_TIMESTAMP = 315532800
 
 
 def compare(groups, pairs=None):
@@ -342,6 +345,7 @@ def build_snapshot(dataset_path, timestamp=None, generation_inputs=None, profile
             "config": config, "provenance": provenance, "cases": cases, "summary": counts,
             "profiles": profiles,
             "profile_specification": policy.relative(profile_spec) if profile_spec else None,
+            "generation_inputs": policy.relative(generation_inputs) if generation_inputs else None,
             "all_cases_passed": dataset["all_cases_passed"],
             "host_cpu": provenance.get("host_cpu", provenance.get("host", {}).get("Model name", "Not recorded")),
             "inputs_sha256": dict(sorted(inputs.items()))}
@@ -358,13 +362,16 @@ def render(dataset_path, destination, timestamp=None, compile_pdf=False,
     snapshot["render_sources_sha256"] = {
         str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
         for p in (Path(__file__).resolve(), Path(profiler.__file__).resolve(), template, style)}
+    compile_command = ["typst", "compile", "--creation-timestamp",
+                       str(PDF_CREATION_TIMESTAMP), "benchmark.typ", "benchmark.pdf"]
+    snapshot["pdf_build"] = {"command": compile_command,
+                             "creation_timestamp": PDF_CREATION_TIMESTAMP}
     destination.mkdir(parents=True)
     bench.dump(destination / "report-data.json", snapshot)
     shutil.copy2(template, destination / "benchmark.typ")
     shutil.copy2(style, destination / "style.typ")
     if compile_pdf:
-        subprocess.run(["typst", "compile", "benchmark.typ", "benchmark.pdf"],
-                       cwd=destination, check=True)
+        subprocess.run(compile_command, cwd=destination, check=True)
     return snapshot
 
 

@@ -246,6 +246,10 @@ the complete retained evidence, then separately recomputes all numerical
 comparisons, mismatch records and runtime intervals before writing
 `report-data.json`, `benchmark.typ`, `style.typ` and `benchmark.pdf`.
 `--timestamp` fixes the displayed snapshot date for reproducible rendering.
+The recorded Typst command fixes PDF creation metadata to the Unix timestamp
+315532800, independently of the ambient `SOURCE_DATE_EPOCH`. With identical
+snapshot inputs, Typst and fonts, this permits byte-identical PDF reproduction;
+the displayed snapshot date remains the actual report date.
 The final top-level benchmark report is replaced only after the complete
 required measurements are qualified. No v2 acceptance data is implied by the
 layout fixture used during development.

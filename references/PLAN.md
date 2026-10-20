@@ -440,7 +440,8 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
 - Diagnostic CPU profiling now binds to exact measured workers and retains
   raw outputs/recordings. The report reader requires profile membership in its
   dataset, rechecks source/runtime identities and recomputes rows and sample
-  categories. Seventeen report tests pass; the eight-page layout fixture is
+  categories. Eighteen report tests pass, including byte-identical PDF builds
+  with different ambient creation epochs; the eight-page layout fixture is
   compiled and visually checked. Final measured profiles and the completed
   benchmark PDF remain outstanding.
 - The corrected archived installation/export milestone is sealed across 101
@@ -516,9 +517,13 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   uninstrumented full-process pairs preserve all 5,600 compared coefficients
   and rescue counts, but their median runtime ratio is 0.967791 with a 95%
   interval of [0.946202, 1.008584]. This does not establish a speedup. The
-  complete inconclusive series is retained; a separate fixed 21-pair series
-  is being prepared to resolve the modest estimated gain. No production port
-  has been made.
+  complete inconclusive series is retained. A separate fixed 21-pair series
+  resolves a modest gain: ratio 0.968095 with a 95% interval of
+  [0.958491, 0.982138]. All 16,800 compared coefficients, accuracy estimates
+  and rescue counts match; all samples are retained. Independent audit
+  recomputes the result from raw timings and binds source/runtime identities.
+  The private Fortran production port is undergoing validation; the latest
+  fully validated numerical revision remains b44d20e7.
 - Corrected-original reference collection completes the first six core streams,
   then reaches the unchanged 7,200-second startup timeout during QCD4 CutTools
   initialization, before any accepted QCD4 measurement. The failed full-suite

@@ -451,10 +451,14 @@ joins the retained worker. See `audit.md` for scope, evidence and remaining limi
 = Reproduce this validated report
 ```sh
 source .ninjars-build/dev-env.sh
-python tools/ninjars_report_v2.py DATASET --compile
+export TMPDIR="$PWD/.ninjars-build/tmp"
+python tools/ninjars_report_v2.py DATASET --compile \
+  --timestamp 'SNAPSHOT_UTC' --output NEW_REPORT_DIRECTORY
 ```
 #small[
   Replace `DATASET` with the retained dataset path in `report-data.json`.
+  Replace `SNAPSHOT_UTC` with its `generated_utc` value and choose a new output
+  directory. Reusing this date preserves both the visible date and PDF bytes.
   Collection and correction specifications, CLI cards, all source roles, exact
   postimages, fresh/reused worker proof and raw measurements are bound by the
   dataset manifest. See `policy-v2/README.md` for the complete collection sequence.
@@ -463,6 +467,8 @@ python tools/ninjars_report_v2.py DATASET --compile
   new directory so earlier reports remain intact.
   When diagnostic profiles are included, also pass `--profile-spec` with the
   retained profile manifest listed in the snapshot's input hashes.
+  When `generation_inputs` is set in the snapshot, pass that retained directory
+  with `--generation-inputs` to reproduce its generation measurements.
 ]
 #v(5pt)
 #small[
