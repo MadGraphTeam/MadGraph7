@@ -1,0 +1,5 @@
+ERROR STOP REAL16 input word mismatch
+
+Error termination. Backtrace:
+#0  0x62f700360aa0 in MAIN__
+#1  0x62f70036018e in main

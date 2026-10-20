@@ -1,0 +1,58 @@
+{
+  "complete": true,
+  "production_modified": false,
+  "allocation_optimization_present": false,
+  "build_sha256": "36af82e06cd63370adc16a872efb1fa21d00d7beb874e382ecc9c6bffbf7cc2e",
+  "runner_sha256": "03102614d180652a83a15f14f10def9a1c8a7b1e272dde99185399a0306dce9a",
+  "started_utc": "2026-10-20T21:42:50.425223+00:00",
+  "runs": [
+    {
+      "name": "unit",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-transport-audit-v1/build/release/deps/madloop_ninjars-b9eb364b5cb26678",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "timeout_seconds": 600,
+      "pid": 1655176,
+      "returncode": 0,
+      "elapsed_seconds": 4.5778914811089635
+    },
+    {
+      "name": "replay",
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-transport-audit-v1/build/release/deps/madloop_ninjars-b9eb364b5cb26678",
+        "--ignored",
+        "--exact",
+        "transport_replay_tests::all_stored_requests_retain_outputs_after_transport_fix",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "timeout_seconds": 900,
+      "pid": 1656534,
+      "returncode": 0,
+      "elapsed_seconds": 21.938047459931113
+    }
+  ],
+  "replay_summary": {
+    "changed_fields": 0,
+    "changed_records": 0,
+    "complete": true,
+    "failures": 0,
+    "records": 1392
+  },
+  "finished_utc": "2026-10-20T21:43:17.055122+00:00",
+  "files": {
+    "unit.stdout": "b2b7d49f8b29f49a3e66836ff3976bd7ae1333ada84683f2b1a895c8c354333f",
+    "unit.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "replay.stdout": "f0abbf53bbbd56f8deb672b51568b201486396b524d2e48423d1164aa160c142",
+    "replay.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "actual-replay.jsonl": "2daf2f5e99495ecee1b6097acec52bb0dac8aa97b7c048d931ff1fe9267cb9cf"
+  }
+}

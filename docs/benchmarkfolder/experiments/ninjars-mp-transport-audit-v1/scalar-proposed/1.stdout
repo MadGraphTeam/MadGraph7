@@ -1,0 +1,31 @@
+CASE +zero precision=256 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE +zero precision=384 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE -zero precision=256 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE -zero precision=384 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE +min_subnormal precision=256 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE +min_subnormal precision=384 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE -min_subnormal precision=256 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE -min_subnormal precision=384 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE +max_subnormal precision=256 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE +max_subnormal precision=384 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE -max_subnormal precision=256 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE -max_subnormal precision=384 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE +min_normal precision=256 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE +min_normal precision=384 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE -min_normal precision=256 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE -min_normal precision=384 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE +max_finite precision=256 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE +max_finite precision=384 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE -max_finite precision=256 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE -max_finite precision=384 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE +beyond_dp precision=256 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE +beyond_dp precision=384 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE -beyond_dp precision=256 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE -beyond_dp precision=384 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE +last_binary128_bit precision=256 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE +last_binary128_bit precision=384 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE -last_binary128_bit precision=256 exact_value=true sign=true precision_match=true output_roundtrip=true
+CASE -last_binary128_bit precision=384 exact_value=true sign=true precision_match=true output_roundtrip=true
+BRANCH precision=256 preserved=true
+BRANCH precision=384 preserved=true
+SUMMARY finite_cases=28 value_fail=0 sign_fail=0 precision_fail=0 format_fail=0 branch_fail=0 reject_fail=0

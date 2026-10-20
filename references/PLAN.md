@@ -595,5 +595,9 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
 - Source audit finds that MP transport's exact-rational widening canonicalizes
   negative zero. Direct precision widening can preserve both the original finite
   dyadic value and zero sign. The physical effect on retained amplitudes is not
-  established. A separate minimal correctness fix and boundary-value tests are
-  being prepared; it must be tested and followed by affected-runtime refreshes.
+  established. The separate correction now passes fourteen finite boundary
+  fixtures at 256/384 bits, complex branch and nonfinite controls, GNU REAL16
+  read/pack/TRANSFER checks, all eighteen bridge tests, and all 1,392 stored
+  requests with 11,136 unchanged output fields. Independent source review passes;
+  the exact validated patch is applied. Affected installation/runtime refreshes
+  remain outstanding, and the currently installed archive is still unchanged.

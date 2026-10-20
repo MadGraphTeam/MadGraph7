@@ -1,0 +1,11 @@
+{
+  "source_path": "vendor/ninjars/src/lib.rs",
+  "source_sha256": "ed9f72b3af2fd829dee9b0d30290c4fa0accca3ebcd2fc4f57638efd7f502a04",
+  "original_function_sha256": "c8b3b89d5187e662659903da9bd2b56e848135a1daf41a5a56a6802a3803115b",
+  "proposed_function_sha256": "f0ca056cf9c699c60b82ca18a615fbbffa72f2a13a27a602929cbe49209c133a",
+  "scalar_sha256": "25398d7fc5da17e50e9c324d340373f8841f9658a7cda42fb04c6bfa7d47512f",
+  "fixture_sha256": "7906dadc729307f75737ea11611a9263f9f16e47a0e336a02195705c036f8bc0",
+  "expected_values": "Exact independent integer significand times power of two; binary128 words derived directly from same declared dyadics.",
+  "compiled": false,
+  "executed": false
+}

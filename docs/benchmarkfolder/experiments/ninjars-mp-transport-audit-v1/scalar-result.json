@@ -1,0 +1,71 @@
+{
+  "complete": true,
+  "engine_calls": 0,
+  "production_modified": false,
+  "build_sha256": "ffd795bf33f92d076de2341f71ec2b4dfcff9868823faf40202d41e5ee14a347",
+  "runner_sha256": "3a5485762773153ea128a2a01127a5b0abbf24f4d2e43071ec009c4bec14ff53",
+  "runs": [
+    {
+      "arm": "old",
+      "step": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-transport-audit-v1/scalar",
+        "old",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/ninjars-mp-transport-audit-v1/scalar-old/output-records.txt"
+      ],
+      "returncode": 1,
+      "elapsed_seconds": 0.00890130689367652,
+      "stdout_sha256": "9809ff84a98fdeb0ca8ae25a4b77bfd97386e1e6fe0ef4bb1a27329e5fdb1bf0",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "arm": "old",
+      "step": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-transport-audit-v1/real16-read",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/ninjars-mp-transport-audit-v1/scalar-old/output-records.txt"
+      ],
+      "returncode": 1,
+      "elapsed_seconds": 0.008304764982312918,
+      "stdout_sha256": "81c8d5ab7bce95ef875842f39bedd43dfe70ab7b54ec72dbd32e4ea0515f4981",
+      "stderr_sha256": "c5b32be2bb00822e12587a2265c71d6a79fd96eb1838c2ca2ae8d73a9fb93300"
+    },
+    {
+      "arm": "proposed",
+      "step": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-transport-audit-v1/scalar",
+        "proposed",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/ninjars-mp-transport-audit-v1/scalar-proposed/output-records.txt"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.008197094080969691,
+      "stdout_sha256": "14708dcdd9c485d79af23c99c2a927973032e5dfedf0ae021c792c3aa479a809",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "arm": "proposed",
+      "step": 2,
+      "command": [
+        "taskset",
+        "-c",
+        "2",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-transport-audit-v1/real16-read",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/ninjars-mp-transport-audit-v1/scalar-proposed/output-records.txt"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.00822899502236396,
+      "stdout_sha256": "d80d46d794771a4a82540477fa93bbac95c46e0ec87f4345e93bcbd193744876",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

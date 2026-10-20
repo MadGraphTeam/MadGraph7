@@ -197,3 +197,10 @@ runtime ratio 1.013546, with a 95% interval of [0.996598, 1.030949]. All
 16,800 coefficient comparisons pass and the two rescue points are unchanged.
 Its complete negative result and rejected preflights are retained under
 `experiments/symmetric-factorization-dp/process-timing21-v2/`.
+
+A separate MP transport correction preserves signed zero while widening the
+recovered binary128 value. Eighteen bridge tests, fourteen GNU REAL16 boundary
+fixtures and all 1,392 stored requests pass; all 11,136 replayed output fields
+are unchanged. Source and evidence are in
+`experiments/ninjars-mp-transport-audit-v1/`. The installed-runtime refresh is
+still pending, so earlier runtime proofs retain their original archive identity.

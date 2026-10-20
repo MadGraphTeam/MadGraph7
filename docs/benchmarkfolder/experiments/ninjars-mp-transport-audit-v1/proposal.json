@@ -1,0 +1,15 @@
+{
+  "schema": "mp-transport-signed-zero-proposal-v1",
+  "source_sha256": "ed9f72b3af2fd829dee9b0d30290c4fa0accca3ebcd2fc4f57638efd7f502a04",
+  "numerical_source_revision": "f4bffc61ed67e5d083b80ff9901768d4d5779989",
+  "production_modified": false,
+  "compiled": false,
+  "executed": false,
+  "finite_cases": 14,
+  "precisions": [
+    256,
+    384
+  ],
+  "minimal_patch_sha256": "de57b63e09df9bfa94ff6f7f8bce3c80ce1d00211ca61e69576c5f4d19283567",
+  "test_source_sha256": "9e9a14a8fcd312e387eb456da9541753d8739302512a12db92737f7013dab7fa"
+}

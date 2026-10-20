@@ -1,0 +1,121 @@
+{
+  "scope": "Pinned source-only transport audit; no build or engine execution",
+  "symbolica_revision": "e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8",
+  "oneloop_revision": "09b2c7497743db875ed446da95123175dd00b1c8",
+  "rug_version": "1.30.0",
+  "mpfr_test_source": "4.2.2",
+  "sources": [
+    {
+      "path": "vendor/ninjars/src/lib.rs",
+      "first_line": 445,
+      "last_line": 460,
+      "source_sha256": "ed9f72b3af2fd829dee9b0d30290c4fa0accca3ebcd2fc4f57638efd7f502a04",
+      "excerpt": "    parse_record_at_precision(text, MP_BITS)\n}\nfn parse_record_at_precision(text: &[u8], precision: u32) -> Result<Float> {\n    let text = std::str::from_utf8(text)\n        .map_err(|_| \"MP input is not ASCII\")?\n        .trim();\n    let input = Float::parse(text, Some(113)).map_err(|e| format!(\"invalid MP value: {e}\"))?;\n    if !input.is_finite() {\n        return Err(\"nonfinite MP input\".into());\n    }\n    // Forty significant decimal digits round-trip binary128. First recover that\n    // value at 113 bits, then widen its exact represented rational, not the\n    // decimal approximation, to the rescue working precision.\n    Ok(Float::new(precision).from_rational(&input.to_rational()))\n}\nfn parse_records(data: &[u8], precision: u32) -> Result<Vec<Float>> {\n",
+      "excerpt_sha256": "6da88dd73a40ba9dffb09bf961b96b6c48027cedcdf3fd56732a1ae70789d522"
+    },
+    {
+      "path": "vendor/ninjars/src/lib.rs",
+      "first_line": 575,
+      "last_line": 590,
+      "source_sha256": "ed9f72b3af2fd829dee9b0d30290c4fa0accca3ebcd2fc4f57638efd7f502a04",
+      "excerpt": "        let mut output = vec![b' '; 8 * RECORD];\n        for (index, value) in [0, 1, 2, 4]\n            .into_iter()\n            .flat_map(|k| [&result[k].re, &result[k].im])\n            .enumerate()\n        {\n            if !value.is_finite() {\n                return Ok((UNSTABLE, Vec::new()));\n            }\n            let text = format!(\"{value:.39e}\");\n            if text.len() > RECORD {\n                return Err(\"MP output exceeds ABI record width\".into());\n            }\n            output[index * RECORD..index * RECORD + text.len()].copy_from_slice(text.as_bytes());\n        }\n        Ok((SUCCESS, output))\n",
+      "excerpt_sha256": "e44d1888457c447bbfac844d8de8cda24fdcb203eadef26f2dc7f43e0e70d778"
+    },
+    {
+      "path": "vendor/ninjars/src/lib.rs",
+      "first_line": 1045,
+      "last_line": 1054,
+      "source_sha256": "ed9f72b3af2fd829dee9b0d30290c4fa0accca3ebcd2fc4f57638efd7f502a04",
+      "excerpt": "    #[test]\n    fn mp_transport_preserves_binary128_information() {\n        let input = Float::with_val(113, 1) + Float::with_val(113, 2).pow(100).inv();\n        let parsed = parse_record(&record(&format!(\"{input:.39e}\"))).unwrap();\n        assert_eq!(parsed.to_rational(), input.to_rational());\n        assert!(parsed > Float::with_val(MP_BITS, 1));\n        assert!(parse_record(&record(\"not-a-number\")).is_err());\n    }\n\n    #[test]\n",
+      "excerpt_sha256": "40bd691ae9ef05339e5d08645ef3801045a95d5abd671accdf1bed50c9714982"
+    },
+    {
+      "path": "vendor/ninjars/mninjars.f90",
+      "first_line": 122,
+      "last_line": 145,
+      "source_sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+      "excerpt": "                         s,size(s,kind=c_size_t),p,size(p,kind=c_size_t), &\n                         m,size(m,kind=c_size_t),mu2,res,3_c_size_t,r1,1_c_size_t)\n  end subroutine\n\n  subroutine pack(value,record)\n    real(KI_QNRS), intent(in) :: value\n    character(c_char), intent(out) :: record(record_size)\n    character(len=record_size) :: text\n    integer :: k\n    write(text,'(ES64.39E4)') value\n    do k=1,record_size\n      record(k) = text(k:k)\n    enddo\n  end subroutine\n\n  subroutine unpack(record,value,io_status)\n    character(c_char), intent(in) :: record(record_size)\n    real(KI_QNRS), intent(out) :: value\n    integer, intent(out) :: io_status\n    character(len=record_size) :: text\n    integer :: k\n    do k=1,record_size\n      text(k:k) = record(k)\n    enddo\n",
+      "excerpt_sha256": "002e705e998ae12d233699f7b71af6bbf9ef6a8d667bfb7eabd5bd5e79800aa1"
+    },
+    {
+      "path": "/home/external/.cargo/git/checkouts/symbolica-cc465e8cf60c7b8e/e679e8c/lib/numerica/src/domains/float/multiprecision.rs",
+      "first_line": 130,
+      "last_line": 141,
+      "source_sha256": "ed49b16eff4521a7fadd61bf623c4753a6d60522eb0b8dee9856814d892464d1",
+      "excerpt": "impl LowerExp for Float {\n    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {\n        if f.precision().is_none() {\n            f.write_fmt(format_args!(\n                \"{0:.1$e}\",\n                self.0,\n                (self.0.prec() as f64 * LOG10_2).floor() as usize\n            ))\n        } else {\n            LowerExp::fmt(&self.0, f)\n        }\n    }\n",
+      "excerpt_sha256": "3349fabd928307da8216e22aa259d12ef683f42fd588b99728c6cf3663e93ae3"
+    },
+    {
+      "path": "/home/external/.cargo/git/checkouts/symbolica-cc465e8cf60c7b8e/e679e8c/lib/numerica/src/domains/float/multiprecision.rs",
+      "first_line": 635,
+      "last_line": 641,
+      "source_sha256": "ed49b16eff4521a7fadd61bf623c4753a6d60522eb0b8dee9856814d892464d1",
+      "excerpt": "    pub fn prec(&self) -> u32 {\n        self.0.prec()\n    }\n\n    pub fn set_prec(&mut self, prec: u32) {\n        self.0.set_prec(prec);\n    }\n",
+      "excerpt_sha256": "fe0db01abd46a72b6e5d57563d4a8034df194bec04fa9142de6b63f6dcc0cc94"
+    },
+    {
+      "path": "/home/external/.cargo/git/checkouts/symbolica-cc465e8cf60c7b8e/e679e8c/lib/numerica/src/domains/float/multiprecision.rs",
+      "first_line": 850,
+      "last_line": 854,
+      "source_sha256": "ed49b16eff4521a7fadd61bf623c4753a6d60522eb0b8dee9856814d892464d1",
+      "excerpt": "    pub fn to_rational(&self) -> Rational {\n        let (num, den) = self.0.to_integer_ratio().unwrap();\n        Rational::from_int_unchecked(num, den)\n    }\n\n",
+      "excerpt_sha256": "52af7b9d4ea1bf43eba5060773f18147dfecbd40f0e21090486f1fad58b4ab56"
+    },
+    {
+      "path": "/home/external/.cargo/git/checkouts/symbolica-cc465e8cf60c7b8e/e679e8c/lib/numerica/src/domains/float/complex.rs",
+      "first_line": 200,
+      "last_line": 206,
+      "source_sha256": "97ab86b7514906abdd56802ca9c749633be96053fd81a90a7f178ebeee08790a",
+      "excerpt": "    }\n\n    #[inline]\n    pub fn arg(&self) -> T {\n        self.im.atan2(&self.re)\n    }\n\n",
+      "excerpt_sha256": "87509f27085216f3018b9b28d923079df83c35a582193dff1a5fc73728dcdfcd"
+    },
+    {
+      "path": "/home/external/.cargo/git/checkouts/symbolica-cc465e8cf60c7b8e/e679e8c/lib/numerica/src/domains/float/complex.rs",
+      "first_line": 1019,
+      "last_line": 1030,
+      "source_sha256": "97ab86b7514906abdd56802ca9c749633be96053fd81a90a7f178ebeee08790a",
+      "excerpt": "        // Keep exact axes and signed-zero branch lips without a division by zero.\n        if self.im.is_fully_zero() {\n            let root = a.sqrt();\n            return if self.re.real_cmp(&self.re.zero()) == Some(Ordering::Less) {\n                Self::new(prototype.zero(), root.copy_sign(&self.im))\n            } else {\n                Self::new(root, self.im.clone())\n            };\n        }\n\n        let two = prototype.from_usize(2);\n        let s = if fixed {\n",
+      "excerpt_sha256": "72abe9936e748cdba26242a89438e51705128ff73af68fdbcf343a4c2cd8920b"
+    },
+    {
+      "path": "/home/external/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rug-1.30.0/src/float/big.rs",
+      "first_line": 431,
+      "last_line": 463,
+      "source_sha256": "7ab6d5c8a9ca1f44b547f2d4eb0e5744c286bb58e67008bc9d23ea8417509a35",
+      "excerpt": "    /// ```\n    #[inline]\n    pub fn set_prec(&mut self, prec: u32) {\n        self.set_prec_round(prec, Round::Nearest);\n    }\n\n    /// Sets the precision, applying the specified rounding method.\n    ///\n    /// # Panics\n    ///\n    /// Panics if `prec` is out of the allowed range.\n    ///\n    /// # Examples\n    ///\n    /// ```rust\n    /// use core::cmp::Ordering;\n    /// use rug::float::Round;\n    /// use rug::Float;\n    /// // 16.25 has seven significant bits (binary 10000.01)\n    /// let mut f = Float::with_val(53, 16.25);\n    /// let dir = f.set_prec_round(5, Round::Up);\n    /// assert_eq!(f, 17);\n    /// assert_eq!(dir, Ordering::Greater);\n    /// assert_eq!(f.prec(), 5);\n    /// ```\n    #[inline]\n    pub fn set_prec_round(&mut self, prec: u32, round: Round) -> Ordering {\n        assert!(\n            (float::prec_min()..=float::prec_max()).contains(&prec),\n            \"precision out of range\"\n        );\n        xmpfr::prec_round(self, prec.strict_cast(), round)\n    }\n",
+      "excerpt_sha256": "51214093be548c71e8706dceba7f4798ae19c93b889d15310ae85f95c49fbf95"
+    },
+    {
+      "path": "/home/external/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rug-1.30.0/src/float/big.rs",
+      "first_line": 12625,
+      "last_line": 12632,
+      "source_sha256": "7ab6d5c8a9ca1f44b547f2d4eb0e5744c286bb58e67008bc9d23ea8417509a35",
+      "excerpt": "pub(crate) fn append_to_string(s: &mut StringLike, f: &Float, format: Format) {\n    use core::fmt::Write;\n\n    if f.is_zero() {\n        s.push_str(if f.is_sign_negative() { \"-0\" } else { \"0\" });\n        return;\n    }\n    if f.is_infinite() {\n",
+      "excerpt_sha256": "30ed4ec7bb657d6118c3b43b4a01661aab7f4c9048619b859e5d7acc9105f064"
+    },
+    {
+      "path": "/home/external/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/gmp-mpfr-sys-1.7.1/mpfr-4.2.2-c/tests/tprec_round.c",
+      "first_line": 45,
+      "last_line": 53,
+      "source_sha256": "f8a8379aa095b758d6e3ef02aec579dad010fedf33066a301b92789050b0ace4",
+      "excerpt": "\n   mpfr_set_ui (x, 0, MPFR_RNDN);\n   mpfr_prec_round (x, 2, MPFR_RNDN);\n   MPFR_ASSERTN(mpfr_cmp_ui (x, 0) == 0 && MPFR_IS_POS(x));\n\n   mpfr_set_ui (x, 0, MPFR_RNDN);\n   mpfr_neg (x, x, MPFR_RNDN);\n   mpfr_prec_round (x, 2, MPFR_RNDN);\n   MPFR_ASSERTN(mpfr_cmp_ui (x, 0) == 0 && MPFR_IS_NEG(x));\n",
+      "excerpt_sha256": "084378b9c69c9fda5fa553218539959e68046dca4f731783d708cc0b4e5ab91a"
+    },
+    {
+      "path": "../references/oneloopmaster/src/lib.rs",
+      "first_line": 157,
+      "last_line": 177,
+      "source_sha256": "969bfd849f94b5e1b448cf22b0d0608f91871b38973767d4dd5515c9a962e51f",
+      "excerpt": "/// Principal logarithm continued to the lower lip of the negative real axis.\n///\n/// This is the Feynman branch selected by squared masses with non-positive\n/// imaginary parts. It is built entirely from Symbolica's native operations.\nfn physical_log(value: &Atom) -> Atom {\n    // Complex conjugation flips IEEE signed zero on the real axis, so the\n    // nested-conjugation identity alone cannot prescribe its branch lip. Select\n    // the lower lip explicitly for real arguments and retain the principal\n    // logarithm away from the axis.  The IF is native and lazy, so the\n    // inactive branch may contain singular expressions without affecting\n    // evaluation of the active coefficient.\n    let off_axis = off_real_axis(value);\n    let value = grouped(value);\n    let absolute = Symbol::ABS.call((&value,));\n    let negative = Symbol::IF.call((&value - &absolute, Atom::num(1), Atom::num(0)));\n    // ABS selects the lip, but cannot represent the analytic neighborhood:\n    // its derivative discards imaginary seeds at a real primal value.\n    let axis_value = (Atom::num(1) - Atom::num(2) * &negative) * &value;\n    let lower_lip = axis_value.log() - Atom::num(-1).sqrt() * Symbol::PI.to_atom() * negative;\n    Symbol::IF.call((&off_axis, value.log(), lower_lip))\n}\n",
+      "excerpt_sha256": "4c518e89b863039c49d618fe3fdc754fcc2c18e20995890d6cccd84698dbdba0"
+    },
+    {
+      "path": "../references/ninjars/crates/ninjars-symbolica/src/masters.rs",
+      "first_line": 193,
+      "last_line": 214,
+      "source_sha256": "7b2ad7c6a2c5f1d6d3230ff411a38d4f4ce0239ec4f417d776d596f1734389c5",
+      "excerpt": "    fn snap_onshell(threshold: &T, row: &mut [Complex<T>], invariants: usize) {\n        let zero = threshold.zero();\n        let small = |value: &Complex<T>| value.re.norm() + value.im.norm() < *threshold;\n        let masses = row.len() - invariants - 1;\n        for value in &mut row[invariants..invariants + masses] {\n            if small(value) {\n                *value = Complex::new(zero.clone(), zero.clone());\n            }\n        }\n        let (momenta, rest) = row.split_at_mut(invariants);\n        for momentum in momenta {\n            if small(momentum) {\n                *momentum = Complex::new(zero.clone(), zero.clone());\n                continue;\n            }\n            if let Some(mass) = rest[..masses].iter().find(|mass| {\n                mass.im.is_fully_zero() && (momentum.re.clone() - &mass.re).norm() < *threshold\n            }) {\n                *momentum = mass.clone();\n            }\n        }\n    }\n",
+      "excerpt_sha256": "81d73802b7c41b98077fe36a705a833c7227b06c4b9218451a593ccacd4ff005"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+--- original/src/lib.rs
++++ proposed/src/lib.rs
+@@ -448,14 +448,15 @@
+     let text = std::str::from_utf8(text)
+         .map_err(|_| "MP input is not ASCII")?
+         .trim();
+-    let input = Float::parse(text, Some(113)).map_err(|e| format!("invalid MP value: {e}"))?;
++    let mut input = Float::parse(text, Some(113)).map_err(|e| format!("invalid MP value: {e}"))?;
+     if !input.is_finite() {
+         return Err("nonfinite MP input".into());
+     }
+     // Forty significant decimal digits round-trip binary128. First recover that
+-    // value at 113 bits, then widen its exact represented rational, not the
+-    // decimal approximation, to the rescue working precision.
+-    Ok(Float::new(precision).from_rational(&input.to_rational()))
++    // value at 113 bits, then widen the represented value itself. A rational
++    // round-trip would discard the sign of zero, which selects complex branch lips.
++    input.set_prec(precision);
++    Ok(input)
+ }
+ fn parse_records(data: &[u8], precision: u32) -> Result<Vec<Float>> {
+     data.chunks_exact(RECORD)
+@@ -1409,3 +1410,8 @@
+ 
+ #[cfg(test)]
+ mod guarded_tests;
++
++#[cfg(test)]
++mod transport_contract_tests;
++#[cfg(test)]
++mod transport_replay_tests;
