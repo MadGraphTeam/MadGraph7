@@ -5,6 +5,13 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.3.0 (XX/XX/XX):
+   RF: Add real-diagram channels for fixed-order NLO, through the
+       hidden option real_channels_x0 in the run_card. Useful for
+       processes that have new structures opening beyond LO, such as
+       pp>w+bb [QCD] (W radiating from a final state quark line) or
+       pp>w+h [QED] (photon induced t-channel contribution). A typical
+       value would be a few percent or so (e.g., 0.03). See also
+       Sec.6.3 of 0908.4272 [hep-ph].
    OM: Bug fix: 'check_sa.exe perf' of 'output standalone' ignored the alpha_s
        of the param card and always used 0.118 (the 'matrix' mode was right).
        With --momenta/-e and --dump-me, the matrix elements at user points are
