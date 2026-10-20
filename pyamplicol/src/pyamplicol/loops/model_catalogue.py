@@ -24,6 +24,22 @@ from .model_gluons import (
 from .model_neutral_qcd import neutral_qcd_counterterm_validations
 from .vertex_frames import certified_fermion_slash_source, certified_ffv_source
 
+_ADJOINT_VECTOR_TWO_POINT = (
+    "P(1,2)*P(2,2)",
+    "Metric(1,2)",
+    "P(-1,2)**2*Metric(1,2)",
+    "P(1,2)*P(2,2)-3*P(-1,2)**2*Metric(1,2)/2",
+    "P(1,2)*P(2,2)-P(-1,2)**2*Metric(1,2)",
+)
+_ADJOINT_VECTOR_THREE_POINT = (
+    "P(3,1)*Metric(1,2)",
+    "P(3,2)*Metric(1,2)",
+    "P(2,1)*Metric(1,3)",
+    "P(2,3)*Metric(1,3)",
+    "P(1,2)*Metric(2,3)",
+    "P(1,3)*Metric(2,3)",
+)
+
 
 def certified_source_counterterm_bases(source):
     """Return exact-key conformance for the tested source tensor primitives.
@@ -90,6 +106,20 @@ def certified_source_counterterm_bases(source):
             # The tested colour and Lorentz factors do not depend on whether
             # the source assigns this identical local tensor to UV or R2.
             control = "local-adjoint-scalar-vvss-aloha-and-mg-color-control"
+        elif (
+            spins == (3, 3)
+            and colors == (8, 8)
+            and any_equal(entry.color, ("Identity(1,2)",))
+            and any_equal(entry.lorentz, _ADJOINT_VECTOR_TWO_POINT)
+        ):
+            control = "local-adjoint-vector-two-point-aloha-and-mg-color-control"
+        elif (
+            spins == (3, 3, 3)
+            and colors == (8, 8, 8)
+            and any_equal(entry.color, ("f(1,2,3)",))
+            and any_equal(entry.lorentz, _ADJOINT_VECTOR_THREE_POINT)
+        ):
+            control = "local-adjoint-vector-three-point-aloha-and-mg-color-control"
         elif (
             spins == (2, 2, 3)
             # The tested local tensor and Dirac endpoint frame depend on the
