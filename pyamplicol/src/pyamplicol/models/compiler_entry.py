@@ -62,15 +62,16 @@ from .contact_decomposition import (
     compiled_contact_orbit_step,
 )
 from .contracts import (
+    TREE_KERNEL_VARIANTS,
     CompiledModelIR,
     CompiledOrientedKernel,
     CompiledParameterRecord,
     CompiledParticleRecord,
     CompiledPropagatorRecord,
     CompiledVertexTerm,
+    TreeKernelVariant,
     compiled_particle_component_dimension,
 )
-from .prepared_catalog import TREE_KERNEL_VARIANTS, TreeKernelVariant
 from .tensors import (
     classify_trilinear_color_expression,
     normalize_color_expression,
@@ -340,6 +341,7 @@ def compile_ufo_model_ir(
         tensor_orderings=tensor_orderings,
         current_orderings=current_orderings,
         goldstone_partners=goldstone_partners,
+        tree_kernel_variant=tree_kernel_variant,
     )
 
 

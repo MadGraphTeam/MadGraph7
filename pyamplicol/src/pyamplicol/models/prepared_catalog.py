@@ -17,6 +17,7 @@ from .contact_decomposition import (
     CompiledContactOrbitCertificate,
     CompiledContactOrbitStep,
 )
+from .contracts import TREE_KERNEL_VARIANTS, TreeKernelVariant
 
 if TYPE_CHECKING:
     from .base import Model
@@ -46,14 +47,6 @@ PreparedInputRole: TypeAlias = Literal[
     "block-current",
     "block-momentum",
 ]
-# Tree kernels exist in two variants. ``transverse`` is the compile-time
-# default: proven massless Yang-Mills vertices drop the terms proportional to
-# each input current's self-contraction p_i.J_i, which is exact for conserved
-# Berends-Giele currents. ``full`` keeps the complete Feynman rule; it is needed
-# wherever an input current is not conserved (CT=1 currents, Ward or
-# non-transverse spin sources).
-TreeKernelVariant: TypeAlias = Literal["transverse", "full"]
-TREE_KERNEL_VARIANTS: tuple[TreeKernelVariant, ...] = ("transverse", "full")
 PreparedOutputFactorSource: TypeAlias = Literal[
     "none",
     "coupling-real",
@@ -447,6 +440,12 @@ class PreparedKernelCatalog:
         return {
             "abi": _CATALOG_ABI,
             "model_name": self.model_name,
+            # Written only off the default so transverse manifests are unchanged.
+            **(
+                {}
+                if self.tree_kernel_variant == "transverse"
+                else {"tree_kernel_variant": self.tree_kernel_variant}
+            ),
             "vertex_bindings": [
                 {
                     "key": {

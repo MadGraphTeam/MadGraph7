@@ -35,6 +35,7 @@ from .prepared_catalog import (
     PreparedPropagatorBinding,
     PreparedVertexBinding,
     PropagatorKernelKey,
+    TreeKernelVariant,
     VertexKernelKey,
 )
 from .prepared_catalog_helpers import (
@@ -405,7 +406,17 @@ def build_prepared_kernel_catalog(model: Model) -> PreparedKernelCatalog:
             else kernel_ids[model_parameter_candidate.canonical_signature]
         ),
         unsupported_variants=(),
+        tree_kernel_variant=_tree_kernel_variant(model),
     )
+
+
+def _tree_kernel_variant(model: Model) -> TreeKernelVariant:
+    """Variant of the compiled IR; non-UFO models lower transverse kernels."""
+
+    compiled = model.compiled if isinstance(model, CompiledUFOModel) else None
+    if compiled is None:
+        return "transverse"
+    return cast(TreeKernelVariant, compiled.ir.tree_kernel_variant)
 
 
 def _unique_vertices(model: Model) -> tuple[Vertex, ...]:
