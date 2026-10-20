@@ -1,4 +1,41 @@
-# User-requested pause — 2026-10-20 22:07 UTC
+# Latest user-requested pause — 2026-10-21 (Europe/Zurich)
+
+Work is paused again at the user's immediate request. Do not resume any job
+until explicitly instructed. Latest pushed milestone before this checkpoint:
+`ffbca3d46` (fresh signed-zero installation and copied SA/NLO checks pass).
+
+New results saved since the previous pause:
+
+- Existing NinjaRS MG7 suites: 113 tests passed. Fourteen new upstream/interface
+  tests are written; 25 focused tests including existing installer/statistics
+  checks pass. The new files remain saved but uncommitted pending root review:
+  `tools/ninjars_upstream.py` and
+  `tests/unit_tests/various/test_ninjars_{upstream,integration_boundaries}.py`.
+- Corrected parser plus allocation tensor: all 22 tests, 21 golden lanes and
+  both full 1,392-request replays pass exactly. The uncommitted 123-file evidence
+  seal is `6043ed79a1f0bd5bd0936db988a3e6ba2205fd21fe780de510a99ff016d20d26`
+  in `experiments/ninjars-mp-tensor-allocation-transport-v1`. No production
+  tensor change, static-library build or process timing was started.
+- Native Float256 compilation is still incomplete; its tests/replay did not
+  start. The four exact process identities are stopped in
+  `.benchmark-work/pause-native-20261021-second.json`.
+- The broad polynomial/exporter/HELAS regression suite is suspended before its
+  final result. Some IO comparisons fail and require investigation; do not
+  report this suite as passed. Its controller and process descendants, the
+  reference collector/worker, and the read-only upstream watcher are stopped
+  in `.benchmark-work/pause-20261021-second.json`. Already-exited zombie
+  children are explicitly classified separately from stopped live jobs.
+- The reuse census and supplemental loop-induced/threshold plan are saved and
+  sealed. Both upstream main branches still match the original pins; the new
+  checker and retained live checkpoint confirm no update is pending.
+
+Resume-time timeout caveats below still apply. The current native and reference
+roots have been stopped a second time; use these newest records. Preserve
+uncommitted evidence and source; do not blindly clean untracked files. All
+agents are idle. All eight-process gates, final optimization decisions, expanded
+stability/loop-induced benchmarks and the final report remain outstanding.
+
+## Historical first pause — 2026-10-20 22:07 UTC
 
 Do not resume work or suspended jobs until the user explicitly resumes the goal.
 All work stays in this repository on `madloop_ninjars`.

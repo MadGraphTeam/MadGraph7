@@ -677,3 +677,9 @@ resume metadata. The earlier pause note is a historical checkpoint.
   new committed lockfile, and fresh runtime/benchmark provenance. Do not float
   dependencies or silently update a frozen measurement. No external recurring
   schedule has been configured in this session.
+- The user requested an immediate second pause. Active native compilation,
+  original-reference collection, broad regression children and the temporary
+  read-only upstream watcher are suspended; completed proofs and new tests
+  remain saved. No final improvement was promoted. The latest
+  `references/PAUSE.md` checkpoint identifies the new records and outstanding
+  IO-comparison failures for investigation on explicit resume.
