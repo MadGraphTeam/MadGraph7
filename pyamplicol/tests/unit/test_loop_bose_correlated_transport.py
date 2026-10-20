@@ -229,6 +229,46 @@ def test_actual_source_owners_and_class_sets_remain_authoritative(retained_sourc
         )
 
 
+def test_saved_scope_requires_actual_objects_but_allows_extra_classes(retained_sources):
+    from pyamplicol.loops.flavor_transport import AdmittedFlavorMember
+
+    control = retained_sources
+    if "group_member" not in control:
+        pytest.skip("requires the retained real public group member")
+    required = next(
+        item for item in control["classes"][0] if item.bare.spin_layout.legs == (3,)
+    )
+    member_class = next(
+        item for item in control["classes"][1] if item.bare.spin_layout.legs == (4,)
+    )
+    relation = _admit(
+        control, representative_spin=(required,), member_spin=(member_class,)
+    )
+    admission = AdmittedFlavorMember(relation, control["group_member"])
+    options = dict(
+        directed=control["ordinary"][0],
+        directed_histories=control["histories"][0],
+    )
+    for classes in ((required,), control["classes"][0]):
+        data = admission.for_program(
+            control["programs"][0].virtual, spin_directed=classes, **options
+        )
+        assert data["bose_correlations"]["spin_classes"] == [(4,)]
+    substitution = replace(required)
+    assert substitution is not required
+    for classes in (
+        tuple(item for item in control["classes"][0] if item is not required),
+        tuple(
+            substitution if item is required else item
+            for item in control["classes"][0]
+        ),
+    ):
+        with pytest.raises(ValueError, match="actual paired proof"):
+            admission.for_program(
+                control["programs"][0].virtual, spin_directed=classes, **options
+            )
+
+
 @pytest.mark.parametrize("field", ["phase_states", "helicities", "contracts"])
 def test_matching_substitutions_cannot_replace_source_authority(
     retained_sources, field
