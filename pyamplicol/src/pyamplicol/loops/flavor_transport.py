@@ -326,7 +326,11 @@ def _bose_local_rules(plan):
     }
     names = (*plan.ordinary_rules, *plan.counterterms.rules)
     classes = symmetric_boson_slots(
-        model, names, coupling_expressions=expansions, conserve_momentum=True
+        model,
+        names,
+        coupling_expressions=expansions,
+        conserve_momentum=True,
+        fixed_representation=plan.source_color is None,
     )
     for name in names:
         rule = model.vertex_rule(name)

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Exact local Bose symmetries used only for counterterm witness matching.
+"""Exact local Bose symmetries for witnesses and transport prerequisites.
 
 FeynKit instantiates each complete vertex in a fixed external-edge frame.
 Symbolica checks its exact equality after native interaction slots are swapped.
@@ -35,8 +35,30 @@ def _local_momentum_frame(diagram):
     )
 
 
+def _fixed_representation_equal(left, right, structure):
+    """Use existing exact components, retaining the complete typed interface."""
+    from symbolica import Expression
+    from symbolica.community.tensor import TensorExpression, TensorLibrary
+
+    a = TensorExpression(left, structure=structure)
+    b = TensorExpression(right, structure=structure)
+    components = (b - a).to_tensor(TensorLibrary.hep_lib_atom())
+    for index in range(len(components)):
+        value = components[index]
+        if not isinstance(value, Expression):
+            raise TypeError("fixed Bose proof requires exact tensor components")
+        if value.together() != 0:
+            return False
+    return True
+
+
 def symmetric_boson_slots(
-    model, interactions, *, coupling_expressions=None, conserve_momentum=False
+    model,
+    interactions,
+    *,
+    coupling_expressions=None,
+    conserve_momentum=False,
+    fixed_representation=False,
 ):
     """Return full-permutation slot classes proved on the actual model rules.
 
@@ -52,6 +74,10 @@ def symmetric_boson_slots(
     ``conserve_momentum`` additionally applies the dependency's exact routing
     to this one-vertex star. The original and swapped external coordinates and
     signed routing must agree; no mass-shell or other kinematic identity is used.
+    ``fixed_representation`` additionally compares every exact component in the
+    dependency's actual concrete HEP representations when expression equality
+    is insufficient. Scalar symbols and epsilon powers remain unevaluated. This
+    opt-in proves only that fixed representation, never a formal-Nc continuation.
     """
     from symbolica import Replacement
     from symbolica.community import hepkit as hep
@@ -106,7 +132,8 @@ def symmetric_boson_slots(
             data["target_slot"] for _, data in json.loads(diagram.to_json())["edges"]
         ]
         original_diagram = diagram.apply_feynman_rules()
-        original = original_diagram.vertices[0].numerator_expression().to_expression()
+        original_tensor = original_diagram.vertices[0].numerator_expression()
+        original = original_tensor.to_expression()
         if conserve_momentum:
             original_frame = _local_momentum_frame(original_diagram)
             basis = original_diagram.loop_momentum_basis
@@ -156,7 +183,12 @@ def symmetric_boson_slots(
                     expression = basis.route_expression(expression)
                 if replacements:
                     expression = expression.replace_multiple(replacements)
-                if (expression - original).expand() != 0:
+                if (expression - original).expand() != 0 and (
+                    not fixed_representation
+                    or not _fixed_representation_equal(
+                        original, expression, original_tensor.structure
+                    )
+                ):
                     proved = False
                     break
             if proved:
