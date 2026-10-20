@@ -1,6 +1,11 @@
 # Final focused ABI3 control audit
 
-This is a source/evidence audit and command plan, not a new test result.
+This records the initial source/evidence audit and command plan. The commands
+have now run: `validation.json`, `focused-unit-results.json`,
+`absent-results.json` and `local-source-results.json` record successful outcomes.
+The absent export's initial optional-Ninja runtime setup was rejected and
+retained; the corrected internal-dependency control uses bundled CutTools and
+also checks exclusive backend 8 rejection. See the adjacent README for the exact sequence.
 The environment setup in the adjacent README applies to every command below.
 Run commands from the repository root.
 
@@ -8,7 +13,7 @@ Run commands from the repository root.
 | --- | --- | --- |
 | DP/MP transport and buffer contract | ABI3 production port passed all 16 Rust tests, including genuine binary128 input, 256/384-bit convergence, malformed buffers, lazy compensated state and parameter rebinding; compiled recording Fortran checks DP/QP normalization and extra binary128 bits. | The NLO generator fix does not change bridge source. Bind the bridge hashes to that prior result; the command below can rerun the suite if those files change. The new installed smoke and relocated QP call remain mandatory. |
 | Return codes and retry counters | Actual production-template mock flow passed all 24 ordered scenarios, rotations 0/2 and backend 8/8→6. The code-mapping test covers every legacy backend and NinjaRS. | Rerun the three-module focused Python suite, including the previously separate statistics tests for legacy/mixed XML, aggregation and NLO log parsing. Root's final numerical cohort supplies actual rescue statuses. |
-| Absent NinjaRS | Compiled cleanup test passes with and without the module; installer tests reject missing modules and old ABI metadata. | Perform a full final-source CLI export with `set ninjars None`, then compile its legacy-Ninja executable without any `mninjars` module or NinjaRS library in that output. The prepared card is `absent-install.mg5`. |
+| Absent NinjaRS | Compiled cleanup test passes with and without the module; installer tests reject missing modules and old ABI metadata. | Perform a full final-source CLI export with `set ninjars None`, then compile its legacy-reduction executable without any `mninjars` module or NinjaRS library in that output. The prepared card is `absent-install.mg5`; internal dependencies require bundled CutTools for the runtime control. |
 | Internal dependency relocation | ABI3 private pinned install and relocated standalone DP 110/QP 120/stable 218 passed; all copied artifacts were regular files matching the install. | Repeat in this fresh namespace after the committed fix, including the previously failed full NLO compilation and actual pole/soft-collinear checks. |
 | Local source overrides | Actual dual-source CLI compile/install/smoke exists for ABI2. ABI3 installer unit tests verify copied source isolation, but are not actual builds. | Run `local-source-install.mg5` through the archived fixed CLI with the shared Symbolica slot reserved. It copies both read-only references into its build stage and publishes only under this namespace. Retain before/after reference manifests, installed ABI3 metadata, lockfile, local revision provenance and actual native/compensated/native/MP smoke log. |
 
@@ -46,7 +51,8 @@ make -C .benchmark-work/policy-v2/install-export-abi3-terminal-fixed/absent-ninj
 
 Before declaring that check passed, require no copied `mninjars.*` or
 `libninjars.a` in the output, no `-lninjars` in its makefile definitions, and no
-`USE mninjars` or NinjaRS calls in the generated executable's source. This checks
+`USE mninjars` or external NinjaRS adapter calls in the generated executable's
+source. Generic unavailable-backend dispatch remains legitimate. This checks
 absence in the exported build; it does not rename or alter the main install.
 
 The dual-source override command invokes actual compilation and MP smoke and

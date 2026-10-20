@@ -1,0 +1,55 @@
+{
+  "passed": true,
+  "command": [
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/source/bin/madgraph",
+    "--plain",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/install-export-abi3-terminal-fixed/local-source-install.mg5"
+  ],
+  "installed": ".benchmark-work/policy-v2/install-export-abi3-terminal-fixed/local-source-HEPTools/ninjars",
+  "abi_version": 3,
+  "actual_native_compensated_native_and_mp_smoke_passed": true,
+  "reference_source_domain_unchanged": true,
+  "reference_manifest_domain": "Installer copied domain, excluding .git, target, references, __pycache__, .direnv.",
+  "reference_file_counts": {
+    "ninjars": 2628,
+    "oneloopmaster": 565
+  },
+  "metadata": {
+    "abi_version": 3,
+    "quad_precision": true,
+    "native_libs": [
+      "-ldl",
+      "-lgcc_s",
+      "-lutil",
+      "-lrt",
+      "-lpthread",
+      "-lm",
+      "-ldl",
+      "-lc"
+    ],
+    "local_sources": {
+      "ninjars": {
+        "source": "/shared/external/madloop_ninjars/references/ninjars",
+        "revision": "0d0d7e7a8033431b60a8580731084742e0655cda"
+      },
+      "oneloopmaster": {
+        "source": "/shared/external/madloop_ninjars/references/oneloopmaster",
+        "revision": "09b2c7497743db875ed446da95123175dd00b1c8"
+      }
+    },
+    "fortran_compiler": "gfortran",
+    "link_before": [
+      "-lgcc_s"
+    ],
+    "link_order_version": 1,
+    "compiler_runtime": "gnu-linux-libgcc_s-before-rust"
+  },
+  "archive_sha256": "825a8a80aaee2c9d2db039d8809f8281cde03cec2bf91c0db5265fa80ced36d0",
+  "retained_files": {
+    "Cargo.lock": "3d4dcbd97c2b50ca28c325044fbbddd0a0df27f16013b604cd76971fcc12faa2",
+    "Cargo.toml": "a025c54a99707cf3f950c1a24aaa4144f3f78941f2c00472dc83122ff39360e4",
+    "install.log": "090843c60aa1f26eab0c4e18baacac15b96dac6d05e50671b040cf1b93ddd52c",
+    "ninjars-config.json": "7e62e34ad0a716581a11fa0cef91843358809422aafe8dc6a63b747f4bde9458"
+  }
+}

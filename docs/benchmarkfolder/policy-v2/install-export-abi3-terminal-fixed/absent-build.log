@@ -1,0 +1,9 @@
+make: Entering directory '/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/absent-ninjars/SubProcesses/P0_uux_z'
+gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c check_sa.f -o check_sa.o 
+gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c MadLoopParamReader.f -o MadLoopParamReader.o 
+gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -c MadLoopCommons.f -o MadLoopCommons.o 
+ln -s /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/absent-ninjars/lib//collier_lib/libcollier.so || echo "libcolier already linked" 
+ln: failed to create symbolic link './libcollier.so': File exists
+libcolier already linked
+gfortran -w -fPIC  -ffixed-line-length-132 -I../../Source/MODEL -I../../Source/DHELAS -o check check_sa.o MadLoopParamReader.o MadLoopCommons.o polynomial.o loop_matrix.o improve_ps.o born_matrix.o CT_interface.o loop_num.o helas_calls_ampb_1.o   mp_compute_loop_coefs.o mp_helas_calls_ampb_1.o coef_construction_1.o loop_CT_calls_1.o mp_coef_construction_1.o TIR_interface.o    mg5_citation.o -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/absent-ninjars/lib/ -ldhelas -lmodel -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/absent-ninjars/lib/ -lcts -liregi -lstdc++ 
+make: Leaving directory '/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/absent-ninjars/SubProcesses/P0_uux_z'

@@ -1,0 +1,76 @@
+{
+  "standalone-relocated": {
+    "libninjars.a": {
+      "sha256": "1199bc84570bee76a6b162a86fd5c191479236b2c0617fe4bf250d5de0d9df32",
+      "regular_file": true,
+      "matches_private_installation": true
+    },
+    "mninjars.mod": {
+      "sha256": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+      "regular_file": true,
+      "matches_private_installation": true
+    },
+    "ninjars.h": {
+      "sha256": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+      "regular_file": true,
+      "matches_private_installation": true
+    },
+    "mninjars.f90": {
+      "sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+      "regular_file": true,
+      "matches_private_installation": true
+    },
+    "ninjars-config.json": {
+      "sha256": "2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7",
+      "regular_file": true,
+      "matches_private_installation": true
+    },
+    "ninjars-link-before.txt": {
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+      "regular_file": true,
+      "matches_private_installation": true
+    },
+    "ninjars-native-libs.txt": {
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+      "regular_file": true,
+      "matches_private_installation": true
+    }
+  },
+  "nlo-relocated": {
+    "libninjars.a": {
+      "sha256": "1199bc84570bee76a6b162a86fd5c191479236b2c0617fe4bf250d5de0d9df32",
+      "regular_file": true,
+      "matches_private_installation": true
+    },
+    "mninjars.mod": {
+      "sha256": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+      "regular_file": true,
+      "matches_private_installation": true
+    },
+    "ninjars.h": {
+      "sha256": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+      "regular_file": true,
+      "matches_private_installation": true
+    },
+    "mninjars.f90": {
+      "sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+      "regular_file": true,
+      "matches_private_installation": true
+    },
+    "ninjars-config.json": {
+      "sha256": "2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7",
+      "regular_file": true,
+      "matches_private_installation": true
+    },
+    "ninjars-link-before.txt": {
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+      "regular_file": true,
+      "matches_private_installation": true
+    },
+    "ninjars-native-libs.txt": {
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+      "regular_file": true,
+      "matches_private_installation": true
+    }
+  }
+}

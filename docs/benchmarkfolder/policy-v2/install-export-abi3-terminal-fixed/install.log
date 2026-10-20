@@ -1,0 +1,36 @@
+
+$ make install PREFIX=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/source/HEPTools/.ninjars-build-rptidt_i/install FC=gfortran
+   Compiling madloop-ninjars v0.1.0 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/source/HEPTools/.ninjars-build-rptidt_i/bridge)
+note: link against the following native artifacts when linking against this static library. The order and any duplication can be significant on some platforms
+
+note: native-static-libs: -ldl -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc
+
+    Finished `release` profile [optimized] target(s) in 55.09s
+gfortran -O3 -fPIC -c mninjars.f90 -o mninjars.o
+cp "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/cargo/release/libmadloop_ninjars.a" libninjars.a
+ar rcs libninjars.a mninjars.o
+mkdir -p "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/source/HEPTools/.ninjars-build-rptidt_i/install/lib" "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/source/HEPTools/.ninjars-build-rptidt_i/install/include"
+cp libninjars.a mninjars.mod ninjars-native-libs.txt ninjars-link-before.txt "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/source/HEPTools/.ninjars-build-rptidt_i/install/lib/"
+cp ninjars.h mninjars.f90 "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/source/HEPTools/.ninjars-build-rptidt_i/install/include/"
+
+$ gfortran -I/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/source/HEPTools/.ninjars-build-rptidt_i/install/lib /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/source/HEPTools/.ninjars-build-rptidt_i/bridge/smoke.f90 -lgcc_s /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/source/HEPTools/.ninjars-build-rptidt_i/install/lib/libninjars.a -ldl -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc -o /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/source/HEPTools/.ninjars-build-rptidt_i/smoke
+/nix/store/31gnwsgag5qa14hfblqi5hyn71pyx7py-binutils-2.46/bin/ld.bfd: warning: 2759c6e58623ef3d-x86_64.o: missing .note.GNU-stack section implies executable stack
+/nix/store/31gnwsgag5qa14hfblqi5hyn71pyx7py-binutils-2.46/bin/ld.bfd: NOTE: This behaviour is deprecated and will be removed in a future version of the linker
+
+$ /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/source/HEPTools/.ninjars-build-rptidt_i/smoke
+┌────────────────────────────────────────────────────────┐
+│ You are running a restricted Symbolica instance.       │
+│                                                        │
+│ For non-commercial use only, limited to one            │
+│ Symbolica thread per user.                             │
+│                                                        │
+├─ Unlock all cores ─────────────────────────────────────┤
+│                                                        │
+│ Hobbyists and students: free annual key                │
+│ https://symbolica.io/license/#get-hobbyist-license     │
+│                                                        │
+│ Free 30-day professional trial:                        │
+│ https://symbolica.io/license/#get-trial-license        │
+│                                                        │
+└────────────────────────────────────────────────────────┘
+ NinjaRS ABI3 native/compensated DP and genuine binary128-input rescue passed

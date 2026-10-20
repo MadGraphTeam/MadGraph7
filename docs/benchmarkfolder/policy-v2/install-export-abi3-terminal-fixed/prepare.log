@@ -1,0 +1,31 @@
+{
+  "revision": "b44d20e725f1ec68589df20284e4ce9116e9e2ab",
+  "archive_sha256": "b41f9d42ec874d4e87236752951451f7e40f1ca859b62db70d009e0bd6148279",
+  "command": [
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-terminal-fixed/source/bin/madgraph",
+    "--plain",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/install-export-abi3-terminal-fixed/install.mg5"
+  ],
+  "exit_code": 0,
+  "seconds": 63.89857306401245,
+  "cli_card_sha256": "da3b54a6c1113258493164e36915557e70c1a6ba08d2e38e3a21027c414b9f91",
+  "cli_log_sha256": "2764ea2339cc24156c6eefb679f8cf5e6395415adb4c604e896f9faf8f755c15",
+  "installed": ".benchmark-work/policy-v2/install-export-abi3-terminal-fixed/source/HEPTools/ninjars",
+  "files": {
+    "lib/libninjars.a": "1199bc84570bee76a6b162a86fd5c191479236b2c0617fe4bf250d5de0d9df32",
+    "lib/mninjars.mod": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+    "include/mninjars.f90": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+    "include/ninjars.h": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+    "lib/ninjars-config.json": "2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7",
+    "lib/ninjars-link-before.txt": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+    "lib/ninjars-native-libs.txt": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+    "Cargo.lock": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25",
+    "Cargo.toml": "a025c54a99707cf3f950c1a24aaa4144f3f78941f2c00472dc83122ff39360e4",
+    "install.log": "78d423444a24efabc28dd2dec37f5a9890a92f8c7b1c0766bf03cfde5d769ecb"
+  },
+  "reference_source_overrides": false,
+  "abi_version": 3,
+  "compiled_smoke_passed": true,
+  "passed": true
+}

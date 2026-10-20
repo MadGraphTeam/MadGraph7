@@ -1,0 +1,14 @@
+{
+  "kind": "Validation setup rejection, not a production defect",
+  "reason": "The prepared internal-dependency export intentionally omits optional original Ninja. The added runtime test requested backend6, which correctly stopped as unavailable. CLI export/build and absence assertions passed; this failed runtime is not counted as numerical success.",
+  "corrective_test": "Use bundled CutTools backend1 on the same generated executable, and separately require an actionable rejection for exclusive backend8.",
+  "artifacts": {
+    "absent-export.log": "765abd9bb588b5239e4dc81f2ae2d84aee39a6368c40c5b105d47cfefb2499ff",
+    "focused-absent.log": "0f354eb4c02a2d64c6188ca2fd0ed0049f1ff0d354af61d133c91d12ca91cd7d",
+    "focused_validator.py": "62d7baff59cbddc466d848ec358031f3023f3684e6aa1931e775dbfec71e0aa3",
+    "absent-MadLoopParams.dat": "021b8074fc09e6f6847dab4ebcf2bda239aead6877634889a9ac63f6a6a4a37c",
+    "absent-build.log": "dd1500729b5a0bd46f6842c0848933eb1c967940bd0ba76d41d2af970cc7531a",
+    "absent-runtime.log": "338660f7524e384399d535603c2a7535b629cf3b026bf4a846fd9462d5620c49",
+    "absent-install.mg5": "1a6278730514e9640b1e9109dba14f40cc362ecb003cac5a033a2ae6e7fc6376"
+  }
+}

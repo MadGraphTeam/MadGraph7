@@ -443,3 +443,13 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   categories. Seventeen report tests pass; the eight-page layout fixture is
   compiled and visually checked. Final measured profiles and the completed
   benchmark PDF remain outstanding.
+- The corrected archived installation/export milestone is sealed across 101
+  files. Pinned downloads and explicit dual local-source installation pass the
+  ABI 3 native/compensated/native DP and genuine MP smoke tests. Relocated
+  standalone DP, QP and stability runs agree; the complete NLO build passes
+  twenty pole checks and all soft/collinear tests. Sixteen focused tests pass.
+  With NinjaRS absent, bundled CutTools still evaluates successfully and an
+  exclusive selection of backend 8 reports an actionable error. Both reference
+  source trees remain unchanged. Optional StdHEP shower support is outside
+  this successful fixed-order validation; no new performance claim follows
+  from these checks.
