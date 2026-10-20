@@ -171,6 +171,12 @@ impl SegmentLayout {
     pub fn entries(&self) -> &[SegmentEntry] {
         &self.entries
     }
+
+    /// Storage index of each entry's monomial, in entry order: the right
+    /// index of the entry in a [`MonomialProductTable`].
+    pub fn monomials(&self) -> &[usize] {
+        &self.monomials
+    }
 }
 
 /// `rows x columns` polynomials of one rank over `lanes` points.

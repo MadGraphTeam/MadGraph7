@@ -4,10 +4,12 @@
 //!
 //! Runs whole schedule-B trie nodes (every edge with its own child object,
 //! regular helicity links, a fresh output object) in every kernel form on
-//! synthetic node shapes spanning a 7-leg trie, for 8, 16 and 32 SIMD lanes,
-//! and measures the fixed per-node and per-edge-call overheads. Work is
-//! counted as the complex multiply-adds per lane the kernel performs, the
-//! unit of the design's cost model.
+//! synthetic node shapes spanning a 7-leg trie plus nodes with at most two
+//! attached block rows, for 8, 16 and 32 SIMD lanes. It also times the same
+//! fused step in `poly.rs`'s `Complex` lane storage and lower bounds of the
+//! fixed per-node and per-edge-call overheads. Work is counted as the complex
+//! multiply-adds per lane the kernel performs, the unit of the design's cost
+//! model.
 //!
 //! ```text
 //! cargo bench -p rusticol-core --features loop-v2 --bench loop_v2_kernels -- \
@@ -19,17 +21,26 @@
 use std::hint::black_box;
 use std::time::Instant;
 
+use ninjars::fast::tensor_layout::ncoeff;
 use rusticol_core::loop_v2::kernels::{
-    FusedEntry, FusedPattern, MonomialProducts, RowLink, Segment, VertexEntry, VertexPattern,
-    clear, fused_edge, fused_edge_blocked, lane_vector_len, split_edge, split_vertex,
+    RowLink, Segment, clear, fused_edge, fused_edge_blocked, lane_vector_len, split_edge,
+    split_vertex,
+};
+use rusticol_core::loop_v2::poly::{
+    MonomialProductTable, OpenLoopPolynomial, SegmentLayout, apply_segment,
 };
 use serde_json::{Value, json};
+use symbolica::domains::float::Complex;
 
 /// One trie node: `rows_out` output rows; `edges` edges, each attaching a
 /// block with `block_rows` helicity rows to its own child object of rank
 /// `rank_in` with `rows_out * block_rows` rows.
 #[derive(Clone, Copy, Debug)]
 struct Shape {
+    /// `probe`: the design probe's shapes, which calibrate the cost model;
+    /// `small-x`: nodes with at most two attached block rows, which only
+    /// inform the per-node choice of kernel form.
+    set: &'static str,
     line: Line,
     rows_out: usize,
     edges: usize,
@@ -80,43 +91,35 @@ impl Line {
         }
     }
 
-    fn vertex_pattern(self, segment: &Segment<'_>) -> VertexPattern {
-        VertexPattern::new(
-            VertexPattern::dense(segment)
-                .entries()
-                .iter()
-                .copied()
-                .filter(|e: &VertexEntry| {
-                    self.vertex_nonzero(
-                        e.monomial as usize,
-                        e.incoming as usize,
-                        e.current as usize,
-                        e.outgoing as usize,
-                    )
-                })
-                .collect(),
-        )
+    /// The structured split-form vertex: the non-zeros of the dense one.
+    fn vertex_layout(self, segment: &Segment<'_>) -> SegmentLayout {
+        let dense = segment.dense_vertex_layout();
+        let current = segment.current();
+        let entries = dense
+            .entries()
+            .iter()
+            .zip(dense.monomials())
+            .filter(|(e, n)| {
+                self.vertex_nonzero(**n, e.loop_in / current, e.loop_in % current, e.out)
+            })
+            .map(|(e, _)| *e)
+            .collect();
+        SegmentLayout::new(dense.loop_in_dimension(), dense.out_dimension(), entries).unwrap()
     }
 
     /// Non-zeros of `X(J) = V J` for a generic block current.
-    fn fused_pattern(self, segment: &Segment<'_>) -> FusedPattern {
-        FusedPattern::new(
-            FusedPattern::dense(segment)
-                .entries()
-                .iter()
-                .copied()
-                .filter(|e: &FusedEntry| {
-                    (0..segment.current).any(|nu| {
-                        self.vertex_nonzero(
-                            e.monomial as usize,
-                            e.incoming as usize,
-                            nu,
-                            e.outgoing as usize,
-                        )
-                    })
-                })
-                .collect(),
-        )
+    fn fused_layout(self, segment: &Segment<'_>) -> SegmentLayout {
+        let dense = segment.dense_fused_layout();
+        let entries = dense
+            .entries()
+            .iter()
+            .zip(dense.monomials())
+            .filter(|(e, n)| {
+                (0..segment.current()).any(|nu| self.vertex_nonzero(**n, e.loop_in, nu, e.out))
+            })
+            .map(|(e, _)| *e)
+            .collect();
+        SegmentLayout::new(dense.loop_in_dimension(), dense.out_dimension(), entries).unwrap()
     }
 }
 
@@ -153,6 +156,7 @@ impl Form {
 /// and low rank to late steps with few rows and high rank.
 fn trie_shapes() -> Vec<Shape> {
     let gluon = |rows_out, edges, block_rows, rank_in| Shape {
+        set: "probe",
         line: Line::Gluon,
         rows_out,
         edges,
@@ -160,6 +164,7 @@ fn trie_shapes() -> Vec<Shape> {
         rank_in,
     };
     let ghost = |rows_out, edges, block_rows, rank_in| Shape {
+        set: "probe",
         line: Line::Ghost,
         rows_out,
         edges,
@@ -176,6 +181,26 @@ fn trie_shapes() -> Vec<Shape> {
         gluon(1, 8, 8, 6),
         ghost(16, 4, 4, 2),
         ghost(2, 8, 8, 5),
+        Shape {
+            set: "small-x",
+            ..gluon(64, 1, 1, 0)
+        },
+        Shape {
+            set: "small-x",
+            ..gluon(32, 2, 1, 1)
+        },
+        Shape {
+            set: "small-x",
+            ..gluon(16, 1, 2, 2)
+        },
+        Shape {
+            set: "small-x",
+            ..gluon(4, 2, 1, 4)
+        },
+        Shape {
+            set: "small-x",
+            ..gluon(1, 1, 2, 6)
+        },
     ]
 }
 
@@ -216,11 +241,11 @@ fn time_per_call(target: f64, mut f: impl FnMut()) -> f64 {
 /// A node instance with all buffers for every form.
 struct Node {
     shape: Shape,
-    products: MonomialProducts,
-    dense_vertex_pattern: VertexPattern,
-    structured_vertex_pattern: VertexPattern,
-    dense_fused_pattern: FusedPattern,
-    structured_fused_pattern: FusedPattern,
+    products: MonomialProductTable,
+    dense_vertex_layout: SegmentLayout,
+    structured_vertex_layout: SegmentLayout,
+    dense_fused_layout: SegmentLayout,
+    structured_fused_layout: SegmentLayout,
     inputs: Vec<Vec<f64>>,
     currents: Vec<Vec<f64>>,
     dense_factors: Vec<Vec<f64>>,
@@ -235,14 +260,14 @@ struct Node {
 impl Node {
     fn new<const L: usize>(shape: Shape, rng: &mut Rng) -> Self {
         let v = lane_vector_len(L);
-        let products = MonomialProducts::new(shape.rank_in, 1);
+        let products = MonomialProductTable::new(shape.rank_in, 1);
         let segment = segment(&shape, &products);
-        let dense_vertex_pattern = VertexPattern::dense(&segment);
-        let structured_vertex_pattern = shape.line.vertex_pattern(&segment);
-        let dense_fused_pattern = FusedPattern::dense(&segment);
-        let structured_fused_pattern = shape.line.fused_pattern(&segment);
-        let dense_fused = dense_fused_pattern.entries().len();
-        let structured_fused = structured_fused_pattern.entries().len();
+        let dense_vertex_layout = segment.dense_vertex_layout();
+        let structured_vertex_layout = shape.line.vertex_layout(&segment);
+        let dense_fused_layout = segment.dense_fused_layout();
+        let structured_fused_layout = shape.line.fused_layout(&segment);
+        let dense_fused = dense_fused_layout.entries().len();
+        let structured_fused = structured_fused_layout.entries().len();
         let rows_in = shape.rows_out * shape.block_rows;
         let links = (0..shape.rows_out)
             .flat_map(|h| {
@@ -258,7 +283,7 @@ impl Node {
                 .map(|_| rng.fill(rows_in * segment.input_row_len() * v))
                 .collect(),
             currents: (0..shape.edges)
-                .map(|_| rng.fill(shape.block_rows * segment.current * v))
+                .map(|_| rng.fill(shape.block_rows * segment.current() * v))
                 .collect(),
             dense_factors: (0..shape.edges)
                 .map(|_| rng.fill(shape.block_rows * dense_fused * v))
@@ -266,22 +291,22 @@ impl Node {
             structured_factors: (0..shape.edges)
                 .map(|_| rng.fill(shape.block_rows * structured_fused * v))
                 .collect(),
-            dense_vertex: rng.fill(dense_vertex_pattern.entries().len() * v),
-            structured_vertex: rng.fill(structured_vertex_pattern.entries().len() * v),
+            dense_vertex: rng.fill(dense_vertex_layout.entries().len() * v),
+            structured_vertex: rng.fill(structured_vertex_layout.entries().len() * v),
             links,
             output: vec![0.0; shape.rows_out * segment.output_row_len() * v],
             accumulator: vec![0.0; shape.rows_out * segment.accumulator_row_len() * v],
             shape,
             products,
-            dense_vertex_pattern,
-            structured_vertex_pattern,
-            dense_fused_pattern,
-            structured_fused_pattern,
+            dense_vertex_layout,
+            structured_vertex_layout,
+            dense_fused_layout,
+            structured_fused_layout,
         }
     }
 }
 
-fn segment<'a>(shape: &Shape, products: &'a MonomialProducts) -> Segment<'a> {
+fn segment<'a>(shape: &Shape, products: &'a MonomialProductTable) -> Segment<'a> {
     let (cut, incoming, current, outgoing) = shape.line.dims();
     Segment::new(
         cut,
@@ -289,22 +314,22 @@ fn segment<'a>(shape: &Shape, products: &'a MonomialProducts) -> Segment<'a> {
         current,
         outgoing,
         products,
-        products.rank() + 1,
+        products.output_rank(),
     )
 }
 
 /// Runs one whole node in `form` and returns its counted complex MACs per lane.
 fn run_node<const L: usize>(node: &mut Node, form: Form, links: &[RowLink]) -> usize {
     let segment = segment(&node.shape, &node.products);
-    let m_in = node.products.input_len();
+    let m_in = ncoeff(node.shape.rank_in);
     let rows = node.shape.rows_out;
     clear(&mut node.output);
     match form {
         Form::SplitDense | Form::SplitStructured => {
-            let (pattern, vertex) = if form == Form::SplitDense {
-                (&node.dense_vertex_pattern, &node.dense_vertex)
+            let (layout, vertex) = if form == Form::SplitDense {
+                (&node.dense_vertex_layout, &node.dense_vertex)
             } else {
-                (&node.structured_vertex_pattern, &node.structured_vertex)
+                (&node.structured_vertex_layout, &node.structured_vertex)
             };
             clear(&mut node.accumulator);
             for (input, current) in node.inputs.iter().zip(&node.currents) {
@@ -312,29 +337,29 @@ fn run_node<const L: usize>(node: &mut Node, form: Form, links: &[RowLink]) -> u
             }
             split_vertex::<f64, L>(
                 &segment,
-                pattern,
+                layout,
                 vertex,
                 rows,
                 &node.accumulator,
                 &mut node.output,
             );
             node.inputs.len() * links.len() * segment.accumulator_row_len()
-                + rows * segment.cut * pattern.entries().len() * m_in
+                + rows * segment.cut() * layout.entries().len() * m_in
         }
         Form::FusedDense | Form::FusedStructured => {
-            let (pattern, factors) = if form == Form::FusedDense {
-                (&node.dense_fused_pattern, &node.dense_factors)
+            let (layout, factors) = if form == Form::FusedDense {
+                (&node.dense_fused_layout, &node.dense_factors)
             } else {
-                (&node.structured_fused_pattern, &node.structured_factors)
+                (&node.structured_fused_layout, &node.structured_factors)
             };
             for (input, factor) in node.inputs.iter().zip(factors) {
-                fused_edge::<f64, L>(&segment, pattern, input, factor, links, &mut node.output);
+                fused_edge::<f64, L>(&segment, layout, input, factor, links, &mut node.output);
             }
-            node.inputs.len() * links.len() * segment.cut * pattern.entries().len() * m_in
+            node.inputs.len() * links.len() * segment.cut() * layout.entries().len() * m_in
         }
         Form::FusedBlocked => {
             for (input, factor) in node.inputs.iter().zip(&node.dense_factors) {
-                match (segment.incoming, segment.outgoing) {
+                match (segment.incoming(), segment.outgoing()) {
                     (4, 4) => fused_edge_blocked::<f64, L, 4, 4>(
                         &segment,
                         input,
@@ -354,10 +379,10 @@ fn run_node<const L: usize>(node: &mut Node, form: Form, links: &[RowLink]) -> u
             }
             node.inputs.len()
                 * links.len()
-                * segment.cut
-                * segment.incoming
-                * segment.outgoing
-                * node.products.factor_len()
+                * segment.cut()
+                * segment.incoming()
+                * segment.outgoing()
+                * ncoeff(segment.degree())
                 * m_in
         }
     }
@@ -366,6 +391,7 @@ fn run_node<const L: usize>(node: &mut Node, form: Form, links: &[RowLink]) -> u
 fn shape_json(shape: &Shape) -> Value {
     let (cut, incoming, current, outgoing) = shape.line.dims();
     json!({
+        "set": shape.set,
         "line": shape.line.name(),
         "rows_out": shape.rows_out,
         "edges": shape.edges,
@@ -379,7 +405,10 @@ fn shape_json(shape: &Shape) -> Value {
 fn run_lanes<const L: usize>(target: f64, records: &mut Vec<Value>) {
     let mut rng = Rng(7);
     println!("lanes={L}: G complex MAC/s per core (counted work per lane x lanes / time)");
-    print!("{:>6} {:>4} {:>3} {:>4} |", "line", "rows", "X", "r_in");
+    print!(
+        "{:>7} {:>6} {:>4} {:>3} {:>4} |",
+        "set", "line", "rows", "X", "r_in"
+    );
     for form in Form::ALL {
         print!(" {:>16}", form.name());
     }
@@ -388,7 +417,8 @@ fn run_lanes<const L: usize>(target: f64, records: &mut Vec<Value>) {
         let mut node = Node::new::<L>(shape, &mut rng);
         let links = node.links.clone();
         print!(
-            "{:>6} {:>4} {:>3} {:>4} |",
+            "{:>7} {:>6} {:>4} {:>3} {:>4} |",
+            shape.set,
             shape.line.name(),
             shape.rows_out,
             shape.edges * shape.block_rows,
@@ -415,7 +445,11 @@ fn run_lanes<const L: usize>(target: f64, records: &mut Vec<Value>) {
         println!();
     }
 
-    // Fixed overheads, which the counted work does not cover:
+    poly_layout::<L>(target, &mut rng, records);
+
+    // Fixed overheads, which the counted work does not cover. Both are lower
+    // bounds of executor dispatch: they time empty calls, not the irregular
+    // row gathers or cache misses of real tries.
     // - per node: a node without output rows (calls and setup only);
     // - per edge call: the marginal cost of an edge call without links;
     // - fit: least-squares intercept and slope of the time of a one-row,
@@ -424,6 +458,7 @@ fn run_lanes<const L: usize>(target: f64, records: &mut Vec<Value>) {
     //   products in the slope).
     for form in Form::ALL {
         let single_row = |edges| Shape {
+            set: "dispatch",
             line: Line::Gluon,
             rows_out: 1,
             edges,
@@ -464,7 +499,7 @@ fn run_lanes<const L: usize>(target: f64, records: &mut Vec<Value>) {
         let per_node = empty(1);
         let per_edge_call = ((empty(8) - per_node) / 7.0).max(0.0);
         println!(
-            "  dispatch {:>16}: per node {:6.1} ns, per edge call {:5.1} ns; fit {:6.1} ns + {:6.1} ns/edge",
+            "  dispatch (lower bound) {:>16}: per node {:6.1} ns, per edge call {:5.1} ns; fit {:6.1} ns + {:6.1} ns/edge",
             form.name(),
             per_node * 1e9,
             per_edge_call * 1e9,
@@ -479,6 +514,79 @@ fn run_lanes<const L: usize>(target: f64, records: &mut Vec<Value>) {
             "per_edge_call_seconds": per_edge_call,
             "fit_intercept_seconds": intercept,
             "fit_slope_seconds": slope,
+        }));
+    }
+}
+
+/// The same fused step in `poly.rs`'s storage, `Complex<f64>` per lane, by
+/// [`apply_segment`]: for each gluon probe shape, every edge dresses an
+/// object of `rows_out * block_rows * cut` rows with the structured fused
+/// layout. `apply_segment` has no row links (all rows share one factor), so
+/// this compares the lane storage of the two layouts, not whole nodes; the
+/// output accumulates across repetitions.
+fn poly_layout<const L: usize>(target: f64, rng: &mut Rng, records: &mut Vec<Value>) {
+    println!("  poly.rs apply_segment (Complex<f64> lanes), structured fused layout:");
+    for shape in trie_shapes() {
+        if shape.set != "probe" || shape.line != Line::Gluon {
+            continue;
+        }
+        let products = MonomialProductTable::new(shape.rank_in, 1);
+        let segment = segment(&shape, &products);
+        let layout = shape.line.fused_layout(&segment);
+        let rows = shape.rows_out * shape.block_rows * segment.cut();
+        let zero = Complex::new(0.0, 0.0);
+        let complex = |rng: &mut Rng, count: usize| -> Vec<Complex<f64>> {
+            rng.fill(2 * count)
+                .chunks_exact(2)
+                .map(|pair| Complex::new(pair[0], pair[1]))
+                .collect()
+        };
+        let inputs: Vec<OpenLoopPolynomial<Complex<f64>>> = (0..shape.edges)
+            .map(|_| {
+                let mut object =
+                    OpenLoopPolynomial::zeros(rows, segment.incoming(), shape.rank_in, L, &zero);
+                for row in 0..rows {
+                    for column in 0..segment.incoming() {
+                        for monomial in 0..ncoeff(shape.rank_in) {
+                            object
+                                .coefficient_mut(row, column, monomial)
+                                .clone_from_slice(&complex(rng, L));
+                        }
+                    }
+                }
+                object
+            })
+            .collect();
+        let coefficients: Vec<Vec<Complex<f64>>> = (0..shape.edges)
+            .map(|_| complex(rng, layout.entries().len() * L))
+            .collect();
+        let mut output =
+            OpenLoopPolynomial::zeros(rows, segment.outgoing(), products.output_rank(), L, &zero);
+        let mut run = || {
+            for (input, coefficients) in inputs.iter().zip(&coefficients) {
+                apply_segment(input, &layout, coefficients, &products, &mut output).unwrap();
+            }
+            black_box(&output);
+        };
+        let seconds = time_per_call(target, &mut run);
+        let work = shape.edges * rows * layout.entries().len() * ncoeff(shape.rank_in);
+        let rate = (work * L) as f64 / seconds;
+        println!(
+            "  {:>6} {:>4} {:>3} {:>4} | {:>16.3}",
+            shape.line.name(),
+            shape.rows_out,
+            shape.edges * shape.block_rows,
+            shape.rank_in,
+            rate / 1e9
+        );
+        records.push(json!({
+            "kind": "poly-layout",
+            "lanes": L,
+            "form": "poly-apply-segment",
+            "shape": shape_json(&shape),
+            "work_cmac_per_lane": work,
+            "seconds": seconds,
+            "gcmac_per_s": rate / 1e9,
         }));
     }
 }

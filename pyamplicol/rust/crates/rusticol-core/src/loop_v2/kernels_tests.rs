@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: 0BSD
 
 use super::*;
-use symbolica::domains::rational::Rational;
+use symbolica::domains::{
+    float::{DoubleFloat, RealLike, SingleFloat},
+    rational::Rational,
+};
 
 const L: usize = 2;
 
@@ -99,7 +102,7 @@ const ROWS_OUT: usize = 3;
 const BLOCK_ROWS: usize = 2;
 
 fn run_case(case: Case, rng: &mut Lcg) {
-    let products = MonomialProducts::new(case.rank, case.degree);
+    let products = MonomialProductTable::new(case.rank, case.degree);
     let segment = Segment::new(
         case.cut,
         case.incoming,
@@ -108,10 +111,10 @@ fn run_case(case: Case, rng: &mut Lcg) {
         &products,
         case.rank + case.degree,
     );
-    let n_factor = products.factor_len();
+    let n_factor = ncoeff(case.degree);
 
     // A structurally sparse vertex: roughly every third entry is zero.
-    let dense_vertex = VertexPattern::dense(&segment);
+    let dense_vertex = segment.dense_vertex_layout();
     let mut vertex_dense_values = zeros(dense_vertex.entries().len());
     let mut sparse_entries = Vec::new();
     let mut sparse_values = Vec::new();
@@ -125,7 +128,12 @@ fn run_case(case: Case, rng: &mut Lcg) {
         sparse_entries.push(*entry);
         sparse_values.extend(value);
     }
-    let sparse_vertex = VertexPattern::new(sparse_entries);
+    let sparse_vertex = SegmentLayout::new(
+        dense_vertex.loop_in_dimension(),
+        case.outgoing,
+        sparse_entries,
+    )
+    .unwrap();
     let vertex_at = |n: usize, b: usize, nu: usize, bp: usize| {
         let k = ((n * case.incoming + b) * case.current + nu) * case.outgoing + bp;
         lane(&vertex_dense_values, k).to_vec()
@@ -182,7 +190,7 @@ fn run_case(case: Case, rng: &mut Lcg) {
 
     let output_len = ROWS_OUT * segment.output_row_len();
 
-    let split = |pattern: &VertexPattern, values: &[Rational]| {
+    let split = |layout: &SegmentLayout, values: &[Rational]| {
         let mut accumulator = zeros(ROWS_OUT * segment.accumulator_row_len());
         for edge in &edges {
             split_edge::<Rational, L>(
@@ -196,7 +204,7 @@ fn run_case(case: Case, rng: &mut Lcg) {
         let mut output = zeros(output_len);
         split_vertex::<Rational, L>(
             &segment,
-            pattern,
+            layout,
             values,
             ROWS_OUT,
             &accumulator,
@@ -207,7 +215,7 @@ fn run_case(case: Case, rng: &mut Lcg) {
     let split_sparse = split(&sparse_vertex, &sparse_values);
     let split_dense = split(&dense_vertex, &vertex_dense_values);
 
-    let dense_fused = FusedPattern::dense(&segment);
+    let dense_fused = segment.dense_fused_layout();
     let mut fused_dense = zeros(output_len);
     for edge in &edges {
         fused_edge::<Rational, L>(
@@ -226,18 +234,21 @@ fn run_case(case: Case, rng: &mut Lcg) {
         .iter()
         .map(|f| {
             sparse_vertex.entries().iter().any(|v| {
-                (v.monomial, v.incoming, v.outgoing) == (f.monomial, f.incoming, f.outgoing)
+                (v.exponents, v.loop_in / case.current, v.out) == (f.exponents, f.loop_in, f.out)
             })
         })
         .collect();
-    let structured_fused = FusedPattern::new(
+    let structured_fused = SegmentLayout::new(
+        case.incoming,
+        case.outgoing,
         dense_fused
             .entries()
             .iter()
             .zip(&reachable)
             .filter_map(|(entry, &keep)| keep.then_some(*entry))
             .collect(),
-    );
+    )
+    .unwrap();
     let mut fused_structured = zeros(output_len);
     for edge in &edges {
         let factor: Vec<Rational> = edge
@@ -299,8 +310,8 @@ fn run_case(case: Case, rng: &mut Lcg) {
 
     // Direct evaluation at a random q: O'(q) = sum_links O(q) V(q) J.
     let q: [Rational; 4] = std::array::from_fn(|_| rng.rational());
-    let m_in = products.input_len();
-    let m_out = ncoeff(segment.output_rank);
+    let m_in = ncoeff(case.rank);
+    let m_out = ncoeff(segment.output_rank());
     let degree_monomials = monomials(case.degree);
     for h in 0..ROWS_OUT {
         for a in 0..case.cut {
@@ -337,7 +348,7 @@ fn run_case(case: Case, rng: &mut Lcg) {
                 let row = (h * case.cut + a) * case.outgoing + bp;
                 let actual = evaluate(
                     &split_sparse[row * m_out * lane_vector_len(L)..][..m_out * lane_vector_len(L)],
-                    segment.output_rank,
+                    segment.output_rank(),
                     &q,
                 );
                 assert_eq!(
@@ -350,25 +361,34 @@ fn run_case(case: Case, rng: &mut Lcg) {
 }
 
 #[test]
-fn products_follow_the_ninjars_layout() {
-    for rank in 0..=4 {
-        for degree in 0..=2 {
-            let products = MonomialProducts::new(rank, degree);
-            let lhs = monomials(rank);
-            assert_eq!(
-                products.column(0),
-                (0..lhs.len() as u32).collect::<Vec<_>>(),
-                "multiplying by 1 is the identity"
-            );
-            for (n, rhs) in monomials(degree).into_iter().enumerate() {
-                for (m, &target) in products.column(n).iter().enumerate() {
-                    let product = std::array::from_fn(|k| lhs[m][k] + rhs[k]);
-                    assert_eq!(target as usize, monomial_index(product));
-                    assert!((target as usize) < ncoeff(rank + degree));
-                }
-            }
-        }
+fn dense_layouts_follow_the_blocked_order() {
+    let products = MonomialProductTable::new(1, 2);
+    let segment = Segment::new(4, 4, 3, 2, &products, 3);
+    let layout = segment.dense_vertex_layout();
+    assert_eq!(layout.entries().len(), ncoeff(2) * 4 * 3 * 2);
+    for (k, (entry, &n)) in layout.entries().iter().zip(layout.monomials()).enumerate() {
+        let (b, nu) = (entry.loop_in / 3, entry.loop_in % 3);
+        assert_eq!(entry.loop_in, segment.vertex_column(b, nu));
+        assert_eq!(k, ((n * 4 + b) * 3 + nu) * 2 + entry.out);
+        assert_eq!(monomials(2)[n], entry.exponents);
     }
+}
+
+#[test]
+#[should_panic(expected = "does not fit")]
+fn kernels_reject_a_layout_of_another_segment() {
+    let products = MonomialProductTable::new(0, 1);
+    let segment = Segment::new(1, 4, 4, 4, &products, 1);
+    let wrong = dense_layout(4, 1, 1);
+    let input = zeros(segment.input_row_len());
+    let factor = zeros(wrong.entries().len());
+    let mut output = zeros(segment.output_row_len());
+    let links = [RowLink {
+        output: 0,
+        input: 0,
+        block: 0,
+    }];
+    fused_edge::<Rational, L>(&segment, &wrong, &input, &factor, &links, &mut output);
 }
 
 #[test]
@@ -428,9 +448,9 @@ fn kernel_forms_agree_exactly_and_match_direct_evaluation() {
 #[test]
 fn binary64_blocked_matches_pattern_kernel() {
     const LANES: usize = 8;
-    let products = MonomialProducts::new(3, 1);
+    let products = MonomialProductTable::new(3, 1);
     let segment = Segment::new(4, 4, 4, 4, &products, 4);
-    let pattern = FusedPattern::dense(&segment);
+    let pattern = segment.dense_fused_layout();
     let mut seed = 1u64;
     let mut sample = |count: usize| -> Vec<f64> {
         (0..count * lane_vector_len(LANES))
@@ -461,14 +481,12 @@ fn binary64_blocked_matches_pattern_kernel() {
     }
 }
 
-/// Runs the fused and split forms of one segment in carrier `T`; returns both outputs in f64.
+/// Runs the fused and split forms of one segment in carrier `T`.
 fn fused_and_split<T: FloatLike>(
+    segment: &Segment<'_>,
     data: &[Vec<Rational>; 4],
     convert: impl Fn(&Rational) -> T,
-    to_f64: impl Fn(&T) -> f64,
-) -> [Vec<f64>; 2] {
-    let products = MonomialProducts::new(2, 1);
-    let segment = Segment::new(4, 4, 4, 4, &products, 3);
+) -> [Vec<T>; 2] {
     let [input, current, factor, vertex] = data
         .each_ref()
         .map(|values| values.iter().map(&convert).collect::<Vec<T>>());
@@ -482,8 +500,8 @@ fn fused_and_split<T: FloatLike>(
     let zero = convert(&Rational::from(0));
     let mut fused = vec![zero.clone(); 2 * segment.output_row_len() * lane_vector_len(L)];
     fused_edge::<T, L>(
-        &segment,
-        &FusedPattern::dense(&segment),
+        segment,
+        &segment.dense_fused_layout(),
         &input,
         &factor,
         &links,
@@ -491,46 +509,53 @@ fn fused_and_split<T: FloatLike>(
     );
     let mut accumulator =
         vec![zero.clone(); 2 * segment.accumulator_row_len() * lane_vector_len(L)];
-    split_edge::<T, L>(&segment, &input, &current, &links, &mut accumulator);
+    split_edge::<T, L>(segment, &input, &current, &links, &mut accumulator);
     let mut split = vec![zero; 2 * segment.output_row_len() * lane_vector_len(L)];
     split_vertex::<T, L>(
-        &segment,
-        &VertexPattern::dense(&segment),
+        segment,
+        &segment.dense_vertex_layout(),
         &vertex,
         2,
         &accumulator,
         &mut split,
     );
-    [fused, split].map(|values| values.iter().map(&to_f64).collect())
+    [fused, split]
+}
+
+/// Largest error of `values` against the exact results, relative to the
+/// largest exact magnitude; the exact results are rounded into the carrier.
+fn relative_error<T: SingleFloat + RealLike>(values: &[T], exact: &[Rational]) -> f64 {
+    let scale = exact.iter().fold(0.0f64, |m, x| m.max(x.to_f64().abs()));
+    assert!(scale > 0.0);
+    values
+        .iter()
+        .zip(exact)
+        .map(|(value, exact)| (value.clone() - value.from_rational(exact)).to_f64().abs())
+        .fold(0.0, f64::max)
+        / scale
 }
 
 #[test]
-fn extended_precision_carriers_match_exact_arithmetic() {
-    use symbolica::domains::float::{DoubleFloat, Float, RealLike};
-
+fn extended_precision_carriers_keep_their_precision() {
+    // Inputs with denominators up to 7 are not dyadic, so every carrier
+    // rounds them at its own precision; computing in binary64 would leave
+    // errors near 1e-16 and fail both bounds below.
     let mut rng = Lcg(0xcafe);
-    let products = MonomialProducts::new(2, 1);
+    let products = MonomialProductTable::new(2, 1);
     let segment = Segment::new(4, 4, 4, 4, &products, 3);
     let data = [
         rng.lane_vectors(4 * segment.input_row_len()),
-        rng.lane_vectors(2 * segment.current),
-        rng.lane_vectors(2 * FusedPattern::dense(&segment).entries().len()),
-        rng.lane_vectors(VertexPattern::dense(&segment).entries().len()),
+        rng.lane_vectors(2 * segment.current()),
+        rng.lane_vectors(2 * segment.dense_fused_layout().entries().len()),
+        rng.lane_vectors(segment.dense_vertex_layout().entries().len()),
     ];
-    let exact = fused_and_split(&data, Rational::clone, Rational::to_f64);
-    let double_float = fused_and_split(
-        &data,
-        |r| DoubleFloat::from(r.to_f64()),
-        |x: &DoubleFloat| x.to_f64(),
-    );
-    let float = fused_and_split(&data, |r| Float::with_val(200, r.to_f64()), Float::to_f64);
-    // The carriers see the inputs rounded to binary64; compare at that level.
-    for (form, reference) in exact.iter().enumerate() {
-        let scale = reference.iter().fold(0.0f64, |m, x| m.max(x.abs()));
-        for result in [&double_float[form], &float[form]] {
-            for (r, x) in reference.iter().zip(result) {
-                assert!((r - x).abs() <= 1e-14 * scale, "{r} vs {x}");
-            }
-        }
+    let exact = fused_and_split(&segment, &data, Rational::clone);
+    let binary64 = fused_and_split(&segment, &data, Rational::to_f64);
+    let double_float = fused_and_split(&segment, &data, |r| DoubleFloat::from(r));
+    let float = fused_and_split(&segment, &data, |r| r.to_multi_prec_float(200));
+    for form in 0..2 {
+        assert!(relative_error(&binary64[form], &exact[form]) > 1e-20);
+        assert!(relative_error(&double_float[form], &exact[form]) <= 1e-29);
+        assert!(relative_error(&float[form], &exact[form]) <= 1e-57);
     }
 }
