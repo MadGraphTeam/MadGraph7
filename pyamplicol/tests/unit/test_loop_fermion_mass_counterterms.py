@@ -191,3 +191,40 @@ def test_actual_mass_two_points_match_offshell_aloha_in_both_frames(source):
                 contract(physical, (first, second)),
             ):
                 assert value == pytest.approx(target, rel=2e-14, abs=2e-15)
+
+
+def test_quark_scalar_counterterms_use_the_tested_ffs_bases(source):
+    """QCD counterterms of quark H/G0/G+- vertices: exact FFS bases only."""
+    from pyamplicol.loops.model_catalogue import certified_source_counterterm_bases
+
+    model, _ = source
+    particles = model.raw.collections["particles"]
+    entries = [
+        e
+        for e in model.kernels
+        if e.kind != "tree"
+        and tuple(particles[i]["fields"]["spin"] for i in e.particle_ids) == (2, 2, 1)
+        and tuple(particles[i]["fields"]["color"] for i in e.particle_ids) == (-3, 3, 1)
+    ]
+    # loop_sm: R2 and UV QCD counterterms of the quark Yukawa/Goldstone vertices.
+    assert len(entries) == 44
+    evidence = {c.source_key: c for c in certified_source_counterterm_bases(model)}
+    for entry in entries:
+        assert (
+            evidence[entry.key].conformance_control
+            == "source-FFS-physical-frame-and-fundamental-color-control"
+        )
+    # One representative per distinct source tensor for the negative controls.
+    for entry in {e.lorentz: e for e in entries}.values():
+        for changed in (
+            replace(entry, lorentz="2*ProjM(2,1)"),
+            replace(entry, lorentz="P(-1,1)*Gamma(-1,2,1)"),
+            replace(entry, color="T(3,2,1)"),
+        ):
+            changed_model = replace(
+                model,
+                kernels=tuple(changed if e is entry else e for e in model.kernels),
+            )
+            assert entry.key not in {
+                c.source_key for c in certified_source_counterterm_bases(changed_model)
+            }

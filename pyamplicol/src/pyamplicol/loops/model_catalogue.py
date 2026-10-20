@@ -25,6 +25,7 @@ from .model_neutral_qcd import neutral_qcd_counterterm_validations
 from .vertex_frames import (
     certified_fermion_mass_source,
     certified_fermion_slash_source,
+    certified_ffs_source,
     certified_ffv_source,
 )
 
@@ -141,6 +142,20 @@ def certified_source_counterterm_bases(source):
             )
         ):
             control = "source-FFV-physical-frame-and-fundamental-color-control"
+        elif (
+            spins == (2, 2, 1)
+            # Colour-singlet scalar couplings of an ordered fundamental pair
+            # (e.g. QCD counterterms of quark Yukawa/Goldstone vertices). The
+            # same exact FFS bases and physical frame as the tree vertices.
+            and colors == (-3, 3, 1)
+            and any_equal(entry.color, ("Identity(1,2)",))
+            and certified_ffs_source(
+                SimpleNamespace(
+                    spins=spins, structure=wrap_indices(expression(entry.lorentz))
+                )
+            )
+        ):
+            control = "source-FFS-physical-frame-and-fundamental-color-control"
         elif (
             spins == (2, 2)
             and colors == (-3, 3)

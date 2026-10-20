@@ -1512,8 +1512,12 @@ current with that momentum. The endpoint-symmetric bispinor identity
 no momentum or projector, is invariant under the endpoint exchange, and its
 lowered source kernels are rechecked against generated ALOHA `R2_QQ_2_0`
 (`fermion_mass_two_point_oracle.py`); `g g > t t~` and `u u~ > t t~` compare
-with MadLoop including the isolated mass insertions. Other two-point chiral,
-reversed-endpoint or momentum-leg tensors remain outside this admission. Scalar source coefficients,
+with MadLoop including the isolated mass insertions. Counterterms of
+colour-singlet scalar couplings to an ordered fundamental pair (e.g. QCD
+corrections of quark Yukawa/Goldstone vertices) use the same exact FFS bases and
+physical frame as the tree vertices; `e+ e- > t t~ h` counterterm components
+match MadLoop. Other two-point chiral, reversed-endpoint or momentum-leg tensors
+remain outside this admission. Scalar source coefficients,
 loop groups, matching and all process-level cancellations are independent gates.
 
 ### Flavour-changing Dirac/vector counterterms
