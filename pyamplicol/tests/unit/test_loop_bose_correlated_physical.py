@@ -81,6 +81,7 @@ def _compare(actual, independent, columns, key, ids, tolerance):
             tolerance,
         )
     assert len(actual.statuses) == len(ids)
+    assert all(len(row) == len(actual.channels) for row in actual.statuses)
     assert all(
         row_id == expected and status == "success"
         for row, expected in zip(actual.statuses, ids, strict=True)
@@ -154,7 +155,7 @@ def test_actual_bose_sources_histories_all_components_and_both_terms(
             }
             # The member source factory applies its actual SourceIR phase once.
             # Admission proves equality to corresponding representative phases.
-            sources = _source_rows(left, key, vectors, ids)
+            sources = _source_rows(right, key, vectors, ids)
             expected_sources = _source_rows(right, key, vectors, ids)
             mapped = relation.bind(left, directed=rep[representative_key])
             actual = mapped.evaluate_directed_decimal(
@@ -172,7 +173,7 @@ def test_actual_bose_sources_histories_all_components_and_both_terms(
                 assert np.array_equal(
                     getattr(actual, name)[0], getattr(actual, name)[2]
                 )
-            empty_sources = _source_rows(left, key, {leg: vector_a for leg in key}, [])
+            empty_sources = _source_rows(right, key, {leg: vector_a for leg in key}, [])
             empty = mapped.evaluate_directed_decimal(
                 points[:0], [], point_ids=[], spin_sources=empty_sources
             )
@@ -229,7 +230,7 @@ def test_actual_bose_sources_histories_all_components_and_both_terms(
         for source in (left, right):
             source.update_parameters({"aS": "0.12"})
         selected = relation.bind(left, directed=rep[(4,)])
-        updated_sources = _source_rows(left, (3,), {3: vector_b}, [91])
+        updated_sources = _source_rows(right, (3,), {3: vector_b}, [91])
         updated = selected.evaluate_directed_decimal(
             points[:1], ["2100000"], point_ids=[91], spin_sources=updated_sources
         )
