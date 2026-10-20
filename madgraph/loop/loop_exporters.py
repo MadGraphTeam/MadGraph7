@@ -1582,7 +1582,7 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
             helascalls_replace_dict['helas_calls']=\
                                            '\n'.join(helas_calls[k:k + n_helas])
             if replace_dict.get('terminal_ieee_use'):
-                has_private = re.search(r'\bCALL MP_\w+TERMINAL_WL_\d+_\d+\(',
+                has_private = re.search(r'\bCALL MP_\w*TERMINAL_WL_\d+_\d+\(',
                     helascalls_replace_dict['helas_calls'])
                 for key in ('terminal_ieee_use', 'terminal_ieee_declarations'):
                     helascalls_replace_dict[key] = replace_dict[key] if has_private else ''

@@ -418,3 +418,12 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   fixed-form formatting failure was caught, corrected and retained before
   commit. Main installation, fresh exports and full numerical/performance
   certification must now use this committed ABI 3 implementation.
+- ABI 3 is installed and all thirteen fresh standalone core/control exports
+  clean-build at `c5496ca9b`, with original physical inputs and dependency hashes
+  preserved. A separate pinned installation and relocated standalone DP/QP/
+  stability run pass. Its NLO compilation catches an empty-process-prefix bug
+  in terminal-batch IEEE declaration detection; the CLI's zero exit does not
+  mask that retained failure. The one-character predicate correction passes
+  thirteen focused tests, including real compilation with NLO flags, and two
+  FKS exporter checks. New archived standalone/NLO validation and fresh final
+  generation use separate namespaces after this correction.

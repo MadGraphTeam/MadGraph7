@@ -1,0 +1,5 @@
+      SUBROUTINE BATCH_1()
+      IMPLICIT NONE
+      CALL FULL()
+      END
+

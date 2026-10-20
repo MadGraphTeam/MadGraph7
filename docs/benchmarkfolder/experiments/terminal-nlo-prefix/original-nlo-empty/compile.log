@@ -1,0 +1,15 @@
+batch_2.f:3:37:
+
+    3 |       CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      |                                     1
+Error: Symbol ‘ieee_inexact’ at (1) has no IMPLICIT type
+batch_2.f:3:54:
+
+    3 |       CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      |                                                      1
+Error: Symbol ‘wl_entry_inexact’ at (1) has no IMPLICIT type
+batch_2.f:3:37:
+
+    3 |       CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
+      |                                     1
+Error: Symbol ‘ieee_inexact’ at (1) has no IMPLICIT type

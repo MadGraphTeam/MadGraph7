@@ -1,0 +1,30 @@
+{
+  "state": "Prepared only; execution requires root fix commit and MP release.",
+  "sealed_failure_manifest_sha256": "40093c5873b194f8420ff3d13bbc9389a644e049cf7d76f379adf4f2bf53e746",
+  "files": {
+    "prepare.py": {
+      "sealed_source": "docs/benchmarkfolder/policy-v2/install-export-abi3-terminal/prepare.py",
+      "source_sha256": "61d2e317f7829b5974b65c338089656f994303dd5fa47e8085445886dc9d0695",
+      "adapted_sha256": "b010c3f96dce281d4f365115d199836ebb653cbe3dd90075450cd9f7da21d8f3",
+      "change": "Namespace path replacement only; card unchanged."
+    },
+    "export.py": {
+      "sealed_source": "docs/benchmarkfolder/policy-v2/install-export-abi3-terminal/export.py",
+      "source_sha256": "94871c3911bcbc5ac6ae45ec3fc44e3907510a16dcb6380538ead9b27dad1633",
+      "adapted_sha256": "94871c3911bcbc5ac6ae45ec3fc44e3907510a16dcb6380538ead9b27dad1633",
+      "change": "Namespace path replacement only; card unchanged."
+    },
+    "runtime_validator.py": {
+      "sealed_source": "docs/benchmarkfolder/policy-v2/install-export-abi3-terminal/runtime_validator.py",
+      "source_sha256": "c3c8558fbcc5901cfcbe8c8f896e4cf50e7473d6ae441fbbf9f1f4cdd3fdc5f1",
+      "adapted_sha256": "caacb61479b0409424ca01d05e87ff4ff85f7bb62f06810aab73372b1e9e5a06",
+      "change": "Namespace path replacement only; card unchanged."
+    },
+    "nlo-compile.mg5": {
+      "sealed_source": "docs/benchmarkfolder/policy-v2/install-export-abi3-terminal/nlo-compile.mg5",
+      "source_sha256": "881f912c0be0830bf776afce99251f993b450c203d0c9be4806ac70705ef67cd",
+      "adapted_sha256": "881f912c0be0830bf776afce99251f993b450c203d0c9be4806ac70705ef67cd",
+      "change": "Namespace path replacement only; card unchanged."
+    }
+  }
+}

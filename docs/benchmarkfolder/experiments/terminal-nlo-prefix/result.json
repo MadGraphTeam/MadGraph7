@@ -1,0 +1,69 @@
+{
+  "rows": [
+    {
+      "variant": "original",
+      "prefix": "TEST_",
+      "compiled": true,
+      "expected": true,
+      "command": [
+        "gfortran",
+        "-fno-automatic",
+        "-ffixed-line-length-132",
+        "-c",
+        "batch_1.f",
+        "batch_2.f",
+        "batch_3.f"
+      ]
+    },
+    {
+      "variant": "original",
+      "prefix": "",
+      "compiled": false,
+      "expected": false,
+      "command": [
+        "gfortran",
+        "-fno-automatic",
+        "-ffixed-line-length-132",
+        "-c",
+        "batch_1.f",
+        "batch_2.f",
+        "batch_3.f"
+      ]
+    },
+    {
+      "variant": "proposed",
+      "prefix": "TEST_",
+      "compiled": true,
+      "expected": true,
+      "command": [
+        "gfortran",
+        "-fno-automatic",
+        "-ffixed-line-length-132",
+        "-c",
+        "batch_1.f",
+        "batch_2.f",
+        "batch_3.f"
+      ]
+    },
+    {
+      "variant": "proposed",
+      "prefix": "",
+      "compiled": true,
+      "expected": true,
+      "command": [
+        "gfortran",
+        "-fno-automatic",
+        "-ffixed-line-length-132",
+        "-c",
+        "batch_1.f",
+        "batch_2.f",
+        "batch_3.f"
+      ]
+    }
+  ],
+  "all_expectations_passed": true,
+  "runtime_module_sha256": "a607d658969debe130957eb02bccccdcbe7f47188aa616ba8cdbd629738c9b56",
+  "reference_method_sha256": "d933982e864e2f409e70d70c23bd70b4aa82321469040fb64ef9219842cd48cf",
+  "reference_revision": "c5496ca9b148b16a931214e1d541ead100ed1aad",
+  "scope": "Isolated exact exporter method and proposed one-character regex correction. No production mutation; actual empty-prefix FKS compile remains a separate check."
+}

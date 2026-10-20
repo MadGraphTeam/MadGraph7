@@ -1,0 +1,73 @@
+FILTER IOExportFKSTest/test_ppw_fksall&test_wprod_fksew/SubProcesses/P0_dxu_wp/V0_dxu_wp/mp_coef_construction_1.f&SubProcesses/P0_udx_wp/V0_udx_wp/mp_coef_construction_1.f&SubProcesses/P0_dxu_veep/V0_dxu_veep/mp_coef_construction_1.f&SubProcesses/P0_udx_veep/V0_udx_veep/mp_coef_construction_1.f
+CRITICAL:root:file tests.unit_tests.madspin.test_madspin takes a long time to load (0.2137s)
+/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python: No module named pip
+
+Installing build dependencies...
+
+$ /nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python -m pip install --upgrade scikit-build-core>=0.10 packaging>=22 pyyaml>=6 pybind11-stubgen>=2.5 --target=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madspace/install
+
+CRITICAL:root:file tests.unit_tests.iolibs.test_mg7_discrete_flavor takes a long time to load (0.1805s)
+CRITICAL:root:file tests.unit_tests.fks.test_fks_base takes a long time to load (0.1258s)
+CRITICAL:root:file tests.unit_tests.various.test_mg7_plots takes a long time to load (0.5780s)
+WARNING:cmdprint:Interpreting 'QCD^2=0' as 'QCD^2<=0'
+WARNING:cmdprint:Interpreting 'QED^2=2' as 'QED^2<=2'
+WARNING:madgraph.fks_base:Use of multiparticles is non-trivial for NLO process generation and depends on the orders included, the process considered, as well as the PDF set chosen. See appendix D of arXiv:1804.10017 [hep-ph] for some guidance.
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+WARNING:cmdprint:Pass the definition of 'j' and 'p' to 5 flavour scheme, including the photon.
+WARNING:cmdprint:Interpreting 'QCD^2=0' as 'QCD^2<=0'
+WARNING:cmdprint:Interpreting 'QED^2=4' as 'QED^2<=4'
+WARNING:madgraph.fks_base:Use of multiparticles is non-trivial for NLO process generation and depends on the orders included, the process considered, as well as the PDF set chosen. See appendix D of arXiv:1804.10017 [hep-ph] for some guidance.
+WARNING:cmdprint:NLO EW corrections are requested for a process with s-channel
+propagator(s) of unstable particle(s): w+, while the complex-mass scheme is
+not used. Close to the resonance the virtual corrections are then not gauge
+invariant and are dominated by the resonant self-energy: the NLO cross
+section can be wrong by O(100%). Use 'set complex_mass_scheme True' before
+generating the process (see arXiv:1804.10017).
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+nice: ‘gs’: No such file or directory
+nice: ‘gs’: No such file or directory
+cp: cannot stat 'card.jpg': No such file or directory
+The IOTest specification can include at most two '/'.
+
+You don't have madspace installed for this madgraph instance
+Running the madspace installation script
+
+loading test takes 1.3097074031829834s
+
+== [1;32mOperational mode[0m : file [1;34mTESTING[0m ==
+
+Processing [1;32mtest_ppw_fksall[0m in [1;34mIOExportFKSTest[0m
+Processing [1;32mtest_wprod_fksew[0m in [1;34mIOExportFKSTest[0m
+[1;32m
+2 IOTests [0msuccessfully tested in [1;34m43.35s[0m.
