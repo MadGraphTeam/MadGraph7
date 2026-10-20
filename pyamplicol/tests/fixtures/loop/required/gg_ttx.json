@@ -18,7 +18,7 @@
   },
   "scheme": "qcd",
   "scheme_description": "QCD corrections in the MG5 loop_sm-no_b_mass model: alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, massless b/tau/light fermions, all widths zero, five-flavour alpha_s renormalization with decoupled top, six quark flavours in loops, Feynman gauge.",
-  "source": "MG5_aMC_v3_7_0 / Recola2 2.3.0 / OpenLoops 2.1.5 independent references",
+  "source": "independent references: MadLoop/MG5_aMC 3.7.0; Recola2 2.2.5 (tree /shared/external/pyLoopAmpliCol/workspace/reference/sources/recola2-2.3.0) / collier 1.2.8 / modelfile 2.2.3; OpenLoops 2.1.5",
   "scope": "Independent provider references at exact on-shell decimal points; binary64 provider arithmetic; timings are single-run by-products, not benchmarks.",
   "convention": "MadLoop/BLHA C_eps=(4pi)^eps/Gamma(1-eps); F_MadLoop=F_Recola+pi^2/6*D; OpenLoops truepoles=1, polenorm=0; physical couplings, no alpha extraction; initial spin/colour average and final identical-particle factor included",
   "normalization": {
@@ -168,7 +168,7 @@
           "double_pole": -0.11325564357904935,
           "accuracy": 3.117699494328056e-16,
           "status": 216,
-          "seconds": 0.001318915,
+          "seconds": 0.001080484,
           "universal_double_pole_relative_error": 4.901402656593667e-16
         },
         "recola": {
@@ -176,7 +176,7 @@
           "finite": 0.5144944722337528,
           "single_pole": -0.13416136657610556,
           "double_pole": -0.11325564357904921,
-          "seconds": 0.006675917,
+          "seconds": 0.014336099,
           "raw": {
             "born": 1.0050934967387721,
             "finite": 0.7007925386197514,
@@ -191,36 +191,48 @@
           "single_pole": -0.13416136657610644,
           "double_pole": -0.11325564357904894,
           "accuracy": -1.0,
-          "seconds": 0.001942638,
+          "seconds": 0.002310809,
           "universal_double_pole_relative_error": 3.921122125274934e-15
         }
       },
-      "provider_relative_errors": {
-        "recola": {
+      "provider_pair_relative_errors": {
+        "madloop-recola": {
           "born": 8.836774116855774e-16,
           "finite": 1.5105237455000669e-15,
           "single_pole": 4.137640562849221e-16,
           "double_pole": 1.2253506641484173e-15
         },
-        "openloops": {
+        "madloop-openloops": {
           "born": 2.2091935292139435e-16,
           "finite": 6.473673195000286e-16,
           "single_pole": 6.206460844273793e-15,
           "double_pole": 3.676051992445252e-15
+        },
+        "recola-openloops": {
+          "born": 6.627580587641831e-16,
+          "finite": 8.631564260000387e-16,
+          "single_pole": 6.620224900558712e-15,
+          "double_pole": 2.4507013282968378e-15
         }
       },
-      "provider_strict_relative_errors": {
-        "recola": {
+      "provider_pair_strict_relative_errors": {
+        "madloop-recola": {
           "born": 8.836774116855774e-16,
           "finite": 1.5105237455000669e-15,
           "single_pole": 4.137640562849221e-16,
           "double_pole": 1.2253506641484173e-15
         },
-        "openloops": {
+        "madloop-openloops": {
           "born": 2.2091935292139435e-16,
           "finite": 6.473673195000286e-16,
           "single_pole": 6.206460844273793e-15,
           "double_pole": 3.676051992445252e-15
+        },
+        "recola-openloops": {
+          "born": 6.627580587641831e-16,
+          "finite": 8.631564260000387e-16,
+          "single_pole": 6.620224900558712e-15,
+          "double_pole": 2.4507013282968378e-15
         }
       }
     },
@@ -237,7 +249,7 @@
           "double_pole": -0.11283301482182942,
           "accuracy": 2.201642251934085e-15,
           "status": 216,
-          "seconds": 0.001251945,
+          "seconds": 0.001219015,
           "universal_double_pole_relative_error": 4.919761411933688e-16
         },
         "recola": {
@@ -245,7 +257,7 @@
           "finite": 0.3809431161562632,
           "single_pole": 0.22355354113909054,
           "double_pole": -0.11283301482182921,
-          "seconds": 0.006836167,
+          "seconds": 0.019670781,
           "raw": {
             "born": 1.0013428543690601,
             "finite": 0.5665459861018809,
@@ -260,36 +272,48 @@
           "single_pole": 0.22355354113909132,
           "double_pole": -0.11283301482182928,
           "accuracy": -1.0,
-          "seconds": 0.001977167,
+          "seconds": 0.005696084,
           "universal_double_pole_relative_error": 1.352934388281764e-15
         }
       },
-      "provider_relative_errors": {
-        "recola": {
+      "provider_pair_relative_errors": {
+        "madloop-recola": {
           "born": 2.2174683122389702e-16,
           "finite": 2.3315250546115435e-15,
           "single_pole": 1.7381878928817264e-15,
           "double_pole": 1.844910529475133e-15
         },
-        "openloops": {
+        "madloop-openloops": {
           "born": 6.652404936716906e-16,
           "finite": 4.080168845570202e-15,
           "single_pole": 1.7381878928817234e-15,
           "double_pole": 1.229940352983422e-15
+        },
+        "recola-openloops": {
+          "born": 8.869873248955875e-16,
+          "finite": 1.7486437909586619e-15,
+          "single_pole": 3.476375785763447e-15,
+          "double_pole": 6.149701764917118e-16
         }
       },
-      "provider_strict_relative_errors": {
-        "recola": {
+      "provider_pair_strict_relative_errors": {
+        "madloop-recola": {
           "born": 2.2174683122389702e-16,
           "finite": 2.3315250546115435e-15,
           "single_pole": 1.7381878928817264e-15,
           "double_pole": 1.844910529475133e-15
         },
-        "openloops": {
+        "madloop-openloops": {
           "born": 6.652404936716906e-16,
           "finite": 4.080168845570202e-15,
           "single_pole": 1.7381878928817234e-15,
           "double_pole": 1.229940352983422e-15
+        },
+        "recola-openloops": {
+          "born": 8.869873248955875e-16,
+          "finite": 1.7486437909586619e-15,
+          "single_pole": 3.476375785763447e-15,
+          "double_pole": 6.149701764917118e-16
         }
       }
     },
@@ -306,7 +330,7 @@
           "double_pole": -0.11345355140621377,
           "accuracy": 2.4873780118430916e-15,
           "status": 216,
-          "seconds": 0.001167335,
+          "seconds": 0.001115894,
           "universal_double_pole_relative_error": 1.2232131683675422e-16
         },
         "recola": {
@@ -314,7 +338,7 @@
           "finite": 0.5991482753700292,
           "single_pole": -0.15093769688377232,
           "double_pole": -0.11345355140621345,
-          "seconds": 0.006666686,
+          "seconds": 0.029613993,
           "raw": {
             "born": 1.006849840738511,
             "finite": 0.7857718870830263,
@@ -329,53 +353,71 @@
           "single_pole": -0.15093769688377268,
           "double_pole": -0.11345355140621383,
           "accuracy": -1.0,
-          "seconds": 0.001983508,
+          "seconds": 0.00236535,
           "universal_double_pole_relative_error": 1.2232131683675417e-16
         }
       },
-      "provider_relative_errors": {
-        "recola": {
+      "provider_pair_relative_errors": {
+        "madloop-recola": {
           "born": 6.616019468071756e-16,
           "finite": 3.5207040285395572e-15,
           "single_pole": 1.2872134219658343e-15,
           "double_pole": 2.813390287245347e-15
         },
-        "openloops": {
+        "madloop-openloops": {
           "born": 4.4106796453811687e-16,
           "finite": 1.2971014841987826e-15,
           "single_pole": 3.677752634188089e-15,
           "double_pole": 4.892852673470167e-16
+        },
+        "recola-openloops": {
+          "born": 1.102669911345292e-15,
+          "finite": 4.817805512738335e-15,
+          "single_pole": 2.390539212222258e-15,
+          "double_pole": 3.3026755545923623e-15
         }
       },
-      "provider_strict_relative_errors": {
-        "recola": {
+      "provider_pair_strict_relative_errors": {
+        "madloop-recola": {
           "born": 6.616019468071756e-16,
           "finite": 3.5207040285395572e-15,
           "single_pole": 1.2872134219658343e-15,
           "double_pole": 2.813390287245347e-15
         },
-        "openloops": {
+        "madloop-openloops": {
           "born": 4.4106796453811687e-16,
           "finite": 1.2971014841987826e-15,
           "single_pole": 3.677752634188089e-15,
           "double_pole": 4.892852673470167e-16
+        },
+        "recola-openloops": {
+          "born": 1.102669911345292e-15,
+          "finite": 4.817805512738335e-15,
+          "single_pole": 2.390539212222258e-15,
+          "double_pole": 3.3026755545923623e-15
         }
       }
     }
   ],
   "primary_provider": "madloop",
   "universal_double_pole_factor": -0.1126816997090619,
-  "maximum_provider_relative_error": 6.206460844273793e-15,
+  "maximum_provider_relative_error": 6.620224900558712e-15,
   "error_metric": "|a-b|/max(|a|,|b|,|Born|*coupling/(2pi)) for Laurent coefficients, |a-b|/max(|a|,|b|) for Born; strict relative errors also listed per row",
   "maximum_universal_double_pole_relative_error": 3.921122125274934e-15,
   "tolerance": 2e-08,
   "validation_status": "passed",
+  "validated_providers": [
+    "madloop",
+    "recola",
+    "openloops"
+  ],
+  "excluded_providers": {},
   "providers": {
     "madloop": {
       "provider": "madloop",
       "process_name": "gg_ttx",
       "host": "itphlies",
-      "cpu": 371,
+      "cpu": 288,
       "points_file": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/required/gg_ttx/points.json",
       "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
       "settings": {
@@ -389,9 +431,13 @@
           "MLStabThres": "1.000000d-03",
           "ImprovePSPoint": "2"
         },
-        "param_card": "######################################################################\n## PARAM_CARD AUTOMATICALY GENERATED BY MG5                       ####\n######################################################################\n###################################\n## INFORMATION FOR LOOP\n###################################\nBLOCK LOOP # \n      1 9.118800e+01 # mu_r\n###################################\n## INFORMATION FOR MASS\n###################################\nBLOCK MASS # \n      6 1.730000e+02 # mt\n      15 0.000000e+00 # mta\n      23 9.118800e+01 # mz\n      25 1.250000e+02 # mh\n      1 0.000000e+00 # d : 0.0\n      2 0.000000e+00 # u : 0.0\n      3 0.000000e+00 # s : 0.0\n      4 0.000000e+00 # c : 0.0\n      5 0.000000e+00 # b : 0.0\n      11 0.000000e+00 # e- : 0.0\n      12 0.000000e+00 # ve : 0.0\n      13 0.000000e+00 # mu- : 0.0\n      14 0.000000e+00 # vm : 0.0\n      16 0.000000e+00 # vt : 0.0\n      21 0.000000e+00 # g : 0.0\n      22 0.000000e+00 # a : 0.0\n      24 8.041900e+01 # w+ : cmath.sqrt(mz__exp__2/2. + cmath.sqrt(mz__exp__4/4. - (aew*cmath.pi*mz__exp__2)/(gf*sqrt__2)))\n      250 9.118800e+01 # g0 : mz\n      251 8.041900e+01 # g+ : mw\n###################################\n## INFORMATION FOR SMINPUTS\n###################################\nBLOCK SMINPUTS # \n      1 1.325070e+02 # aewm1\n      2 1.166390e-05 # gf\n      3 1.180000e-01 # as (note: this parameter is not used if you use a pdf set)\n###################################\n## INFORMATION FOR YUKAWA\n###################################\nBLOCK YUKAWA # \n      6 1.730000e+02 # ymt\n      15 0.000000e+00 # ymtau\n###################################\n## INFORMATION FOR DECAY\n###################################\nDECAY 6 0.000000e+00 # wt\nDECAY 23 0.000000e+00 # wz\nDECAY 24 0.000000e+00 # ww\nDECAY 25 0.000000e+00 # wh\nDECAY 1 0.000000e+00 # d : 0.0\nDECAY 2 0.000000e+00 # u : 0.0\nDECAY 3 0.000000e+00 # s : 0.0\nDECAY 4 0.000000e+00 # c : 0.0\nDECAY 5 0.000000e+00 # b : 0.0\nDECAY 11 0.000000e+00 # e- : 0.0\nDECAY 12 0.000000e+00 # ve : 0.0\nDECAY 13 0.000000e+00 # mu- : 0.0\nDECAY 14 0.000000e+00 # vm : 0.0\nDECAY 15 0.000000e+00 # ta- : 0.0\nDECAY 16 0.000000e+00 # vt : 0.0\nDECAY 21 0.000000e+00 # g : 0.0\nDECAY 22 0.000000e+00 # a : 0.0\nDECAY 250 2.441404e+00 # g0 : wz\nDECAY 251 2.047600e+00 # g+ : ww\n###################################\n## INFORMATION FOR QNUMBERS 82\n###################################\nBLOCK QNUMBERS 82 #  gh\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 8 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 250\n###################################\nBLOCK QNUMBERS 250 #  g0\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 0 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 251\n###################################\nBLOCK QNUMBERS 251 #  g+\n      1 3 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n\n",
+        "param_card": "######################################################################\n## PARAM_CARD AUTOMATICALY GENERATED BY MG5                       ####\n######################################################################\n###################################\n## INFORMATION FOR LOOP\n###################################\nBLOCK LOOP # \n      1 9.118800e+01 # mu_r\n###################################\n## INFORMATION FOR MASS\n###################################\nBLOCK MASS # \n      6 173 # mt\n      15 0 # mta\n      23 91.188 # mz\n      25 125 # mh\n      1 0.000000e+00 # d : 0.0\n      2 0.000000e+00 # u : 0.0\n      3 0.000000e+00 # s : 0.0\n      4 0.000000e+00 # c : 0.0\n      5 0.000000e+00 # b : 0.0\n      11 0.000000e+00 # e- : 0.0\n      12 0.000000e+00 # ve : 0.0\n      13 0.000000e+00 # mu- : 0.0\n      14 0.000000e+00 # vm : 0.0\n      16 0.000000e+00 # vt : 0.0\n      21 0.000000e+00 # g : 0.0\n      22 0.000000e+00 # a : 0.0\n      24 8.041900e+01 # w+ : cmath.sqrt(mz__exp__2/2. + cmath.sqrt(mz__exp__4/4. - (aew*cmath.pi*mz__exp__2)/(gf*sqrt__2)))\n      250 9.118800e+01 # g0 : mz\n      251 8.041900e+01 # g+ : mw\n###################################\n## INFORMATION FOR SMINPUTS\n###################################\nBLOCK SMINPUTS # \n      1 132.507 # aewm1\n      2 0.0000116639 # gf\n      3 0.118 # as (note: this parameter is not used if you use a pdf set)\n###################################\n## INFORMATION FOR YUKAWA\n###################################\nBLOCK YUKAWA # \n      6 173 # ymt\n      15 0 # ymtau\n###################################\n## INFORMATION FOR DECAY\n###################################\nDECAY 6 0 # wt\nDECAY 23 0 # wz\nDECAY 24 0 # ww\nDECAY 25 0 # wh\nDECAY 1 0.000000e+00 # d : 0.0\nDECAY 2 0.000000e+00 # u : 0.0\nDECAY 3 0.000000e+00 # s : 0.0\nDECAY 4 0.000000e+00 # c : 0.0\nDECAY 5 0.000000e+00 # b : 0.0\nDECAY 11 0.000000e+00 # e- : 0.0\nDECAY 12 0.000000e+00 # ve : 0.0\nDECAY 13 0.000000e+00 # mu- : 0.0\nDECAY 14 0.000000e+00 # vm : 0.0\nDECAY 15 0.000000e+00 # ta- : 0.0\nDECAY 16 0.000000e+00 # vt : 0.0\nDECAY 21 0.000000e+00 # g : 0.0\nDECAY 22 0.000000e+00 # a : 0.0\nDECAY 250 2.441404e+00 # g0 : wz\nDECAY 251 2.047600e+00 # g+ : ww\n###################################\n## INFORMATION FOR QNUMBERS 82\n###################################\nBLOCK QNUMBERS 82 #  gh\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 8 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 250\n###################################\nBLOCK QNUMBERS 250 #  g0\n      1 0 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 0 # particle/antiparticle distinction (0=own anti)\n###################################\n## INFORMATION FOR QNUMBERS 251\n###################################\nBLOCK QNUMBERS 251 #  g+\n      1 3 # 3 times electric charge\n      2 1 # number of spin states (2s+1)\n      3 1 # colour rep (1: singlet, 3: triplet, 8: octet)\n      4 1 # particle/antiparticle distinction (0=own anti)\n\n",
+        "mg5_quadruple_precision_model_function_repairs": [
+          "added KIND=16 to 19 CMPLX calls in MP_ functions",
+          "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
+        ],
         "requested_relative_accuracy": 1e-11,
-        "stability_check": "forced on every timed call"
+        "stability_check": "forced on every call"
       },
       "generation": {
         "process_name": "gg_ttx",
@@ -427,26 +473,100 @@
         "compile_jobs": 8
       },
       "version": "MadLoop/MG5_aMC 3.7.0",
+      "provenance": {
+        "MG5_aMC": {
+          "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0",
+          "version": "3.7.0"
+        },
+        "reducer_libraries": {
+          "libcts.a": {
+            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/vendor/CutTools/includects/libcts.a",
+            "version": null
+          },
+          "libiregi.a": {
+            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/vendor/IREGI/src/libiregi.a",
+            "version": null
+          },
+          "libninja.a": {
+            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/HEPTools/ninja/lib/libninja.a",
+            "version": "1.2.0"
+          },
+          "libavh_olo.a": {
+            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/HEPTools/oneloop/libavh_olo.a",
+            "version": "3.6"
+          },
+          "libcollier.a": {
+            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/MG5_aMC_v3_7_0/HEPTools/collier/libcollier.a",
+            "version": "1.2.9"
+          }
+        }
+      },
       "split_order_indices": [
         1,
         1,
         1,
         1
       ],
-      "initial_call_seconds": 0.050030457,
-      "initialization_calls": 5,
-      "process_wall_seconds": 0.06497548602055758,
+      "initial_call_seconds": 0.024394963,
+      "initialization_calls": 2,
+      "process_wall_seconds": 0.03802611504215747,
       "evaluation_seconds": [
-        0.001318915,
-        0.001251945,
-        0.001167335
-      ]
+        0.001080484,
+        0.001219015,
+        0.001115894
+      ],
+      "secondary_runs": {
+        "production": {
+          "settings": {
+            "requested_relative_accuracy": "MadLoop MLStabThres (production setting)",
+            "stability_check": "MadLoop default (CTModeRun=-1 after initialization)"
+          },
+          "version": "MadLoop/MG5_aMC 3.7.0",
+          "evaluation_seconds": [
+            0.001187275,
+            0.001230395,
+            0.001114834
+          ],
+          "statuses": [
+            216,
+            216,
+            216
+          ],
+          "estimated_accuracies": [
+            3.117699494328056e-16,
+            2.201642251934085e-15,
+            2.4873780118430916e-15
+          ],
+          "relative_deviation_from_reference_run": [
+            {
+              "born": 0.0,
+              "finite": 0.0,
+              "single_pole": 0.0,
+              "double_pole": 0.0
+            },
+            {
+              "born": 0.0,
+              "finite": 0.0,
+              "single_pole": 0.0,
+              "double_pole": 0.0
+            },
+            {
+              "born": 0.0,
+              "finite": 0.0,
+              "single_pole": 0.0,
+              "double_pole": 0.0
+            }
+          ],
+          "initial_call_seconds": 0.416063692,
+          "cpu": 289
+        }
+      }
     },
     "recola": {
       "provider": "recola",
       "process_name": "gg_ttx",
       "host": "itphlies",
-      "cpu": 346,
+      "cpu": 290,
       "points_file": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/required/gg_ttx/points.json",
       "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
       "settings": {
@@ -485,21 +605,39 @@
         ],
         "mu_uv=mu_ir=mu_r": true
       },
-      "version": "Recola2 (supplied 2.3.0 tree, self-reported 2.2.5) / SM model 2.2.3 / Collier 1.2.8",
-      "generation_seconds": 0.253867409,
-      "initial_call_seconds": 0.007763851,
-      "process_wall_seconds": 0.2937535779783502,
+      "provenance": {
+        "recola_tree": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/recola2-2.3.0",
+        "self_reported_version": "2.2.5",
+        "linked": {
+          "librecola.so": {
+            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/recola2-2.3.0/librecola.so",
+            "version": "2.2.5"
+          },
+          "libcollier.so": {
+            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/COLLIER-1.2.8/libcollier.so",
+            "version": "1.2.8"
+          },
+          "libmodelfile.so": {
+            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/models/SM_2.2.3/libmodelfile.so",
+            "version": "2.2.3"
+          }
+        }
+      },
+      "version": "Recola2 2.2.5 (tree /shared/external/pyLoopAmpliCol/workspace/reference/sources/recola2-2.3.0) / collier 1.2.8 / modelfile 2.2.3",
+      "generation_seconds": 1.13874594,
+      "initial_call_seconds": 0.020047233,
+      "process_wall_seconds": 1.24384153902065,
       "evaluation_seconds": [
-        0.006675917,
-        0.006836167,
-        0.006666686
+        0.014336099,
+        0.019670781,
+        0.029613993
       ]
     },
     "openloops": {
       "provider": "openloops",
       "process_name": "gg_ttx",
       "host": "itphlies",
-      "cpu": 347,
+      "cpu": 291,
       "points_file": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/required/gg_ttx/points.json",
       "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
       "settings": {
@@ -535,6 +673,18 @@
         ]
       },
       "version": "OpenLoops 2.1.5",
+      "provenance": {
+        "openloops": {
+          "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/OpenLoops-2.1.5",
+          "release": "2.1.5"
+        },
+        "linked": {
+          "libopenloops.so.2": {
+            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/OpenLoops-2.1.5/lib/libopenloops.so.2.1.5",
+            "version": null
+          }
+        }
+      },
       "library": {
         "name": "pptt",
         "loops": "lt",
@@ -543,14 +693,15 @@
         "date": "2020-06-23-11-06-20",
         "hash": "d9873cc352c1c03cfc0a11c4d6bcf251"
       },
-      "start_seconds": 2.54e-06,
-      "initial_call_seconds": 0.006216104,
-      "process_wall_seconds": 0.09611103200586513,
+      "start_seconds": 1.113e-05,
+      "initial_call_seconds": 0.023151016,
+      "process_wall_seconds": 0.5289970530429855,
       "evaluation_seconds": [
-        0.001942638,
-        0.001977167,
-        0.001983508
+        0.002310809,
+        0.005696084,
+        0.00236535
       ]
     }
-  }
+  },
+  "timing_only_runs": {}
 }

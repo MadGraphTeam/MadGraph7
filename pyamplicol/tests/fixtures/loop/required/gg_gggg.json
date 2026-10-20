@@ -20,7 +20,7 @@
   },
   "scheme": "qcd",
   "scheme_description": "QCD corrections in the MG5 loop_sm-no_b_mass model: alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, massless b/tau/light fermions, all widths zero, five-flavour alpha_s renormalization with decoupled top, six quark flavours in loops, Feynman gauge.",
-  "source": "MG5_aMC_v3_7_0 / Recola2 2.3.0 / OpenLoops 2.1.5 independent references",
+  "source": "independent references: Recola2 2.2.5 (tree /shared/external/pyLoopAmpliCol/workspace/reference/sources/recola2-2.3.0) / collier 1.2.8 / modelfile 2.2.3; OpenLoops 2.1.5",
   "scope": "Independent provider references at exact on-shell decimal points; binary64 provider arithmetic; timings are single-run by-products, not benchmarks.",
   "convention": "MadLoop/BLHA C_eps=(4pi)^eps/Gamma(1-eps); F_MadLoop=F_Recola+pi^2/6*D; OpenLoops truepoles=1, polenorm=0; physical couplings, no alpha extraction; initial spin/colour average and final identical-particle factor included",
   "normalization": {
@@ -204,7 +204,7 @@
           "finite": -0.0007879827146853155,
           "single_pole": -0.0005278615090884661,
           "double_pole": -0.00014723267759605418,
-          "seconds": 64.764416,
+          "seconds": 57.1510089,
           "raw": {
             "born": 0.0004355415238256076,
             "finite": -0.0005457946675542844,
@@ -219,20 +219,20 @@
           "single_pole": -0.0005278615090860302,
           "double_pole": -0.0001472326775956446,
           "accuracy": -1.0,
-          "seconds": 8.82980162,
+          "seconds": 9.62644024,
           "universal_double_pole_relative_error": 6.130421067754072e-14
         }
       },
-      "provider_relative_errors": {
-        "openloops": {
+      "provider_pair_relative_errors": {
+        "recola-openloops": {
           "born": 1.7300773144631897e-14,
           "finite": 5.801159231594209e-12,
           "single_pole": 4.614613831437643e-12,
           "double_pole": 2.7818856683055274e-12
         }
       },
-      "provider_strict_relative_errors": {
-        "openloops": {
+      "provider_pair_strict_relative_errors": {
+        "recola-openloops": {
           "born": 1.7300773144631897e-14,
           "finite": 5.801159231594209e-12,
           "single_pole": 4.614613831437643e-12,
@@ -251,7 +251,7 @@
           "finite": -0.003085169900920232,
           "single_pole": -0.002086617692601762,
           "double_pole": -0.0005531993635941252,
-          "seconds": 64.6588215,
+          "seconds": 57.3520423,
           "raw": {
             "born": 0.001636466155013011,
             "finite": -0.002175193421985497,
@@ -266,20 +266,20 @@
           "single_pole": -0.002086617692648001,
           "double_pole": -0.0005531993635876759,
           "accuracy": -1.0,
-          "seconds": 9.59112239,
+          "seconds": 10.0530677,
           "universal_double_pole_relative_error": 3.639097812419478e-12
         }
       },
-      "provider_relative_errors": {
-        "openloops": {
+      "provider_pair_relative_errors": {
+        "recola-openloops": {
           "born": 5.6712267272045134e-14,
           "finite": 7.317304477412075e-11,
           "single_pole": 2.2159603426257806e-11,
           "double_pole": 1.165812657648774e-11
         }
       },
-      "provider_strict_relative_errors": {
-        "openloops": {
+      "provider_pair_strict_relative_errors": {
+        "recola-openloops": {
           "born": 5.6712267272045134e-14,
           "finite": 7.317304477412075e-11,
           "single_pole": 2.2159603426257806e-11,
@@ -298,7 +298,7 @@
           "finite": -0.001167973494996605,
           "single_pole": -0.0006666425437529738,
           "double_pole": -0.000154997927076544,
-          "seconds": 63.6616536,
+          "seconds": 57.5615585,
           "raw": {
             "born": 0.0004585125697025689,
             "finite": -0.0009130121244575406,
@@ -313,20 +313,20 @@
           "single_pole": -0.0006666425437503228,
           "double_pole": -0.0001549979270761301,
           "accuracy": -1.0,
-          "seconds": 8.91546324,
+          "seconds": 9.4830887,
           "universal_double_pole_relative_error": 2.8434456603975125e-13
         }
       },
-      "provider_relative_errors": {
-        "openloops": {
+      "provider_pair_relative_errors": {
+        "recola-openloops": {
           "born": 5.5686502070368765e-14,
           "finite": 5.988310731935162e-12,
           "single_pole": 3.97661798933528e-12,
           "double_pole": 2.670495613765486e-12
         }
       },
-      "provider_strict_relative_errors": {
-        "openloops": {
+      "provider_pair_strict_relative_errors": {
+        "recola-openloops": {
           "born": 5.5686502070368765e-14,
           "finite": 5.988310731935162e-12,
           "single_pole": 3.97661798933528e-12,
@@ -352,10 +352,11 @@
       "provider": "recola",
       "process_name": "gg_gggg",
       "host": "itphlies",
-      "cpu": 314,
+      "cpu": 334,
       "points_file": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/required/gg_gggg/points.json",
       "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
       "settings": {
+        "recola_tree": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/recola2-2.3.0",
         "commands": [
           "mass W 80.4190024457561601055171371731 0",
           "mass Z 91.188 0",
@@ -370,6 +371,7 @@
           "mass muon 0 0",
           "mass electron 0 0",
           "alpha0 0.00754677111397888413442308708219",
+          "onshell",
           "alphas 0.118 1000 5",
           "legs 6",
           "born_gs 4",
@@ -389,21 +391,39 @@
         ],
         "mu_uv=mu_ir=mu_r": true
       },
-      "version": "Recola2 (supplied 2.3.0 tree, self-reported 2.2.5) / SM model 2.2.3 / Collier 1.2.8",
-      "generation_seconds": 2123.9127,
-      "initial_call_seconds": 65.1839111,
-      "process_wall_seconds": 2382.4175455560326,
+      "provenance": {
+        "recola_tree": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/recola2-2.3.0",
+        "self_reported_version": "2.2.5",
+        "linked": {
+          "librecola.so": {
+            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/recola2-2.3.0/librecola.so",
+            "version": "2.2.5"
+          },
+          "libcollier.so": {
+            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/COLLIER-1.2.8/libcollier.so",
+            "version": "1.2.8"
+          },
+          "libmodelfile.so": {
+            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/models/SM_2.2.3/libmodelfile.so",
+            "version": "2.2.3"
+          }
+        }
+      },
+      "version": "Recola2 2.2.5 (tree /shared/external/pyLoopAmpliCol/workspace/reference/sources/recola2-2.3.0) / collier 1.2.8 / modelfile 2.2.3",
+      "generation_seconds": 2035.51526,
+      "initial_call_seconds": 58.0744035,
+      "process_wall_seconds": 2265.899116019951,
       "evaluation_seconds": [
-        64.764416,
-        64.6588215,
-        63.6616536
+        57.1510089,
+        57.3520423,
+        57.5615585
       ]
     },
     "openloops": {
       "provider": "openloops",
       "process_name": "gg_gggg",
       "host": "itphlies",
-      "cpu": 364,
+      "cpu": 335,
       "points_file": "/shared/external/pyLoopAmpliCol/workspace/reference/runs/required/gg_gggg/points.json",
       "timing_scope": "single thread pinned; point 1 evaluated once untimed for initialization, then each point timed once (points 2..n,1); includes all actual poles; not a benchmark campaign",
       "settings": {
@@ -439,6 +459,18 @@
         ]
       },
       "version": "OpenLoops 2.1.5",
+      "provenance": {
+        "openloops": {
+          "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/OpenLoops-2.1.5",
+          "release": "2.1.5"
+        },
+        "linked": {
+          "libopenloops.so.2": {
+            "path": "/shared/external/pyLoopAmpliCol/workspace/reference/sources/OpenLoops-2.1.5/lib/libopenloops.so.2.1.5",
+            "version": null
+          }
+        }
+      },
       "library": {
         "name": "ppjjjj",
         "loops": "lt",
@@ -447,14 +479,60 @@
         "date": "2022-06-29-10-34-49",
         "hash": "133a4991b6c4ad66c6e46cc9dfbdb8cb"
       },
-      "start_seconds": 0.001166765,
-      "initial_call_seconds": 12.8843157,
-      "process_wall_seconds": 40.52199380798265,
+      "start_seconds": 0.001327726,
+      "initial_call_seconds": 13.0351752,
+      "process_wall_seconds": 42.51238750095945,
       "evaluation_seconds": [
-        8.82980162,
-        9.59112239,
-        8.91546324
+        9.62644024,
+        10.0530677,
+        9.4830887
       ]
+    }
+  },
+  "timing_only_runs": {
+    "madloop-production": {
+      "settings": {
+        "requested_relative_accuracy": "MadLoop MLStabThres (production setting)",
+        "stability_check": "MadLoop default (CTModeRun=-1 after initialization)"
+      },
+      "version": "MadLoop/MG5_aMC 3.7.0",
+      "evaluation_seconds": [
+        52.7840827,
+        52.9997108,
+        53.1675074
+      ],
+      "statuses": [
+        216,
+        216,
+        216
+      ],
+      "estimated_accuracies": [
+        1.2099860594102407e-10,
+        1.0568203999368915e-06,
+        5.733299968380806e-11
+      ],
+      "relative_deviation_from_merged_reference": [
+        {
+          "born": 4.269183588927043e-14,
+          "finite": 3.1899220983197426e-11,
+          "single_pole": 5.234085737594048e-12,
+          "double_pole": 1.2117246687025872e-12
+        },
+        {
+          "born": 1.735819395476216e-14,
+          "finite": 2.3576486854047856e-07,
+          "single_pole": 1.4166264932693618e-07,
+          "double_pole": 8.508213821170159e-12
+        },
+        {
+          "born": 7.614035527243471e-14,
+          "finite": 4.3717731655080704e-11,
+          "single_pole": 3.716400052116497e-12,
+          "double_pole": 9.115988857964838e-12
+        }
+      ],
+      "initial_call_seconds": 362.043678,
+      "cpu": 343
     }
   }
 }
