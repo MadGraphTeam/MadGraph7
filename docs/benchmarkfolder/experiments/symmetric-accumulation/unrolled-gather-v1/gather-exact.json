@@ -1,0 +1,125 @@
+{
+  "complete": true,
+  "acceptance_eligible": false,
+  "comparisons": 24000,
+  "results": [
+    {
+      "kind": 8,
+      "rank": 2,
+      "command": [
+        "gfortran",
+        "-O3",
+        "-frounding-math",
+        "-fno-automatic",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "constants.f",
+        "full.f",
+        "gather.f",
+        "driver.f90",
+        "-o",
+        "check"
+      ],
+      "passed": true,
+      "seconds": 19.31087866204325,
+      "output": " PASS        6000\n",
+      "sources": {
+        "gather.f": "2a504449daffdf37a8c7cf191026c55a4cc06211b8e8743bef737706fcc7e2cf",
+        "driver.f90": "0f3bddf8aa990e9f98a49a714df89f71c0dbd347ecbf1dd0bfe2df702e51e200",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "full.f": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34"
+      },
+      "executable_sha256": "f24303e5ad9636681910b75b071cadada3030757bae2907dcd96054c20358c50"
+    },
+    {
+      "kind": 8,
+      "rank": 3,
+      "command": [
+        "gfortran",
+        "-O3",
+        "-frounding-math",
+        "-fno-automatic",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "constants.f",
+        "full.f",
+        "gather.f",
+        "driver.f90",
+        "-o",
+        "check"
+      ],
+      "passed": true,
+      "seconds": 60.79885441600345,
+      "output": " PASS        6000\n",
+      "sources": {
+        "gather.f": "dc9121dbb5e42fa15b42f798439cb4f67998046675d1780748c58154cea3955c",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "driver.f90": "56a82fa03754eb243e648fd2238ea5404d57ff0579273a806340558fb91c8341",
+        "full.f": "88073e6b09570ba7df0c5a7e1c2ce15b6ab33a99b345e92b7165ba9d8dd14b9e"
+      },
+      "executable_sha256": "a48f006217b2049f491e6d7feee9151f266531b83822241a6ab2febe41590edd"
+    },
+    {
+      "kind": 16,
+      "rank": 2,
+      "command": [
+        "gfortran",
+        "-O3",
+        "-frounding-math",
+        "-fno-automatic",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "constants.f",
+        "full.f",
+        "gather.f",
+        "driver.f90",
+        "-o",
+        "check"
+      ],
+      "passed": true,
+      "seconds": 26.926288172020577,
+      "output": " PASS        6000\n",
+      "sources": {
+        "gather.f": "d172e9c18c860190efb32df2952c2509c3c8ed952ee0e22452e10721a432198e",
+        "full.f": "26929ebdcfe3d1f9948ea42505cd014840ae9b40fab8a91b5b18d4f89461f906",
+        "driver.f90": "0fe5c9b6d2e64bb371f62d1782e69f790ce2367a76010ea1d47778bcf0b6574f",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+      },
+      "executable_sha256": "bacb4f57914d85c3d3896f4a493be51169aa5b68e2985c28c5a9442e514d0016"
+    },
+    {
+      "kind": 16,
+      "rank": 3,
+      "command": [
+        "gfortran",
+        "-O3",
+        "-frounding-math",
+        "-fno-automatic",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "constants.f",
+        "full.f",
+        "gather.f",
+        "driver.f90",
+        "-o",
+        "check"
+      ],
+      "passed": true,
+      "seconds": 311.7715355330147,
+      "output": " PASS        6000\n",
+      "sources": {
+        "driver.f90": "af54f7755c6ab72009a62544781046ed051bdcf52363ccb0cf2c476c5a44e4c6",
+        "gather.f": "bfd15bb5d7e58bed8cdc61fef0458fca18fa1c63d0d06e499439fe1077bb8a76",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "full.f": "86cb2ca2056442a44968e38de6a10f594e198719e7a1e3ccf1a6139cb6113885"
+      },
+      "executable_sha256": "bcb3f80dabdbc57ba936e0ebb47bfb651eb76d378b6d931b903f28a1f336e892"
+    }
+  ],
+  "scope": "Synthetic full updater DP/QP bits, inputs and IEEE sticky flags with disabled traps, including exceptional/empty/rounding cases. This is not a full-process or performance result. Prototype falls back to public updater when any trap is enabled.",
+  "prototype_sha256": "5d7420f510b5309b6ddd4ca62a39a509c5282043ba9bfff62ed8349af6436279",
+  "driver_sha256": "8334dd9bd66934636a95a74a39d99023369ce26815aa838400228cd75dc37830",
+  "generator_sha256": "4e584f4977f615fff35a5079ac7b7e4cd071cda99ee0b5faafa96dae4411c98e",
+  "variant": "Explicit predecessor statements; independent M,K order retained.",
+  "runner_sha256": "bb944e394e40b5c5b97ec72f2aeae64460de1fd4a0db0bb6c45c8e01f9ddef1f"
+}

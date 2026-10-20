@@ -1,0 +1,39 @@
+{
+  "returncode": 0,
+  "wall_seconds": 300.98969561292324,
+  "samples": 62,
+  "activity": {
+    "cpu206": {
+      "jiffy_deltas": [
+        28979,
+        0,
+        738,
+        22,
+        67,
+        285,
+        8,
+        0,
+        0,
+        0
+      ],
+      "busy_fraction": 0.9970430911325958
+    },
+    "cpu207": {
+      "jiffy_deltas": [
+        29816,
+        0,
+        1,
+        0,
+        0,
+        276,
+        6,
+        0,
+        0,
+        0
+      ],
+      "busy_fraction": 1.0
+    }
+  },
+  "controller_sha256": "fcc70f8105e45d695d53d09180f8a2f6f6e6ffd37d32171a68cdeab76c70253e",
+  "scope": "Activity includes compilation and initialization as well as timed evaluations. The per-five-second raw samples permit inspection of changing sibling/background load; no samples or slow pairs excluded."
+}

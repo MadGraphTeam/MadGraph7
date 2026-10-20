@@ -1,0 +1,5 @@
+gather.f:75:37:
+
+   75 |       ASSOCIATE(WORD=>TRANSFER(X,0_8))
+      |                                     1
+Error: SAVE attribute at (1) cannot be specified in a PURE procedure

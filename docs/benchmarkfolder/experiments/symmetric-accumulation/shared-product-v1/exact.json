@@ -1,0 +1,173 @@
+{
+  "complete": true,
+  "acceptance_eligible": false,
+  "comparisons": 12000,
+  "results": [
+    {
+      "rank": 2,
+      "command": [
+        "gfortran",
+        "-O3",
+        "-frounding-math",
+        "-fno-automatic",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "constants.f",
+        "full.f",
+        "checked-shared.f",
+        "driver.f90",
+        "-o",
+        "check"
+      ],
+      "passed": true,
+      "output": " PASS        6000          19        5981\n",
+      "seconds": 10.79700190096628,
+      "sources": {
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "checked-shared.f": "8581b864ebe440360dd68cd4be6ba414a7fd9e5478af630fb75ec13fc53c4b35",
+        "full.f": "26929ebdcfe3d1f9948ea42505cd014840ae9b40fab8a91b5b18d4f89461f906",
+        "shared.f": "d332f292a6d902fa2c8d689983fb85be06855b1c075de603189d41d11bbf3cb3",
+        "driver.f90": "c0acb180ea15d360fc0dfc2833c22ed9eba4c60c8a64d34fe640d13b5847b461"
+      },
+      "executable_sha256": "e6c1a6484ab08ff2348d17e0d14c5e71ec294f53b4e9558f9b70aaffba0425b9"
+    },
+    {
+      "rank": 3,
+      "command": [
+        "gfortran",
+        "-O3",
+        "-frounding-math",
+        "-fno-automatic",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "constants.f",
+        "full.f",
+        "checked-shared.f",
+        "driver.f90",
+        "-o",
+        "check"
+      ],
+      "passed": true,
+      "output": " PASS        6000          19        5981\n",
+      "seconds": 18.59968598699197,
+      "sources": {
+        "shared.f": "001579df58caeb8ea42c583b5c8cb3e891a24a800765f613b1918cd11adfb674",
+        "checked-shared.f": "f7973f10c35274373d8f22c86ae97427f6fa2fff9d74f921c239f3e16f5981dc",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "full.f": "86cb2ca2056442a44968e38de6a10f594e198719e7a1e3ccf1a6139cb6113885",
+        "driver.f90": "116270ca296fc62ece4b0caa2861f17d865c4914698342444329ffd3b2c0a57d"
+      },
+      "executable_sha256": "a6c4c775087e08d2df185bd5b05d1fd69a3e68dc3a94af8c8a1320b42d057fed"
+    }
+  ],
+  "groups": [
+    [
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        4,
+        1
+      ],
+      [
+        2,
+        2,
+        1
+      ]
+    ],
+    [
+      [
+        4,
+        1,
+        4
+      ],
+      [
+        4,
+        4,
+        4
+      ]
+    ],
+    [
+      [
+        1,
+        1,
+        2
+      ],
+      [
+        1,
+        4,
+        2
+      ],
+      [
+        2,
+        2,
+        2
+      ]
+    ],
+    [
+      [
+        3,
+        4,
+        4
+      ],
+      [
+        4,
+        2,
+        4
+      ]
+    ],
+    [
+      [
+        1,
+        2,
+        1
+      ],
+      [
+        2,
+        1,
+        1
+      ]
+    ],
+    [
+      [
+        1,
+        2,
+        2
+      ],
+      [
+        2,
+        1,
+        2
+      ]
+    ],
+    [
+      [
+        4,
+        1,
+        3
+      ],
+      [
+        4,
+        4,
+        3
+      ]
+    ],
+    [
+      [
+        3,
+        4,
+        3
+      ],
+      [
+        4,
+        2,
+        3
+      ]
+    ]
+  ],
+  "runner_sha256": "895fce421137049d1dafee73cf7b9378c533721dd81869cda2db629b1671b6a1",
+  "scope": "QP full-output/input bits and sticky flags. Odd trials impose source-proved same-K B equality; other trials test rejection. Instrumented counters require both sharing and fallback. Includes directed rounding, exceptional inputs, cancellation, signed zero and empty dimensions; no process/timing claim."
+}

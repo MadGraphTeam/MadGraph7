@@ -1,0 +1,473 @@
+{
+  "complete": true,
+  "acceptance_eligible": false,
+  "cpu": 3,
+  "results": [
+    {
+      "key": "standalone-rank2-full",
+      "rank": 2,
+      "terminal": false,
+      "mode": "standalone",
+      "runs": {
+        "check": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "driver.f90",
+            "-o",
+            "check"
+          ],
+          "passed": true,
+          "output": " PASS        6000          19        5981\n",
+          "executable_sha256": "f7e7d8d73f6721e533051ab5e16a891268152073fb7a6dc2fa1cda26cb4a767d"
+        },
+        "traps": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "passed": true,
+          "output": " PASS           5\n",
+          "executable_sha256": "98c6d544dd1f3aa83a075eb658a11d675a2a024d74f53bfe933b847459802267"
+        }
+      },
+      "seconds": 16.859817782999016,
+      "sources": {
+        "full.f": "26929ebdcfe3d1f9948ea42505cd014840ae9b40fab8a91b5b18d4f89461f906",
+        "checked-shared.f": "8581b864ebe440360dd68cd4be6ba414a7fd9e5478af630fb75ec13fc53c4b35",
+        "traps.f90": "56495b44ddbdb2d70cbd82ac8a5eedac61ca8a542dc152fd192d7e0772c264a2",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "shared.f": "d332f292a6d902fa2c8d689983fb85be06855b1c075de603189d41d11bbf3cb3",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "driver.f90": "4729d3d8b93cb56d40ce2945b49d4f292e1df0f6224cf348e5cc6c673274d2ac"
+      }
+    },
+    {
+      "key": "standalone-rank2-terminal",
+      "rank": 2,
+      "terminal": true,
+      "mode": "standalone",
+      "runs": {
+        "check": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "driver.f90",
+            "-o",
+            "check"
+          ],
+          "passed": true,
+          "output": " PASS       12000          19       11981\n",
+          "executable_sha256": "d50a2dbc879929b18bafdf7a36484ba2bb00a9d2638958726d62e434a4639ab7"
+        },
+        "traps": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "passed": true,
+          "output": " PASS           5\n",
+          "executable_sha256": "bd18d43380c60bcbdc47fc58f85189329e8bcdc88dced94a153304cad65d88fb"
+        }
+      },
+      "seconds": 27.531505584949628,
+      "sources": {
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "full.f": "07fc52f177cb39efb571d204867b93dee075647ae97347bc1141eb8e113d4026",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "shared.f": "6b707cc3f6581e8e5f488d5acb1bcd7c83a9136835b2d51f3cb4d7047fb3fc4d",
+        "driver.f90": "f1cc7d6f9cd65d3af712d08201cd8884247c0b8404a98cd306f555dd65a25587",
+        "checked-shared.f": "4abbba857ff16dcb028bcbf2ff595a8676c26e264532b00057fbef04d59eba01",
+        "traps.f90": "329e56f9673f3beaa478af23d0426372511dd2912f04823dca5be958dac0e653",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+      }
+    },
+    {
+      "key": "standalone-rank4-full",
+      "rank": 4,
+      "terminal": false,
+      "mode": "standalone",
+      "runs": {
+        "check": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "driver.f90",
+            "-o",
+            "check"
+          ],
+          "passed": true,
+          "output": " PASS        6000          19        5981\n",
+          "executable_sha256": "072ccbb42a28698e6990c41385f2bdfc5327813688949b1f37d1eef3762b6f86"
+        },
+        "traps": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "passed": true,
+          "output": " PASS           5\n",
+          "executable_sha256": "fc2269379634a65da6295fbf8b641418c04bb17a5f3746293100a4f07a11de27"
+        }
+      },
+      "seconds": 36.64387353893835,
+      "sources": {
+        "full.f": "58e41bb28b1cb3afc8d57707060471065aad63c201af26b4d693a71df2d78705",
+        "driver.f90": "da554dc76a4a0a7d28d9f766d9d960cbc40823d583348ccaca0620d75e9bc655",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "checked-shared.f": "ee2d8c14e058e13beaaf52d81e3a36ef1bb0fa7e68ace6138a5c3dc67cd41cd4",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "shared.f": "927ab5c14db1d252446070038c2f9a0bc419534a12cd652777f0c70ee6ad9c28",
+        "traps.f90": "d45f4fb560d323a833af146866ce2e81f7a485d4ee01759f15e86d34c515b376"
+      }
+    },
+    {
+      "key": "standalone-rank4-terminal",
+      "rank": 4,
+      "terminal": true,
+      "mode": "standalone",
+      "runs": {
+        "check": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "driver.f90",
+            "-o",
+            "check"
+          ],
+          "passed": true,
+          "output": " PASS       12000          19       11981\n",
+          "executable_sha256": "ea04792758aa4ec8e786b3e2fccedaca1c47ff74404c7cc8136ffaee97d84664"
+        },
+        "traps": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-w",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "passed": true,
+          "output": " PASS           5\n",
+          "executable_sha256": "a23fb4637a86bd7a6a44d09e3ae2a72194461c057e87fa9bbf3dd1aa31765c3b"
+        }
+      },
+      "seconds": 37.94552696100436,
+      "sources": {
+        "full.f": "9649e7c74e5f100577b05d63abf2c53e1424af3567e17d72305815913a6d7fef",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "driver.f90": "ea7cb30a4f56cb8a8f8fce33a92c70fc9423613ce83c59769f9501cdcaa868bb",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "shared.f": "47ddb2cc5f5251ac2f281e5959a0cb2e4b7edcc7f67863c6d4b770d8b317c934",
+        "checked-shared.f": "43060f0dfb108cf4d8351fd9390bf38c0c9007521c64c1c6001e96abff6e7ea4",
+        "traps.f90": "e109dca9b68b17be9c3a8625cd596ed6074aaf09dd2b50040f70850850c4d527"
+      }
+    },
+    {
+      "key": "nlo-rank2-full",
+      "rank": 2,
+      "terminal": false,
+      "mode": "nlo",
+      "runs": {
+        "check": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "driver.f90",
+            "-o",
+            "check"
+          ],
+          "passed": true,
+          "output": " PASS        6000          19        5981\n",
+          "executable_sha256": "45bdfc94ee195de2aee542592725820378720845d8c775054bbf191183e75f1e"
+        },
+        "traps": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "passed": true,
+          "output": " PASS           5\n",
+          "executable_sha256": "485e1519d1054191b6ba7052ac6c2b90eb9abb52d61fb462fa2ff63b820b273d"
+        }
+      },
+      "seconds": 10.473862507962622,
+      "sources": {
+        "checked-shared.f": "8581b864ebe440360dd68cd4be6ba414a7fd9e5478af630fb75ec13fc53c4b35",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "full.f": "26929ebdcfe3d1f9948ea42505cd014840ae9b40fab8a91b5b18d4f89461f906",
+        "shared.f": "d332f292a6d902fa2c8d689983fb85be06855b1c075de603189d41d11bbf3cb3",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "driver.f90": "4729d3d8b93cb56d40ce2945b49d4f292e1df0f6224cf348e5cc6c673274d2ac",
+        "traps.f90": "56495b44ddbdb2d70cbd82ac8a5eedac61ca8a542dc152fd192d7e0772c264a2"
+      }
+    },
+    {
+      "key": "nlo-rank2-terminal",
+      "rank": 2,
+      "terminal": true,
+      "mode": "nlo",
+      "runs": {
+        "check": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "driver.f90",
+            "-o",
+            "check"
+          ],
+          "passed": true,
+          "output": " PASS       12000          19       11981\n",
+          "executable_sha256": "46be4a19c0bb46cb764f6a5c978662a817cd6ee00483b556095eafd68441eab7"
+        },
+        "traps": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "passed": true,
+          "output": " PASS           5\n",
+          "executable_sha256": "6b49a33f7d267b14640b853ed57e0b394a4c8f6f3071255e8c0173a5b4b8cc6e"
+        }
+      },
+      "seconds": 18.641550266067497,
+      "sources": {
+        "checked-shared.f": "4abbba857ff16dcb028bcbf2ff595a8676c26e264532b00057fbef04d59eba01",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "traps.f90": "329e56f9673f3beaa478af23d0426372511dd2912f04823dca5be958dac0e653",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "shared.f": "6b707cc3f6581e8e5f488d5acb1bcd7c83a9136835b2d51f3cb4d7047fb3fc4d",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "full.f": "07fc52f177cb39efb571d204867b93dee075647ae97347bc1141eb8e113d4026",
+        "driver.f90": "f1cc7d6f9cd65d3af712d08201cd8884247c0b8404a98cd306f555dd65a25587"
+      }
+    },
+    {
+      "key": "nlo-rank4-full",
+      "rank": 4,
+      "terminal": false,
+      "mode": "nlo",
+      "runs": {
+        "check": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "driver.f90",
+            "-o",
+            "check"
+          ],
+          "passed": true,
+          "output": " PASS        6000          19        5981\n",
+          "executable_sha256": "62b15b3cea328571d082d562a9c62cf8651acecf268040b7fe09d354ee3f62a6"
+        },
+        "traps": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "passed": true,
+          "output": " PASS           5\n",
+          "executable_sha256": "45242bdd5af87616b7d61cbe762c44224e32095a6c98aaec12dc3a12fb9b7dce"
+        }
+      },
+      "seconds": 30.888840257073753,
+      "sources": {
+        "checked-shared.f": "ee2d8c14e058e13beaaf52d81e3a36ef1bb0fa7e68ace6138a5c3dc67cd41cd4",
+        "driver.f90": "da554dc76a4a0a7d28d9f766d9d960cbc40823d583348ccaca0620d75e9bc655",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "full.f": "58e41bb28b1cb3afc8d57707060471065aad63c201af26b4d693a71df2d78705",
+        "traps.f90": "d45f4fb560d323a833af146866ce2e81f7a485d4ee01759f15e86d34c515b376",
+        "shared.f": "927ab5c14db1d252446070038c2f9a0bc419534a12cd652777f0c70ee6ad9c28",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4"
+      }
+    },
+    {
+      "key": "nlo-rank4-terminal",
+      "rank": 4,
+      "terminal": true,
+      "mode": "nlo",
+      "runs": {
+        "check": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "driver.f90",
+            "-o",
+            "check"
+          ],
+          "passed": true,
+          "output": " PASS       12000          19       11981\n",
+          "executable_sha256": "48a8fedfb0b3a9f212c019265fae5fb64d264f7012f9be2ec59746d9b1da5a8b"
+        },
+        "traps": {
+          "command": [
+            "gfortran",
+            "-O3",
+            "-fPIC",
+            "-ffixed-line-length-132",
+            "-fno-automatic",
+            "constants.f",
+            "full.f",
+            "checked-shared.f",
+            "traps.f90",
+            "-o",
+            "traps"
+          ],
+          "passed": true,
+          "output": " PASS           5\n",
+          "executable_sha256": "4aed3990a6b8464f9c38ef33d49ebed754bc9a795d38689b5e756448a6f1650c"
+        }
+      },
+      "seconds": 66.73962634894997,
+      "sources": {
+        "shared.f": "47ddb2cc5f5251ac2f281e5959a0cb2e4b7edcc7f67863c6d4b770d8b317c934",
+        "full.f": "9649e7c74e5f100577b05d63abf2c53e1424af3567e17d72305815913a6d7fef",
+        "traps.f90": "e109dca9b68b17be9c3a8625cd596ed6074aaf09dd2b50040f70850850c4d527",
+        "loop_max_coefs.inc": "2d49f782ae6459378d1f09633ea8b64ea04fd2a335c8a47eaa5e1bec1e855ff3",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a",
+        "coef_specs.inc": "ff9a815ee448af5296f187bab9e00b49bdeca089855ba8002eb1d6081fc2a7a4",
+        "checked-shared.f": "43060f0dfb108cf4d8351fd9390bf38c0c9007521c64c1c6001e96abff6e7ea4",
+        "driver.f90": "ea7cb30a4f56cb8a8f8fce33a92c70fc9423613ce83c59769f9501cdcaa868bb"
+      }
+    }
+  ],
+  "comparisons": 72000,
+  "trap_controls": 40,
+  "flags": {
+    "standalone": [
+      "-O3",
+      "-w",
+      "-fPIC",
+      "-ffixed-line-length-132"
+    ],
+    "nlo": [
+      "-O3",
+      "-fPIC",
+      "-ffixed-line-length-132",
+      "-fno-automatic"
+    ]
+  },
+  "source_sha256": {
+    "check_shared_flags.py": "cd25cc7c80d5c293b0f5871c294d3245963ab1c612e3f870254c50ec32bd8739",
+    "check_shared_general.py": "47cfe6642e724992f927bbe65a99a173bda1b87d1b2c43a32730585db95d5cf1",
+    "check_shared_traps.py": "8f4c944f701c353af32bdb17f8c156a96e34b676dfa863561d64fd6fcef77d5d",
+    "shared.py": "a0adf5d808d76a98dd0f1ad949993c327400b6f058ad1a46b72f21900a14139a",
+    "gather.py": "5d7420f510b5309b6ddd4ca62a39a509c5282043ba9bfff62ed8349af6436279",
+    "inventory.json": "b02e5eb274a1391d54d060799b8f35b494b8846a97d355a645edd3c940b3a234"
+  },
+  "generator_sha256": "4e584f4977f615fff35a5079ac7b7e4cd071cda99ee0b5faafa96dae4411c98e",
+  "scope": "Representative full and terminal FFV1L2_1 maps at ranks2/4 under actual GNU standalone/NLO polynomial optimization flags, without -frounding-math or runtime bounds-check flags. Every output/input bit and IEEE flag compared over four rounding modes, exceptional/subnormal/signed-zero/cancellation/empty cases and both terminal entry flag states. Enabled traps must take the original fallback."
+}

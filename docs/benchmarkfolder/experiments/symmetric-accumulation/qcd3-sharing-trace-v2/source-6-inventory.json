@@ -1,0 +1,5195 @@
+{
+  "ew-2": {
+    "call_counts": {
+      "TERMINAL:0/0": 19,
+      "TERMINAL:1/1": 48,
+      "TERMINAL:2/0": 9,
+      "UPDATE:0/0": 11,
+      "UPDATE:0/1": 28,
+      "UPDATE:1/0": 6,
+      "UPDATE:1/1": 9
+    },
+    "call_weighted_B_slots": 0,
+    "call_weighted_literal_zero_B_slots": 0,
+    "call_weighted_repeated_expression_extra_slots": 0,
+    "call_weighted_same_k_repeated_expression_extra_slots": 0,
+    "calls": [],
+    "compact_rank_one_calls": 0,
+    "complex_products_after_literal_zero_skip_before_A_zero_skip": 0,
+    "literal_zero_fraction": null,
+    "possible_shared_products_same_A_and_B": 0,
+    "routines": {},
+    "same_A_B_product_fraction": null,
+    "scope": "Static generated calls per coefficient batch; not runtime frequency. Existing B==0 branches already skip literal-zero products. These counts establish potential mask/index overhead only, not additional arithmetic savings.",
+    "sources": {
+      ".benchmark-work/experiments/terminal-production/ew-2/production/SubProcesses/P0_epem_mupmum/mp_coef_construction_1.f": "75df670c82216cc129dec6735b4958995bca1417a88f6663ff8731de3bad9cf4"
+    }
+  },
+  "qcd-3": {
+    "call_counts": {
+      "TERMINAL:0/1": 20,
+      "TERMINAL:1/0": 18,
+      "TERMINAL:1/1": 28,
+      "TERMINAL:2/0": 21,
+      "TERMINAL:2/1": 89,
+      "TERMINAL:3/0": 12,
+      "TERMINAL:3/1": 36,
+      "UPDATE:0/0": 11,
+      "UPDATE:0/1": 36,
+      "UPDATE:1/0": 8,
+      "UPDATE:1/1": 54,
+      "UPDATE:2/0": 7,
+      "UPDATE:2/1": 45,
+      "UPDATE:3/0": 3
+    },
+    "call_weighted_B_slots": 13300,
+    "call_weighted_literal_zero_B_slots": 5120,
+    "call_weighted_repeated_expression_extra_slots": 3668,
+    "call_weighted_same_k_repeated_expression_extra_slots": 1668,
+    "calls": [
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L3_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L3_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV2_5L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV2_5L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L3_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L3_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV2_5L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV2_5L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV2_5L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV2_5L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV2_5L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV2_5L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV2_5L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV2_5L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_VVV1L2P0_1"
+      },
+      {
+        "cut": 1,
+        "ins": 1,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 1,
+        "vertex": "MP_GHGHGL2_1"
+      },
+      {
+        "cut": 1,
+        "ins": 1,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 1,
+        "vertex": "MP_GHGHGL1_2"
+      },
+      {
+        "cut": 1,
+        "ins": 1,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 1,
+        "vertex": "MP_GHGHGL2_1"
+      },
+      {
+        "cut": 1,
+        "ins": 1,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 1,
+        "vertex": "MP_GHGHGL1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "UPDATE",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 3,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L2_1"
+      },
+      {
+        "cut": 4,
+        "ins": 4,
+        "left": 2,
+        "mode": "TERMINAL",
+        "outs": 4,
+        "vertex": "MP_FFV1L1_2"
+      }
+    ],
+    "compact_rank_one_calls": 170,
+    "complex_products_after_literal_zero_skip_before_A_zero_skip": 255220,
+    "literal_zero_fraction": 0.3849624060150376,
+    "possible_shared_products_same_A_and_B": 35900,
+    "routines": {
+      "MP_FFV1L1_2": {
+        "calls": 63,
+        "caveat": "Nonliteral expressions contain arbitrary complex wavefunctions/couplings; no pure-real/pure-imaginary property is inferred. Same-K equal expressions can reuse one A(K,L,I)*B product across different destination components/monomials; cross-K equality alone cannot. Sharing needs a separate arithmetic/flags proof.",
+        "shapes": [
+          {
+            "coefficients": 80,
+            "identical_expression_extra_entries": 22,
+            "identical_expression_groups": [
+              [
+                [
+                  1,
+                  0,
+                  3
+                ],
+                [
+                  4,
+                  0,
+                  2
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  1
+                ],
+                [
+                  3,
+                  2,
+                  4
+                ],
+                [
+                  4,
+                  1,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  1
+                ],
+                [
+                  3,
+                  2,
+                  3
+                ],
+                [
+                  4,
+                  1,
+                  3
+                ]
+              ],
+              [
+                [
+                  1,
+                  3,
+                  1
+                ],
+                [
+                  3,
+                  3,
+                  3
+                ]
+              ],
+              [
+                [
+                  1,
+                  3,
+                  2
+                ],
+                [
+                  4,
+                  3,
+                  3
+                ]
+              ],
+              [
+                [
+                  1,
+                  4,
+                  1
+                ],
+                [
+                  2,
+                  2,
+                  1
+                ],
+                [
+                  4,
+                  4,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  4,
+                  2
+                ],
+                [
+                  2,
+                  2,
+                  2
+                ],
+                [
+                  3,
+                  1,
+                  4
+                ],
+                [
+                  3,
+                  4,
+                  4
+                ],
+                [
+                  4,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  2,
+                  0,
+                  4
+                ],
+                [
+                  3,
+                  0,
+                  1
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  1
+                ],
+                [
+                  2,
+                  4,
+                  1
+                ],
+                [
+                  4,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  4,
+                  2
+                ],
+                [
+                  3,
+                  1,
+                  3
+                ],
+                [
+                  3,
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  2,
+                  3,
+                  1
+                ],
+                [
+                  3,
+                  3,
+                  4
+                ]
+              ],
+              [
+                [
+                  2,
+                  3,
+                  2
+                ],
+                [
+                  4,
+                  3,
+                  4
+                ]
+              ]
+            ],
+            "identical_expression_same_jk_extra_entries": 4,
+            "identical_expression_same_jk_groups": [
+              [
+                [
+                  3,
+                  1,
+                  4
+                ],
+                [
+                  3,
+                  4,
+                  4
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  1
+                ],
+                [
+                  2,
+                  4,
+                  1
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  3
+                ],
+                [
+                  3,
+                  4,
+                  3
+                ]
+              ]
+            ],
+            "identical_expression_same_k_extra_entries": 10,
+            "identical_expression_same_k_groups": [
+              [
+                [
+                  3,
+                  2,
+                  4
+                ],
+                [
+                  4,
+                  1,
+                  4
+                ]
+              ],
+              [
+                [
+                  3,
+                  2,
+                  3
+                ],
+                [
+                  4,
+                  1,
+                  3
+                ]
+              ],
+              [
+                [
+                  1,
+                  4,
+                  1
+                ],
+                [
+                  2,
+                  2,
+                  1
+                ]
+              ],
+              [
+                [
+                  1,
+                  4,
+                  2
+                ],
+                [
+                  2,
+                  2,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  4
+                ],
+                [
+                  3,
+                  4,
+                  4
+                ],
+                [
+                  4,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  1
+                ],
+                [
+                  2,
+                  4,
+                  1
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  3
+                ],
+                [
+                  3,
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  2,
+                  3
+                ]
+              ]
+            ],
+            "in_size": 4,
+            "literal_zero_entries": [
+              [
+                1,
+                1,
+                3
+              ],
+              [
+                1,
+                1,
+                4
+              ],
+              [
+                1,
+                2,
+                3
+              ],
+              [
+                1,
+                2,
+                4
+              ],
+              [
+                1,
+                3,
+                3
+              ],
+              [
+                1,
+                3,
+                4
+              ],
+              [
+                1,
+                4,
+                3
+              ],
+              [
+                1,
+                4,
+                4
+              ],
+              [
+                2,
+                1,
+                3
+              ],
+              [
+                2,
+                1,
+                4
+              ],
+              [
+                2,
+                2,
+                3
+              ],
+              [
+                2,
+                2,
+                4
+              ],
+              [
+                2,
+                3,
+                3
+              ],
+              [
+                2,
+                3,
+                4
+              ],
+              [
+                2,
+                4,
+                3
+              ],
+              [
+                2,
+                4,
+                4
+              ],
+              [
+                3,
+                1,
+                1
+              ],
+              [
+                3,
+                1,
+                2
+              ],
+              [
+                3,
+                2,
+                1
+              ],
+              [
+                3,
+                2,
+                2
+              ],
+              [
+                3,
+                3,
+                1
+              ],
+              [
+                3,
+                3,
+                2
+              ],
+              [
+                3,
+                4,
+                1
+              ],
+              [
+                3,
+                4,
+                2
+              ],
+              [
+                4,
+                1,
+                1
+              ],
+              [
+                4,
+                1,
+                2
+              ],
+              [
+                4,
+                2,
+                1
+              ],
+              [
+                4,
+                2,
+                2
+              ],
+              [
+                4,
+                3,
+                1
+              ],
+              [
+                4,
+                3,
+                2
+              ],
+              [
+                4,
+                4,
+                1
+              ],
+              [
+                4,
+                4,
+                2
+              ]
+            ],
+            "nonzero_literal_entries": 48,
+            "out_size": 4
+          }
+        ]
+      },
+      "MP_FFV1L2_1": {
+        "calls": 73,
+        "caveat": "Nonliteral expressions contain arbitrary complex wavefunctions/couplings; no pure-real/pure-imaginary property is inferred. Same-K equal expressions can reuse one A(K,L,I)*B product across different destination components/monomials; cross-K equality alone cannot. Sharing needs a separate arithmetic/flags proof.",
+        "shapes": [
+          {
+            "coefficients": 80,
+            "identical_expression_extra_entries": 22,
+            "identical_expression_groups": [
+              [
+                [
+                  1,
+                  0,
+                  3
+                ],
+                [
+                  4,
+                  0,
+                  2
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  4,
+                  1
+                ],
+                [
+                  2,
+                  2,
+                  1
+                ],
+                [
+                  4,
+                  1,
+                  4
+                ],
+                [
+                  4,
+                  4,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  4,
+                  2
+                ],
+                [
+                  2,
+                  2,
+                  2
+                ],
+                [
+                  3,
+                  4,
+                  4
+                ],
+                [
+                  4,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  1
+                ],
+                [
+                  2,
+                  1,
+                  1
+                ],
+                [
+                  3,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  2
+                ],
+                [
+                  2,
+                  1,
+                  2
+                ],
+                [
+                  3,
+                  1,
+                  3
+                ]
+              ],
+              [
+                [
+                  1,
+                  3,
+                  1
+                ],
+                [
+                  3,
+                  3,
+                  3
+                ]
+              ],
+              [
+                [
+                  1,
+                  3,
+                  2
+                ],
+                [
+                  4,
+                  3,
+                  3
+                ]
+              ],
+              [
+                [
+                  2,
+                  0,
+                  4
+                ],
+                [
+                  3,
+                  0,
+                  1
+                ]
+              ],
+              [
+                [
+                  2,
+                  3,
+                  1
+                ],
+                [
+                  3,
+                  3,
+                  4
+                ]
+              ],
+              [
+                [
+                  2,
+                  3,
+                  2
+                ],
+                [
+                  4,
+                  3,
+                  4
+                ]
+              ],
+              [
+                [
+                  2,
+                  4,
+                  1
+                ],
+                [
+                  4,
+                  1,
+                  3
+                ],
+                [
+                  4,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  2,
+                  4,
+                  2
+                ],
+                [
+                  3,
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  2,
+                  3
+                ]
+              ]
+            ],
+            "identical_expression_same_jk_extra_entries": 4,
+            "identical_expression_same_jk_groups": [
+              [
+                [
+                  1,
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  4,
+                  1
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  4
+                ],
+                [
+                  4,
+                  4,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  3
+                ],
+                [
+                  4,
+                  4,
+                  3
+                ]
+              ]
+            ],
+            "identical_expression_same_k_extra_entries": 10,
+            "identical_expression_same_k_groups": [
+              [
+                [
+                  1,
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  4,
+                  1
+                ],
+                [
+                  2,
+                  2,
+                  1
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  4
+                ],
+                [
+                  4,
+                  4,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  4,
+                  2
+                ],
+                [
+                  2,
+                  2,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  4,
+                  4
+                ],
+                [
+                  4,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  1
+                ],
+                [
+                  2,
+                  1,
+                  1
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  2
+                ],
+                [
+                  2,
+                  1,
+                  2
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  3
+                ],
+                [
+                  4,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  2,
+                  3
+                ]
+              ]
+            ],
+            "in_size": 4,
+            "literal_zero_entries": [
+              [
+                1,
+                1,
+                3
+              ],
+              [
+                1,
+                1,
+                4
+              ],
+              [
+                1,
+                2,
+                3
+              ],
+              [
+                1,
+                2,
+                4
+              ],
+              [
+                1,
+                3,
+                3
+              ],
+              [
+                1,
+                3,
+                4
+              ],
+              [
+                1,
+                4,
+                3
+              ],
+              [
+                1,
+                4,
+                4
+              ],
+              [
+                2,
+                1,
+                3
+              ],
+              [
+                2,
+                1,
+                4
+              ],
+              [
+                2,
+                2,
+                3
+              ],
+              [
+                2,
+                2,
+                4
+              ],
+              [
+                2,
+                3,
+                3
+              ],
+              [
+                2,
+                3,
+                4
+              ],
+              [
+                2,
+                4,
+                3
+              ],
+              [
+                2,
+                4,
+                4
+              ],
+              [
+                3,
+                1,
+                1
+              ],
+              [
+                3,
+                1,
+                2
+              ],
+              [
+                3,
+                2,
+                1
+              ],
+              [
+                3,
+                2,
+                2
+              ],
+              [
+                3,
+                3,
+                1
+              ],
+              [
+                3,
+                3,
+                2
+              ],
+              [
+                3,
+                4,
+                1
+              ],
+              [
+                3,
+                4,
+                2
+              ],
+              [
+                4,
+                1,
+                1
+              ],
+              [
+                4,
+                1,
+                2
+              ],
+              [
+                4,
+                2,
+                1
+              ],
+              [
+                4,
+                2,
+                2
+              ],
+              [
+                4,
+                3,
+                1
+              ],
+              [
+                4,
+                3,
+                2
+              ],
+              [
+                4,
+                4,
+                1
+              ],
+              [
+                4,
+                4,
+                2
+              ]
+            ],
+            "nonzero_literal_entries": 48,
+            "out_size": 4
+          }
+        ]
+      },
+      "MP_FFV1L3_1": {
+        "calls": 2,
+        "caveat": "Nonliteral expressions contain arbitrary complex wavefunctions/couplings; no pure-real/pure-imaginary property is inferred. Same-K equal expressions can reuse one A(K,L,I)*B product across different destination components/monomials; cross-K equality alone cannot. Sharing needs a separate arithmetic/flags proof.",
+        "shapes": [
+          {
+            "coefficients": 80,
+            "identical_expression_extra_entries": 48,
+            "identical_expression_groups": [
+              [
+                [
+                  1,
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  4,
+                  1
+                ],
+                [
+                  2,
+                  2,
+                  1
+                ],
+                [
+                  2,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  4,
+                  2
+                ],
+                [
+                  2,
+                  2,
+                  2
+                ],
+                [
+                  2,
+                  3,
+                  3
+                ],
+                [
+                  2,
+                  4,
+                  1
+                ],
+                [
+                  2,
+                  4,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  3
+                ],
+                [
+                  1,
+                  4,
+                  3
+                ],
+                [
+                  2,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  4
+                ],
+                [
+                  1,
+                  2,
+                  2
+                ],
+                [
+                  1,
+                  3,
+                  3
+                ],
+                [
+                  1,
+                  4,
+                  4
+                ],
+                [
+                  2,
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  1
+                ],
+                [
+                  1,
+                  2,
+                  4
+                ],
+                [
+                  2,
+                  1,
+                  1
+                ],
+                [
+                  2,
+                  1,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  3
+                ],
+                [
+                  2,
+                  1,
+                  3
+                ],
+                [
+                  2,
+                  3,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  3,
+                  1
+                ],
+                [
+                  1,
+                  3,
+                  4
+                ],
+                [
+                  2,
+                  3,
+                  2
+                ]
+              ],
+              [
+                [
+                  1,
+                  3,
+                  2
+                ],
+                [
+                  2,
+                  3,
+                  1
+                ],
+                [
+                  2,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  1
+                ],
+                [
+                  3,
+                  1,
+                  4
+                ],
+                [
+                  4,
+                  1,
+                  2
+                ],
+                [
+                  4,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  2
+                ],
+                [
+                  3,
+                  2,
+                  4
+                ],
+                [
+                  4,
+                  1,
+                  1
+                ],
+                [
+                  4,
+                  4,
+                  1
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  3
+                ],
+                [
+                  3,
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  3,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  2,
+                  1
+                ],
+                [
+                  3,
+                  4,
+                  2
+                ],
+                [
+                  4,
+                  1,
+                  4
+                ],
+                [
+                  4,
+                  2,
+                  2
+                ],
+                [
+                  4,
+                  3,
+                  3
+                ],
+                [
+                  4,
+                  4,
+                  4
+                ]
+              ],
+              [
+                [
+                  3,
+                  2,
+                  2
+                ],
+                [
+                  3,
+                  3,
+                  3
+                ],
+                [
+                  3,
+                  4,
+                  1
+                ],
+                [
+                  3,
+                  4,
+                  4
+                ],
+                [
+                  4,
+                  2,
+                  1
+                ],
+                [
+                  4,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  3,
+                  2,
+                  3
+                ],
+                [
+                  4,
+                  3,
+                  1
+                ],
+                [
+                  4,
+                  3,
+                  4
+                ]
+              ],
+              [
+                [
+                  3,
+                  3,
+                  1
+                ],
+                [
+                  3,
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  3,
+                  2
+                ],
+                [
+                  4,
+                  1,
+                  3
+                ],
+                [
+                  4,
+                  4,
+                  3
+                ]
+              ]
+            ],
+            "identical_expression_same_jk_extra_entries": 8,
+            "identical_expression_same_jk_groups": [
+              [
+                [
+                  1,
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  4,
+                  1
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  3
+                ],
+                [
+                  1,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  4
+                ],
+                [
+                  1,
+                  4,
+                  4
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  2
+                ],
+                [
+                  4,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  1
+                ],
+                [
+                  4,
+                  4,
+                  1
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  4
+                ],
+                [
+                  4,
+                  4,
+                  4
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  3
+                ],
+                [
+                  4,
+                  4,
+                  3
+                ]
+              ]
+            ],
+            "identical_expression_same_k_extra_entries": 20,
+            "identical_expression_same_k_groups": [
+              [
+                [
+                  1,
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  4,
+                  1
+                ],
+                [
+                  2,
+                  2,
+                  1
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  4,
+                  2
+                ],
+                [
+                  2,
+                  2,
+                  2
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  3
+                ],
+                [
+                  1,
+                  4,
+                  3
+                ],
+                [
+                  2,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  2
+                ],
+                [
+                  2,
+                  1,
+                  2
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  4
+                ],
+                [
+                  1,
+                  4,
+                  4
+                ],
+                [
+                  2,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  1
+                ],
+                [
+                  2,
+                  1,
+                  1
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  4
+                ],
+                [
+                  2,
+                  1,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  3
+                ],
+                [
+                  2,
+                  1,
+                  3
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  2
+                ],
+                [
+                  4,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  1
+                ],
+                [
+                  4,
+                  4,
+                  1
+                ]
+              ],
+              [
+                [
+                  3,
+                  4,
+                  2
+                ],
+                [
+                  4,
+                  2,
+                  2
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  4
+                ],
+                [
+                  4,
+                  4,
+                  4
+                ]
+              ],
+              [
+                [
+                  3,
+                  4,
+                  1
+                ],
+                [
+                  4,
+                  2,
+                  1
+                ]
+              ],
+              [
+                [
+                  3,
+                  4,
+                  4
+                ],
+                [
+                  4,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  3,
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  3
+                ],
+                [
+                  4,
+                  4,
+                  3
+                ]
+              ]
+            ],
+            "in_size": 4,
+            "literal_zero_entries": [],
+            "nonzero_literal_entries": 80,
+            "out_size": 4
+          }
+        ]
+      },
+      "MP_FFV1L3_2": {
+        "calls": 2,
+        "caveat": "Nonliteral expressions contain arbitrary complex wavefunctions/couplings; no pure-real/pure-imaginary property is inferred. Same-K equal expressions can reuse one A(K,L,I)*B product across different destination components/monomials; cross-K equality alone cannot. Sharing needs a separate arithmetic/flags proof.",
+        "shapes": [
+          {
+            "coefficients": 80,
+            "identical_expression_extra_entries": 48,
+            "identical_expression_groups": [
+              [
+                [
+                  1,
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  1,
+                  4
+                ],
+                [
+                  2,
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  2,
+                  4
+                ],
+                [
+                  2,
+                  1,
+                  1
+                ],
+                [
+                  2,
+                  4,
+                  1
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  3
+                ],
+                [
+                  1,
+                  3,
+                  4
+                ],
+                [
+                  2,
+                  3,
+                  2
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  1
+                ],
+                [
+                  1,
+                  4,
+                  2
+                ],
+                [
+                  2,
+                  1,
+                  4
+                ],
+                [
+                  2,
+                  2,
+                  2
+                ],
+                [
+                  2,
+                  3,
+                  3
+                ],
+                [
+                  2,
+                  4,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  2
+                ],
+                [
+                  1,
+                  3,
+                  3
+                ],
+                [
+                  1,
+                  4,
+                  1
+                ],
+                [
+                  1,
+                  4,
+                  4
+                ],
+                [
+                  2,
+                  2,
+                  1
+                ],
+                [
+                  2,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  3
+                ],
+                [
+                  2,
+                  3,
+                  1
+                ],
+                [
+                  2,
+                  3,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  3,
+                  1
+                ],
+                [
+                  1,
+                  4,
+                  3
+                ],
+                [
+                  2,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  1,
+                  3,
+                  2
+                ],
+                [
+                  2,
+                  1,
+                  3
+                ],
+                [
+                  2,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  1
+                ],
+                [
+                  3,
+                  4,
+                  1
+                ],
+                [
+                  4,
+                  2,
+                  1
+                ],
+                [
+                  4,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  2
+                ],
+                [
+                  3,
+                  4,
+                  2
+                ],
+                [
+                  4,
+                  2,
+                  2
+                ],
+                [
+                  4,
+                  3,
+                  3
+                ],
+                [
+                  4,
+                  4,
+                  1
+                ],
+                [
+                  4,
+                  4,
+                  4
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  3
+                ],
+                [
+                  3,
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  4
+                ],
+                [
+                  3,
+                  2,
+                  2
+                ],
+                [
+                  3,
+                  3,
+                  3
+                ],
+                [
+                  3,
+                  4,
+                  4
+                ],
+                [
+                  4,
+                  1,
+                  2
+                ],
+                [
+                  4,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  3,
+                  2,
+                  1
+                ],
+                [
+                  3,
+                  2,
+                  4
+                ],
+                [
+                  4,
+                  1,
+                  1
+                ],
+                [
+                  4,
+                  1,
+                  4
+                ]
+              ],
+              [
+                [
+                  3,
+                  2,
+                  3
+                ],
+                [
+                  4,
+                  1,
+                  3
+                ],
+                [
+                  4,
+                  3,
+                  4
+                ]
+              ],
+              [
+                [
+                  3,
+                  3,
+                  1
+                ],
+                [
+                  3,
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  3,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  3,
+                  2
+                ],
+                [
+                  4,
+                  3,
+                  1
+                ],
+                [
+                  4,
+                  4,
+                  3
+                ]
+              ]
+            ],
+            "identical_expression_same_jk_extra_entries": 8,
+            "identical_expression_same_jk_groups": [
+              [
+                [
+                  2,
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  1
+                ],
+                [
+                  2,
+                  4,
+                  1
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  4
+                ],
+                [
+                  2,
+                  4,
+                  4
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  3
+                ],
+                [
+                  2,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  1
+                ],
+                [
+                  3,
+                  4,
+                  1
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  2
+                ],
+                [
+                  3,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  3
+                ],
+                [
+                  3,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  4
+                ],
+                [
+                  3,
+                  4,
+                  4
+                ]
+              ]
+            ],
+            "identical_expression_same_k_extra_entries": 20,
+            "identical_expression_same_k_groups": [
+              [
+                [
+                  2,
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  1
+                ],
+                [
+                  2,
+                  4,
+                  1
+                ]
+              ],
+              [
+                [
+                  1,
+                  4,
+                  2
+                ],
+                [
+                  2,
+                  2,
+                  2
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  4
+                ],
+                [
+                  2,
+                  4,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  4,
+                  1
+                ],
+                [
+                  2,
+                  2,
+                  1
+                ]
+              ],
+              [
+                [
+                  1,
+                  4,
+                  4
+                ],
+                [
+                  2,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  4,
+                  3
+                ],
+                [
+                  2,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  3
+                ],
+                [
+                  2,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  1
+                ],
+                [
+                  3,
+                  4,
+                  1
+                ],
+                [
+                  4,
+                  2,
+                  1
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  2
+                ],
+                [
+                  3,
+                  4,
+                  2
+                ],
+                [
+                  4,
+                  2,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  3
+                ],
+                [
+                  3,
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  2,
+                  2
+                ],
+                [
+                  4,
+                  1,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  4
+                ],
+                [
+                  3,
+                  4,
+                  4
+                ],
+                [
+                  4,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  3,
+                  2,
+                  1
+                ],
+                [
+                  4,
+                  1,
+                  1
+                ]
+              ],
+              [
+                [
+                  3,
+                  2,
+                  4
+                ],
+                [
+                  4,
+                  1,
+                  4
+                ]
+              ],
+              [
+                [
+                  3,
+                  2,
+                  3
+                ],
+                [
+                  4,
+                  1,
+                  3
+                ]
+              ]
+            ],
+            "in_size": 4,
+            "literal_zero_entries": [],
+            "nonzero_literal_entries": 80,
+            "out_size": 4
+          }
+        ]
+      },
+      "MP_FFV2_5L1_2": {
+        "calls": 2,
+        "caveat": "Nonliteral expressions contain arbitrary complex wavefunctions/couplings; no pure-real/pure-imaginary property is inferred. Same-K equal expressions can reuse one A(K,L,I)*B product across different destination components/monomials; cross-K equality alone cannot. Sharing needs a separate arithmetic/flags proof.",
+        "shapes": [
+          {
+            "coefficients": 80,
+            "identical_expression_extra_entries": 10,
+            "identical_expression_groups": [
+              [
+                [
+                  1,
+                  4,
+                  1
+                ],
+                [
+                  2,
+                  2,
+                  1
+                ]
+              ],
+              [
+                [
+                  1,
+                  4,
+                  2
+                ],
+                [
+                  2,
+                  2,
+                  2
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  1
+                ],
+                [
+                  2,
+                  4,
+                  1
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  3
+                ],
+                [
+                  3,
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  4
+                ],
+                [
+                  3,
+                  4,
+                  4
+                ],
+                [
+                  4,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  3,
+                  2,
+                  3
+                ],
+                [
+                  4,
+                  1,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  2,
+                  4
+                ],
+                [
+                  4,
+                  1,
+                  4
+                ]
+              ]
+            ],
+            "identical_expression_same_jk_extra_entries": 4,
+            "identical_expression_same_jk_groups": [
+              [
+                [
+                  2,
+                  1,
+                  1
+                ],
+                [
+                  2,
+                  4,
+                  1
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  3
+                ],
+                [
+                  3,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  4
+                ],
+                [
+                  3,
+                  4,
+                  4
+                ]
+              ]
+            ],
+            "identical_expression_same_k_extra_entries": 10,
+            "identical_expression_same_k_groups": [
+              [
+                [
+                  1,
+                  4,
+                  1
+                ],
+                [
+                  2,
+                  2,
+                  1
+                ]
+              ],
+              [
+                [
+                  1,
+                  4,
+                  2
+                ],
+                [
+                  2,
+                  2,
+                  2
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  1
+                ],
+                [
+                  2,
+                  4,
+                  1
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  3
+                ],
+                [
+                  3,
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  1,
+                  4
+                ],
+                [
+                  3,
+                  4,
+                  4
+                ],
+                [
+                  4,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  3,
+                  2,
+                  3
+                ],
+                [
+                  4,
+                  1,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  2,
+                  4
+                ],
+                [
+                  4,
+                  1,
+                  4
+                ]
+              ]
+            ],
+            "in_size": 4,
+            "literal_zero_entries": [
+              [
+                1,
+                1,
+                3
+              ],
+              [
+                1,
+                1,
+                4
+              ],
+              [
+                1,
+                2,
+                3
+              ],
+              [
+                1,
+                2,
+                4
+              ],
+              [
+                1,
+                3,
+                3
+              ],
+              [
+                1,
+                3,
+                4
+              ],
+              [
+                1,
+                4,
+                3
+              ],
+              [
+                1,
+                4,
+                4
+              ],
+              [
+                2,
+                1,
+                3
+              ],
+              [
+                2,
+                1,
+                4
+              ],
+              [
+                2,
+                2,
+                3
+              ],
+              [
+                2,
+                2,
+                4
+              ],
+              [
+                2,
+                3,
+                3
+              ],
+              [
+                2,
+                3,
+                4
+              ],
+              [
+                2,
+                4,
+                3
+              ],
+              [
+                2,
+                4,
+                4
+              ],
+              [
+                3,
+                1,
+                1
+              ],
+              [
+                3,
+                1,
+                2
+              ],
+              [
+                3,
+                2,
+                1
+              ],
+              [
+                3,
+                2,
+                2
+              ],
+              [
+                3,
+                3,
+                1
+              ],
+              [
+                3,
+                3,
+                2
+              ],
+              [
+                3,
+                4,
+                1
+              ],
+              [
+                3,
+                4,
+                2
+              ],
+              [
+                4,
+                1,
+                1
+              ],
+              [
+                4,
+                1,
+                2
+              ],
+              [
+                4,
+                2,
+                1
+              ],
+              [
+                4,
+                2,
+                2
+              ],
+              [
+                4,
+                3,
+                1
+              ],
+              [
+                4,
+                3,
+                2
+              ],
+              [
+                4,
+                4,
+                1
+              ],
+              [
+                4,
+                4,
+                2
+              ]
+            ],
+            "nonzero_literal_entries": 48,
+            "out_size": 4
+          }
+        ]
+      },
+      "MP_FFV2_5L2_1": {
+        "calls": 8,
+        "caveat": "Nonliteral expressions contain arbitrary complex wavefunctions/couplings; no pure-real/pure-imaginary property is inferred. Same-K equal expressions can reuse one A(K,L,I)*B product across different destination components/monomials; cross-K equality alone cannot. Sharing needs a separate arithmetic/flags proof.",
+        "shapes": [
+          {
+            "coefficients": 80,
+            "identical_expression_extra_entries": 10,
+            "identical_expression_groups": [
+              [
+                [
+                  1,
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  4,
+                  1
+                ],
+                [
+                  2,
+                  2,
+                  1
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  4,
+                  2
+                ],
+                [
+                  2,
+                  2,
+                  2
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  1
+                ],
+                [
+                  2,
+                  1,
+                  1
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  2
+                ],
+                [
+                  2,
+                  1,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  4,
+                  4
+                ],
+                [
+                  4,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  3
+                ],
+                [
+                  4,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  4
+                ],
+                [
+                  4,
+                  4,
+                  4
+                ]
+              ]
+            ],
+            "identical_expression_same_jk_extra_entries": 4,
+            "identical_expression_same_jk_groups": [
+              [
+                [
+                  1,
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  4,
+                  1
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  3
+                ],
+                [
+                  4,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  4
+                ],
+                [
+                  4,
+                  4,
+                  4
+                ]
+              ]
+            ],
+            "identical_expression_same_k_extra_entries": 10,
+            "identical_expression_same_k_groups": [
+              [
+                [
+                  1,
+                  1,
+                  1
+                ],
+                [
+                  1,
+                  4,
+                  1
+                ],
+                [
+                  2,
+                  2,
+                  1
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  2
+                ],
+                [
+                  1,
+                  4,
+                  2
+                ],
+                [
+                  2,
+                  2,
+                  2
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  1
+                ],
+                [
+                  2,
+                  1,
+                  1
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  2
+                ],
+                [
+                  2,
+                  1,
+                  2
+                ]
+              ],
+              [
+                [
+                  3,
+                  4,
+                  3
+                ],
+                [
+                  4,
+                  2,
+                  3
+                ]
+              ],
+              [
+                [
+                  3,
+                  4,
+                  4
+                ],
+                [
+                  4,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  3
+                ],
+                [
+                  4,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  4,
+                  1,
+                  4
+                ],
+                [
+                  4,
+                  4,
+                  4
+                ]
+              ]
+            ],
+            "in_size": 4,
+            "literal_zero_entries": [
+              [
+                1,
+                1,
+                3
+              ],
+              [
+                1,
+                1,
+                4
+              ],
+              [
+                1,
+                2,
+                3
+              ],
+              [
+                1,
+                2,
+                4
+              ],
+              [
+                1,
+                3,
+                3
+              ],
+              [
+                1,
+                3,
+                4
+              ],
+              [
+                1,
+                4,
+                3
+              ],
+              [
+                1,
+                4,
+                4
+              ],
+              [
+                2,
+                1,
+                3
+              ],
+              [
+                2,
+                1,
+                4
+              ],
+              [
+                2,
+                2,
+                3
+              ],
+              [
+                2,
+                2,
+                4
+              ],
+              [
+                2,
+                3,
+                3
+              ],
+              [
+                2,
+                3,
+                4
+              ],
+              [
+                2,
+                4,
+                3
+              ],
+              [
+                2,
+                4,
+                4
+              ],
+              [
+                3,
+                1,
+                1
+              ],
+              [
+                3,
+                1,
+                2
+              ],
+              [
+                3,
+                2,
+                1
+              ],
+              [
+                3,
+                2,
+                2
+              ],
+              [
+                3,
+                3,
+                1
+              ],
+              [
+                3,
+                3,
+                2
+              ],
+              [
+                3,
+                4,
+                1
+              ],
+              [
+                3,
+                4,
+                2
+              ],
+              [
+                4,
+                1,
+                1
+              ],
+              [
+                4,
+                1,
+                2
+              ],
+              [
+                4,
+                2,
+                1
+              ],
+              [
+                4,
+                2,
+                2
+              ],
+              [
+                4,
+                3,
+                1
+              ],
+              [
+                4,
+                3,
+                2
+              ],
+              [
+                4,
+                4,
+                1
+              ],
+              [
+                4,
+                4,
+                2
+              ]
+            ],
+            "nonzero_literal_entries": 48,
+            "out_size": 4
+          }
+        ]
+      },
+      "MP_GHGHGL1_2": {
+        "calls": 2,
+        "caveat": "Nonliteral expressions contain arbitrary complex wavefunctions/couplings; no pure-real/pure-imaginary property is inferred. Same-K equal expressions can reuse one A(K,L,I)*B product across different destination components/monomials; cross-K equality alone cannot. Sharing needs a separate arithmetic/flags proof.",
+        "shapes": [
+          {
+            "coefficients": 5,
+            "identical_expression_extra_entries": 0,
+            "identical_expression_groups": [],
+            "identical_expression_same_jk_extra_entries": 0,
+            "identical_expression_same_jk_groups": [],
+            "identical_expression_same_k_extra_entries": 0,
+            "identical_expression_same_k_groups": [],
+            "in_size": 1,
+            "literal_zero_entries": [],
+            "nonzero_literal_entries": 5,
+            "out_size": 1
+          }
+        ]
+      },
+      "MP_GHGHGL2_1": {
+        "calls": 2,
+        "caveat": "Nonliteral expressions contain arbitrary complex wavefunctions/couplings; no pure-real/pure-imaginary property is inferred. Same-K equal expressions can reuse one A(K,L,I)*B product across different destination components/monomials; cross-K equality alone cannot. Sharing needs a separate arithmetic/flags proof.",
+        "shapes": [
+          {
+            "coefficients": 5,
+            "identical_expression_extra_entries": 0,
+            "identical_expression_groups": [],
+            "identical_expression_same_jk_extra_entries": 0,
+            "identical_expression_same_jk_groups": [],
+            "identical_expression_same_k_extra_entries": 0,
+            "identical_expression_same_k_groups": [],
+            "in_size": 1,
+            "literal_zero_entries": [],
+            "nonzero_literal_entries": 5,
+            "out_size": 1
+          }
+        ]
+      },
+      "MP_VVV1L2P0_1": {
+        "calls": 16,
+        "caveat": "Nonliteral expressions contain arbitrary complex wavefunctions/couplings; no pure-real/pure-imaginary property is inferred. Same-K equal expressions can reuse one A(K,L,I)*B product across different destination components/monomials; cross-K equality alone cannot. Sharing needs a separate arithmetic/flags proof.",
+        "shapes": [
+          {
+            "coefficients": 80,
+            "identical_expression_extra_entries": 24,
+            "identical_expression_groups": [
+              [
+                [
+                  1,
+                  1,
+                  2
+                ],
+                [
+                  2,
+                  3,
+                  3
+                ],
+                [
+                  2,
+                  4,
+                  4
+                ],
+                [
+                  3,
+                  3,
+                  2
+                ],
+                [
+                  4,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  3
+                ],
+                [
+                  2,
+                  2,
+                  3
+                ],
+                [
+                  3,
+                  2,
+                  2
+                ],
+                [
+                  3,
+                  4,
+                  4
+                ],
+                [
+                  4,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  4
+                ],
+                [
+                  2,
+                  2,
+                  4
+                ],
+                [
+                  3,
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  2,
+                  2
+                ],
+                [
+                  4,
+                  3,
+                  3
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  1
+                ],
+                [
+                  3,
+                  2,
+                  3
+                ],
+                [
+                  4,
+                  2,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  2,
+                  2
+                ],
+                [
+                  1,
+                  3,
+                  3
+                ],
+                [
+                  1,
+                  4,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  3,
+                  1
+                ],
+                [
+                  2,
+                  3,
+                  2
+                ],
+                [
+                  4,
+                  3,
+                  4
+                ]
+              ],
+              [
+                [
+                  1,
+                  4,
+                  1
+                ],
+                [
+                  2,
+                  4,
+                  2
+                ],
+                [
+                  3,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  2,
+                  1,
+                  2
+                ],
+                [
+                  3,
+                  1,
+                  3
+                ],
+                [
+                  4,
+                  1,
+                  4
+                ]
+              ],
+              [
+                [
+                  2,
+                  2,
+                  1
+                ],
+                [
+                  3,
+                  3,
+                  1
+                ],
+                [
+                  4,
+                  4,
+                  1
+                ]
+              ]
+            ],
+            "identical_expression_same_jk_extra_entries": 0,
+            "identical_expression_same_jk_groups": [],
+            "identical_expression_same_k_extra_entries": 8,
+            "identical_expression_same_k_groups": [
+              [
+                [
+                  1,
+                  1,
+                  2
+                ],
+                [
+                  3,
+                  3,
+                  2
+                ],
+                [
+                  4,
+                  4,
+                  2
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  3
+                ],
+                [
+                  2,
+                  2,
+                  3
+                ],
+                [
+                  4,
+                  4,
+                  3
+                ]
+              ],
+              [
+                [
+                  1,
+                  1,
+                  4
+                ],
+                [
+                  2,
+                  2,
+                  4
+                ],
+                [
+                  3,
+                  3,
+                  4
+                ]
+              ],
+              [
+                [
+                  2,
+                  2,
+                  1
+                ],
+                [
+                  3,
+                  3,
+                  1
+                ],
+                [
+                  4,
+                  4,
+                  1
+                ]
+              ]
+            ],
+            "in_size": 4,
+            "literal_zero_entries": [
+              [
+                1,
+                1,
+                1
+              ],
+              [
+                1,
+                2,
+                3
+              ],
+              [
+                1,
+                2,
+                4
+              ],
+              [
+                1,
+                3,
+                2
+              ],
+              [
+                1,
+                3,
+                4
+              ],
+              [
+                1,
+                4,
+                2
+              ],
+              [
+                1,
+                4,
+                3
+              ],
+              [
+                2,
+                1,
+                3
+              ],
+              [
+                2,
+                1,
+                4
+              ],
+              [
+                2,
+                2,
+                2
+              ],
+              [
+                2,
+                3,
+                1
+              ],
+              [
+                2,
+                3,
+                4
+              ],
+              [
+                2,
+                4,
+                1
+              ],
+              [
+                2,
+                4,
+                3
+              ],
+              [
+                3,
+                1,
+                2
+              ],
+              [
+                3,
+                1,
+                4
+              ],
+              [
+                3,
+                2,
+                1
+              ],
+              [
+                3,
+                2,
+                4
+              ],
+              [
+                3,
+                3,
+                3
+              ],
+              [
+                3,
+                4,
+                1
+              ],
+              [
+                3,
+                4,
+                2
+              ],
+              [
+                4,
+                1,
+                2
+              ],
+              [
+                4,
+                1,
+                3
+              ],
+              [
+                4,
+                2,
+                1
+              ],
+              [
+                4,
+                2,
+                3
+              ],
+              [
+                4,
+                3,
+                1
+              ],
+              [
+                4,
+                3,
+                2
+              ],
+              [
+                4,
+                4,
+                4
+              ]
+            ],
+            "nonzero_literal_entries": 52,
+            "out_size": 4
+          }
+        ]
+      }
+    },
+    "same_A_B_product_fraction": 0.14066295744847582,
+    "scope": "Static generated calls per coefficient batch; not runtime frequency. Existing B==0 branches already skip literal-zero products. These counts establish potential mask/index overhead only, not additional arithmetic savings.",
+    "sources": {
+      ".benchmark-work/experiments/terminal-production/qcd-3/production/Source/DHELAS/MP_FFV1L1_2.f": "2a3b8e44d4d66e47fb8ff3dd4ef4c53c8ba46228e419f5d0350a45462308a49b",
+      ".benchmark-work/experiments/terminal-production/qcd-3/production/Source/DHELAS/MP_FFV1L2_1.f": "cdd8648c1f17ab4fb9057a96fcd54fa3149ad60c92be5211e93f56af715ec7d9",
+      ".benchmark-work/experiments/terminal-production/qcd-3/production/Source/DHELAS/MP_FFV1L3_1.f": "62e80a547f6bdcab937b602b8879f829ccfb5b4f70835a86004894aa7871943a",
+      ".benchmark-work/experiments/terminal-production/qcd-3/production/Source/DHELAS/MP_FFV1L3_2.f": "bd6fba20194a0aabaaeeade5e5707cd5b378fad6ac860ca6bf571b879ee1e9f7",
+      ".benchmark-work/experiments/terminal-production/qcd-3/production/Source/DHELAS/MP_FFV2_5L1_2.f": "55ceea113ea687e44e7d35c82dfb667adae95d83065cbedeb3f707d9aa76b96c",
+      ".benchmark-work/experiments/terminal-production/qcd-3/production/Source/DHELAS/MP_FFV2_5L2_1.f": "9012715faae41c4ae7cb6b192e32d99c69cf8945c463b37b4f56f992b1d82ff0",
+      ".benchmark-work/experiments/terminal-production/qcd-3/production/Source/DHELAS/MP_GHGHGL1_2.f": "d01e86ba8cca85e235fa54210182acdfa8c6f890c08e1386f12e37e46793df0c",
+      ".benchmark-work/experiments/terminal-production/qcd-3/production/Source/DHELAS/MP_GHGHGL2_1.f": "5d617ce5154a0dfe6cbd722b25093cd0ba5e53083bb7ea275f3a265958038b84",
+      ".benchmark-work/experiments/terminal-production/qcd-3/production/Source/DHELAS/MP_VVV1L2P0_1.f": "9a52ca790d589f694b31f583355eea34aa19377f60c8e25b9d716691e22305a3",
+      ".benchmark-work/experiments/terminal-production/qcd-3/production/SubProcesses/P0_uux_zgg/mp_coef_construction_1.f": "c4f1bbed7eedc9c5e19ec82e13f7cd068096e600f85117f8cacdcd34300045f3"
+    }
+  }
+}

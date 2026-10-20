@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-accumulation/check_gather.py", line 83, in <module>
+    main()
+    ~~~~^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-accumulation/check_gather.py", line 71, in main
+    raise RuntimeError(record['output'])
+RuntimeError:  BIT MISMATCH           1           1           1           2           1           8           1
+Note: The following floating-point exceptions are signalling: IEEE_INVALID_FLAG
+STOP 1
+

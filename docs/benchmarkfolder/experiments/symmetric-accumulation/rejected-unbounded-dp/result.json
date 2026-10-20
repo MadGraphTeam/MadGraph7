@@ -1,0 +1,34 @@
+{
+  "results": [
+    {
+      "kind": 8,
+      "rank": 2,
+      "command": [
+        "gfortran",
+        "-O3",
+        "-frounding-math",
+        "-fno-automatic",
+        "-fcheck=all",
+        "-ffixed-line-length-132",
+        "constants.f",
+        "full.f",
+        "gather.f",
+        "driver.f90",
+        "-o",
+        "check"
+      ],
+      "passed": false,
+      "seconds": 2.2988543460378423,
+      "output": " BIT MISMATCH           1           1           1           2           1           8           1\nNote: The following floating-point exceptions are signalling: IEEE_INVALID_FLAG\nSTOP 1\n",
+      "sources": {
+        "driver.f90": "0f3bddf8aa990e9f98a49a714df89f71c0dbd347ecbf1dd0bfe2df702e51e200",
+        "full.f": "2eae2436b3fc56b45a6991313cb02078f7eef10a7d6135da65ba382b35f18f34",
+        "gather.f": "96dab51f3ece322a97219b98e572dd9054e55b0e900a877ddb5ae6a05ea7a565",
+        "constants.f": "7739329fb85186910af90691a3967c08f10ee58018e7150218eb269741a36d4a"
+      },
+      "executable_sha256": "03e01ac13328cd33f2acb4d24aa8960bde4d15d816dfe096e670fbd530da6bc2"
+    }
+  ],
+  "complete": false,
+  "acceptance_eligible": false
+}

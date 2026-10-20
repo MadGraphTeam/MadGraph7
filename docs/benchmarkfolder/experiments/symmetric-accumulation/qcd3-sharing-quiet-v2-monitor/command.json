@@ -1,0 +1,23 @@
+[
+  "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+  "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-accumulation/run_shared.py",
+  "--case",
+  "qcd-3",
+  "--variants",
+  "shared",
+  "--run-id",
+  "qcd3-sharing-quiet-v2",
+  "--repetitions",
+  "7",
+  "--loops",
+  "1",
+  "--cpu",
+  "206",
+  "--quiet",
+  "--maximum-ratio",
+  "1.0",
+  "--reference-values",
+  "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-accumulation/qcd3-sharing-trace-v2/original-0-values.dat",
+  "--reference-status",
+  "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-accumulation/qcd3-sharing-trace-v2/original-0-timed_status.dat"
+]

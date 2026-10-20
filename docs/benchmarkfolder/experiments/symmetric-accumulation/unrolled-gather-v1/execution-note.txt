@@ -1,0 +1,1 @@
+The exact-test process was SIGSTOP-paused after three completed cases while the NLO empty-prefix build regression was diagnosed and fixed. Fourth-case elapsed compilation/test time includes that pause. It is not a performance measurement. Kernel timings began only after all four exact cases passed. All timings are exploratory under concurrent generation/build work.
