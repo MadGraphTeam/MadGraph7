@@ -361,3 +361,41 @@ SDK client checks selected versus richer representative catalogues, reversed
 literal joint labels, singleton inverse routing, complete values and owned
 results after dropping handles. These are correctness controls; benchmark cells
 have not been retimed for this milestone.
+
+
+## Same-process directed colour projection reuse
+
+The retained formal-full `d d~ -> g g` bank includes the common degrees of its
+complete order-two family (28 histories / 784 pairs), with exact requested
+rectangles in both directions. `reproject_directed_color_bank` can now construct
+a new LC/NLC bank for a normally projected model sharing the actual process,
+scalar plan and source-colour declaration. It validates the captured prepared
+declaration and both formal owners, and checks the resulting identity rows
+against the target's ordinary weights. The reference bank never changes owner.
+
+Both factories share one actual-column assembler. The reusable support proof
+keeps dependency-canonical tensors, complete typed ports, absolute orders and
+formal factors/masks as separate exact fields, with Born, bare, UV, R2 and field
+domains kept distinct. Equal duplicate counts are unnecessary: explicit indices
+retain all target columns, while complete support equality retains the maximum
+degree of each entire family. Inactive columns are preserved; weighted-zero or
+compensating-factor equivalence does not replace this proof. Existing Symbolica
+projection extracts LC/NLC using the retained common degrees, not a degree chosen
+from a requested row. Normal binding applies Nc and external averaging once.
+
+Independent complete target projections pass full/LC/NLC rectangular controls,
+including non-Hermitian two-emission histories, reordered/repeated columns,
+odd/suppressed/zero sectors and formal differences hidden at Nc=3. The focused
+run has 24 new and eight affected passing cases. Actual same-process LC/NLC
+owners pass eight ownership controls and six physical carrier cases, including
+all complete components and both terms, ordinary identity consistency, singleton
+and joint polarization reconstruction, exact source/parameter changes and opaque
+IDs. These physical executors share the reused bank; their consistency is
+separate from the independent tensor-projection oracle. Rebinding does not redo
+colour algebra. Original retained models and snapshots remain unchanged.
+
+The normal writer saved the two new projected banks before numerical checks.
+Their saved/public/SDK numerical validation is still pending. This factory does
+not establish a map between independently generated species owners and does not
+relax nonidentity projected-history flavour admission. The existing source and
+ordinary mapping guards remain in place. No benchmark cells were retimed.
