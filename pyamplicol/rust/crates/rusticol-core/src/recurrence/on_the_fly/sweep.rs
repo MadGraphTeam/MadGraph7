@@ -6,9 +6,12 @@ use crate::recurrence::construct::{
     CurrentReflection, PendingReflectionCertificate, TransitionReflectionIndex,
     current_key_with_dynamic_color, current_reflection_candidate, current_reversal_masks,
     dynamic_color_identity_digest, pure_adjoint_word_is_canonical, reciprocal_reflection_proof,
-    source_reflection,
+    source_reflection, u1_subtraction_states,
 };
-use crate::recurrence::fermion_ordering::{FermionOrderingContext, fermion_ordering_factor};
+use crate::recurrence::fermion_ordering::{
+    FermionOrderingContext, fermion_ordering_factor, open_line_closure_factor,
+    u1_subtraction_factor,
+};
 
 fn on_the_fly_source_requires_exterior_sign(
     is_fermionic: bool,
@@ -23,10 +26,9 @@ fn on_the_fly_source_requires_exterior_sign(
         return Ok(false);
     }
     match color_role {
-        OnTheFlyExternalColorRoleV1::Singlet => Ok(true),
-        OnTheFlyExternalColorRoleV1::Fundamental | OnTheFlyExternalColorRoleV1::Antifundamental => {
-            Ok(false)
-        }
+        OnTheFlyExternalColorRoleV1::Singlet
+        | OnTheFlyExternalColorRoleV1::Fundamental
+        | OnTheFlyExternalColorRoleV1::Antifundamental => Ok(true),
         OnTheFlyExternalColorRoleV1::Adjoint => Err(invalid(
             "external-fermion ordering does not support adjoint fermion sources",
         )),
@@ -35,6 +37,8 @@ fn on_the_fly_source_requires_exterior_sign(
 
 pub(super) fn on_the_fly_fermion_ordering_context(
     seed: &OnTheFlyProcessSeedV1,
+    templates: &ValidatedRecurrenceTemplateInput,
+    catalog: &TemplateCatalog<'_>,
 ) -> RusticolResult<FermionOrderingContext> {
     let mut source_requires_exterior_sign = Vec::with_capacity(seed.source_anchors.len());
     for (source_slot, anchor) in seed.source_anchors.iter().enumerate() {
@@ -49,7 +53,10 @@ pub(super) fn on_the_fly_fermion_ordering_context(
             anchor.color_role,
         )?);
     }
-    Ok(FermionOrderingContext::new(source_requires_exterior_sign))
+    Ok(FermionOrderingContext::new(
+        source_requires_exterior_sign,
+        u1_subtraction_states(templates.input(), catalog)?,
+    ))
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -1336,6 +1343,7 @@ fn include_transition(
                 exchange_factor,
                 witness_factor,
                 fermion_factor,
+                u1_subtraction_factor(prepared.row.result_state_template_id, fermion_ordering)?,
                 reversal_factor,
             ])?;
             let aggregate = currents[result_id as usize]
@@ -2021,6 +2029,7 @@ pub(super) fn build_selected_closures(
                         exchange_factor,
                         witness.witness.exact_factor(),
                         fermion_factor,
+                        open_line_closure_factor(&closed, fermion_ordering)?,
                         reflection_factor,
                     ])?;
                     let coefficients = closure.component_coefficients.clone();
@@ -2172,14 +2181,14 @@ mod tests {
                 .unwrap()
         );
         assert!(
-            !on_the_fly_source_requires_exterior_sign(
+            on_the_fly_source_requires_exterior_sign(
                 true,
                 OnTheFlyExternalColorRoleV1::Fundamental,
             )
             .unwrap()
         );
         assert!(
-            !on_the_fly_source_requires_exterior_sign(
+            on_the_fly_source_requires_exterior_sign(
                 true,
                 OnTheFlyExternalColorRoleV1::Antifundamental,
             )
@@ -3061,7 +3070,8 @@ mod tests {
             .map(|(id, current)| (current.key.clone(), u32::try_from(id).unwrap()))
             .collect::<BTreeMap<_, _>>();
         let contact_orbits = PreparedContactOrbitIndex::new(&transitions).unwrap();
-        let fermion_ordering = on_the_fly_fermion_ordering_context(&seed).unwrap();
+        let fermion_ordering =
+            on_the_fly_fermion_ordering_context(&seed, &templates, &catalog).unwrap();
 
         build_forward_currents_with_anchor_exclusion(
             &templates,
@@ -3462,7 +3472,9 @@ mod tests {
         let transitions = BTreeMap::new();
         let closures = BTreeMap::new();
         let contact_orbits = PreparedContactOrbitIndex::new(&transitions).unwrap();
-        let fermion_ordering = on_the_fly_fermion_ordering_context(&seed).unwrap();
+        let catalog = TemplateCatalog::new(templates.input()).unwrap();
+        let fermion_ordering =
+            on_the_fly_fermion_ordering_context(&seed, &templates, &catalog).unwrap();
         let build = |closure_anchor_slot| {
             let mut colors = DynamicLCColorStateInterner::default();
             let mut currents = (0_u32..3)

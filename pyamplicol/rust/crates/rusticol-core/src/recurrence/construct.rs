@@ -15,7 +15,9 @@ use super::contact_orbit_owner::{
     selected_contact_orbit_owner_tokens,
 };
 use super::fermion_ordering::{
-    FermionOrderingContext, authenticated_source_requires_exterior_sign, fermion_ordering_factor,
+    FermionOrderingContext, U1_SUBTRACTION_AUXILIARY_KIND,
+    authenticated_source_requires_exterior_sign, fermion_ordering_factor, open_line_closure_factor,
+    u1_subtraction_factor,
 };
 use super::layout::RuntimeSourceVariantBinding;
 use super::process::{
@@ -4683,9 +4685,30 @@ pub(super) fn build_recurrence_program_with_progress_and_telemetry(
     build_recurrence_program_impl(authenticated, progress, true)
 }
 
+/// Flag, by current-state template ID, the U(1) subtraction currents of color-flow gluons.
+pub(super) fn u1_subtraction_states(
+    template: &OwnedRecurrenceTemplateInput,
+    template_catalog: &TemplateCatalog<'_>,
+) -> RusticolResult<Vec<bool>> {
+    template
+        .current_states
+        .iter()
+        .map(|state| {
+            if state.auxiliary_kind_string_id == MISSING_U32 {
+                return Ok(false);
+            }
+            Ok(template_catalog.string(
+                state.auxiliary_kind_string_id,
+                "current-state auxiliary kind",
+            )? == U1_SUBTRACTION_AUXILIARY_KIND)
+        })
+        .collect()
+}
+
 fn established_fermion_ordering_context(
     process: &OwnedRecurrenceProcessInput,
     template: &OwnedRecurrenceTemplateInput,
+    template_catalog: &TemplateCatalog<'_>,
     pairing_catalog: Option<ValidatedFermionPairingCatalog<'_>>,
 ) -> RusticolResult<FermionOrderingContext> {
     let mut authenticated_colored_endpoints = vec![false; process.external_legs.len()];
@@ -4739,7 +4762,10 @@ fn established_fermion_ordering_context(
             color_representations,
         )?);
     }
-    Ok(FermionOrderingContext::new(source_requires_exterior_sign))
+    Ok(FermionOrderingContext::new(
+        source_requires_exterior_sign,
+        u1_subtraction_states(template, template_catalog)?,
+    ))
 }
 
 fn build_recurrence_program_impl(
@@ -4757,13 +4783,17 @@ fn build_recurrence_program_impl(
     let process_input = authenticated.process().input();
     let pairing_catalog = authenticated.process().fermion_pairing_catalog();
     let template_input = authenticated.template().input();
-    let fermion_ordering =
-        established_fermion_ordering_context(process_input, template_input, pairing_catalog)?;
+    let template_catalog = TemplateCatalog::new(template_input)?;
+    let fermion_ordering = established_fermion_ordering_context(
+        process_input,
+        template_input,
+        &template_catalog,
+        pairing_catalog,
+    )?;
     let process_catalog = ProcessCatalog::new(process_input)?;
     let helicity_support_rule = helicity_support_rule(authenticated)?;
     let global_helicity_flip_rule = global_helicity_flip_rule(authenticated)?;
     let retained_helicity_count = retained_helicity_count(process_input)?;
-    let template_catalog = TemplateCatalog::new(template_input)?;
     validate_cyclic_trace_closure_anchor_contracts(
         process_input,
         &process_catalog,
@@ -6571,6 +6601,7 @@ fn add_transition_contributions(
         prepared.contraction_exact_factor,
         output_factor,
         fermion_factor,
+        u1_subtraction_factor(transition.result_state_template_id, fermion_ordering)?,
     ])?;
     let parent_reflections = [
         currents[parent_ids[0] as usize].reflection.clone(),
@@ -7442,10 +7473,10 @@ fn pairing_rule_for_certificate(
 }
 
 fn pairing_reconstruction_factor(_rule: Option<FermionPairingRuleRow>) -> ExactComplexRational {
-    // Canonical color-line construction already carries the exchange parity
-    // of colored Wick lineages.  The exterior-algebra pass separately owns
-    // color-singlet fermions, so multiplying pairing parity here would count
-    // the colored sign twice.
+    // Merges already carry the exterior-algebra sign of every external
+    // fermion, and `open_line_closure_factor` removes the color parity of the
+    // closed sector, so multiplying the pairing parity here would count the
+    // Wick sign twice.
     ExactComplexRational::ONE
 }
 
@@ -8034,6 +8065,12 @@ fn build_bulk_color_union_closures(
                                 .map_err(|_| {
                                     invalid("closure color-witness term ID exceeds u32")
                                 })?;
+                            let exact_factor = base_factor
+                                .checked_mul(witness.witness.exact_factor())?
+                                .checked_mul(open_line_closure_factor(
+                                    &closed,
+                                    fermion_ordering,
+                                )?)?;
                             let attempt_index = attempts.len();
                             attempts.push(ContractedClosureAttempt {
                                 closed_components: closed.into_boxed_slice(),
@@ -8062,8 +8099,7 @@ fn build_bulk_color_union_closures(
                                         .clone()
                                         .into_boxed_slice(),
                                     reflection_certificate_id: None,
-                                    exact_factor: base_factor
-                                        .checked_mul(witness.witness.exact_factor())?,
+                                    exact_factor,
                                 },
                                 pairing_rule_id: pairing_rule.map(|rule| rule.rule_id),
                             });
@@ -8714,7 +8750,9 @@ fn add_closure_terms(
                 quantum_flow_template_id: quantum.template_id(),
                 parent_current_ids: evaluator_parent_ids.into(),
             };
-            let factor = base_factor.checked_mul(witness.witness.exact_factor())?;
+            let factor = base_factor
+                .checked_mul(witness.witness.exact_factor())?
+                .checked_mul(open_line_closure_factor(&closed, fermion_ordering)?)?;
             let reflection = closure_reflection_projection(
                 sector.row,
                 &closed,
@@ -14405,7 +14443,8 @@ mod tests {
         let process = scalar_reference_process(external_count);
         let process_catalog = ProcessCatalog::new(&process).unwrap();
         let fermion_ordering =
-            established_fermion_ordering_context(&process, &template, None).unwrap();
+            established_fermion_ordering_context(&process, &template, &template_catalog, None)
+                .unwrap();
         let materialized_sectors = BTreeSet::from([0]);
         let prepared_closure_sectors = PreparedClosureSectorCatalog::new(
             RecurrenceStrategy::AllFlowUnion,
@@ -15136,7 +15175,8 @@ mod tests {
         )
         .unwrap();
         let fermion_ordering =
-            established_fermion_ordering_context(&process, &template, None).unwrap();
+            established_fermion_ordering_context(&process, &template, &template_catalog, None)
+                .unwrap();
         let mut color_states = DynamicLCColorStateInterner::default();
         let color_id = color_states
             .intern(DynamicLCColorState::new(0, None, vec![]).unwrap())
@@ -15425,7 +15465,8 @@ mod tests {
         )
         .unwrap();
         let fermion_ordering =
-            established_fermion_ordering_context(&process, &template, None).unwrap();
+            established_fermion_ordering_context(&process, &template, &template_catalog, None)
+                .unwrap();
 
         let adjoint =
             |word| LCColorComponent::new(LCColorComponentKind::AdjointSegment, word).unwrap();
