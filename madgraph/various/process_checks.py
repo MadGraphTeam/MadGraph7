@@ -1550,8 +1550,8 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             tools=misc.make_unique(tools) # remove the duplication ones
             
         # not self-contained tir libraries
-        tool_var={'pjfry':2,'golem':4,'samurai':5,'ninja':6,'collier':7}
-        for tool in ['pjfry','golem','samurai','ninja','collier']:
+        tool_var={'pjfry':2,'golem':4,'samurai':5,'ninja':6,'collier':7,'ninjars':8}
+        for tool in ['pjfry','golem','samurai','ninja','collier','ninjars']:
             tool_dir='%s_dir'%tool
             if not tool_dir in self.tir_dir:
                 continue
@@ -1560,6 +1560,9 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             if (not isinstance(tool_libpath,str)) or (not os.path.exists(tool_libpath)) \
                 or (not os.path.isfile(pjoin(tool_libpath,tool_libname))):
                 if tool_var[tool] in tools:
+                    if tool == 'ninjars':
+                        raise MadGraph5Error("Requested NinjaRS library is unavailable. "
+                                             "Run 'install ninjars'.")
                     tools.remove(tool_var[tool])
         if not tools:
             return None
@@ -2284,6 +2287,8 @@ def check_stability(process_definition, param_card = None,cuttools="",tir={},
                 MLoptions["MLReductionLib"].extend([6])
             if "collier_dir" in tir:
                 MLoptions["MLReductionLib"].extend([7])
+            if "ninjars_dir" in tir:
+                MLoptions["MLReductionLib"].extend([8])
 
     stability = myStabilityChecker.check_matrix_element_stability(matrix_element, 
                         options=options,param_card=param_card, 

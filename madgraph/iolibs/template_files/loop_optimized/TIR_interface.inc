@@ -453,13 +453,22 @@ C
 C CONSTANTS
 C
             INTEGER NLOOPLIB
-			PARAMETER (NLOOPLIB=7)
+			PARAMETER (NLOOPLIB=8)
 			INTEGER QP_NLOOPLIB
 ## if(ninja_supports_quad_prec) {
-      		PARAMETER (QP_NLOOPLIB=2)
+## if(ninjars_supports_quad_prec) {
+      PARAMETER (QP_NLOOPLIB=3)
 ## } else {
-      		PARAMETER (QP_NLOOPLIB=1)
+      PARAMETER (QP_NLOOPLIB=2)
 ## }
+## } else {
+## if(ninjars_supports_quad_prec) {
+      PARAMETER (QP_NLOOPLIB=2)
+## } else {
+      PARAMETER (QP_NLOOPLIB=1)
+## }
+## }
+
             INTEGER NLOOPGROUPS
             PARAMETER (NLOOPGROUPS=%(nloop_groups)d)
 C

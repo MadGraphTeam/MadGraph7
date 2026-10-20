@@ -79,13 +79,15 @@ C     These are constants related to the split orders
       PARAMETER (NSQUAREDSOP1=NSQUAREDSO+1)
 C     The total number of loop reduction libraries
 C     At present, there are only
-C      CutTools,PJFry++,IREGI,Golem95,Samurai, Ninja and COLLIER
+C      CutTools,PJFry++,IREGI,Golem95,Samurai, Ninja, COLLIER and
+C      NinjaRS
       INTEGER NLOOPLIB
-      PARAMETER (NLOOPLIB=7)
-C     Only CutTools or possibly Ninja (if installed with qp support)
-C      provide QP
+      PARAMETER (NLOOPLIB=8)
+C     CutTools, Ninja and NinjaRS can provide QP when installed with
+C      support
       INTEGER QP_NLOOPLIB
       PARAMETER (QP_NLOOPLIB=2)
+
       INTEGER MAXSTABILITYLENGTH
       DATA MAXSTABILITYLENGTH/20/
       COMMON/ML5_0_STABILITY_TESTS/MAXSTABILITYLENGTH
@@ -246,21 +248,22 @@ C     A FLAG TO DENOTE WHETHER THE CORRESPONDING LOOPLIBS ARE
 C      AVAILABLE OR NOT
       LOGICAL LOOPLIBS_AVAILABLE(NLOOPLIB)
       DATA LOOPLIBS_AVAILABLE/.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.
-     $ ,.TRUE.,.TRUE./
+     $ ,.TRUE.,.TRUE.,.TRUE./
       COMMON/ML5_0_LOOPLIBS_AV/ LOOPLIBS_AVAILABLE
 C     A FLAG TO DENOTE WHETHER THE CORRESPONDING DIRECTION TESTS
 C      AVAILABLE OR NOT IN THE LOOPLIBS
       LOGICAL LOOPLIBS_DIRECTEST(NLOOPLIB)
-      DATA LOOPLIBS_DIRECTEST /.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.
-     $ ,.TRUE.,.TRUE./
+      DATA LOOPLIBS_DIRECTEST /8*.TRUE./
 C     Specifying for which reduction tool quadruple precision is
 C      available.
 C     The index 0 is dummy and simply means that the corresponding
 C      loop_library is not available
 C     in which case neither is its quadruple precision version.
-      LOGICAL LOOPLIBS_QPAVAILABLE(0:7)
-      DATA LOOPLIBS_QPAVAILABLE /.FALSE.,.TRUE.,.FALSE.,.FALSE.
-     $ ,.FALSE.,.FALSE.,.TRUE.,.FALSE./
+      LOGICAL LOOPLIBS_QPAVAILABLE(0:NLOOPLIB)
+      DATA LOOPLIBS_QPAVAILABLE(0:5)/.FALSE.,.TRUE.,4*.FALSE./
+      DATA LOOPLIBS_QPAVAILABLE(6)/.TRUE./
+      DATA LOOPLIBS_QPAVAILABLE(7)/.FALSE./
+      DATA LOOPLIBS_QPAVAILABLE(8)/.FALSE./
 C     PS CAN POSSIBILY BE PASSED THROUGH IMPROVE_PS BUT IS NOT
 C      MODIFIED FOR THE PURPOSE OF THE STABILITY TEST
 C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT
@@ -2767,7 +2770,8 @@ C     Not stable.
 C     U == 1
 C     Stable with CutTools in double precision.
 C     U == 2
-C     Stable with PJFry++.
+C     Stable with PJFry++ (H=2), or NinjaRS in quadruple precision
+C      (H=3).
 C     U == 3
 C     Stable with IREGI.
 C     U == 4
@@ -2777,7 +2781,8 @@ C     Stable with Samurai
 C     U == 6
 C     Stable with Ninja in double precision
 C     U == 8
-C     Stable with Ninja in quadruple precision
+C     Stable with Ninja in quadruple precision (H=3), or NinjaRS in
+C      double precision (H=2).
 C     U == 9
 C     Stable with CutTools in quadruple precision.         
 C     
@@ -2844,6 +2849,8 @@ C     The subroutine below perform clean-up duties for MadLoop like
 C      de-allocating
 C     arrays
       SUBROUTINE ML5_0_EXIT_MADLOOP()
+      USE MNINJARS, ONLY: NINJARS_FINALIZE
+      CALL NINJARS_FINALIZE()
       CONTINUE
       END
 

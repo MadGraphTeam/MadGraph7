@@ -40,6 +40,7 @@ import madgraph.iolibs.files as files
 import madgraph.iolibs.group_subprocs as group_subprocs
 import madgraph.various.banner as banner_mod
 import madgraph.various.misc as misc
+import madgraph.various.ninjars_install as ninjars_install
 import madgraph.various.q_polynomial as q_polynomial
 import madgraph.iolibs.file_writers as writers
 import madgraph.iolibs.gen_infohtml as gen_infohtml
@@ -90,6 +91,7 @@ class LoopExporterFortran(object):
                         'vector_size':0})
 
     include_names    = {'ninja' : 'mninja.mod',
+                        'ninjars' : 'mninjars.mod',
                         'golem' : 'generic_function_1p.mod',
                         'samurai':'msamurai.mod',
                         'collier': 'collier.mod'}
@@ -512,6 +514,8 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         replace_dict['tir_include'] = ' '.join(tir_include)
         replace_dict['rpaths_libs'] = ''
         for lib in tir_libs:
+            if lib.endswith('libninjars.a'):
+                continue
             replace_dict['rpaths_libs'] += '-Wl,-rpath,%s '%os.path.dirname(lib)    
 
         file = file % replace_dict
@@ -1458,6 +1462,11 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
 
         file = file % replace_dict
         files.append(file)
+
+        if optimized_output:
+            ninjars_template = os.path.join(self.template_dir, 'NINJARS_interface.inc')
+            with open(ninjars_template) as stream:
+                files.append(stream.read() % replace_dict)
         
         # Now collect the different kind of subroutines needed for the
         # loop HELAS-like calls.
@@ -1897,7 +1906,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
     # make sure that ninja appears first in the list of -L because 
     # it is the tool for which the user is most susceptible of 
     # using a standalone verison independent of gosam_contrib
-    all_tir=['pjfry','iregi','ninja','golem','samurai','collier']
+    all_tir=['pjfry','iregi','ninja','golem','samurai','collier','ninjars']
     
     def __init__(self, dir_path = "", opt=None):
         """Initiate the LoopProcessOptimizedExporterFortranSA with directory 
@@ -1908,14 +1917,15 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
 
         # TIR available ones
         self.tir_available_dict={'pjfry':True,'iregi':True,'golem':True,
-                                 'samurai':True,'ninja':True,'collier':True}
+                                 'samurai':True,'ninja':True,'collier':True,'ninjars':True}
 
         for tir in self.all_tir:
             tir_dir="%s_dir"%tir
             if tir_dir in self.opt and not self.opt[tir_dir] is None:
                 # Make sure to defer the 'local path' to the current MadGraph7 root.
                 tir_path = self.opt[tir_dir].strip()
-                if tir_path.startswith('.'):
+                if tir_path.startswith('.') or (
+                        tir == 'ninjars' and not os.path.isabs(tir_path)):
                     tir_path = os.path.abspath(pjoin(MG5DIR,tir_path))
                 setattr(self,tir_dir,tir_path)
             else:
@@ -1943,10 +1953,14 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         except AttributeError:
             context['ninja_supports_quad_prec'] = False
 
+        context['ninjars_supports_quad_prec'] = (
+            self.tir_available_dict.get('ninjars', False) and
+            ninjars_install.supports_quad_precision(getattr(self, 'ninjars_dir', '')))
+
         for tir in self.all_tir:
             context['%s_available'%tir]=self.tir_available_dict[tir]
             # safety check
-            if tir not in ['golem','pjfry','iregi','samurai','ninja','collier']:
+            if tir not in ['golem','pjfry','iregi','samurai','ninja','collier','ninjars']:
                 raise MadGraph5Error("%s was not a TIR currently interfaced."%tir_name)
 
         return context
@@ -1967,11 +1981,21 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             tir_name=tir
             libpath = self.link_TIR(os.path.join(self.dir_path, 'lib'),
                                               libpath,libname,tir_name=tir_name)
+            if tir == 'ninjars':
+                self.ninjars_dir = libpath
             if libpath != "":
-                if tir in ['ninja','pjfry','golem','samurai','collier']:
+                if tir in ['ninja','pjfry','golem','samurai','collier','ninjars']:
                     # It is cleaner to use the original location of the libraries
-                    link_tir_libs.append('-L%s/ -l%s'%(libpath,tir))
-                    tir_libs.append('%s/lib%s.$(libext)'%(libpath,tir))
+                    copied_ninjars = tir == 'ninjars' and self.dependencies == 'internal'
+                    if copied_ninjars:
+                        link_tir_libs.append('-L$(LIBDIR) -lninjars')
+                        tir_libs.append('$(LIBDIR)libninjars.a')
+                    else:
+                        link_tir_libs.append('-L%s/ -l%s'%(libpath,tir))
+                        tir_libs.append('%s/lib%s.%s' % (
+                            libpath, tir, 'a' if tir == 'ninjars' else '$(libext)'))
+                    if tir == 'ninjars':
+                        link_tir_libs.extend(ninjars_install.native_link_flags(libpath))
                     # For Ninja, we must also link against OneLoop.
                     if tir in ['ninja']:
                         if not any(os.path.isfile(pjoin(libpath,'libavh_olo.%s'%ext)) 
@@ -1980,13 +2004,16 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
 "The OneLOop library 'libavh_olo.(a|dylib|so)' could no be found in path '%s'. Please place a symlink to it there."%libpath)
                         link_tir_libs.append('-L%s/ -l%s'%(libpath,'avh_olo'))
                         tir_libs.append('%s/lib%s.$(libext)'%(libpath,'avh_olo'))
-                    if tir in ['ninja','golem', 'samurai','collier']:
+                    if tir in ['ninja','golem', 'samurai','collier','ninjars']:
                         trgt_path = pjoin(os.path.dirname(libpath),'include')
                         if os.path.isdir(trgt_path):
                             to_include = misc.find_includes_path(trgt_path,
                                                         self.include_names[tir])
                         else:
                             to_include = None
+                        if to_include is None and tir == 'ninjars':
+                            to_include = misc.find_includes_path(
+                                libpath, self.include_names[tir])
                         # Special possible location for collier
                         if to_include is None and tir=='collier':
                             to_include = misc.find_includes_path(
@@ -1996,17 +2023,19 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
 'Could not find the include directory for %s, looking in %s.\n' % (tir, str(trgt_path))+
 'Generation carries on but you will need to edit the include path by hand in the makefiles.')
                             to_include = '<Not_found_define_it_yourself>'                
-                        tir_include.append('-I %s'%str(to_include))
+                        tir_include.append('-I %s' % (
+                            '$(LIBDIR)' if copied_ninjars else str(to_include)))
                         # To be able to easily compile a MadLoop library using
                         # makefiles built outside of the MadGraph7 framework
                         # (such as what is done with the Sherpa interface), we
                         # place here an easy handle on the golem includes
                         name_map = {'golem':'golem95','samurai':'samurai',
-                                    'ninja':'ninja','collier':'collier'}
-                        ln(to_include, starting_dir=pjoin(self.dir_path,'lib'),
-                                   name='%s_include'%name_map[tir],abspath=True)
-                        ln(libpath, starting_dir=pjoin(self.dir_path,'lib'),
-                                       name='%s_lib'%name_map[tir],abspath=True)
+                                    'ninja':'ninja','collier':'collier','ninjars':'ninjars'}
+                        if not copied_ninjars:
+                            ln(to_include, starting_dir=pjoin(self.dir_path,'lib'),
+                                       name='%s_include'%name_map[tir],abspath=True)
+                            ln(libpath, starting_dir=pjoin(self.dir_path,'lib'),
+                                           name='%s_lib'%name_map[tir],abspath=True)
                 else :
                     link_tir_libs.append('-l%s'%tir)
                     tir_libs.append('$(LIBDIR)lib%s.$(libext)'%tir)
@@ -2048,7 +2077,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         """Link the TIR source directory inside the target path given
         in argument"""
         
-        if tir_name in ['pjfry','golem','samurai','ninja','collier']:
+        if tir_name in ['pjfry','golem','samurai','ninja','collier','ninjars']:
             # not self-contained libraries
             if (not isinstance(libpath,str)) or (not os.path.exists(libpath)) \
             or (not os.path.isfile(pjoin(libpath,libname))):
@@ -2060,6 +2089,13 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                                    +" It will not be available.")
                 self.tir_available_dict[tir_name]=False
                 return ""
+            if tir_name == 'ninjars':
+                ninjars_install.read_config(libpath)
+                if not os.path.isfile(pjoin(libpath, 'mninjars.mod')) and not \
+                        misc.find_includes_path(pjoin(libpath, os.pardir, 'include'),
+                                                'mninjars.mod'):
+                    raise MadGraph5Error("NinjaRS Fortran module mninjars.mod is "
+                                         "missing; run 'install ninjars --force'.")
             # Check the version of the tool, if the library was found
             if tir_name in ['ninja','samurai'] and self.tir_available_dict[tir_name]:
                 # Make sure the librry was indeed installed in the source directory
@@ -2086,6 +2122,26 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 return ""
        
         if self.dependencies=='internal':
+            if tir_name == 'ninjars':
+                os.makedirs(targetPath, exist_ok=True)
+                module_dir = misc.find_includes_path(libpath, 'mninjars.mod')
+                if module_dir is None:
+                    module_dir = misc.find_includes_path(
+                        pjoin(libpath, os.pardir, 'include'), 'mninjars.mod')
+                sources = [pjoin(libpath, 'libninjars.a'),
+                           pjoin(module_dir, 'mninjars.mod'),
+                           pjoin(libpath, ninjars_install.CONFIG_NAME),
+                           pjoin(libpath, 'ninjars-native-libs.txt')]
+                header = pjoin(libpath, os.pardir, 'include', 'ninjars.h')
+                if os.path.isfile(header):
+                    sources.append(header)
+                for source in sources:
+                    if os.path.isfile(source):
+                        destination = pjoin(targetPath, os.path.basename(source))
+                        if os.path.abspath(source) != os.path.abspath(destination):
+                            shutil.copy2(source, destination)
+                self.tir_available_dict[tir_name] = True
+                return os.path.abspath(targetPath)
             if tir_name in ['pjfry','golem','samurai','ninja','collier']:
                 self.tir_available_dict[tir_name]=False
                 logger.info("When using the 'output_dependencies=internal' "+\
@@ -2147,7 +2203,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                     self.tir_available_dict[tir_name]=False
                     return ""
             # We link the tools below directly to the lib directory of the output 
-            if not tir_name in ['pjfry','golem','samurai','ninja','collier']:
+            if not tir_name in ['pjfry','golem','samurai','ninja','collier','ninjars']:
                 ln(os.path.join(libpath,libname),targetPath,abspath=True)
 
         elif self.dependencies=='environment_paths':
@@ -2158,7 +2214,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 logger.info('MadGraph7 is using %s installation found at %s.'%\
                                                           (tir_name,newlibpath)) 
                 # We link the tools below directly to directly where the library is detected
-                if not tir_name in ['pjfry','golem','samurai','ninja','collier']:
+                if not tir_name in ['pjfry','golem','samurai','ninja','collier','ninjars']:
                     ln(newlibpath,targetPath,abspath=True)
                 self.tir_available_dict[tir_name]=True
                 return os.path.dirname(newlibpath)
@@ -3050,7 +3106,7 @@ PARAMETER (NSQUAREDSO=%d)"""%matrix_element.rep_dict['nSquaredSO'])
         looplibs_av=['.TRUE.']
         # one should be careful about the order in the following as it must match
         # the ordering in MadLoopParamsCard.
-        for tir_lib in ['pjfry','iregi','golem','samurai','ninja','collier']:
+        for tir_lib in ['pjfry','iregi','golem','samurai','ninja','collier','ninjars']:
             looplibs_av.append('.TRUE.' if tir_lib in self.all_tir and \
                                 self.tir_available_dict[tir_lib] else '.FALSE.')
         replace_dict['data_looplibs_av']=','.join(looplibs_av)

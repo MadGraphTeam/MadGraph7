@@ -101,6 +101,20 @@ def main():
                            stderr=subprocess.STDOUT, check=True)
         if not expected[tool].is_file():
             raise RuntimeError(f"{tool} installer did not produce {expected[tool]}")
+    # The existing IREGI wrapper uses inherited PWD instead of make's CURDIR.
+    # Compile its unchanged numerical sources directly, serially, with an explicit
+    # PWD. Otherwise an archived CLI launched from ROOT can clean ROOT's IREGI.
+    for label, tree in (("baseline", BASELINE), ("candidate", ROOT)):
+        directory = tree / "vendor/IREGI/src"
+        if (directory / "libiregi.a").exists():
+            continue
+        command = ["make", "-C", str(directory), "-f", "makefile_ML5_lib",
+                   "PWD=" + str(directory), "SHELL=" + shutil.which("bash"), "-j1"]
+        with (WORK / "logs" / f"{label}-iregi-build.log").open("w") as stream:
+            subprocess.run(command, cwd=ROOT, env=environment, stdout=stream,
+                           stderr=subprocess.STDOUT, check=True)
+        if not (directory / "libiregi.a").is_file():
+            raise RuntimeError(f"{label} IREGI build did not produce its archive")
     if not (BASELINE / "models/loop_qcd_qed_sm_Gmu/particles.py").exists():
         card = WORK / "import-ew-model.mg5"
         card.write_text("set auto_update 0\nimport model loop_qcd_qed_sm_Gmu\nquit\n")

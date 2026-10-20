@@ -156,9 +156,31 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   retained; the EW model was imported through the original CLI and its Python
   source checksum recorded. Host compatibility changes apply only to downloaded
   installer shebangs; original MadLoop numerical sources remain untouched.
-- The Fortran interface/card/status tests, installer failure/retry and copied
-  dependency tests, and old/new statistics-reader tests pass. Real generated
-  process integration and Rust precision checks are in progress. Independent
-  review identified and corrected the MP box sampling scale and conditional
-  cleanup; multi-context MP worker lifecycle is being hardened.
-- No numerical or performance gates have passed yet.
+- Reference setup milestone `165fd1b16` was pushed. A byte-for-byte check against
+  `git archive` confirmed that all tracked baseline source files remain unchanged.
+  The setup script handles IREGI's inherited-PWD build issue without source edits.
+- `install ninjars --jobs=2` completed through the real CLI, including its compiled
+  DP and binary128 Fortran smoke test. The first generated core process (`qcd-1`)
+  passes all four backend comparisons at 100 points and the original-versus-
+  candidate legacy-backend regression, including the final ABI2 installation.
+  Nine Rust tests, the compiled Fortran
+  interface/card/status tests, installer tests, statistics readers, benchmark
+  acceptance tests and exporter reference tests pass.
+- Independent review corrected MP box sampling scale and conditional cleanup.
+  Separate C contexts now share one MP worker with isolated numerical state.
+  ABI2 validates explicit lengths on every DP and ASCII buffer before access.
+  An actual complex-mass rank-five pentagon converges between 256 and 384 bits
+  at 31 relative digits, retaining a numerator perturbation below DP resolution.
+- DP and MP each pass 21 retained tensor lanes against original Ninja's complete
+  Laurent coefficients. The generic MP engine's separate rational diagnostic uses
+  its documented basis-dependent split; MadLoop consumes the complete finite term.
+- Copied-dependency standalone export survives relocation and removal of external
+  library search paths. Full NLO export, compilation and 20/20 pole-cancellation
+  checks pass; final ABI2 relinking and focused process controls are in progress.
+- Original-Ninja scratch-allocation optimizations were tested in copied generated
+  outputs: all 100 DP/QP outputs match exactly for qcd-1/qcd-2, but exploratory
+  timings show no resolved full-evaluation benefit. The production patch is not
+  retained; further profiling is pending.
+- The complete eight-process correctness gate, export/forced-rescue controls,
+  measured optimization gate and all final performance gates remain outstanding.
+  The styled report currently labels missing measurements as pending.

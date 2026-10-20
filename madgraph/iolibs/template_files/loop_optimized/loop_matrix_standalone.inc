@@ -100,16 +100,25 @@ C     These are constants related to the split orders
 	  INTEGER NSQUAREDSOP1
 	  PARAMETER (NSQUAREDSOP1=NSQUAREDSO+1)
 C     The total number of loop reduction libraries
-C     At present, there are only CutTools,PJFry++,IREGI,Golem95,Samurai, Ninja and COLLIER
+C     At present, there are only CutTools,PJFry++,IREGI,Golem95,Samurai, Ninja, COLLIER and NinjaRS
       INTEGER NLOOPLIB
-      PARAMETER (NLOOPLIB=7)
-C     Only CutTools or possibly Ninja (if installed with qp support) provide QP
+      PARAMETER (NLOOPLIB=8)
+C     CutTools, Ninja and NinjaRS can provide QP when installed with support
       INTEGER QP_NLOOPLIB
 ## if(ninja_supports_quad_prec) {
+## if(ninjars_supports_quad_prec) {
+      PARAMETER (QP_NLOOPLIB=3)
+## } else {
+      PARAMETER (QP_NLOOPLIB=2)
+## }
+## } else {
+## if(ninjars_supports_quad_prec) {
       PARAMETER (QP_NLOOPLIB=2)
 ## } else {
       PARAMETER (QP_NLOOPLIB=1)
 ## }
+## }
+
 	  INTEGER MAXSTABILITYLENGTH
 	  DATA MAXSTABILITYLENGTH/20/
 	  common/%(proc_prefix)sstability_tests/maxstabilitylength
@@ -281,15 +290,22 @@ C     A FLAG TO DENOTE WHETHER THE CORRESPONDING LOOPLIBS ARE AVAILABLE OR NOT
 	  common/%(proc_prefix)sLOOPLIBS_AV/ LOOPLIBS_AVAILABLE
 C     A FLAG TO DENOTE WHETHER THE CORRESPONDING DIRECTION TESTS AVAILABLE OR NOT IN THE LOOPLIBS
       LOGICAL LOOPLIBS_DIRECTEST(NLOOPLIB)
-	  DATA LOOPLIBS_DIRECTEST /.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE./
+	  DATA LOOPLIBS_DIRECTEST /8*.TRUE./
 C     Specifying for which reduction tool quadruple precision is available.
 C     The index 0 is dummy and simply means that the corresponding loop_library is not available
 C     in which case neither is its quadruple precision version.
-      LOGICAL LOOPLIBS_QPAVAILABLE(0:7)
+      LOGICAL LOOPLIBS_QPAVAILABLE(0:NLOOPLIB)
+      DATA LOOPLIBS_QPAVAILABLE(0:5)/.FALSE.,.TRUE.,4*.FALSE./
 ## if(ninja_supports_quad_prec) {
-	  DATA LOOPLIBS_QPAVAILABLE /.FALSE.,.TRUE.,.FALSE.,.FALSE.,.FALSE.,.FALSE.,.TRUE.,.FALSE./
+      DATA LOOPLIBS_QPAVAILABLE(6)/.TRUE./
 ## } else {
-	  DATA LOOPLIBS_QPAVAILABLE /.FALSE.,.TRUE.,.FALSE.,.FALSE.,.FALSE.,.FALSE.,.FALSE.,.FALSE./
+      DATA LOOPLIBS_QPAVAILABLE(6)/.FALSE./
+## }
+      DATA LOOPLIBS_QPAVAILABLE(7)/.FALSE./
+## if(ninjars_supports_quad_prec) {
+      DATA LOOPLIBS_QPAVAILABLE(8)/.TRUE./
+## } else {
+      DATA LOOPLIBS_QPAVAILABLE(8)/.FALSE./
 ## }
 C     PS CAN POSSIBILY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED FOR THE PURPOSE OF THE STABILITY TEST
 C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT USED ANYWHERE ELSE
@@ -2925,7 +2941,7 @@ C         Not stable.
 C     U == 1
 C         Stable with CutTools in double precision.
 C     U == 2
-C         Stable with PJFry++.
+C         Stable with PJFry++ (H=2), or NinjaRS in quadruple precision (H=3).
 C     U == 3
 C         Stable with IREGI.
 C     U == 4
@@ -2935,7 +2951,7 @@ C         Stable with Samurai
 C     U == 6
 C         Stable with Ninja in double precision
 C     U == 8
-C         Stable with Ninja in quadruple precision
+C         Stable with Ninja in quadruple precision (H=3), or NinjaRS in double precision (H=2).
 C     U == 9
 C         Stable with CutTools in quadruple precision.         
 C
@@ -3000,8 +3016,14 @@ C Reset it to default value not to affect next runs
 C The subroutine below perform clean-up duties for MadLoop like de-allocating
 c arrays
 	  SUBROUTINE %(proc_prefix)sEXIT_MADLOOP()
+## if(ninjars_available) {
+        USE MNINJARS, ONLY: NINJARS_FINALIZE
+## }
 ## if(ComputeColorFlows) {
 	    CALL %(proc_prefix)sDEALLOCATE_COLOR_FLOWS()
+## }
+## if(ninjars_available) {
+        CALL NINJARS_FINALIZE()
 ## }
         CONTINUE
 	  END

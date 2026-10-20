@@ -136,6 +136,9 @@
           else if (buff .eq. '#UseQPIntegrandForNinja') then
              read(666,*,end=999) UseQPIntegrandForNinja
 
+          else if (buff .eq. '#UseQPIntegrandForNinjaRS') then
+             read(666,*,end=999) UseQPIntegrandForNinjaRS
+
           else if (buff .eq. '#UseQPIntegrandForCutTools') then
              read(666,*,end=999) UseQPIntegrandForCutTools
 
@@ -155,7 +158,7 @@
 
           else if (buff .eq. '#MLReductionLib') then
              read(666,*,end=999) MLReductionLib_str
-             MLReductionLib(1:7)=0
+             MLReductionLib(1:9)=0
              MLReductionLib_str_save=MLReductionLib_str
              j=0
              DO
@@ -179,6 +182,8 @@
                    MLRed=6
                 ELSEIF(MLReductionLib_char.EQ.'7 ')THEN
                    MLRed=7
+                ELSEIF(MLReductionLib_char.EQ.'8 ')THEN
+                   MLRed=8
                 ELSE
                    PRINT *, 'MLReductionLib is wrong: '//
      $                  TRIM(MLReductionLib_str_save)
@@ -275,6 +280,8 @@ C     a non existing or malformed parameter file
       write(*,*) ' > WriteOutFilters           = ',WriteOutFilters
       write(*,*) ' > UseQPIntegrandForNinja    = ',
      &UseQPIntegrandForNinja
+      write(*,*) ' > UseQPIntegrandForNinjaRS  = ',
+     &UseQPIntegrandForNinjaRS
       write(*,*) ' > UseQPIntegrandForCutTools = ',
      &UseQPIntegrandForCutTools
       write(*,*) ' > IREGIMODE                 = ',IREGIMODE
@@ -308,7 +315,7 @@ C     a non existing or malformed parameter file
       MLReductionLib(1)=6
       MLReductionLib(2)=7
       MLReductionLib(3)=1
-      MLReductionLib(4:7)=0
+      MLReductionLib(4:9)=0
       IREGIMODE=2
       IREGIRECY=.TRUE.
       COLLIERComputeIRpoles = .TRUE.
@@ -339,5 +346,6 @@ C     a non existing or malformed parameter file
       ImprovePSPoint=2
       UseQPIntegrandForCutTools=.True.
       UseQPIntegrandForNinja=.True.
+      UseQPIntegrandForNinjaRS=.True.
 
       end

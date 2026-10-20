@@ -8486,7 +8486,8 @@ class MadLoopParam(ConfigFile):
                              4:'Golem95',
                              5:'Samurai',
                              6:'Ninja',
-                             7:'COLLIER'}
+                             7:'COLLIER',
+                             8:'NinjaRS'}
     
     def default_setup(self):
         """initialize the directory to the default value"""
@@ -8513,6 +8514,7 @@ class MadLoopParam(ConfigFile):
         self.add_param("LoopInitStartOver", False)
         self.add_param("HelInitStartOver", False)
         self.add_param("UseQPIntegrandForNinja", True)        
+        self.add_param("UseQPIntegrandForNinjaRS", True)
         self.add_param("UseQPIntegrandForCutTools", True)
         self.add_param("COLLIERMode", 1)
         self.add_param("COLLIERComputeUVpoles", True)

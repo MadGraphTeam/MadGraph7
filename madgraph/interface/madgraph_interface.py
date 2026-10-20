@@ -616,6 +616,15 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --no-debug     Optimized build, no debug symbols, Release (source build, default).")
         logger.info("     --cuda-arch=ARCHS  Semicolon-separated CUDA compute capabilities, e.g. 75;80;86.")
         logger.info("     --hip-arch=ARCHS   Semicolon-separated HIP architectures, e.g. gfx900;gfx906.")
+        logger.info(" ")
+        logger.info("   \"install ninjars [options]\"",'$MG:BOLD')
+        logger.info("   Build the pinned NinjaRS/oneloopmaster Fortran interface (MLReductionLib=8).")
+        logger.info("   Requires Cargo/Rust >= 1.96, GNU make and a Fortran compiler with REAL(16).")
+        logger.info("     --source=DIR          Use a local NinjaRS checkout (copied before building).")
+        logger.info("     --oneloop-source=DIR  Use a local oneloopmaster checkout.")
+        logger.info("     --prefix=DIR          Override the HEPTools installation prefix.")
+        logger.info("     -j N/--jobs=N         Parallel compilation jobs (default: nb_core).")
+        logger.info("     --force               Replace an installation after DP and QP smoke tests pass.")
 
     def help_display(self):
         logger.info("syntax: display " + "|".join(self._display_opts),'$MG:color:BLUE')
@@ -3729,7 +3738,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _import_formats = ['model_v4', 'model', 'proc_v4', 'command', 'banner']
     _install_opts = ['Delphes', 'ExRootAnalysis',
                      'update', 'Golem95', 'QCDLoop', 'maddm', 'maddump',
-                     'looptools', 'MadSTR', 'RunningCoupling', 'madspace']
+                     'looptools', 'MadSTR', 'RunningCoupling', 'madspace',
+                     'ninjars']
     
     # The targets below are installed using the HEPToolsInstaller.py script
     _advanced_install_opts = ['pythia8','zlib','boost','lhapdf6','lhapdf5','collier',
@@ -3811,6 +3821,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                        'golem':'auto',
                        'samurai':None,
                        'ninja':'./HEPTools/lib',
+                       'ninjars':None,
                        'collier':'./HEPTools/lib',
                        'dmtcp': None,
                        'lhapdf':'lhapdf-config',
@@ -5707,6 +5718,17 @@ This implies that with decay chains:
                 if 6 in MLoptions["MLReductionLib"]:
                     logger_check.warning('Ninja not available on your system; it will be skipped.')
                     MLoptions["MLReductionLib"].remove(6)
+
+        if isinstance(self.options.get('ninjars'), str):
+            TIR_dir['ninjars_dir'] = self.options['ninjars']
+            if 8 in MLoptions.get('MLReductionLib', []) and not os.path.isfile(
+                    pjoin(MG5DIR, self.options['ninjars'], 'libninjars.a')):
+                raise self.InvalidCmd("NinjaRS is not installed at %s. "
+                                      "Run 'install ninjars'." %
+                                      self.options['ninjars'])
+        elif 8 in MLoptions.get('MLReductionLib', []):
+            raise self.InvalidCmd("NinjaRS is disabled. Run 'install ninjars' "
+                                  "or set ninjars to its library directory.")
         
         if args[0] in ['timing']:
             timings = process_checks.check_timing(myprocdef,
@@ -8433,6 +8455,22 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
             return
         elif args[0] == 'looptools':
             self.install_reduction_library(force=True)
+            return
+        elif args[0] == 'ninjars':
+            from madgraph.various import ninjars_install
+            prefix, config_file = self.heptools_install_target(
+                self.options['heptools_install_dir'])
+            libdir = ninjars_install.install(
+                MG5DIR, prefix,
+                arguments=install_options['options_for_HEPToolsInstaller'] + add_options,
+                fortran_compiler=self.options['fortran_compiler'],
+                jobs=self.options['nb_core'])
+            if libdir is not None:
+                self.options['ninjars'] = libdir
+                _, config_file = self.heptools_install_target(
+                    os.path.dirname(os.path.dirname(libdir)))
+                self.exec_cmd('save options %s ninjars' % config_file,
+                              printcmd=False, log=False)
             return
         elif args[0] == 'madspace':
             install_script = pjoin(MG5DIR, 'madspace', 'install.py')
@@ -11389,12 +11427,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
 
 
     def setup_path_for_options(self,name, args, log=True):
-        """Set the path for golem/samurai/ninja/collier options.
+        """Set the path for golem/samurai/ninja/ninjars/collier options.
         Example: set golem /PATH/TO/golem/lib
         or: set golem None
         """
         args = [name] + args[:]
-        if not (args[0] in ['ninja','collier'] and args[1]=='./HEPTools/lib'):
+        if not (args[0] in ['ninja','ninjars','collier'] and args[1]=='./HEPTools/lib'):
             if args[1] in ['None',"''",'""']:
                 self.options[args[0]] = None
             else:
@@ -11417,6 +11455,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
     set2_golem = lambda self, *args, **opts : self.setup_path_for_options('golem'   , *args, **opts)
     set2_samurai = lambda self, *args, **opts : self.setup_path_for_options('samurai' , *args, **opts)  
     set2_ninja = lambda self, *args, **opts : self.setup_path_for_options('ninja'   , *args,   **opts)
+    set2_ninjars = lambda self, *args, **opts : self.setup_path_for_options('ninjars', *args, **opts)
     set2_collier = lambda self,*args, **opts : self.setup_path_for_options('collier' , *args, **opts)
 
     def set2_lhapdf(self, args, log=True):
@@ -12157,7 +12196,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         elif args[0] == 'fastjet':
             raise Exception('This option is now handled by a dedicated function.')
             # set_fastjet(args[1:], log=log)
-        elif args[0] in ['golem','samurai','ninja','collier']:
+        elif args[0] in ['golem','samurai','ninja','ninjars','collier']:
             raise Exception('This option is now handled by a dedicated function.')
             # setup_path_for_options(args, log=log)
         elif args[0].startswith('lhapdf'):

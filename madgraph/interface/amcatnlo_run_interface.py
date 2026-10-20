@@ -3403,11 +3403,16 @@ RESTART = %(mint_mode)s
                               9 : 'CutTools (quadruple precision)'}
         RetUnit_finder =re.compile(
                            r"#Unit\s*(?P<unit>\d+)\s*=\s*(?P<n_occurences>\d+)")
+        ninjars_finder = re.compile(r"#NinjaRS\s+(DP|QP)\s*=\s*(\d+)")
+        ninjars_usage = {'DP': 0, 'QP': 0}
     #Unit
     
         for gv_log in log_GV_files:
             channel_name = '/'.join(gv_log.split('/')[-5:-1])
-            log=open(gv_log,'r').read()                
+            with open(gv_log, 'r') as stream:
+                log = stream.read()
+            for precision, count in ninjars_finder.findall(log):
+                ninjars_usage[precision] += int(count)
             UPS_stats = re.search(UPS_stat_finder,log)
             for retunit_stats in re.finditer(RetUnit_finder, log):
                 if channel_name not in list(stats['UPS'].keys()):
@@ -3447,6 +3452,8 @@ RESTART = %(mint_mode)s
             nTot10  = sum([chan[9] for chan in stats['UPS'].values()],0)
             nTot1  = [sum([chan[10][i] for chan in stats['UPS'].values()],0) \
                                                              for i in range(10)]
+            nTot1[8] -= ninjars_usage['DP']
+            nTot1[2] -= ninjars_usage['QP']
             UPSfracs = [(chan[0] , 0.0 if chan[1][0]==0 else \
               safe_float(chan[1][4]*100)/chan[1][0]) for chan in stats['UPS'].items()]
             maxUPS = max(UPSfracs, key = lambda w: w[1])
@@ -3463,6 +3470,10 @@ RESTART = %(mint_mode)s
             tmpStr += '\n    Reduction methods used:'
             red_methods = [(unit_code_meaning[i],nTot1[i]) for i in \
                                          unit_code_meaning.keys() if nTot1[i]>0]
+            red_methods.extend(
+                ('NinjaRS (%s precision)' % (
+                    'double' if precision == 'DP' else 'quadruple'), count)
+                for precision, count in ninjars_usage.items() if count > 0)
             for method, n in sorted(red_methods, key= lambda l: l[1], reverse=True):
                 tmpStr += '\n      > %s%s%s'%(method,' '*(33-len(method)),n)                
             if nTot100 != 0:

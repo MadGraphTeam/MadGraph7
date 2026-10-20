@@ -14006,6 +14006,7 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
       'golem_dir':cmd.options['golem'],
       'samurai_dir':cmd.options['samurai'],
       'ninja_dir':cmd.options['ninja'],
+      'ninjars_dir':cmd.options.get('ninjars'),
       'collier_dir':cmd.options['collier'],
       'fortran_compiler':cmd.options['fortran_compiler'],
       'f2py_compiler':cmd.options['f2py_compiler'],
