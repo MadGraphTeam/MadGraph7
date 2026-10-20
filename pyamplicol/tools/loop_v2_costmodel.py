@@ -17,11 +17,17 @@ time of the fastest kernel form allowed at that end of the band:
 - lower end: structured constants (fused 200 X, split vertex 300), any form;
 - upper end: dense constants (fused 320 X, split vertex 1,300), dense forms.
 
-Shapes are weighted by the design's dressing-cost profile over input rank
-(§5.4) into one harmonic-mean throughput per lane count; the upper end uses
-the slowest shape instead. Per-node and per-edge-call dispatch from the same
-benchmark is added explicitly per trie node and edge, which replaces the
-recipe's 45 % allowance.
+The probe shapes are weighted by the design's dressing-cost profile over
+input rank (§5.4) into one harmonic-mean throughput per lane count; the upper
+end uses the slowest shape instead. The benchmark's per-node and
+per-edge-call dispatch is added per trie node and edge, but it times empty
+calls and is only a lower bound: real-trie gathers and cache misses are not
+measured until the real-trie half of G0 and G1. The upper end therefore keeps
+the recipe's allowance (45 % of the throughput, ``--allowance``) for them.
+
+All reports are evaluated at one lane count, the one the executor will use:
+``--lanes``, or by default the count that holds up across every report
+(``robust_lanes``; with a single report its fastest count).
 
 Per REQUIREMENTS_ADDENDUM.md §D the speed gate times pyAmpliCol in
 finite-only mode with stability checks disabled, so the gate columns use
@@ -33,6 +39,11 @@ upper end of the band.
 ``--trie-shapes`` evaluates the same model on real trie node shapes (a JSON
 list of ``{"rows_out", "x", "rank_in", "count"}`` nodes) instead of the
 design's counted work.
+
+The fastest kernel form is reported for every benchmarked node shape,
+including the ``small-x`` set (at most two attached block rows) that does not
+enter the calibration. Leaf-seeded rank-0 nodes have no kernel yet, so their
+work (``node_work(seeded=True)``) is a model, not a measurement.
 """
 
 from __future__ import annotations
@@ -119,6 +130,9 @@ G0_HEADROOM = 1.3
 QUARTIC = (1.20, 1.35)
 OUTER = (1.05, 1.10)
 DESIGN_THROUGHPUT = (1.8e9, 1.0e9)
+# Share of the upper-end throughput kept back for dispatch, real-trie gathers
+# and cache misses (DESIGN §1.3, §5.4: 1.8 G probe -> 1.0 G recipe).
+ALLOWANCE = 0.45
 RETEST = {"none": (1.0, 1.0), "reduction-direction": (1.75, 2.0)}
 
 # Share of the 7-leg dressing cost per input rank 0..6 (DESIGN §5.4).
@@ -156,31 +170,110 @@ class Calibration:
     per_edge_call_seconds: float
 
 
-def _gluon_nodes(records: Iterable[Mapping[str, object]], lanes: int):
-    shapes: dict[tuple[int, int, int], dict[str, float]] = {}
+def _node_times(
+    records: Iterable[Mapping[str, object]],
+    lanes: int,
+    lines: frozenset[str] = frozenset({"gluon"}),
+    sets: frozenset[str] = frozenset({"probe"}),
+) -> dict[tuple[str, str, int, int, int], dict[str, float]]:
+    """Seconds per node and form, keyed by (set, line, rows_out, x, rank_in)."""
+    shapes: dict[tuple[str, str, int, int, int], dict[str, float]] = {}
     for record in records:
         if record["kind"] != "node" or record["lanes"] != lanes:
             continue
         shape = record["shape"]
         assert isinstance(shape, Mapping)
-        if shape["line"] != "gluon":
+        shape_set = str(shape.get("set", "probe"))
+        if shape["line"] not in lines or shape_set not in sets:
             continue
-        key = (int(shape["rows_out"]), int(shape["x"]), int(shape["rank_in"]))
+        key = (
+            shape_set,
+            str(shape["line"]),
+            int(shape["rows_out"]),
+            int(shape["x"]),
+            int(shape["rank_in"]),
+        )
         shapes.setdefault(key, {})[str(record["form"])] = float(
             record["seconds_per_node"]  # type: ignore[arg-type]
         )
     return shapes
 
 
+def fastest_forms(report: Mapping[str, object], lanes: int) -> list[dict[str, object]]:
+    """Fastest kernel form of every benchmarked node shape (all forms compute
+    the same node, so their times compare directly)."""
+    records = report["records"]
+    assert isinstance(records, list)
+    shapes = _node_times(
+        records,
+        lanes,
+        frozenset({"gluon", "ghost"}),
+        frozenset({"probe", "small-x"}),
+    )
+    rows = []
+    for (shape_set, line, rows_out, x, rank_in), times in sorted(shapes.items()):
+        best = min(times, key=times.__getitem__)
+        rows.append(
+            {
+                "set": shape_set,
+                "line": line,
+                "rows_out": rows_out,
+                "x": x,
+                "rank_in": rank_in,
+                "best_form": best,
+                "slowdown": {
+                    form: seconds / times[best]
+                    for form, seconds in sorted(times.items())
+                },
+            }
+        )
+    return rows
+
+
+def poly_layout_ratio(report: Mapping[str, object], lanes: int) -> float | None:
+    """Median rate of ``poly::apply_segment`` (Complex lanes) over the
+    lane-block structured fused kernel on the same gluon probe shapes."""
+    records = report["records"]
+    assert isinstance(records, list)
+    fused = {
+        _shape_key(r["shape"]): float(r["gcmac_per_s"])
+        for r in records
+        if r["kind"] == "node"
+        and r["lanes"] == lanes
+        and r["form"] == "fused-structured"
+    }
+    ratios = sorted(
+        float(r["gcmac_per_s"]) / fused[_shape_key(r["shape"])]
+        for r in records
+        if r["kind"] == "poly-layout"
+        and r["lanes"] == lanes
+        and _shape_key(r["shape"]) in fused
+    )
+    return ratios[len(ratios) // 2] if ratios else None
+
+
+def _shape_key(shape: object) -> tuple[object, ...]:
+    assert isinstance(shape, Mapping)
+    return (
+        shape.get("set", "probe"),
+        shape["line"],
+        shape["rows_out"],
+        shape["x"],
+        shape["rank_in"],
+    )
+
+
 def calibrate(report: Mapping[str, object], lanes: int) -> Calibration:
     records = report["records"]
     assert isinstance(records, list)
-    shapes = _gluon_nodes(records, lanes)
+    shapes = _node_times(records, lanes)
     if not shapes:
-        raise ValueError(f"no gluon node records at {lanes} lanes")
+        raise ValueError(f"no gluon probe node records at {lanes} lanes")
     per_shape = []
     by_rank: dict[int, tuple[float, float]] = {}
-    for (rows_out, x, rank_in), times in sorted(shapes.items(), key=lambda i: i[0][2]):
+    for (_, _, rows_out, x, rank_in), times in sorted(
+        shapes.items(), key=lambda i: i[0][4]
+    ):
         best_form = min(times, key=times.__getitem__)
         best_dense = min((f for f in times if f in DENSE_FORMS), key=times.__getitem__)
         low = (
@@ -229,6 +322,13 @@ def recommended_lanes(calibrations: Sequence[Calibration]) -> Calibration:
     )
 
 
+def gate_lanes(reports: Sequence[Sequence[Calibration]]) -> int:
+    """Default lane count of the gate: robust across reports, else the fastest."""
+    if len(reports) == 1:
+        return recommended_lanes(reports[0]).lanes
+    return robust_lanes(reports)
+
+
 def robust_lanes(reports: Sequence[Sequence[Calibration]]) -> int:
     """Lane count that stays closest to each report's best lower-end throughput.
 
@@ -255,16 +355,25 @@ def dispatch_seconds(calibration: Calibration, nodes: int, edges: int) -> float:
 
 
 def predict(
-    row: ProcessRow, calibration: Calibration | None, check: str
+    row: ProcessRow,
+    calibration: Calibration | None,
+    check: str,
+    allowance: float = ALLOWANCE,
 ) -> tuple[float, float]:
-    """(lower, upper) seconds per point; ``calibration=None`` is the design recipe."""
+    """(lower, upper) seconds per point; ``calibration=None`` is the design recipe.
+
+    The upper end runs at ``1 - allowance`` of the measured throughput.
+    """
     retest = RETEST[check]
     r_lo, r_hi = (value / 1e3 for value in row.ninjars_ms)
     if calibration is None:
         throughput = DESIGN_THROUGHPUT
         overhead = 0.0
     else:
-        throughput = calibration.throughput
+        throughput = (
+            calibration.throughput[0],
+            calibration.throughput[1] * (1.0 - allowance),
+        )
         # A trie has one parent edge per node plus one seed edge per skeleton.
         overhead = dispatch_seconds(
             calibration, row.trie_nodes, row.trie_nodes + row.skeletons
@@ -283,13 +392,15 @@ def gate(process: str) -> float | None:
     return None if provider is None else GATE_FACTOR * provider[1]
 
 
-def g0_rows(calibration: Calibration) -> list[dict[str, object]]:
+def g0_rows(
+    calibration: Calibration, allowance: float = ALLOWANCE
+) -> list[dict[str, object]]:
     rows = []
     for row in PROCESSES:
         limit = gate(row.process)
         if limit is None or row.colour != "FC":
             continue
-        low, high = predict(row, calibration, "none")
+        low, high = predict(row, calibration, "none", allowance)
         rows.append(
             {
                 "process": row.process,
@@ -319,27 +430,48 @@ def _band(values: tuple[float, float]) -> str:
 
 
 def report_text(
-    label: str, features: object, calibrations: Sequence[Calibration]
+    label: str,
+    report: Mapping[str, object],
+    calibrations: Sequence[Calibration],
+    lanes: int,
+    allowance: float,
 ) -> tuple[str, bool]:
-    chosen = recommended_lanes(calibrations)
-    lines = [f"== {label}: target features {features}"]
+    chosen = next(c for c in calibrations if c.lanes == lanes)
+    lines = [f"== {label}: target features {report.get('target_features')}"]
     lines.append(
         "lanes  design-CMAC/s lower (rank-weighted)  upper (slowest shape)  "
-        "per node  per edge call"
+        "dispatch lower bounds: per node  per edge call"
     )
     for c in calibrations:
         lines.append(
             f"{c.lanes:5d}  {c.throughput[0] / 1e9:30.2f} G"
             f"  {c.throughput[1] / 1e9:19.2f} G"
-            f"  {c.per_node_seconds * 1e9:7.0f} ns"
+            f"  {c.per_node_seconds * 1e9:22.0f} ns"
             f"  {c.per_edge_call_seconds * 1e9:10.1f} ns"
         )
-    lines.append(f"recommended lanes: {chosen.lanes}")
-    lines.append("fastest form per node shape at the recommended lane count:")
-    for shape in chosen.per_shape:
+    lines.append(
+        "fastest lanes for this code generation:"
+        f" {recommended_lanes(calibrations).lanes}; gate evaluated at {lanes} lanes"
+    )
+    lines.append(
+        f"fastest form per node shape at {lanes} lanes (slowdown of the others):"
+    )
+    for shape in fastest_forms(report, lanes):
+        others = ", ".join(
+            f"{form} x{ratio:.2f}"
+            for form, ratio in shape["slowdown"].items()  # type: ignore[union-attr]
+            if form != shape["best_form"]
+        )
         lines.append(
-            f"  rows={shape['rows_out']:3d} X={shape['x']:3d} r_in={shape['rank_in']}:"
-            f" {shape['best_form']:16s} (dense: {shape['best_dense_form']})"
+            f"  {shape['set']:7s} {shape['line']:5s} rows={shape['rows_out']:3d}"
+            f" X={shape['x']:3d} r_in={shape['rank_in']}: {shape['best_form']:16s}"
+            f" ({others})"
+        )
+    ratio = poly_layout_ratio(report, lanes)
+    if ratio is not None:
+        lines.append(
+            f"poly.rs apply_segment (Complex lanes) / lane-block fused-structured rate:"
+            f" x{ratio:.2f} (median over the gluon probe shapes)"
         )
     lines.append("")
     lines.append(
@@ -348,15 +480,15 @@ def report_text(
     )
     for row in PROCESSES:
         design = predict(row, None, "reduction-direction")
-        gate_mode = predict(row, chosen, "none")
-        checked = predict(row, chosen, "reduction-direction")
+        gate_mode = predict(row, chosen, "none", allowance)
+        checked = predict(row, chosen, "reduction-direction", allowance)
         lines.append(
             f"{row.process:14s} {row.colour}  {_band(design):22s}"
             f" {_band(gate_mode):25s} {_band(checked)}"
         )
     lines.append("")
     passed = True
-    for row in g0_rows(chosen):
+    for row in g0_rows(chosen, allowance):
         verdict = "pass" if row["pass"] else "FAIL"
         passed &= bool(row["pass"])
         lines.append(
@@ -365,8 +497,8 @@ def report_text(
             f"  headroom x{row['headroom']:.2f}  {verdict}"
         )
     lines.append(
-        f"G0 {'PASS' if passed else 'FAIL'}"
-        f" (headroom >= x{G0_HEADROOM} at the upper end)"
+        f"G0 {'PASS' if passed else 'FAIL'} at {lanes} lanes, allowance"
+        f" {allowance:.0%} (headroom >= x{G0_HEADROOM} at the upper end)"
     )
     return "\n".join(lines), passed
 
@@ -381,6 +513,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--json", type=Path, help="write the recalibration as JSON")
     parser.add_argument(
+        "--lanes",
+        type=int,
+        help="lane count of the gate (default: robust across all reports)",
+    )
+    parser.add_argument(
+        "--allowance",
+        type=float,
+        default=ALLOWANCE,
+        help="share of the upper-end throughput kept for dispatch and gathers",
+    )
+    parser.add_argument(
         "--trie-shapes",
         type=Path,
         help="JSON node shapes of a real trie: predicts its dressing time",
@@ -392,45 +535,56 @@ def main(argv: Sequence[str] | None = None) -> int:
             band = _band(predict(row, None, "reduction-direction"))
             print(f"{row.process:14s} {row.colour}  {band}")
         return 0
+    reports = [json.loads(path.read_text()) for path in args.benchmarks]
+    per_report = [
+        [calibrate(report, lanes) for lanes in lane_counts(report)]
+        for report in reports
+    ]
+    lanes = args.lanes if args.lanes is not None else gate_lanes(per_report)
     status = 0
     summary = []
-    per_report: list[list[Calibration]] = []
-    for path in args.benchmarks:
-        report = json.loads(path.read_text())
-        features = report.get("target_features")
-        calibrations = [calibrate(report, lanes) for lanes in lane_counts(report)]
-        chosen = recommended_lanes(calibrations)
-        per_report.append(calibrations)
-        text, passed = report_text(str(path), features, calibrations)
+    for path, report, calibrations in zip(
+        args.benchmarks, reports, per_report, strict=True
+    ):
+        if lanes not in {c.lanes for c in calibrations}:
+            parser.error(f"{path} has no records at {lanes} lanes")
+        chosen = next(c for c in calibrations if c.lanes == lanes)
+        text, passed = report_text(
+            str(path), report, calibrations, lanes, args.allowance
+        )
         print(text)
         status |= 0 if passed else 1
         entry: dict[str, object] = {
             "benchmark": str(path),
-            "target_features": features,
+            "target_features": report.get("target_features"),
             "calibrations": [
                 {
                     "lanes": c.lanes,
                     "throughput_design_cmac_per_s": c.throughput,
-                    "per_node_seconds": c.per_node_seconds,
-                    "per_edge_call_seconds": c.per_edge_call_seconds,
+                    "per_node_seconds_lower_bound": c.per_node_seconds,
+                    "per_edge_call_seconds_lower_bound": c.per_edge_call_seconds,
                     "shapes": c.per_shape,
                 }
                 for c in calibrations
             ],
-            "recommended_lanes": chosen.lanes,
+            "fastest_lanes": recommended_lanes(calibrations).lanes,
+            "gate_lanes": lanes,
+            "allowance": args.allowance,
+            "fastest_forms": fastest_forms(report, lanes),
+            "poly_layout_ratio": poly_layout_ratio(report, lanes),
             "targets": [
                 {
                     "process": row.process,
                     "colour": row.colour,
                     "design_recipe": predict(row, None, "reduction-direction"),
-                    "no_checks": predict(row, chosen, "none"),
+                    "no_checks": predict(row, chosen, "none", args.allowance),
                     "reduction_direction_check": predict(
-                        row, chosen, "reduction-direction"
+                        row, chosen, "reduction-direction", args.allowance
                     ),
                 }
                 for row in PROCESSES
             ],
-            "g0": g0_rows(chosen),
+            "g0": g0_rows(chosen, args.allowance),
         }
         if args.trie_shapes is not None:
             structured, dense, count = trie_shape_work(
@@ -438,12 +592,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             seconds = (
                 structured / chosen.throughput[0],
-                dense / chosen.throughput[1],
+                dense / (chosen.throughput[1] * (1.0 - args.allowance)),
             )
             print(
                 f"trie shapes {args.trie_shapes}: {count} nodes, D = {structured:.3g}"
                 f"-{dense:.3g} CMAC/pt, dressing {_band(seconds)} s/pt"
-                f" at {chosen.lanes} lanes"
+                f" at {lanes} lanes"
             )
             entry["trie_shapes"] = {
                 "nodes": count,
@@ -452,8 +606,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             }
         summary.append(entry)
     if len(args.benchmarks) > 1:
-        lanes = robust_lanes(per_report)
-        print(f"lane count robust across all reports: {lanes}")
+        print(f"lane count robust across all reports: {robust_lanes(per_report)}")
     if args.json is not None:
         args.json.write_text(json.dumps(summary, indent=1) + "\n")
     return status

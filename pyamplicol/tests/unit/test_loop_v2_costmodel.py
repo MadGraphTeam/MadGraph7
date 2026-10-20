@@ -58,11 +58,17 @@ def test_node_work_matches_the_design_constants() -> None:
     assert costmodel.node_work(2, 0, 3, costmodel.DENSE, seeded=False) == 2 * 320 * 3
 
 
-def _synthetic_report(seconds_scale: float) -> dict[str, object]:
+def _synthetic_report(
+    seconds_scale: float, rates: dict[int, float] | None = None
+) -> dict[str, object]:
+    """Nodes that run at ``rates[lanes]`` design-CMAC/s (default 1 G at 8
+    lanes, 2 G at 16), plus a slow small-X node outside the calibration."""
+    rates = rates or {8: 1e9, 16: 2e9}
     records: list[dict[str, object]] = []
-    shapes = [(64, 4, 0), (32, 12, 1), (1, 64, 6)]
-    for lanes in (8, 16):
-        for rows_out, x, rank_in in shapes:
+    shapes = [("probe", 64, 4, 0), ("probe", 32, 12, 1), ("probe", 1, 64, 6)]
+    shapes.append(("small-x", 16, 2, 2))
+    for lanes, rate in rates.items():
+        for shape_set, rows_out, x, rank_in in shapes:
             for form in ("split-dense", "fused-structured", "fused-blocked"):
                 constants = (
                     costmodel.STRUCTURED if "structured" in form else costmodel.DENSE
@@ -70,22 +76,36 @@ def _synthetic_report(seconds_scale: float) -> dict[str, object]:
                 work = costmodel.node_work(
                     rows_out, rank_in, x, constants, seeded=False
                 )
-                # 1 G design-CMAC/s at 8 lanes, 2 G at 16 lanes.
-                seconds = work * lanes / (lanes / 8 * 1e9) * seconds_scale
+                seconds = work * lanes / rate * seconds_scale
+                if shape_set == "small-x":
+                    seconds *= 1e3 if form != "fused-blocked" else 1e2
+                shape = {
+                    "set": shape_set,
+                    "line": "gluon",
+                    "rows_out": rows_out,
+                    "x": x,
+                    "rank_in": rank_in,
+                }
                 records.append(
                     {
                         "kind": "node",
                         "lanes": lanes,
                         "form": form,
-                        "shape": {
-                            "line": "gluon",
-                            "rows_out": rows_out,
-                            "x": x,
-                            "rank_in": rank_in,
-                        },
+                        "shape": shape,
                         "seconds_per_node": seconds,
+                        "gcmac_per_s": work * lanes / seconds / 1e9,
                     }
                 )
+                if form == "fused-structured" and shape_set == "probe":
+                    records.append(
+                        {
+                            "kind": "poly-layout",
+                            "lanes": lanes,
+                            "form": "poly-apply-segment",
+                            "shape": shape,
+                            "gcmac_per_s": 0.5 * work * lanes / seconds / 1e9,
+                        }
+                    )
             records.append(
                 {
                     "kind": "dispatch",
@@ -114,9 +134,24 @@ def test_calibration_uses_measured_throughput_and_picks_lanes() -> None:
     assert low == pytest.approx(
         (row.dress_structured * 1.20 / 2e9 + dispatch + row.ninjars_ms[0] / 1e3) * 1.05
     )
+    # The upper end keeps the design's allowance for gathers and dispatch.
+    upper = 2e9 * (1 - costmodel.ALLOWANCE)
     assert high == pytest.approx(
+        (row.dress_dense * 1.35 / upper + dispatch + row.ninjars_ms[1] / 1e3) * 1.10
+    )
+    _, measured_only = costmodel.predict(row, chosen, "none", allowance=0.0)
+    assert measured_only == pytest.approx(
         (row.dress_dense * 1.35 / 2e9 + dispatch + row.ninjars_ms[1] / 1e3) * 1.10
     )
+
+
+def test_small_x_shapes_inform_forms_but_not_the_calibration() -> None:
+    report = _synthetic_report(1.0)
+    calibration = costmodel.calibrate(report, 16)
+    assert [s["rank_in"] for s in calibration.per_shape] == [0, 1, 6]
+    small = [s for s in costmodel.fastest_forms(report, 16) if s["set"] == "small-x"]
+    assert len(small) == 1 and small[0]["best_form"] == "fused-blocked"
+    assert costmodel.poly_layout_ratio(report, 16) == pytest.approx(0.5)
 
 
 def test_g0_verdict_follows_the_headroom(tmp_path: Path) -> None:
@@ -124,7 +159,7 @@ def test_g0_verdict_follows_the_headroom(tmp_path: Path) -> None:
     fast.write_text(json.dumps(_synthetic_report(1.0)))
     assert costmodel.main([str(fast), "--json", str(tmp_path / "out.json")]) == 0
     summary = json.loads((tmp_path / "out.json").read_text())
-    assert summary[0]["recommended_lanes"] == 16
+    assert summary[0]["gate_lanes"] == summary[0]["fastest_lanes"] == 16
     assert all(row["pass"] for row in summary[0]["g0"])
 
     slow = tmp_path / "slow.json"
@@ -146,3 +181,34 @@ def test_robust_lanes_avoids_a_collapse_in_any_report() -> None:
         calibrations(0.8, 1.9, 1.8),
     ]
     assert costmodel.robust_lanes(reports) == 16
+
+
+def test_gate_is_evaluated_at_one_lane_count_for_every_report(tmp_path: Path) -> None:
+    # Fastest at 8 lanes in the first report, collapsed at 8 in the second.
+    paths = []
+    for name, rates in (("a", {8: 2.0e9, 16: 1.9e9}), ("b", {8: 0.5e9, 16: 2e9})):
+        path = tmp_path / f"{name}.json"
+        path.write_text(json.dumps(_synthetic_report(1.0, rates)))
+        paths.append(str(path))
+    out = tmp_path / "out.json"
+    assert costmodel.main([*paths, "--json", str(out)]) == 0
+    summary = json.loads(out.read_text())
+    assert [entry["fastest_lanes"] for entry in summary] == [8, 16]
+    assert [entry["gate_lanes"] for entry in summary] == [16, 16]
+    for entry in summary:
+        at16 = next(c for c in entry["calibrations"] if c["lanes"] == 16)
+        calibration = costmodel.Calibration(
+            16,
+            tuple(at16["throughput_design_cmac_per_s"]),
+            (),
+            at16["per_node_seconds_lower_bound"],
+            at16["per_edge_call_seconds_lower_bound"],
+        )
+        assert entry["g0"] == json.loads(json.dumps(costmodel.g0_rows(calibration)))
+
+    # At an explicit 8 lanes the collapsed report fails the gate.
+    assert costmodel.main([*paths, "--lanes", "8", "--json", str(out)]) == 1
+    summary = json.loads(out.read_text())
+    assert {entry["gate_lanes"] for entry in summary} == {8}
+    passed = [all(row["pass"] for row in entry["g0"]) for entry in summary]
+    assert passed == [True, False]
