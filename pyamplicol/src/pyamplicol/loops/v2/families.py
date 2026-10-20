@@ -34,10 +34,10 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from collections.abc import Hashable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Hashable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cache
-from itertools import combinations
+from itertools import combinations, product
 from typing import Any, Protocol
 
 Orders = tuple[tuple[str, int], ...]
@@ -1008,6 +1008,7 @@ class ModelBlockTable:
                 attached = tuple(sorted(n for i, n in enumerate(names) if i != result))
                 for order in orders:
                     self._merges[attached].add((conjugate[names[result]], order))
+        self._arity = max(map(len, self._merges))
         self._table: dict[int, tuple[BlockCurrent, ...]] = {}
 
     @property
@@ -1027,8 +1028,8 @@ class ModelBlockTable:
         if mask & (mask - 1) == 0:
             return {BlockCurrent(mask, self._legs[lowest_leg(mask)].field, ())}
         out = set()
-        for parts in _set_partitions(mask, 2, max(map(len, self._merges))):
-            for options in _product(self.currents(part) for part in parts):
+        for parts in _set_partitions(mask, 2, self._arity):
+            for options in product(*(self.currents(part) for part in parts)):
                 fields = tuple(sorted(block.field for block in options))
                 for result, order in self._merges.get(fields, ()):
                     total = add_orders(order, *(block.orders for block in options))
@@ -1057,11 +1058,3 @@ def _set_partitions(mask: int, minimum: int, maximum: int) -> Iterator[tuple[int
             sub = (sub - 1) & others
 
     yield from split(mask, ())
-
-
-def _product(
-    groups: Iterable[Sequence[BlockCurrent]],
-) -> Iterator[tuple[BlockCurrent, ...]]:
-    from itertools import product
-
-    return product(*groups)
