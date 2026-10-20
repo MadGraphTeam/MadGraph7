@@ -480,6 +480,20 @@ jobs:
             ./tests/test_manager.py test_q_polynomial test_hepmc_parser -t0
 
 
+  unittest_real_channels:
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: test fixed-order real channels and channel sampling
+        run: |
+            cd $GITHUB_WORKSPACE
+            gfortran --version
+            ./tests/test_manager.py TestRealChannelExport test_amcatnlo_real_channels test_real_channels_weights test_real_channels_phase_space test_mint_channels -t0
+
+
   unittest_write_model:
     # runs alone: excluded from the shared unittest jobs due to side effects
     runs-on: ubuntu-24.04
