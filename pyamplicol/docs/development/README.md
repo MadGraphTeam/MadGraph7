@@ -49,6 +49,16 @@ documented `PYAMPLICOL_*` variables, saved PACBIN/artifact controls come from
 `PYAMPLICOL_LOOP_SAVED_FIXTURES` (default `<workspace>/fixtures`), and provider
 references are the committed `tests/fixtures/loop/*.json`, whose absence fails.
 
+## Optimized loop native builds
+
+For long loop generation/validation runs, build the extension and loop SDK
+libraries optimized, rather than with the unoptimized Cargo dev profile:
+`tools/developer/build_loop_native.py build NEW_DIR` (Cargo `release`, 16
+codegen units, no cross-crate LTO unless `CARGO_PROFILE_RELEASE_*` say
+otherwise; digest, revision and profile are recorded in `NEW_DIR/build-info.json`),
+then `tools/developer/build_loop_native.py stage NEW_DIR` into a checkout whose
+native build-input digest matches.
+
 ## Focused SymJIT dependency tests
 
 The source checkout includes small opt-in numerical/compiler regressions in
