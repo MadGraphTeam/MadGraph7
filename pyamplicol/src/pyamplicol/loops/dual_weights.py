@@ -13,6 +13,7 @@ from math import factorial
 from typing import TYPE_CHECKING
 
 from .physical import _saved
+from .symbolic_sums import symbolic_sum
 
 if TYPE_CHECKING:
     from .color_components import BornColorComponents
@@ -292,7 +293,7 @@ def configure_dual_born_weights(program, requested, *, unavailable_reason=None):
 
 def prepare_dual_born_weights(bare, metrics=None):
     """Compile each exact order/metric bank before any family routing scatter."""
-    from symbolica import E, S
+    from symbolica import S
 
     metrics = (bare.loop_metric,) if metrics is None else tuple(metrics)
     born = tuple(S(f"loop_dual_weights::born{i}") for i in range(len(bare.born_colors)))
@@ -318,12 +319,8 @@ def prepare_dual_born_weights(bare, metrics=None):
                 # Keep admitted columns even when this operator gives zero.
                 columns.append((direction, sector, term))
                 values.append(
-                    sum(
-                        (
-                            born[index].conj() * metric[index][term]
-                            for index in admitted
-                        ),
-                        E("0"),
+                    symbolic_sum(
+                        born[index].conj() * metric[index][term] for index in admitted
                     )
                 )
     return PreparedDualBornWeights(_saved(values, born), tuple(columns), len(metrics))
@@ -333,12 +330,12 @@ def family_weight_projection_state(
     bare, weights, indices, powers, sectors, *, helicities=None
 ):
     """Assemble routed coefficients using explicit selections of shared weights."""
-    from symbolica import E, S
+    from symbolica import S
 
     helicities = bare.helicities if helicities is None else helicities
     selected = weights.family_columns(bare, indices, sectors)
     projected = {
-        (direction, sector, power): E("0")
+        (direction, sector, power): []
         for direction in range(weights.directions)
         for sector in sectors
         for power in powers
@@ -364,8 +361,8 @@ def family_weight_projection_state(
                         for sector in sectors:
                             weight = symbols.get((direction, sector, term))
                             if weight is not None:
-                                projected[direction, sector, power] += (
+                                projected[direction, sector, power].append(
                                     weight * coefficient
                                 )
-    outputs = list(projected.values())
+    outputs = [symbolic_sum(terms) for terms in projected.values()]
     return _saved(outputs, parameters), len(parameters), len(outputs)

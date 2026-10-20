@@ -20,6 +20,7 @@ from .kernels import NativeCoefficientDAG, require_finite_batch
 from .physical import _saved
 from .physical_orders import OrderedModelVirtualResult, SummedModelValues
 from .scalar_frontend import ScalarExpression, real_scalar_part
+from .symbolic_sums import symbolic_sum
 
 
 @dataclass(frozen=True, slots=True)
@@ -810,7 +811,7 @@ class NativeModelVirtualProgram:
         Anchor masking changes neither that degree nor the coherent currents.
         Outputs are component-major, then UV/R2/field, order and epsilon.
         """
-        from symbolica import E, S
+        from symbolica import S
 
         bare = self.bare
         width = 3 * len(self.sector_pairs)
@@ -825,11 +826,13 @@ class NativeModelVirtualProgram:
                 )
             color_components.require_width(len(bare.born_colors))
             members = tuple(map(frozenset, color_components.members))
+        # Collect each output's terms and add them once: repeated ``+=`` on a
+        # growing Symbolica sum is quadratic in the number of terms.
         parameters, ultraviolet, rational, fields = (
             [],
-            [[E("0")] * width for _ in members],
-            [[E("0")] * width for _ in members],
-            [[E("0")] * width for _ in members],
+            [[[] for _ in range(width)] for _ in members],
+            [[[] for _ in range(width)] for _ in members],
+            [[[] for _ in range(width)] for _ in members],
         )
         for helicity in range(
             len(bare.helicities) if helicities is None else len(helicities)
@@ -852,27 +855,22 @@ class NativeModelVirtualProgram:
                 )
                 for component, anchors in enumerate(members):
                     for sector, pairs in enumerate(self.sector_pairs):
-                        value = sum(
-                            (
-                                left.conj() * weight * amplitude
-                                for column, (left, order, row) in enumerate(
-                                    zip(
-                                        born,
-                                        bare.born_term_orders,
-                                        current.color_weights,
-                                        strict=True,
-                                    )
+                        value = symbolic_sum(
+                            left.conj() * weight * amplitude
+                            for column, (left, order, row) in enumerate(
+                                zip(
+                                    born,
+                                    bare.born_term_orders,
+                                    current.color_weights,
+                                    strict=True,
                                 )
-                                if column in anchors
-                                and (order, current.insertion.graph.order) in pairs
-                                for weight, amplitude in zip(
-                                    row, amplitudes, strict=True
-                                )
-                            ),
-                            E("0"),
+                            )
+                            if column in anchors
+                            and (order, current.insertion.graph.order) in pairs
+                            for weight, amplitude in zip(row, amplitudes, strict=True)
                         )
-                        target[component][3 * sector - current.epsilon_power] += (
-                            value + value.conj()
+                        target[component][3 * sector - current.epsilon_power].extend(
+                            (value, value.conj())
                         )
             for index, current in enumerate(self.field_currents):
                 factor = S(f"loop_counterterm::field{helicity}_{index}")
@@ -881,36 +879,33 @@ class NativeModelVirtualProgram:
                 # the insertion's exact Born graph; only the left order is masked.
                 for component, anchors in enumerate(members):
                     for sector, pairs in enumerate(self.sector_pairs):
-                        value = sum(
-                            (
-                                left.conj() * weight * factor * born[right]
-                                for column, (left, order, row) in enumerate(
-                                    zip(
-                                        born,
-                                        bare.born_term_orders,
-                                        current.color_weights,
-                                        strict=True,
-                                    )
+                        value = symbolic_sum(
+                            left.conj() * weight * factor * born[right]
+                            for column, (left, order, row) in enumerate(
+                                zip(
+                                    born,
+                                    bare.born_term_orders,
+                                    current.color_weights,
+                                    strict=True,
                                 )
-                                if column in anchors
-                                and (order, current.insertion.order) in pairs
-                                for right, weight in zip(
-                                    current.born_indices, row, strict=True
-                                )
-                            ),
-                            E("0"),
+                            )
+                            if column in anchors
+                            and (order, current.insertion.order) in pairs
+                            for right, weight in zip(
+                                current.born_indices, row, strict=True
+                            )
                         )
-                        fields[component][3 * sector - current.epsilon_power] += (
-                            value + value.conj()
+                        fields[component][3 * sector - current.epsilon_power].extend(
+                            (value, value.conj())
                         )
         return self._record_evaluator(
             _record_name,
             _saved(
                 [
-                    real_scalar_part(value)
+                    real_scalar_part(symbolic_sum(terms))
                     for component in range(len(members))
                     for group in (ultraviolet, rational, fields)
-                    for value in group[component]
+                    for terms in group[component]
                 ],
                 parameters,
             ),

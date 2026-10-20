@@ -24,6 +24,7 @@ from .recurrence import (
     momentum_component_library,
     separate_local_color,
 )
+from .symbolic_sums import symbolic_sum
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +114,12 @@ def _born_dag(graph, variables, momenta):
 def _saved(expressions, parameters):
     from symbolica import Expression
 
+    # For large projector linear forms the build time is dominated by the
+    # unbounded common-pair elimination (cpe_iterations=None): 524,288 Born
+    # terms take 280 s, the six-leg CT projector 89 s. cpe_iterations=0 builds
+    # them in about 1 s with slightly fewer instructions, but it reassociates
+    # the arithmetic (results change at the last-bit level), so it is not
+    # enabled here. n_cores > 1 gives no speedup at iterations=1.
     return Expression.evaluator_multiple(
         expressions, parameters, n_cores=1, jit_compile=False
     ).save()
@@ -274,8 +281,8 @@ class DrellYanBareProgram:
         )
         # This projection is complex-linear in the loop coefficients. Taking a
         # real part here would discard absorptive contributions after integration.
-        projection_parameters, weighted = [], [E("0")] * len(labels)
-        post_parameters, born_sum, virtual = [], E("0"), [E("0")] * 3
+        projection_parameters, weighted = [], [[] for _ in labels]
+        post_parameters, born_sum, virtual = [], [], [[], [], []]
         for helicity in range(len(self.helicities)):
             born = S(f"loop_physical::born{helicity}")
             coefficients = [
@@ -284,10 +291,10 @@ class DrellYanBareProgram:
             ]
             projection_parameters.extend([born, *coefficients])
             for i, coefficient in enumerate(coefficients):
-                weighted[i] += self.interference_weight * born.conj() * coefficient
+                weighted[i].append(self.interference_weight * born.conj() * coefficient)
             poles = [S(f"loop_physical::loop{helicity}_{pole}") for pole in range(3)]
             post_parameters.extend([born, *poles])
-            born_sum += self.born_weight * born.conj() * born
+            born_sum.append(self.born_weight * born.conj() * born)
             for pole in range(3):
                 value = (
                     self.interference_weight
@@ -296,7 +303,10 @@ class DrellYanBareProgram:
                     * poles[pole]
                     / (16 * E("pi") ** 2)
                 )
-                virtual[pole] += value + value.conj()
+                virtual[pole].extend((value, value.conj()))
+        born_sum = symbolic_sum(born_sum)
+        weighted = [symbolic_sum(terms) for terms in weighted]
+        virtual = [symbolic_sum(terms) for terms in virtual]
         self.project_born = backend.CoefficientEvaluator(
             _saved([born_sum, *weighted], projection_parameters), **self.native_options
         )
