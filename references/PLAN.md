@@ -453,3 +453,12 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   source trees remain unchanged. Optional StdHEP shower support is outside
   this successful fixed-order validation; no new performance claim follows
   from these checks.
+- Refreshed representative coverage now passes for all final candidate runtime
+  groups: eight targets and sixteen persistent records have exact fresh-process
+  parity over complete ten-point streams. All four backends have DP coverage;
+  CutTools, Ninja and NinjaRS each have actual QP coverage. Loop-induced and
+  mixed-order controls are included. The new proof combines these with the
+  independently bound legacy groups, without mixing runtime signatures.
+  Its 264-file retention package passes independent read-only verification.
+  Full generated controls, the eight core streams and final performance gates
+  remain outstanding.

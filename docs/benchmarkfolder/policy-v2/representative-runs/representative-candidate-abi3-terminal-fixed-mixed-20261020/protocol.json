@@ -1,0 +1,85 @@
+{
+  "schema": "persistent-worker-v1",
+  "configuration": {
+    "schema_version": 1,
+    "seed": 930083,
+    "points_per_case": 10,
+    "repetitions": 2,
+    "energy_gev": 1000.0,
+    "relative_tolerance": 1e-07,
+    "scale_tolerance": 1e-10,
+    "max_runtime_ratio": 1.05,
+    "cases": [
+      {
+        "id": "control-gg-h",
+        "model": "loop_sm",
+        "process": "g g > h [sqrvirt=QCD]",
+        "nfinal": 1
+      },
+      {
+        "id": "control-gg-hh",
+        "model": "loop_sm",
+        "process": "g g > h h [sqrvirt=QCD]",
+        "nfinal": 2
+      },
+      {
+        "id": "control-mixed",
+        "model": "loop_qcd_qed_sm_Gmu",
+        "process": "u u~ > d d~ QCD=2 QED=2 [virt=QCD QED]",
+        "nfinal": 2
+      },
+      {
+        "id": "control-complex",
+        "model": "loop_qcd_qed_sm_Gmu",
+        "process": "e+ e- > mu+ mu- [virt=QED]",
+        "nfinal": 2,
+        "complex_mass_scheme": true
+      },
+      {
+        "id": "control-forced-qp",
+        "model": "loop_sm",
+        "process": "g g > t t~ [virt=QCD]",
+        "nfinal": 2,
+        "madloop_parameters": {
+          "MLStabThres": 1e-20,
+          "NRotations_DP": 2,
+          "NRotations_QP": 2
+        }
+      }
+    ],
+    "madloop_parameters": {
+      "MLStabThres": 1e-09,
+      "COLLIERRequiredAccuracy": 1e-12
+    }
+  },
+  "protocol_descriptor": {
+    "schema": "persistent-worker-v1",
+    "sources": {
+      "ninjars_benchmark_worker.f": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79",
+      "ninjars_benchmark_workers.py": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "ninjars_benchmark.py": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237"
+    },
+    "initialization": "Once per worker, then full fixed stream warmed",
+    "measurement": "Full evaluation; status every call; rows copied in final timed traversal",
+    "ordering": "One active worker, all pinned to same CPU; adjacent gate pair; alternating order"
+  },
+  "protocol_identity_sha256": "383c21122fc089ad9a90eea685d6f0406d43d497df3816b54288b111225431c9",
+  "cpu": 3,
+  "repetitions": 2,
+  "sources": "candidate",
+  "backends": [
+    8
+  ],
+  "fresh_parity": true,
+  "acceptance_eligible": false,
+  "input_adapter": {
+    "path": "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-terminal-fixed-mixed-20261020/sources/ninjars_benchmark_references_v2.py",
+    "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c"
+  },
+  "input_spec": {
+    "path": "docs/benchmarkfolder/policy-v2/representative-runs/representative-candidate-abi3-terminal-fixed-mixed-20261020/input-spec.json",
+    "sha256": "115f3309c57ff3053cb42b019a0111964e769ab43ad6a311c0df6cfb7e84d1e7"
+  },
+  "initialization_policy": "Unchanged persistent-worker-v1: initialize and warm once",
+  "ordering": "Unchanged run_case: adjacent original6/candidate8, reverse on odd repetitions"
+}
