@@ -877,7 +877,13 @@ c by its probability.
          do kset=kset_lo,kset_hi
 c The Born momenta of the various sets (and of the one used for the
 c n-body contributions) need not be exactly the same
-         if (FoldSumSets) calculatedBorn=.false.
+         if (FoldSumSets) then
+            if (born_checks_amps) then
+               check_born_amps=.true.
+            else
+               calculatedBorn=.false.
+            endif
+         endif
          fold_h_keep=kset.eq.proc_map(0,1)
          fold_h_scale=1d0
          if (FoldSumSets) fold_h_scale=1d0/vol1
@@ -983,7 +989,13 @@ c subtraction terms.
          fold_h_keep=.true.
          fold_h_scale=1d0
 c The event is written with the Born of the picked set
-         if (FoldSumSets) calculatedBorn=.false.
+         if (FoldSumSets) then
+            if (born_checks_amps) then
+               check_born_amps=.true.
+            else
+               calculatedBorn=.false.
+            endif
+         endif
  12      continue
       elseif(ifl.eq.2) then
          if (ifold_counter .ne. n_fold_images) then
