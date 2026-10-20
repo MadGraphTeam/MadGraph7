@@ -190,6 +190,33 @@ def test_actual_custom_propagator_binding_still_requires_certification(source, d
     assert bound.to_dict() == unchanged
 
 
+@pytest.mark.parametrize("left,right", ((0, None), (None, 0), (0, 0)))
+def test_zero_hypercharge_metadata_preserves_unspecified_chirality(source, left, right):
+    path = source / "particles.py"
+    path.write_text(path.read_text() + """
+p=Particle(pdg_code=104,name='p',antiname='p~',spin=1,color=1,mass=P.M,width=P.ZERO,texname='p',antitexname='p~',charge=1)
+a=Particle(pdg_code=-104,name='p~',antiname='p',spin=1,color=1,mass=P.M,width=P.ZERO,texname='p~',antitexname='p',charge=-1)
+""" + f"p.Y=a.Y={left!r}\np.YRight=a.YRight={right!r}\n")
+    raw = load_raw_loop_model(source, restriction="full")
+    unchanged = raw.to_dict()
+    structure = build_covariant_structure(raw)
+    for name in ("p", "p~"):
+        particle = structure.native.particle(name)
+        assert particle.y_charge == left
+        assert particle.y_charge_right == right
+    assert raw.to_dict() == unchanged
+
+
+@pytest.mark.parametrize("key", ("Y", "YRight"))
+def test_nonzero_hypercharge_still_requires_chiral_convention(source, key):
+    raw = load_raw_loop_model(source, restriction="full")
+    payload = raw.to_dict()
+    payload["collections"]["particles"][0]["fields"][key] = 1
+    marked = RawLoopModel.from_dict(payload)
+    with pytest.raises(NotImplementedError, match="chiral hypercharge conjugation"):
+        build_covariant_structure(marked)
+
+
 @pytest.fixture(scope="module")
 def gmu():
     configured = os.environ.get("PYAMPLICOL_EW_UFO")

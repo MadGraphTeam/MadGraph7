@@ -188,7 +188,10 @@ def _validate_pairs(particles):
                     f"antiparticle metadata mismatch for {particle['name']}: {key}"
                 )
         for key in ("y_charge", "y_charge_right"):
-            if particle[key] is not None or anti[key] is not None:
+            if any(
+                value is not None and parse_exact_ufo(str(value)) != 0
+                for value in (particle[key], anti[key])
+            ):
                 raise NotImplementedError(
                     "chiral hypercharge conjugation requires a certified "
                     "source convention"
