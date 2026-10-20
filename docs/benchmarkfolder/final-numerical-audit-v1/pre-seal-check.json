@@ -1,0 +1,7 @@
+{
+  "first_source_check": "failed because the observed references/PLAN.md execution ledger changed during ongoing root work",
+  "numerical_source_failure": false,
+  "resolution": "--sources checks all observed production/test implementation hashes; PLAN remains a recorded requirement hash but its ongoing ledger is not a numerical-source gate",
+  "builds_started": 0,
+  "engine_calls": 0
+}
