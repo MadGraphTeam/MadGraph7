@@ -394,3 +394,10 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   These establish the isolated retry's behavior and overhead, not final
   acceptance against original Ninja. The sealed experiment is retained before
   its independently reviewed production port and ABI update.
+- Following the user's arXiv:1604.01363 reference, deepen the symmetric-tensor
+  accumulation study. Compare the paper's recursive construction with the
+  existing MadLoop coefficient graph and NinjaRS transposed Horner expansion.
+  Test generated Fortran predecessor-based accumulation, selected straight-line
+  rank kernels and provable vertex sparsity in an isolated namespace. Preserve
+  current production ports while this research proceeds; require both kernel
+  and complete-process measurements before retaining a further change.
