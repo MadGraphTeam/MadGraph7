@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/ninjars-qp-numerator-dp-probe-v1/run_capture.py", line 98, in <module>
+    main()
+    ~~~~^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/ninjars-qp-numerator-dp-probe-v1/run_capture.py", line 63, in main
+    assert process.returncode==0
+           ^^^^^^^^^^^^^^^^^^^^^
+AssertionError

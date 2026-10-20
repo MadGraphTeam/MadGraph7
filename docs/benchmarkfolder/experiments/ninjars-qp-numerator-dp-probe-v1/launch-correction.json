@@ -1,0 +1,19 @@
+{
+  "scope": "Root-authorized corrected launch after dynamic-loader failure before any amplitude; no adaptive numerical rerun",
+  "superseded_failure_sha256": "14340bfc3b8ffe9d89e45d688448689aec409e198c2b967c954581518eb87aaa",
+  "executable_unchanged": true,
+  "source_unchanged": true,
+  "numerical_cards_and_points_unchanged": true,
+  "changes": [
+    "Use exact benchmark LD_LIBRARY_PATH policy and bind ldd dependencies",
+    "Reject repeated/missing loop IDs and changing shapes in parser",
+    "Reject duplicate timed-status lines"
+  ],
+  "files": {
+    "run_capture_v2.py": "2c96b4b686cdb4d567fb74b5c68ce032e08f14887fc8643485e41a40799ccad1",
+    "parse_capture_v2.py": "72ac152956d808deb95f8f14794eeecf209ff3fc0be0de5ca4baceca5c249814",
+    "test_capture_v2.py": "8a0ef69f21f71fc98d1691256cb29b59a9aef485bfc35818586d88107745c211",
+    "parser-tests-v2.log": "450f0f69375b9e39baba2066c85f8a2a476460c3ed59639a9a17a60186b8418a"
+  },
+  "tests_passed": 9
+}

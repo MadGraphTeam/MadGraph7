@@ -584,3 +584,13 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   native/compensated input bits agree. Both coefficient and geometry bundles
   change through normal QP construction, so a later replay must separate them.
   No mixed-precision controller or reporting change is authorized by this probe.
+- The fixed 21-pair DP factorization study is now collecting on CPU185 after
+  CPU5 and CPU212 fail the unchanged idle preflight without producing samples.
+  One retained host-only survey selects the otherwise idle exposed physical
+  core before measurement. All own builds/other evaluations remain paused;
+  the corrected-original collector continues unchanged on CPU207.
+- Source audit finds that MP transport's exact-rational widening canonicalizes
+  negative zero. Direct precision widening can preserve both the original finite
+  dyadic value and zero sign. The physical effect on retained amplitudes is not
+  established. A separate minimal correctness fix and boundary-value tests are
+  being prepared; it must be tested and followed by affected-runtime refreshes.

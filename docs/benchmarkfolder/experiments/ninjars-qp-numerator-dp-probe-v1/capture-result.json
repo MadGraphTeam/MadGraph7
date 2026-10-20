@@ -1,0 +1,24 @@
+{
+  "complete": false,
+  "acceptance_eligible": false,
+  "cpu": 2,
+  "numerical_launch": true,
+  "prepared_sha256": "cee449492651e6d6583e7052aa2bd549dbbb873dc81a3c971c2f889971b5ec4f",
+  "bindings_sha256": "ccf20ed37d8821f1b4e4aff9aaaaabe016efe6c4617fe97332da5e61ee3638c3",
+  "runner_sha256": "11b0be5a5cdaf004bd402e5852663cd3b79428dc69796bf0772cf1e6c6e94aeb",
+  "parser_sha256": "c200241d0ed61bc2fb0b68fff3b2567d2cc660280d14889b4f087d435814a427",
+  "command": [
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-qp-numerator-dp-probe-v1/qcd-3/SubProcesses/P0_uux_zgg/check",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/ninjars-qp-numerator-dp-probe-v1/points.dat",
+    "1"
+  ],
+  "returncode": 127,
+  "seconds_diagnostic": 0.00200565904378891,
+  "error": "AssertionError()",
+  "raw": {
+    "stdout.log": {
+      "sha256": "c09c9bd99241d198217126d2f3c69c2f778500b63a3e2db32d3e3b269191f287",
+      "bytes": 268
+    }
+  }
+}
