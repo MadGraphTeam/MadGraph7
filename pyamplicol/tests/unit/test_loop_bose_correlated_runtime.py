@@ -204,7 +204,8 @@ def test_public_selected_scope_retains_representative_catalog_and_literal_source
     )
     for name in requests:
         assert actual[name].epsilon_powers == (0, -1, -2)
-        assert actual[name].orders == expected[name].orders
+        assert actual[name].born_orders == expected[name].born_orders
+        assert actual[name].sectors == expected[name].sectors
         _close_values(actual[name].values, expected[name].values)
     for name in ("ordered", "swapped"):
         with pytest.raises(CompatibilityError, match=r"histories|history|correlation"):
