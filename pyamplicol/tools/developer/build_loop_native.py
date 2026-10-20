@@ -14,6 +14,15 @@ reproduce the shipped wheel codegen. The profile does not enter the native
 build-input digest, so optimized and dev builds of one source are
 interchangeable at staging.
 
+Cargo always builds into a target directory private to this profile: a shared
+``CARGO_TARGET_DIR`` is used concurrently by dev-profile builds of other
+checkouts, which block on its lock and overwrite ``release/`` artifacts with
+other codegen between our build and copy. ``--target-dir`` selects the
+directory; by default it is ``cargo-loop-native-<profile>`` next to a set
+``CARGO_TARGET_DIR``, or Cargo's checkout-local ``target/`` otherwise.
+``build-info.json`` also records ``RUSTFLAGS``/``CARGO_ENCODED_RUSTFLAGS`` and
+whether the source tree had uncommitted changes (provenance only).
+
 ``stage`` publishes such a directory into a checkout's ``src/pyamplicol``
 through the source-runtime contract of ``prepare_source_runtime.py``. It
 refuses a build whose digest differs from the checkout's native inputs and
@@ -60,7 +69,32 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def build(root: Path, output: Path) -> dict[str, object]:
+def _profile_label(env: dict[str, str]) -> str:
+    units = env["CARGO_PROFILE_RELEASE_CODEGEN_UNITS"]
+    return f"release-cu{units}-lto-{env['CARGO_PROFILE_RELEASE_LTO']}"
+
+
+def _target_directory(root: Path, env: dict[str, str], explicit: Path | None) -> Path:
+    shared = (
+        Path(env["CARGO_TARGET_DIR"]).resolve() if env.get("CARGO_TARGET_DIR") else None
+    )
+    if explicit is not None:
+        target = explicit.resolve()
+    elif shared is not None:
+        target = shared.parent / f"cargo-loop-native-{_profile_label(env)}"
+    else:
+        target = (root / "target").resolve()
+    if target == shared:
+        raise SystemExit(
+            f"error: {target} is the shared CARGO_TARGET_DIR; "
+            "use a private --target-dir"
+        )
+    return target
+
+
+def build(
+    root: Path, output: Path, target_dir: Path | None = None
+) -> dict[str, object]:
     output = output.resolve()
     if output.exists():
         raise SystemExit(f"error: build output already exists: {output}")
@@ -68,14 +102,25 @@ def build(root: Path, output: Path) -> dict[str, object]:
     revision = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=root, text=True
     ).strip()
+    dirty = bool(
+        subprocess.check_output(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=root,
+            text=True,
+        ).strip()
+    )
     env = dict(os.environ, PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256=digest)
     for key, value in _CODEGEN_DEFAULTS.items():
         env.setdefault(key, value)
+    target = _target_directory(root, env, target_dir)
+    env.pop("CARGO_TARGET_DIR", None)
     command = [
         "cargo",
         "build",
         "--locked",
         "--release",
+        "--target-dir",
+        str(target),
         "-p",
         "rusticol-python",
         "-p",
@@ -111,7 +156,14 @@ def build(root: Path, output: Path) -> dict[str, object]:
     info = {
         "native_build_inputs_sha256": digest,
         "source_revision": revision,
+        "source_dirty": dirty,
         "source_checkout": str(root),
+        "cargo_target_dir": str(target),
+        "rustflags": {
+            key: env[key]
+            for key in ("RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS")
+            if key in env
+        },
         "version": version.replace("-dev.", ".dev"),
         "profile": {"name": "release"}
         | {key: env[key] for key in sorted(env) if key.startswith("CARGO_PROFILE_")},
@@ -180,6 +232,12 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     build_parser = commands.add_parser("build", help="build into a new directory")
     build_parser.add_argument("output", type=Path)
+    build_parser.add_argument(
+        "--target-dir",
+        type=Path,
+        help="private Cargo target directory (default: cargo-loop-native-<profile> "
+        "next to a set CARGO_TARGET_DIR, else the checkout's target/)",
+    )
     stage_parser = commands.add_parser("stage", help="stage a build into a checkout")
     stage_parser.add_argument("build_directory", type=Path)
     for sub in (build_parser, stage_parser):
@@ -187,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     root = args.source.resolve()
     if args.command == "build":
-        report = build(root, args.output)
+        report = build(root, args.output, args.target_dir)
     else:
         report = stage(args.build_directory.resolve(), root)
     print(json.dumps(report, indent=2, sort_keys=True))

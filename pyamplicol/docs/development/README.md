@@ -55,9 +55,13 @@ For long loop generation/validation runs, build the extension and loop SDK
 libraries optimized, rather than with the unoptimized Cargo dev profile:
 `tools/developer/build_loop_native.py build NEW_DIR` (Cargo `release`, 16
 codegen units, no cross-crate LTO unless `CARGO_PROFILE_RELEASE_*` say
-otherwise; digest, revision and profile are recorded in `NEW_DIR/build-info.json`),
-then `tools/developer/build_loop_native.py stage NEW_DIR` into a checkout whose
-native build-input digest matches.
+otherwise; digest, revision, profile, `RUSTFLAGS` and whether the tree was dirty
+are recorded in `NEW_DIR/build-info.json`), then
+`tools/developer/build_loop_native.py stage NEW_DIR` into a checkout whose
+native build-input digest matches. Cargo builds into a private target directory
+(`--target-dir`; by default `cargo-loop-native-<profile>` next to a set
+`CARGO_TARGET_DIR`, never the shared one itself), so concurrent dev builds of
+other checkouts neither block the build nor replace its `release/` outputs.
 
 ## Focused SymJIT dependency tests
 
