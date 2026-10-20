@@ -1,0 +1,179 @@
+{
+  "complete_core_builds": true,
+  "native_config": {
+    "abi_version": 2,
+    "quad_precision": true,
+    "native_libs": [
+      "-ldl",
+      "-lgcc_s",
+      "-lutil",
+      "-lrt",
+      "-lpthread",
+      "-lm",
+      "-ldl",
+      "-lc"
+    ],
+    "local_sources": {},
+    "fortran_compiler": "gfortran",
+    "link_before": [
+      "-lgcc_s"
+    ],
+    "link_order_version": 1,
+    "compiler_runtime": "gnu-linux-libgcc_s-before-rust"
+  },
+  "installed_library_sha256": "72a820a1fb74904e9b3d3a43562132b365a947304ac41abced46f5d407a0c816",
+  "cases": [
+    {
+      "case": "qcd-1",
+      "generation_seconds": 3.84019378607627,
+      "compilation_seconds": 4.5236265290295705,
+      "preexisting_subprocess_objects": 0,
+      "generator_tree_state_sha256": "4b8acdf68b4a41b222b4af2f22b3804b1716a219623400bdc4dce29992415293",
+      "generation_identity_sha256": "ce5e5b8047b8525e5949b143c1a81f3f96212156ca861b862175b0f54c74ed86",
+      "generated_sources_sha256": "5c2c948a1e823a445992a2e062ce6f239088d6e065226eec84b949690f4aaacc",
+      "executable_sha256": "fa9541c6a4b6129335d08feb5d1ffb18b474e0b1fd674cde837cf112543e1164",
+      "parameter_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "parameter_card_identical_baseline_and_archive": true,
+      "points_sha256": "bd8a00c863710123dd62cb5e079dcd11d2aebdcf49d8128313bbd6ecc6de1099",
+      "points_unchanged": true,
+      "gnu_quad_helpers": [
+        "U __addtf3@GCC_4.3.0",
+        "U __gttf2@GCC_4.3.0",
+        "U __multf3@GCC_4.3.0"
+      ]
+    },
+    {
+      "case": "ew-1",
+      "generation_seconds": 24.59707022004295,
+      "compilation_seconds": 4.802878174930811,
+      "preexisting_subprocess_objects": 0,
+      "generator_tree_state_sha256": "4b8acdf68b4a41b222b4af2f22b3804b1716a219623400bdc4dce29992415293",
+      "generation_identity_sha256": "a78019385ce6919adaabc70eba1098307733cc412bf3868055cc84df90dce9a3",
+      "generated_sources_sha256": "ce685a23d54059ed52a95ce40895f9ef09b0ec3ef0497259f16217a655f5f404",
+      "executable_sha256": "d4da096b0c857f04d18c18d28408dfda41461478ed47e177b9689d14e4246d31",
+      "parameter_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "parameter_card_identical_baseline_and_archive": true,
+      "points_sha256": "5869f48fc0546031f7c50ee8f68a4b0104fa6da66bc3b434e47d1422edcbb576",
+      "points_unchanged": true,
+      "gnu_quad_helpers": [
+        "U __addtf3@GCC_4.3.0",
+        "U __gttf2@GCC_4.3.0",
+        "U __multf3@GCC_4.3.0"
+      ]
+    },
+    {
+      "case": "qcd-2",
+      "generation_seconds": 7.6683951349696144,
+      "compilation_seconds": 5.60879217996262,
+      "preexisting_subprocess_objects": 0,
+      "generator_tree_state_sha256": "4b8acdf68b4a41b222b4af2f22b3804b1716a219623400bdc4dce29992415293",
+      "generation_identity_sha256": "17a3c08e196c377332d12de59d849cfe102e13f99568774c2464a5c2d77b205b",
+      "generated_sources_sha256": "436b141e65e1de5df7a2841ef331e78d129861c90861f61c5f00fd9159ccd8d8",
+      "executable_sha256": "b6c0b36f99012725899bd33fb7b66ae366fa1e29bc6c29a08137b177a42183f9",
+      "parameter_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "parameter_card_identical_baseline_and_archive": true,
+      "points_sha256": "6efb8cb1752f37badd187e17aff2103eb6814402dbaeaa598165a83d22bd0b63",
+      "points_unchanged": true,
+      "gnu_quad_helpers": [
+        "U __addtf3@GCC_4.3.0",
+        "U __gttf2@GCC_4.3.0",
+        "U __multf3@GCC_4.3.0"
+      ]
+    },
+    {
+      "case": "ew-2",
+      "generation_seconds": 48.03052992897574,
+      "compilation_seconds": 5.013603757019155,
+      "preexisting_subprocess_objects": 0,
+      "generator_tree_state_sha256": "4b8acdf68b4a41b222b4af2f22b3804b1716a219623400bdc4dce29992415293",
+      "generation_identity_sha256": "03c30d5dc2441a2ea31a991a433cbc10f12ce64c14dfaf6c52963fe294555d10",
+      "generated_sources_sha256": "d71c1544e452370209cef99de8668e4ea1391591cb748932f5de5241b2620f81",
+      "executable_sha256": "a537465c57af61ecfe6d6c3b6fa3121c22b25fe58d24ffba42681e91a34848e3",
+      "parameter_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "parameter_card_identical_baseline_and_archive": true,
+      "points_sha256": "ed6f3f83033372061ed6de45c05a366aeeb68a63ddd006998682f406174e7b53",
+      "points_unchanged": true,
+      "gnu_quad_helpers": [
+        "U __addtf3@GCC_4.3.0",
+        "U __gttf2@GCC_4.3.0",
+        "U __multf3@GCC_4.3.0"
+      ]
+    },
+    {
+      "case": "qcd-3",
+      "generation_seconds": 16.19215500599239,
+      "compilation_seconds": 5.868145088898018,
+      "preexisting_subprocess_objects": 0,
+      "generator_tree_state_sha256": "4b8acdf68b4a41b222b4af2f22b3804b1716a219623400bdc4dce29992415293",
+      "generation_identity_sha256": "1cc218fcf23da2a27b39e1288f419852041a3ce203799db42221622dc11556a0",
+      "generated_sources_sha256": "a4aeda2c8c8947b23d92f693063e400b250cc6aa1e0b17ce3632f77cb1ab4e14",
+      "executable_sha256": "0e3fbf49209413191cd586b264231dc29de88e0fa428174c9c1daf0faedc32d7",
+      "parameter_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "parameter_card_identical_baseline_and_archive": true,
+      "points_sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41",
+      "points_unchanged": true,
+      "gnu_quad_helpers": [
+        "U __addtf3@GCC_4.3.0",
+        "U __gttf2@GCC_4.3.0",
+        "U __multf3@GCC_4.3.0"
+      ]
+    },
+    {
+      "case": "ew-3",
+      "generation_seconds": 107.86373924394138,
+      "compilation_seconds": 6.223098578047939,
+      "preexisting_subprocess_objects": 0,
+      "generator_tree_state_sha256": "4b8acdf68b4a41b222b4af2f22b3804b1716a219623400bdc4dce29992415293",
+      "generation_identity_sha256": "c17f9e4dcd134c7739a02bdd5bb8b17e18ebe41be48fa008d30a2ed295fa110e",
+      "generated_sources_sha256": "bb3e2e385001008346e920b8cd5197962ca8f03def152435773bc4cc408d32f9",
+      "executable_sha256": "9f3ba2302f725f57bf2104c8f7f11f2dbb150e19fa73d51cb39b09da99948123",
+      "parameter_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "parameter_card_identical_baseline_and_archive": true,
+      "points_sha256": "c030e6c68d53e9ecc1e2ac5ee99e4f81d97a80268dcbe3a0dc76065655a492a1",
+      "points_unchanged": true,
+      "gnu_quad_helpers": [
+        "U __addtf3@GCC_4.3.0",
+        "U __gttf2@GCC_4.3.0",
+        "U __multf3@GCC_4.3.0"
+      ]
+    },
+    {
+      "case": "qcd-4",
+      "generation_seconds": 54.27191712404601,
+      "compilation_seconds": 9.833881060942076,
+      "preexisting_subprocess_objects": 0,
+      "generator_tree_state_sha256": "4b8acdf68b4a41b222b4af2f22b3804b1716a219623400bdc4dce29992415293",
+      "generation_identity_sha256": "6ccddf55f8370eb33992ce1166f2cf99434dba50cdc87ee0739945262d204855",
+      "generated_sources_sha256": "285bfede0721d0b7fde52f71004caf05ecc9e358d0824346fc82d6a76afcd532",
+      "executable_sha256": "40fdd7d843e80cc3a6f54dfaeb4ec2adc56141e1214d4261d166632a6d0137ab",
+      "parameter_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "parameter_card_identical_baseline_and_archive": true,
+      "points_sha256": "d66b0c04ee3d8e6ed90ef1fbf97abb9cd444d9ea1f84a508850688bff317b52d",
+      "points_unchanged": true,
+      "gnu_quad_helpers": [
+        "U __addtf3@GCC_4.3.0",
+        "U __gttf2@GCC_4.3.0",
+        "U __multf3@GCC_4.3.0"
+      ]
+    },
+    {
+      "case": "ew-4",
+      "generation_seconds": 153.54715084598865,
+      "compilation_seconds": 10.171885663992725,
+      "preexisting_subprocess_objects": 0,
+      "generator_tree_state_sha256": "4b8acdf68b4a41b222b4af2f22b3804b1716a219623400bdc4dce29992415293",
+      "generation_identity_sha256": "9a97d49757b40bccf092a9c5da6e823f716ee9778377eda9c1456c8f70f12e96",
+      "generated_sources_sha256": "5d65c45eb8a3325b0d7c1c6b34fad9c813c396996411f4895a0dd159a35d201a",
+      "executable_sha256": "b89c152483fbaaf3e6b5070ea4b03413cd05f809daeaf40a88ff1756150e9d59",
+      "parameter_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "parameter_card_identical_baseline_and_archive": true,
+      "points_sha256": "75a3765dca97afa14e5efb795cb1a9fa1ff9e0475ebcb79a883b6a2a4e84ba5a",
+      "points_unchanged": true,
+      "gnu_quad_helpers": [
+        "U __addtf3@GCC_4.3.0",
+        "U __gttf2@GCC_4.3.0",
+        "U __multf3@GCC_4.3.0"
+      ]
+    }
+  ]
+}

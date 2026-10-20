@@ -450,7 +450,9 @@
   },
   "baseline_source_integrity": {
     "revision": "27147b3300f556a75661a886e92bdbe00558ee25",
-    "all_tracked_files_match_git_archive": true
+    "all_tracked_files_match_git_archive": true,
+    "files_checked": 5964,
+    "last_reverified_utc": "2026-10-20T13:53:43.744959+00:00"
   },
   "report_style_source_sha256": "31fe3c52ada017dd1f7e923a646f65d19c1e9d1edba54fe84a50348c1ee67967",
   "ninjars_abi_version": 2

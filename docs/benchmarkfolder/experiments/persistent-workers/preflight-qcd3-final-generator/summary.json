@@ -1,0 +1,280 @@
+{
+  "acceptance_eligible": false,
+  "scope": "Exploratory three-target series during independent builds and profiles",
+  "input_record_sha256": {
+    "data/qcd-3-baseline-6-0.json": "7ac8e0b97980f85a2a7b8ee7ec7642fcbb058f71c0e13fde4e65d0fef374c9eb",
+    "data/qcd-3-baseline-6-1.json": "a4736625ead35dff1f11db2cbb4e1f6a5fac3a962462590a856ef81ddf6cad31",
+    "data/qcd-3-baseline-6-2.json": "4b2b415ecf4e03267100ea25fde28a8297ac8e0ff29fb6529b0e1b68b1adf69d",
+    "data/qcd-3-baseline-6-3.json": "8cc689d68d26d0bf7744acbdebff8a3497889f18adf2efea6209b83c50645903",
+    "data/qcd-3-baseline-6-4.json": "110b041111a64d275238056bb358f731ec721f5559413e849a5d3eb97d5a67c7",
+    "data/qcd-3-baseline-6-5.json": "5c64437b148b2f679cbc2feae9c50daf5899f9d3e7f1b5c9e41ecb53850a93a3",
+    "data/qcd-3-baseline-6-6.json": "e360016fa2c6c35a748e58ec2e4bb82540172615de2ed27431d61805e4522497",
+    "data/qcd-3-candidate-6-0.json": "9d40dc57b48d0e165e0f060e7f1e3043637c87581420c3858e1ed23bbb18697d",
+    "data/qcd-3-candidate-6-1.json": "798233cdc9de81e380785838912bca46e962ec4771bc0bd5137a71740fa59bc9",
+    "data/qcd-3-candidate-6-2.json": "8a0fb21a33e9732a951bdc9daeb2d2be9ec94de84ea5c774ab077ee71ea2bb07",
+    "data/qcd-3-candidate-6-3.json": "35c2964c71ba83f088fd88731801c006a8fe7cff9cda41cceae2342226daeb20",
+    "data/qcd-3-candidate-6-4.json": "3bddc07781d55690dc56215e07da6179eee02921a97863af2a5bc534be1163ae",
+    "data/qcd-3-candidate-6-5.json": "990ad861e1ea49aa980fd23c60b9e9ce54fa61cdafb671e40ad1fa34a6c8d5f4",
+    "data/qcd-3-candidate-6-6.json": "cd20a9e412784de7c94cad39b44783c8bc3bb6ead2b012a4676c268da6065b40",
+    "data/qcd-3-candidate-8-0.json": "5052c0623967bd40f8815f596fa3c4a3ba2719e05c3d207b56f416cfeb332a33",
+    "data/qcd-3-candidate-8-1.json": "35add8afd8a46a14b39086d0beea58e9f9709fdeba8f59c61c18cf331502ad65",
+    "data/qcd-3-candidate-8-2.json": "2793371214001b9adbb4d27dca9bf14f4df3f0687ba6bce7f89b96a8432ba0b4",
+    "data/qcd-3-candidate-8-3.json": "e61ca7b74992f3305f628650eb1187e0a408113b95aeb9890fcd6cf363614762",
+    "data/qcd-3-candidate-8-4.json": "cb1a6ac5e6c6c547a6823ef5bedac21c2bfa659ffd213590c7e425a08c74742e",
+    "data/qcd-3-candidate-8-5.json": "d23149b233911ab763b35cff524e722be39f74c76efe3beb553831b476f83782",
+    "data/qcd-3-candidate-8-6.json": "70fc517e64848b603fbdb42a7f6fd4d221487885bad41eb9b7802c4409f21422",
+    "additional-data/baseline-qcd-3-1-calibration.json": "49575b84626b3c17bd082c33bebb67666f539a3beff5b96203e05fdacc7be1b2",
+    "additional-data/baseline-qcd-3-7-calibration.json": "a8af65f276899cd64a77668cdf2589259f8e873df5902606adf1d0d5da51d14d"
+  },
+  "agreement": {
+    "baseline-6/candidate-6": {
+      "passed": true,
+      "failures": [],
+      "worst_tolerance_fraction": 0.0,
+      "coefficient_rows_exact": true
+    },
+    "baseline-6/candidate-8": {
+      "passed": true,
+      "failures": [],
+      "worst_tolerance_fraction": 0.10198017900888301,
+      "coefficient_rows_exact": false
+    },
+    "baseline-6/baseline-1-calibration": {
+      "passed": true,
+      "failures": [],
+      "worst_tolerance_fraction": 0.12673070716305299,
+      "coefficient_rows_exact": false
+    },
+    "baseline-6/baseline-7-calibration": {
+      "passed": true,
+      "failures": [],
+      "worst_tolerance_fraction": 0.10126587653709843,
+      "coefficient_rows_exact": false
+    },
+    "candidate-6/candidate-8": {
+      "passed": true,
+      "failures": [],
+      "worst_tolerance_fraction": 0.10198017900888301,
+      "coefficient_rows_exact": false
+    },
+    "candidate-6/baseline-1-calibration": {
+      "passed": true,
+      "failures": [],
+      "worst_tolerance_fraction": 0.12673070716305299,
+      "coefficient_rows_exact": false
+    },
+    "candidate-6/baseline-7-calibration": {
+      "passed": true,
+      "failures": [],
+      "worst_tolerance_fraction": 0.10126587653709843,
+      "coefficient_rows_exact": false
+    },
+    "candidate-8/baseline-1-calibration": {
+      "passed": true,
+      "failures": [],
+      "worst_tolerance_fraction": 0.12673147760774728,
+      "coefficient_rows_exact": false
+    },
+    "candidate-8/baseline-7-calibration": {
+      "passed": true,
+      "failures": [],
+      "worst_tolerance_fraction": 0.0052790526063880485,
+      "coefficient_rows_exact": false
+    },
+    "baseline-1-calibration/baseline-7-calibration": {
+      "passed": true,
+      "failures": [],
+      "worst_tolerance_fraction": 0.1267303790649322,
+      "coefficient_rows_exact": false
+    }
+  },
+  "status_counts": {
+    "baseline-6": {
+      "216": 98,
+      "328": 2
+    },
+    "candidate-6": {
+      "216": 98,
+      "328": 2
+    },
+    "candidate-8": {
+      "218": 97,
+      "322": 3
+    },
+    "baseline-1-calibration": {
+      "329": 52,
+      "211": 48
+    },
+    "baseline-7-calibration": {
+      "217": 100
+    }
+  },
+  "rescued_points": {
+    "baseline-6": [
+      44,
+      80
+    ],
+    "candidate-6": [
+      44,
+      80
+    ],
+    "candidate-8": [
+      44,
+      67,
+      80
+    ],
+    "baseline-1-calibration": [
+      1,
+      5,
+      6,
+      7,
+      9,
+      10,
+      13,
+      14,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      25,
+      31,
+      32,
+      34,
+      36,
+      37,
+      38,
+      40,
+      41,
+      43,
+      44,
+      45,
+      47,
+      48,
+      49,
+      50,
+      53,
+      55,
+      58,
+      59,
+      60,
+      62,
+      63,
+      65,
+      67,
+      69,
+      79,
+      80,
+      83,
+      84,
+      85,
+      86,
+      87,
+      91,
+      96,
+      100
+    ],
+    "baseline-7-calibration": []
+  },
+  "ninjars_vs_original_ninja": {
+    "passed": false,
+    "status": "failed",
+    "runtime_ratio": 2.26921511740692,
+    "ratio_confidence_interval_95": [
+      2.2592244768828302,
+      2.72469648473212
+    ],
+    "maximum_ratio": 1.05,
+    "bootstrap": {
+      "method": "paired percentile",
+      "resamples": 10000,
+      "seed": 410083
+    },
+    "measurements": {
+      "baseline": {
+        "samples": [
+          0.0987208166,
+          0.09910776829,
+          0.11414601724000001,
+          0.13818896308,
+          0.13705763263,
+          0.1388779677,
+          0.13729234963
+        ],
+        "median": 0.13705763263,
+        "minimum": 0.0987208166,
+        "maximum": 0.1388779677,
+        "stdev": 0.018808669078137243,
+        "median_absolute_deviation": 0.0018203350699999843
+      },
+      "candidate": {
+        "samples": [
+          0.22218127392,
+          0.22390669596999999,
+          0.31101325192,
+          0.31420864044,
+          0.31065434415,
+          0.31247924205,
+          0.31180864949
+        ],
+        "median": 0.31101325192,
+        "minimum": 0.22218127392,
+        "maximum": 0.31420864044,
+        "stdev": 0.04344016727860534,
+        "median_absolute_deviation": 0.0014659901299999833
+      }
+    }
+  },
+  "optimized_ninja_vs_original_ninja": {
+    "passed": false,
+    "status": "unresolved",
+    "runtime_ratio": 0.9312939030880443,
+    "ratio_confidence_interval_95": [
+      0.9236191130264901,
+      1.1192529692155553
+    ],
+    "maximum_ratio": 1.05,
+    "bootstrap": {
+      "method": "paired percentile",
+      "resamples": 10000,
+      "seed": 410083
+    },
+    "measurements": {
+      "baseline": {
+        "samples": [
+          0.0987208166,
+          0.09910776829,
+          0.11414601724000001,
+          0.13818896308,
+          0.13705763263,
+          0.1388779677,
+          0.13729234963
+        ],
+        "median": 0.13705763263,
+        "minimum": 0.0987208166,
+        "maximum": 0.1388779677,
+        "stdev": 0.018808669078137243,
+        "median_absolute_deviation": 0.0018203350699999843
+      },
+      "candidate": {
+        "samples": [
+          0.09344379366,
+          0.09274445177,
+          0.12775826871999998,
+          0.12764093764,
+          0.12766845114,
+          0.12763396751,
+          0.12813291672
+        ],
+        "median": 0.12764093764,
+        "minimum": 0.09274445177,
+        "maximum": 0.12813291672,
+        "stdev": 0.016920664541620986,
+        "median_absolute_deviation": 0.00011733107999997716
+      }
+    }
+  }
+}

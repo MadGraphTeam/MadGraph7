@@ -235,3 +235,30 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
 - The complete eight-process correctness gate, measured optimization gate and
   all final performance gates remain outstanding. The styled report currently
   labels missing measurements as pending.
+- Fortran traversal milestone `f934704f8` was pushed. All eight core candidate
+  processes have now been regenerated through actual CLI cards and rebuilt
+  from clean subprocess objects, preserving every physical input byte.
+- A directed-rounding probe found that Rust's static archive could replace
+  GNU Fortran's binary128 arithmetic helpers. Explicit pre-archive `-lgcc_s`
+  metadata restores the original compiler runtime. The installed smoke checks
+  directed rounding, DP and genuine MP; independent relocated standalone
+  checks pass DP110, QP120 and stable218. The fresh full NLO fixed-order build,
+  soft/collinear checks and 20/20 pole checks pass. Existing installation
+  metadata without the link-order contract requires reinstallation.
+  This correction was committed and pushed as `49b4af33d`. Interface-source
+  packaging additionally retains `mninjars.f90` in installations and internal
+  exports; the copied source recompiles to the same module hash.
+- Regenerated representative fresh/persistent comparisons now pass all 18
+  combinations, with 102 hash-bound evidence files. The refreshed ggH,
+  mixed-order and near-singular results also pass independent cross-backend
+  comparisons. Other focused controls remain explicitly queued for the final
+  chosen implementation.
+- A seven-repetition exploratory strict `Zgg` series agrees numerically across
+  original/optimized Ninja and NinjaRS at all 100 points; retained original
+  CutTools/Collier strict calibrations also agree. NinjaRS rescues three points
+  versus Ninja's two and takes 2.269 times original Ninja
+  (95% interval [2.259, 2.725]). This fails the performance target and is
+  retained as diagnostic evidence, not promoted acceptance data. Exact
+  per-evaluation scalar-result reuse and further Fortran QP sparsity work are
+  being investigated in isolated prototypes without changing thresholds,
+  precision or physical inputs.

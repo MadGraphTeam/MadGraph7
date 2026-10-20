@@ -1,0 +1,286 @@
+{
+  "passed": true,
+  "schema": "persistent-worker-v1",
+  "protocol_identity_sha256": "383c21122fc089ad9a90eea685d6f0406d43d497df3816b54288b111225431c9",
+  "coverage": {
+    "dp_backends": [
+      1,
+      6,
+      7,
+      8
+    ],
+    "qp_backends": [
+      1,
+      6,
+      8
+    ],
+    "loop_induced": true,
+    "multiple_split_orders": true,
+    "minimum_retained_commands": 2
+  },
+  "cases": [
+    {
+      "case": "qcd-1",
+      "source": "baseline",
+      "backend": 1,
+      "exact_rows": true,
+      "statuses": {
+        "211": 100
+      }
+    },
+    {
+      "case": "qcd-1",
+      "source": "baseline",
+      "backend": 6,
+      "exact_rows": true,
+      "statuses": {
+        "216": 100
+      }
+    },
+    {
+      "case": "qcd-1",
+      "source": "baseline",
+      "backend": 7,
+      "exact_rows": true,
+      "statuses": {
+        "217": 100
+      }
+    },
+    {
+      "case": "qcd-1",
+      "source": "candidate",
+      "backend": 1,
+      "exact_rows": true,
+      "statuses": {
+        "211": 100
+      }
+    },
+    {
+      "case": "qcd-1",
+      "source": "candidate",
+      "backend": 6,
+      "exact_rows": true,
+      "statuses": {
+        "216": 100
+      }
+    },
+    {
+      "case": "qcd-1",
+      "source": "candidate",
+      "backend": 7,
+      "exact_rows": true,
+      "statuses": {
+        "217": 100
+      }
+    },
+    {
+      "case": "control-gg-h",
+      "source": "candidate",
+      "backend": 1,
+      "exact_rows": true,
+      "statuses": {
+        "211": 10
+      }
+    },
+    {
+      "case": "control-gg-h",
+      "source": "candidate",
+      "backend": 6,
+      "exact_rows": true,
+      "statuses": {
+        "216": 10
+      }
+    },
+    {
+      "case": "control-gg-h",
+      "source": "candidate",
+      "backend": 7,
+      "exact_rows": true,
+      "statuses": {
+        "217": 10
+      }
+    },
+    {
+      "case": "control-gg-h",
+      "source": "candidate",
+      "backend": 8,
+      "exact_rows": true,
+      "statuses": {
+        "218": 10
+      }
+    },
+    {
+      "case": "control-mixed",
+      "source": "candidate",
+      "backend": 1,
+      "exact_rows": true,
+      "statuses": {
+        "211": 10
+      }
+    },
+    {
+      "case": "control-mixed",
+      "source": "candidate",
+      "backend": 6,
+      "exact_rows": true,
+      "statuses": {
+        "216": 10
+      }
+    },
+    {
+      "case": "control-mixed",
+      "source": "candidate",
+      "backend": 7,
+      "exact_rows": true,
+      "statuses": {
+        "217": 10
+      }
+    },
+    {
+      "case": "control-mixed",
+      "source": "candidate",
+      "backend": 8,
+      "exact_rows": true,
+      "statuses": {
+        "218": 10
+      }
+    },
+    {
+      "case": "qcd-1",
+      "source": "candidate",
+      "backend": 8,
+      "exact_rows": true,
+      "statuses": {
+        "218": 100
+      }
+    },
+    {
+      "case": "control-near-singular",
+      "source": "candidate",
+      "backend": 1,
+      "exact_rows": true,
+      "statuses": {
+        "329": 10
+      }
+    },
+    {
+      "case": "control-near-singular",
+      "source": "candidate",
+      "backend": 6,
+      "exact_rows": true,
+      "statuses": {
+        "328": 10
+      }
+    },
+    {
+      "case": "control-near-singular",
+      "source": "candidate",
+      "backend": 8,
+      "exact_rows": true,
+      "statuses": {
+        "322": 10
+      }
+    }
+  ],
+  "files_sha256": {
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/protocol.json": "194ccbd15b91d16b77a00d6d4af032d976f5440d7bc6bd8a25598feac9a5d6ba",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/run-status.json": "5c9d8b4839e645f3510b4aae68fdd7cdb5d4ae8d9b013b1afbe7c001da69a813",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-baseline-1-0.json": "90738988997e4edfb3ad33940e66b8d91de179ebcb0ed6fe66a02f0a5d19766c",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-baseline-1-fresh.json": "8556f720ec56a6d9d3ba031cde195e2424e20b4e7ecba74f16e7d54351a6e04b",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-baseline-1-parity.json": "a5216480efe0b69f9c6fb4374b2628b55a69de656edd02a2df3aafb4101a8e3d",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/builds/qcd-1-baseline-1/build.json": "c52831ab33255449d9045a4ee0bedcd56e472b159521bcfe0ed16f9238431ae7",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-baseline-1-1.json": "6c230be21c4675cbbbdf4bd65b5003aa7e5eb971f42868a98293524a3b764594",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-baseline-6-0.json": "6b90b979ffab76bd35ce0b167a56934ff8585a4c606dc6861ca73324e0cd12a5",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-baseline-6-fresh.json": "4645a5f00afcc0e34067de4ed70b7fdea7423c00583e40c27ae6d0392026603b",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-baseline-6-parity.json": "a5216480efe0b69f9c6fb4374b2628b55a69de656edd02a2df3aafb4101a8e3d",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/builds/qcd-1-baseline-6/build.json": "94df56ce60564d0f21defc37c75f5e5e14e0baca36608f5061fe2de1a3be35c7",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-baseline-6-1.json": "9044a2cb8eb144188fb903802e8b54de32a53fe034ee716fea2a639f5b32f2d1",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-baseline-7-0.json": "c502c1ee307885487b827307eb100fc87d3d11a8146f622ea0155d1d9229a5a6",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-baseline-7-fresh.json": "4703b7d8f999879b2757eb037002766144f07177a99c99b398825f9feebad7a2",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-baseline-7-parity.json": "a5216480efe0b69f9c6fb4374b2628b55a69de656edd02a2df3aafb4101a8e3d",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/builds/qcd-1-baseline-7/build.json": "746caba654cf608d6c3d741673a24b52bcbd03e93ae57e9abc428fae3075ad35",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-baseline-7-1.json": "b1f21639c07d55dac61ae3271ec90336115176fa8f25d98906b89cc03c231557",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-candidate-1-0.json": "2b294d8042778c40f408496edda5931633a218951b010217df4a4dcda49036a8",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-candidate-1-fresh.json": "04a353f997e54b01ba46e01a1f1c1accab516de2fe4fa646202d66df1142e46e",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-candidate-1-parity.json": "d00a70207f5f0d669dff649eb729f7bd3eab74dd2a21dac73085a210a13f556b",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/builds/qcd-1-candidate-1/build.json": "75a263774b466c276db82a38922395c1ce7c6c03851cc24c411e8cf2e6372c98",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-candidate-1-1.json": "198bbc2e42bf9fa749b87e6a7b3bf2614dc0e2df1ba3a035785fe697c73f2cff",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-candidate-6-0.json": "0a406083ad1dcab412789b42c7785110f3481272509850a5971ce47fd88816dd",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-candidate-6-fresh.json": "b3baad3eda783688446cb57ce42994d40d3a59f7053e3b4f8779337bf68593ca",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-candidate-6-parity.json": "d00a70207f5f0d669dff649eb729f7bd3eab74dd2a21dac73085a210a13f556b",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/builds/qcd-1-candidate-6/build.json": "3e5cea4a1dbafbecda414860e4a6cb29869d67da0cbb447d4a707baa9ce36c5f",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-candidate-6-1.json": "74493e66ddcfe816c808450fbbf00218fe3ec930fc38cb9cb449063ff51dd538",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-candidate-7-0.json": "3c75c7edcef58a2765c002264bbcf0d07200513903d30bc7c9fbfaea2c882062",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-candidate-7-fresh.json": "2c9d5af5ffb408f00d98638c76920f0010ed89a0ec4e8fccf8fdfea023d191bc",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-candidate-7-parity.json": "d00a70207f5f0d669dff649eb729f7bd3eab74dd2a21dac73085a210a13f556b",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/builds/qcd-1-candidate-7/build.json": "9d644f6a8a2153b3391c076a18568a78bf4d39df31d5497d71a2acf17581aec6",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-legacy-v1/data/qcd-1-candidate-7-1.json": "1aed2245a2f9c061cb9ac071822292fd6d93d879fcaef77572f2fec3ad84cb92",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/protocol.json": "fd5d0249fa158b9fdd796b0ca95c29d80d926c3a5d6d24bb5828c2adeb133073",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/run-status.json": "688a7ac27ca2d2988f03a7ab383b59ccad59f93f0cf7c00ddfd6fbafca8b4518",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-1-0.json": "636bc05860453c4e0fb7fd36d8d37ee5957018849d07a4c6849269bd8c343fbe",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-1-fresh.json": "1b45c3c78af326b3c4011f91494c96f9f4b06486364e3251c2f47e26b33ca1e5",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-1-parity.json": "92151043b49a32fcedfa7a6678e239d02abb3654cb5e8e2eac5c79c610de1558",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/builds/control-gg-h-candidate-1/build.json": "e557d7289327ec040ddbe1d423c91c75bf5d109bed83995b2be7594df04ab7b7",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-1-1.json": "0d7db21254d9a78e319b063bbf1d6d841718bd45024127932692f7f2aa035437",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-6-0.json": "09d95cc150139cbb4bab201a82d2e6c7b4c57617e4db813b77830971f538d12b",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-6-fresh.json": "1660765b6f7226888a453a9a3fb9ebd58dd866e66fd770febd51e238014d5e8d",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-6-parity.json": "92151043b49a32fcedfa7a6678e239d02abb3654cb5e8e2eac5c79c610de1558",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/builds/control-gg-h-candidate-6/build.json": "19a39e25dee0483e92a72ee53b427ba9a3cf965c4d22f55304c7116afda442a9",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-6-1.json": "b80ed3be65ea2c74b5804d9e5bb71d5829400d572b0a4afb7c065feb0dc25868",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-7-0.json": "dff19395aa6a4b3c2ec02db4f64e8afa4473306daa3e9b2e41ef131c7df83589",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-7-fresh.json": "5d2e9c8c947847f93a6e63e3868466ae1a379230847ede3f44cae4989912b2cd",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-7-parity.json": "92151043b49a32fcedfa7a6678e239d02abb3654cb5e8e2eac5c79c610de1558",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/builds/control-gg-h-candidate-7/build.json": "0bd0303c2dee1091ea00e6d2e36a8ee97d5e18712624e516c1c5ec3a49d635f1",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-7-1.json": "a66e098b199fef94bdd6bc11047af4ecff11f2d90d9567b8518bbba52f076c24",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-8-0.json": "972337f15647902611283bbdc330dd6c9b85d543bcc388829b5dc0769d08ebf9",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-8-fresh.json": "3bc1c4adf70ef5a753a130a9f3a9e1280bdafe62c3a366deb9e05661f08b3de1",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-8-parity.json": "92151043b49a32fcedfa7a6678e239d02abb3654cb5e8e2eac5c79c610de1558",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/builds/control-gg-h-candidate-8/build.json": "8a30642557d52c4b0533ee16c1e8dd5b519aa4f9fb7dabf4438fd3684a52b964",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-gg-h-candidate-8-1.json": "5186a92c7be82572c28a20ef4c941ccef528081b71aba3f099c3b2a0e45d4b25",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-1-0.json": "9c38721a7650ccd14dd006b7c2a7f00936f1bd2b1bfea333acc7bb415c5165ee",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-1-fresh.json": "4f5f08d39e087968e176d2da2a642904cb6acc22590c0994c41142b1ca01f0e3",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-1-parity.json": "2a8885b35550abfbf473c724872786f0170fa266b1f35bb450e0c44f4383d8ed",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/builds/control-mixed-candidate-1/build.json": "c4f08ad3c6436274cd320233b8b345cf1cacf9e61f53b223fb4b8886fa359044",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-1-1.json": "c88ca634a567ff7a023f2baa1cc73ffdcd57f1f1d2a82c46f16e84d50a2ffce4",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-6-0.json": "49562a8581a8c1e567f994d308c23144adb9f8ce77389452551efb27e15257c9",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-6-fresh.json": "6496ae34b8ab190e5162bbe5ca106a3532ec64da2ef5dd1befc1830549f2073d",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-6-parity.json": "2a8885b35550abfbf473c724872786f0170fa266b1f35bb450e0c44f4383d8ed",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/builds/control-mixed-candidate-6/build.json": "badaafd2622a0c9a21a70301ae778f7d26a43a345f14f1b3748c80bdd8e781e4",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-6-1.json": "478043cdf24a20f76d19083830ed7cc99c0245cb77b4394385881d7757a4e93a",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-7-0.json": "93fd68d2e8a6c9865857d862790afb29bc67c5fa1e816d4a33ae7c9b7e630738",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-7-fresh.json": "6a3fce9e61cfc14e4553707e3c71f0fcdcbe71ba44eb628bc9795ea0956c108a",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-7-parity.json": "2a8885b35550abfbf473c724872786f0170fa266b1f35bb450e0c44f4383d8ed",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/builds/control-mixed-candidate-7/build.json": "24863708517528f9b99d7cbaf6d968f1cab4f0e6436b4184c31876df06cd9bbb",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-7-1.json": "a4f64573847e3da79f2cdc5f2cdccadfabe40f3c5e3b651d33ca4bbb069fac06",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-8-0.json": "cef88bd29b9d22a5d697da394ca82c5b689f1e3bb4fd29683ff4878524672c3d",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-8-fresh.json": "9914ee63ebaebe226a03572ac0ebb99af2d0b3081775dae9a088bb38e7495ebd",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-8-parity.json": "2a8885b35550abfbf473c724872786f0170fa266b1f35bb450e0c44f4383d8ed",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/builds/control-mixed-candidate-8/build.json": "8ffcf94627f6ac04819cbd33e02da00f8e3a28e0667a743e2998b52c412c8e2c",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-v1/data/control-mixed-candidate-8-1.json": "ae599130e0c73936eab23799ad17ad86ef4c71c0ad56b83165cd4df5e49cd960",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-ninjars-v1/protocol.json": "07651087cbb5dffeec74a1f983c2de4be2a4c6d140b60a16f36f8e0c8e9deac9",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-ninjars-v1/run-status.json": "5c9d8b4839e645f3510b4aae68fdd7cdb5d4ae8d9b013b1afbe7c001da69a813",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-ninjars-v1/data/qcd-1-candidate-8-0.json": "d800f65f6477294c8e7227a39ee0825b1574948a73300ce032b6e3e4d5bb9233",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-ninjars-v1/data/qcd-1-candidate-8-fresh.json": "2fe15e8767365b5135099633ac3c5363632cb9d968238cc24f4711a1333443c6",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-ninjars-v1/data/qcd-1-candidate-8-parity.json": "d00a70207f5f0d669dff649eb729f7bd3eab74dd2a21dac73085a210a13f556b",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-ninjars-v1/builds/qcd-1-candidate-8/build.json": "1304c125c0e4a406d5224bf5834ba4e8090c443acefb59db26b09cdc413c7a80",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-qcd-ninjars-v1/data/qcd-1-candidate-8-1.json": "294efff35ff4238b6bfd44a8f526a3ee2c33cfb362d650d18118e86e5e52d710",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/protocol.json": "2a85905fe2406ea6cf8f2a4837abf01e4b45b87b4957300f45aa21798913bbea",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/run-status.json": "b8f71d3fa6886940d6aa89b4ffc8a93f39020f635d3ceda9f6f9903eb20bf0e2",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/data/control-near-singular-candidate-1-0.json": "7a82c02f822f87f0ba891c0ff7597eb8b9863e9d6cb4b9dfd82c69ffdf11a274",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/data/control-near-singular-candidate-1-fresh.json": "31d4c2fa0d1b1c4afdea5d720b850eb38dd7a3e26e158009036651a9c25a99eb",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/data/control-near-singular-candidate-1-parity.json": "7fc063646de342d217e067695803a262b7753a2fc414b21aea08977ba96592e6",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/builds/control-near-singular-candidate-1/build.json": "84cf640b791f74c66cda5b6928d2d6d3d30200cb6116e8027a426b2487783240",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/data/control-near-singular-candidate-1-1.json": "fac76239da1981e3a19561e3f1a6616162936918bd6483bc3120d262144fbd09",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/data/control-near-singular-candidate-6-0.json": "0cdb133292b2e7f6e0baacdd13a0ead291f14f69e9ae374bdef0d2517c40115e",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/data/control-near-singular-candidate-6-fresh.json": "05138d3366c0720679d481658a1183bcf7cfda781c63f17adc2f01b8e8ea9078",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/data/control-near-singular-candidate-6-parity.json": "7fc063646de342d217e067695803a262b7753a2fc414b21aea08977ba96592e6",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/builds/control-near-singular-candidate-6/build.json": "105e389b351603ed1094023ab22cf83297f629c8a3ba3f29c547e812bf469d65",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/data/control-near-singular-candidate-6-1.json": "ab018a734d77296810190f5b8a6c0a96251b53ca39be99a3d737596545e19aeb",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/data/control-near-singular-candidate-8-0.json": "260be8fc86d19a380123aa25df6f535993517a632c75c9c0ac84779cdbb08c8a",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/data/control-near-singular-candidate-8-fresh.json": "bde143a388215ee90fbf529e1a08283c6f47adc33ea270a2430ae184e8442379",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/data/control-near-singular-candidate-8-parity.json": "7fc063646de342d217e067695803a262b7753a2fc414b21aea08977ba96592e6",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/builds/control-near-singular-candidate-8/build.json": "1071f68f515d4c839a7632aed8e7540fb40e0eb1192a6fded94636e9a93e15f3",
+    "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-v1/data/control-near-singular-candidate-8-1.json": "54a802bad17efecf1425282b822364ce95f7ac9e8e2862060d0b88e8c1b50b80"
+  },
+  "evidence_sha256": "1a2a95c1c051c021310f76b410ceb5411dafc8a573c2676c3395e7f5f96d49ef"
+}

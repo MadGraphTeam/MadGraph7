@@ -1,0 +1,54 @@
+{
+  "status": "complete",
+  "protocol_identity_sha256": "383c21122fc089ad9a90eea685d6f0406d43d497df3816b54288b111225431c9",
+  "completed_runs": [
+    "parity-qcd-legacy-final",
+    "parity-controls-legacy-final",
+    "parity-rescue-legacy-final",
+    "parity-qcd-ninjars-final",
+    "parity-controls-ninjars-final",
+    "parity-rescue-ninjars-final"
+  ],
+  "legacy_fresh_parity_exact": true,
+  "legacy_qp_status_counts": {
+    "1": {
+      "329": 10
+    },
+    "6": {
+      "328": 10
+    }
+  },
+  "historical_proof": "docs/benchmarkfolder/experiments/persistent-workers/worker-protocol-validation-initial.json",
+  "timing_acceptance": "Representative validation only; concurrent unrelated work excludes acceptance timing.",
+  "evidence_sha256": "cd1e5ae7e387704779ea4cbfb905b8b1369cd42e5cb5421c63652cde95e65020",
+  "evidence_file": "docs/benchmarkfolder/worker-protocol-validation.json",
+  "all_fresh_parity_exact": true,
+  "representative_cross_backend_agreement": {
+    "control-gg-h": {
+      "passed": true,
+      "measurement_sha256": {
+        "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-legacy-final/data/control-gg-h-candidate-1-0.json": "19f9d91a47ae16a6397d755e69ebbb4d69b6476342c1387a8b69aeb88c365d13",
+        "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-legacy-final/data/control-gg-h-candidate-6-0.json": "ccc3b50f0446b955d320a6aa2a2992f781eb76d8262824b6a66a61a3495b9c48",
+        "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-legacy-final/data/control-gg-h-candidate-7-0.json": "e90805c8042e8892641b20b442d8bae5ef63bc3967b8c71a2c4b87968dce07c3",
+        "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-ninjars-final/data/control-gg-h-candidate-8-0.json": "7b6a838de655f0ed9692c351042567e69c4537aa2cad6023fef4eb355c7e595f"
+      }
+    },
+    "control-mixed": {
+      "passed": true,
+      "measurement_sha256": {
+        "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-legacy-final/data/control-mixed-candidate-1-0.json": "8229824e513666e0e0d3783f04208d4c6039e379f8734645ac1b16c7107b8f15",
+        "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-legacy-final/data/control-mixed-candidate-6-0.json": "93cecf38b3b3977b6f9f49def657719ec8042143d89c6c76d9492f06cfdd038a",
+        "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-legacy-final/data/control-mixed-candidate-7-0.json": "cdc8e8caab8b6e535cea1dcfa0c5a6665accc3e60698cd2d95bb41c44bd21826",
+        "docs/benchmarkfolder/experiments/persistent-workers/parity-controls-ninjars-final/data/control-mixed-candidate-8-0.json": "ee7caf365e27581034956d16e69649471d5cc5cb7fc06323d29a106f0affc7da"
+      }
+    },
+    "control-near-singular": {
+      "passed": true,
+      "measurement_sha256": {
+        "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-legacy-final/data/control-near-singular-candidate-1-0.json": "e9c0f858ce880e52ae1146fb99f1664849f6f1fdffab79e88bc48598038a3f5f",
+        "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-legacy-final/data/control-near-singular-candidate-6-0.json": "0991d85d4383af55025ca58d638a98a0e041af4b60be1912603d49b2d766757d",
+        "docs/benchmarkfolder/experiments/persistent-workers/parity-rescue-ninjars-final/data/control-near-singular-candidate-8-0.json": "299321636fdf5421ffd9adf5538b310c3b84195095da36cac4c8db3cccb6bcda"
+      }
+    }
+  }
+}
