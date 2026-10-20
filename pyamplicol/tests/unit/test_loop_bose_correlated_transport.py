@@ -7,6 +7,8 @@ retained pair and make no numerical or independent-physics claim.
 """
 
 from dataclasses import replace
+from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 
@@ -72,6 +74,54 @@ def test_split_retired_physical_parent_moves_and_auxiliary_roles_do_not():
     assert 3 not in {leg.label for leg in left.output_legs}
     assert -3 not in {leg.label for leg in left.output_legs}
     assert {9, -2, 10, -4} <= {leg.label for leg in left.output_legs}
+
+
+@pytest.mark.parametrize("legs", [(3,), (4,), (3, 4)])
+def test_literal_source_three_cycle_uses_inverse_keys_without_touching_rows(legs):
+    from pyamplicol.loops.flavor_transport import NativeIdentityFlavorProgram
+
+    # Exercise only the pure key-routing seam. Actual prepared owners are
+    # exercised below; this recorder is not a synthetic physics certificate.
+    permutation = (0, 1, 3, 4, 2)
+    recorder = SimpleNamespace(
+        transport=SimpleNamespace(
+            permutes_external_legs=True,
+            mapping=SimpleNamespace(permutation=permutation),
+        ),
+        directed_plan=SimpleNamespace(
+            bare=SimpleNamespace(spin_layout=SimpleNamespace(legs=legs))
+        ),
+    )
+    rows = {
+        member: tuple(
+            (Decimal(f"{member}.{part}000000000000000000000000000001"), Decimal("-2.5"))
+            for part in range(4)
+        )
+        for member in (4, 5)
+    }
+    sources = {permutation[leg - 1] + 1: rows[permutation[leg - 1] + 1] for leg in legs}
+    routed = NativeIdentityFlavorProgram._spin_sources(recorder, sources)
+    assert tuple(sorted(routed)) == legs
+    for representative in legs:
+        assert routed[representative] is sources[permutation[representative - 1] + 1]
+    assert sources == {key: rows[key] for key in sources}
+    for bad in ({}, {True: rows[4]}, {3: rows[4]}):
+        with pytest.raises(ValueError):
+            NativeIdentityFlavorProgram._spin_sources(recorder, bad)
+
+
+def test_ordinary_source_class_has_no_synthetic_vector_requirement():
+    from pyamplicol.loops.flavor_transport import NativeIdentityFlavorProgram
+
+    recorder = SimpleNamespace(
+        transport=SimpleNamespace(
+            permutes_external_legs=True,
+            mapping=SimpleNamespace(permutation=(0, 1, 3, 4, 2)),
+        ),
+        directed_plan=SimpleNamespace(bare=SimpleNamespace(spin_layout=None)),
+    )
+    assert NativeIdentityFlavorProgram._spin_sources(recorder, None) == {}
+    assert NativeIdentityFlavorProgram._spin_sources(recorder, {}) == {}
 
 
 @pytest.fixture
@@ -171,6 +221,20 @@ def test_matching_substitutions_cannot_replace_source_authority(
             representative_spin=changed_classes[0],
             member_spin=changed_classes[1],
         )
+
+    # Direct immutable-record construction must meet the same source boundary.
+    # Valid history routes alone cannot certify substituted source classes.
+    admitted = _admit(control)
+    with pytest.raises(ValueError):
+        promoted = replace(
+            control["relation"],
+            representative_directed=admitted.representative_directed,
+            member_directed=admitted.member_directed,
+            representative_spin=changed_classes[0],
+            member_spin=changed_classes[1],
+            bose_correlations=admitted.bose_correlations,
+        )
+        promoted.bind(control["programs"][0], directed=control["ordinary"][0])
 
 
 def test_old_ordinary_admission_cannot_be_promoted_by_richer_representative(
