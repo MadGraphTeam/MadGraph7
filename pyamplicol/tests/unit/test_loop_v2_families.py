@@ -400,6 +400,17 @@ def test_relabelled_frames_are_exact_affine_maps(control):
 
 
 @pytest.mark.loop_fast
+def test_vertex_momentum_degree_rejects_unknown_momentum_forms(control):
+    degree = v2_families._momentum_degree
+    # P_in + P_out carries no loop momentum; P_in - P_out carries one.
+    assert degree("P(idx(1,3),idx(1,1))+P(idx(1,3),idx(1,2))", (1, 2)) == 0
+    assert degree("P(idx(1,3),idx(1,1))-P(idx(1,3),idx(1,2))", (1, 2)) == 1
+    for structure in ("PSlash(idx(1,1),idx(1,2),idx(1,3))", "P(idx(1,3),2)"):
+        with pytest.raises(NotImplementedError, match="P\\(mu, leg\\)"):
+            degree(structure, (1, 2))
+
+
+@pytest.mark.loop_fast
 def test_rank_beyond_integrand_reduction_domain_fails(control):
     model, catalogue = control
 
@@ -465,7 +476,9 @@ def loop_sm_models(loop_sm_ufo):
                 loop_order_bounds={"QCD": 7, "QED": 2},
             )
             data = json.loads(prepared.structure.native.to_json())
-            models[restriction] = data, ModelLoopCatalogue(data)
+            facts = prepared.structure.perturbative_species_orders
+            assert facts is not None  # the request-scoped dependency facts
+            models[restriction] = data, ModelLoopCatalogue(data, species_orders=facts)
         return models[restriction]
 
     return load
@@ -488,6 +501,19 @@ def _recola_order(legs, catalogue):
         [i for i, c, _ in crossed if c == 8],
     )
     return [index for group in groups for index in group]
+
+
+@pytest.mark.loop_physics
+def test_catalogue_species_facts_match_the_dependency(loop_sm_models):
+    data, catalogue = loop_sm_models("default")
+    derived = ModelLoopCatalogue(data)  # the catalogue's own is_perturbating rule
+    species = [p["name"] for p in data["particles"] if p.get("propagating", True)]
+    assert any(catalogue.species(name).perturbative_orders for name in species)
+    for name in species:
+        assert (
+            catalogue.species(name).perturbative_orders
+            == derived.species(name).perturbative_orders
+        )
 
 
 @pytest.mark.loop_physics

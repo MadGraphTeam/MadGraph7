@@ -803,19 +803,24 @@ def _momentum_degree(expression: str, slots: tuple[int, int] | None) -> int:
     at leg ``out`` (all UFO momenta incoming): P_in -> P_in + q and
     P_out -> P_out - q, so q cancels from structures in P_in + P_out. With
     ``None`` every momentum is the line momentum (a propagator numerator).
+    A vertex momentum in any other form than ``P(mu, leg)`` is rejected rather
+    than read as degree 0 (stand-in for WP1.1 ``LoopSegmentBinding.degree``).
     """
     from symbolica import E, S
 
     t, q = S("pyamplicol_v2_t"), S("pyamplicol_v2_q")
-    momentum, lorentz = S("P"), S("x_")
+    momentum, slash, lorentz, rest = S("P"), S("PSlash"), S("x_"), S("x___")
     value = E(expression)
     if slots is None:
-        rest = S("x__")
         value = value.replace(momentum(rest), t * momentum(rest))
-        slash = S("PSlash")
         value = value.replace(slash(rest), t * slash(rest))
     else:
         index, label = S("idx"), S("y_")
+        other = value.replace(momentum(lorentz, index(label, S("z_"))), t)
+        if other.matches(momentum(rest)) or other.matches(slash(rest)):
+            raise NotImplementedError(
+                f"vertex momentum outside P(mu, leg) form in {expression!r}"
+            )
         for slot, sign in zip(slots, (1, -1), strict=True):
             leg = index(label, slot)
             value = value.replace(
@@ -837,11 +842,23 @@ class ModelLoopCatalogue:
 
     An interim field-level implementation of ``LoopVertexCatalogue`` until the
     WP1.1 kernel catalogue is integrated. q-degrees are read from the exact UFO
-    Lorentz structures and propagator numerators with Symbolica. Perturbative
-    species follow MadLoop's ``is_perturbating`` (``loops/graphs.py``).
+    Lorentz structures and propagator numerators with Symbolica.
+
+    Perturbative species (MadLoop's ``is_perturbating``) are the dependency
+    facts ``species_orders`` keyed by |PDG|, e.g. a prepared structure's
+    ``perturbative_species_orders``; a counterterm-augmented or request-pruned
+    model must pass them. Without them they are derived from this model's
+    rules by the same rule as the diagram oracle (a species is perturbative in
+    an order when it enters a vertex of that single order), which production
+    modules may not import.
     """
 
-    def __init__(self, model: Any):
+    def __init__(
+        self,
+        model: Any,
+        *,
+        species_orders: Mapping[int, frozenset[str]] | None = None,
+    ):
         data = _model_data(model)
         self._species: dict[str, LoopSpecies] = {}
         coupling_orders = {
@@ -866,13 +883,14 @@ class ModelLoopCatalogue:
             }
             for order in sorted(orders):
                 rules.append((rule, order))
-        # MadLoop's Particle.is_perturbating: a species is perturbative in an
-        # order when it enters a vertex of that single order.
-        perturbative: dict[str, set[str]] = defaultdict(set)
-        for rule, order in rules:
-            if len(order) == 1:
-                for name in rule["particles"]:
-                    perturbative[name].add(order[0][0])
+        if species_orders is None:
+            pdg = {p["name"]: abs(p["pdg_code"]) for p in data["particles"]}
+            derived: dict[int, set[str]] = defaultdict(set)
+            for rule, order in rules:
+                if len(order) == 1:
+                    for name in rule["particles"]:
+                        derived[pdg[name]].add(order[0][0])
+            species_orders = derived
         self._conjugate = {}
         for particle in data["particles"]:
             name = particle["name"]
@@ -885,8 +903,7 @@ class ModelLoopCatalogue:
                 particle["spin"],
                 particle["color"],
                 MassId(_mass_name(particle["mass"]), _mass_name(particle["width"])),
-                frozenset(perturbative.get(name, ()))
-                | frozenset(perturbative.get(particle["antiname"], ())),
+                frozenset(species_orders.get(abs(particle["pdg_code"]), ())),
             )
         self._numerators = numerators
         templates: dict[tuple, LoopVertex] = {}
