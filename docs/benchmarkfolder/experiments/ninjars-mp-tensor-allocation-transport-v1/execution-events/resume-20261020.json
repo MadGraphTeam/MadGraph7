@@ -1,0 +1,217 @@
+{
+  "after": {
+    "3040051": {
+      "affinity": [
+        234
+      ],
+      "command": [
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+        "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-transport-v1/build.py",
+        "--authorized-build",
+        "Root authorized one release no-run combined compilation on2026-10-20: CPU234 jobs1 private target/build, copied immutable old dependency cache; production9f13 signed-zero parser plus exact frozen allocation patch; no tests or engine before later MP handoff."
+      ],
+      "pid": 3040051,
+      "ppid": 3040049,
+      "starttime_ticks": 56767860,
+      "state": "R"
+    },
+    "3048274": {
+      "affinity": [
+        234
+      ],
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/bridge/Cargo.toml",
+        "--locked",
+        "--offline",
+        "--release",
+        "--lib",
+        "--features",
+        "fenv-test-support",
+        "--no-run",
+        "--message-format=json"
+      ],
+      "pid": 3048274,
+      "ppid": 3040051,
+      "starttime_ticks": 56768115,
+      "state": "R"
+    },
+    "3049337": {
+      "affinity": [
+        234
+      ],
+      "command": [
+        "rustc",
+        "--crate-name",
+        "madloop_ninjars",
+        "--edition=2024",
+        "src/lib.rs",
+        "--error-format=json",
+        "--json=diagnostic-rendered-ansi,artifacts,future-incompat",
+        "--emit=dep-info,link",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "lto=thin",
+        "-C",
+        "codegen-units=1",
+        "--test",
+        "--cfg",
+        "feature=\"fenv-test-support\"",
+        "--check-cfg",
+        "cfg(docsrs,test)",
+        "--check-cfg",
+        "cfg(feature, values(\"fenv-test-support\"))",
+        "-C",
+        "metadata=5d53f4d1a8f68da9",
+        "-C",
+        "extra-filename=-b9eb364b5cb26678",
+        "--out-dir",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/deps",
+        "-C",
+        "strip=debuginfo",
+        "-L",
+        "dependency=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/deps",
+        "--extern",
+        "ninjars=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/deps/libninjars-029811cf3d12c72d.rlib",
+        "--extern",
+        "ninjars_symbolica=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/deps/libninjars_symbolica-fb0e97610a5783dd.rlib",
+        "--extern",
+        "serde_json=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/deps/libserde_json-38f451e83eb32715.rlib",
+        "--extern",
+        "symbolica=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/deps/libsymbolica-def3f9e86fc4c86c.rlib",
+        "-L",
+        "native=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/build/madloop-ninjars-f58116f103d9696b/out",
+        "-L",
+        "native=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/build/madloop-ninjars-f58116f103d9696b/out",
+        "-L",
+        "native=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/build/psm-115b6d3ba849d769/out",
+        "-L",
+        "native=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/build/gmp-mpfr-sys-fbaf675a2d7bb3d7/out/lib",
+        "-l",
+        "static=ninjars_t3_fenv",
+        "-l",
+        "static=ninjars_test_fenv"
+      ],
+      "pid": 3049337,
+      "ppid": 3048274,
+      "starttime_ticks": 56768189,
+      "state": "R"
+    }
+  },
+  "authorization": "User explicitly resumed; root directed exact identity verification then descendants before controller. No test/engine authorization.",
+  "before": {
+    "3040051": {
+      "affinity": [
+        234
+      ],
+      "command": [
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+        "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-transport-v1/build.py",
+        "--authorized-build",
+        "Root authorized one release no-run combined compilation on2026-10-20: CPU234 jobs1 private target/build, copied immutable old dependency cache; production9f13 signed-zero parser plus exact frozen allocation patch; no tests or engine before later MP handoff."
+      ],
+      "pid": 3040051,
+      "ppid": 3040049,
+      "starttime_ticks": 56767860,
+      "state": "T"
+    },
+    "3048274": {
+      "affinity": [
+        234
+      ],
+      "command": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/bridge/Cargo.toml",
+        "--locked",
+        "--offline",
+        "--release",
+        "--lib",
+        "--features",
+        "fenv-test-support",
+        "--no-run",
+        "--message-format=json"
+      ],
+      "pid": 3048274,
+      "ppid": 3040051,
+      "starttime_ticks": 56768115,
+      "state": "T"
+    },
+    "3049337": {
+      "affinity": [
+        234
+      ],
+      "command": [
+        "rustc",
+        "--crate-name",
+        "madloop_ninjars",
+        "--edition=2024",
+        "src/lib.rs",
+        "--error-format=json",
+        "--json=diagnostic-rendered-ansi,artifacts,future-incompat",
+        "--emit=dep-info,link",
+        "-C",
+        "opt-level=3",
+        "-C",
+        "lto=thin",
+        "-C",
+        "codegen-units=1",
+        "--test",
+        "--cfg",
+        "feature=\"fenv-test-support\"",
+        "--check-cfg",
+        "cfg(docsrs,test)",
+        "--check-cfg",
+        "cfg(feature, values(\"fenv-test-support\"))",
+        "-C",
+        "metadata=5d53f4d1a8f68da9",
+        "-C",
+        "extra-filename=-b9eb364b5cb26678",
+        "--out-dir",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/deps",
+        "-C",
+        "strip=debuginfo",
+        "-L",
+        "dependency=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/deps",
+        "--extern",
+        "ninjars=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/deps/libninjars-029811cf3d12c72d.rlib",
+        "--extern",
+        "ninjars_symbolica=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/deps/libninjars_symbolica-fb0e97610a5783dd.rlib",
+        "--extern",
+        "serde_json=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/deps/libserde_json-38f451e83eb32715.rlib",
+        "--extern",
+        "symbolica=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/deps/libsymbolica-def3f9e86fc4c86c.rlib",
+        "-L",
+        "native=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/build/madloop-ninjars-f58116f103d9696b/out",
+        "-L",
+        "native=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/build/madloop-ninjars-f58116f103d9696b/out",
+        "-L",
+        "native=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/build/psm-115b6d3ba849d769/out",
+        "-L",
+        "native=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/build/gmp-mpfr-sys-fbaf675a2d7bb3d7/out/lib",
+        "-l",
+        "static=ninjars_t3_fenv",
+        "-l",
+        "static=ninjars_test_fenv"
+      ],
+      "pid": 3049337,
+      "ppid": 3048274,
+      "starttime_ticks": 56768189,
+      "state": "T"
+    }
+  },
+  "order": [
+    3049337,
+    3048274,
+    3040051
+  ],
+  "pause_sha256": "8e649cf7546f2de9ff5f822d993a45b259003838569089c73f4d570cd3f12c2d",
+  "schema": "explicit-user-resume-v1",
+  "signal": "SIGCONT",
+  "tests_or_replay_started": false,
+  "utc": "2026-10-20T22:17:41.197514+00:00"
+}

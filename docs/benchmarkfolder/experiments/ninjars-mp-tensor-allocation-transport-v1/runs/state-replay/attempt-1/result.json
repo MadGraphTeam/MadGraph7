@@ -1,0 +1,81 @@
+{
+  "acceptance_evidence": false,
+  "affinity": [
+    234
+  ],
+  "build": {
+    "bytes": 7497,
+    "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-transport-v1/builds/attempt-1/result.json",
+    "sha256": "b3b700a24f34f0e6fd7098322b762aa61b3f0aa74380f64abcd8b7b491fc277d"
+  },
+  "checks": {
+    "exact_ascii_fields": 11136,
+    "records": 1392,
+    "state_replay": {
+      "bytes": 942495,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-transport-v1/runs/state-replay/attempt-1/state-replay.jsonl",
+      "sha256": "2daf2f5e99495ecee1b6097acec52bb0dac8aa97b7c048d931ff1fe9267cb9cf"
+    }
+  },
+  "command": [
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/deps/madloop_ninjars-b9eb364b5cb26678",
+    "--test-threads=1",
+    "--nocapture",
+    "--ignored",
+    "transport_replay_tests::all_stored_requests_retain_outputs_after_transport_fix",
+    "--exact"
+  ],
+  "controller": {
+    "bytes": 7746,
+    "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-transport-v1/run.py",
+    "sha256": "1f2bd8583788295663988e3d4787748293ec959217a033216e373c49d6a4b702"
+  },
+  "coordination": "Root exclusive MP handoff2026-10-20: final serial combined gateCPU234;22unit,21golden,full1392callback-oracle passed; reusable MpState full1392, all other engines held.",
+  "elapsed_seconds": 23.11385268403683,
+  "environment": {
+    "NINJARS_TRANSPORT_REPLAY": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/actual-mp-requests.jsonl",
+    "NINJARS_TRANSPORT_REPLAY_OUTPUT": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-transport-v1/runs/state-replay/attempt-1/state-replay.jsonl",
+    "OMP_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "RUST_BACKTRACE": "1"
+  },
+  "executable": {
+    "bytes": 55047624,
+    "path": ".benchmark-work/experiments/ninjars-mp-tensor-allocation-transport-v1/build/release/deps/madloop_ninjars-b9eb364b5cb26678",
+    "sha256": "74dceba26b178d5e30a312f8bfd09e5141985e1e82dfeb83a079894a056e497e"
+  },
+  "exit_code": 0,
+  "finished_utc": "2026-10-20T22:25:42.988017+00:00",
+  "installed_archive": {
+    "bytes": 298538944,
+    "path": "HEPTools/ninjars/lib/libninjars.a",
+    "sha256": "1199bc84570bee76a6b162a86fd5c191479236b2c0617fe4bf250d5de0d9df32"
+  },
+  "mode": "state-replay",
+  "production_changed": false,
+  "provenance": {
+    "bytes": 10830,
+    "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-transport-v1/provenance.json",
+    "sha256": "5cb4999f233b0d775d6b5d33919f9d7b85b698d9252a5bc3d3a87373e5367ed0"
+  },
+  "raw_files": {
+    "state-replay.jsonl": {
+      "bytes": 942495,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-transport-v1/runs/state-replay/attempt-1/state-replay.jsonl",
+      "sha256": "2daf2f5e99495ecee1b6097acec52bb0dac8aa97b7c048d931ff1fe9267cb9cf"
+    },
+    "stderr.log": {
+      "bytes": 0,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-transport-v1/runs/state-replay/attempt-1/stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stdout.log": {
+      "bytes": 1450,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-transport-v1/runs/state-replay/attempt-1/stdout.log",
+      "sha256": "0e84e28274afc91fbfc214fc06913333ce0847ca0bf0f677c16356cd27f1a065"
+    }
+  },
+  "schema": "corrected-transport-allocation-execution-v1",
+  "started_utc": "2026-10-20T22:25:19.376101+00:00",
+  "status": "passed"
+}

@@ -1,4 +1,11 @@
-# Latest user-requested pause — 2026-10-21 (Europe/Zurich)
+# Historical pause checkpoint — resumed 2026-10-21 (Europe/Zurich)
+
+The user explicitly resumed this checkpoint. Current orchestration and resource
+ownership are recorded in `references/PLAN.md` and
+`.benchmark-work/resume-20261021-final-round.json`. The former controller PIDs
+below mostly disappeared during the pause; do not signal these historical PIDs
+without a fresh identity check. Native recovery and reference restart each have
+new experiment-owned ledgers. The remainder describes the preserved pause state.
 
 Work is paused again at the user's immediate request. Do not resume any job
 until explicitly instructed. Latest pushed milestone before this checkpoint:

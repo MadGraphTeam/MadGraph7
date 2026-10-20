@@ -683,3 +683,15 @@ resume metadata. The earlier pause note is a historical checkpoint.
   remain saved. No final improvement was promoted. The latest
   `references/PAUSE.md` checkpoint identifies the new records and outstanding
   IO-comparison failures for investigation on explicit resume.
+- The user resumed on 2026-10-21 and requested orchestration across the expanded
+  agent team. Final work is delegated to native-kernel validation, allocation
+  process measurements, legacy regression repair, reference recovery, loop-induced
+  and stability supplements, reporting, upstream/integration checks and independent
+  review. Root controls commits, numerical promotion, MP-slot/quiet-window handoffs
+  and completion gates. No new optimization families are added.
+- Paused controllers disappeared before this resume. Exact surviving compile
+  identities are recovered without relabeling compilation duration; the orphaned
+  reference run is preserved as interrupted and replaced by a fresh unchanged
+  full-reference collection. All paused regression descendants are gone; new
+  regression runs are independently logged. See the new resume ledger before
+  using any older PID checkpoint.
