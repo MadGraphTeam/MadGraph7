@@ -699,6 +699,60 @@ def _fingerprint(diagram):
     return tuple(json.loads(diagram.to_json())["model"])
 
 
+def _ordinary_bose_slots(prepared, interactions):
+    """Prove ordinary port classes with their actual owned scalar definitions."""
+    from .scalar_bindings import prepare_scalar_bindings
+    from .vertex_symmetry import symmetric_boson_slots
+
+    names = tuple(sorted(set(interactions)))
+    source = prepared.source
+    if source.scalar_program is None:
+        # A CT-only source over a separate ordinary model supplies no paired
+        # ordinary scalar owner. Retain its literal native tensor proof.
+        return symmetric_boson_slots(prepared.native, names)
+    aliases = {
+        alias
+        for name in names
+        for row in prepared.native.vertex_rule(name).couplings
+        for alias in row
+        if alias is not None
+    }
+    ordinary = {
+        entry.coupling.name: entry.coupling
+        for entry in source.kernels
+        if entry.collection == "vertices"
+    }
+    for alias in aliases:
+        binding = ordinary.get(alias)
+        if binding is None:
+            raise ValueError("ordinary native coupling lacks its source binding")
+        if (
+            source.scalar_program.definitions.get((binding.collection, binding.id))
+            is not binding
+        ):
+            raise ValueError("ordinary coupling belongs to a different scalar owner")
+        if prepared.native.coupling(alias).expression != binding.value.expression:
+            raise ValueError("ordinary native coupling overrides its source binding")
+    bindings = prepare_scalar_bindings(
+        source.raw,
+        tuple((alias, 0) for alias in sorted(aliases)),
+        program=source.scalar_program,
+    )
+    # Exact symbolic values establish only local Bose equality. Their paired
+    # diagnostics and helper library remain owned by the retained source; the
+    # physical scalar binding evaluates them without this proof discarding any.
+    return symmetric_boson_slots(
+        prepared.native,
+        names,
+        coupling_expressions={
+            name: expression.value
+            for (name, _), expression in zip(
+                bindings.outputs, bindings.expressions, strict=True
+            )
+        },
+    )
+
+
 def match_counterterms(
     prepared: PreparedCountertermModel,
     process: Any,
@@ -779,10 +833,8 @@ def match_counterterms(
         prepared.ordinary_model, _rule_orders(prepared.ordinary_model)
     )
     denominators = _propagator_denominators(prepared.native)
-    from .vertex_symmetry import symmetric_boson_slots
-
-    symmetric_slots = symmetric_boson_slots(
-        prepared.native,
+    symmetric_slots = _ordinary_bose_slots(
+        prepared,
         {
             vertex.interaction
             for graph in loops.loops
