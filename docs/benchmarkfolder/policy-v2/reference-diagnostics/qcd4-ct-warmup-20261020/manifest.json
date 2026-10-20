@@ -1,0 +1,16 @@
+{
+  "schema": "diagnostic-live-reference-retention-v1",
+  "files": {
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/README.md": "5f258665efc72ea7bc31949884586de43a34e8511b03b539e2af46c46b101165",
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/analysis.json": "763533379e2d3b23625e2c6bbae7b64090dd3752a2101d06e0b03e1d5ae4ef57",
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/ninjars_profile_v2.py": "a4042b2b6dc3714a073e1a8908531f3e7f9443e2607195d8daf5029d870cc6a8",
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/perf-record.log": "88b878cfa6941205dcc4523b01dd4cf92cb527507573c95dd919de8ed5bbcbe9",
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/perf-script.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/perf-stacks.txt": "4646a9a5d2fa0fe11c3a9ee7d281027351590c43f23ca1dabb3e22077c4424eb",
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/profile.perf": "f5c52476937352259b500b755293d46d1f4e2b68e34a1db514afc3314cf56c40",
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/sample.json": "07919be12a1163a863aac903ab3c87c5202addc58865ed2e1a3383b0fc62129d"
+  },
+  "acceptance_evidence": false,
+  "collector_directory_unchanged": true,
+  "identity_sha256": "e0aff36892186bf409837d61f15ce1a399aba2e63eb580d2dcbbde5dce0e9a96"
+}
