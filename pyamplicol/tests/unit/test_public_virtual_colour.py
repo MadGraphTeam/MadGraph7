@@ -213,12 +213,16 @@ def _transport_backend(monkeypatch, accuracy="lc"):
     data = {
         "artifact_id": "fixture-only",
         "process_id": "p",
+        "representative_process_id": "p",
+        "physics_scope": "selected-process",
+        "external_permutation": [0],
         "expression": "transport fixture",
         "external_pdgs": [21],
         "initial_average": 1,
         "physics": {
             "color_accuracy": accuracy,
             "resolved": True,
+            "correlations": False,
             "arithmetic": ["double", "double-double", "arbitrary"],
             "orders": {
                 "born": [{"order": [["QCD", p]]} for p in (2, 4)],
@@ -245,6 +249,9 @@ def _transport_backend(monkeypatch, accuracy="lc"):
             },
         },
     }
+    # The native consumer reports selected capabilities separately from the
+    # representative's saved instruction catalogue, even for identity members.
+    data["representative_physics"] = dict(data["physics"])
     operation = dict(
         requested="direct",
         algorithm="direct",
