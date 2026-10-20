@@ -1,5 +1,14 @@
 # Final-source rotation and context controls
 
+This first attempt is a retained failure. Rotation passed; the changing-state
+driver assigned only the DP top mass before `COUP()`, leaving the independent
+MP external mass unchanged. CutTools rescued three points through QP and
+exposed 18 coefficient disagreements. Fresh-context and near-singular variants
+were not started. See `execution-failure.json` and all eight raw streams.
+The separate `../final-variant-controls-both-precision/` driver corrects both
+precision assignments and passes; these failed outputs remain unchanged.
+`SHA256SUMS.json` seals this namespace, including its original preparation.
+
 This separate namespace reuses the existing control transformations and Fortran
 driver from `tools/ninjars_controls.py`. Preparation clones only the final
 `control-gg-hh` and `control-forced-qp` CLI exports, checks writable aliases before

@@ -1,0 +1,8 @@
+control-rotation completed
+Traceback (most recent call last):
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-variant-controls-fixed/execute.py", line 266, in <module>
+    run(args.cases.split(","), args.cpu)
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-variant-controls-fixed/execute.py", line 207, in run
+    raise RuntimeError("Control comparison failed: " + name)
+RuntimeError: Control comparison failed: control-rebinding

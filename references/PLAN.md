@@ -462,3 +462,32 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   Its 264-file retention package passes independent read-only verification.
   Full generated controls, the eight core streams and final performance gates
   remain outstanding.
+- Complete ggH, ggHH, mixed-order and complex-mass generated controls now pass
+  all twenty-one corrected-cohort pairings at each of two repetitions over
+  ten points. Independent recomputation and a 406-file retention manifest
+  verify the new runs, exact runtime bindings and reused representative data.
+  The separate rotation control agrees across all four backends. The changing
+  mass/scale control exposed a driver setup error: only the DP top mass was
+  updated before `COUP()`, leaving its independent QP value unchanged. The
+  CutTools-rescue disagreement and all raw rows are retained as a failure.
+  The separate driver that synchronizes both precisions passes across all four
+  backends, including the three CutTools QP points. Reused and fresh NinjaRS
+  contexts agree exactly. All ten near-singular points pass with actual
+  CutTools 329, Ninja 328 and NinjaRS 322 rescues, and every backend passes the
+  rotated-versus-unrotated comparison. Independent audit reparses all twelve
+  raw streams and recomputes every comparison. The generated NinjaRS rebinding
+  test stays DP; separate unchanged bridge tests supply MP mass/scale coverage.
+- The final installed ABI 3 physical direction-reversal control passes all
+  thirty native-DP, compensated-DP and MP rows for a triangle and box. It
+  includes distinct complex squared masses, odd numerator coefficients,
+  retained/fresh exact replay and deliberately unflipped negative controls.
+  Its initial synthetic input remains a separately retained unstable result.
+  The focused source/evidence audit covers the final installation and controls;
+  the eight core streams and performance gates remain pending.
+- Symmetric predecessor/gather kernels are exact but show no useful speedup.
+  Exact product sharing improves isolated kernels, but the seven-pair QCD3
+  full-process ratio is 0.998449 with a 95% confidence interval of
+  [0.966772, 1.026978], so it is not promoted. A new diagnostic trace confirms
+  16.655% fewer complex multiplications in the selected helpers after zero
+  skips; profiling and pure-real/imaginary-factor specialization are being
+  investigated separately. No experimental sharing kernel is in production.
