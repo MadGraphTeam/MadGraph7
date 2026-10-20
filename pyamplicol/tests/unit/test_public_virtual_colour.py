@@ -252,6 +252,7 @@ def _transport_backend(monkeypatch, accuracy="lc"):
     # The native consumer reports selected capabilities separately from the
     # representative's saved instruction catalogue, even for identity members.
     data["representative_physics"] = dict(data["physics"])
+    data["selected_correlations"] = {"histories": [], "spin_classes": []}
     operation = dict(
         requested="direct",
         algorithm="direct",
