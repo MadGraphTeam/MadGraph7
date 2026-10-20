@@ -532,7 +532,7 @@ class RecurrenceExactExecutor:
                 target,
                 prepared_parameters,
                 working_precision,
-                order_amplitudes=order_amplitudes,
+                **_order_keywords(order_amplitudes),
             )
             destination_helicities = self._destination_helicities[color_index]
             color_weight = _decimal(
@@ -612,7 +612,7 @@ class RecurrenceExactExecutor:
                 direct_helicity,
                 prepared_parameters,
                 working_precision,
-                order_amplitudes=order_amplitudes,
+                **_order_keywords(order_amplitudes),
             )
             helicity_weight = _decimal(
                 helicity_record.get("coefficient", 1),
@@ -666,7 +666,7 @@ class RecurrenceExactExecutor:
             point,
             prepared_parameters,
             working_precision,
-            order_amplitudes=order_amplitudes,
+            **_order_keywords(order_amplitudes),
         )
         selected = {
             self._helicity_representative[physical] for physical in selected_helicities
@@ -738,7 +738,7 @@ class RecurrenceExactExecutor:
                 cast(Any, point),
                 prepared_parameters,
                 working_precision,
-                order_amplitudes=order_amplitudes,
+                **_order_keywords(order_amplitudes),
             )
 
         destination_by_coordinate: dict[tuple[int, int], int] = {}
@@ -775,7 +775,7 @@ class RecurrenceExactExecutor:
                 target,
                 prepared_parameters,
                 working_precision,
-                order_amplitudes=replayed_orders,
+                **_order_keywords(replayed_orders),
             )
             for destination in sections.amplitude_destinations:
                 if destination.target_sector_id != target.representative_id:
@@ -1151,6 +1151,14 @@ class RecurrenceExactExecutor:
                 "contracted recurrence does not map every direct helicity"
             )
         return tuple(result)
+
+
+def _order_keywords(
+    order_amplitudes: list[list[tuple[Decimal, Decimal]]] | None,
+) -> dict[str, Any]:
+    """Request coupling-order splitting only for order evaluation."""
+
+    return {} if order_amplitudes is None else {"order_amplitudes": order_amplitudes}
 
 
 def _order_pair(value: object) -> tuple[int, int]:

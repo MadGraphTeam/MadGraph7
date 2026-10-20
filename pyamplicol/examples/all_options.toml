@@ -224,6 +224,9 @@ process = "d d~ > g z g"
 precision = 16
 # evaluation.resolved: Return physical resolved components. Default false.
 resolved = true
+# evaluation.orders: Split recurrence tree totals by squared coupling order.
+# Default false; cannot combine with resolved.
+orders = false
 # evaluation.on_failure: Virtual evaluate numerical failures: raise or return.
 # Returned failures are whole-point null rows with diagnostics. Default raise.
 on_failure = "raise"
