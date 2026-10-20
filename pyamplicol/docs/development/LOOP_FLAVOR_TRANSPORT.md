@@ -363,15 +363,18 @@ results after dropping handles. These are correctness controls; benchmark cells
 have not been retimed for this milestone.
 
 
-## Same-process directed colour projection reuse
+## Directed colour projection reuse
 
 The retained formal-full `d d~ -> g g` bank includes the common degrees of its
 complete order-two family (28 histories / 784 pairs), with exact requested
 rectangles in both directions. `reproject_directed_color_bank` can now construct
-a new LC/NLC bank for a normally projected model sharing the actual process,
-scalar plan and source-colour declaration. It validates the captured prepared
-declaration and both formal owners, and checks the resulting identity rows
-against the target's ordinary weights. The reference bank never changes owner.
+a new full/LC/NLC bank for a normally projected model with the same complete
+exact colour support. Each side must retain its own coherent captured process,
+scalar producer/preparation, source-colour declaration and formal owner.
+Cross-owner process/scalar pointers and initial averages need not be equal:
+these are not premises of the colour algebra. The resulting identity rows are
+checked against the target's ordinary weights. The reference bank never changes
+owner, and each target retains its independent numerical currents.
 
 Both factories share one actual-column assembler. The reusable support proof
 keeps dependency-canonical tensors, complete typed ports, absolute orders and
@@ -381,7 +384,10 @@ retain all target columns, while complete support equality retains the maximum
 degree of each entire family. Inactive columns are preserved; weighted-zero or
 compensating-factor equivalence does not replace this proof. Existing Symbolica
 projection extracts LC/NLC using the retained common degrees, not a degree chosen
-from a requested row. Normal binding applies Nc and external averaging once.
+from a requested row. Normal binding applies Nc and the target's own external
+averaging once. Three full/LC/NLC rational-average tests check every entry and
+preserve the reference binding; runtime normalization substitutions still fail
+the target's own formal-owner check.
 
 Independent complete target projections pass full/LC/NLC rectangular controls,
 including non-Hermitian two-emission histories, reordered/repeated columns,
@@ -394,8 +400,21 @@ IDs. These physical executors share the reused bank; their consistency is
 separate from the independent tensor-projection oracle. Rebinding does not redo
 colour algebra. Original retained models and snapshots remain unchanged.
 
-The normal writer saved the two new projected banks before numerical checks.
-Their saved/public/SDK numerical validation is still pending. This factory does
-not establish a map between independently generated species owners and does not
-relax nonidentity projected-history flavour admission. The existing source and
-ordinary mapping guards remain in place. No benchmark cells were retimed.
+The independent-owner extension adds twelve actual ownership controls and the
+three normalization controls. The actual ss full bank reuses dd colour support
+while retaining different process and scalar-plan owners. All nine blocks,
+both terms and ordinary/singleton/joint sources agree with the independently
+generated fixed-full ss artifact in double, DoubleFloat and AP70.
+
+Normal full/LC/NLC ss checkpoints were saved before follow-up assertions.
+Twelve projected checks pass: six compare independently prepared d/s currents,
+and six reconstruct the ss ordinary identity and singleton/joint polarization
+sums, across LC/NLC and all three carriers. All nine blocks, both terms, swapped
+conjugation, exact parameter/source updates, complex/zero sources and opaque
+IDs survive. The paired executors share the proved colour support; the separate
+complete tensor controls provide the independent colour-projection oracle.
+Saved/public/SDK numerical validation of these new banks remains pending.
+Colour reuse does not admit shared numerical amplitudes: nonidentity projected
+flavour admission still needs its separate exact species/scalar/request/source
+proof. Existing numerical mapping guards remain unchanged. No benchmark cells
+were retimed.
