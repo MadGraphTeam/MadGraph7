@@ -621,6 +621,14 @@ class RusticolRuntimeBackend:
         self._execution_mode = _native_execution_mode(self._native_metadata)
         self._physics: ProcessPhysics | None = None
         self._exact_executor: _ExactExecutor | None = None
+        self._order_axes: (
+            tuple[
+                tuple[CouplingOrders, ...],
+                tuple[BornSquaredSector, ...],
+                tuple[int, ...],
+            ]
+            | None
+        ) = None
         self._required_runtime_capabilities: tuple[str, ...] = ()
         self._supports_per_point_selectors = _accepts_keyword_arguments(
             runtime.evaluate,
@@ -1137,9 +1145,11 @@ class RusticolRuntimeBackend:
         self._require_supported_precision(precision)
         helicities = _normalized_selectors(helicities)
         color_flows = self._resolve_color_flows(_normalized_selectors(color_flows))
-        amplitude_orders, sectors, columns = _tree_order_axes(
-            _invoke(self._native_module, self._runtime._amplitude_orders_json)
-        )
+        if self._order_axes is None:
+            self._order_axes = _tree_order_axes(
+                _invoke(self._native_module, self._runtime._amplitude_orders_json)
+            )
+        amplitude_orders, sectors, columns = self._order_axes
         partials: Sequence[Sequence[complex | Decimal]]
         if precision != 16:
             exact = cast(
