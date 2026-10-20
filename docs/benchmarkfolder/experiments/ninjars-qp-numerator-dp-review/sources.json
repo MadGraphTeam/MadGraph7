@@ -1,0 +1,139 @@
+{
+  "schema": "source-only-feasibility-review-v1",
+  "numerical_revision": "f4bffc61ed67e5d083b80ff9901768d4d5779989",
+  "source_only": true,
+  "mixed_precision_implementation": false,
+  "numerical_evaluation": false,
+  "production_or_policy_changes": false,
+  "sources": {
+    "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": {
+      "sha256": "3694162a7d920f1148c09f2adae197f74bf10f8def69d6c0655673251e78b97d",
+      "bytes": 101223,
+      "anchors": [
+        1,
+        815,
+        960,
+        1020,
+        1055,
+        1302,
+        1679,
+        1730,
+        1833,
+        1959,
+        2330
+      ],
+      "matches_pinned_revision": true
+    },
+    "madgraph/iolibs/template_files/loop_optimized/mp_compute_loop_coefs.inc": {
+      "sha256": "bc9061494b8e723d7881144a4a5a72e7ce750e34b0f8c3e8f9b5485957effba3",
+      "bytes": 21841,
+      "anchors": [
+        143,
+        209,
+        315,
+        450,
+        480,
+        501,
+        512,
+        678,
+        687
+      ],
+      "matches_pinned_revision": true
+    },
+    "madgraph/iolibs/template_files/loop_optimized/helas_loop_amplitude.inc": {
+      "sha256": "0e201cf40bed561fd08e9580dee7e45e587190c86375e3c851c26f60f1bb1fec",
+      "bytes": 7530,
+      "anchors": [
+        90,
+        108,
+        162
+      ],
+      "matches_pinned_revision": true
+    },
+    "madgraph/iolibs/template_files/loop_optimized/NINJARS_interface.inc": {
+      "sha256": "a0746e73bc12740a425f585e39d923f38bda017371a0c55f2977fea7c9da18e5",
+      "bytes": 10517,
+      "anchors": [
+        36,
+        56,
+        92,
+        108,
+        138,
+        155,
+        232,
+        252
+      ],
+      "matches_pinned_revision": true
+    },
+    "madgraph/iolibs/template_files/loop_optimized/TIR_interface.inc": {
+      "sha256": "25d4a1f2004f081c65b484bd2b959d9a95bf2dfe95953e7bc73d78289b427281",
+      "bytes": 16748,
+      "anchors": [
+        102,
+        195,
+        249,
+        582
+      ],
+      "matches_pinned_revision": true
+    },
+    "Template/loop_material/StandAlone/SubProcesses/MadLoopCommons.inc": {
+      "sha256": "689133081012735e9f2d883eb59d0c15f0b889e7a67ed7fab0bd46ac57a213c1",
+      "bytes": 19182,
+      "anchors": [
+        263
+      ],
+      "matches_pinned_revision": true
+    },
+    "Template/NLO/SubProcesses/BinothLHA.f": {
+      "sha256": "7b8fffd92f524a997e1a793d35add87c9467ce4c8f9611e6f574c3d270d74dd1",
+      "bytes": 28588,
+      "anchors": [
+        480,
+        489,
+        500
+      ],
+      "matches_pinned_revision": true
+    },
+    "vendor/ninjars/mninjars.f90": {
+      "sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+      "bytes": 8497,
+      "anchors": [
+        110,
+        126,
+        146
+      ],
+      "matches_pinned_revision": true
+    },
+    "vendor/ninjars/src/lib.rs": {
+      "sha256": "ed9f72b3af2fd829dee9b0d30290c4fa0accca3ebcd2fc4f57638efd7f502a04",
+      "bytes": 51235,
+      "anchors": [
+        178,
+        217,
+        261,
+        296,
+        490,
+        511,
+        541
+      ],
+      "matches_pinned_revision": true
+    },
+    "tools/ninjars_benchmark.py": {
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+      "bytes": 49893,
+      "anchors": [
+        418
+      ],
+      "matches_pinned_revision": true
+    },
+    "tools/ninjars_benchmark_policy_v2.py": {
+      "sha256": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a",
+      "bytes": 53416,
+      "anchors": [
+        463
+      ],
+      "matches_pinned_revision": true
+    }
+  },
+  "review_sha256": "18c8e2133e1acf873bff6ee5210cb2ea4a08182a601ca1d839ff133206b16f01"
+}

@@ -168,3 +168,23 @@ dataset and refreshed candidate evidence.
 
 See `experiments/ew3-collier-stability/` for the failed original runs, precision
 diagnostics, independent audit, fresh CLI export, and benchmark policy review.
+
+## Guarded symmetric-tensor optimization
+
+The production QP contraction-sharing change is committed as `f4bffc61e`.
+Its fixed 21-pair QCD3 study resolves a 3.19% full-process runtime reduction
+against the retained pre-factor candidate, with a 95% interval of 1.79–4.15%.
+All compared coefficients, accuracy estimates and rescue counts are unchanged.
+This is a process-specific optimization result, not the final NinjaRS gate.
+The source proof, exact arithmetic controls and timing evidence are retained
+under `experiments/symmetric-factorization*`.
+
+Thirteen clean CLI exports/builds, refreshed representative precision coverage,
+and a relocated internal-copy DP/QP/stability check now pass for that numerical
+revision. See `policy-v2/generation-retention-abi3-tensor-factor-v1/`,
+`policy-v2/representative-retention-abi3-tensor-factor-v1/` and
+`policy-v2/install-export-abi3-tensor-factor-v1/` for offline verifiers.
+Complete generated variants and eight-process validation remain outstanding.
+The current NinjaRS QCD3 diagnostic is about twice the candidate Ninja time;
+the final performance requirement is unresolved. DP tensor factorization and
+MP tensor allocation experiments remain isolated from production.
