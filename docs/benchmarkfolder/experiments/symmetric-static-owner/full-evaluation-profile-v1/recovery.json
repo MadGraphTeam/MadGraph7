@@ -1,0 +1,21 @@
+{
+  "original_sha256": "2ac93bf84078e6a52215c257b2e6c551599a1c064b2100e8356cc1301a4dc712",
+  "recovered_sha256": "e3c821c0e4386b65bb8c289aabc797d4475996936f332a5dcbd2002032eb5bd8",
+  "original_header_data_size": 0,
+  "recovered_header_data_size": 107739016,
+  "original_feature_flags": [
+    3597762552,
+    0,
+    0,
+    0
+  ],
+  "recovered_feature_flags": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "data_offset": 3336,
+  "data_bytes_preserved_exactly": true,
+  "reason": "perf recorder exceeded its30s finalization wait after all numerical traversals exited successfully. Rawstream has6980 complete records including6476 samples and target EXIT; no trailing partial record. This separate recovery sets data_size and clears nonexistent optional finalized features; original raw bytes remain immutable. Diagnostic sampling only."
+}

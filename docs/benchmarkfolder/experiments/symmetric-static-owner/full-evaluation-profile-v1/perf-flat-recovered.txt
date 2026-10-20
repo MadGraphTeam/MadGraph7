@@ -1,0 +1,425 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 6K of event 'cycles:u'
+# Event count (approx.): 98811037616
+#
+# Overhead  Symbol                                                                                                                                                                                                                                                                                                                                                                                                                                        IPC   [IPC Coverage]
+# ........  ............................................................................................................................................................................................................................................................................................................................................................................................................................................  ....................
+#
+    19.92%  [.] __multf3                                                                                                                                                                                                                                                                                                                                                                                                                                  -      -            
+            |          
+            |--3.00%--mp_ml5_0_update_wl_2_1_
+            |          |          
+            |           --2.96%--ml5_0_mp_coef_construction_1_
+            |                     ml5_0_mp_compute_loop_coefs_
+            |                     ml5_0_sloopmatrix_retry_impl_
+            |                     ml5_0_sloopmatrix_
+            |                     ml5_0_sloopmatrix_thres_
+            |                     MAIN__
+            |          
+            |--2.86%--mp_ml5_0_update_wl_1_1_
+            |          |          
+            |           --2.84%--ml5_0_mp_coef_construction_1_
+            |                     ml5_0_mp_compute_loop_coefs_
+            |                     ml5_0_sloopmatrix_retry_impl_
+            |                     ml5_0_sloopmatrix_
+            |                     ml5_0_sloopmatrix_thres_
+            |                     MAIN__
+            |                     main
+            |                     __libc_start_call_main
+            |                     __libc_start_main@@GLIBC_2.34
+            |                     _start
+            |          
+            |--2.56%--mp_ml5_0_terminal_wl_2_1_
+            |          |          
+            |           --2.39%--ml5_0_mp_coef_construction_1_
+            |                     ml5_0_mp_compute_loop_coefs_
+            |                     ml5_0_sloopmatrix_retry_impl_
+            |                     ml5_0_sloopmatrix_
+            |                     ml5_0_sloopmatrix_thres_
+            |                     MAIN__
+            |          
+            |--1.95%--mp_ml5_0_terminal_wl_3_1_
+            |          |          
+            |           --1.82%--ml5_0_mp_coef_construction_1_
+            |                     ml5_0_mp_compute_loop_coefs_
+            |                     ml5_0_sloopmatrix_retry_impl_
+            |                     ml5_0_sloopmatrix_
+            |                     ml5_0_sloopmatrix_thres_
+            |                     MAIN__
+            |          
+            |--1.51%--mp_ml5_0_merge_wl_
+            |          |          
+            |           --1.50%--mp_ml5_0_create_loop_coefs_
+            |                     ml5_0_mp_coef_construction_1_
+            |                     ml5_0_mp_compute_loop_coefs_
+            |                     ml5_0_sloopmatrix_retry_impl_
+            |                     ml5_0_sloopmatrix_
+            |                     ml5_0_sloopmatrix_thres_
+            |                     MAIN__
+            |                     main
+            |                     __libc_start_call_main
+            |                     __libc_start_main@@GLIBC_2.34
+            |                     _start
+            |          
+            |--1.01%--quadninja::(anonymous namespace)::nlr_ten(unsigned int, unsigned int, quadninja::ComplexQuadruple const*, quadninja::ComplexMomentum const&, quadninja::ComplexMomentum const&, quadninja::ComplexQuadruple*)
+            |          |          
+            |           --0.62%--quadninja::TensorNumerator::t3Expansion(quadninja::ComplexMomentum const&, quadninja::ComplexMomentum const&, quadninja::ComplexMomentum const&, quadninja::ComplexQuadruple const&, int, int, unsigned char const*, quadninja::ComplexQuadruple*)
+            |                     |          
+            |                      --0.59%--quadninja::Amplitude<quadninja::ComplexQuadruple>::evaluateTriangle(quadninja::Numerator&, quadninja::cuts::Triangle&)
+            |                                quadninja::Amplitude<quadninja::ComplexQuadruple>::evaluate(quadninja::Numerator&)
+            |                                void (anonymous namespace)::quadninja_tensor_evaluate<quadninja::ComplexQuadruple>(quadninja::ComplexQuadruple const*, int, int, quadninja::RealMomentum const*, quadninja::const_pointer<quadninja::ComplexQuadruple>::type, __float128*, __float128, quadninja::ComplexQuadruple*, quadninja::ComplexQuadruple&, int&)
+            |                                ml5_0_mp_ninja_loop_
+            |          
+            |--0.67%--quadninja::TensorNumerator::t3Expansion(quadninja::ComplexMomentum const&, quadninja::ComplexMomentum const&, quadninja::ComplexMomentum const&, quadninja::ComplexQuadruple const&, int, int, unsigned char const*, quadninja::ComplexQuadruple*)
+            |          |          
+            |           --0.59%--quadninja::Amplitude<quadninja::ComplexQuadruple>::evaluateTriangle(quadninja::Numerator&, quadninja::cuts::Triangle&)
+            |                     quadninja::Amplitude<quadninja::ComplexQuadruple>::evaluate(quadninja::Numerator&)
+            |                     void (anonymous namespace)::quadninja_tensor_evaluate<quadninja::ComplexQuadruple>(quadninja::ComplexQuadruple const*, int, int, quadninja::RealMomentum const*, quadninja::const_pointer<quadninja::ComplexQuadruple>::type, __float128*, __float128, quadninja::ComplexQuadruple*, quadninja::ComplexQuadruple&, int&)
+            |                     ml5_0_mp_ninja_loop_
+            |          
+            |--0.66%--ml5_0_mp_compute_loop_coefs_
+            |          ml5_0_sloopmatrix_retry_impl_
+            |          ml5_0_sloopmatrix_
+            |          ml5_0_sloopmatrix_thres_
+            |          MAIN__
+            |          main
+            |          __libc_start_call_main
+            |          __libc_start_main@@GLIBC_2.34
+            |          _start
+            |          
+            |--0.62%--mp_ffv1l2_1_
+            |          ml5_0_mp_coef_construction_1_
+            |          ml5_0_mp_compute_loop_coefs_
+            |          ml5_0_sloopmatrix_retry_impl_
+            |          ml5_0_sloopmatrix_
+            |          ml5_0_sloopmatrix_thres_
+            |          MAIN__
+            |          main
+            |          __libc_start_call_main
+            |          __libc_start_main@@GLIBC_2.34
+            |          _start
+            |          
+             --0.51%--mp_ffv1l1_2_
+                       ml5_0_mp_coef_construction_1_
+                       ml5_0_mp_compute_loop_coefs_
+                       ml5_0_sloopmatrix_retry_impl_
+                       ml5_0_sloopmatrix_
+                       ml5_0_sloopmatrix_thres_
+                       MAIN__
+                       main
+                       __libc_start_call_main
+                       __libc_start_main@@GLIBC_2.34
+                       _start
+
+    15.32%  [.] ml5_0_update_wl_2_1_                                                                                                                                                                                                                                                                                                                                                                                                                      -      -            
+            |
+            ---ml5_0_coef_construction_1_
+               ml5_0_sloopmatrix_retry_impl_
+               ml5_0_sloopmatrix_
+               ml5_0_sloopmatrix_thres_
+               MAIN__
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+
+    14.01%  [.] __addtf3                                                                                                                                                                                                                                                                                                                                                                                                                                  -      -            
+            |          
+            |--2.45%--mp_ml5_0_update_wl_2_1_
+            |          |          
+            |           --2.44%--ml5_0_mp_coef_construction_1_
+            |                     ml5_0_mp_compute_loop_coefs_
+            |                     ml5_0_sloopmatrix_retry_impl_
+            |                     ml5_0_sloopmatrix_
+            |                     ml5_0_sloopmatrix_thres_
+            |                     MAIN__
+            |          
+            |--2.04%--mp_ml5_0_update_wl_1_1_
+            |          ml5_0_mp_coef_construction_1_
+            |          ml5_0_mp_compute_loop_coefs_
+            |          ml5_0_sloopmatrix_retry_impl_
+            |          ml5_0_sloopmatrix_
+            |          ml5_0_sloopmatrix_thres_
+            |          MAIN__
+            |          main
+            |          __libc_start_call_main
+            |          __libc_start_main@@GLIBC_2.34
+            |          _start
+            |          
+            |--1.82%--mp_ml5_0_terminal_wl_2_1_
+            |          |          
+            |           --1.79%--ml5_0_mp_coef_construction_1_
+            |                     ml5_0_mp_compute_loop_coefs_
+            |                     ml5_0_sloopmatrix_retry_impl_
+            |                     ml5_0_sloopmatrix_
+            |                     ml5_0_sloopmatrix_thres_
+            |                     MAIN__
+            |          
+            |--1.48%--mp_ml5_0_merge_wl_
+            |          |          
+            |           --1.45%--mp_ml5_0_create_loop_coefs_
+            |                     ml5_0_mp_coef_construction_1_
+            |                     ml5_0_mp_compute_loop_coefs_
+            |                     ml5_0_sloopmatrix_retry_impl_
+            |                     ml5_0_sloopmatrix_
+            |                     ml5_0_sloopmatrix_thres_
+            |                     MAIN__
+            |                     main
+            |                     __libc_start_call_main
+            |                     __libc_start_main@@GLIBC_2.34
+            |                     _start
+            |          
+            |--1.37%--mp_ml5_0_terminal_wl_3_1_
+            |          |          
+            |           --1.36%--ml5_0_mp_coef_construction_1_
+            |                     ml5_0_mp_compute_loop_coefs_
+            |                     ml5_0_sloopmatrix_retry_impl_
+            |                     ml5_0_sloopmatrix_
+            |                     ml5_0_sloopmatrix_thres_
+            |                     MAIN__
+            |          
+             --0.85%--quadninja::(anonymous namespace)::nlr_ten(unsigned int, unsigned int, quadninja::ComplexQuadruple const*, quadninja::ComplexMomentum const&, quadninja::ComplexMomentum const&, quadninja::ComplexQuadruple*)
+
+     9.06%  [.] ml5_0_update_wl_3_1_                                                                                                                                                                                                                                                                                                                                                                                                                      -      -            
+            |
+            ---ml5_0_coef_construction_1_
+               ml5_0_sloopmatrix_retry_impl_
+               ml5_0_sloopmatrix_
+               ml5_0_sloopmatrix_thres_
+               MAIN__
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+
+     5.75%  [.] __subtf3                                                                                                                                                                                                                                                                                                                                                                                                                                  -      -            
+            |          
+            |--0.76%--mp_ml5_0_update_wl_1_1_
+            |          ml5_0_mp_coef_construction_1_
+            |          ml5_0_mp_compute_loop_coefs_
+            |          ml5_0_sloopmatrix_retry_impl_
+            |          ml5_0_sloopmatrix_
+            |          ml5_0_sloopmatrix_thres_
+            |          MAIN__
+            |          main
+            |          __libc_start_call_main
+            |          __libc_start_main@@GLIBC_2.34
+            |          _start
+            |          
+            |--0.63%--mp_ml5_0_terminal_wl_2_1_
+            |          ml5_0_mp_coef_construction_1_
+            |          ml5_0_mp_compute_loop_coefs_
+            |          ml5_0_sloopmatrix_retry_impl_
+            |          ml5_0_sloopmatrix_
+            |          ml5_0_sloopmatrix_thres_
+            |          MAIN__
+            |          
+            |--0.59%--mp_ffv1l2_1_
+            |          ml5_0_mp_coef_construction_1_
+            |          ml5_0_mp_compute_loop_coefs_
+            |          ml5_0_sloopmatrix_retry_impl_
+            |          ml5_0_sloopmatrix_
+            |          ml5_0_sloopmatrix_thres_
+            |          MAIN__
+            |          main
+            |          __libc_start_call_main
+            |          __libc_start_main@@GLIBC_2.34
+            |          _start
+            |          
+            |--0.55%--mp_ml5_0_update_wl_2_1_
+            |          ml5_0_mp_coef_construction_1_
+            |          ml5_0_mp_compute_loop_coefs_
+            |          ml5_0_sloopmatrix_retry_impl_
+            |          ml5_0_sloopmatrix_
+            |          ml5_0_sloopmatrix_thres_
+            |          MAIN__
+            |          
+             --0.54%--mp_ml5_0_terminal_wl_3_1_
+                       ml5_0_mp_coef_construction_1_
+                       ml5_0_mp_compute_loop_coefs_
+                       ml5_0_sloopmatrix_retry_impl_
+                       ml5_0_sloopmatrix_
+                       ml5_0_sloopmatrix_thres_
+                       MAIN__
+
+     4.99%  [.] ml5_0_update_wl_1_1_                                                                                                                                                                                                                                                                                                                                                                                                                      -      -            
+            |
+            ---ml5_0_coef_construction_1_
+               ml5_0_sloopmatrix_retry_impl_
+               ml5_0_sloopmatrix_
+               ml5_0_sloopmatrix_thres_
+               MAIN__
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+
+     2.85%  [.] __memset_avx512_unaligned_erms                                                                                                                                                                                                                                                                                                                                                                                                            -      -            
+            |          
+             --2.28%--ml5_0_update_wl_2_1_
+                       ml5_0_coef_construction_1_
+                       ml5_0_sloopmatrix_retry_impl_
+                       ml5_0_sloopmatrix_
+                       ml5_0_sloopmatrix_thres_
+                       MAIN__
+                       main
+                       __libc_start_call_main
+                       __libc_start_main@@GLIBC_2.34
+                       _start
+
+     2.56%  [.] __sfp_handle_exceptions                                                                                                                                                                                                                                                                                                                                                                                                                   -      -            
+            |          
+            |--1.45%--__multf3
+            |          
+             --0.83%--__addtf3
+
+     2.21%  [.] ml5_0_update_wl_3_0_                                                                                                                                                                                                                                                                                                                                                                                                                      -      -            
+            |
+            ---ml5_0_coef_construction_1_
+               ml5_0_sloopmatrix_retry_impl_
+               ml5_0_sloopmatrix_
+               ml5_0_sloopmatrix_thres_
+               MAIN__
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+
+     2.13%  [.] ml5_0_sloopmatrix_retry_impl_                                                                                                                                                                                                                                                                                                                                                                                                             -      -            
+            |
+            ---ml5_0_sloopmatrix_
+               ml5_0_sloopmatrix_thres_
+               MAIN__
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+
+     1.53%  [.] ml5_0_update_wl_2_0_                                                                                                                                                                                                                                                                                                                                                                                                                      -      -            
+            |
+            ---ml5_0_coef_construction_1_
+               ml5_0_sloopmatrix_retry_impl_
+               ml5_0_sloopmatrix_
+               ml5_0_sloopmatrix_thres_
+               MAIN__
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+
+     1.25%  [.] ffv1l2_1_                                                                                                                                                                                                                                                                                                                                                                                                                                 -      -            
+            |
+            ---ml5_0_coef_construction_1_
+               ml5_0_sloopmatrix_retry_impl_
+               ml5_0_sloopmatrix_
+               ml5_0_sloopmatrix_thres_
+               MAIN__
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+
+     1.08%  [.] ml5_0_update_wl_0_1_                                                                                                                                                                                                                                                                                                                                                                                                                      -      -            
+            |
+            ---ml5_0_coef_construction_1_
+               ml5_0_sloopmatrix_retry_impl_
+               ml5_0_sloopmatrix_
+               ml5_0_sloopmatrix_thres_
+               MAIN__
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+
+     0.97%  [.] ninja::(anonymous namespace)::nlr_ten(unsigned int, unsigned int, std::complex<double> const*, ninja::ComplexMomentum const&, ninja::ComplexMomentum const&, std::complex<double>*)                                                                                                                                                                                                                                                       -      -            
+            |          
+             --0.60%--ninja::TensorNumerator::t3Expansion(ninja::ComplexMomentum const&, ninja::ComplexMomentum const&, ninja::ComplexMomentum const&, std::complex<double> const&, int, int, unsigned char const*, std::complex<double>*)
+                       |          
+                        --0.59%--ninja::Amplitude<std::complex<double> >::evaluateTriangle(ninja::Numerator&, ninja::cuts::Triangle&)
+                                  ninja::Amplitude<std::complex<double> >::evaluate(ninja::Numerator&)
+                                  ninja_tensor_evaluate_smat_cm_
+                                  ml5_0_ninja_loop_
+
+     0.86%  [.] ml5_0_merge_wl_                                                                                                                                                                                                                                                                                                                                                                                                                           -      -            
+            |
+            ---ml5_0_create_loop_coefs_
+               ml5_0_coef_construction_1_
+               ml5_0_sloopmatrix_retry_impl_
+               ml5_0_sloopmatrix_
+               ml5_0_sloopmatrix_thres_
+               MAIN__
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+
+     0.82%  [.] ffv1l1_2_                                                                                                                                                                                                                                                                                                                                                                                                                                 -      -            
+            |
+            ---ml5_0_coef_construction_1_
+               ml5_0_sloopmatrix_retry_impl_
+               ml5_0_sloopmatrix_
+               ml5_0_sloopmatrix_thres_
+               MAIN__
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+
+     0.80%  [.] ml5_0_create_loop_coefs_                                                                                                                                                                                                                                                                                                                                                                                                                  -      -            
+            |
+            ---ml5_0_coef_construction_1_
+               ml5_0_sloopmatrix_retry_impl_
+               ml5_0_sloopmatrix_
+               ml5_0_sloopmatrix_thres_
+               MAIN__
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+
+     0.69%  [.] mp_ml5_0_update_wl_2_1_                                                                                                                                                                                                                                                                                                                                                                                                                   -      -            
+            |
+            ---ml5_0_mp_coef_construction_1_
+               ml5_0_mp_compute_loop_coefs_
+               ml5_0_sloopmatrix_retry_impl_
+               ml5_0_sloopmatrix_
+               ml5_0_sloopmatrix_thres_
+               MAIN__
+
+     0.55%  [.] ml5_0_update_wl_1_0_                                                                                                                                                                                                                                                                                                                                                                                                                      -      -            
+            |
+            ---ml5_0_coef_construction_1_
+               ml5_0_sloopmatrix_retry_impl_
+               ml5_0_sloopmatrix_
+               ml5_0_sloopmatrix_thres_
+               MAIN__
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+
+     0.53%  [.] mp_ml5_0_update_wl_1_1_                                                                                                                                                                                                                                                                                                                                                                                                                   -      -            
+            |
+            ---ml5_0_mp_coef_construction_1_
+               ml5_0_mp_compute_loop_coefs_
+               ml5_0_sloopmatrix_retry_impl_
+               ml5_0_sloopmatrix_
+               ml5_0_sloopmatrix_thres_
+               MAIN__
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+
+     0.53%  [.] __netf2@@GCC_4.3.0                                                                                                                                                                                                                                                                                                                                                                                                                        -      -            
+     0.52%  [.] ninja::TensorNumerator::t3Expansion(ninja::ComplexMomentum const&, ninja::ComplexMomentum const&, ninja::ComplexMomentum const&, std::complex<double> const&, int, int, unsigned char const*, std::complex<double>*)                                                                                                                                                                                                                      -      -            
+     0.51%  [.] ml5_0_ml5soindex_for_born_amp_                                                                                                                                                                                                                                                                                                                                                                                                            -      -            
+
+
+#
+# (Tip: To see call chains by final symbol taking CPU time (bottom up) use perf report -G)
+#

@@ -1,0 +1,3360 @@
+{
+  "actual_qcd3_trace_bounds": [
+    {
+      "helper_index": 1,
+      "original_products_after_actual_zero_skips": 989180,
+      "rank": 2,
+      "saved_products_lower_bound": "188925",
+      "saved_products_upper_bound": "741885",
+      "scope": "Conditional on the exact runtime q-row relation guard passing. Existing trace lacks B0/q split; bounds, not measured factorization counts.",
+      "terminal": false,
+      "unchanged_b0_product_ceiling": 737280,
+      "vertex": "MP_FFV1L1_2"
+    },
+    {
+      "helper_index": 2,
+      "original_products_after_actual_zero_skips": 1029550,
+      "rank": 2,
+      "saved_products_lower_bound": "161925/2",
+      "saved_products_upper_bound": "1544325/2",
+      "scope": "Conditional on the exact runtime q-row relation guard passing. Existing trace lacks B0/q split; bounds, not measured factorization counts.",
+      "terminal": false,
+      "unchanged_b0_product_ceiling": 921600,
+      "vertex": "MP_FFV1L2_1"
+    },
+    {
+      "helper_index": 3,
+      "original_products_after_actual_zero_skips": 115200,
+      "rank": 2,
+      "saved_products_lower_bound": "17280",
+      "saved_products_upper_bound": "86400",
+      "scope": "Conditional on the exact runtime q-row relation guard passing. Existing trace lacks B0/q split; bounds, not measured factorization counts.",
+      "terminal": false,
+      "unchanged_b0_product_ceiling": 92160,
+      "vertex": "MP_FFV2_5L1_2"
+    },
+    {
+      "helper_index": 4,
+      "original_products_after_actual_zero_skips": 162600,
+      "rank": 2,
+      "saved_products_lower_bound": "0",
+      "saved_products_upper_bound": "121950",
+      "scope": "Conditional on the exact runtime q-row relation guard passing. Existing trace lacks B0/q split; bounds, not measured factorization counts.",
+      "terminal": false,
+      "unchanged_b0_product_ceiling": 230400,
+      "vertex": "MP_FFV2_5L2_1"
+    },
+    {
+      "helper_index": 6,
+      "original_products_after_actual_zero_skips": 801174,
+      "rank": 2,
+      "saved_products_lower_bound": "198987",
+      "saved_products_upper_bound": "400587",
+      "scope": "Conditional on the exact runtime q-row relation guard passing. Existing trace lacks B0/q split; bounds, not measured factorization counts.",
+      "terminal": true,
+      "unchanged_b0_product_ceiling": 403200,
+      "vertex": "MP_FFV1L1_2"
+    },
+    {
+      "helper_index": 7,
+      "original_products_after_actual_zero_skips": 812330,
+      "rank": 2,
+      "saved_products_lower_bound": "198805",
+      "saved_products_upper_bound": "406165",
+      "scope": "Conditional on the exact runtime q-row relation guard passing. Existing trace lacks B0/q split; bounds, not measured factorization counts.",
+      "terminal": true,
+      "unchanged_b0_product_ceiling": 414720,
+      "vertex": "MP_FFV1L2_1"
+    },
+    {
+      "helper_index": 8,
+      "original_products_after_actual_zero_skips": 51840,
+      "rank": 2,
+      "saved_products_lower_bound": "14400",
+      "saved_products_upper_bound": "25920",
+      "scope": "Conditional on the exact runtime q-row relation guard passing. Existing trace lacks B0/q split; bounds, not measured factorization counts.",
+      "terminal": true,
+      "unchanged_b0_product_ceiling": 23040,
+      "vertex": "MP_FFV1L3_1"
+    },
+    {
+      "helper_index": 9,
+      "original_products_after_actual_zero_skips": 47424,
+      "rank": 2,
+      "saved_products_lower_bound": "12192",
+      "saved_products_upper_bound": "23712",
+      "scope": "Conditional on the exact runtime q-row relation guard passing. Existing trace lacks B0/q split; bounds, not measured factorization counts.",
+      "terminal": true,
+      "unchanged_b0_product_ceiling": 23040,
+      "vertex": "MP_FFV1L3_2"
+    },
+    {
+      "helper_index": 10,
+      "original_products_after_actual_zero_skips": 9600,
+      "rank": 2,
+      "saved_products_lower_bound": "0",
+      "saved_products_upper_bound": "4800",
+      "scope": "Conditional on the exact runtime q-row relation guard passing. Existing trace lacks B0/q split; bounds, not measured factorization counts.",
+      "terminal": true,
+      "unchanged_b0_product_ceiling": 11520,
+      "vertex": "MP_FFV2_5L2_1"
+    },
+    {
+      "helper_index": 11,
+      "original_products_after_actual_zero_skips": 531813,
+      "rank": 3,
+      "saved_products_lower_bound": "209253/2",
+      "saved_products_upper_bound": "531813/2",
+      "scope": "Conditional on the exact runtime q-row relation guard passing. Existing trace lacks B0/q split; bounds, not measured factorization counts.",
+      "terminal": true,
+      "unchanged_b0_product_ceiling": 322560,
+      "vertex": "MP_FFV1L1_2"
+    },
+    {
+      "helper_index": 12,
+      "original_products_after_actual_zero_skips": 656609,
+      "rank": 3,
+      "saved_products_lower_bound": "199649/2",
+      "saved_products_upper_bound": "656609/2",
+      "scope": "Conditional on the exact runtime q-row relation guard passing. Existing trace lacks B0/q split; bounds, not measured factorization counts.",
+      "terminal": true,
+      "unchanged_b0_product_ceiling": 456960,
+      "vertex": "MP_FFV1L2_1"
+    },
+    {
+      "helper_index": 13,
+      "original_products_after_actual_zero_skips": 48000,
+      "rank": 3,
+      "saved_products_lower_bound": "0",
+      "saved_products_upper_bound": "24000",
+      "scope": "Conditional on the exact runtime q-row relation guard passing. Existing trace lacks B0/q split; bounds, not measured factorization counts.",
+      "terminal": true,
+      "unchanged_b0_product_ceiling": 53760,
+      "vertex": "MP_FFV2_5L2_1"
+    }
+  ],
+  "cases": {
+    "qcd-3": {
+      "all_selected_factored_products": 156740,
+      "all_selected_static_products": 255220,
+      "by_kind_rank": {
+        "TERMINAL:2": {
+          "calls": 76,
+          "factored_products": 37440,
+          "original_products": 56640
+        },
+        "TERMINAL:3": {
+          "calls": 31,
+          "factored_products": 34720,
+          "original_products": 52080
+        },
+        "UPDATE:2": {
+          "calls": 43,
+          "factored_products": 61920,
+          "original_products": 123840
+        }
+      },
+      "matched_factored_products": 134080,
+      "matched_static_products": 232560,
+      "scope": "Literal vertex zeros removed; before runtime A/B zero skips. Not timings.",
+      "static_saved_fraction": 0.3858631768670167,
+      "vertex_proofs": {
+        "MP_FFV1L1_2": {
+          "b0_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            2,
+            2,
+            2,
+            2
+          ],
+          "h_source_expressions": {
+            "1,1": "COUP*(-1Q0)*(+CI*(V3%W(1)+V3%W(4)))",
+            "1,2": "COUP*(-1Q0)*(+CI*(V3%W(2))+V3%W(3))",
+            "2,1": "COUP*(-1Q0)*(+CI*(V3%W(2))-V3%W(3))",
+            "2,2": "COUP*(-CI*(V3%W(1))+CI*(V3%W(4)))",
+            "3,3": "COUP*(-CI*(V3%W(1))+CI*(V3%W(4)))",
+            "3,4": "COUP*(+CI*(V3%W(2))+V3%W(3))",
+            "4,3": "COUP*(+CI*(V3%W(2))-V3%W(3))",
+            "4,4": "COUP*(-1Q0)*(+CI*(V3%W(1)+V3%W(4)))"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 24,
+            "original_after_literal_zeros": 48
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 32,
+            "original_after_literal_zeros": 48
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-3/Source/DHELAS/MP_FFV1L1_2.f",
+          "source_sha256": "ed9710bc55fb51c7a0b975690aaf5261470642e5d032e0dec5d1c55f35c37bb3",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_FFV1L2_1": {
+          "b0_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            2,
+            2,
+            2,
+            2
+          ],
+          "h_source_expressions": {
+            "1,1": "COUP*(+CI*(V3%W(1))-CI*(V3%W(4)))",
+            "1,2": "COUP*(-1Q0)*(+CI*(V3%W(2))-V3%W(3))",
+            "2,1": "COUP*(-1Q0)*(+CI*(V3%W(2))+V3%W(3))",
+            "2,2": "COUP*(+CI*(V3%W(1)+V3%W(4)))",
+            "3,3": "COUP*(+CI*(V3%W(1)+V3%W(4)))",
+            "3,4": "COUP*(+CI*(V3%W(2))-V3%W(3))",
+            "4,3": "COUP*(+CI*(V3%W(2))+V3%W(3))",
+            "4,4": "COUP*(+CI*(V3%W(1))-CI*(V3%W(4)))"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 24,
+            "original_after_literal_zeros": 48
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 32,
+            "original_after_literal_zeros": 48
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-3/Source/DHELAS/MP_FFV1L2_1.f",
+          "source_sha256": "61f2f994a484f690f80240f860e64d87f25395cbb13d687ad81607f571545f45",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_FFV1L3_1": {
+          "b0_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "h_source_expressions": {
+            "1,1": "COUP*CI*F2%W(1)",
+            "1,2": "COUP*-CI*F2%W(2)",
+            "1,3": "COUP*F2%W(2)",
+            "1,4": "COUP*-CI*F2%W(1)",
+            "2,1": "COUP*CI*F2%W(2)",
+            "2,2": "COUP*-CI*F2%W(1)",
+            "2,3": "COUP*-F2%W(1)",
+            "2,4": "COUP*CI*F2%W(2)",
+            "3,1": "COUP*CI*F2%W(3)",
+            "3,2": "COUP*CI*F2%W(4)",
+            "3,3": "COUP*-F2%W(4)",
+            "3,4": "COUP*CI*F2%W(3)",
+            "4,1": "COUP*CI*F2%W(4)",
+            "4,2": "COUP*CI*F2%W(3)",
+            "4,3": "COUP*F2%W(3)",
+            "4,4": "COUP*-CI*F2%W(4)"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 32,
+            "original_after_literal_zeros": 80
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 48,
+            "original_after_literal_zeros": 80
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-3/Source/DHELAS/MP_FFV1L3_1.f",
+          "source_sha256": "b67b6d436b4a475249208b887e6a61b3c69d597a285d5bb57a5bbcd877cb4269",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_FFV1L3_2": {
+          "b0_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "h_source_expressions": {
+            "1,1": "COUP*-CI*F1%W(1)",
+            "1,2": "COUP*-CI*F1%W(2)",
+            "1,3": "COUP*-F1%W(2)",
+            "1,4": "COUP*-CI*F1%W(1)",
+            "2,1": "COUP*-CI*F1%W(2)",
+            "2,2": "COUP*-CI*F1%W(1)",
+            "2,3": "COUP*F1%W(1)",
+            "2,4": "COUP*CI*F1%W(2)",
+            "3,1": "COUP*-CI*F1%W(3)",
+            "3,2": "COUP*CI*F1%W(4)",
+            "3,3": "COUP*F1%W(4)",
+            "3,4": "COUP*CI*F1%W(3)",
+            "4,1": "COUP*-CI*F1%W(4)",
+            "4,2": "COUP*CI*F1%W(3)",
+            "4,3": "COUP*-F1%W(3)",
+            "4,4": "COUP*-CI*F1%W(4)"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 32,
+            "original_after_literal_zeros": 80
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 48,
+            "original_after_literal_zeros": 80
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-3/Source/DHELAS/MP_FFV1L3_2.f",
+          "source_sha256": "d62617d5df6156296bd91f89efc8e18899a3de080640e01e47cc826740c3ce4c",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_FFV2_5L1_2": {
+          "b0_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            2,
+            2,
+            2,
+            2
+          ],
+          "h_source_expressions": {
+            "1,1": "(-1Q0)*(COUP1*(+CI*(V3%W(1)+V3%W(4)))+COUP2*(+CI*(V3%W(1)+V3%W(4))))",
+            "1,2": "(-1Q0)*(COUP1*(+CI*(V3%W(2))+V3%W(3))+COUP2*(+CI*(V3%W(2))+V3%W(3)))",
+            "2,1": "(-1Q0)*(COUP1*(+CI*(V3%W(2))-V3%W(3))+COUP2*(+CI*(V3%W(2))-V3%W(3)))",
+            "2,2": "(COUP1*(-CI*(V3%W(1))+CI*(V3%W(4)))+COUP2*(-CI*(V3%W(1))+CI*(V3%W(4))))",
+            "3,3": "4Q0*COUP2*(-CI*(V3%W(1))+CI*(V3%W(4)))",
+            "3,4": "4Q0*COUP2*(+CI*(V3%W(2))+V3%W(3))",
+            "4,3": "4Q0*COUP2*(+CI*(V3%W(2))-V3%W(3))",
+            "4,4": "-4Q0*COUP2*(+CI*(V3%W(1)+V3%W(4)))"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 24,
+            "original_after_literal_zeros": 48
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 32,
+            "original_after_literal_zeros": 48
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-3/Source/DHELAS/MP_FFV2_5L1_2.f",
+          "source_sha256": "8d16469933d64a691359d88b400a20e513cb95de0ea9b90f5fdee6e894a2cbd7",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_FFV2_5L2_1": {
+          "b0_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            2,
+            2,
+            2,
+            2
+          ],
+          "h_source_expressions": {
+            "1,1": "4Q0*COUP2*(+CI*(V3%W(1))-CI*(V3%W(4)))",
+            "1,2": "4Q0*COUP2*(-CI*(V3%W(2))+V3%W(3))",
+            "2,1": "-4Q0*COUP2*(+CI*(V3%W(2))+V3%W(3))",
+            "2,2": "4Q0*COUP2*(+CI*(V3%W(1)+V3%W(4)))",
+            "3,3": "(COUP1*(+CI*(V3%W(1)+V3%W(4)))+COUP2*(+CI*(V3%W(1)+V3%W(4))))",
+            "3,4": "(COUP1*(+CI*(V3%W(2))-V3%W(3))+COUP2*(+CI*(V3%W(2))-V3%W(3)))",
+            "4,3": "(COUP1*(+CI*(V3%W(2))+V3%W(3))+COUP2*(+CI*(V3%W(2))+V3%W(3)))",
+            "4,4": "(COUP1*(+CI*(V3%W(1))-CI*(V3%W(4)))+COUP2*(+CI*(V3%W(1))-CI*(V3%W(4))))"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 24,
+            "original_after_literal_zeros": 48
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 32,
+            "original_after_literal_zeros": 48
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-3/Source/DHELAS/MP_FFV2_5L2_1.f",
+          "source_sha256": "8deac703f516e25b02fa3d08b89f4c3ab570609242da6dee518f3853ae6b12d0",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_VVV1L2P0_1": {
+          "passed": false,
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-3/Source/DHELAS/MP_VVV1L2P0_1.f",
+          "source_sha256": "f958179785642fa710e26557e838626f2ff006077e61a582332021fa164205d6",
+          "unmatched": {
+            "q_index": 2,
+            "row": 1
+          }
+        }
+      }
+    },
+    "qcd-4": {
+      "all_selected_factored_products": 1899780,
+      "all_selected_static_products": 3226340,
+      "by_kind_rank": {
+        "TERMINAL:2": {
+          "calls": 402,
+          "factored_products": 203040,
+          "original_products": 309600
+        },
+        "TERMINAL:3": {
+          "calls": 286,
+          "factored_products": 316960,
+          "original_products": 474880
+        },
+        "TERMINAL:4": {
+          "calls": 122,
+          "factored_products": 273280,
+          "original_products": 409920
+        },
+        "UPDATE:2": {
+          "calls": 244,
+          "factored_products": 351360,
+          "original_products": 705600
+        },
+        "UPDATE:3": {
+          "calls": 170,
+          "factored_products": 571200,
+          "original_products": 1142400
+        }
+      },
+      "matched_factored_products": 1715840,
+      "matched_static_products": 3042400,
+      "scope": "Literal vertex zeros removed; before runtime A/B zero skips. Not timings.",
+      "static_saved_fraction": 0.4111655932108829,
+      "vertex_proofs": {
+        "MP_FFS1L1_2": {
+          "b0_nonzero_by_row": [
+            3,
+            3,
+            3,
+            3
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "h_source_expressions": {
+            "1,3": "COUP*-CI*S3%W(1)",
+            "2,4": "COUP*-CI*S3%W(1)",
+            "3,1": "COUP*-CI*S3%W(1)",
+            "4,2": "COUP*-CI*S3%W(1)"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 16,
+            "original_after_literal_zeros": 28
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 20,
+            "original_after_literal_zeros": 28
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-4/Source/DHELAS/MP_FFS1L1_2.f",
+          "source_sha256": "b7767a2dadb524a46b46126455e922f28fc87aaa73bc7770b4d506e8f7897a9c",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_FFS1L2_1": {
+          "b0_nonzero_by_row": [
+            3,
+            3,
+            3,
+            3
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "h_source_expressions": {
+            "1,3": "COUP*CI*S3%W(1)",
+            "2,4": "COUP*CI*S3%W(1)",
+            "3,1": "COUP*CI*S3%W(1)",
+            "4,2": "COUP*CI*S3%W(1)"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 16,
+            "original_after_literal_zeros": 28
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 20,
+            "original_after_literal_zeros": 28
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-4/Source/DHELAS/MP_FFS1L2_1.f",
+          "source_sha256": "7ae6ed2c97c330e83a1f1e722a69220cd68d9679fa5c05d5ac4d2eb2123d79a1",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_FFV1L1_2": {
+          "b0_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            2,
+            2,
+            2,
+            2
+          ],
+          "h_source_expressions": {
+            "1,1": "COUP*(-1Q0)*(+CI*(V3%W(1)+V3%W(4)))",
+            "1,2": "COUP*(-1Q0)*(+CI*(V3%W(2))+V3%W(3))",
+            "2,1": "COUP*(-1Q0)*(+CI*(V3%W(2))-V3%W(3))",
+            "2,2": "COUP*(-CI*(V3%W(1))+CI*(V3%W(4)))",
+            "3,3": "COUP*(-CI*(V3%W(1))+CI*(V3%W(4)))",
+            "3,4": "COUP*(+CI*(V3%W(2))+V3%W(3))",
+            "4,3": "COUP*(+CI*(V3%W(2))-V3%W(3))",
+            "4,4": "COUP*(-1Q0)*(+CI*(V3%W(1)+V3%W(4)))"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 24,
+            "original_after_literal_zeros": 48
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 32,
+            "original_after_literal_zeros": 48
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-4/Source/DHELAS/MP_FFV1L1_2.f",
+          "source_sha256": "ea0786b66707e3ea194f246b433d30c06aa5fb63c3c1c4b929e2ce8eae27856f",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_FFV1L2_1": {
+          "b0_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            2,
+            2,
+            2,
+            2
+          ],
+          "h_source_expressions": {
+            "1,1": "COUP*(+CI*(V3%W(1))-CI*(V3%W(4)))",
+            "1,2": "COUP*(-1Q0)*(+CI*(V3%W(2))-V3%W(3))",
+            "2,1": "COUP*(-1Q0)*(+CI*(V3%W(2))+V3%W(3))",
+            "2,2": "COUP*(+CI*(V3%W(1)+V3%W(4)))",
+            "3,3": "COUP*(+CI*(V3%W(1)+V3%W(4)))",
+            "3,4": "COUP*(+CI*(V3%W(2))-V3%W(3))",
+            "4,3": "COUP*(+CI*(V3%W(2))+V3%W(3))",
+            "4,4": "COUP*(+CI*(V3%W(1))-CI*(V3%W(4)))"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 24,
+            "original_after_literal_zeros": 48
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 32,
+            "original_after_literal_zeros": 48
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-4/Source/DHELAS/MP_FFV1L2_1.f",
+          "source_sha256": "74c74af6be618b97649aabfcb5930d88396d92c10087ea2ae30c0a7e62c984f5",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_FFV1L3_1": {
+          "b0_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "h_source_expressions": {
+            "1,1": "COUP*CI*F2%W(1)",
+            "1,2": "COUP*-CI*F2%W(2)",
+            "1,3": "COUP*F2%W(2)",
+            "1,4": "COUP*-CI*F2%W(1)",
+            "2,1": "COUP*CI*F2%W(2)",
+            "2,2": "COUP*-CI*F2%W(1)",
+            "2,3": "COUP*-F2%W(1)",
+            "2,4": "COUP*CI*F2%W(2)",
+            "3,1": "COUP*CI*F2%W(3)",
+            "3,2": "COUP*CI*F2%W(4)",
+            "3,3": "COUP*-F2%W(4)",
+            "3,4": "COUP*CI*F2%W(3)",
+            "4,1": "COUP*CI*F2%W(4)",
+            "4,2": "COUP*CI*F2%W(3)",
+            "4,3": "COUP*F2%W(3)",
+            "4,4": "COUP*-CI*F2%W(4)"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 32,
+            "original_after_literal_zeros": 80
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 48,
+            "original_after_literal_zeros": 80
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-4/Source/DHELAS/MP_FFV1L3_1.f",
+          "source_sha256": "88660bf3b27d20e8ae697aedf79cc952e2c3f78abdf3552a2795ca9a590d386a",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_FFV1L3_2": {
+          "b0_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "h_source_expressions": {
+            "1,1": "COUP*-CI*F1%W(1)",
+            "1,2": "COUP*-CI*F1%W(2)",
+            "1,3": "COUP*-F1%W(2)",
+            "1,4": "COUP*-CI*F1%W(1)",
+            "2,1": "COUP*-CI*F1%W(2)",
+            "2,2": "COUP*-CI*F1%W(1)",
+            "2,3": "COUP*F1%W(1)",
+            "2,4": "COUP*CI*F1%W(2)",
+            "3,1": "COUP*-CI*F1%W(3)",
+            "3,2": "COUP*CI*F1%W(4)",
+            "3,3": "COUP*F1%W(4)",
+            "3,4": "COUP*CI*F1%W(3)",
+            "4,1": "COUP*-CI*F1%W(4)",
+            "4,2": "COUP*CI*F1%W(3)",
+            "4,3": "COUP*-F1%W(3)",
+            "4,4": "COUP*-CI*F1%W(4)"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 32,
+            "original_after_literal_zeros": 80
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 48,
+            "original_after_literal_zeros": 80
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-4/Source/DHELAS/MP_FFV1L3_2.f",
+          "source_sha256": "782cb1c98d6783d747e042a41b69e8a509c25d19fa540819dd4e4c16a7b7d225",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_FFV2_3L1_2": {
+          "b0_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            2,
+            2,
+            2,
+            2
+          ],
+          "h_source_expressions": {
+            "1,1": "(-1Q0)*(COUP1*(+CI*(V3%W(1)+V3%W(4)))+COUP2*(+CI*(V3%W(1)+V3%W(4))))",
+            "1,2": "(-1Q0)*(COUP1*(+CI*(V3%W(2))+V3%W(3))+COUP2*(+CI*(V3%W(2))+V3%W(3)))",
+            "2,1": "(-1Q0)*(COUP1*(+CI*(V3%W(2))-V3%W(3))+COUP2*(+CI*(V3%W(2))-V3%W(3)))",
+            "2,2": "(COUP1*(-CI*(V3%W(1))+CI*(V3%W(4)))+COUP2*(-CI*(V3%W(1))+CI*(V3%W(4))))",
+            "3,3": "2Q0*COUP2*(+CI*(V3%W(1))-CI*(V3%W(4)))",
+            "3,4": "-2Q0*COUP2*(+CI*(V3%W(2))+V3%W(3))",
+            "4,3": "2Q0*COUP2*(-CI*(V3%W(2))+V3%W(3))",
+            "4,4": "2Q0*COUP2*(+CI*(V3%W(1)+V3%W(4)))"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 24,
+            "original_after_literal_zeros": 48
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 32,
+            "original_after_literal_zeros": 48
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-4/Source/DHELAS/MP_FFV2_3L1_2.f",
+          "source_sha256": "fa77e55a7dc1bc519606175509ade0c1ec2a0cc5730fc49188abbe8b55b5240e",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_FFV2_3L2_1": {
+          "b0_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            2,
+            2,
+            2,
+            2
+          ],
+          "h_source_expressions": {
+            "1,1": "2Q0*COUP2*(-CI*(V3%W(1))+CI*(V3%W(4)))",
+            "1,2": "2Q0*COUP2*(+CI*(V3%W(2))-V3%W(3))",
+            "2,1": "2Q0*COUP2*(+CI*(V3%W(2))+V3%W(3))",
+            "2,2": "-2Q0*COUP2*(+CI*(V3%W(1)+V3%W(4)))",
+            "3,3": "(COUP1*(+CI*(V3%W(1)+V3%W(4)))+COUP2*(+CI*(V3%W(1)+V3%W(4))))",
+            "3,4": "(COUP1*(+CI*(V3%W(2))-V3%W(3))+COUP2*(+CI*(V3%W(2))-V3%W(3)))",
+            "4,3": "(COUP1*(+CI*(V3%W(2))+V3%W(3))+COUP2*(+CI*(V3%W(2))+V3%W(3)))",
+            "4,4": "(COUP1*(+CI*(V3%W(1))-CI*(V3%W(4)))+COUP2*(+CI*(V3%W(1))-CI*(V3%W(4))))"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 24,
+            "original_after_literal_zeros": 48
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 32,
+            "original_after_literal_zeros": 48
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-4/Source/DHELAS/MP_FFV2_3L2_1.f",
+          "source_sha256": "ade64a50bc5e6d8a040145bc2d6a707365c043171983c0caa7111e8fc14264f9",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_FFV2_5L1_2": {
+          "b0_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            2,
+            2,
+            2,
+            2
+          ],
+          "h_source_expressions": {
+            "1,1": "(-1Q0)*(COUP1*(+CI*(V3%W(1)+V3%W(4)))+COUP2*(+CI*(V3%W(1)+V3%W(4))))",
+            "1,2": "(-1Q0)*(COUP1*(+CI*(V3%W(2))+V3%W(3))+COUP2*(+CI*(V3%W(2))+V3%W(3)))",
+            "2,1": "(-1Q0)*(COUP1*(+CI*(V3%W(2))-V3%W(3))+COUP2*(+CI*(V3%W(2))-V3%W(3)))",
+            "2,2": "(COUP1*(-CI*(V3%W(1))+CI*(V3%W(4)))+COUP2*(-CI*(V3%W(1))+CI*(V3%W(4))))",
+            "3,3": "4Q0*COUP2*(-CI*(V3%W(1))+CI*(V3%W(4)))",
+            "3,4": "4Q0*COUP2*(+CI*(V3%W(2))+V3%W(3))",
+            "4,3": "4Q0*COUP2*(+CI*(V3%W(2))-V3%W(3))",
+            "4,4": "-4Q0*COUP2*(+CI*(V3%W(1)+V3%W(4)))"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 24,
+            "original_after_literal_zeros": 48
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 32,
+            "original_after_literal_zeros": 48
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-4/Source/DHELAS/MP_FFV2_5L1_2.f",
+          "source_sha256": "76026732cdd7590d27b51e506e594d9fdeb8b34a01901b8c31a4639d5c4ba08d",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_FFV2_5L2_1": {
+          "b0_nonzero_by_row": [
+            4,
+            4,
+            4,
+            4
+          ],
+          "coefficient_identities_checked": 64,
+          "h_nonzero_by_row": [
+            2,
+            2,
+            2,
+            2
+          ],
+          "h_source_expressions": {
+            "1,1": "4Q0*COUP2*(+CI*(V3%W(1))-CI*(V3%W(4)))",
+            "1,2": "4Q0*COUP2*(-CI*(V3%W(2))+V3%W(3))",
+            "2,1": "-4Q0*COUP2*(+CI*(V3%W(2))+V3%W(3))",
+            "2,2": "4Q0*COUP2*(+CI*(V3%W(1)+V3%W(4)))",
+            "3,3": "(COUP1*(+CI*(V3%W(1)+V3%W(4)))+COUP2*(+CI*(V3%W(1)+V3%W(4))))",
+            "3,4": "(COUP1*(+CI*(V3%W(2))-V3%W(3))+COUP2*(+CI*(V3%W(2))-V3%W(3)))",
+            "4,3": "(COUP1*(+CI*(V3%W(2))+V3%W(3))+COUP2*(+CI*(V3%W(2))+V3%W(3)))",
+            "4,4": "(COUP1*(+CI*(V3%W(1))-CI*(V3%W(4)))+COUP2*(+CI*(V3%W(1))-CI*(V3%W(4))))"
+          },
+          "passed": true,
+          "products_per_coefficient_full_per_cut_component": {
+            "factored_with_original_b0": 24,
+            "original_after_literal_zeros": 48
+          },
+          "products_per_coefficient_terminal_all_diagonals": {
+            "factored_with_original_b0": 32,
+            "original_after_literal_zeros": 48
+          },
+          "q_rows": [
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  0,
+                  -1
+                ],
+                "source_row": 4
+              },
+              {
+                "phase": [
+                  0,
+                  1
+                ],
+                "source_row": 3
+              }
+            ],
+            [
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 1
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 2
+              },
+              {
+                "phase": [
+                  -1,
+                  0
+                ],
+                "source_row": 3
+              },
+              {
+                "phase": [
+                  1,
+                  0
+                ],
+                "source_row": 4
+              }
+            ]
+          ],
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-4/Source/DHELAS/MP_FFV2_5L2_1.f",
+          "source_sha256": "2f527a31483edce033f30f287efb3cceb71c40645d7ae2cd8e6035a82fdaaf55",
+          "terminal_required_u_rows": [
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              4
+            ]
+          ],
+          "terminal_row_multiplicities": [
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "1": 2,
+              "2": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            },
+            {
+              "3": 2,
+              "4": 2
+            }
+          ]
+        },
+        "MP_VVV1L2P0_1": {
+          "passed": false,
+          "source": ".benchmark-work/policy-v2/generation-abi3-terminal-fixed/outputs/candidate/qcd-4/Source/DHELAS/MP_VVV1L2P0_1.f",
+          "source_sha256": "3b569963fab2d2e54c70d83d12e5cc0ab8e32b6414964f3f5d24b518b3553e33",
+          "unmatched": {
+            "q_index": 2,
+            "row": 1
+          }
+        }
+      }
+    }
+  },
+  "inventory": {
+    "path": "docs/benchmarkfolder/experiments/symmetric-accumulation/final-inventory.json",
+    "sha256": "8b33b0585c1e7676fd0655c178520668425a90a108e24cd9d07b6a355cd603b8"
+  },
+  "numerical_evaluation": false,
+  "schema": "symbolic-q-row-factorization-v1",
+  "script_sha256": "8f3721ad6752682d47777fab931dd76aedcd2a9543a105f74bb997b7a1acf582",
+  "source_revision": "b44d20e725f1ec68589df20284e4ce9116e9e2ab",
+  "trace": {
+    "path": "docs/benchmarkfolder/experiments/symmetric-static-owner/qcd3-operation-trace-v1/operation-summary.json",
+    "sha256": "8c876718b55aa8ea7ed35c0d60f2d5a38805296cdabc24548505e2d3ec6b56b4"
+  }
+}

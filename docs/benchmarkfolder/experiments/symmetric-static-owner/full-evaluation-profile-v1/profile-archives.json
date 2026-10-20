@@ -1,0 +1,21 @@
+{
+  "artifacts": {
+    "perf.data.gz": {
+      "compressed_sha256": "1631eea676faa4cc7bedcde05bd733157f062bc77f750b9df1e3b4679aa0a745",
+      "compressed_bytes": 6334905,
+      "decompressed_sha256": "2ac93bf84078e6a52215c257b2e6c551599a1c064b2100e8356cc1301a4dc712",
+      "decompressed_bytes": 107742352,
+      "source": ".benchmark-work/experiments/symmetric-static-owner/full-evaluation-profile-v1/perf.data",
+      "gzip_mtime": 0
+    },
+    "perf-recovered.data.gz": {
+      "compressed_sha256": "c6c47c3d693f21061fb19bb8c195a37caec47dc6e173dc20219fa809b79c1531",
+      "compressed_bytes": 6334904,
+      "decompressed_sha256": "e3c821c0e4386b65bb8c289aabc797d4475996936f332a5dcbd2002032eb5bd8",
+      "decompressed_bytes": 107742352,
+      "source": ".benchmark-work/experiments/symmetric-static-owner/full-evaluation-profile-v1/perf-recovered.data",
+      "gzip_mtime": 0
+    }
+  },
+  "scope": "Lossless deterministic gzip of immutable failed-finalization raw profile and separately derived header recovery. Original uncompressed work artifacts remain untouched."
+}

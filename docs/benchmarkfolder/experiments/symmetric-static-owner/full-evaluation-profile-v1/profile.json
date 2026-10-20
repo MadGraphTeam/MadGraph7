@@ -1,0 +1,36 @@
+{
+  "complete": false,
+  "acceptance_eligible": false,
+  "cpu": 2,
+  "loops": 5,
+  "point_count": 100,
+  "points_sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41",
+  "executable_sha256": "902cc085f24cadac66e509e7d27aee00216209244d920dc84323ffd2709860c6",
+  "polynomial_sha256": "597adf764b7a50f9b15a93cb35fbfb772a91ef1a3aa1ff3326bf3b9f723dddc3",
+  "original_polynomial_sha256": "597adf764b7a50f9b15a93cb35fbfb772a91ef1a3aa1ff3326bf3b9f723dddc3",
+  "generated_source_sha256": "d86e9ed4f75645fe7d1ca47e81d88d073b1815f8215f1d191ab2128fe0215223",
+  "changed_sources": [
+    "SubProcesses/P0_uux_zgg/check_sa.f"
+  ],
+  "perf_executable_sha256": "cbb62de1390da9ef35688d76ad909a24597eaa885033380b8cf21679c12a755b",
+  "inputs_sha256": {
+    "Cards/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "Cards/MadLoopParams.dat": "fc29c013102bc648e859c423d25ccecfb4a0ef3c13899e906cdba37879078060",
+    "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1"
+  },
+  "scope": "Diagnostic user-space cycle samples during complete full-point timed traversals only. Initialization and untimed values finish before the driver blocks for perf attachment. The sole source change is that pre-timer stdin gate; all original DP/QP/reduction bodies remain unchanged. No performance acceptance claim.",
+  "perf_command": [
+    "/nix/store/7ccpnz8xkn5qsyw8nkz998vjmb6jpl49-perf-linux-6.19.6/bin/perf",
+    "record",
+    "-F",
+    "199",
+    "-e",
+    "cycles:u",
+    "--call-graph",
+    "dwarf,16384",
+    "-p",
+    "873019",
+    "-o",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/symmetric-static-owner/full-evaluation-profile-v1/perf.data"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "analysis_sha256": "f5bc8c65680a028e79103f788fefc2356962350a9a7cffd8ffacbfad49510f42",
+  "checks": [
+    {
+      "exact_real": "100000000000000000000000000001/1000000000000000000000000000000",
+      "input": "0.100000000000000000000000000001Q0",
+      "passed": true
+    },
+    {
+      "exact_real": "987654312098765431209876543121/8000",
+      "input": "123456789012345678901234567890.125Q-3",
+      "passed": true
+    },
+    {
+      "rejected": true,
+      "unsupported_unary": "~1"
+    }
+  ],
+  "maps_and_counts_identical": true,
+  "parser_sha256": "ce7c060c6c3f6a556ad1b518800030091dcc226a422bd17c1ef3ec5afe6d039a",
+  "previous_analysis_sha256": "e2ae26de5587fdf9ac997ca3cf098b65fd30d934b356a0566d84d6563d62f5e9",
+  "source_only": true
+}

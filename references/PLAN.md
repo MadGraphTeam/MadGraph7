@@ -491,3 +491,17 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   16.655% fewer complex multiplications in the selected helpers after zero
   skips; profiling and pure-real/imaginary-factor specialization are being
   investigated separately. No experimental sharing kernel is in production.
+- The subsequent static-owner experiment passes 72,000 arithmetic/flag checks,
+  forty trap controls and 4,000 changing-state calls. Its small extra kernel
+  gain does not justify a production port. A complete QCD3 diagnostic profile
+  attributes 18.33% of sampled cycles to the targeted QP rank categories, an
+  upper bound for the selected vertices. The recorder's header-finalization
+  failure, unchanged event bytes and separately recovered profile are retained.
+- A distinct changed-rounding factorization now has exact source proofs for
+  sixteen fermion/scalar maps (1,024 coefficient identities). It contracts a
+  vertex row once before distributing it to four momentum coefficients, while
+  preserving the original constant term. Static selected-product counts fall
+  by 38.59% for QCD3 and 41.12% for QCD4 before dynamic zeros and runtime guards.
+  Retained source snapshots allow independent offline proof verification.
+  Compiled oracle, stability and performance validation are still required;
+  the factorization is not part of production.

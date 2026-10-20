@@ -1,0 +1,731 @@
+{
+  "complete": true,
+  "acceptance_eligible": false,
+  "samples": 6476,
+  "total_sampled_cycle_period": 98811037616,
+  "timed_status_counts": {
+    "216": 490,
+    "328": 10
+  },
+  "all_printed_values_accuracy_statuses_exact": true,
+  "recovered_header_only": true,
+  "original_raw_preserved": true,
+  "record_types": {
+    "79": 1,
+    "69": 1,
+    "78": 1,
+    "73": 1,
+    "74": 1,
+    "3": 1,
+    "10": 85,
+    "82": 1,
+    "9": 6476,
+    "68": 411,
+    "4": 1
+  },
+  "raw_sha256": "2ac93bf84078e6a52215c257b2e6c551599a1c064b2100e8356cc1301a4dc712",
+  "recovered_sha256": "e3c821c0e4386b65bb8c289aabc797d4475996936f332a5dcbd2002032eb5bd8",
+  "raw_data_offset": 3336,
+  "original_header_data_size": 0,
+  "recovered_header_data_size": 107739016,
+  "targeted_QP_rank_category_percent": 18.327359629980876,
+  "owner_categories": [
+    {
+      "name": "ml5_0_update_wl_2_1_",
+      "samples": 1141,
+      "percent_sampled_cycles": 17.62155147046098,
+      "top_leaves": [
+        {
+          "name": "ml5_0_update_wl_2_1_",
+          "percent_all_cycles": 15.321809586531971
+        },
+        {
+          "name": "__memset_avx512_unaligned_erms",
+          "percent_all_cycles": 2.284239016668844
+        },
+        {
+          "name": "[unknown] ([unknown])",
+          "percent_all_cycles": 0.015502867260164812
+        }
+      ]
+    },
+    {
+      "name": "other",
+      "samples": 1032,
+      "percent_sampled_cycles": 15.856229036768058,
+      "top_leaves": [
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 3.2282576430342824
+        },
+        {
+          "name": "ml5_0_sloopmatrix_retry_impl_",
+          "percent_all_cycles": 2.1298848061678672
+        },
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 1.6209501910347797
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 1.567347655044991
+        },
+        {
+          "name": "ffv1l2_1_",
+          "percent_all_cycles": 1.2524590813522705
+        },
+        {
+          "name": "ffv1l1_2_",
+          "percent_all_cycles": 0.8170185502325674
+        },
+        {
+          "name": "vvv1l2p0_1_",
+          "percent_all_cycles": 0.41721889168102916
+        },
+        {
+          "name": "ml5_0_ml5sqsoindex_",
+          "percent_all_cycles": 0.306728401312652
+        }
+      ]
+    },
+    {
+      "name": "reduction",
+      "samples": 777,
+      "percent_sampled_cycles": 12.0122724832899,
+      "top_leaves": [
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 3.4513806435808334
+        },
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 2.027118827336007
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 1.0049949347351057
+        },
+        {
+          "name": "ninja::(anonymous namespace)::nlr_ten(unsigned int, unsigned int, std::complex<double> const*, ninja::ComplexMomentum const&, ninja::ComplexMomentum const&, std::complex<double>*)",
+          "percent_all_cycles": 0.9743451341352019
+        },
+        {
+          "name": "__sfp_handle_exceptions",
+          "percent_all_cycles": 0.5567987658809002
+        },
+        {
+          "name": "ninja::TensorNumerator::t3Expansion(ninja::ComplexMomentum const&, ninja::ComplexMomentum const&, ninja::ComplexMomentum const&, std::complex<double> const&, int, int, unsigned char const*, std::complex<double>*)",
+          "percent_all_cycles": 0.5238102417378019
+        },
+        {
+          "name": "ninja::TensorNumerator::t2Expansion(ninja::ComplexMomentum const&, ninja::ComplexMomentum const&, ninja::ComplexMomentum const&, ninja::ComplexMomentum const&, std::complex<double> const*, int, int, unsigned char const*, std::complex<double>*)",
+          "percent_all_cycles": 0.2930942766996153
+        },
+        {
+          "name": "ninja::cuts::correctbubcoeffs(std::complex<double>*, ninja::ComplexMomentum const&, ninja::ComplexMomentum const&, std::complex<double> const*, ninja::ComplexMomentum const&, ninja::ComplexMomentum const&, ninja::ComplexMomentum const&, ninja::ComplexMomentum const&, std::complex<double> const*, ninja::RealMomentum const&, std::complex<double> const&, int, bool)",
+          "percent_all_cycles": 0.24677820604174638
+        }
+      ]
+    },
+    {
+      "name": "ml5_0_update_wl_3_1_",
+      "samples": 612,
+      "percent_sampled_cycles": 9.447110367646278,
+      "top_leaves": [
+        {
+          "name": "ml5_0_update_wl_3_1_",
+          "percent_all_cycles": 9.061568734655356
+        },
+        {
+          "name": "__memset_avx512_unaligned_erms",
+          "percent_all_cycles": 0.37006465453894766
+        },
+        {
+          "name": "memset@plt",
+          "percent_all_cycles": 0.015476978451973754
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_update_wl_2_1_",
+      "samples": 482,
+      "percent_sampled_cycles": 7.444222513466374,
+      "top_leaves": [
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 3.0041339941554654
+        },
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 2.451097235120851
+        },
+        {
+          "name": "mp_ml5_0_update_wl_2_1_",
+          "percent_all_cycles": 0.6941184310455425
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 0.5546118411687058
+        },
+        {
+          "name": "__sfp_handle_exceptions",
+          "percent_all_cycles": 0.541937555681826
+        },
+        {
+          "name": "__netf2@@GCC_4.3.0",
+          "percent_all_cycles": 0.12308182965615058
+        },
+        {
+          "name": "__memset_avx512_unaligned_erms",
+          "percent_all_cycles": 0.059944291072203976
+        },
+        {
+          "name": "memset@plt",
+          "percent_all_cycles": 0.015297335565629589
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_update_wl_1_1_",
+      "samples": 411,
+      "percent_sampled_cycles": 6.349034436193548,
+      "top_leaves": [
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 2.8568037003822653
+        },
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 2.03715503001059
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 0.7571895721888965
+        },
+        {
+          "name": "mp_ml5_0_update_wl_1_1_",
+          "percent_all_cycles": 0.5270078045569261
+        },
+        {
+          "name": "__sfp_handle_exceptions",
+          "percent_all_cycles": 0.17087832905487016
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_terminal_wl_2_1_",
+      "samples": 399,
+      "percent_sampled_cycles": 6.1612087008528755,
+      "top_leaves": [
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 2.5641802496260104
+        },
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 1.823121623315795
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 0.6308442741209155
+        },
+        {
+          "name": "mp_ml5_0_terminal_wl_2_1_",
+          "percent_all_cycles": 0.464228814985871
+        },
+        {
+          "name": "__sfp_handle_exceptions",
+          "percent_all_cycles": 0.4006322811206861
+        },
+        {
+          "name": "__netf2@@GCC_4.3.0",
+          "percent_all_cycles": 0.20062264781632086
+        },
+        {
+          "name": "__memset_avx512_unaligned_erms",
+          "percent_all_cycles": 0.0622308827875754
+        },
+        {
+          "name": "_gfortrani_get_fpu_except_flags",
+          "percent_all_cycles": 0.015347927079701399
+        }
+      ]
+    },
+    {
+      "name": "ml5_0_update_wl_1_1_",
+      "samples": 318,
+      "percent_sampled_cycles": 4.993863378073647,
+      "top_leaves": [
+        {
+          "name": "ml5_0_update_wl_1_1_",
+          "percent_all_cycles": 4.993863378073647
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_terminal_wl_3_1_",
+      "samples": 306,
+      "percent_sampled_cycles": 4.7219284156616235,
+      "top_leaves": [
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 1.946438370047609
+        },
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 1.3715145065742713
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 0.5411343093855119
+        },
+        {
+          "name": "__sfp_handle_exceptions",
+          "percent_all_cycles": 0.35425740731551514
+        },
+        {
+          "name": "mp_ml5_0_terminal_wl_3_1_",
+          "percent_all_cycles": 0.26244314831282484
+        },
+        {
+          "name": "__netf2@@GCC_4.3.0",
+          "percent_all_cycles": 0.15527304611074777
+        },
+        {
+          "name": "__memset_avx512_unaligned_erms",
+          "percent_all_cycles": 0.07546011943500366
+        },
+        {
+          "name": "_gfortrani_set_fpu_except_flags",
+          "percent_all_cycles": 0.01540750848014048
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_merge_wl_",
+      "samples": 256,
+      "percent_sampled_cycles": 3.9450934491237293,
+      "top_leaves": [
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 1.5124888656750648
+        },
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 1.4769279841705574
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 0.38518730617840413
+        },
+        {
+          "name": "__sfp_handle_exceptions",
+          "percent_all_cycles": 0.29291340925371867
+        },
+        {
+          "name": "mp_ml5_0_merge_wl_",
+          "percent_all_cycles": 0.2775758838459843
+        }
+      ]
+    },
+    {
+      "name": "ml5_0_update_wl_3_0_",
+      "samples": 143,
+      "percent_sampled_cycles": 2.2053498663464537,
+      "top_leaves": [
+        {
+          "name": "ml5_0_update_wl_3_0_",
+          "percent_all_cycles": 2.2053498663464537
+        }
+      ]
+    },
+    {
+      "name": "ml5_0_update_wl_2_0_",
+      "samples": 99,
+      "percent_sampled_cycles": 1.525962740984157,
+      "top_leaves": [
+        {
+          "name": "ml5_0_update_wl_2_0_",
+          "percent_all_cycles": 1.525962740984157
+        }
+      ]
+    },
+    {
+      "name": "ml5_0_create_loop_coefs_",
+      "samples": 74,
+      "percent_sampled_cycles": 1.1418404261522557,
+      "top_leaves": [
+        {
+          "name": "ml5_0_create_loop_coefs_",
+          "percent_all_cycles": 0.8029580461277604
+        },
+        {
+          "name": "ml5_0_ml5soindex_for_born_amp_",
+          "percent_all_cycles": 0.29275456667521044
+        },
+        {
+          "name": "ml5_0_ml5sqsoindex_",
+          "percent_all_cycles": 0.04612781334928472
+        }
+      ]
+    },
+    {
+      "name": "ml5_0_update_wl_0_1_",
+      "samples": 70,
+      "percent_sampled_cycles": 1.0811342950891334,
+      "top_leaves": [
+        {
+          "name": "ml5_0_update_wl_0_1_",
+          "percent_all_cycles": 1.0811342950891334
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_terminal_wl_1_1_",
+      "samples": 61,
+      "percent_sampled_cycles": 0.9441504901765508,
+      "top_leaves": [
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 0.34050686757034815
+        },
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 0.2780579079310374
+        },
+        {
+          "name": "mp_ml5_0_terminal_wl_1_1_",
+          "percent_all_cycles": 0.2007900319507156
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 0.06255773696074492
+        },
+        {
+          "name": "__sfp_handle_exceptions",
+          "percent_all_cycles": 0.031121276268250214
+        },
+        {
+          "name": "__multf3@plt",
+          "percent_all_cycles": 0.015599966736412457
+        },
+        {
+          "name": "__netf2@@GCC_4.3.0",
+          "percent_all_cycles": 0.0155167027590421
+        }
+      ]
+    },
+    {
+      "name": "ml5_0_merge_wl_",
+      "samples": 56,
+      "percent_sampled_cycles": 0.8648595142994657,
+      "top_leaves": [
+        {
+          "name": "ml5_0_merge_wl_",
+          "percent_all_cycles": 0.8648595142994657
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_update_wl_0_1_",
+      "samples": 41,
+      "percent_sampled_cycles": 0.6305454633735298,
+      "top_leaves": [
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 0.27716311821793266
+        },
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 0.21511420194375303
+        },
+        {
+          "name": "mp_ml5_0_update_wl_0_1_",
+          "percent_all_cycles": 0.0919158488679745
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 0.04635229434386957
+        }
+      ]
+    },
+    {
+      "name": "ml5_0_update_wl_1_0_",
+      "samples": 36,
+      "percent_sampled_cycles": 0.5545356836848704,
+      "top_leaves": [
+        {
+          "name": "ml5_0_update_wl_1_0_",
+          "percent_all_cycles": 0.5545356836848704
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_terminal_wl_3_0_",
+      "samples": 33,
+      "percent_sampled_cycles": 0.5079657749882038,
+      "top_leaves": [
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 0.18598802060372446
+        },
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 0.13857649540341205
+        },
+        {
+          "name": "mp_ml5_0_terminal_wl_3_0_",
+          "percent_all_cycles": 0.09229350303394956
+        },
+        {
+          "name": "__sfp_handle_exceptions",
+          "percent_all_cycles": 0.060241677889597764
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 0.03086607805751999
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_create_loop_coefs_",
+      "samples": 30,
+      "percent_sampled_cycles": 0.46487463757350533,
+      "top_leaves": [
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 0.1404047840679038
+        },
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 0.10791353331840109
+        },
+        {
+          "name": "__divtf3",
+          "percent_all_cycles": 0.09262752341058263
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 0.0465307278511516
+        },
+        {
+          "name": "mp_ml5_0_create_loop_coefs_",
+          "percent_all_cycles": 0.031079149395580617
+        },
+        {
+          "name": "__floatsitf",
+          "percent_all_cycles": 0.03080725669362958
+        },
+        {
+          "name": "ml5_0_ml5soindex_for_born_amp_",
+          "percent_all_cycles": 0.01551166283625599
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_update_wl_2_0_",
+      "samples": 28,
+      "percent_sampled_cycles": 0.430760925367591,
+      "top_leaves": [
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 0.2761023166867581
+        },
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 0.07716098812391607
+        },
+        {
+          "name": "mp_ml5_0_update_wl_2_0_",
+          "percent_all_cycles": 0.031034168590730934
+        },
+        {
+          "name": "__sfp_handle_exceptions",
+          "percent_all_cycles": 0.03099792871220728
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 0.015465523253978578
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_terminal_wl_2_0_",
+      "samples": 19,
+      "percent_sampled_cycles": 0.29307256151422945,
+      "top_leaves": [
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 0.12423885323123232
+        },
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 0.06198025694052944
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 0.060457688170584264
+        },
+        {
+          "name": "__sfp_handle_exceptions",
+          "percent_all_cycles": 0.015574221636863091
+        },
+        {
+          "name": "__netf2@@GCC_4.3.0",
+          "percent_all_cycles": 0.015415309228099382
+        },
+        {
+          "name": "mp_ml5_0_terminal_wl_2_0_",
+          "percent_all_cycles": 0.015406232306920946
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_terminal_wl_0_1_",
+      "samples": 15,
+      "percent_sampled_cycles": 0.23204357684315322,
+      "top_leaves": [
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 0.10838323286938005
+        },
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 0.07741928011857342
+        },
+        {
+          "name": "mp_ml5_0_terminal_wl_0_1_",
+          "percent_all_cycles": 0.015440316555819214
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 0.01543679265799969
+        },
+        {
+          "name": "__sfp_handle_exceptions",
+          "percent_all_cycles": 0.01536395464138084
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_update_wl_3_0_",
+      "samples": 11,
+      "percent_sampled_cycles": 0.17064937588783716,
+      "top_leaves": [
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 0.07817019319255966
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 0.04605851744707378
+        },
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 0.03093510577106862
+        },
+        {
+          "name": "mp_ml5_0_update_wl_3_0_",
+          "percent_all_cycles": 0.015485559477135083
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_update_wl_1_0_",
+      "samples": 11,
+      "percent_sampled_cycles": 0.17037991307636993,
+      "top_leaves": [
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 0.09297024726833225
+        },
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 0.046350517214469485
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 0.03105914859356819
+        }
+      ]
+    },
+    {
+      "name": "ml5_0_update_wl_0_0_",
+      "samples": 6,
+      "percent_sampled_cycles": 0.09048843039931993,
+      "top_leaves": [
+        {
+          "name": "ml5_0_update_wl_0_0_",
+          "percent_all_cycles": 0.09048843039931993
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_terminal_wl_1_0_",
+      "samples": 5,
+      "percent_sampled_cycles": 0.0770572588215295,
+      "top_leaves": [
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 0.030829434377953834
+        },
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 0.015522380262421634
+        },
+        {
+          "name": "mp_ml5_0_terminal_wl_1_0_",
+          "percent_all_cycles": 0.015386527018453408
+        },
+        {
+          "name": "__sfp_handle_exceptions",
+          "percent_all_cycles": 0.01531891716270063
+        }
+      ]
+    },
+    {
+      "name": "mp_ml5_0_update_wl_0_0_",
+      "samples": 4,
+      "percent_sampled_cycles": 0.06181481388483024,
+      "top_leaves": [
+        {
+          "name": "__addtf3",
+          "percent_all_cycles": 0.030835889122437732
+        },
+        {
+          "name": "__subtf3",
+          "percent_all_cycles": 0.015555940278387533
+        },
+        {
+          "name": "__multf3",
+          "percent_all_cycles": 0.015422984484004976
+        }
+      ]
+    }
+  ],
+  "main_callsite_periods": {
+    "0x1ed5": 2019,
+    "0x20b7": 97743821075
+  },
+  "evidence_sha256": {
+    "timing.dat": "5f79effcb892dd5afd19582dcc42893ea9f4eef2c7eece68673e3b79b4d2c180",
+    "profile_denominator.py": "3b24657ab47342428eedf4a7060a09d5f7b63fc56624d8129d12ba84546713b8",
+    "perf-inclusive-recovered-no-inline.txt": "0c7ffce80aa21e19788d6874bbdaebaa245176c4b87dbdcef0ccb79d2e9fe1f7",
+    "values.dat": "d2428d4be06268526080a0712be0e2f2cce91ee87be6f6c5dfc7585f3bb014a5",
+    "driver.patch": "4772dec95040f0e84d52fd7c769f84c71276a8e7dbe48ebdfce474b563122b86",
+    "run.log": "51b2f710cee65015d7d2107735e15c48e2d5fe8d11b43fa69497cc4cd3227b27",
+    "dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "timed_status.dat": "ddbaee0b5a5c1c83e6bf3b9b10c8452a4525a27ff8dddd337336500e75397fcd",
+    "perf.log": "d6744a8fc0498899b8f01173fc69b6addd4226601de4c670d8b5ec21f9f01e87",
+    "perf-flat-recovered.txt": "ae5aac144d583da0e720ab694ae5da32da8bd809a61bcbc98770c097dd4d925f",
+    "build.log": "e945cf1585c19062596336039992b745669cad1c3d30f521201b42e89eb91b71",
+    "check_sa.f": "e079c732c7c6b5de6b5e99cbd2fe3504e8da7cea655b8b73841f056d84fa7821",
+    "generated-sources.json": "0d332544520ec26040826b74d50f283609314cacf71dbc077a871aa2af8bda7f",
+    "perf-flat-recovered-no-inline.txt": "856d3c285e07ec55ecb718ec118394eb7fe1ac95b56f7a145ff71410379e1635",
+    "perf-script-recovered-no-inline.txt": "f8bb883be97ba7a16946e7442b0229db29b0d4ca405339be282ebca49f199ebe",
+    "recovery.json": "4a227d368edd550b467d1487d5a04f6b5e205b783b7863ea722a6796c04bde90",
+    "profile.json": "a4d2d8c58e1f9a4c48287eaf740e93f048664bf2b822f83295bbae362b8d25b2"
+  },
+  "analyzer_sha256": "ace4a170f06a477f9105e340dbdf6a0eb2952e649c8545a076737751494f92c5",
+  "limitations": "Original recorder finalization exceeded its30-second wait after numerical completion; failure is retained in profile.json and the immutable original raw stream. Recovery changes only header data length and clears absent optional feature sections. All6980 event records, including6476 samples and target EXIT, are complete with no trailing bytes. Decoding disables costly inline source lookup; symbols and DWARF callchains remain. Rank categories include every vertex using those original routines, so their18.3% is an upper bound for the selected sharing vertices. Sampling includes a negligible pre-timer stdin-release tail and post-loop output; every raw sample is retained. This is a diagnostic concurrent-host profile, not acceptance timing or an exact stage-time decomposition."
+}
