@@ -258,19 +258,32 @@ def shifts(key: FamilyKey) -> tuple[int, ...]:
 class Relabelling:
     """Exact affine re-test frame of a family (design §10.2, addendum C.2).
 
-    ``frame`` reads the family key from another cut and, if reflected, with the
-    loop direction reversed. Propagator i of the new frame is propagator
-    ``propagators[i]`` of the key's frame, and q = sign * q' - V(shift_mask)
-    maps the new loop momentum q' to the old one.
+    ``source`` is the frame, a reading of the canonical key, in which the
+    family polynomial is produced (the B-trie frame). ``frame`` reads the
+    source reading from another cut and, if reflected, with the loop direction
+    reversed. Propagator i of the new frame is propagator ``propagators[i]`` of
+    the source frame, and q = sign * q' - V(shift_mask), with V the shifts of
+    the source reading, maps the new loop momentum q' to the source one.
     """
 
+    source: FamilyFrame
     frame: FamilyFrame
     propagators: tuple[int, ...]
     shift_mask: int
     sign: int
 
+    def apply(self, key: FamilyKey) -> FamilyKey:
+        """The re-test reading of the canonical key."""
+        return self.frame.apply(self.source.apply(key))
 
-def relabelling(key: FamilyKey, frame: FamilyFrame) -> Relabelling:
+
+KEY_FRAME = FamilyFrame(0, False)
+
+
+def relabelling(
+    key: FamilyKey, frame: FamilyFrame, source: FamilyFrame = KEY_FRAME
+) -> Relabelling:
+    """The affine map from the ``source`` reading of ``key`` to ``frame`` of it."""
     count = len(key)
     if frame.reflected:
         # Reading backwards from position ``start``, the propagator following
@@ -281,13 +294,20 @@ def relabelling(key: FamilyKey, frame: FamilyFrame) -> Relabelling:
     # The new loop momentum flows through the old propagator propagators[-1]:
     # q' = sign * (q + V_anchor), with V_{N-1} = 0 by momentum conservation.
     anchor = propagators[-1]
-    shift_mask = shifts(key)[anchor] if anchor != count - 1 else 0
-    return Relabelling(frame, propagators, shift_mask, -1 if frame.reflected else 1)
+    shift_mask = shifts(source.apply(key))[anchor] if anchor != count - 1 else 0
+    return Relabelling(
+        source, frame, propagators, shift_mask, -1 if frame.reflected else 1
+    )
 
 
-def default_relabelling(key: FamilyKey) -> Relabelling:
-    """Reversed loop direction with the cut moved by N // 2 (k_f != 0)."""
-    return relabelling(key, FamilyFrame(len(key) // 2, True))
+def retest_relabelling(key: FamilyKey, source: FamilyFrame) -> Relabelling:
+    """Reversed loop direction with the cut moved by N // 2 (k_f != 0).
+
+    Taken relative to the production frame ``source``, so the map always has
+    sign -1 and never repeats the primary reduction, whatever frame the cost
+    policy picked.
+    """
+    return relabelling(key, FamilyFrame(len(key) // 2, True), source)
 
 
 @dataclass(frozen=True, slots=True)

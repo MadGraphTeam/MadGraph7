@@ -18,6 +18,7 @@ import pytest
 
 from pyamplicol.loops.v2 import families as v2_families
 from pyamplicol.loops.v2.families import (
+    FamilyFrame,
     LoopOrderSelection,
     MassId,
     ModelBlockTable,
@@ -266,6 +267,18 @@ def test_schedules_are_projections_of_one_skeleton_set(control):
     )
     total += sum(record["work"] for record in shapes)
     assert total == sum(s.trie.cost(rows) for s in plan.schedules.values())
+    # A projected view has no interned contents: species fields are absent.
+    spins = SkeletonView(
+        catalogue, colour, classes=lambda _s: lambda n: catalogue.species(n).spin
+    )
+    projected = build_schedules(
+        families, catalogue, colour, policy=cheapest(rows), view=spins
+    )
+    assert all(
+        record["loop_in"] is record["vertex_templates"] is None
+        for record in trie_shapes(projected, rows)
+    )
+    assert all(isinstance(record["vertex_templates"], int) for record in shapes)
     # Positions only request block currents the block table provides.
     table = ModelBlockTable(model, ["u", "u~"], ["d", "d~", "g"], cap=(("QCD", 5),))
     assert all(
@@ -318,7 +331,7 @@ def test_schedules_keep_coupling_order_sectors_apart(control):
             assert {skeleton.orders for skeleton in group} == {orders[state]}
     rows = lambda mask: 2 ** mask.bit_count()  # noqa: E731
     plan = build_schedules(families, catalogue, colour, policy=cheapest(rows))
-    split = 0
+    split = loop_orders = 0
     for schedule in plan.schedules.values():
         trie = schedule.trie
         leaves = {skeleton.orders for skeleton, _ring in trie.leaves}
@@ -328,7 +341,14 @@ def test_schedules_keep_coupling_order_sectors_apart(control):
                 below = trie.leaves[child][0] if node.depth == 1 else trie.nodes[child]
                 assert below.orders == node.orders
         split += len(leaves) > 1
+        loop_orders += len(leaves)
     assert split
+    # A bucket holds one reduction lane per family and loop order.
+    lanes = plan.lanes()
+    assert lanes.keys() == plan.buckets().keys()
+    assert sum(map(len, lanes.values())) == loop_orders
+    for bucket, entries in lanes.items():
+        assert {key for key, _orders in entries} == set(plan.buckets()[bucket])
 
 
 @pytest.mark.loop_fast
@@ -336,6 +356,7 @@ def test_relabelled_frames_are_exact_affine_maps(control):
     model, catalogue = control
     families = _generate(model, catalogue, ["g", "g"], ["g", "g", "g"], {"QCD": 3})
     legs = len(families.legs)
+    colour = PlanarWords(legs)
 
     def momentum(mask, sign=1):  # leg-mask momentum modulo conservation
         vector = [sign * (mask >> leg & 1) for leg in range(legs)]
@@ -344,19 +365,34 @@ def test_relabelled_frames_are_exact_affine_maps(control):
     def add(*vectors):
         return tuple(map(sum, zip(*vectors, strict=True)))
 
-    for key, family in families.families.items():
-        relabel = v2_families.default_relabelling(key)
-        assert relabel.frame.reflected and len(set(relabel.propagators)) == len(key)
-        old = [momentum(mask) for mask in shifts(key)]
-        new_key = relabel.frame.apply(key)
-        new = [momentum(mask) for mask in shifts(new_key)]
-        shift = momentum(relabel.shift_mask)
-        # With q_old = sign q_new - V_shift, (q_old + V_p(i))^2 equals
-        # (q_new + V'_i)^2 exactly when V'_i = sign (V_p(i) - V_shift).
-        for index, source in enumerate(relabel.propagators):
-            assert new_key[index][1] == key[source][1]
-            difference = add(old[source], tuple(-v for v in shift))
-            assert new[index] == tuple(relabel.sign * v for v in difference)
+    rows = lambda mask: 2 ** mask.bit_count()  # noqa: E731
+    on_key_retest = 0
+    for policy in (cheapest(rows), largest_first()):
+        plan = build_schedules(families, catalogue, colour, policy=policy)
+        assert plan.schedules
+        for key, schedule in plan.schedules.items():
+            relabel, frame = schedule.relabelling, schedule.trie.frame
+            # The re-test is relative to the frame the polynomial is produced
+            # in: reversed loop direction, so never the primary reduction.
+            assert relabel.source == frame and relabel.sign == -1
+            assert relabel.frame.reflected
+            assert sorted(relabel.propagators) == list(range(len(key)))
+            on_key_retest += frame == FamilyFrame(len(key) // 2, True)
+            source = frame.apply(key)
+            old = [momentum(mask) for mask in shifts(source)]
+            new_key = relabel.apply(key)
+            new = [momentum(mask) for mask in shifts(new_key)]
+            shift = momentum(relabel.shift_mask)
+            # With q_old = sign q_new - V_shift, (q_old + V_p(i))^2 equals
+            # (q_new + V'_i)^2 exactly when V'_i = sign (V_p(i) - V_shift).
+            for index, origin in enumerate(relabel.propagators):
+                assert new_key[index][1] == source[origin][1]
+                difference = add(old[origin], tuple(-v for v in shift))
+                assert new[index] == tuple(relabel.sign * v for v in difference)
+    # Some production frames are the key's own re-test reading, where a
+    # key-relative relabelling would have repeated the primary reduction.
+    assert on_key_retest
+    for family in families.families.values():
         assert family.rank == max(
             sum(p.vertex.q_degree for p in families.routing(c)[1])
             for c in family.closures

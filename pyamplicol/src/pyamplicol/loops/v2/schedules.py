@@ -41,7 +41,7 @@ from .families import (
     Orders,
     Relabelling,
     add_orders,
-    default_relabelling,
+    retest_relabelling,
     ring_readings,
 )
 from .skeletons import (
@@ -487,14 +487,24 @@ class LoopSchedules:
     schedules: Mapping[FamilyKey, FamilySchedule]
 
     def buckets(self) -> dict[tuple[int, int], tuple[FamilyKey, ...]]:
-        """(N, R) buckets: families reduced together as lanes of one call.
+        """(N, R) buckets: the families reduced together in one call.
 
-        A family takes one lane per accumulator (loop order) of its trie.
+        ``lanes()`` lists the reduction lanes of each bucket.
         """
         out: dict[tuple[int, int], list[FamilyKey]] = defaultdict(list)
         for key, schedule in self.schedules.items():
             out[schedule.bucket].append(key)
         return {bucket: tuple(sorted(keys)) for bucket, keys in sorted(out.items())}
+
+    def lanes(self) -> dict[tuple[int, int], tuple[tuple[FamilyKey, Orders], ...]]:
+        """Reduction lanes per (N, R) bucket: one per family and loop order,
+        i.e. per accumulator of the family's trie."""
+        out: dict[tuple[int, int], list[tuple[FamilyKey, Orders]]] = defaultdict(list)
+        for key, schedule in self.schedules.items():
+            out[schedule.bucket].extend(
+                (key, node.orders) for node in schedule.trie.accumulators
+            )
+        return {bucket: tuple(sorted(lanes)) for bucket, lanes in sorted(out.items())}
 
     def master_requests(self) -> dict[MasterKey, int]:
         """Distinct masters and how many families request each per event."""
@@ -521,10 +531,11 @@ def build_schedules(
         viewed = view.select(family_skeletons(families, family, colour, catalogue))
         if not viewed:
             continue
+        trie = family_trie(family, viewed, policy, choose)
         out[key] = FamilySchedule(
             family,
-            family_trie(family, viewed, policy, choose),
-            default_relabelling(key),
+            trie,
+            retest_relabelling(key, trie.frame),
             family.master_keys(families.legs),
         )
     return LoopSchedules(families, view, out)
@@ -538,7 +549,10 @@ def trie_shapes(
     One record per node: loop orders, input rows (undressed legs after the
     step), summed block rows X of its edges, edge count, input rank and
     coefficient count, output rank, loop-line species and modelled work.
+    A projected view (``SkeletonView.classes``) has no interned contents, so
+    its records carry ``None`` for the species and vertex-template fields.
     """
+    projected = schedules.view.classes is not None
     out = []
     for key, schedule in schedules.schedules.items():
         trie = schedule.trie
@@ -546,12 +560,16 @@ def trie_shapes(
             rows_out = _rows(trie.suffix_masks(node), rows)
             x_rows = _x_rows(node, rows)
             segments = [segment for segment, _child in node.edges]
-            labels = [segment.label for segment in segments]
-            contents = [
-                schedules.view.content(label)
-                for label in labels
-                if isinstance(label, int)
-            ]
+            species = {"loop_in": None, "loop_out": None, "vertex_templates": None}
+            if not projected:
+                contents = [schedules.view.content(s.label) for s in segments]
+                species = {
+                    "loop_in": sorted({c.loop_in for c in contents}),
+                    "loop_out": sorted({c.loop_out for c in contents}),
+                    "vertex_templates": len(
+                        {term.vertex for c in contents for term in c.terms}
+                    ),
+                }
             out.append(
                 {
                     "family": [[mask, mass.mass, mass.width] for mask, mass in key],
@@ -564,11 +582,7 @@ def trie_shapes(
                     "rank_in": node.rank_in,
                     "coefficients_in": comb(node.rank_in + 4, 4),
                     "rank_out": node.rank_in + max(s.q_degree for s in segments),
-                    "loop_in": sorted({c.loop_in for c in contents}),
-                    "loop_out": sorted({c.loop_out for c in contents}),
-                    "vertex_templates": len(
-                        {term.vertex for c in contents for term in c.terms}
-                    ),
+                    **species,
                     "work": model.node(rows_out, node.rank_in, x_rows),
                 }
             )
