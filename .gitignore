@@ -1,4 +1,7 @@
 *~
+.benchmark-work/
+.ninjars-build/
+vendor/ninjars/target/
 __pycache__
 *.o
 *.pyc

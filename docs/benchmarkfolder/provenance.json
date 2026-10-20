@@ -1,0 +1,17 @@
+{
+  "baseline_revision": "27147b3300f556a75661a886e92bdbe00558ee25",
+  "branch": "madloop_ninjars",
+  "ninjars_revision": "0d0d7e7a8033431b60a8580731084742e0655cda",
+  "oneloopmaster_revision": "09b2c7497743db875ed446da95123175dd00b1c8",
+  "symbolica_revision": "e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8",
+  "platform": "x86_64-linux",
+  "toolchain": {
+    "rustc": "1.98.1",
+    "gfortran": "15.3.0",
+    "python": "3.14.7",
+    "typst": "0.15.1",
+    "nixpkgs_revision": "02f5696b0e6097e589076d886b317b83ff0437d7"
+  },
+  "report_style_source": "https://github.com/MadGraphTeam/pyamplicol/blob/loop/docs/performance_reports/loop/benchmarks.typ",
+  "validation_status": "pending"
+}
