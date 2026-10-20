@@ -5,6 +5,7 @@
 //! with the stack required by Symbolica expression construction.
 
 mod tensor;
+mod guarded;
 
 use ninjars::{
     Amplitude, AmplitudeInput, Complex, EvaluationStatus, Float, FloatLike, FourMomentum, Real,
@@ -29,7 +30,7 @@ const UNSTABLE: i32 = 1;
 const ERROR: i32 = 2;
 const RECORD: usize = 64;
 const MP_BITS: u32 = 256;
-const ABI_VERSION: u32 = 2;
+const ABI_VERSION: u32 = 3;
 type Result<T> = std::result::Result<T, String>;
 type Z = Complex<Float>;
 type MpAmplitude = Amplitude<Z, SymbolicaAmplitudeKernels<Float>>;
@@ -42,6 +43,7 @@ thread_local! {
 pub struct Context {
     dp: Mutex<Option<DpState>>,
     mp: Mutex<Option<MpContext>>,
+    compensated_dp: Mutex<Option<CompensatedDpState>>,
 }
 
 #[unsafe(no_mangle)]
@@ -62,6 +64,7 @@ pub unsafe extern "C" fn ninjars_context_create(version: u32, output: *mut *mut 
         let context = Box::new(Context {
             dp: Mutex::new(None),
             mp: Mutex::new(None),
+            compensated_dp: Mutex::new(None),
         });
         unsafe {
             output.write(Box::into_raw(context));
@@ -244,6 +247,85 @@ impl DpState {
     }
 }
 
+struct CompensatedDpEntry {
+    amplitude: FastAmplitude,
+    tensor: guarded::GuardedTensor,
+    shifts: Vec<[f64; 4]>,
+}
+struct CompensatedDpState {
+    entries: HashMap<(usize, usize), CompensatedDpEntry>,
+    masters: OneLoopNativeMasters,
+}
+impl CompensatedDpState {
+    fn new() -> Result<Self> {
+        Ok(Self {
+            entries: HashMap::new(),
+            masters: OneLoopNativeMasters::new().map_err(|e| e.to_string())?,
+        })
+    }
+    fn evaluate(
+        &mut self,
+        n: usize,
+        rank: usize,
+        coeff: &[C64],
+        s: &[f64],
+        p: &[f64],
+        m: &[C64],
+        mu2: f64,
+    ) -> Result<(i32, FastResult)> {
+        if !mu2.is_finite()
+            || mu2 <= 0.
+            || p.iter().chain(s).any(|v| !v.is_finite())
+            || coeff.iter().any(|v| !v.is_finite())
+            || m.iter().any(|v| !v.is_finite() || v.im > 0.)
+        {
+            return Err("nonfinite input, invalid mass width, or nonpositive squared scale".into());
+        }
+        if !self.entries.contains_key(&(n, rank)) {
+            self.entries.insert(
+                (n, rank),
+                CompensatedDpEntry {
+                    amplitude: FastAmplitude::new(n, rank, FastOptions::default())
+                        .map_err(|e| e.to_string())?,
+                    tensor: guarded::GuardedTensor::new(rank, 1),
+                    shifts: vec![[0.; 4]; n],
+                },
+            );
+        }
+        let state = self.entries.get_mut(&(n, rank)).unwrap();
+        state.tensor.coefficients_mut().copy_from_slice(coeff);
+        for (v, values) in state.shifts.iter_mut().zip(p.chunks_exact(4)) {
+            v.copy_from_slice(values);
+        }
+        let mut result = [FastResult::default()];
+        let mut status = [FastStatus::NotEvaluated];
+        state
+            .amplitude
+            .evaluate(
+                &FastInput {
+                    lanes: 1,
+                    shifts: &state.shifts,
+                    masses_squared: m,
+                    scales_squared: &[mu2],
+                    s_matrix: Some(s),
+                },
+                &mut state.tensor,
+                &mut self.masters,
+                &mut result,
+                &mut status,
+            )
+            .map_err(|e| e.to_string())?;
+        Ok((
+            if status[0] == FastStatus::Success {
+                SUCCESS
+            } else {
+                UNSTABLE
+            },
+            result[0],
+        ))
+    }
+}
+
 /// Evaluate one DP numerator. Output is committed only on success.
 ///
 /// # Safety
@@ -287,6 +369,61 @@ pub unsafe extern "C" fn ninjars_evaluate_dp(
         let mut state = context.dp.lock().map_err(|_| "DP context poisoned")?;
         if state.is_none() {
             *state = Some(DpState::new()?);
+        }
+        let (status, result) =
+            state
+                .as_mut()
+                .unwrap()
+                .evaluate(n, rank, coeff, s, p, m, scale_squared)?;
+        if status == SUCCESS {
+            unsafe {
+                write(laurent, &result.laurent)?;
+                write(rational, &[result.rational])?;
+            }
+        }
+        Ok(status)
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ninjars_evaluate_dp_compensated(
+    handle: *mut Context,
+    n: i32,
+    rank: i32,
+    count: usize,
+    coefficients: *const C64,
+    s_matrix: *const f64,
+    s_length: usize,
+    momenta: *const f64,
+    p_length: usize,
+    masses: *const C64,
+    m_length: usize,
+    scale_squared: f64,
+    laurent: *mut C64,
+    laurent_length: usize,
+    rational: *mut C64,
+    rational_length: usize,
+) -> i32 {
+    guard(|| {
+        let (n, rank) = dimensions(n, rank, count)?;
+        length("S matrix", s_length, n * n)?;
+        length("momenta", p_length, n * 4)?;
+        length("masses", m_length, n)?;
+        length("Laurent output", laurent_length, 3)?;
+        length("rational output", rational_length, 1)?;
+        let a = validate_output(laurent, 3)?;
+        let b = validate_output(rational, 1)?;
+        if a.start < b.end && b.start < a.end {
+            return Err("overlapping output buffers".into());
+        }
+        let context = unsafe { context(handle) }?;
+        let coeff = unsafe { read(coefficients, count) }?;
+        let s = unsafe { read(s_matrix, n * n) }?;
+        let p = unsafe { read(momenta, n * 4) }?;
+        let m = unsafe { read(masses, n) }?;
+        let mut state = context.compensated_dp.lock().map_err(|_| "DP context poisoned")?;
+        if state.is_none() {
+            *state = Some(CompensatedDpState::new()?);
         }
         let (status, result) =
             state
@@ -1266,3 +1403,9 @@ mod tests {
             .unwrap();
     }
 }
+
+#[cfg(test)]
+mod retry_tests;
+
+#[cfg(test)]
+mod guarded_tests;

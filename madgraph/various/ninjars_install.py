@@ -19,7 +19,7 @@ from madgraph import MadGraph5Error
 
 logger = logging.getLogger('madgraph.ninjars_install')
 CONFIG_NAME = 'ninjars-config.json'
-ABI_VERSION = 2
+ABI_VERSION = 3
 
 
 def read_config(libdir):

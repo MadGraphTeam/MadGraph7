@@ -7,7 +7,7 @@ extern "C" {
 #endif
 typedef struct { double re, im; } ninjars_complex;
 typedef struct ninjars_context ninjars_context;
-#define NINJARS_ABI_VERSION 2
+#define NINJARS_ABI_VERSION 3
 enum { NINJARS_SUCCESS = 0, NINJARS_UNSTABLE_KINEMATICS = 1, NINJARS_ERROR = 2 };
 uint32_t ninjars_abi_version(void);
 int32_t ninjars_context_create(uint32_t version, ninjars_context **output);
@@ -25,6 +25,15 @@ int32_t ninjars_context_destroy(ninjars_context *context);
  * On failure output buffers remain unchanged. No exception crosses this ABI.
  */
 int32_t ninjars_evaluate_dp(ninjars_context *context, int32_t n, int32_t rank, size_t count,
+    const ninjars_complex *coefficients, const double *s_matrix, size_t s_length,
+    const double *momenta, size_t p_length, const ninjars_complex *masses, size_t m_length,
+    double scale_squared, ninjars_complex *laurent, size_t laurent_length,
+    ninjars_complex *rational, size_t rational_length);
+
+/* Explicit compensated DP retry. Same buffer and transactional contract as
+ * ninjars_evaluate_dp; owns separate lazy state. The caller controls stability
+ * checks and fallback. Ordinary DP calls never enable this path implicitly. */
+int32_t ninjars_evaluate_dp_compensated(ninjars_context *context, int32_t n, int32_t rank, size_t count,
     const ninjars_complex *coefficients, const double *s_matrix, size_t s_length,
     const double *momenta, size_t p_length, const ninjars_complex *masses, size_t m_length,
     double scale_squared, ninjars_complex *laurent, size_t laurent_length,

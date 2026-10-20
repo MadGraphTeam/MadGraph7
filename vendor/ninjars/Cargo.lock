@@ -1346,6 +1346,7 @@ dependencies = [
 name = "madloop-ninjars"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "ninjars",
  "ninjars-symbolica",
  "serde_json",

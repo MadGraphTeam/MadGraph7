@@ -12,6 +12,7 @@ module mninjars
   integer, parameter, public :: NINJARS_ERROR = 2
   integer, parameter :: record_size = 64
   type(c_ptr), save :: context = c_null_ptr
+  public :: ninjars_tensor_evaluate_compensated
   public :: ninjars_tensor_evaluate, ninjars_error_message, ninjars_finalize
 
   interface ninjars_tensor_evaluate
@@ -31,6 +32,18 @@ module mninjars
     end function
     function evaluate_dp(handle,n,r,count,coeff,s,slen,p,plen,m,mlen,mu2,res,reslen,r1,r1len) &
         bind(C,name="ninjars_evaluate_dp") result(status)
+      import
+      type(c_ptr), value :: handle
+      integer(c_int), value :: n,r
+      integer(c_size_t), value :: count,slen,plen,mlen,reslen,r1len
+      complex(c_double_complex), intent(in) :: coeff(*),m(*)
+      real(c_double), intent(in) :: s(*),p(*)
+      real(c_double), value :: mu2
+      complex(c_double_complex), intent(out) :: res(*),r1
+      integer(c_int) :: status
+    end function
+    function evaluate_dp_compensated(handle,n,r,count,coeff,s,slen,p,plen,m,mlen,mu2,res,reslen,r1,r1len) &
+        bind(C,name="ninjars_evaluate_dp_compensated") result(status)
       import
       type(c_ptr), value :: handle
       integer(c_int), value :: n,r
@@ -62,7 +75,7 @@ contains
   subroutine ensure_context(status)
     integer, intent(out) :: status
     status = NINJARS_SUCCESS
-    if (.not.c_associated(context)) status = create_context(2_c_int,context)
+    if (.not.c_associated(context)) status = create_context(3_c_int,context)
   end subroutine
 
   subroutine ninjars_finalize(status)
@@ -89,6 +102,22 @@ contains
     call ensure_context(status)
     if (status /= NINJARS_SUCCESS) return
     status = evaluate_dp(context,int(n,c_int),int(rank,c_int), &
+                         int(coefficient_count(rank),c_size_t),coeff, &
+                         s,size(s,kind=c_size_t),p,size(p,kind=c_size_t), &
+                         m,size(m,kind=c_size_t),mu2,res,3_c_size_t,r1,1_c_size_t)
+  end subroutine
+
+  subroutine ninjars_tensor_evaluate_compensated(coeff,n,rank,s,p,m,mu2,res,r1,status)
+    integer, intent(in) :: n,rank
+    complex(KI_NRS), intent(in) :: coeff(coefficient_count(rank)),m(n)
+    real(KI_NRS), intent(in) :: s(n,n),p(0:3,n),mu2
+    complex(KI_NRS), intent(out) :: res(0:2),r1
+    integer, intent(out) :: status
+    res = cmplx(0,0,kind=KI_NRS)
+    r1 = cmplx(0,0,kind=KI_NRS)
+    call ensure_context(status)
+    if (status /= NINJARS_SUCCESS) return
+    status = evaluate_dp_compensated(context,int(n,c_int),int(rank,c_int), &
                          int(coefficient_count(rank),c_size_t),coeff, &
                          s,size(s,kind=c_size_t),p,size(p,kind=c_size_t), &
                          m,size(m,kind=c_size_t),mu2,res,3_c_size_t,r1,1_c_size_t)

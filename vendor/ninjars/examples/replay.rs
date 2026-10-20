@@ -27,7 +27,7 @@ fn main() {
     let mut worst: f64 = 0.;
     let mut rational_split_difference: f64 = 0.;
     let mut context = std::ptr::null_mut();
-    assert_eq!(unsafe { ninjars_context_create(2, &mut context) }, 0);
+    assert_eq!(unsafe { ninjars_context_create(3, &mut context) }, 0);
     let lanes = case["lanes"].as_array().unwrap();
     for lane in lanes {
         let expected = reference["lanes"]

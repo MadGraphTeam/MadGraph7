@@ -2,7 +2,37 @@ C --=========================================--
 C   Main subroutine
 C --=========================================--
 
-	  SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+## if(ninjars_available) {
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+      IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      %(real_dp_format)s P_USER(0:3,NEXTERNAL),ANS(0:3,*)
+      LOGICAL NRS_RETRY_MODE,NRS_RETRY_USED
+      INTEGER NRS_RETRY_COUNT,NRS_RETRY_PASS,NRS_RETRY_FAIL
+      INTEGER NRS_RETRY_HARD_SKIP
+      REAL*8 NRS_NATIVE_ACC,NRS_COMP_ACC
+      COMMON/%(proc_prefix)sNRS_RETRY_FLAGS/NRS_RETRY_MODE,NRS_RETRY_USED
+      COMMON/%(proc_prefix)sNRS_RETRY_STATS/NRS_RETRY_COUNT,NRS_RETRY_PASS,
+     $ NRS_RETRY_FAIL,NRS_RETRY_HARD_SKIP
+      COMMON/%(proc_prefix)sNRS_RETRY_ACC/NRS_NATIVE_ACC,NRS_COMP_ACC
+      NRS_RETRY_MODE=.FALSE.
+      NRS_RETRY_USED=.FALSE.
+      NRS_RETRY_COUNT=0
+      NRS_RETRY_PASS=0
+      NRS_RETRY_FAIL=0
+      NRS_RETRY_HARD_SKIP=0
+      NRS_NATIVE_ACC=-1D0
+      NRS_COMP_ACC=-1D0
+      CALL %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,ANS)
+C     Guaranteed reset after every ordinary return from the implementation.
+      NRS_RETRY_MODE=.FALSE.
+      END
+
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,ANS)
+## } else {
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+## }
 C  
 %(info_lines)s
 C
@@ -17,7 +47,20 @@ C
       use %(proc_prefix)sPOLYNOMIAL_CONSTANTS
       USE ALOHA_OBJECT
 C
+## if(ninjars_available) {
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+## }
       IMPLICIT NONE
+## if(ninjars_available) {
+      LOGICAL NRS_RETRY_MODE,NRS_RETRY_USED
+      INTEGER NRS_RETRY_COUNT,NRS_RETRY_PASS,NRS_RETRY_FAIL
+      INTEGER NRS_RETRY_HARD_SKIP
+      REAL*8 NRS_NATIVE_ACC,NRS_COMP_ACC
+      COMMON/%(proc_prefix)sNRS_RETRY_FLAGS/NRS_RETRY_MODE,NRS_RETRY_USED
+      COMMON/%(proc_prefix)sNRS_RETRY_STATS/NRS_RETRY_COUNT,NRS_RETRY_PASS,
+     $ NRS_RETRY_FAIL,NRS_RETRY_HARD_SKIP
+      COMMON/%(proc_prefix)sNRS_RETRY_ACC/NRS_NATIVE_ACC,NRS_COMP_ACC
+## }
 C
 C USER CUSTOMIZABLE OPTIONS
 C 
@@ -1785,7 +1828,45 @@ C   the result cannot be trusted at all and we hardset all accuracies to 1.0
         ACC(I)=1.0d0
       ENDDO
     ENDIF
+## if(ninjars_available) {
+C         One explicit compensated DP retry with the same stability checks.
+          IF(NRS_RETRY_MODE) THEN
+            NRS_COMP_ACC=MAXVAL(ACC)
+            NRS_RETRY_MODE=.FALSE.
+            IF(MAXVAL(ACC).LT.MLSTABTHRES.AND..NOT.FPE_IN_DP_REDUCTION) THEN
+              NRS_RETRY_PASS=NRS_RETRY_PASS+1
+            ELSE
+              NRS_RETRY_FAIL=NRS_RETRY_FAIL+1
+            ENDIF
+          ENDIF
+          IF(MAXVAL(ACC).GE.MLSTABTHRES) THEN
+            IF(MLREDUCTIONLIB(I_LIB).EQ.8.AND..NOT.NRS_RETRY_USED) THEN
+              NRS_NATIVE_ACC=MAXVAL(ACC)
+              IF(.NOT.FPE_IN_DP_REDUCTION.AND.ALL(IEEE_IS_FINITE(ACC)).AND.ALL(IEEE_IS_FINITE(DP_RES(:,:,1:N_DP_EVAL)))) THEN
+                NRS_RETRY_USED=.TRUE.
+                NRS_RETRY_MODE=.TRUE.
+                NRS_RETRY_COUNT=NRS_RETRY_COUNT+1
+                EVAL_DONE(1)=.TRUE.
+                DO I=2,MAXSTABILITYLENGTH
+                  EVAL_DONE(I)=.FALSE.
+                ENDDO
+                STAB_INDEX=0
+                CTMODE=1
+                DP_RES=0D0
+                IF(NROTATIONS_DP.GE.1) THEN
+                  GOTO 200
+                ELSE
+                  GOTO 300
+                ENDIF
+              ELSE
+                NRS_RETRY_HARD_SKIP=NRS_RETRY_HARD_SKIP+1
+              ENDIF
+            ENDIF
+C           Mode is off before advancing a backend or entering genuine QP.
+            NRS_RETRY_MODE=.FALSE.
+## } else {
 	IF(MAXVAL(ACC).GE.MLSTABTHRES) THEN
+## }
 	  I_LIB=I_LIB+1
 	  IF((I_LIB.GT.NLOOPLIB.OR.MLReductionLib(I_LIB).EQ.0).AND.QP_TOOLS_AVAILABLE)THEN
 	        I_LIB=INDEX_QP_TOOLS(1)

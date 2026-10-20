@@ -32,7 +32,7 @@ install: libninjars.a
 	cp ninjars.h mninjars.f90 "$(PREFIX)/include/"
 
 check: libninjars.a
-	$(CARGO) test --locked -- --test-threads=1
+	$(CARGO) test --locked --features fenv-test-support -- --test-threads=1
 	$(FC) $(FFLAGS) smoke.f90 -I. $$(cat ninjars-link-before.txt) -L. -lninjars $$(cat ninjars-native-libs.txt) -o smoke
 	./smoke
 

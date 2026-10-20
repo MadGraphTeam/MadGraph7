@@ -30,6 +30,13 @@ program smoke
     stop 1
   endif
   if (abs(r(0)-4)>1e-12_KI_NRS .or. abs(r(1)-4)>1e-12_KI_NRS .or. abs(r(2))>1e-12_KI_NRS) stop 2
+  call ninjars_tensor_evaluate_compensated(c,1,0,s,p,m,4.0_KI_NRS,r,r1,status)
+  if (status /= NINJARS_SUCCESS) stop 9
+  if (abs(r(0)-4)>1e-12_KI_NRS .or. abs(r(1)-4)>1e-12_KI_NRS .or. abs(r(2))>1e-12_KI_NRS) stop 10
+  ! Returning to the ordinary entry must not retain compensated mode.
+  call ninjars_tensor_evaluate(c,1,0,s,p,m,4.0_KI_NRS,r,r1,status)
+  if (status /= NINJARS_SUCCESS) stop 11
+  if (abs(r(0)-4)>1e-12_KI_NRS .or. abs(r(1)-4)>1e-12_KI_NRS .or. abs(r(2))>1e-12_KI_NRS) stop 12
   delta = 2.0_KI_QNRS**(-100)
   qc = cmplx(1.0_KI_QNRS+delta,0.0_KI_QNRS,kind=KI_QNRS)
   qm = cmplx(4,0,kind=KI_QNRS)
@@ -46,5 +53,5 @@ program smoke
   if (abs(qr(2))>1e-32_KI_QNRS .or. abs(qr1)>1e-32_KI_QNRS) stop 6
   call ninjars_finalize(status)
   if (status /= NINJARS_SUCCESS) stop 7
-  print *, 'NinjaRS DP and genuine binary128-input rescue passed'
+  print *, 'NinjaRS ABI3 native/compensated DP and genuine binary128-input rescue passed'
 end program

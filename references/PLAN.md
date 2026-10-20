@@ -410,3 +410,11 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   polynomial tests and eight standalone/FKS/MatchBox/TIR exporter checks.
   Public DP/QP updater source remains identical in 96 checked combinations.
   These validate the port; final ABI3 source/runtime recertification remains.
+- The compensated DP retry is now ported as ABI 3 with separate lazy state,
+  while the ordinary DP implementation remains byte-identical. The installer
+  rejects older ABI metadata and checks native/compensated/native DP followed
+  by genuine binary128-input rescue. All 16 Rust tests, 13 focused Fortran/
+  installer tests and 24 freshly generated retry-flow scenarios pass. A
+  fixed-form formatting failure was caught, corrected and retained before
+  commit. Main installation, fresh exports and full numerical/performance
+  certification must now use this committed ABI 3 implementation.

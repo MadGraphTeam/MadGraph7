@@ -117,7 +117,7 @@ class TestNinjaRSInstaller(unittest.TestCase):
         lib = self.root / 'lib'
         lib.mkdir()
         config = lib / ninjars_install.CONFIG_NAME
-        for version in (1, 99):
+        for version in (1, 2, 99):
             config.write_text(json.dumps({'abi_version': version, 'native_libs': []}))
             with self.subTest(version=version), self.assertRaisesRegex(
                     MadGraph5Error, 'ABI'):

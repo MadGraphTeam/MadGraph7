@@ -125,6 +125,52 @@ end subroutine
                     sources = ['cleanup.f90'] if available else []
                     self.compile_run(sources + ['exit.f', 'exit_driver.f90'])
 
+    def test_public_wrapper_resets_retry_on_entry_and_early_return(self):
+        source = (TEMPLATE / 'loop_matrix_standalone.inc').read_text()
+        source = source[:source.index(
+            '      SUBROUTINE %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,ANS)')]
+        source += '## }\n'
+        with FortranWriter(str(self.work / 'entry.f')) as writer:
+            writer.writelines(source % {
+                'proc_prefix': 'TEST_', 'nexternal': 3, 'real_dp_format': 'REAL*8'},
+                context={'ninjars_available': True})
+        (self.work / 'entry_driver.f90').write_text('''
+program entry_check
+implicit none
+logical :: mode,used
+common /TEST_NRS_RETRY_FLAGS/ mode,used
+real(8) :: p(0:3,3),ans(0:3,0:0)
+integer :: i
+p=0
+do i=1,2
+  mode=.true.
+  used=.true.
+  call TEST_SLOOPMATRIX(p,ans)
+  if(mode.or..not.used.or.any(ans/=777d0)) stop 61
+enddo
+end program
+subroutine TEST_SLOOPMATRIX_RETRY_IMPL(p,ans)
+implicit none
+logical :: mode,used
+common /TEST_NRS_RETRY_FLAGS/ mode,used
+integer :: count,passed,failed,hard
+common /TEST_NRS_RETRY_STATS/ count,passed,failed,hard
+real(8) :: native_acc,comp_acc
+common /TEST_NRS_RETRY_ACC/ native_acc,comp_acc
+real(8) :: p(0:3,3),ans(0:3,0:0)
+if(mode.or.used) stop 62
+if(count/=0.or.passed/=0.or.failed/=0.or.hard/=0) stop 63
+if(native_acc/=-1d0.or.comp_acc/=-1d0) stop 64
+ans=777
+mode=.true.
+used=.true.
+count=1
+failed=1
+return
+end subroutine
+''')
+        self.compile_run(['entry.f', 'entry_driver.f90'])
+
     def check_wrapper(self, amplitude):
         replacements = {
             'proc_prefix': 'TEST_', 'nloop_groups': 2, 'nSquaredSO': 2,
@@ -159,6 +205,7 @@ integer,parameter :: KI_NRS=kind(1d0),KI_QNRS=selected_real_kind(33,4931)
 integer,parameter :: NINJARS_SUCCESS=0
 integer :: failure_mode=0
 logical :: seen_mp_extra=.false.
+integer :: compensated_calls=0
 real(8) :: last_shift(0:3),last_s
 complex(8) :: last_mass
 interface ninjars_tensor_evaluate
@@ -188,7 +235,15 @@ if (failure_mode==1) status=2
 if (failure_mode==2) res(0)=ieee_value(0.0_{kind},ieee_quiet_nan)
 end subroutine
 '''
-        module += 'end module\n'
+        module += '''subroutine ninjars_tensor_evaluate_compensated(c,n,r,s,p,m,mu,res,r1,status)
+integer :: n,r,status
+complex(KI_NRS) :: c(:),m(n),res(0:2),r1
+real(KI_NRS) :: s(n,n),p(0:3,n),mu
+compensated_calls=compensated_calls+1
+call eval_dp(c,n,r,s,p,m,mu,res,r1,status)
+end subroutine
+end module
+'''
         (self.work / 'modules.f90').write_text(module)
         shape = '(0:14,2)' if amplitude else '(0:14,2,2)'
         loop_common = 'ID,R' if amplitude else 'ID,SQSOINDEX,R'
@@ -211,6 +266,10 @@ common/TEST_LCOEFS/COEF
 common/TEST_MP_LCOEFS/MPCOEF
 logical :: FDP,FQP,STABLE
 common/TEST_FPE_IN_REDUCTION/FDP,FQP
+logical :: NRS_RETRY_MODE,NRS_RETRY_USED
+common/TEST_NRS_RETRY_FLAGS/NRS_RETRY_MODE,NRS_RETRY_USED
+! BLOCK DATA must initialize a direct wrapper call without SLOOPMATRIX.
+if (NRS_RETRY_MODE.or.NRS_RETRY_USED) stop 53
 call DEFAULTPARAM()
 ID=1
 SQSOINDEX=1
@@ -234,10 +293,17 @@ if (abs(RES(3)-3*RES(1))>1d-12) stop 43
 if (any(abs(last_shift-P(:,1))>1d-12)) stop 44
 if (abs(last_s-2d0)>1d-12) stop 45
 if (abs(last_mass-M(2))>1d-12) stop 46
+if (compensated_calls/=0) stop 54
+NRS_RETRY_MODE=.true.
+call TEST_NINJARS_LOOP(3,P,M,R,RES,STABLE)
+if (compensated_calls/=1.or..not.STABLE) stop 55
+if (abs(RES(1)/NOR-{expected})>1d-12) stop 56
+NRS_RETRY_MODE=.false.
 CTMODE=2
 call TEST_NINJARS_LOOP(3,P,M,R,RES,STABLE)
 if (.not.STABLE.or.abs(last_shift(0)-6d0)>1d-12) stop 47
 if (abs(last_mass-cmplx(7d0,-.9d0,8))>1d-12) stop 48
+if (compensated_calls/=1) stop 57
 CTMODE=4
 MP=real(P,kind=16)
 MPCOEF=0
