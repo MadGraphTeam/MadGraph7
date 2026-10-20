@@ -666,3 +666,14 @@ After achievement, wait for the user's instruction to open a pull request.
 The preserved job identities were checked before resuming the same processes.
 See `.benchmark-work/resume-20261020T2217Z.json` and each experiment's separate
 resume metadata. The earlier pause note is a historical checkpoint.
+- The corrected transport's private actual installation, relocated internal
+  standalone DP/QP/stability calls, NLO twenty-point pole cancellation and
+  soft/collinear checks now pass. Its sixty-three-file evidence seal and live
+  archive/executable rehash pass; earlier proofs retain their earlier identities.
+- The user also requested upstream monitoring. NinjaRS and oneloopmaster's
+  default/main refs still equal the pinned revisions at this checkpoint. Add a
+  read-only repository checker and repeat it before final freeze/publication;
+  a changed pin requires isolated compatibility and numerical validation, a
+  new committed lockfile, and fresh runtime/benchmark provenance. Do not float
+  dependencies or silently update a frozen measurement. No external recurring
+  schedule has been configured in this session.

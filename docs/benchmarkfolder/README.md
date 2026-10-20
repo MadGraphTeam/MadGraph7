@@ -221,3 +221,10 @@ Independent and root checks reproduce the raw analysis; see
 `experiments/ninjars-mp-tensor-allocation-performance-v1/verify.py`.
 It uses the retained historical parser and is not a full-process measurement
 or production promotion. The final eight-process performance gate remains open.
+
+Fresh actual installation and copied standalone/NLO validation of the signed-zero
+correction now pass. See `policy-v2/install-export-abi3-zero-sign-v1/verify.py`:
+compiled installed DP/compensated/MP smoke, standalone statuses110/120/218,
+twenty NLO pole cancellations and zero soft/collinear failures. The private
+installation is hidden while the copied outputs execute. This evidence does
+not relabel earlier archives or establish the final runtime gate.
