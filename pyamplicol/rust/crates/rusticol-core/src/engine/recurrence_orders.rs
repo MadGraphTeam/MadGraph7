@@ -38,9 +38,11 @@ impl SquaredAmplitudeOrder {
 
 /// Amplitude and squared coupling-order axes of one recurrence process.
 ///
-/// Squared orders are every pairwise sum of amplitude components, in
-/// ascending lexicographic power order, including structurally vanishing
-/// interference.
+/// Squared orders are every pairwise sum of amplitude components, including
+/// structurally vanishing interference, in canonical coupling-order order:
+/// their nonzero `(name, power)` pairs over the sorted names, compared
+/// lexicographically. This is the order of Python's canonical
+/// `CouplingOrders` tuples, so native, SDK and Python columns agree.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AmplitudeOrderCatalog {
     names: Box<[String]>,
@@ -58,7 +60,7 @@ impl AmplitudeOrderCatalog {
                     .ok_or_else(|| RusticolError::integrity("amplitude order component is absent"))
             })
             .collect::<RusticolResult<Box<[Box<[u32]>]>>>()?;
-        let mut squared = BTreeMap::<Vec<u32>, Vec<(u32, u32)>>::new();
+        let mut squared = BTreeMap::<Vec<(usize, u32)>, (Vec<u32>, Vec<(u32, u32)>)>::new();
         for (left, left_powers) in components.iter().enumerate() {
             for (right, right_powers) in components.iter().enumerate() {
                 let powers = left_powers
@@ -70,9 +72,16 @@ impl AmplitudeOrderCatalog {
                         })
                     })
                     .collect::<RusticolResult<Vec<_>>>()?;
+                let canonical = powers
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .filter(|(_, power)| *power != 0)
+                    .collect::<Vec<_>>();
                 squared
-                    .entry(powers)
-                    .or_default()
+                    .entry(canonical)
+                    .or_insert_with(|| (powers, Vec::new()))
+                    .1
                     .push((left as u32, right as u32));
             }
         }
@@ -80,7 +89,7 @@ impl AmplitudeOrderCatalog {
             names: orders.names().into(),
             components,
             squared: squared
-                .into_iter()
+                .into_values()
                 .map(|(powers, pairs)| SquaredAmplitudeOrder {
                     powers: powers.into_boxed_slice(),
                     pairs: pairs.into_boxed_slice(),
@@ -252,9 +261,9 @@ mod tests {
         assert_eq!(
             squared,
             vec![
-                (vec![0, 4], vec![(0, 0)]),
                 (vec![2, 2], vec![(0, 1), (1, 0)]),
                 (vec![4, 0], vec![(1, 1)]),
+                (vec![0, 4], vec![(0, 0)]),
             ]
         );
         assert!(!catalog.is_single());

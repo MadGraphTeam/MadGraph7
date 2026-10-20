@@ -418,7 +418,9 @@ int rusticol_runtime_evaluate_resolved_f64(
  * ("rusticol-amplitude-orders-v1") lists the coupling-order "names", the
  * amplitude "components" (powers per name) and the "squared" orders with
  * their ordered component "pairs". Partials use [point][squared order] in that
- * order; totals equal rusticol_runtime_evaluate_selected_f64 bitwise.
+ * order, the canonical one of pyAmpliCol's Python API: nonzero (name, power)
+ * pairs over the sorted names, compared lexicographically (QCD2QED2, QCD4,
+ * QED4). Totals equal rusticol_runtime_evaluate_selected_f64 bitwise.
  */
 int rusticol_runtime_coupling_orders_json(
     const RusticolRuntimeHandle *handle,
