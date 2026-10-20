@@ -1,0 +1,3 @@
+set nb_core 1
+compile FO -f
+quit

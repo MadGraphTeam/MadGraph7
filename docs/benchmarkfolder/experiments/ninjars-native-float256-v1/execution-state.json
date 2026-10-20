@@ -1,0 +1,9 @@
+{
+  "state": "HOLD",
+  "source_preparation_approved": true,
+  "implementation_after_quiet_release_only": true,
+  "compilation_authorized": false,
+  "engine_execution_authorized": false,
+  "timing_authorized": false,
+  "production_modified": false
+}

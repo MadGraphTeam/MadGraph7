@@ -601,3 +601,15 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   requests with 11,136 unchanged output fields. Independent source review passes;
   the exact validated patch is applied. Affected installation/runtime refreshes
   remain outstanding, and the currently installed archive is still unchanged.
+- The signed-zero correction is committed and pushed as `9f13d10cc`.
+  A fresh actual-CLI installation and relocated standalone/NLO refresh is
+  prepared under `policy-v2/install-export-abi3-zero-sign-v1`, with one build
+  thread and explicitly recorded CPU affinity. It remains held during the
+  isolated tensor timing window. The already sealed eighteen-test Rust proof
+  is reused only after checking exact archived and installed source identities.
+- A new isolated Float256 study freezes interpreted, native-denominator and
+  full-native factory selections in one private test binary. It keeps the
+  corrected parser, tensor recurrence, masters and thresholds fixed. The full
+  native path's different reciprocal arithmetic requires convergence and
+  analytic pole checks. No native prototype, compilation or timing result is
+  claimed by the source review and held plan.
