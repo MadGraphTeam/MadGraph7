@@ -1,0 +1,270 @@
+{
+  "case": "qcd-3",
+  "before": {
+    "Source/MODEL/actualize_mp_ext_params.inc": {
+      "sha256": "4108b4fb1f82d348413a9f7f777eb94537061f7ccf339d7d23f30f4f835676ac",
+      "bytes": 243
+    },
+    "Source/MODEL/coupl.inc": {
+      "sha256": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+      "bytes": 1720
+    },
+    "Source/MODEL/coupl_write.inc": {
+      "sha256": "e55e5bc964073b74cb45a4fe6efcbd38ed264b00ca67619bda4e373cfcb73310",
+      "bytes": 1730
+    },
+    "Source/MODEL/couplings.f": {
+      "sha256": "e732847aa93cdcae502cd37808eb68b45d7dc3c9665bdd5d4de443be19747936",
+      "bytes": 3242
+    },
+    "Source/MODEL/couplings1.f": {
+      "sha256": "c49c0ef8ba4ecc408039bc66d0adc0d0cd5887df8b27e2c6f72d473356a4b7c9",
+      "bytes": 661
+    },
+    "Source/MODEL/couplings2.f": {
+      "sha256": "28b4eefe950545be8c834979488b7bc11ef89ca3c8799a3e0e59f08ae902b65e",
+      "bytes": 464
+    },
+    "Source/MODEL/couplings3.f": {
+      "sha256": "566b194403bb9580ea662c717308f63eaa0facb21da6b148d9d80d230379eb62",
+      "bytes": 3370
+    },
+    "Source/MODEL/flavor_couplings.f": {
+      "sha256": "863fa39462bb4b32dd09835ce5ca74624a4b08ee98be94fa756cd8a488ef6de7",
+      "bytes": 741
+    },
+    "Source/MODEL/formats.inc": {
+      "sha256": "1d0c8b3a81b5c4ed3cc50e16edc2d7fa09fa2c2694b9eef3790bff2abc42c3a3",
+      "bytes": 958
+    },
+    "Source/MODEL/get_color.f": {
+      "sha256": "e1b3eb173aa5a721e4f1dfb518987b5581edf4ddc63ed98fa14eab1daca71bcf",
+      "bytes": 3048
+    },
+    "Source/MODEL/input.inc": {
+      "sha256": "e8887e3d6b201199bc48178615968bcc6dd0291b3af2bf21533d09d48537c569",
+      "bytes": 2375
+    },
+    "Source/MODEL/intparam_definition.inc": {
+      "sha256": "4d14529f6c3cb833a2cb434d8bfca120d83d00f132ce414e37e1033cbcb83084",
+      "bytes": 5173
+    },
+    "Source/MODEL/ldme.inc": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "Source/MODEL/lha_read.f": {
+      "sha256": "7cfd5b14731c599bab2be71fabf3fc5566e293117fb927a6dad495c61154aef2",
+      "bytes": 13600
+    },
+    "Source/MODEL/makeinc.inc": {
+      "sha256": "b4474380dce602789c4749045fc5e726d3431039ae354b8d17405dce2c223090",
+      "bytes": 380
+    },
+    "Source/MODEL/model_functions.f": {
+      "sha256": "a9678291451097495295fb6f894f3fd4c162addca0844f82393db59b69bc981e",
+      "bytes": 31974
+    },
+    "Source/MODEL/model_functions.inc": {
+      "sha256": "be48cc65d552043c1569e2144501aa3d1c16e69834f20090aceca8ea818bb58f",
+      "bytes": 883
+    },
+    "Source/MODEL/mp_coupl.inc": {
+      "sha256": "04075db97d4b1152086ee690c1c9e478d93c8b6a1883badb707040e85e9d7253",
+      "bytes": 1777
+    },
+    "Source/MODEL/mp_coupl_same_name.inc": {
+      "sha256": "b895571169fcc1c68727544d8ff05c2ee64e6252f14302a5ead835854dff5d9c",
+      "bytes": 1345
+    },
+    "Source/MODEL/mp_couplings1.f": {
+      "sha256": "771ec188e8c527beb5f77278534fa207c975d02fd890ab13fb881020938d958b",
+      "bytes": 790
+    },
+    "Source/MODEL/mp_couplings2.f": {
+      "sha256": "b4e39fa7fffc4d210b9cb075a9a96e6498c067a45ac97db19a852597d64896e6",
+      "bytes": 500
+    },
+    "Source/MODEL/mp_couplings3.f": {
+      "sha256": "a57fe71cdd36163c2fa254b0d7d421e7fdd7597443a9ecbe9147d32024df5f4a",
+      "bytes": 4343
+    },
+    "Source/MODEL/mp_input.inc": {
+      "sha256": "aeee69196e81b8ad6f344990b346feda8fe665c355054bfa62b426f2f637b8bb",
+      "bytes": 3042
+    },
+    "Source/MODEL/mp_intparam_definition.inc": {
+      "sha256": "9df230be7b4ef3edd7588b985bb2850a04ef14d78d1b3eba5c4e554aa69d0cd4",
+      "bytes": 6445
+    },
+    "Source/MODEL/onia_read.inc": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "Source/MODEL/param_read.inc": {
+      "sha256": "cf1ee670ea7e139344fdc4096cc81b88315a49f961314d04b43b544f40122f22",
+      "bytes": 2835
+    },
+    "Source/MODEL/param_write.inc": {
+      "sha256": "ba207871dd4bf5698c7d34c13354df0d18f9a8d814e63471427418b76ec39057",
+      "bytes": 4527
+    },
+    "Source/MODEL/printout.f": {
+      "sha256": "e4c1687b5b7938a0cf6119f897036208f945c4a8b8c71603f8d9d127c1ad7b40",
+      "bytes": 1841
+    },
+    "Source/MODEL/rw_para.f": {
+      "sha256": "6f5b82b34634f8b50f489614bbdea0f92f1edb66d9f7a443a26a72cfe440491c",
+      "bytes": 2707
+    },
+    "Source/MODEL/testprog.f": {
+      "sha256": "7570c7961bd45365561047df5a3bd0c529204fb03f4e3562680d3b90e0042c89",
+      "bytes": 2394
+    }
+  },
+  "after": {
+    "Source/MODEL/actualize_mp_ext_params.inc": {
+      "sha256": "4108b4fb1f82d348413a9f7f777eb94537061f7ccf339d7d23f30f4f835676ac",
+      "bytes": 243
+    },
+    "Source/MODEL/coupl.inc": {
+      "sha256": "fe55b48e5c98a0fef687da7cb0859ba159cb3282c757d301e4532121a67ccac6",
+      "bytes": 1720
+    },
+    "Source/MODEL/coupl_write.inc": {
+      "sha256": "e55e5bc964073b74cb45a4fe6efcbd38ed264b00ca67619bda4e373cfcb73310",
+      "bytes": 1730
+    },
+    "Source/MODEL/couplings.f": {
+      "sha256": "e732847aa93cdcae502cd37808eb68b45d7dc3c9665bdd5d4de443be19747936",
+      "bytes": 3242
+    },
+    "Source/MODEL/couplings1.f": {
+      "sha256": "c49c0ef8ba4ecc408039bc66d0adc0d0cd5887df8b27e2c6f72d473356a4b7c9",
+      "bytes": 661
+    },
+    "Source/MODEL/couplings2.f": {
+      "sha256": "28b4eefe950545be8c834979488b7bc11ef89ca3c8799a3e0e59f08ae902b65e",
+      "bytes": 464
+    },
+    "Source/MODEL/couplings3.f": {
+      "sha256": "566b194403bb9580ea662c717308f63eaa0facb21da6b148d9d80d230379eb62",
+      "bytes": 3370
+    },
+    "Source/MODEL/flavor_couplings.f": {
+      "sha256": "863fa39462bb4b32dd09835ce5ca74624a4b08ee98be94fa756cd8a488ef6de7",
+      "bytes": 741
+    },
+    "Source/MODEL/formats.inc": {
+      "sha256": "1d0c8b3a81b5c4ed3cc50e16edc2d7fa09fa2c2694b9eef3790bff2abc42c3a3",
+      "bytes": 958
+    },
+    "Source/MODEL/get_color.f": {
+      "sha256": "e1b3eb173aa5a721e4f1dfb518987b5581edf4ddc63ed98fa14eab1daca71bcf",
+      "bytes": 3048
+    },
+    "Source/MODEL/input.inc": {
+      "sha256": "e8887e3d6b201199bc48178615968bcc6dd0291b3af2bf21533d09d48537c569",
+      "bytes": 2375
+    },
+    "Source/MODEL/intparam_definition.inc": {
+      "sha256": "4d14529f6c3cb833a2cb434d8bfca120d83d00f132ce414e37e1033cbcb83084",
+      "bytes": 5173
+    },
+    "Source/MODEL/ldme.inc": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "Source/MODEL/lha_read.f": {
+      "sha256": "7cfd5b14731c599bab2be71fabf3fc5566e293117fb927a6dad495c61154aef2",
+      "bytes": 13600
+    },
+    "Source/MODEL/makeinc.inc": {
+      "sha256": "b4474380dce602789c4749045fc5e726d3431039ae354b8d17405dce2c223090",
+      "bytes": 380
+    },
+    "Source/MODEL/model_functions.f": {
+      "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3",
+      "bytes": 32184
+    },
+    "Source/MODEL/model_functions.inc": {
+      "sha256": "be48cc65d552043c1569e2144501aa3d1c16e69834f20090aceca8ea818bb58f",
+      "bytes": 883
+    },
+    "Source/MODEL/mp_coupl.inc": {
+      "sha256": "04075db97d4b1152086ee690c1c9e478d93c8b6a1883badb707040e85e9d7253",
+      "bytes": 1777
+    },
+    "Source/MODEL/mp_coupl_same_name.inc": {
+      "sha256": "b895571169fcc1c68727544d8ff05c2ee64e6252f14302a5ead835854dff5d9c",
+      "bytes": 1345
+    },
+    "Source/MODEL/mp_couplings1.f": {
+      "sha256": "771ec188e8c527beb5f77278534fa207c975d02fd890ab13fb881020938d958b",
+      "bytes": 790
+    },
+    "Source/MODEL/mp_couplings2.f": {
+      "sha256": "b4e39fa7fffc4d210b9cb075a9a96e6498c067a45ac97db19a852597d64896e6",
+      "bytes": 500
+    },
+    "Source/MODEL/mp_couplings3.f": {
+      "sha256": "a57fe71cdd36163c2fa254b0d7d421e7fdd7597443a9ecbe9147d32024df5f4a",
+      "bytes": 4343
+    },
+    "Source/MODEL/mp_input.inc": {
+      "sha256": "aeee69196e81b8ad6f344990b346feda8fe665c355054bfa62b426f2f637b8bb",
+      "bytes": 3042
+    },
+    "Source/MODEL/mp_intparam_definition.inc": {
+      "sha256": "9df230be7b4ef3edd7588b985bb2850a04ef14d78d1b3eba5c4e554aa69d0cd4",
+      "bytes": 6445
+    },
+    "Source/MODEL/onia_read.inc": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "Source/MODEL/param_read.inc": {
+      "sha256": "cf1ee670ea7e139344fdc4096cc81b88315a49f961314d04b43b544f40122f22",
+      "bytes": 2835
+    },
+    "Source/MODEL/param_write.inc": {
+      "sha256": "ba207871dd4bf5698c7d34c13354df0d18f9a8d814e63471427418b76ec39057",
+      "bytes": 4527
+    },
+    "Source/MODEL/printout.f": {
+      "sha256": "e4c1687b5b7938a0cf6119f897036208f945c4a8b8c71603f8d9d127c1ad7b40",
+      "bytes": 1841
+    },
+    "Source/MODEL/rw_para.f": {
+      "sha256": "6f5b82b34634f8b50f489614bbdea0f92f1edb66d9f7a443a26a72cfe440491c",
+      "bytes": 2707
+    },
+    "Source/MODEL/testprog.f": {
+      "sha256": "7570c7961bd45365561047df5a3bd0c529204fb03f4e3562680d3b90e0042c89",
+      "bytes": 2394
+    }
+  },
+  "changed_files": [
+    "Source/MODEL/model_functions.f"
+  ],
+  "retained": {
+    "Source/MODEL/model_functions.f": {
+      "before": {
+        "path": "docs/benchmarkfolder/policy-v2/generation/model-deltas/qcd-3/before/Source/MODEL/model_functions.f",
+        "sha256": "a9678291451097495295fb6f894f3fd4c162addca0844f82393db59b69bc981e",
+        "bytes": 31974
+      },
+      "after": {
+        "path": "docs/benchmarkfolder/policy-v2/generation/model-deltas/qcd-3/after/Source/MODEL/model_functions.f",
+        "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3",
+        "bytes": 32184
+      },
+      "patch": {
+        "path": "docs/benchmarkfolder/policy-v2/generation/model-deltas/qcd-3/model_functions.f.patch",
+        "sha256": "690234b29b5c1e3d67f939da2250ae6332588bd24e29f6adeadf0864b43a58a3",
+        "bytes": 6960
+      }
+    }
+  },
+  "scope": "Complete Source/MODEL .f/.inc inventory; exact source bytes."
+}

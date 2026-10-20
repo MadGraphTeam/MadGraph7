@@ -332,3 +332,21 @@ report is reproducible and all milestones are pushed to `madloop_ninjars`.
   256-bit reductions show that original Ninja's smaller direction difference
   is not evidence of uniformly smaller per-reduction error. Stability thresholds
   and independent direction evaluation remain unchanged.
+- Fresh policy-v2 CLI exports and clean builds now cover all eight core cases
+  and all five generated controls at `fd72f8914`. Original physical cards,
+  point streams and external masses match exactly. QCD model exports change
+  only the verified helper file; EW exports change that helper and the MP
+  internal-parameter include. Complete source inventories and unchanged
+  dependency/protected-input checks are retained in the separate v2 namespace.
+  Generation performs no loop-amplitude evaluation and is not numerical
+  acceptance evidence.
+- The versioned correction policy now anchors original exports to committed
+  pre-correction evidence, verifies exact model postimages and forced rebuilds,
+  and requires refreshed coverage of all three source roles. Publication checks
+  all 21 corrected-cohort pairs while retaining original numerical discrepancies
+  and the literal original-Ninja timing denominator. The separate report reader
+  revalidates the dataset and independently recomputes numerical and runtime
+  conclusions. Its seven-page Typst layout is visually checked using labelled
+  fixture data only; the previous measured report remains intact. Representative
+  collection, final eight-process measurements and performance acceptance remain
+  outstanding.

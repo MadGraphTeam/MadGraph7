@@ -1,0 +1,174 @@
+{
+  "generator_before": {
+    "madgraph/iolibs/export_v4.py": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/madgraph/iolibs/export_v4.py",
+    "madgraph/iolibs/ufo_expression_parsers.py": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/madgraph/iolibs/ufo_expression_parsers.py"
+  },
+  "generator_after": {
+    "madgraph/iolibs/export_v4.py": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/iolibs/export_v4.py",
+    "madgraph/iolibs/ufo_expression_parsers.py": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/iolibs/ufo_expression_parsers.py"
+  },
+  "evidence": [
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/status.json",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/summary.json",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/ew3-collier-stability/mp-helper-audit/result.json",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/ew3-collier-stability/mp-helper-audit/trajectory/result.json"
+  ],
+  "cases": {
+    "qcd-1": {
+      "original_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/qcd-1",
+      "fresh_before_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/qcd-1",
+      "fresh_after_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/generation/outputs/candidate/qcd-1",
+      "ufo_evidence": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/provenance.json",
+      "cli_evidence": [
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/commands/baseline-qcd-1.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/logs/generate-baseline-qcd-1.log",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/commands/candidate-qcd-1.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/logs/generate-candidate-qcd-1.log"
+      ]
+    },
+    "ew-1": {
+      "original_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/ew-1",
+      "fresh_before_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/ew-1",
+      "fresh_after_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/generation/outputs/candidate/ew-1",
+      "ufo_evidence": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/provenance.json",
+      "cli_evidence": [
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/commands/baseline-ew-1.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/logs/generate-baseline-ew-1.log",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/commands/candidate-ew-1.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/logs/generate-candidate-ew-1.log"
+      ]
+    },
+    "qcd-2": {
+      "original_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/qcd-2",
+      "fresh_before_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/qcd-2",
+      "fresh_after_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/generation/outputs/candidate/qcd-2",
+      "ufo_evidence": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/provenance.json",
+      "cli_evidence": [
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/commands/baseline-qcd-2.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/logs/generate-baseline-qcd-2.log",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/commands/candidate-qcd-2.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/logs/generate-candidate-qcd-2.log"
+      ]
+    },
+    "ew-2": {
+      "original_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/ew-2",
+      "fresh_before_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/ew-2",
+      "fresh_after_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/generation/outputs/candidate/ew-2",
+      "ufo_evidence": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/provenance.json",
+      "cli_evidence": [
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/commands/baseline-ew-2.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/logs/generate-baseline-ew-2.log",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/commands/candidate-ew-2.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/logs/generate-candidate-ew-2.log"
+      ]
+    },
+    "qcd-3": {
+      "original_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/qcd-3",
+      "fresh_before_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/qcd-3",
+      "fresh_after_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/generation/outputs/candidate/qcd-3",
+      "ufo_evidence": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/provenance.json",
+      "cli_evidence": [
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/commands/baseline-qcd-3.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/logs/generate-baseline-qcd-3.log",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/commands/candidate-qcd-3.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/logs/generate-candidate-qcd-3.log"
+      ]
+    },
+    "ew-3": {
+      "original_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/ew-3",
+      "fresh_before_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/ew-3",
+      "fresh_after_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/generation/outputs/candidate/ew-3",
+      "ufo_evidence": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/provenance.json",
+      "cli_evidence": [
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/commands/baseline-ew-3.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/logs/generate-baseline-ew-3.log",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/commands/candidate-ew-3.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/logs/generate-candidate-ew-3.log"
+      ]
+    },
+    "qcd-4": {
+      "original_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/qcd-4",
+      "fresh_before_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/qcd-4",
+      "fresh_after_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/generation/outputs/candidate/qcd-4",
+      "ufo_evidence": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/provenance.json",
+      "cli_evidence": [
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/commands/baseline-qcd-4.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/logs/generate-baseline-qcd-4.log",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/commands/candidate-qcd-4.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/logs/generate-candidate-qcd-4.log"
+      ]
+    },
+    "ew-4": {
+      "original_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/ew-4",
+      "fresh_before_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/ew-4",
+      "fresh_after_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/generation/outputs/candidate/ew-4",
+      "ufo_evidence": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/provenance.json",
+      "cli_evidence": [
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/commands/baseline-ew-4.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/logs/generate-baseline-ew-4.log",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/commands/candidate-ew-4.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/logs/generate-candidate-ew-4.log"
+      ]
+    },
+    "control-gg-h": {
+      "original_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/control-gg-h",
+      "fresh_before_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/control-gg-h",
+      "fresh_after_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/generation/outputs/candidate/control-gg-h",
+      "ufo_evidence": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/provenance.json",
+      "cli_evidence": [
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/commands/baseline-control-gg-h.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/logs/generate-baseline-control-gg-h.log",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/commands/candidate-control-gg-h.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/logs/generate-candidate-control-gg-h.log"
+      ]
+    },
+    "control-gg-hh": {
+      "original_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/control-gg-hh",
+      "fresh_before_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/control-gg-hh",
+      "fresh_after_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/generation/outputs/candidate/control-gg-hh",
+      "ufo_evidence": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/provenance.json",
+      "cli_evidence": [
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/commands/baseline-control-gg-hh.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/logs/generate-baseline-control-gg-hh.log",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/commands/candidate-control-gg-hh.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/logs/generate-candidate-control-gg-hh.log"
+      ]
+    },
+    "control-mixed": {
+      "original_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/control-mixed",
+      "fresh_before_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/control-mixed",
+      "fresh_after_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/generation/outputs/candidate/control-mixed",
+      "ufo_evidence": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/provenance.json",
+      "cli_evidence": [
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/commands/baseline-control-mixed.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/logs/generate-baseline-control-mixed.log",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/commands/candidate-control-mixed.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/logs/generate-candidate-control-mixed.log"
+      ]
+    },
+    "control-complex": {
+      "original_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/control-complex",
+      "fresh_before_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/control-complex",
+      "fresh_after_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/generation/outputs/candidate/control-complex",
+      "ufo_evidence": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/provenance.json",
+      "cli_evidence": [
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/commands/baseline-control-complex.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/logs/generate-baseline-control-complex.log",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/commands/candidate-control-complex.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/logs/generate-candidate-control-complex.log"
+      ]
+    },
+    "control-forced-qp": {
+      "original_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/control-forced-qp",
+      "fresh_before_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/outputs/baseline/control-forced-qp",
+      "fresh_after_output": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/generation/outputs/candidate/control-forced-qp",
+      "ufo_evidence": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/provenance.json",
+      "cli_evidence": [
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/commands/baseline-control-forced-qp.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/logs/generate-baseline-control-forced-qp.log",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/commands/candidate-control-forced-qp.mg5",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/generation/logs/generate-candidate-control-forced-qp.log"
+      ]
+    }
+  }
+}
