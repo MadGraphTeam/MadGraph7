@@ -391,6 +391,96 @@ def library_hashes(output):
     return files
 
 
+RUNTIME_LINK_INPUTS = ("Source/make_opts", "SubProcesses/MadLoop_makefile_definitions")
+RUNTIME_METADATA_NAMES = {"ninjars-config.json", "ninjars-native-libs.txt", "ninjars-link-before.txt"}
+
+
+def runtime_metadata_files(output):
+    root = path(output) / "lib"
+    targets = list(root.iterdir())
+    for directory in list(targets):
+        if directory.is_dir():
+            targets.extend(directory.rglob("*"))
+    return {str(target.relative_to(root)): target for target in sorted(targets)
+            if target.suffix.lower() == ".mod" or target.name in RUNTIME_METADATA_NAMES}
+
+
+def reducer_signature(item):
+    """Process-independent numerical runtime, including transitive scalar libs."""
+    libraries = {name: value for name, value in item["libraries"].items()
+                 if name not in ("libmodel.a", "libdhelas.a")}
+    required = {1: ("libcts.a",), 6: ("libninja.a", "libavh_olo.a"),
+                7: ("libcollier.a",), 8: ("libninjars.a",)}[item["backend"]]
+    if any(name not in {Path(key).name for key in libraries} for name in required):
+        raise RuntimeError("Required reduction/scalar archive is missing")
+    if "runtime_metadata" not in item:
+        raise RuntimeError("Runtime metadata binding refresh is required")
+    metadata = {}
+    for name, record in item["runtime_metadata"].items():
+        check_file(record)
+        metadata[name] = record["sha256"]
+    if item["backend"] == 8 and not (
+            any(Path(name).name == "mninjars.mod" for name in metadata) and
+            RUNTIME_METADATA_NAMES.issubset({Path(name).name for name in metadata})):
+        raise RuntimeError("NinjaRS module/native-link metadata is incomplete")
+    files = item["compiled_manifest"]["files"]
+    if not set(RUNTIME_LINK_INPUTS).issubset(files):
+        raise RuntimeError("Retained numerical link inputs are missing")
+    return seal({"schema": "reducer-runtime-signature-v2", "libraries": libraries,
+                 "metadata": metadata,
+                 "link_inputs": {name: files[name] for name in RUNTIME_LINK_INPUTS}})
+
+
+def refresh_runtime_bindings(filename, correction_path, destination):
+    """Add live-verified interfaces without editing any measured run or binding."""
+    correction = validate_correction(correction_path, live=True)
+    original = checked_bindings(filename, correction, live=True)
+    destination = path(destination)
+    if destination.exists():
+        raise RuntimeError("Runtime binding destination already exists")
+    if "previous_binding" in original:
+        raise RuntimeError("Runtime binding has already been refreshed")
+    result = copy.deepcopy(original)
+    result["previous_binding"] = bound_file(filename)
+    assets = destination.parent / "runtime-assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    for item in result["targets"].values():
+        metadata = {}
+        for name, target in runtime_metadata_files(item["output"]).items():
+            checksum = workers.digest(target)
+            retained = assets / checksum
+            if not retained.exists():
+                shutil.copy2(target, retained)
+            if workers.digest(retained) != checksum:
+                raise RuntimeError("Retained runtime metadata was changed")
+            metadata[name] = bound_file(retained)
+        item["runtime_metadata"] = metadata
+        item["reducer_runtime"] = reducer_signature(item)
+    result = seal(result)
+    bench.dump(destination, result)
+    return result
+
+
+def proof_runtime_signatures(entries):
+    signatures = {}
+    for entry in entries:
+        item = entry["binding"]
+        key = f"{item['role']}/{item['backend']}"
+        signature = reducer_signature(item)
+        if key in signatures and signatures[key] != signature:
+            raise RuntimeError("Representative proof mixes reduction runtime identities")
+        signatures[key] = signature
+    return signatures
+
+
+def validate_proven_runtimes(proof, bindings):
+    signatures = proof_runtime_signatures(proof["entries"])
+    for item in bindings["targets"].values():
+        key = f"{item['role']}/{item['backend']}"
+        if signatures.get(key) != reducer_signature(item):
+            raise RuntimeError(f"Reduction runtime differs from refreshed representative proof: {key}")
+
+
 def validate_source_role(role, case_id, compiled, generation, correction):
     if role not in ROLES:
         raise RuntimeError("Unknown source role")
@@ -532,6 +622,15 @@ def checked_bindings(filename, correction, live=False):
     require_no_rejections(bindings["report"])
     if bindings["correction_identity_sha256"] != correction["identity_sha256"]:
         raise RuntimeError("Mixed correction identities")
+    if "previous_binding" in bindings:
+        previous = checked_bindings(check_file(bindings["previous_binding"]), correction, live=live)
+        retained = copy.deepcopy(bindings)
+        retained.pop("previous_binding")
+        for item in retained["targets"].values():
+            item.pop("runtime_metadata", None)
+            item.pop("reducer_runtime", None)
+        if seal(retained) != previous:
+            raise RuntimeError("Runtime refresh changes original source/run binding")
     for name, checksum in bindings["run_files_sha256"].items():
         if workers.digest(path(name)) != checksum:
             raise RuntimeError("Bound run evidence changed")
@@ -548,6 +647,8 @@ def checked_bindings(filename, correction, live=False):
                 item["model_identity_sha256"] != bench.content_digest(model_subset(compiled))):
             raise RuntimeError("Retained compiled source/runtime binding changed")
         validate_source_role(item["role"], item["case"], compiled, item["generation_source_identity"], correction)
+        if "reducer_runtime" in item and reducer_signature(item) != item["reducer_runtime"]:
+            raise RuntimeError("Retained reduction runtime signature changed")
         if item["role"] != "candidate_corrected":
             libraries, original = item["libraries"], item["original_libraries"]
             if {k: v for k, v in libraries.items() if k != "libmodel.a"} != {k: v for k, v in original.items() if k != "libmodel.a"}:
@@ -566,8 +667,15 @@ def checked_bindings(filename, correction, live=False):
                 check_file(log)
         if live:
             actual = bind_target(item["role"], item["case"], item["backend"], item["output"], build_path, correction)
-            if actual != item:
+            expected = {name: value for name, value in item.items()
+                        if name not in ("runtime_metadata", "reducer_runtime")}
+            if actual != expected:
                 raise RuntimeError("Bound source/runtime changed")
+            if "runtime_metadata" in item:
+                current = {name: workers.digest(target)
+                           for name, target in runtime_metadata_files(item["output"]).items()}
+                if current != {name: record["sha256"] for name, record in item["runtime_metadata"].items()}:
+                    raise RuntimeError("Bound reduction module/link metadata changed")
     return bindings
 
 
@@ -618,6 +726,7 @@ def create_proof(policy_path, binding_paths, output=None):
             coverage[role]["split_orders"] |= data["answer_dimensions"]["loop_orders"] > 1
             entries.append({"role": role, "case": case_id, "backend": backend, **parity,
                             "binding": binding})
+    runtimes = proof_runtime_signatures(entries)
     for role, covered in coverage.items():
         qp = {1, 6, 8} if role == "candidate_corrected" else {1, 6}
         if (covered["dp"] != set(ROLES[role]) or not qp.issubset(covered["qp"]) or
@@ -627,7 +736,8 @@ def create_proof(policy_path, binding_paths, output=None):
     evidence = seal({"schema": PROOF, "policy_identity_sha256": policy["identity_sha256"],
                      "correction_identity_sha256": correction["identity_sha256"],
                      "bindings": [bound_file(item) for item in binding_paths],
-                     "coverage": coverage, "entries": entries, "files_sha256": files})
+                     "coverage": coverage, "entries": entries, "files_sha256": files,
+                     "reducer_runtimes": runtimes})
     if output is not None:
         if path(output).exists():
             raise RuntimeError("Proof destination exists")
@@ -681,6 +791,8 @@ def build_dataset(policy_path, proof_path, timing_binding_path, reference_bindin
     proof = validate_proof(proof_path, policy_path)
     timing = checked_bindings(timing_binding_path, correction)
     reference = checked_bindings(reference_binding_path, correction)
+    validate_proven_runtimes(proof, timing)
+    validate_proven_runtimes(proof, reference)
     timing_protocol, timed = workers.checked_series(path(timing["report"]), minimum=7, require_core=True)
     reference_protocol, refs = workers.checked_series(path(reference["report"]), minimum=2)
     validate_adapter(timing_protocol, policy)
@@ -782,7 +894,7 @@ def publish(policy_path, proof_path, timing_binding_path, reference_binding_path
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("correction", "policy", "bind", "proof", "publish"))
+    parser.add_argument("action", choices=("correction", "policy", "bind", "runtime-bind", "proof", "publish"))
     parser.add_argument("--spec", type=Path)
     parser.add_argument("--correction", type=Path)
     parser.add_argument("--config", type=Path)
@@ -798,6 +910,10 @@ def main():
     elif args.action == "bind":
         spec = read(args.spec)
         result = bind_run(spec["report"], spec["role_map"], spec["outputs"], args.correction, args.output)
+    elif args.action == "runtime-bind":
+        if len(args.bindings or []) != 1:
+            parser.error("runtime-bind requires one original --bindings")
+        result = refresh_runtime_bindings(args.bindings[0], args.correction, args.output)
     elif args.action == "proof":
         result = create_proof(args.policy, args.bindings, args.output)
     else:

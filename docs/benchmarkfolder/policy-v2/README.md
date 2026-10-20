@@ -110,10 +110,11 @@ final candidate generator identity; historical v1 proof is insufficient.
 ## Bind, validate and publish
 
 `policy.json` is the superseded pre-proof policy retained with the initial
-implementation commit. No completed dataset uses it. `policy-offline.json` is
-the final policy after proof revalidation was made entirely in memory, so a
-report does not require even an empty disposable work directory. The collection
-adapter and its numerical data are unchanged.
+implementation commit. `policy-offline.json` retains the subsequent in-memory
+proof-validation revision. Neither has a completed dataset. `policy-runtime.json`
+adds strict reduction-runtime binding to the refreshed proof. Validation still
+needs no disposable work directory. The collection adapter and numerical data
+are unchanged.
 
 After implementation review/freeze, seal the policy:
 
@@ -121,7 +122,7 @@ After implementation review/freeze, seal the policy:
 python tools/ninjars_benchmark_policy_v2.py policy \
   --correction docs/benchmarkfolder/policy-v2/model-correction.json \
   --config docs/benchmarkfolder/policy-v2/cases.json \
-  --output docs/benchmarkfolder/policy-v2/policy-offline.json
+  --output docs/benchmarkfolder/policy-v2/policy-runtime.json
 ```
 
 The timing adapter writes `binding-spec.json` with the report path, role map and
@@ -140,16 +141,36 @@ hashes and MODEL rebuild evidence. Offline validation uses retained evidence;
 it does not require disposable executables or object files. Live binding is
 strict and compares those artifacts before recording them.
 
+Before using a binding in the current proof or dataset, derive its runtime
+binding outside the immutable run directory:
+
+```sh
+python tools/ninjars_benchmark_policy_v2.py runtime-bind \
+  --bindings path/to/role-bindings.json \
+  --correction docs/benchmarkfolder/policy-v2/model-correction.json \
+  --output path/outside/run/runtime-role-bindings.json
+```
+
+This checks the existing executable, source and library hashes against the live
+worker, preserves its original binding, and retains external Fortran modules and
+NinjaRS native-link metadata. It does not reevaluate physics or rewrite measured
+data. Every role/backend must use one identical runtime signature throughout
+the proof and final timing/reference series. The signature includes all linked
+reduction/scalar libraries, modules, native-link metadata and numerical linker
+definitions; only process-specific MODEL and DHELAS archives are excluded.
+Changing a Rust archive or scalar library requires refreshed representative
+evidence even if the generator tree is unchanged.
+
 ```sh
 python tools/ninjars_benchmark_policy_v2.py proof \
-  --policy docs/benchmarkfolder/policy-v2/policy-offline.json \
-  --bindings representative-role-bindings-1.json representative-role-bindings-2.json \
+  --policy docs/benchmarkfolder/policy-v2/policy-runtime.json \
+  --bindings representative-runtime-bindings-1.json representative-runtime-bindings-2.json \
   --output docs/benchmarkfolder/policy-v2/representative-proof.json
 
 python tools/ninjars_benchmark_policy_v2.py publish \
-  --policy docs/benchmarkfolder/policy-v2/policy-offline.json \
+  --policy docs/benchmarkfolder/policy-v2/policy-runtime.json \
   --proof docs/benchmarkfolder/policy-v2/representative-proof.json \
-  --bindings timing-role-bindings.json corrected-reference-role-bindings.json \
+  --bindings timing-runtime-bindings.json corrected-reference-runtime-bindings.json \
   --output docs/benchmarkfolder/policy-v2/datasets
 ```
 

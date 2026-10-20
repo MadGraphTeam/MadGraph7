@@ -31,6 +31,7 @@ class PolicyV2Test(unittest.TestCase):
             self.put(output / "Source/make_opts", "FC=gfortran\n")
             self.put(output / "SubProcesses/P0_test/matrix.f", "original process\n")
             self.put(output / "SubProcesses/P0_test/check_sa.f", "fresh driver\n")
+            self.put(output / "SubProcesses/MadLoop_makefile_definitions", "same numerical linker flags\n")
             self.put(output / "Cards/param_card.dat", "same physics\n")
             self.dump(output / "generation.json", {"source_identity": self.identity})
         self.put(self.after / policy.MODEL_FILES[0], "corrected helpers\n")
@@ -270,8 +271,9 @@ class PolicyV2Test(unittest.TestCase):
                 key = f"toy-{source}-{backend}"
                 role = "original_helper_corrected" if name == "refs" else (
                     "original" if source == "baseline" else "candidate_corrected")
-                bindings["targets"][key] = {"role": role, "executable_sha256": key,
-                    "generation_source_identity": {"tree_state_sha256": "frozen-final-candidate"}}
+                bindings["targets"][key] = self.runtime_item(role, backend)
+                bindings["targets"][key].update(executable_sha256=key,
+                    generation_source_identity={"tree_state_sha256": "frozen-final-candidate"})
                 settings = {"collierrequiredaccuracy": 1e-12, "mlstabthres": 1e-9,
                             "colliercomputeuvpoles": True, "colliercomputeirpoles": True}
                 if backend != 7:
@@ -295,20 +297,76 @@ class PolicyV2Test(unittest.TestCase):
                     self.dump(report / "data" / f"{key}-{rep}.json", dict(data, repetition=rep))
         return bindings
 
+    def runtime_item(self, role="candidate_corrected", backend=8):
+        metadata = {}
+        for name in ("mninjars.mod", *sorted(policy.RUNTIME_METADATA_NAMES)):
+            filename = self.root / "runtime" / name
+            self.put(filename, "same module or link metadata " + name)
+            metadata["ninjars_lib/" + name] = policy.bound_file(filename)
+        return {"role": role, "backend": backend,
+                "libraries": {"libmodel.a": "process-model", "libdhelas.a": "process-dhelas",
+                              "libcts.a": "cts", "ninja_lib/libninja.a": "ninja",
+                              "ninja_lib/libavh_olo.a": "olo", "collier_lib/libcollier.a": "collier",
+                              "ninjars_lib/libninjars.a": "ninjars"},
+                "runtime_metadata": metadata,
+                "compiled_manifest": {"files": {name: {"sha256": name, "bytes": 1}
+                                                 for name in policy.RUNTIME_LINK_INPUTS}}}
+
     def publish_fixture(self, mutate=None):
         timing = self.make_series("timed", "both", [1, 6, 7, 8], 7)
         refs = self.make_series("refs", "baseline", [1, 6, 7], 2)
+        proof = {"entries": [{"role": item["role"], "binding": copy.deepcopy(item)}
+                            for group in (timing, refs) for item in group["targets"].values()]}
         if mutate:
             mutate(timing, refs)
         # Exercise real frozen series, row and pairing validation. Source binding
         # checks are tested independently above; avoid fake physics executables.
         timing_path, refs_path, proof_path = (self.root / name for name in ("timing-bindings.json", "ref-bindings.json", "proof.json"))
         self.dump(timing_path, timing); self.dump(refs_path, refs); self.dump(proof_path, {})
-        proof = {"entries": [{"role": "candidate_corrected", "binding": {
-            "generation_source_identity": {"tree_state_sha256": "frozen-final-candidate"}}}]}
         with mock.patch.object(policy, "checked_bindings", side_effect=lambda filename, correction: policy.read(filename)), \
              mock.patch.object(policy, "validate_proof", return_value=proof):
             return policy.publish(self.policy_path, proof_path, timing_path, refs_path, self.root / "published")
+
+    def test_identical_generator_with_changed_ninjars_archive_is_rejected(self):
+        def mutate(timing, refs):
+            timing["targets"]["toy-candidate-8"]["libraries"]["ninjars_lib/libninjars.a"] = "rebuilt-rust"
+        with self.assertRaisesRegex(RuntimeError, "Reduction runtime differs"):
+            self.publish_fixture(mutate)
+
+    def test_corrected_reference_runtime_change_also_requires_fresh_proof(self):
+        def mutate(timing, refs):
+            refs["targets"]["toy-baseline-6"]["libraries"]["ninja_lib/libavh_olo.a"] = "different-master"
+        with self.assertRaisesRegex(RuntimeError, "Reduction runtime differs"):
+            self.publish_fixture(mutate)
+
+    def test_runtime_signature_excludes_only_process_model_and_dhelas(self):
+        item = self.runtime_item()
+        expected = policy.reducer_signature(item)
+        item["libraries"]["libmodel.a"] = "another physical model"
+        item["libraries"]["libdhelas.a"] = "another process helicity library"
+        self.assertEqual(policy.reducer_signature(item), expected)
+        item["libraries"]["libiregi.a"] = "unexpected linked reduction library"
+        self.assertNotEqual(policy.reducer_signature(item), expected)
+
+    def test_metadata_and_mixed_representative_runtime_are_rejected(self):
+        item = self.runtime_item()
+        other = copy.deepcopy(item)
+        other["libraries"]["ninjars_lib/libninjars.a"] = "changed"
+        with self.assertRaisesRegex(RuntimeError, "mixes reduction runtime"):
+            policy.proof_runtime_signatures([{"binding": item}, {"binding": other}])
+        metadata = next(iter(item["runtime_metadata"].values()))
+        self.put(policy.path(metadata["path"]), "corruption")
+        with self.assertRaisesRegex(RuntimeError, "Changed bound evidence"):
+            policy.reducer_signature(item)
+
+    def test_missing_ninjars_interface_or_runtime_refresh_is_rejected(self):
+        item = self.runtime_item()
+        del item["runtime_metadata"]["ninjars_lib/mninjars.mod"]
+        with self.assertRaisesRegex(RuntimeError, "metadata is incomplete"):
+            policy.reducer_signature(item)
+        del item["runtime_metadata"]
+        with self.assertRaisesRegex(RuntimeError, "refresh is required"):
+            policy.reducer_signature(item)
 
     def test_complete_failed_physics_data_is_published_honestly_without_mutating_inputs(self):
         def mutate(timing, refs):
@@ -368,7 +426,9 @@ class PolicyV2Test(unittest.TestCase):
 
     def test_offline_bound_source_validation_survives_removed_outputs_but_rejects_retained_tampering(self):
         import shutil
-        for name, value in (("libmodel.a", "original model"), ("libdhelas.a", "original DHELAS")):
+        for name, value in (("libmodel.a", "original model"), ("libdhelas.a", "original DHELAS"),
+                            ("ninja_lib/libninja.a", "original Ninja"), ("ninja_lib/libavh_olo.a", "original masters"),
+                            ("mpmodule.mod", "original module")):
             self.put(self.original / "lib" / name, value)
         output = self.root / "disposable-worker"
         references.clone_output(self.original, output)
@@ -401,10 +461,20 @@ class PolicyV2Test(unittest.TestCase):
         policy.bind_run(report, {"baseline": "original"}, {"toy-baseline-6": str(output)},
                         self.correction_path, bindings_path)
         live = policy.checked_bindings(bindings_path, self.correction, live=True)
+        original_bytes = bindings_path.read_bytes()
+        refreshed_path = self.root / "runtime-bindings.json"
+        refreshed = policy.refresh_runtime_bindings(bindings_path, self.correction_path, refreshed_path)
+        self.assertEqual(bindings_path.read_bytes(), original_bytes)
+        self.assertEqual(policy.checked_bindings(refreshed_path, self.correction, live=True), refreshed)
+        self.put(output / "lib/mpmodule.mod", "changed compiler interface")
+        with self.assertRaisesRegex(RuntimeError, "module/link metadata changed"):
+            policy.checked_bindings(refreshed_path, self.correction, live=True)
+        self.put(output / "lib/mpmodule.mod", "original module")
         for disposable in (output, self.original, self.before, self.after):
             shutil.rmtree(disposable)
         correction = policy.validate_correction(self.correction_path)
         self.assertEqual(policy.checked_bindings(bindings_path, correction), live)
+        self.assertEqual(policy.checked_bindings(refreshed_path, correction), refreshed)
         self.put(retained / "worker.f", worker_source + "unexpected mutation")
         with self.assertRaisesRegex(RuntimeError, "Bound run evidence changed"):
             policy.checked_bindings(bindings_path, correction)

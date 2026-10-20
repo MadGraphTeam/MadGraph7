@@ -1,0 +1,22 @@
+{
+  "command": [
+    "python",
+    "-m",
+    "unittest",
+    "tests.unit_tests.various.test_ninjars_benchmark_policy_v2",
+    "tests.unit_tests.various.test_ninjars_benchmark_workers",
+    "tests.unit_tests.various.test_ninjars_benchmark_extract",
+    "tests.unit_tests.loop.test_ninjars_report_v2",
+    "-q"
+  ],
+  "exit_code": 0,
+  "tests_passed": 57,
+  "independent_review": "audit_fortran reviewed runtime binding and independently passed37 policy/report tests. Root reviewed signature scope and verified all13 candidate outputs have identical process-independent link inputs.",
+  "checks": "Changed reducer/scalar archive, changed interface metadata and mixed representative runtime signatures are rejected; process model/DHELAS differences are separately bound. Old measured runs remain immutable.",
+  "files": {
+    "tools/ninjars_benchmark_policy_v2.py": "7de75ef2d7d005c6ecfe66e9ea94a8b893c043e7baac52f1165cd0b16cdddab5",
+    "tests/unit_tests/various/test_ninjars_benchmark_policy_v2.py": "14b57780bf5696fee3a2d55f98895956b0c4c81bf2bc92eddb76cb7a3a340470",
+    "docs/benchmarkfolder/policy-v2/policy-runtime.json": "5113f482b6e291c6c35248fac7809eb10222ea90d553916444c46df7c4a3ab8c",
+    "docs/benchmarkfolder/policy-v2/runtime-validation/tests.log": "f90f909b3aaf128167668d7ff4e88de6ee9c8f872b9f5fd5629aa6e4eb6c6ea4"
+  }
+}
