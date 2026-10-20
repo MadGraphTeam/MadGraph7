@@ -30,8 +30,10 @@ def certified_source_counterterm_bases(source):
 
     Source FFV tensors retain their UFO frame and use the separately certified
     typed endpoint adapter at physical construction. No bundled-model scalar or
-    native vertex representative is substituted. Gluon four-point R2 evidence is
-    fixed SU(3) only; it does not provide a formal-Nc continuation.
+    native vertex representative is substituted. Adjoint scalar SS, VSS and
+    VVSS tensors use the same raw UFO frame as their independent local ALOHA
+    controls. Four-adjoint colour evidence is fixed SU(3) only; it does not
+    provide a formal-Nc continuation or certify scalar coefficients.
     """
     from ufo_model_loader.symbolica_processing import wrap_indices
 
@@ -66,6 +68,29 @@ def certified_source_counterterm_bases(source):
         colors = tuple(item["color"] for item in particles)
         control = None
         if (
+            spins == (1, 1)
+            and colors == (8, 8)
+            and any_equal(entry.color, ("Identity(1,2)",))
+            and any_equal(entry.lorentz, ("1", "P(-1,2)**2"))
+        ):
+            control = "local-adjoint-scalar-two-point-aloha-and-mg-color-control"
+        elif (
+            spins == (3, 1, 1)
+            and colors == (8, 8, 8)
+            and any_equal(entry.color, ("f(1,2,3)",))
+            and any_equal(entry.lorentz, ("P(1,2)-P(1,3)",))
+        ):
+            control = "local-adjoint-scalar-vss-aloha-and-mg-color-control"
+        elif (
+            spins == (3, 3, 1, 1)
+            and colors == (8, 8, 8, 8)
+            and any_equal(entry.color, _FOUR_R2_COLOR)
+            and any_equal(entry.lorentz, ("Metric(1,2)",))
+        ):
+            # The tested colour and Lorentz factors do not depend on whether
+            # the source assigns this identical local tensor to UV or R2.
+            control = "local-adjoint-scalar-vvss-aloha-and-mg-color-control"
+        elif (
             spins == (2, 2, 3)
             # The tested local tensor and Dirac endpoint frame depend on the
             # ordered representations, not equal flavour or equal masses.
