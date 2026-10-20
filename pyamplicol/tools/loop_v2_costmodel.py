@@ -37,8 +37,9 @@ within its gate (1.3 x best production provider) with x1.3 headroom at the
 upper end of the band.
 
 ``--trie-shapes`` evaluates the same model on real trie node shapes (a JSON
-list of ``{"rows_out", "x", "rank_in", "count"}`` nodes) instead of the
-design's counted work.
+list of ``{"rows_out", "x", "rank_in", "count"}`` nodes, or the records of
+``pyamplicol.loops.v2.schedules.trie_shapes``, whose ``x_rows`` is ``x``)
+instead of the design's counted work.
 
 The fastest kernel form is reported for every benchmarked node shape,
 including the ``small-x`` set (at most two attached block rows) that does not
@@ -418,7 +419,8 @@ def trie_shape_work(nodes: Iterable[Mapping[str, int]]) -> tuple[int, int, int]:
     structured = dense = count = 0
     for node in nodes:
         n = int(node.get("count", 1))
-        args = (int(node["rows_out"]), int(node["rank_in"]), int(node["x"]))
+        x = node["x"] if "x" in node else node["x_rows"]
+        args = (int(node["rows_out"]), int(node["rank_in"]), int(x))
         structured += n * node_work(*args, STRUCTURED)
         dense += n * node_work(*args, DENSE)
         count += n

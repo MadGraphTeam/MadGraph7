@@ -212,3 +212,18 @@ def test_gate_is_evaluated_at_one_lane_count_for_every_report(tmp_path: Path) ->
     assert {entry["gate_lanes"] for entry in summary} == {8}
     passed = [all(row["pass"] for row in entry["g0"]) for entry in summary]
     assert passed == [True, False]
+
+
+def test_trie_shapes_accept_the_families_export() -> None:
+    nodes = [
+        {"rows_out": 4, "x": 8, "rank_in": 2, "count": 3},
+        {"rows_out": 2, "x_rows": 6, "rank_in": 0, "edges": 2, "work": 0},
+    ]
+    structured, dense, count = costmodel.trie_shape_work(nodes)
+    assert count == 4
+    assert structured == 3 * costmodel.node_work(
+        4, 2, 8, costmodel.STRUCTURED
+    ) + costmodel.node_work(2, 0, 6, costmodel.STRUCTURED)
+    assert dense == 3 * costmodel.node_work(4, 2, 8, costmodel.DENSE) + (
+        costmodel.node_work(2, 0, 6, costmodel.DENSE)
+    )
