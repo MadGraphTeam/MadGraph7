@@ -1,10 +1,11 @@
 # Real-mass electroweak colour correlations
 
 The retained control is `e- e+ -> u u~ [QED]` in the real-mass Gmu scheme,
-with complete model-supplied UV and R2. Ordinary reference validation and directed
-source controls pass in double, DoubleFloat and 70-digit arithmetic. The source
-compiler receives an explicit compatibility repair and covariant multiplets;
-generic public model preparation is a separate integration gate.
+with complete model-supplied UV and R2. Ordinary components match independent
+binary64 references. Separate internal directed-source identities pass in
+double, DoubleFloat and 70-digit arithmetic. The source compiler receives an
+explicit compatibility repair and covariant multiplets; generic public model
+preparation is a separate integration gate.
 
 The source `loop_qcd_qed_sm_Gmu_py3` is imported with its full particle and
 counterterm catalogue. Its obsolete `Particle.anti` positional constructor loses
