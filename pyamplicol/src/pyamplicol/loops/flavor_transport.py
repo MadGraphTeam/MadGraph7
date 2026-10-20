@@ -1161,9 +1161,10 @@ def _member_expression_identity(structure, expression):
     from pyamplicol.processes.model import (
         is_external_model_particle,
         resolve_model_particle_name,
+        ufo_goldstone_flag,
     )
 
-    from .covariant_model import _flag, source_goldstone
+    from .covariant_model import _flag
 
     expression = ProcessRequest.parse(expression).expression
     initial, separator, final = expression.partition(">")
@@ -1181,7 +1182,7 @@ def _member_expression_identity(structure, expression):
         if not is_external_model_particle(
             spin=actual_fields["spin"],
             ghost_number=actual_fields.get("ghost_number", 0),
-            goldstoneboson=actual_fields.get("goldstoneboson", False),
+            goldstoneboson=ufo_goldstone_flag(actual_fields),
             propagating=actual_fields.get("propagating", True),
             auxiliary_kind=actual_fields.get("auxiliary_kind"),
         ):
@@ -1189,7 +1190,7 @@ def _member_expression_identity(structure, expression):
         if not is_external_model_particle(
             spin=fields["spin"],
             ghost_number=fields.get("GhostNumber", 0),
-            goldstoneboson=source_goldstone(fields),
+            goldstoneboson=ufo_goldstone_flag(fields),
             propagating=_flag(fields, ("Propagating", "propagating", True)),
             auxiliary_kind=fields.get("auxiliary_kind"),
         ):

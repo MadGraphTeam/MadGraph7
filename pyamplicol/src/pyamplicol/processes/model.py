@@ -30,6 +30,20 @@ from .ir import (
     WavefunctionFamily,
 )
 
+GOLDSTONE_FLAG_SPELLINGS = ("GoldstoneBoson", "goldstoneboson", "goldstone")
+
+
+def ufo_goldstone_flag(fields: Mapping[str, object]) -> bool:
+    """MadGraph's UFO convention: any truthy established Goldstone spelling.
+
+    ``GoldstoneBoson``, ``goldstoneboson`` and legacy ``goldstone`` are all
+    honoured; a false constructor default in one spelling must not hide a true
+    flag in another. Every reader of source or native particle metadata uses
+    this one interpretation (ufo_model_loader PR3 exposes the same; prefer it
+    once a release provides it).
+    """
+    return any(bool(fields.get(name)) for name in GOLDSTONE_FLAG_SPELLINGS)
+
 
 def is_external_model_particle(
     *,

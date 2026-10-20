@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from types import MappingProxyType, SimpleNamespace
 from typing import Any
 
+from ..processes.model import ufo_goldstone_flag
 from .model_color import prepare_color_expression
 from .model_expressions import epsilon_symbol, parse_exact_ufo
 from .scalar_bindings import prepare_scalar_bindings
@@ -37,19 +38,6 @@ class StructuralCovariantModel:
 
 def _flag(fields, name):
     return bool(fields.get(name[0], fields.get(name[1], name[2])))
-
-
-def source_goldstone(fields):
-    """MadGraph's UFO convention: any truthy GoldstoneBoson/goldstoneboson/goldstone.
-
-    A false constructor default in one spelling must not hide a true flag in
-    another (e.g. legacy ``goldstone = True``). ufo_model_loader PR3 exposes the
-    same interpretation; prefer it once a release provides it.
-    """
-    return any(
-        bool(fields.get(name))
-        for name in ("GoldstoneBoson", "goldstoneboson", "goldstone")
-    )
 
 
 def _reference(raw, ref, collection):
@@ -140,8 +128,8 @@ def _repair(raw, particles, compatibility):
             b["width"]["name"],
         )
         != ("MW", "MW", "WW", "WW")
-        or not _flag(a, ("GoldstoneBoson", "goldstoneboson", False))
-        or _flag(b, ("GoldstoneBoson", "goldstoneboson", False))
+        or not ufo_goldstone_flag(a)
+        or ufo_goldstone_flag(b)
         or not _flag(a, ("Propagating", "propagating", True))
         or not _flag(b, ("Propagating", "propagating", True))
         or _charge(positive) != 1
@@ -362,7 +350,7 @@ def build_covariant_structure(
             y_charge=fields.get("Y"),
             y_charge_right=fields.get("YRight"),
             propagating=_flag(fields, ("Propagating", "propagating", True)),
-            goldstoneboson=source_goldstone(fields),
+            goldstoneboson=ufo_goldstone_flag(fields),
         )
         if not particle["propagating"]:
             raise NotImplementedError(

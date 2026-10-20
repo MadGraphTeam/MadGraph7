@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from functools import cache
 from typing import Any
 
+from ..processes.model import GOLDSTONE_FLAG_SPELLINGS, ufo_goldstone_flag
 from .graphs import _rule_orders, _species_orders
 from .model_expressions import LaurentExpression, epsilon_symbol, parse_exact_ufo
 from .scalar_bindings import prepare_scalar_bindings
@@ -448,8 +449,7 @@ def prove_flavor_relabeling(
             "LeptonNumber",
             "GhostNumber",
             "propagating",
-            "goldstoneboson",
-            "GoldstoneBoson",
+            *GOLDSTONE_FLAG_SPELLINGS,
             "selfconjugate",
             "loop_particles",
             "counterterm",
@@ -471,7 +471,7 @@ def prove_flavor_relabeling(
             data.get("LeptonNumber", 0),
             data.get("GhostNumber", 0),
             data.get("propagating", True),
-            data.get("goldstoneboson", data.get("GoldstoneBoson", False)),
+            ufo_goldstone_flag(data),
             anti[data["pdg_code"]] == data["pdg_code"],
             extra,
         )

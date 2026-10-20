@@ -544,7 +544,7 @@ V3=Vertex('V3',[P.s,P.s,P.s],['1'],[L],{(0,0):C3})
         ({}, False),
     ],
 )
-def test_source_goldstone_honours_every_established_ufo_spelling(fields, expected):
-    from pyamplicol.loops.covariant_model import source_goldstone
+def test_goldstone_flag_honours_every_established_ufo_spelling(fields, expected):
+    from pyamplicol.processes.model import ufo_goldstone_flag
 
-    assert source_goldstone(fields) is expected
+    assert ufo_goldstone_flag(fields) is expected
