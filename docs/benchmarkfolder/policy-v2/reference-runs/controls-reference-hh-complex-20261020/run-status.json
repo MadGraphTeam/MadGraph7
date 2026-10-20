@@ -1,0 +1,13 @@
+{
+  "status": "complete",
+  "requested_cases": [
+    "control-gg-hh",
+    "control-complex"
+  ],
+  "completed_cases": [
+    "control-gg-hh",
+    "control-complex"
+  ],
+  "source_role": "original_helper_corrected",
+  "acceptance_eligible": false
+}

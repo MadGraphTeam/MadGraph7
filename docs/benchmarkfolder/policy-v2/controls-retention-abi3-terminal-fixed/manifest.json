@@ -1,0 +1,1632 @@
+{
+  "schema": "generated-controls-retention-v2",
+  "acceptance_evidence": false,
+  "scope": "Three completed generated-control runs, exact runtime assets/bindings, four-case corrected comparison; reused representative/legacy evidence remains in its existing validated namespaces.",
+  "files": {
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/binding-spec.json": {
+      "sha256": "14e1e5f805514d329a3ad71e7ee5e3d12f6bc7cb2a60f3eeddd51445da01e3c3",
+      "bytes": 1852
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-1/MadLoopParams.dat": {
+      "sha256": "d556639418de37d1d132fdc3968fe2a48469da7fe2ca04dfa95c5112096c1cb4",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-1/MadLoop_makefile_definitions": {
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c",
+      "bytes": 2392
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-1/build.json": {
+      "sha256": "e851df53bdcb12050616827e46a072c727f305fcbf09982fb7357c6ce468eb38",
+      "bytes": 353475
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-1/compiled-sources.json": {
+      "sha256": "e67854e18fcb6a8c0b0401d642881ff61ef143e7ed44894eaf58271e38b4991a",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-1/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-1/param_card.dat": {
+      "sha256": "1511223edb8e5e1a5ad12baee88c013f94a32161491e6889b05a35e022c9eaa4",
+      "bytes": 4396
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-1/worker.f": {
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-6/MadLoopParams.dat": {
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-6/MadLoop_makefile_definitions": {
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c",
+      "bytes": 2392
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-6/build.json": {
+      "sha256": "5a23751f1fae0fcbbd7d3c611b3e5d13a83c634c95383d9a701eda63228dba32",
+      "bytes": 353475
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-6/compiled-sources.json": {
+      "sha256": "e67854e18fcb6a8c0b0401d642881ff61ef143e7ed44894eaf58271e38b4991a",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-6/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-6/param_card.dat": {
+      "sha256": "1511223edb8e5e1a5ad12baee88c013f94a32161491e6889b05a35e022c9eaa4",
+      "bytes": 4396
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-6/worker.f": {
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-7/MadLoopParams.dat": {
+      "sha256": "6d8692489d9e1415c899ec5a4bf0cae94987a171cf1812f25e2109f1b6917cbd",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-7/MadLoop_makefile_definitions": {
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c",
+      "bytes": 2392
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-7/build.json": {
+      "sha256": "0ca9dd8a01fff00195737f43404cccd351eede2374ce8694253b4182efeb4072",
+      "bytes": 353432
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-7/compiled-sources.json": {
+      "sha256": "e67854e18fcb6a8c0b0401d642881ff61ef143e7ed44894eaf58271e38b4991a",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-7/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-7/param_card.dat": {
+      "sha256": "1511223edb8e5e1a5ad12baee88c013f94a32161491e6889b05a35e022c9eaa4",
+      "bytes": 4396
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-7/worker.f": {
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-8/MadLoopParams.dat": {
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-8/MadLoop_makefile_definitions": {
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c",
+      "bytes": 2392
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-8/build.json": {
+      "sha256": "1a768edd4f22a1ef51ee9ecae423d83a91a54c42aa54c89c8dd4f58efcd8a683",
+      "bytes": 353476
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-8/compiled-sources.json": {
+      "sha256": "e67854e18fcb6a8c0b0401d642881ff61ef143e7ed44894eaf58271e38b4991a",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-8/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-8/param_card.dat": {
+      "sha256": "1511223edb8e5e1a5ad12baee88c013f94a32161491e6889b05a35e022c9eaa4",
+      "bytes": 4396
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-complex-candidate-8/worker.f": {
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-1/MadLoopParams.dat": {
+      "sha256": "d556639418de37d1d132fdc3968fe2a48469da7fe2ca04dfa95c5112096c1cb4",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-1/MadLoop_makefile_definitions": {
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c",
+      "bytes": 2392
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-1/build.json": {
+      "sha256": "345de79102ff94140451747edf8402a523ff1a8aee821f730df360070b8f2af9",
+      "bytes": 353474
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-1/compiled-sources.json": {
+      "sha256": "c08be1a4aee9cd1cf5f69faeea98e8100746b91325ef7e874ae15f8717c3f355",
+      "bytes": 16317
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-1/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-1/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-1/worker.f": {
+      "sha256": "87e450241072a39d836e4d6ac57f75cead87c85a9420982d30c7467a781749af",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-6/MadLoopParams.dat": {
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-6/MadLoop_makefile_definitions": {
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c",
+      "bytes": 2392
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-6/build.json": {
+      "sha256": "01bb7f3b16609c69cda0b0ac557628f9aec4c528d07704808fd13d6e4a41149f",
+      "bytes": 353472
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-6/compiled-sources.json": {
+      "sha256": "c08be1a4aee9cd1cf5f69faeea98e8100746b91325ef7e874ae15f8717c3f355",
+      "bytes": 16317
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-6/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-6/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-6/worker.f": {
+      "sha256": "87e450241072a39d836e4d6ac57f75cead87c85a9420982d30c7467a781749af",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-7/MadLoopParams.dat": {
+      "sha256": "6d8692489d9e1415c899ec5a4bf0cae94987a171cf1812f25e2109f1b6917cbd",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-7/MadLoop_makefile_definitions": {
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c",
+      "bytes": 2392
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-7/build.json": {
+      "sha256": "74a0de3348bd23d0c5c945a69ca40fc522234a39f73445688e4d5f9919ddd7a0",
+      "bytes": 353430
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-7/compiled-sources.json": {
+      "sha256": "c08be1a4aee9cd1cf5f69faeea98e8100746b91325ef7e874ae15f8717c3f355",
+      "bytes": 16317
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-7/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-7/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-7/worker.f": {
+      "sha256": "87e450241072a39d836e4d6ac57f75cead87c85a9420982d30c7467a781749af",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-8/MadLoopParams.dat": {
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-8/MadLoop_makefile_definitions": {
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c",
+      "bytes": 2392
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-8/build.json": {
+      "sha256": "21f23f1eb2d4622511ed465cf4989b3aa206c97c0fe12a35229bc03bd289d621",
+      "bytes": 353473
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-8/compiled-sources.json": {
+      "sha256": "c08be1a4aee9cd1cf5f69faeea98e8100746b91325ef7e874ae15f8717c3f355",
+      "bytes": 16317
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-8/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-8/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/builds/control-gg-hh-candidate-8/worker.f": {
+      "sha256": "87e450241072a39d836e4d6ac57f75cead87c85a9420982d30c7467a781749af",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-1-0.json": {
+      "sha256": "3fe965b5919b7536889f64cb78d26f2f62bc8db6c35d82bac70694baf5c56659",
+      "bytes": 359733
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-1-1.json": {
+      "sha256": "5dfe0c9e480e74df08d59730c9a359a7ea104cebb86d3a8b5997dfe5c63a5aec",
+      "bytes": 359724
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-1-calibration.json": {
+      "sha256": "0b40ef7d174912080c10bb4790d19ef74e4fb04e1fa3058e62771e7188666e81",
+      "bytes": 359658
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-1-fresh.json": {
+      "sha256": "f9154efe9ef7c1bb59a7c0f94038c55bb8f1d99ddbbe904abcc8cd70d1bbf8a1",
+      "bytes": 359610
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-1-parity.json": {
+      "sha256": "29597a32359cb312901eaad215f3b1ec8daae18343269f199e881dab18be9f11",
+      "bytes": 269
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-6-0.json": {
+      "sha256": "813c490a700fb3278fa47f58c1c72bb807fb8dc063f632829a804311a15c0bc2",
+      "bytes": 359709
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-6-1.json": {
+      "sha256": "5e8767986e99bb0d23c51e1871daca89f50da8f65bc51f774995a0fc09f6852e",
+      "bytes": 359709
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-6-calibration.json": {
+      "sha256": "0cbbe249080ba5152d227706af68525662b70764287612606023d44d8f9177d5",
+      "bytes": 359640
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-6-fresh.json": {
+      "sha256": "b2d44008847e01d4100efed66d21eee949b3c1c9f1dbbf8be04a8acdd1594d50",
+      "bytes": 359594
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-6-parity.json": {
+      "sha256": "29597a32359cb312901eaad215f3b1ec8daae18343269f199e881dab18be9f11",
+      "bytes": 269
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-7-0.json": {
+      "sha256": "339b1dcab536a79e4b26b1f5e7bd5a878764d43600fb2065d239a8670e76d912",
+      "bytes": 359686
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-7-1.json": {
+      "sha256": "a1f2b3f9c97f506e55710683395d03c690e2d6ad1f0f215555f97b9fff808bdc",
+      "bytes": 359677
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-7-calibration.json": {
+      "sha256": "98b70a74779771418cac3a6c0ffe2e995a4f47e5fae06515ca9da47a30323ec4",
+      "bytes": 359613
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-7-fresh.json": {
+      "sha256": "a60b6ef1b81f5f114f5e4f76588f9b6ba8b1b21e68553be5f22005a9c3f9b35a",
+      "bytes": 359574
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-7-parity.json": {
+      "sha256": "29597a32359cb312901eaad215f3b1ec8daae18343269f199e881dab18be9f11",
+      "bytes": 269
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-8-0.json": {
+      "sha256": "f835213fe3f30cc7693d0032b0e42756a357e68dc6f781ca1942b4e985fc1655",
+      "bytes": 359721
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-8-1.json": {
+      "sha256": "05865aca0fdb8814c1e20c2129f4d152d4b2aa717468e983e8f2ac3915bc1fc2",
+      "bytes": 359721
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-8-calibration.json": {
+      "sha256": "b4ab38db16604561a8b363899f5b7fff55905e9a20f9104717d6859d7b16c834",
+      "bytes": 359665
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-8-fresh.json": {
+      "sha256": "715f2088138db0b1167201863995830c02503a7c9e92b36fbf68aff9a9505db8",
+      "bytes": 359609
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-complex-candidate-8-parity.json": {
+      "sha256": "29597a32359cb312901eaad215f3b1ec8daae18343269f199e881dab18be9f11",
+      "bytes": 269
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-1-0.json": {
+      "sha256": "9cf808fbc0acde4ef3ba0d60475a08b5c8d5af49dc3530d8478a40974082eebb",
+      "bytes": 359349
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-1-1.json": {
+      "sha256": "2597940dfc03f24abb902dc7a088cea1d54aa979376ce351e6fe11902a37cf0b",
+      "bytes": 359349
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-1-calibration.json": {
+      "sha256": "d098b8bc8932831d4dc73a5ac2421c38a147413c4484ba30c5e69f8512387b1d",
+      "bytes": 359282
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-1-fresh.json": {
+      "sha256": "36643a993f18488c57576ba3ddeb9102c9a5ddc5be28bdd0ab58659e3d41a8f2",
+      "bytes": 359239
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-1-parity.json": {
+      "sha256": "8bb4641ee31406fe0532a4007814aefc5aa99ecc9a575dc3ee766cbe4d5d81a1",
+      "bytes": 269
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-6-0.json": {
+      "sha256": "e2f90bdc092fae2d51691af217a9d87f2dc2792053239e6cc0fe7df7377dec4d",
+      "bytes": 359335
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-6-1.json": {
+      "sha256": "a348536a00d6773543318e1b84f6d654187fcdbe5a30a71e236e9af65a78732e",
+      "bytes": 359335
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-6-calibration.json": {
+      "sha256": "eb505e42b1607bc4e1c8d82a2c764c521ccfa9f4ac0617df137e49d78afefc8a",
+      "bytes": 359277
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-6-fresh.json": {
+      "sha256": "ee955cb2873a1485e3da62e91b60967fef597946a2fbefc566696df70ad4f0e2",
+      "bytes": 359223
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-6-parity.json": {
+      "sha256": "8bb4641ee31406fe0532a4007814aefc5aa99ecc9a575dc3ee766cbe4d5d81a1",
+      "bytes": 269
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-7-0.json": {
+      "sha256": "6ffcf4e90d279ba9ee5ca2f360aeb0aa11dba9d42bab7b73be143d238d01a640",
+      "bytes": 359286
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-7-1.json": {
+      "sha256": "b3fbd6d9bc59e9c2984eab8e7e1cf7738978bb7497b5c4b13eeb6bd08354cb9f",
+      "bytes": 359285
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-7-calibration.json": {
+      "sha256": "854154aedb53137defb90d8b06af503368876c63ef186189ef3bab75c5ca9922",
+      "bytes": 359221
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-7-fresh.json": {
+      "sha256": "a82ffe69b3c9906dab59bb267f951e5495a876826b1892551a72d775cec4f0ef",
+      "bytes": 359175
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-7-parity.json": {
+      "sha256": "8bb4641ee31406fe0532a4007814aefc5aa99ecc9a575dc3ee766cbe4d5d81a1",
+      "bytes": 269
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-8-0.json": {
+      "sha256": "0ed9d7c9a8a72c6afdf147440d6d23283c40db67f26ab7936971c927ad98bb4b",
+      "bytes": 359330
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-8-1.json": {
+      "sha256": "21571af6d318349414cf92869d5342ce35fa0cde8959043a77b217cb919f2a81",
+      "bytes": 359338
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-8-calibration.json": {
+      "sha256": "6726f9058f4c7018e05af5ee86683154a7d292df47158139eb9f39bccb35631d",
+      "bytes": 359264
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-8-fresh.json": {
+      "sha256": "985b633351eb627b70c1cc21a5347531d88f08cfd1ec639ca0297e45cda50bf4",
+      "bytes": 359218
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/data/control-gg-hh-candidate-8-parity.json": {
+      "sha256": "8bb4641ee31406fe0532a4007814aefc5aa99ecc9a575dc3ee766cbe4d5d81a1",
+      "bytes": 269
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/input-spec.json": {
+      "sha256": "4a9e6d89fefb451c2b8bfd930d760315079b9b138c79b99165a19a48ee25799f",
+      "bytes": 846
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-complex/MadLoopParams-1.dat": {
+      "sha256": "d556639418de37d1d132fdc3968fe2a48469da7fe2ca04dfa95c5112096c1cb4",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-complex/MadLoopParams-6.dat": {
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-complex/MadLoopParams-7.dat": {
+      "sha256": "6d8692489d9e1415c899ec5a4bf0cae94987a171cf1812f25e2109f1b6917cbd",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-complex/MadLoopParams-8.dat": {
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-complex/compilation.json": {
+      "sha256": "61149b25a7dc90e911d667b63c8b295c72b3ffd07138ab995071f607911616b9",
+      "bytes": 177254
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-complex/compiled-source-manifests/febe59cdc1454ee725f318b437d76ddf964117228e63a8ade60381f11405518c.json": {
+      "sha256": "cc709204a2b269458fcec584d6e364e435b42510a05b60cd8e0a645ab50ff384",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-complex/compiled-sources.json": {
+      "sha256": "cc709204a2b269458fcec584d6e364e435b42510a05b60cd8e0a645ab50ff384",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-complex/generation.json": {
+      "sha256": "0c3da6c160561bac001382115a595fa1b502565e618ba40b41074fc3c1e6d73e",
+      "bytes": 171447
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-complex/param_card.dat": {
+      "sha256": "1511223edb8e5e1a5ad12baee88c013f94a32161491e6889b05a35e022c9eaa4",
+      "bytes": 4396
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-gg-hh/MadLoopParams-1.dat": {
+      "sha256": "d556639418de37d1d132fdc3968fe2a48469da7fe2ca04dfa95c5112096c1cb4",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-gg-hh/MadLoopParams-6.dat": {
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-gg-hh/MadLoopParams-7.dat": {
+      "sha256": "6d8692489d9e1415c899ec5a4bf0cae94987a171cf1812f25e2109f1b6917cbd",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-gg-hh/MadLoopParams-8.dat": {
+      "sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-gg-hh/compilation.json": {
+      "sha256": "0b29f3bc6a842593c260973c7dbf93f01eafbebf3d8c9711255474429efd41e2",
+      "bytes": 177254
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-gg-hh/compiled-source-manifests/d21a0afa2337fcfdab3a2157bde412787a848088ae80e2dd10b284a7df9cfd30.json": {
+      "sha256": "93ebdbe956642e3bc880849452def92dea90558d841bd60677c021c94f60f139",
+      "bytes": 16317
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-gg-hh/compiled-sources.json": {
+      "sha256": "93ebdbe956642e3bc880849452def92dea90558d841bd60677c021c94f60f139",
+      "bytes": 16317
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-gg-hh/generation.json": {
+      "sha256": "5339f1bb854172a22f34ac3b27f143bd3706bb021452bde547d9017076bf0467",
+      "bytes": 171448
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/inputs/candidate/control-gg-hh/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/compile-control-complex-candidate-1.log": {
+      "sha256": "40f40d3d787b5a375d5c7c6b9c416030519a8611a3985d9f163456177a769b96",
+      "bytes": 9371
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/compile-control-complex-candidate-6.log": {
+      "sha256": "c8bd4ea98b626f3c5a7f7e702ec9533bcfee93c0790d087e87ae24fbafb9175f",
+      "bytes": 9371
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/compile-control-complex-candidate-7.log": {
+      "sha256": "49b435d5282ce3382e3d7dd353cc940726453b1f25178afdca2c5bb08e3c7f73",
+      "bytes": 9371
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/compile-control-complex-candidate-8.log": {
+      "sha256": "b082984d5954da52208e65e0fd6bf8944131f8536a671e15ba3a4290ca41d1d6",
+      "bytes": 9371
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/compile-control-gg-hh-candidate-1.log": {
+      "sha256": "c52df0b9de5cd41354b36aa70be656343fb9b99e3d0c16ac32f4c89e3da96859",
+      "bytes": 9387
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/compile-control-gg-hh-candidate-6.log": {
+      "sha256": "82f5b7dc3daa1f4e510b8eeb6b8c388cabd82e04d2a30223852d3afbebfd4524",
+      "bytes": 9387
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/compile-control-gg-hh-candidate-7.log": {
+      "sha256": "2a16d3f91b9f7f446dd3cd565cf9213d5f173fb1b26a673b964f2eb35ca9706b",
+      "bytes": 9387
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/compile-control-gg-hh-candidate-8.log": {
+      "sha256": "a338027e68756d9dc05d14549026d5137c0b12d28bf6627fb16c2e286b2bc616",
+      "bytes": 9387
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/fresh-control-complex-candidate-1.log": {
+      "sha256": "ecb1e4714b2c7f9f3226950cc020402ad0aac6e6f48ac3b26381cf71d9aa5a8c",
+      "bytes": 5671
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/fresh-control-complex-candidate-6.log": {
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1",
+      "bytes": 8226
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/fresh-control-complex-candidate-7.log": {
+      "sha256": "6bf01af6691a8808aaebc3b7486da9b052e2b687e750d39be5e168b9e0bd1465",
+      "bytes": 6870
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/fresh-control-complex-candidate-8.log": {
+      "sha256": "5171c8ccaea5b72108d68ae8acf6b530ba9dfe51aed1b811b3aeab285688edff",
+      "bytes": 3839
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/fresh-control-gg-hh-candidate-1.log": {
+      "sha256": "5154aa07697b04d1f54c25f2e89ef00f751734603d380a33d020ba6c10519ca5",
+      "bytes": 6144
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/fresh-control-gg-hh-candidate-6.log": {
+      "sha256": "f9f4298b284708c7b37e72a3512875dacd3f5d6f7e0f0ecddd980188b8ed7aad",
+      "bytes": 8699
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/fresh-control-gg-hh-candidate-7.log": {
+      "sha256": "926ec57a5ec39df242b9c2424f5fdfcbd95d188523c7d2236d7cf7898e5d1423",
+      "bytes": 7952
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/fresh-control-gg-hh-candidate-8.log": {
+      "sha256": "68b2ced8d026504b6e1350c2eb3eb6dcb19b2fbd59113f75479ef59089590e76",
+      "bytes": 4312
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/worker-control-complex-candidate-1.log": {
+      "sha256": "ecb1e4714b2c7f9f3226950cc020402ad0aac6e6f48ac3b26381cf71d9aa5a8c",
+      "bytes": 5671
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/worker-control-complex-candidate-6.log": {
+      "sha256": "955e6c19b0b17be15c5aab7ff419335825456f5b59684ed286dbb03017660657",
+      "bytes": 8226
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/worker-control-complex-candidate-7.log": {
+      "sha256": "6bf01af6691a8808aaebc3b7486da9b052e2b687e750d39be5e168b9e0bd1465",
+      "bytes": 6870
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/worker-control-complex-candidate-8.log": {
+      "sha256": "5171c8ccaea5b72108d68ae8acf6b530ba9dfe51aed1b811b3aeab285688edff",
+      "bytes": 3839
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/worker-control-gg-hh-candidate-1.log": {
+      "sha256": "5154aa07697b04d1f54c25f2e89ef00f751734603d380a33d020ba6c10519ca5",
+      "bytes": 6144
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/worker-control-gg-hh-candidate-6.log": {
+      "sha256": "050c16caca23685daf86465e9cf405f2e4cd4968c4402c892ff6de25e73becba",
+      "bytes": 8699
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/worker-control-gg-hh-candidate-7.log": {
+      "sha256": "926ec57a5ec39df242b9c2424f5fdfcbd95d188523c7d2236d7cf7898e5d1423",
+      "bytes": 7952
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/logs/worker-control-gg-hh-candidate-8.log": {
+      "sha256": "68b2ced8d026504b6e1350c2eb3eb6dcb19b2fbd59113f75479ef59089590e76",
+      "bytes": 4312
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/points/control-complex.dat": {
+      "sha256": "81d6dd8e303246ef120dd4156760ab6fb1a0347d56624b691cc43091d63b5749",
+      "bytes": 3883
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/points/control-gg-hh.dat": {
+      "sha256": "a1fb9b0af7a351bf383a0ab5302f0be46f8053c1da33941e291fc5a0e2ec02b4",
+      "bytes": 3883
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/protocol.json": {
+      "sha256": "1a74bdc03486ce79946cca484dc77a963d6e8abda11757038e9a435af735e4c4",
+      "bytes": 2940
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/role-bindings.json": {
+      "sha256": "f798df2a0b5556dfdb01d8c21c01abd4f10654f7adce2b3f7bd6d7efc4627433",
+      "bytes": 1743300
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/run-status.json": {
+      "sha256": "b49950b5bdbe0112d5c72e907f16bce8aebdeca468961b94342ab8c1e7249fde",
+      "bytes": 201
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/sources/ninjars_benchmark.py": {
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+      "bytes": 49893
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/sources/ninjars_benchmark_references_v2.py": {
+      "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c",
+      "bytes": 18761
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/sources/ninjars_benchmark_worker.f": {
+      "sha256": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79",
+      "bytes": 4704
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-hh-complex-20261020/sources/ninjars_benchmark_workers.py": {
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "bytes": 44582
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/binding-spec.json": {
+      "sha256": "b4daf1001371c43b1d84d7b6d678fd2cb5560a886f64aa261077df910ca94832",
+      "bytes": 836
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-1/MadLoopParams.dat": {
+      "sha256": "d556639418de37d1d132fdc3968fe2a48469da7fe2ca04dfa95c5112096c1cb4",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-1/MadLoop_makefile_definitions": {
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c",
+      "bytes": 2392
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-1/build.json": {
+      "sha256": "81bd4447a1c6de7d1e1079c263d102d749ab5d02cd4a8b24bb2743327a05fb15",
+      "bytes": 353473
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-1/compiled-sources.json": {
+      "sha256": "0e014dd1edaa4183beae6e1ff1276ee7e871d75bbda7ad93141eee7cdce22288",
+      "bytes": 44420
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-1/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-1/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-1/worker.f": {
+      "sha256": "b9bd062210c3ef434fbbf7e05ee0201f424e15bf6df747bd865dc561baab8d41",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-6/MadLoopParams.dat": {
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-6/MadLoop_makefile_definitions": {
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c",
+      "bytes": 2392
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-6/build.json": {
+      "sha256": "5579f07e8c86dc6b3f0071318770e68bdc53a9ea199de53bd701a8f1f37e0ab8",
+      "bytes": 353473
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-6/compiled-sources.json": {
+      "sha256": "0e014dd1edaa4183beae6e1ff1276ee7e871d75bbda7ad93141eee7cdce22288",
+      "bytes": 44420
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-6/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-6/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-6/worker.f": {
+      "sha256": "b9bd062210c3ef434fbbf7e05ee0201f424e15bf6df747bd865dc561baab8d41",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-7/MadLoopParams.dat": {
+      "sha256": "6d8692489d9e1415c899ec5a4bf0cae94987a171cf1812f25e2109f1b6917cbd",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-7/MadLoop_makefile_definitions": {
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c",
+      "bytes": 2392
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-7/build.json": {
+      "sha256": "68f4898fb72f3ad50794c0c9ad320d295435850fd972f59c838a25e1a9a9a5a2",
+      "bytes": 353430
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-7/compiled-sources.json": {
+      "sha256": "0e014dd1edaa4183beae6e1ff1276ee7e871d75bbda7ad93141eee7cdce22288",
+      "bytes": 44420
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-7/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-7/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/builds/control-mixed-candidate-7/worker.f": {
+      "sha256": "b9bd062210c3ef434fbbf7e05ee0201f424e15bf6df747bd865dc561baab8d41",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/data/control-mixed-candidate-1-0.json": {
+      "sha256": "9d4820df968dd7415a95065ab68c73416b4f87a73da9e0306b734ec6d2bc3201",
+      "bytes": 367280
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/data/control-mixed-candidate-1-1.json": {
+      "sha256": "17aa49945779f50d67c330c1545212a560122424575bfce48a6996aeb4fa7542",
+      "bytes": 367281
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/data/control-mixed-candidate-1-calibration.json": {
+      "sha256": "6c829f47e8b56dad25f8e27082341b904ab481bcb1c7230c2e3b825f2f63102e",
+      "bytes": 367215
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/data/control-mixed-candidate-1-fresh.json": {
+      "sha256": "3b040fc69c9a7454a3501d1e387b411da954ef36839f2d494038e08d330c2448",
+      "bytes": 367178
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/data/control-mixed-candidate-1-parity.json": {
+      "sha256": "95a3fc4bd9d704887389d47e7b7d72ff54078c41ab0a3c7e590ff0aeb8fa743a",
+      "bytes": 269
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/data/control-mixed-candidate-6-0.json": {
+      "sha256": "afd0d8ca892908055872e383a32ff03587e8e30c45928ffbfcc5d318df10dc78",
+      "bytes": 367249
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/data/control-mixed-candidate-6-1.json": {
+      "sha256": "43dc52e50c3bf2eb87563191494ad4d3676f97580efd664f5cd3bd9e21f2fd79",
+      "bytes": 367250
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/data/control-mixed-candidate-6-calibration.json": {
+      "sha256": "9979d9c0e90724bf344fcda61ccd3fc1aa3c40fc52aacb34a478c35a96a63b49",
+      "bytes": 367184
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/data/control-mixed-candidate-6-fresh.json": {
+      "sha256": "44061770e74d0125e8d02475b2cfc594fde4bab8b518ac7a107aaeffef44dde6",
+      "bytes": 367139
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/data/control-mixed-candidate-6-parity.json": {
+      "sha256": "95a3fc4bd9d704887389d47e7b7d72ff54078c41ab0a3c7e590ff0aeb8fa743a",
+      "bytes": 269
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/data/control-mixed-candidate-7-0.json": {
+      "sha256": "fc8de92933b6778cb78fdd30a00bd5b837fc6c0651f9f4aafdecd27a32751dc1",
+      "bytes": 367219
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/data/control-mixed-candidate-7-1.json": {
+      "sha256": "fea5dd393c7965ba1dca6651ce0d0dc4982138a386279cb996789b699b8ed798",
+      "bytes": 367224
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/data/control-mixed-candidate-7-calibration.json": {
+      "sha256": "1ca11763fe36c44889e1faf557f2b4d1adc39d2223de54bb586e9846d234fc0b",
+      "bytes": 367158
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/data/control-mixed-candidate-7-fresh.json": {
+      "sha256": "bb07af1cc10a47146a00cf927210bc4a4cf0832ddabead44b65fb0eb4802d7af",
+      "bytes": 367112
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/data/control-mixed-candidate-7-parity.json": {
+      "sha256": "95a3fc4bd9d704887389d47e7b7d72ff54078c41ab0a3c7e590ff0aeb8fa743a",
+      "bytes": 269
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/input-spec.json": {
+      "sha256": "8008a26be2c750b9a2742ef1f21502d55b3d9f0ae90a4ed11ee1c46e131df010",
+      "bytes": 822
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/inputs/candidate/control-mixed/MadLoopParams-1.dat": {
+      "sha256": "d556639418de37d1d132fdc3968fe2a48469da7fe2ca04dfa95c5112096c1cb4",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/inputs/candidate/control-mixed/MadLoopParams-6.dat": {
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/inputs/candidate/control-mixed/MadLoopParams-7.dat": {
+      "sha256": "6d8692489d9e1415c899ec5a4bf0cae94987a171cf1812f25e2109f1b6917cbd",
+      "bytes": 13353
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/inputs/candidate/control-mixed/compilation.json": {
+      "sha256": "3365f4f25da40ce4ec13b3c1e3c2d2756fc12b2114da627ffeb742d50fb51101",
+      "bytes": 177254
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/inputs/candidate/control-mixed/compiled-source-manifests/2e88e4212da43aecc71b38ae789021d3d58571fa3da62aaaaf916e67a64c31d1.json": {
+      "sha256": "623260773c091410c9818a5ff9684166a38d82f73749f610017d99181eed5724",
+      "bytes": 44420
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/inputs/candidate/control-mixed/compiled-sources.json": {
+      "sha256": "623260773c091410c9818a5ff9684166a38d82f73749f610017d99181eed5724",
+      "bytes": 44420
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/inputs/candidate/control-mixed/generation.json": {
+      "sha256": "32231fd80fcbd41ee7b6d8c3bd81f5e3635f0610b267de2044e87ed987590979",
+      "bytes": 171447
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/inputs/candidate/control-mixed/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/logs/compile-control-mixed-candidate-1.log": {
+      "sha256": "275dfc619a1b851844f44ef5adb34997e9751510532383899773fa1365722314",
+      "bytes": 9367
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/logs/compile-control-mixed-candidate-6.log": {
+      "sha256": "b4c79f4ea1e751948a528380520682362bb3cc2b1bedf79f22c8287634718cd1",
+      "bytes": 9367
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/logs/compile-control-mixed-candidate-7.log": {
+      "sha256": "05adef70ed8dd02ac50b69946bd0668a036e91e36d4749a5c519d9cd13734340",
+      "bytes": 9367
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/logs/fresh-control-mixed-candidate-1.log": {
+      "sha256": "ecb1e4714b2c7f9f3226950cc020402ad0aac6e6f48ac3b26381cf71d9aa5a8c",
+      "bytes": 5671
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/logs/fresh-control-mixed-candidate-6.log": {
+      "sha256": "5dfe83a41db1f297ce25f358ab1f178f4efeef0c323d0746e7d24ed8985dbbb1",
+      "bytes": 8226
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/logs/fresh-control-mixed-candidate-7.log": {
+      "sha256": "6bf01af6691a8808aaebc3b7486da9b052e2b687e750d39be5e168b9e0bd1465",
+      "bytes": 6870
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/logs/worker-control-mixed-candidate-1.log": {
+      "sha256": "ecb1e4714b2c7f9f3226950cc020402ad0aac6e6f48ac3b26381cf71d9aa5a8c",
+      "bytes": 5671
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/logs/worker-control-mixed-candidate-6.log": {
+      "sha256": "955e6c19b0b17be15c5aab7ff419335825456f5b59684ed286dbb03017660657",
+      "bytes": 8226
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/logs/worker-control-mixed-candidate-7.log": {
+      "sha256": "6bf01af6691a8808aaebc3b7486da9b052e2b687e750d39be5e168b9e0bd1465",
+      "bytes": 6870
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/points/control-mixed.dat": {
+      "sha256": "c0640d8258fea3bec32d28da8eb7a9bb8bbc50210efd2e22bf030c3dabf35527",
+      "bytes": 3883
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/protocol.json": {
+      "sha256": "eaf8ba7aee92daa764f6aaf3e0e91cea6041478ec25cc7de33bf2e71af9a4f7b",
+      "bytes": 2937
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/role-bindings.json": {
+      "sha256": "a8bbc11ab633fd4ae220866eed63ca9b8c8dd66877764e1c2ac77baddc017ac8",
+      "bytes": 711118
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/run-status.json": {
+      "sha256": "b5ba3221002974630e54da1f49c439e8c904964e45549166a364d9eb7bcf07d6",
+      "bytes": 155
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/sources/ninjars_benchmark.py": {
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+      "bytes": 49893
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/sources/ninjars_benchmark_references_v2.py": {
+      "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c",
+      "bytes": 18761
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/sources/ninjars_benchmark_worker.f": {
+      "sha256": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79",
+      "bytes": 4704
+    },
+    "docs/benchmarkfolder/policy-v2/control-runs/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020/sources/ninjars_benchmark_workers.py": {
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "bytes": 44582
+    },
+    "docs/benchmarkfolder/policy-v2/controls-retention-abi3-terminal-fixed/README.md": {
+      "sha256": "633a09a1968b5a2be2482899d83f9f032607c4dc2db2baf6b307f17030b10969",
+      "bytes": 2084
+    },
+    "docs/benchmarkfolder/policy-v2/controls-retention-abi3-terminal-fixed/validation.json": {
+      "sha256": "d6081895f2b8dcc62f87bc746126e7772d74e87932d58390b079f6bca5e650e8",
+      "bytes": 6820
+    },
+    "docs/benchmarkfolder/policy-v2/controls-retention-abi3-terminal-fixed/verify.py": {
+      "sha256": "58174cc8862780508c4effe994867f2584863389209e2650107d3f073347271d",
+      "bytes": 4525
+    },
+    "docs/benchmarkfolder/policy-v2/final-controls-plan-fixed/README.md": {
+      "sha256": "7706ed66f538d3f6808029bac38c1267dd61984d63577c4a40faa6800ae4181d",
+      "bytes": 2986
+    },
+    "docs/benchmarkfolder/policy-v2/final-controls-plan-fixed/commands.sh": {
+      "sha256": "5eceddc8cb3c93e1c2ad0df9ac353b3b47bd3cacae948031bc33edee5fb60f05",
+      "bytes": 2013
+    },
+    "docs/benchmarkfolder/policy-v2/final-controls-plan-fixed/compare.py": {
+      "sha256": "f75338597c5a52b1aa7d54089cdf1e9c2db2d6c24b3fc38098313f7f56c8f52d",
+      "bytes": 6702
+    },
+    "docs/benchmarkfolder/policy-v2/final-controls-plan-fixed/comparison-spec.json": {
+      "sha256": "c52dc4eb88c0af1c3d3c4fd5a5f8fbc4a06333ced19904e038d7e9c236a5f495",
+      "bytes": 6839
+    },
+    "docs/benchmarkfolder/policy-v2/final-controls-plan-fixed/comparison.json": {
+      "sha256": "8172c0232b0e50b25812c322d32f4cdbb9fe5120a61e736d51164cbf4f60d341",
+      "bytes": 23921
+    },
+    "docs/benchmarkfolder/policy-v2/final-controls-plan-fixed/plan.json": {
+      "sha256": "d783d8eeebe2f9c1888dce2d2d225c90a7be8aa2788d98fe172ea4d7fc3fdaa2",
+      "bytes": 2321
+    },
+    "docs/benchmarkfolder/policy-v2/final-controls-plan-fixed/specs/hh-complex.json": {
+      "sha256": "4a9e6d89fefb451c2b8bfd930d760315079b9b138c79b99165a19a48ee25799f",
+      "bytes": 846
+    },
+    "docs/benchmarkfolder/policy-v2/final-controls-plan-fixed/specs/mixed-legacy.json": {
+      "sha256": "8008a26be2c750b9a2742ef1f21502d55b3d9f0ae90a4ed11ee1c46e131df010",
+      "bytes": 822
+    },
+    "docs/benchmarkfolder/policy-v2/final-controls-plan-fixed/validation.json": {
+      "sha256": "0b2a5856e9108554029d9c4135089ac59e6b336936b64f0c0e969e6c601ffaa7",
+      "bytes": 549
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-1/MadLoopParams.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-1/MadLoop_makefile_definitions": {
+      "sha256": "c1ea1230fc6a0cc9c77706b6a627a26fd1f340b44ec6986c77e85aa39ab2a746",
+      "bytes": 1974
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-1/build.json": {
+      "sha256": "f31db7f0dc9076799c806445bc7ddcbf56e77653040a3564c66f53a47856156b",
+      "bytes": 8476
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-1/compiled-sources.json": {
+      "sha256": "5f0f6e3b958718325f4ad13b303c10ee526e809d81df423d77c5d7243f667629",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-1/correction-build.json": {
+      "sha256": "be0918932339dc6c05561fb928f8ac14ad937ecae33dff0487859c4ce3c43abc",
+      "bytes": 5428
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-1/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-1/param_card.dat": {
+      "sha256": "1511223edb8e5e1a5ad12baee88c013f94a32161491e6889b05a35e022c9eaa4",
+      "bytes": 4396
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-1/worker.f": {
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-6/MadLoopParams.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-6/MadLoop_makefile_definitions": {
+      "sha256": "c1ea1230fc6a0cc9c77706b6a627a26fd1f340b44ec6986c77e85aa39ab2a746",
+      "bytes": 1974
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-6/build.json": {
+      "sha256": "bdde901055e4674c6494d67e776cf250670db1839ebba855cecd58c469c86157",
+      "bytes": 8475
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-6/compiled-sources.json": {
+      "sha256": "5f0f6e3b958718325f4ad13b303c10ee526e809d81df423d77c5d7243f667629",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-6/correction-build.json": {
+      "sha256": "be0918932339dc6c05561fb928f8ac14ad937ecae33dff0487859c4ce3c43abc",
+      "bytes": 5428
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-6/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-6/param_card.dat": {
+      "sha256": "1511223edb8e5e1a5ad12baee88c013f94a32161491e6889b05a35e022c9eaa4",
+      "bytes": 4396
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-6/worker.f": {
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-7/MadLoopParams.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-7/MadLoop_makefile_definitions": {
+      "sha256": "c1ea1230fc6a0cc9c77706b6a627a26fd1f340b44ec6986c77e85aa39ab2a746",
+      "bytes": 1974
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-7/build.json": {
+      "sha256": "bf62fa0216a321f7d625a71e888bee555e44b2638ba9239f45d96af0ddfb17b9",
+      "bytes": 8433
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-7/compiled-sources.json": {
+      "sha256": "5f0f6e3b958718325f4ad13b303c10ee526e809d81df423d77c5d7243f667629",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-7/correction-build.json": {
+      "sha256": "be0918932339dc6c05561fb928f8ac14ad937ecae33dff0487859c4ce3c43abc",
+      "bytes": 5428
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-7/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-7/param_card.dat": {
+      "sha256": "1511223edb8e5e1a5ad12baee88c013f94a32161491e6889b05a35e022c9eaa4",
+      "bytes": 4396
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-complex-baseline-7/worker.f": {
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-1/MadLoopParams.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-1/MadLoop_makefile_definitions": {
+      "sha256": "c1ea1230fc6a0cc9c77706b6a627a26fd1f340b44ec6986c77e85aa39ab2a746",
+      "bytes": 1974
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-1/build.json": {
+      "sha256": "42f4780630f08c6772d819c03d8cac5788c0d414645541c71b45ce53b7690696",
+      "bytes": 8472
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-1/compiled-sources.json": {
+      "sha256": "75db8f9d72b780bd246aa9abf5ec69a4c3e56d9a94f76ee9b91ac92c638b4c49",
+      "bytes": 16317
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-1/correction-build.json": {
+      "sha256": "b30ffe761de5cc614d25a23b4b6194a81262111617df0c90a1b03d347b6b9fe3",
+      "bytes": 5425
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-1/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-1/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-1/worker.f": {
+      "sha256": "87e450241072a39d836e4d6ac57f75cead87c85a9420982d30c7467a781749af",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-6/MadLoopParams.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-6/MadLoop_makefile_definitions": {
+      "sha256": "c1ea1230fc6a0cc9c77706b6a627a26fd1f340b44ec6986c77e85aa39ab2a746",
+      "bytes": 1974
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-6/build.json": {
+      "sha256": "7a0927fe404ead7fd1bd0fff5d0bcc5ea6c62cdef5378c1d5181d426592e5b76",
+      "bytes": 8472
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-6/compiled-sources.json": {
+      "sha256": "75db8f9d72b780bd246aa9abf5ec69a4c3e56d9a94f76ee9b91ac92c638b4c49",
+      "bytes": 16317
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-6/correction-build.json": {
+      "sha256": "b30ffe761de5cc614d25a23b4b6194a81262111617df0c90a1b03d347b6b9fe3",
+      "bytes": 5425
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-6/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-6/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-6/worker.f": {
+      "sha256": "87e450241072a39d836e4d6ac57f75cead87c85a9420982d30c7467a781749af",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-7/MadLoopParams.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-7/MadLoop_makefile_definitions": {
+      "sha256": "c1ea1230fc6a0cc9c77706b6a627a26fd1f340b44ec6986c77e85aa39ab2a746",
+      "bytes": 1974
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-7/build.json": {
+      "sha256": "330cdac8916d858014f2e2bcb33482a68e62ad1f1b1188837d80fd4b8c08a72f",
+      "bytes": 8429
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-7/compiled-sources.json": {
+      "sha256": "75db8f9d72b780bd246aa9abf5ec69a4c3e56d9a94f76ee9b91ac92c638b4c49",
+      "bytes": 16317
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-7/correction-build.json": {
+      "sha256": "b30ffe761de5cc614d25a23b4b6194a81262111617df0c90a1b03d347b6b9fe3",
+      "bytes": 5425
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-7/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-7/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/builds/control-gg-hh-baseline-7/worker.f": {
+      "sha256": "87e450241072a39d836e4d6ac57f75cead87c85a9420982d30c7467a781749af",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-complex-baseline-1-0.json": {
+      "sha256": "3e8037f2feb80b439770220208c35ab3481eba34fc18319da7a407d94f5a047b",
+      "bytes": 14704
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-complex-baseline-1-1.json": {
+      "sha256": "9722112f80c18328761dd7395cf836498c93892386dfcabfaeb47a23878c27f6",
+      "bytes": 14713
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-complex-baseline-1-calibration.json": {
+      "sha256": "b31783ad91163ce1d9d9dbdf3cebd13bb9a624e23edd4aaea4361de8b99f8426",
+      "bytes": 14639
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-complex-baseline-6-0.json": {
+      "sha256": "1efbcb9a5e671eccbeaa3a6f885f0e7d32a80427a425b6c1860a31498aa52f2f",
+      "bytes": 14688
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-complex-baseline-6-1.json": {
+      "sha256": "baeebf7403394778920b3f6fc176d2d09dbda1fcb8e8de3add307dcf9637fca2",
+      "bytes": 14688
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-complex-baseline-6-calibration.json": {
+      "sha256": "8ed157aa0376fdcbe366cbc519485ae3819df1413b657ebdfa03e08bdb8e46c1",
+      "bytes": 14623
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-complex-baseline-7-0.json": {
+      "sha256": "45188c8a247f9349bf9a25ce8ad49c3a4b803be4fc94e15f9884e08dc415a590",
+      "bytes": 14667
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-complex-baseline-7-1.json": {
+      "sha256": "9681c0bd1ae16f830e6551d4a8b53c4fe5aa0461aa867ac99ef9ea302e7ccde4",
+      "bytes": 14657
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-complex-baseline-7-calibration.json": {
+      "sha256": "2d80615ab9b223d01bd2295adbcbfd4511db073df95de25aae53ed760773a70f",
+      "bytes": 14593
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-gg-hh-baseline-1-0.json": {
+      "sha256": "d55045270cb4addc9f4c168ca89fd667dd0e5c132ccafef5fcc8c093cc798767",
+      "bytes": 14327
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-gg-hh-baseline-1-1.json": {
+      "sha256": "7bc969cc86cf8d7b020fccdd2048d372e90024ce3a8a15027cf27284a202be1a",
+      "bytes": 14334
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-gg-hh-baseline-1-calibration.json": {
+      "sha256": "5bbd007d7cb3bc521bbf4c13911aa1ee167b85c420bf30e4308eb6b1978925bf",
+      "bytes": 14261
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-gg-hh-baseline-6-0.json": {
+      "sha256": "1ed9a787da6c362989bcad1f25fb051bea49f5bbb37c6a1affcbff69fdf3d0e8",
+      "bytes": 14323
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-gg-hh-baseline-6-1.json": {
+      "sha256": "0b7175ebca28c2a9ac471f6b9de9977263f75cf26ea328aa516b0606a0b89807",
+      "bytes": 14323
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-gg-hh-baseline-6-calibration.json": {
+      "sha256": "f73a24d248cbcbc4136cbb02e167dec9ff4cff7f48a1960b4149248f56b940fa",
+      "bytes": 14248
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-gg-hh-baseline-7-0.json": {
+      "sha256": "9953cf8b9c9dcbc68c043e7ff63831d0c83514b233fadfb2d516e0ea6775697c",
+      "bytes": 14265
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-gg-hh-baseline-7-1.json": {
+      "sha256": "4290d4f1934aa17ba73312e41fdf992341765a2477e12df9c1e6f0da18fde481",
+      "bytes": 14266
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/data/control-gg-hh-baseline-7-calibration.json": {
+      "sha256": "9834fe7487e98c5116102fb0fb3071329a947a93c6d193313b4e5782bf1a980b",
+      "bytes": 14200
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-complex/MadLoopParams-1.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-complex/MadLoopParams-6.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-complex/MadLoopParams-7.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-complex/compilation-history/f213be6334a8d0e5.json": {
+      "sha256": "f213be6334a8d0e5bcf98ce73352bbd24d9bb60cde37bd8a3d9a5833326db3d7",
+      "bytes": 5272
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-complex/compilation.json": {
+      "sha256": "1dd52606664b5cd77de1a36ddc543bf37c959f475a4edcc1c0e38fb742669ec5",
+      "bytes": 5924
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-complex/compiled-source-manifests/1e78518d3bad5e4445ef1f526f746c02a750e84e44656c474d7e902ca6de3c77.json": {
+      "sha256": "0c3a1756c2c4437932a59f973515a4b4b3c640968d66b9e78b2e1dcd854fb022",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-complex/compiled-sources.json": {
+      "sha256": "0c3a1756c2c4437932a59f973515a4b4b3c640968d66b9e78b2e1dcd854fb022",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-complex/generated-sources-observed.json": {
+      "sha256": "1f011c455e5dcb0fec3211d5f09a5fdb2b5be02919f6b6af6866ed1744694a61",
+      "bytes": 40710
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-complex/generation.json": {
+      "sha256": "5968e4eac0ebe25c51922392fb34b3abe2ddc367b8d1e0f861272a893f2f94b3",
+      "bytes": 534
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-complex/param_card.dat": {
+      "sha256": "1511223edb8e5e1a5ad12baee88c013f94a32161491e6889b05a35e022c9eaa4",
+      "bytes": 4396
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-gg-hh/MadLoopParams-1.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-gg-hh/MadLoopParams-6.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-gg-hh/MadLoopParams-7.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-gg-hh/compilation-history/7e1fc46a164393ce.json": {
+      "sha256": "7e1fc46a164393ce1e79afae8b2a482ea15db35de52fbd95e168fb7a09c1bd3f",
+      "bytes": 5272
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-gg-hh/compilation.json": {
+      "sha256": "d3490c55239dacff0640d7b0014666700c1d2c544ed3927f1a5966e98f36a8a3",
+      "bytes": 5922
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-gg-hh/compiled-source-manifests/8017aedf5233c59227fd8177f4ecbcdb505dbb83431190e23fa3c6c77b06a722.json": {
+      "sha256": "f7465e4f17e70ffadc496630e150205c7be1c92490128055f0a29b80b6836419",
+      "bytes": 16317
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-gg-hh/compiled-sources.json": {
+      "sha256": "f7465e4f17e70ffadc496630e150205c7be1c92490128055f0a29b80b6836419",
+      "bytes": 16317
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-gg-hh/generated-sources-observed.json": {
+      "sha256": "35bacfc2ab5ca02b5e47e7e3a9d3413d13bb5e5d997e80f390f8e3c750cfe061",
+      "bytes": 16470
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-gg-hh/generation.json": {
+      "sha256": "3472164fe49b93ad0315f46276b1d61a2a402f840d620dfea88d2615b0764544",
+      "bytes": 534
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/inputs/baseline/control-gg-hh/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/compile-control-complex-baseline-1.log": {
+      "sha256": "52c26a33d3a733db473708dccd4a84dd0069ff9d4169e2e7dfa2c8d52e19f56c",
+      "bytes": 7366
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/compile-control-complex-baseline-6.log": {
+      "sha256": "d45322a5b6d4a16986d06ec485359ce46da21bf5392a20989290f24d1bc1bd8f",
+      "bytes": 7366
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/compile-control-complex-baseline-7.log": {
+      "sha256": "581fad8d3a7fdb7c375687c48f17527158c8b7c0bb33b843dd65998d9cf52e17",
+      "bytes": 7366
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/compile-control-gg-hh-baseline-1.log": {
+      "sha256": "9d12cccaadd4ec4c6e35bb6dd7af7f4734d6a44c26b6f202d70d9024d351a667",
+      "bytes": 7382
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/compile-control-gg-hh-baseline-6.log": {
+      "sha256": "d17079b48c1fb132c6f17ba3efdbd784dcd881756764fef8bf6275a31a8851d0",
+      "bytes": 7382
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/compile-control-gg-hh-baseline-7.log": {
+      "sha256": "a657782cbddccd6f3f17477c8a42ad3a356d9f47170945367e7e6e30e89633eb",
+      "bytes": 7382
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/fresh-link-control-complex.log": {
+      "sha256": "846164db9397d785cac248ed10947d3265632a64847a98ab90a521e6b859f829",
+      "bytes": 7296
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/fresh-link-control-gg-hh.log": {
+      "sha256": "4c2409e643480cb90d3991db336d7279d4b58a4f0eca0be9572bc7f7e0ce8c6b",
+      "bytes": 7316
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/model-rebuild-control-complex.log": {
+      "sha256": "4796e37749b818ded7b2b95cbba55200ce5f39553cd3d55f4aeaff55f7251ead",
+      "bytes": 1387
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/model-rebuild-control-gg-hh.log": {
+      "sha256": "4796e37749b818ded7b2b95cbba55200ce5f39553cd3d55f4aeaff55f7251ead",
+      "bytes": 1387
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/worker-control-complex-baseline-1.log": {
+      "sha256": "c1fb887b69f29069b22062e2d25dd2a940660aa6fb5bec735f17bc6b0f47238f",
+      "bytes": 5636
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/worker-control-complex-baseline-6.log": {
+      "sha256": "b540a16543d5d05a647f48f34c8db564ec8713c8c80827fdc2f317587e3f3a12",
+      "bytes": 8191
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/worker-control-complex-baseline-7.log": {
+      "sha256": "5b7bc4d28c407130d1806144d0adbebd13f8add87160738c6842b2834e866eef",
+      "bytes": 6835
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/worker-control-gg-hh-baseline-1.log": {
+      "sha256": "ed6deceb92c8b24947b6d775a364a0aca17835baad8a55d61a63e1935b432e11",
+      "bytes": 6109
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/worker-control-gg-hh-baseline-6.log": {
+      "sha256": "4f04bedf9cde630db83b1f596277a6a45537566ac589bd397057f1c7e7d3c0ca",
+      "bytes": 8664
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/logs/worker-control-gg-hh-baseline-7.log": {
+      "sha256": "23016fc744bccaaa463008a74177b85491724c873fe7bc86158c8346ea847ada",
+      "bytes": 7917
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/points/control-complex.dat": {
+      "sha256": "81d6dd8e303246ef120dd4156760ab6fb1a0347d56624b691cc43091d63b5749",
+      "bytes": 3883
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/points/control-gg-hh.dat": {
+      "sha256": "a1fb9b0af7a351bf383a0ab5302f0be46f8053c1da33941e291fc5a0e2ec02b4",
+      "bytes": 3883
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/protocol.json": {
+      "sha256": "58b2e48f3d21c2333d6d9dfa85de2878fb24a1f97ac82951a3a6656dc802d942",
+      "bytes": 2673
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/role-bindings.json": {
+      "sha256": "28a81667a8c9e348ec39368f688448ade472b3b3fe03a75f7c54d1cf2e414c1c",
+      "bytes": 246946
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/run-status.json": {
+      "sha256": "c7297622ef1fe7c7e5012c4d2baaa8234e4f2888b5e18690a36fecd5bd8fe37b",
+      "bytes": 247
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/sources/ninjars_benchmark.py": {
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+      "bytes": 49893
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/sources/ninjars_benchmark_references_v2.py": {
+      "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c",
+      "bytes": 18761
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/sources/ninjars_benchmark_worker.f": {
+      "sha256": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79",
+      "bytes": 4704
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/controls-reference-hh-complex-20261020/sources/ninjars_benchmark_workers.py": {
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "bytes": 44582
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/controls-candidate-abi3-terminal-fixed-hh-complex-20261020.json": {
+      "sha256": "8aa3ce499fa21302aed0f6c79ab680f8191ff9135339d1c0c3dd2216564b5a66",
+      "bytes": 2228123
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/controls-candidate-abi3-terminal-fixed-mixed-legacy-20261020.json": {
+      "sha256": "9c39c0e9a48005c9059f9119a232c7e808b699b4b4c543cca5cd8949768a6ef6",
+      "bytes": 893083
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/controls-reference-hh-complex-20261020.json": {
+      "sha256": "0a9a80f9be58078ff794f403a4624b810fd58879543a2c878d4015d999e840ca",
+      "bytes": 588263
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721": {
+      "sha256": "015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721",
+      "bytes": 6746
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975": {
+      "sha256": "0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975",
+      "bytes": 7465
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf": {
+      "sha256": "261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf",
+      "bytes": 4064
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7": {
+      "sha256": "2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7",
+      "bytes": 354
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec": {
+      "sha256": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+      "bytes": 1986
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d": {
+      "sha256": "36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d",
+      "bytes": 275
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7": {
+      "sha256": "3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7",
+      "bytes": 13987
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097": {
+      "sha256": "480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097",
+      "bytes": 7334
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a": {
+      "sha256": "4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a",
+      "bytes": 1310
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321": {
+      "sha256": "4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321",
+      "bytes": 685
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83": {
+      "sha256": "56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83",
+      "bytes": 18934
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492": {
+      "sha256": "5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492",
+      "bytes": 364
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34": {
+      "sha256": "59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34",
+      "bytes": 541
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9": {
+      "sha256": "5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9",
+      "bytes": 3955
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4": {
+      "sha256": "616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4",
+      "bytes": 329
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e": {
+      "sha256": "67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e",
+      "bytes": 373
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8": {
+      "sha256": "6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8",
+      "bytes": 2088
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6": {
+      "sha256": "81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6",
+      "bytes": 427
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc": {
+      "sha256": "8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc",
+      "bytes": 909
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830": {
+      "sha256": "8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830",
+      "bytes": 3856
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f": {
+      "sha256": "8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f",
+      "bytes": 2845
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2": {
+      "sha256": "8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2",
+      "bytes": 1150
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6": {
+      "sha256": "9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6",
+      "bytes": 1785
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66": {
+      "sha256": "966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66",
+      "bytes": 11178
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7": {
+      "sha256": "97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7",
+      "bytes": 739
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9": {
+      "sha256": "98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9",
+      "bytes": 19044
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5": {
+      "sha256": "9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5",
+      "bytes": 10301
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d": {
+      "sha256": "9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d",
+      "bytes": 373
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383": {
+      "sha256": "a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383",
+      "bytes": 20564
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d": {
+      "sha256": "acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d",
+      "bytes": 4095
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d": {
+      "sha256": "ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d",
+      "bytes": 272
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d": {
+      "sha256": "ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d",
+      "bytes": 1158
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc": {
+      "sha256": "ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc",
+      "bytes": 1377
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871": {
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+      "bytes": 48
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68": {
+      "sha256": "b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68",
+      "bytes": 2841
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f": {
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "bytes": 24356
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83": {
+      "sha256": "ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83",
+      "bytes": 560
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7": {
+      "sha256": "bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7",
+      "bytes": 1719
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe": {
+      "sha256": "bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe",
+      "bytes": 429
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7": {
+      "sha256": "bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7",
+      "bytes": 7915
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4": {
+      "sha256": "bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4",
+      "bytes": 774
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6": {
+      "sha256": "c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6",
+      "bytes": 1572
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30": {
+      "sha256": "c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30",
+      "bytes": 4053
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9": {
+      "sha256": "c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9",
+      "bytes": 1717
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354": {
+      "sha256": "c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354",
+      "bytes": 684
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5": {
+      "sha256": "c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5",
+      "bytes": 776
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7": {
+      "sha256": "cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7",
+      "bytes": 191
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c": {
+      "sha256": "cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c",
+      "bytes": 1254
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80": {
+      "sha256": "cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80",
+      "bytes": 17051
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63": {
+      "sha256": "d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63",
+      "bytes": 51043
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744": {
+      "sha256": "d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744",
+      "bytes": 1582
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad": {
+      "sha256": "df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad",
+      "bytes": 42641
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193": {
+      "sha256": "e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193",
+      "bytes": 24715
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec": {
+      "sha256": "e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec",
+      "bytes": 539
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1": {
+      "sha256": "e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1",
+      "bytes": 6208
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41": {
+      "sha256": "e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41",
+      "bytes": 37872
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2": {
+      "sha256": "ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2",
+      "bytes": 7942
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4": {
+      "sha256": "f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4",
+      "bytes": 15355
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f": {
+      "sha256": "f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f",
+      "bytes": 1782
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb": {
+      "sha256": "f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb",
+      "bytes": 272
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316": {
+      "sha256": "f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316",
+      "bytes": 3945
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e": {
+      "sha256": "f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e",
+      "bytes": 737
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e": {
+      "sha256": "f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e",
+      "bytes": 1307
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd": {
+      "sha256": "f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd",
+      "bytes": 249
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab": {
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+      "bytes": 8
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558": {
+      "sha256": "fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558",
+      "bytes": 911
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397": {
+      "sha256": "fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397",
+      "bytes": 627
+    },
+    "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-terminal-fixed/runtime-assets/ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c": {
+      "sha256": "ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c",
+      "bytes": 1585
+    }
+  },
+  "identity_sha256": "a219a193931bb5db0af176f609cf5e71f067d90d5a1a05be4d5eea7ba84b2cbe"
+}
