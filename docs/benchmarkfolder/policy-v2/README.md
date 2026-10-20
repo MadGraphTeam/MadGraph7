@@ -15,6 +15,28 @@ The tools do not edit v1 runners, measurements, inputs or candidate outputs.
 All paths below are relative to the MadGraph repository; run commands there
 after sourcing `.ninjars-build/dev-env.sh`.
 
+## Current implementation evidence
+
+The current numerical source is
+`b44d20e725f1ec68589df20284e4ce9116e9e2ab`, with installed NinjaRS ABI 3.
+Subsequent evidence commits do not change that numerical implementation.
+Completed checks are retained separately:
+
+- [Thirteen fresh CLI exports](generation-abi3-terminal-fixed/README.md) and
+  [their common runtime inventory](final-runtime-audit-fixed/inventory.json).
+- [Pinned/local installation, relocated standalone and NLO checks](install-export-abi3-terminal-fixed/README.md).
+- [Representative DP/QP and fresh/persistent coverage](representative-retention-abi3-terminal-fixed/README.md).
+- [Loop-induced, mixed-order and complex-mass comparisons](controls-retention-abi3-terminal-fixed/README.md).
+- [Rotations, changing-state contexts and near-singular rescue](final-variant-controls-both-precision/README.md).
+- [Independent focused audit and physical direction reversal](final-focused-audit-fixed/README.md).
+
+The focused audit includes a retained plan snapshot and source-scoped coverage
+limitations. Failed setup attempts remain preserved alongside their diagnoses.
+These checks do not replace the outstanding eight-process correctness and
+performance gates. `final-core-plan-fixed/` retains the held full-cohort plan.
+The [symmetric-accumulation experiments](../experiments/symmetric-accumulation/README.md)
+are separate research; no product-sharing prototype is part of this source.
+
 ## Exact correction evidence
 
 `correction-spec.json` points to actual original and final CLI exports and their

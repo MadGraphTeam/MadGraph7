@@ -1,0 +1,24 @@
+{
+  "schema": "diagnostic-warmup-policy-inspection-v1",
+  "recorded_utc": "2026-10-20T18:14:38Z",
+  "original_sample_manifest": {
+    "path": "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/manifest.json",
+    "sha256": "89364a13005bdaec46f12f378805641b2ccf03909d391b36105b09c2c1ce1d7f"
+  },
+  "inspected_loop_matrix": {
+    "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-20261020/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/loop_matrix.f",
+    "sha256": "d9819ec368321e736896a4b2af4cd0121dec9bab1726b0da3a338a86ae9be5f8"
+  },
+  "files": {
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/warmup-policy/return-code-and-helicity-excerpts.txt": "fc8d6b8c74898191ec78956370505cdf9ddf2f56f52006d460102ed168de34d9",
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/warmup-policy/stdout-snapshot.log": "c1fb887b69f29069b22062e2d25dd2a940660aa6fb5bec735f17bc6b0f47238f",
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/warmup-policy/worker-source.f": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79"
+  },
+  "stdout_lines": 79,
+  "initialization_restart_or_helicity_failure_warning_present": false,
+  "driver_rule": "WARM_POINTS increments whenever T=1 or2, independent of H; exceptional410/420/429 count. Only initialization T=3/4 resets the counter.",
+  "generated_initialization_rule": "T gains2 iff CHECKPHASE or not HELDOUBLECHECKED. HELINITSTARTOVER=false marks double-check done even after its failure.",
+  "point_progress": "Not observable in retained stdout; no debugger used.",
+  "acceptance_evidence": false,
+  "identity_sha256": "a1b261b932e30bb9830fc0931cad70f0556a7e7e2465b197e9102824ad2d9f8c"
+}
