@@ -2,7 +2,6 @@
 """Exact source-plan symmetries; numeric defaults never prove a relation."""
 
 import json
-import os
 from collections import Counter
 from dataclasses import replace
 from fractions import Fraction
@@ -12,6 +11,8 @@ from types import SimpleNamespace as Record
 import pytest
 
 from pyamplicol.loops.flavor_mappings import RetainedFlavorPlan, prove_flavor_relabeling
+
+pytestmark = pytest.mark.loop_physics
 
 SWAP = {1: 3, 3: 1, -1: -3, -3: -1}
 
@@ -356,13 +357,13 @@ def test_actual_prepared_native_overrides_cannot_hide_behind_equal_source(kind):
         prove_flavor_relabeling(changed_plan, SWAP)
 
 
-def test_retained_gmu_qcd_plan_and_independently_generated_down_strange_members():
+def test_retained_gmu_qcd_plan_and_independently_generated_down_strange_members(
+    loop_gmu_ufo,
+):
     s = pytest.importorskip("symbolica")
-    path = os.environ.get("PYAMPLICOL_EW_UFO_REFERENCE")
-    if not path or not s.is_licensed():
-        pytest.skip(
-            "set PYAMPLICOL_EW_UFO_REFERENCE and license for native Gmu control"
-        )
+    path = str(loop_gmu_ufo)
+    if not s.is_licensed():
+        pytest.skip("native Gmu control requires licensed Symbolica")
     from pyamplicol.loops.counterterms import (
         match_counterterms,
         prepare_counterterm_model,

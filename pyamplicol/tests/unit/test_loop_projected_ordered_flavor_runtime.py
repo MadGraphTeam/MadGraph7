@@ -2,7 +2,6 @@
 """Saved projected flavour sharing against independent member instructions."""
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -12,12 +11,12 @@ from .test_loop_bose_correlated_runtime import _source_rows
 from .test_loop_native_directed import _blocks, _values
 from .test_loop_physical_correlations import _close, _conjugate
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def projected_ordered_artifacts():
-    location = os.environ.get("PYAMPLICOL_PROJECTED_ORDERED_FLAVOR_FIXTURES")
-    if not location:
-        pytest.skip("requires actual saved complete-family flavour artifacts")
+def projected_ordered_artifacts(saved_loop_fixture):
+    location = str(saved_loop_fixture("projected-ordered-flavor"))
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native

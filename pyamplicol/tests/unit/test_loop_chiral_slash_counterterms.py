@@ -8,6 +8,8 @@ import pytest
 
 from .test_loop_adjoint_scalar_counterterms import prepared as _prepared
 
+pytestmark = pytest.mark.loop_fast
+
 prepared = _prepared
 _SLASHES = (
     "P(-1,1)*Gamma(-1,2,1)",

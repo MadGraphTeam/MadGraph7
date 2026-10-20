@@ -14,12 +14,15 @@ import pytest
 from pyamplicol.artifacts import ArtifactBuilder, load_manifest
 from pyamplicol.artifacts.api_bundle import emit_api_bundle, format_validation_points
 
+pytestmark = pytest.mark.loop_fast
 
-def test_real_writer_emits_virtual_bundle_without_tree_umami_provider(tmp_path):
-    fixture = os.environ.get("PYAMPLICOL_VIRTUAL_BUNDLE_ARTIFACT")
-    source_path = os.environ.get("PYAMPLICOL_VIRTUAL_BUNDLE_MODEL_SOURCE")
-    if not fixture or not source_path:
-        pytest.skip("set the retained artifact and its original UFO source paths")
+
+def test_real_writer_emits_virtual_bundle_without_tree_umami_provider(
+    saved_loop_fixture, loop_sm_ufo, tmp_path
+):
+    # The saved mixed-order uudd artifact was produced from loop_sm/full.
+    fixture = str(saved_loop_fixture("sdk-mixed-source"))
+    source_path = str(loop_sm_ufo)
     from pyamplicol.api import ModelSource, Runtime
     from pyamplicol.config import resolve_config
     from pyamplicol.generation.artifact_writer import (
@@ -139,11 +142,15 @@ def test_real_writer_emits_virtual_bundle_without_tree_umami_provider(tmp_path):
     assert "API/umami/umami_provider.h" not in paths
 
 
-def test_installed_virtual_bundle_clients_preserve_mixed_order_resolved_axes(tmp_path):
-    fixture = os.environ.get("PYAMPLICOL_VIRTUAL_BUNDLE_ARTIFACT")
+def test_installed_virtual_bundle_clients_preserve_mixed_order_resolved_axes(
+    saved_loop_fixture, tmp_path
+):
+    fixture = str(saved_loop_fixture("sdk-mixed-source"))
+    # An installed wheel (target directory with bin/rusticol-config) is a
+    # release-build product, not a test fixture; it is supplied explicitly.
     installed = os.environ.get("PYAMPLICOL_VIRTUAL_BUNDLE_INSTALL")
-    if not fixture or not installed:
-        pytest.skip("set the saved mixed-order artifact and installed wheel paths")
+    if not installed:
+        pytest.skip("set PYAMPLICOL_VIRTUAL_BUNDLE_INSTALL to an installed wheel")
     make = shutil.which("make")
     assert make is not None, "the installed SDK client check requires make"
     artifact = tmp_path / "artifact"

@@ -2,7 +2,6 @@
 """Source-backed cold proof controls; no process generation or numeric fitting."""
 
 import json
-import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -10,17 +9,17 @@ import pytest
 
 from pyamplicol.loops.flavor_mappings import RetainedFlavorPlan, prove_flavor_relabeling
 
+pytestmark = pytest.mark.loop_fast
+
 SWAP = {1: 3, 3: 1, -1: -3, -3: -1}
 
 
 @pytest.fixture(scope="module")
-def actual_declared_plan():
+def actual_declared_plan(loop_sm_colour_model):
     symbolica = pytest.importorskip("symbolica")
-    path = os.environ.get("PYAMPLICOL_PROJECTED_FLAVOR_MODEL")
-    if not path or not symbolica.is_licensed():
-        pytest.skip(
-            "set PYAMPLICOL_PROJECTED_FLAVOR_MODEL and license for cold model proof"
-        )
+    path = str(loop_sm_colour_model)
+    if not symbolica.is_licensed():
+        pytest.skip("cold model proof requires licensed Symbolica")
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.source_color_declaration import (
         prepare_declared_source_color,

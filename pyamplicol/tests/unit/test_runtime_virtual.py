@@ -2,7 +2,6 @@
 """Public virtual artifact transport, exact ingress and arithmetic selection."""
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -11,6 +10,8 @@ import pytest
 
 from pyamplicol.api.errors import CompatibilityError
 from pyamplicol.runtime.virtual import _inputs, _parameters
+
+pytestmark = pytest.mark.loop_fast
 
 
 def test_exact_input_transport_and_rejection():
@@ -45,13 +46,9 @@ def test_exact_input_transport_and_rejection():
 
 
 @pytest.fixture(scope="module")
-def source_artifact():
-    path = os.environ.get("PYAMPLICOL_SOURCE_PUBLIC_ARTIFACT")
-    if not path:
-        pytest.skip(
-            "set PYAMPLICOL_SOURCE_PUBLIC_ARTIFACT to the saved gg source artifact"
-        )
-    native = pytest.importorskip("_loop_reduction")
+def source_artifact(saved_loop_fixture, loop_native):
+    path = str(saved_loop_fixture("source-public-v3/gg"))
+    native = loop_native
     if not hasattr(native, "NativeVirtualRuntime"):
         pytest.skip("native source artifact consumer is not built")
     fixture = (

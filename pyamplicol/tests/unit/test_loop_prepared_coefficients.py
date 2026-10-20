@@ -13,13 +13,15 @@ from pyamplicol.loops.kernels import (
     PreparedCoefficientDAG,
 )
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def native():
+def native(loop_native):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("licensed exact tensor generation required")
-    return pytest.importorskip("_loop_reduction")
+    return loop_native
 
 
 def make_dag():

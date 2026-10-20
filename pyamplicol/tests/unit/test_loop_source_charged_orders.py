@@ -2,19 +2,19 @@
 """Full-source charged R2 enters QCD corrections to mixed SM Born orders."""
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def charged_plan(tmp_path_factory):
+def charged_plan(loop_sm_ufo, loop_native, tmp_path_factory):
     symbolica = pytest.importorskip("symbolica")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path or not symbolica.is_licensed():
+    path = str(loop_sm_ufo)
+    if not symbolica.is_licensed():
         pytest.skip("licensed source generation and loop_sm reference required")
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
@@ -78,9 +78,16 @@ def _close(a, b, tolerance):
     ],
 )
 def test_saved_charged_orders_reference_resolved_and_exact_inputs(
-    charged_plan, monkeypatch, arithmetic, precision, reducer, tolerance, bit
+    loop_native,
+    charged_plan,
+    monkeypatch,
+    arithmetic,
+    precision,
+    reducer,
+    tolerance,
+    bit,
 ):
-    from _loop_reduction import NativeLoopProgram
+    NativeLoopProgram = loop_native.NativeLoopProgram
 
     from .test_loop_source_portable import _forbid_source
 

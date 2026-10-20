@@ -2,7 +2,6 @@
 """Model field factors and native Born identity, independent of graph CT rules."""
 
 import json
-import os
 from dataclasses import replace
 from types import ModuleType, SimpleNamespace
 
@@ -16,6 +15,8 @@ from pyamplicol.loops.wavefunction import (
     prepare_external_field_rules,
 )
 from pyamplicol.models.loop_import import capture_raw_loop_model, load_raw_loop_model
+
+pytestmark = pytest.mark.loop_fast
 
 
 @pytest.fixture(scope="module")
@@ -129,10 +130,10 @@ def test_field_mismatched_ports_fail(hep, dy):
         match_external_field_counterterms(source, dy, selected_corrections=["QCD"])
 
 
-def test_real_top_field_factor_has_model_half_z_and_two_external_copies(hep):
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if path is None:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE for real loop_sm control")
+def test_real_top_field_factor_has_model_half_z_and_two_external_copies(
+    loop_sm_ufo, hep
+):
+    path = str(loop_sm_ufo)
     source = build_loop_model(load_raw_loop_model(path))
     rules = prepare_external_field_rules(source)
     top = next(rule for rule in rules if rule.pdg == 6)

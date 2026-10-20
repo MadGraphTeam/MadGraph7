@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from collections import Counter
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -13,6 +12,8 @@ import numpy as np
 import pytest
 
 from pyamplicol.loops.physical_process import gluon_scattering_qcd_program
+
+pytestmark = pytest.mark.loop_physics
 
 
 def _expected(point, alpha_s):
@@ -55,12 +56,18 @@ def _expected(point, alpha_s):
     ],
 )
 def test_gluon_bare_batch_color_terms_and_ward_identity(
-    arithmetic, precision, reducer, coefficients, tolerance
+    loop_reference_path,
+    loop_native,
+    arithmetic,
+    precision,
+    reducer,
+    coefficients,
+    tolerance,
 ):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("native gluon control requires licensed Symbolica")
-    native = pytest.importorskip("_loop_reduction")
+    native = loop_native
     fixture = (
         Path(__file__).resolve().parents[2]
         / "tools/loop_reference/gluon_scattering_qcd.json"
@@ -94,18 +101,17 @@ def test_gluon_bare_batch_color_terms_and_ward_identity(
                 assert abs(Decimal(value[0]) - target) < abs(target) * tolerance
                 assert abs(Decimal(value[1])) < abs(target) * tolerance
     assert all(status == "success" for row in result.statuses for _, status in row)
-    path = os.environ.get("PYAMPLICOL_GG_COMPONENT_REFERENCE")
-    if path:
-        reference = json.loads(Path(path).read_text())
-        np.testing.assert_allclose(
-            poles[:, :, 0].astype(float),
-            [
-                [row["bare"][key] for key in ("finite", "single_pole", "double_pole")]
-                for row in reference["rows"]
-            ],
-            rtol=5e-11,
-            atol=1e-10,
-        )
+    path = str(loop_reference_path("gluon-scattering-component-control"))
+    reference = json.loads(Path(path).read_text())
+    np.testing.assert_allclose(
+        poles[:, :, 0].astype(float),
+        [
+            [row["bare"][key] for key in ("finite", "single_pole", "double_pole")]
+            for row in reference["rows"]
+        ],
+        rtol=5e-11,
+        atol=1e-10,
+    )
 
     # Replace one external polarization by its actual momentum, using only
     # native column gathers and the same complete Born coefficient programs.
@@ -155,15 +161,19 @@ def test_gluon_bare_batch_color_terms_and_ward_identity(
     ],
 )
 def test_gluon_model_components_and_per_point_uv_scales(
-    arithmetic, precision, reducer, coefficients, tolerance
+    loop_reference_path,
+    loop_sm_ufo,
+    loop_native,
+    arithmetic,
+    precision,
+    reducer,
+    coefficients,
+    tolerance,
 ):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("native gluon control requires licensed Symbolica")
-    pytest.importorskip("_loop_reduction")
-    source_path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not source_path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    source_path = str(loop_sm_ufo)
     from symbolica import E, Expression
 
     from pyamplicol.loops.model import build_loop_model
@@ -195,29 +205,25 @@ def test_gluon_model_components_and_per_point_uv_scales(
     result = program.evaluate_decimal(
         points, ["1000000"] * len(points), model_values=["0.118", "173"]
     )
-    path = os.environ.get("PYAMPLICOL_GG_COMPONENT_REFERENCE")
-    if path:
-        reference = json.loads(Path(path).read_text())
-        for name, key in (
-            ("bare", "bare"),
-            ("uv", "uv"),
-            ("r2", "r2"),
-            ("virtual", "full"),
-            ("uv_local", "uv_vertex"),
-            ("uv_external_fields", "wf"),
-        ):
-            np.testing.assert_allclose(
-                getattr(result, name)[:, :, 0].astype(float),
-                [
-                    [
-                        row[key][pole]
-                        for pole in ("finite", "single_pole", "double_pole")
-                    ]
-                    for row in reference["rows"]
-                ],
-                rtol=5e-11,
-                atol=1e-10,
-            )
+    path = str(loop_reference_path("gluon-scattering-component-control"))
+    reference = json.loads(Path(path).read_text())
+    for name, key in (
+        ("bare", "bare"),
+        ("uv", "uv"),
+        ("r2", "r2"),
+        ("virtual", "full"),
+        ("uv_local", "uv_vertex"),
+        ("uv_external_fields", "wf"),
+    ):
+        np.testing.assert_allclose(
+            getattr(result, name)[:, :, 0].astype(float),
+            [
+                [row[key][pole] for pole in ("finite", "single_pole", "double_pole")]
+                for row in reference["rows"]
+            ],
+            rtol=5e-11,
+            atol=1e-10,
+        )
 
     # Independent heavy-quark decoupling/field formulae, evaluated beyond the
     # reference's binary64 precision. Model parameters remain global; muR is

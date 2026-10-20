@@ -2,7 +2,6 @@
 """The authenticated observable declaration agrees with its execution lane."""
 
 import json
-import os
 from dataclasses import asdict, replace
 from pathlib import Path
 
@@ -16,6 +15,8 @@ from pyamplicol.generation.loop_artifact import (
 )
 from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
 from pyamplicol.loops.physical_orders import BornSquaredSector, PhysicalOrderLayout
+
+pytestmark = pytest.mark.loop_fast
 
 
 def _metadata(**options):
@@ -79,11 +80,11 @@ def test_changing_lane_requires_a_new_declaration():
 
 
 @pytest.mark.parametrize("directed", [False, True])
-def test_saved_observable_metadata_reaches_native_and_inspect(directed):
+def test_saved_observable_metadata_reaches_native_and_inspect(
+    saved_loop_fixture, directed
+):
     """Use freshly published existing plans; no numerical execution is needed."""
-    location = os.environ.get("PYAMPLICOL_PROJECTED_FLAVOR_FIXTURES")
-    if not location:
-        pytest.skip("freshly published projected flavour artifacts required")
+    location = str(saved_loop_fixture("projected-flavor-v43ff063"))
     from pyamplicol import Runtime, _rusticol
     from pyamplicol._internal.versions import verify_native_module
 

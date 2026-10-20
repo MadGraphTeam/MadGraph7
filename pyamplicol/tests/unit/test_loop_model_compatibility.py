@@ -1,20 +1,18 @@
 # SPDX-License-Identifier: 0BSD
 """The explicit scalar-arity view changes one known source reference only."""
 
-import os
-
 import pytest
 
 from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
 from pyamplicol.models.loop_import import RawLoopModel, load_raw_loop_model
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def raw():
+def raw(loop_sm_ufo):
     pytest.importorskip("symbolica")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    path = str(loop_sm_ufo)
     return load_raw_loop_model(path)
 
 

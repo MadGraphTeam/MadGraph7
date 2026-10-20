@@ -2,7 +2,6 @@
 """Saved source classes share native currents, exact ingress and subset rescue."""
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -12,13 +11,15 @@ from .test_loop_native_directed import _blocks, _values
 from .test_loop_physical_correlations import _close, _conjugate
 from .test_loop_portable import _rewrite
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def spin_plan(tmp_path_factory):
+def spin_plan(loop_sm_ufo, loop_native, tmp_path_factory):
     symbolica = pytest.importorskip("symbolica")
-    native = pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path or not symbolica.is_licensed():
+    native = loop_native
+    path = str(loop_sm_ufo)
+    if not symbolica.is_licensed():
         pytest.skip("licensed source generation and loop_sm reference required")
     from pyamplicol.color.connections import ColorConnection, EmitGluon
     from pyamplicol.color.correlator_matrices import ColorCorrelator
@@ -94,8 +95,10 @@ def _scaled(vector, real, imaginary):
     ]
 
 
-def test_spin_descriptor_classes_and_saved_source_phases(spin_plan, tmp_path):
-    import _loop_reduction as native
+def test_spin_descriptor_classes_and_saved_source_phases(
+    loop_native, spin_plan, tmp_path
+):
+    native = loop_native
 
     path, _, classes, _ = spin_plan
     loaded = native.PortableLoopPlan(str(path))
@@ -136,7 +139,7 @@ def test_spin_descriptor_classes_and_saved_source_phases(spin_plan, tmp_path):
                 lambda d: d["spin_projections"][0]["source_contracts"][0][
                     "identity"
                 ].update(pdg_label=22),
-                "SourceIR",
+                "orientation is inconsistent",
             ),
             (
                 lambda d: d["spin_projections"][0]["directed"]["histories"][0].update(
@@ -161,9 +164,9 @@ def test_spin_descriptor_classes_and_saved_source_phases(spin_plan, tmp_path):
     ],
 )
 def test_native_spin_classes_literal_sources_and_exact_owner(
-    spin_plan, arithmetic, precision, engine, tolerance, bit
+    loop_native, spin_plan, arithmetic, precision, engine, tolerance, bit
 ):
-    import _loop_reduction as native
+    native = loop_native
 
     from pyamplicol.loops.spin_sources import NativeSpinSourcePlan
 
@@ -293,8 +296,8 @@ def test_native_spin_classes_literal_sources_and_exact_owner(
         runtime.evaluate_directed([p], ["1000000"], spin_vectors={3: [vector, vector]})
 
 
-def test_spin_partial_compaction_and_exact_source_replay(spin_plan):
-    import _loop_reduction as native
+def test_spin_partial_compaction_and_exact_source_replay(loop_native, spin_plan):
+    native = loop_native
 
     path, _, _, points = spin_plan
     runtime = native.NativeLoopProgram(str(path), reduction_engine="fast")
@@ -370,8 +373,8 @@ def test_spin_partial_compaction_and_exact_source_replay(spin_plan):
     assert empty.result.spin_legs == [3, 4] and empty.result.point_ids == []
 
 
-def test_joint_sources_reconstruct_the_full_polarization_sum(spin_plan):
-    import _loop_reduction as native
+def test_joint_sources_reconstruct_the_full_polarization_sum(loop_native, spin_plan):
+    native = loop_native
 
     path, _, _, points = spin_plan
     runtime = native.NativeLoopProgram(str(path), reduction_engine="fast")

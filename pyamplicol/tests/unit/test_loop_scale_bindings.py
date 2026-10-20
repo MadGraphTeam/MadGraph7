@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
-import os
 from dataclasses import FrozenInstanceError, replace
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -15,6 +14,8 @@ from pyamplicol.loops.scalar_bindings import (
     prepare_scalar_bindings,
 )
 from pyamplicol.models.loop_import import load_raw_loop_model
+
+pytestmark = pytest.mark.loop_physics
 
 
 @pytest.fixture
@@ -68,9 +69,9 @@ MODES = (
 
 @pytest.mark.parametrize("arithmetic,precision,tolerance", MODES)
 def test_scale_view_laurent_complex_globals_updates_and_tails(
-    source, arithmetic, precision, tolerance
+    loop_native, source, arithmetic, precision, tolerance
 ):
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     options = {"arithmetic": arithmetic, "precision": precision}
     global_plan = prepare_scalar_bindings(source, (("z", 0), ("MU_R", 0)))
     state = NativeScalarBindings(global_plan, **options)
@@ -145,9 +146,9 @@ def test_scale_view_laurent_complex_globals_updates_and_tails(
 
 @pytest.mark.parametrize("arithmetic,precision,tolerance", MODES)
 def test_original_scale_bits_and_native_validation(
-    source, arithmetic, precision, tolerance
+    loop_native, source, arithmetic, precision, tolerance
 ):
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     options = {"arithmetic": arithmetic, "precision": precision}
     state = NativeScalarBindings(
         prepare_scalar_bindings(source, (("delta", 0),)), **options
@@ -183,8 +184,10 @@ def test_original_scale_bits_and_native_validation(
         view.evaluate_native(["4"])
 
 
-def test_scale_diagnostics_atomic_failure_and_single_owner_snapshot(source):
-    backend = pytest.importorskip("_loop_reduction")
+def test_scale_diagnostics_atomic_failure_and_single_owner_snapshot(
+    loop_native, source
+):
+    backend = loop_native
     plan = prepare_scalar_bindings(source, (("safe", 0), ("x", 0)))
     state = NativeScalarBindings(plan)
     view = NativeScaleBindings(state)
@@ -228,8 +231,7 @@ def test_scale_diagnostics_atomic_failure_and_single_owner_snapshot(source):
         view.evaluate_native(batch, snapshot=other.snapshot())
 
 
-def test_scale_plan_identity_layout_and_fixed_parameter_guards(source):
-    pytest.importorskip("_loop_reduction")
+def test_scale_plan_identity_layout_and_fixed_parameter_guards(loop_native, source):
     plan = prepare_scalar_bindings(source, (("z", 0),))
     state = NativeScalarBindings(plan)
     with pytest.raises(ValueError, match="identical ScalarProgram"):
@@ -251,8 +253,8 @@ def test_scale_plan_identity_layout_and_fixed_parameter_guards(source):
         NativeScaleBindings(NativeScalarBindings(fixed))
 
 
-def test_positive_scale_extremes_and_precision_mismatch(source):
-    backend = pytest.importorskip("_loop_reduction")
+def test_positive_scale_extremes_and_precision_mismatch(loop_native, source):
+    backend = loop_native
     plan = prepare_scalar_bindings(source, (("MU_R", 0),))
     view = NativeScaleBindings(NativeScalarBindings(plan))
     batch = backend.NativeBatch.from_decimal(
@@ -278,11 +280,9 @@ def test_positive_scale_extremes_and_precision_mismatch(source):
         arbitrary.evaluate_native(foreign)
 
 
-def test_gmu_source_counterterm_scale_logarithms():
-    backend = pytest.importorskip("_loop_reduction")
-    configured = os.environ.get("PYAMPLICOL_EW_UFO")
-    if not configured:
-        pytest.skip("set PYAMPLICOL_EW_UFO for the full Gmu fixture")
+def test_gmu_source_counterterm_scale_logarithms(loop_gmu_ufo, loop_native):
+    backend = loop_native
+    configured = str(loop_gmu_ufo)
     raw = load_raw_loop_model(Path(configured), restriction="full")
     plan = prepare_scalar_bindings(raw, (("MT", 0), ("epsUV", 0)))
     ct = prepare_scalar_bindings(
@@ -315,9 +315,9 @@ def test_gmu_source_counterterm_scale_logarithms():
 
 @pytest.mark.parametrize("arithmetic,precision,_tolerance", MODES)
 def test_partial_scale_view_filters_active_diagnostics_with_original_ids(
-    source, arithmetic, precision, _tolerance
+    loop_native, source, arithmetic, precision, _tolerance
 ):
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     options = {"arithmetic": arithmetic, "precision": precision}
     plan = prepare_scalar_bindings(source, (("safe", 0), ("A", 0)))
     state = NativeScalarBindings(plan, **options)
@@ -349,8 +349,10 @@ def test_partial_scale_view_filters_active_diagnostics_with_original_ids(
         view.evaluate_partial_native(wrong)
 
 
-def test_reconstructed_snapshot_uses_exact_defaults_and_retained_overrides(source):
-    backend = pytest.importorskip("_loop_reduction")
+def test_reconstructed_snapshot_uses_exact_defaults_and_retained_overrides(
+    loop_native, source
+):
+    backend = loop_native
     plan = prepare_scalar_bindings(source, (("z", 0), ("x", 0), ("A", 0)))
     with localcontext() as context:
         context.prec = 120
@@ -386,11 +388,11 @@ def test_reconstructed_snapshot_uses_exact_defaults_and_retained_overrides(sourc
         higher.reconstruct_snapshot(other, other.snapshot())
 
 
-def test_actual_source_counterterm_scale_overflow_is_sparse_and_recoverable():
-    backend = pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_EW_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_EW_UFO_REFERENCE to the full Gmu source")
+def test_actual_source_counterterm_scale_overflow_is_sparse_and_recoverable(
+    loop_gmu_ufo, loop_native
+):
+    backend = loop_native
+    path = str(loop_gmu_ufo)
     raw = load_raw_loop_model(path, restriction="full")
     # This real source CT contains reglog(MT**2/MU_R**2). The input scale is
     # finite in double/DD, but its ratio overflows there; AP retains the input.

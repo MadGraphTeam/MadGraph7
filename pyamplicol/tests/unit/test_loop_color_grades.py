@@ -3,13 +3,14 @@
 
 from __future__ import annotations
 
-import os
 from collections import Counter
 
 import pytest
 
 from pyamplicol.loops.color_projection import prepare_color_projection
 from pyamplicol.loops.physical_color import split_color_grades
+
+pytestmark = pytest.mark.loop_fast
 
 
 @pytest.fixture(scope="module")
@@ -66,11 +67,11 @@ def test_projection_uses_product_grade_and_one_structural_degree(symbols):
     assert projection.project("full") == (nc**5 - nc**3, born_overlap)
 
 
-def test_loop_sm_pure_gluon_uv_and_fields_have_explicit_uniform_color_grades(symbols):
+def test_loop_sm_pure_gluon_uv_and_fields_have_explicit_uniform_color_grades(
+    loop_sm_ufo, symbols
+):
     s, nc, _ = symbols
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to the loop_sm source")
+    path = str(loop_sm_ufo)
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.loops.wavefunction import prepare_external_field_rules
     from pyamplicol.models.loop_import import load_raw_loop_model

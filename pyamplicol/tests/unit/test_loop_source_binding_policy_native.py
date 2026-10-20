@@ -6,17 +6,16 @@ complete amplitude rescue is independently exercised by the Rust control and
 public adapter tests. These checks do not repeat that campaign.
 """
 import json
-import os
 from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def native_policy_fixture():
-    root = os.environ.get("PYAMPLICOL_SOURCE_BINDING_POLICY_FIXTURES")
-    if not root:
-        pytest.skip("retained guard-only source-binding fixtures required")
+def native_policy_fixture(saved_loop_fixture):
+    root = str(saved_loop_fixture("source-binding-rescue"))
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native

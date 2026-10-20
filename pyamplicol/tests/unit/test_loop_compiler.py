@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import replace
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -14,6 +13,8 @@ import pytest
 
 from pyamplicol.loops.compiler import prepare_loop_request_model
 from pyamplicol.models.loading import CompiledModel
+
+pytestmark = pytest.mark.loop_physics
 
 
 def _compiled(raw):
@@ -41,19 +42,27 @@ def test_compiler_requires_captured_source_not_normalized_tree_defaults():
 
 
 @pytest.fixture(scope="module")
-def prepared():
+def prepared(loop_sm_ufo, loop_sm_compiled_model, loop_native):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("source generation requires licensed Symbolica")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    path = str(loop_sm_ufo)
+    from pyamplicol.models.loading import load_compiled_model
     from pyamplicol.models.loop_import import load_raw_loop_model
 
     raw = load_raw_loop_model(path)
+    # The actual compiled tree IR supplies the source particle contracts; its
+    # normalized aS default is made deliberately incompatible and must not leak.
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    compiled = replace(
+        compiled,
+        raw_loop_model=raw,
+        parameter_defaults={**compiled.parameter_defaults, "aS": (1000.0, 0.0)},
+        _serialized_path=None,
+        _prepared_bundle=None,
+    )
     return prepare_loop_request_model(
-        _compiled(raw),
+        compiled,
         born_order_bounds={"QCD": 2, "QED": 0},
         loop_order_bounds={"QCD": 4, "QED": 0},
         fixed_parameters={"MB": "0"},
@@ -129,11 +138,9 @@ def _exact_born_uv(point, scale, alpha_s, mass):
     ],
 )
 def test_complete_source_qcd_without_process_dispatch(
-    prepared, arithmetic, precision, tolerance
+    loop_reference_path, prepared, arithmetic, precision, tolerance
 ):
-    reference = os.environ.get("PYAMPLICOL_UUDD_COMPONENT_REFERENCE")
-    if not reference:
-        pytest.skip("set PYAMPLICOL_UUDD_COMPONENT_REFERENCE to the MadLoop capture")
+    reference = str(loop_reference_path("uudd-component-control"))
     reference = json.loads(Path(reference).read_text())
     points = np.asarray(reference["fixture"]["points"], dtype=str)
     program = prepared.compile(
@@ -184,14 +191,11 @@ def test_complete_source_qcd_without_process_dispatch(
         program.update_parameters({"MB": "4.7"})
 
 
-def test_same_compiler_handles_complete_neutral_source():
+def test_same_compiler_handles_complete_neutral_source(loop_gmu_ufo, loop_native):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("source generation requires licensed Symbolica")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_EW_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_EW_UFO_REFERENCE to the full Gmu UFO")
+    path = str(loop_gmu_ufo)
     from pyamplicol.models.loop_import import load_raw_loop_model
 
     zeros = (
@@ -304,11 +308,9 @@ def test_same_compiler_handles_complete_neutral_source():
     ],
 )
 def test_source_particle_fields_complete_all_arithmetic(
-    prepared, arithmetic, precision, tolerance
+    loop_reference_path, prepared, arithmetic, precision, tolerance
 ):
-    reference_path = os.environ.get("PYAMPLICOL_GG_COMPONENT_REFERENCE")
-    if not reference_path:
-        pytest.skip("set PYAMPLICOL_GG_COMPONENT_REFERENCE to the MadLoop capture")
+    reference_path = str(loop_reference_path("gluon-scattering-component-control"))
     from symbolica import E, Expression
 
     from pyamplicol.loops.model_expressions import parse_exact_ufo as parse
@@ -419,13 +421,21 @@ def test_source_particle_fields_complete_all_arithmetic(
             assert abs(Decimal(value[1])) < abs(expected) * Decimal(tolerance)
     empty = program.evaluate_decimal(points[:0], [])
     assert empty.virtual.shape == (0, 3, 2)
-    with pytest.raises(NotImplementedError, match="partial source"):
-        model.evaluate_ordered_partial_native(points[:1], ["1000000"])
+    # Real-mass source programs in the native physical frame admit partial
+    # evaluation (e0988180); one good point keeps its opaque ID and values.
+    partial = model.evaluate_ordered_partial_native(
+        points[:1], ["1000000"], point_ids=[71]
+    )
+    ordinary = model.evaluate_ordered_native(points[:1], ["1000000"])
+    assert partial.failures == () and partial.batch.point_ids == [71]
+    assert partial.totals.agreement_rows(
+        ordinary.totals.take_rows([0], row_ids=[71]), "1e-13", "1e-100"
+    ) == [(71, True)]
 
 
 @pytest.mark.parametrize("gluons", [False, True], ids=["uudd", "gg-fields"])
 def test_complete_source_retained_views_without_producer_work(
-    prepared, monkeypatch, gluons
+    prepared, monkeypatch, gluons, loop_reference
 ):
     from pyamplicol.loops import (
         physical_counterterms,
@@ -438,14 +448,9 @@ def test_complete_source_retained_views_without_producer_work(
     from pyamplicol.loops.scalar_bindings import ScalarBindingPlan
     from pyamplicol.loops.scalar_frontend import ScalarFunctionLibrary
 
-    path = os.environ.get(
-        "PYAMPLICOL_GG_COMPONENT_REFERENCE"
-        if gluons
-        else "PYAMPLICOL_UUDD_COMPONENT_REFERENCE"
+    reference = loop_reference(
+        "gluon-scattering-component-control" if gluons else "uudd-component-control"
     )
-    if not path:
-        pytest.skip("set independent component reference paths")
-    reference = json.loads(Path(path).read_text())
     fixture = (
         Path(__file__).resolve().parents[2]
         / "tools/loop_reference"
@@ -475,12 +480,14 @@ def test_complete_source_retained_views_without_producer_work(
         PreparedModelProcess,
     )
 
+    # Since d53d871c retained views keep exact colour projections; source
+    # bindings with dimensional numerators remain unsupported, projected or not.
     for override in (
         {"dimensional_numerators": True},
-        {"_formal_color_projected": True},
+        {"dimensional_numerators": True, "_formal_color_projected": True},
     ):
         altered = SimpleNamespace(**(vars(program.virtual.bare) | override))
-        with pytest.raises(NotImplementedError, match="unprojected"):
+        with pytest.raises(NotImplementedError, match="dimensional numerators"):
             PreparedBareProcess.from_program(altered)
     other_owner = record.bare.source_scalars.bind()
     other_scale = record.source_scale.bind(other_owner)

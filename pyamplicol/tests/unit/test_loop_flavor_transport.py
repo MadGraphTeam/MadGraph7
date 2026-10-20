@@ -2,7 +2,6 @@
 """Identity-port transport against independently generated source members."""
 
 import json
-import os
 import time
 from dataclasses import FrozenInstanceError, replace
 from decimal import Decimal, localcontext
@@ -17,13 +16,15 @@ from pyamplicol.loops.flavor_transport import IdentityFlavorTransport
 
 from .test_loop_physical_correlations import _close, _conjugate, _decimals, _histories
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def pair():
+def pair(loop_sm_ufo, loop_native):
     symbolica = pytest.importorskip("symbolica")
-    backend = pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path or not symbolica.is_licensed():
+    backend = loop_native
+    path = str(loop_sm_ufo)
+    if not symbolica.is_licensed():
         pytest.skip("licensed loop_sm source control required")
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.physical_model_correlations import NativeDirectedModelProgram
@@ -200,11 +201,13 @@ def test_transport_ordinary_results_and_retained_owner_guards(pair):
     plain = relation.bind(programs[0])
     with pytest.raises(ValueError, match="no retained directed histories"):
         plain.evaluate_directed_decimal(points[:0], [])
-    for mapping in (
-        LegMapping((1, 0, 2, 3), False, "permuted"),
-        LegMapping((0, 1, 2, 3), True, "conjugated"),
+    # Only same-side identical self-conjugate bosons may be permuted; this swaps
+    # the incoming quark/antiquark ports. Charge conjugation remains unproved.
+    for mapping, message in (
+        (LegMapping((1, 0, 2, 3), False, "permuted"), "self-conjugate bosons"),
+        (LegMapping((0, 1, 2, 3), True, "conjugated"), "charge-conjugated"),
     ):
-        with pytest.raises(NotImplementedError, match="unchanged external port order"):
+        with pytest.raises(NotImplementedError, match=message):
             IdentityFlavorTransport.admit(relation.symmetry, *programs, mapping)
     with pytest.raises(ValueError, match="proved species image"):
         IdentityFlavorTransport.admit(

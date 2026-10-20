@@ -4,12 +4,13 @@
 from __future__ import annotations
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.loop_physics
 
 
 def _exact_values(point, scale, alpha, mass):
@@ -60,15 +61,19 @@ def _exact_values(point, scale, alpha, mass):
     ],
 )
 def test_quark_gluon_isolated_r2_complete_components_and_precise_inputs(
-    arithmetic, precision, reducer, coefficients, tolerance
+    loop_reference_path,
+    loop_sm_ufo,
+    loop_native,
+    arithmetic,
+    precision,
+    reducer,
+    coefficients,
+    tolerance,
 ):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("native mixed-state control requires licensed Symbolica")
-    pytest.importorskip("_loop_reduction")
-    source_path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not source_path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    source_path = str(loop_sm_ufo)
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.loops.physical_counterterms import (
         NativeModelVirtualProgram,
@@ -107,30 +112,26 @@ def test_quark_gluon_isolated_r2_complete_components_and_precise_inputs(
     result = program.evaluate_decimal(
         points, ["1000000"] * 3, model_values=["0.118", "173"]
     )
-    path = os.environ.get("PYAMPLICOL_QUARK_GLUON_COMPONENT_REFERENCE")
-    if path:
-        reference = json.loads(Path(path).read_text())
-        for actual, key in (
-            (isolated.r2, "r2_quark_two_point"),
-            (result.bare, "bare"),
-            (result.uv, "uv"),
-            (result.r2, "r2"),
-            (result.virtual, "full"),
-            (result.uv_local, "uv_vertex"),
-            (result.uv_external_fields, "wf"),
-        ):
-            np.testing.assert_allclose(
-                actual[:, :, 0].astype(float),
-                [
-                    [
-                        row[key][pole]
-                        for pole in ("finite", "single_pole", "double_pole")
-                    ]
-                    for row in reference["rows"]
-                ],
-                rtol=5e-11,
-                atol=1e-11,
-            )
+    path = str(loop_reference_path("quark-gluon-component-control"))
+    reference = json.loads(Path(path).read_text())
+    for actual, key in (
+        (isolated.r2, "r2_quark_two_point"),
+        (result.bare, "bare"),
+        (result.uv, "uv"),
+        (result.r2, "r2"),
+        (result.virtual, "full"),
+        (result.uv_local, "uv_vertex"),
+        (result.uv_external_fields, "wf"),
+    ):
+        np.testing.assert_allclose(
+            actual[:, :, 0].astype(float),
+            [
+                [row[key][pole] for pole in ("finite", "single_pole", "double_pole")]
+                for row in reference["rows"]
+            ],
+            rtol=5e-11,
+            atol=1e-11,
+        )
 
     alpha, mass = "0.100000000000000000000000001", "190.000000000000000000000001"
     scales = ["900000.000000000000000000001", "2100000"]

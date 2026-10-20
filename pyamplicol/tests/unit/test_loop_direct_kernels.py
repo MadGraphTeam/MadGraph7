@@ -24,6 +24,8 @@ from tools.loop_reference.graph_r2_oracle import (
     sample_bindings,
 )
 
+pytestmark = [pytest.mark.loop_physics, pytest.mark.deferred_direct_r2]
+
 
 @pytest.fixture(scope="module")
 def source():

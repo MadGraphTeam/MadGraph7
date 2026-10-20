@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -12,6 +11,8 @@ import numpy as np
 import pytest
 
 from pyamplicol.loops.physical_process import _reduction_numerators
+
+pytestmark = [pytest.mark.loop_nightly, pytest.mark.deferred_direct_r2]
 
 
 def test_closed_sector_layout_keeps_epsilon_and_mu2_distinct():
@@ -42,16 +43,20 @@ def test_closed_sector_layout_keeps_epsilon_and_mu2_distinct():
     ],
 )
 def test_complete_gluon_direct_sectors_and_uv(
-    arithmetic, precision, reducer, coefficients, pole_tolerance
+    loop_reference_path,
+    loop_sm_ufo,
+    loop_native,
+    arithmetic,
+    precision,
+    reducer,
+    coefficients,
+    pole_tolerance,
 ):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("native dimensional control requires licensed Symbolica")
-    pytest.importorskip("_loop_reduction")
-    source_path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    reference_path = os.environ.get("PYAMPLICOL_GG_COMPONENT_REFERENCE")
-    if not source_path or not reference_path:
-        pytest.skip("set the loop_sm and independent gg component references")
+    source_path = str(loop_sm_ufo)
+    reference_path = str(loop_reference_path("gluon-scattering-component-control"))
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.loops.physical_counterterms import (
         NativeModelVirtualProgram,
@@ -134,12 +139,12 @@ def test_complete_gluon_direct_sectors_and_uv(
     assert empty.r2.shape == (0, 3, 2) and empty.statuses == ()
 
 
-def test_direct_gluon_partial_and_fixed_strategy_rescue():
+def test_direct_gluon_partial_and_fixed_strategy_rescue(loop_sm_ufo, loop_native):
     """Bounded direct-only retries and actual native cut-failure compaction."""
     symbolica = pytest.importorskip("symbolica")
-    backend = pytest.importorskip("_loop_reduction")
-    source_path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not symbolica.is_licensed() or not source_path:
+    backend = loop_native
+    source_path = str(loop_sm_ufo)
+    if not symbolica.is_licensed():
         pytest.skip("licensed Symbolica and the loop_sm reference are required")
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.loops.physical_counterterms import (
@@ -319,9 +324,9 @@ def test_direct_gluon_partial_and_fixed_strategy_rescue():
     ],
 )
 def test_dimensional_family_failure_status_keeps_native_lane_identity(
-    arithmetic, precision, engine
+    loop_native, arithmetic, precision, engine
 ):
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     options = dict(arithmetic=arithmetic, precision=precision)
     plan = backend.PolynomialPlan(
         4, ["mu2^2", "mu2", "0"], [], engine=engine, **options

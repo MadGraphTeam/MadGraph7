@@ -2,7 +2,6 @@
 """Saved complete-family descriptors preserve their actual producer boundaries."""
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -10,16 +9,15 @@ import numpy as np
 import pytest
 
 from .test_loop_native_directed import _blocks, _values
-from .test_loop_ordered_projection_physical import _close_component
-from .test_loop_physical_correlations import _decimals
+from .test_loop_physical_correlations import _close_component, _decimals
 from .test_loop_portable import _rewrite
+
+pytestmark = pytest.mark.loop_physics
 
 
 @pytest.fixture(scope="module")
-def ordered_runtime():
-    root = os.environ.get("PYAMPLICOL_ORDERED_COLOR_FIXTURES")
-    if not root:
-        pytest.skip("actual retained ordered-family artifacts required")
+def ordered_runtime(saved_loop_fixture):
+    root = str(saved_loop_fixture("ordered-color-v43ff063"))
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native

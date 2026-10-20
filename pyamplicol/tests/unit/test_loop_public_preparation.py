@@ -6,7 +6,6 @@ or another numerical EW reference campaign.
 """
 
 import json
-import os
 import tomllib
 from dataclasses import replace
 from pathlib import Path
@@ -20,28 +19,24 @@ from pyamplicol.api.requests import ModelSource
 from pyamplicol.config import config_to_toml, resolve_config
 from pyamplicol.generation.service import GenerationBackend
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def gmu_source():
-    paths = tuple(
-        os.environ.get(name)
-        for name in (
-            "PYAMPLICOL_EW_PREPARATION_MODEL",
-            "PYAMPLICOL_EW_UFO",
-            "PYAMPLICOL_EW_PREPARATION_CACHE",
-        )
-    )
-    if not all(paths):
-        pytest.skip(
-            "existing full-Gmu compiled source and populated model cache required"
-        )
-    from pyamplicol.models.loading import load_compiled_model
+def gmu_source(loop_gmu_ufo, tmp_path_factory):
+    # Compile the full Gmu source once; this populates the model cache that the
+    # public planning path below must read instead of compiling.
+    from pyamplicol.models.loading import compile_model_source
     from pyamplicol.models.loop_declaration import (
         LoopModelDeclaration,
         LoopSchemeDeclaration,
     )
 
-    compiled = load_compiled_model(Path(paths[0]))
+    cache = tmp_path_factory.mktemp("ew-preparation") / "model-cache"
+    paths = (None, loop_gmu_ufo, cache)
+    compiled = compile_model_source(
+        loop_gmu_ufo, restriction="full", cache_dir=cache, require_supported=False
+    )
     assert compiled.raw_loop_model is not None
     assert not compiled.supported
     assert tuple(issue.code for issue in compiled.issues) == ("unknown-functions",)

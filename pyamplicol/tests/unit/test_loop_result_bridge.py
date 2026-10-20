@@ -2,7 +2,6 @@
 """Native output transport, including sparse failed rows and exact carriers."""
 
 import json
-import os
 from dataclasses import replace
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -21,6 +20,8 @@ from pyamplicol.loops.stability import (
 )
 from pyamplicol.loops.strategy import R2Selection
 
+pytestmark = pytest.mark.loop_fast
+
 Q2, Q4 = (("QCD", 2),), (("QCD", 4),)
 E2 = (("QED", 2),)
 ORDERS = PhysicalOrderLayout(
@@ -36,7 +37,9 @@ DEFAULT_SPEC = ArithmeticSpec("double")
 
 
 def packet(spec=DEFAULT_SPEC):
-    backend = pytest.importorskip("_loop_reduction")
+    from pyamplicol.loops.native import load_loop_native
+
+    backend = load_loop_native()
 
     # Successful rows are deliberately ordered differently from the request.
     def batch(values, columns):
@@ -98,7 +101,9 @@ def packet(spec=DEFAULT_SPEC):
         ArithmeticSpec("arbitrary", 80),
     ],
 )
-def test_sparse_transport_preserves_orders_all_poles_and_requested_row_order(spec):
+def test_sparse_transport_preserves_orders_all_poles_and_requested_row_order(
+    loop_native, spec
+):
     native = packet(spec)
     with pytest.raises(NumericalVerificationError):
         stable_model_evaluation(native, r2=R2)
@@ -132,7 +137,7 @@ def test_sparse_transport_preserves_orders_all_poles_and_requested_row_order(spe
     ],
 )
 def test_precise_transport_never_passes_through_float_or_ambient_decimal_context(
-    spec, literal
+    loop_native, spec, literal
 ):
     native = packet(spec)
     born = type(native.born).from_decimal(
@@ -152,7 +157,7 @@ def test_precise_transport_never_passes_through_float_or_ambient_decimal_context
     assert output.born_values == ((expected,), None, (expected,))
 
 
-def test_native_carrier_and_row_metadata_must_match_the_result():
+def test_native_carrier_and_row_metadata_must_match_the_result(loop_native):
     native = packet()
     assert (
         stable_model_evaluation(native, r2=R2, allow_partial=True).color_accuracy
@@ -178,7 +183,7 @@ def test_native_carrier_and_row_metadata_must_match_the_result():
         )
 
 
-def test_direct_output_keeps_executed_strategy_and_rejects_relabeling():
+def test_direct_output_keeps_executed_strategy_and_rejects_relabeling(loop_native):
     native = replace(packet(), r2_strategy="direct")
     direct = replace(R2, effective=R2Strategy.DIRECT)
     output = stable_model_evaluation(native, r2=direct, allow_partial=True)
@@ -192,7 +197,9 @@ def test_direct_output_keeps_executed_strategy_and_rejects_relabeling():
         )
 
 
-def test_ordinary_output_rejects_tiny_imaginary_values_and_empty_output_keeps_axes():
+def test_ordinary_output_rejects_tiny_imaginary_values_and_empty_output_keeps_axes(
+    loop_native,
+):
     spec = ArithmeticSpec("arbitrary", 80)
     native = packet(spec)
     contaminated = type(native.born).from_decimal(
@@ -219,11 +226,12 @@ def test_ordinary_output_rejects_tiny_imaginary_values_and_empty_output_keeps_ax
     assert output.values == output.born_values == ()
 
 
-def test_complete_physical_drell_yan_result_uses_same_output_boundary():
+def test_complete_physical_drell_yan_result_uses_same_output_boundary(
+    loop_sm_ufo, loop_native
+):
     symbolica = pytest.importorskip("symbolica")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not symbolica.is_licensed() or not path:
+    path = str(loop_sm_ufo)
+    if not symbolica.is_licensed():
         pytest.skip("licensed Symbolica and loop_sm reference required")
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.loops.physical_counterterms import drell_yan_model_virtual_program

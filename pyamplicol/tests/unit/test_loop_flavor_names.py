@@ -13,6 +13,8 @@ from pyamplicol.processes.model import ModelParticleCatalog, resolve_model_parti
 
 from .test_external_model_independence import _particle
 
+pytestmark = pytest.mark.loop_fast
+
 
 def test_existing_particle_catalog_name_resolution_is_preserved():
     upper = _particle("G", "G", 21, spin=3, color=8)

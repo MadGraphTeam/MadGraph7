@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import replace
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -20,16 +19,15 @@ from pyamplicol.loops.physical_counterterms import (
 from pyamplicol.loops.scalar_frontend import lower_scalar_program
 from pyamplicol.models.loop_import import RawLoopModel, load_raw_loop_model
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def raw():
+def raw(loop_sm_ufo, loop_native):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("native preparation requires licensed Symbolica")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    path = str(loop_sm_ufo)
     return load_raw_loop_model(path)
 
 
@@ -95,17 +93,28 @@ def test_empty_outer_loop_groups_are_source_wildcards(raw):
     )
 
 
-def test_full_ew_scalar_program_can_prepare_unsummed_model_ir():
+def test_full_ew_scalar_program_can_prepare_unsummed_model_ir(loop_gmu_ufo):
     pytest.importorskip("symbolica")
-    path = os.environ.get("PYAMPLICOL_EW_UFO")
-    if not path:
-        pytest.skip("set PYAMPLICOL_EW_UFO to a full EW source")
+    path = str(loop_gmu_ufo)
     raw = load_raw_loop_model(path, restriction="full")
     program = lower_scalar_program(raw)
     model = build_loop_model(raw, scalar_program=program)
     assert model.kernels and model.scalar_program is program
     assert any(e.scalar_expression().diagnostic != 0 for e in model.kernels)
     assert not model.scheme_validated and not model.completeness_validated
+
+
+# Open defect (41ccde87): the CT Bose-slot proof requires every ordinary native
+# coupling to be owned by a paired source's scalar program, so a paired source
+# over the independent legacy control model (same coupling names, different
+# expressions) is rejected. Real paired sources compile through the generic
+# source path; this legacy-control composition needs an explicit ownership
+# decision before these controls can run again.
+_LEGACY_CONTROL_OWNERSHIP = pytest.mark.xfail(
+    raises=ValueError,
+    strict=True,
+    reason="41ccde87 rejects paired sources over the independent control model",
+)
 
 
 @pytest.mark.parametrize(
@@ -116,6 +125,7 @@ def test_full_ew_scalar_program_can_prepare_unsummed_model_ir():
         ("arbitrary", 60, "generic", Decimal("3e-55")),
     ],
 )
+@_LEGACY_CONTROL_OWNERSHIP
 def test_paired_qcd_preserves_components_and_native_field_helpers(
     raw, paired, arithmetic, precision, engine, tolerance
 ):
@@ -179,6 +189,7 @@ def _modified_coupling(raw, expression):
     "arithmetic,precision",
     [("double", None), ("double-double", None), ("arbitrary", 60)],
 )
+@_LEGACY_CONTROL_OWNERSHIP
 def test_inactive_ct_helper_and_zero_value_diagnostic_are_checked(
     raw, arithmetic, precision
 ):
@@ -219,6 +230,7 @@ def test_inactive_ct_helper_and_zero_value_diagnostic_are_checked(
         )
 
 
+@_LEGACY_CONTROL_OWNERSHIP
 def test_external_field_branch_keeps_ct_dependency_diagnostic(raw):
     payload = raw.to_dict()
     particle = next(

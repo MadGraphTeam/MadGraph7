@@ -9,6 +9,8 @@ import pytest
 
 from pyamplicol.loops.physical_color import project_physical_color
 
+pytestmark = pytest.mark.loop_fast
+
 
 def _fixture(monkeypatch):
     from symbolica import E, S

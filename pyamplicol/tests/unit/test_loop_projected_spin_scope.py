@@ -17,6 +17,8 @@ from pyamplicol.loops.physical_correlations import (
 )
 from pyamplicol.loops.physical_model_correlations import require_directed_model_scope
 
+pytestmark = pytest.mark.loop_fast
+
 
 def _owner(accuracy, *, projected=True):
     bare = SimpleNamespace(

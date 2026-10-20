@@ -8,6 +8,8 @@ import pytest
 
 from pyamplicol.models.loop_import import RawLoopModel, load_raw_loop_model
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture
 def charged_source(tmp_path):

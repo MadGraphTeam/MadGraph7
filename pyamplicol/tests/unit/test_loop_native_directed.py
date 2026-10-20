@@ -3,7 +3,6 @@
 
 import io
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -14,13 +13,12 @@ from .test_loop_native_failures import NEAR
 from .test_loop_physical_correlations import _close, _conjugate, _decimals
 from .test_loop_physical_counterterms import _uudd_born_uv
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def directed_plan():
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NATIVE_DIRECTED_PACBIN")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NATIVE_DIRECTED_PACBIN to the source uudd control")
+def directed_plan(saved_loop_fixture, loop_native):
+    path = str(saved_loop_fixture("source-portable-directed/uudd-source.pacbin"))
     fixture = Path(__file__).resolve().parents[2] / "tools/loop_reference/uudd_qcd.json"
     return Path(path), json.loads(fixture.read_text(), parse_float=str, parse_int=str)[
         "points"
@@ -50,9 +48,16 @@ def _values(batch, shape):
     ],
 )
 def test_native_directed_complex_components_exact_owner_and_mode(
-    directed_plan, monkeypatch, arithmetic, precision, engine, tolerance, bit
+    loop_native,
+    directed_plan,
+    monkeypatch,
+    arithmetic,
+    precision,
+    engine,
+    tolerance,
+    bit,
 ):
-    import _loop_reduction as native
+    native = loop_native
 
     from .test_loop_source_portable import _forbid_source
 
@@ -159,8 +164,8 @@ def test_native_directed_complex_components_exact_owner_and_mode(
     assert empty.history_ids == result.history_ids
 
 
-def test_directed_partial_failure_channels_and_replay(directed_plan):
-    import _loop_reduction as native
+def test_directed_partial_failure_channels_and_replay(loop_native, directed_plan):
+    native = loop_native
 
     path, points = directed_plan
     runtime = native.NativeLoopProgram(str(path), reduction_engine="generic")
@@ -202,8 +207,10 @@ def test_directed_partial_failure_channels_and_replay(directed_plan):
     assert all(block.rows == 0 for block in _blocks(failed))
 
 
-def test_directed_subset_rescue_keeps_every_complex_cross_term(directed_plan):
-    import _loop_reduction as native
+def test_directed_subset_rescue_keeps_every_complex_cross_term(
+    loop_native, directed_plan
+):
+    native = loop_native
 
     path, points = directed_plan
     runtime = native.NativeLoopProgram(str(path), reduction_engine="fast")
@@ -238,7 +245,7 @@ def test_directed_subset_rescue_keeps_every_complex_cross_term(directed_plan):
 
 
 def test_saved_history_labels_select_their_complex_output_columns(
-    directed_plan, tmp_path
+    loop_native, directed_plan, tmp_path
 ):
     """A distinguishable saved assembly checks labels, not correlated physics.
 
@@ -246,7 +253,7 @@ def test_saved_history_labels_select_their_complex_output_columns(
     this control even though conjugation-only physical checks might still pass.
     The original currents/reducer execute; only final assembly bytes are replaced.
     """
-    import _loop_reduction as native
+    native = loop_native
     from symbolica import E, S
 
     from pyamplicol.generation.evaluator_container import (

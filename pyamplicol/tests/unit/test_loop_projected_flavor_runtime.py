@@ -10,10 +10,12 @@ from .test_loop_portable import _rewrite
 from .test_loop_projected_flavor_transport import _compare
 from .test_loop_projected_flavor_transport import saved_pair as _saved_pair
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def mapped_pair():
-    return _saved_pair.__wrapped__()
+def mapped_pair(saved_loop_fixture):
+    return _saved_pair.__wrapped__(saved_loop_fixture)
 
 
 @pytest.mark.parametrize("accuracy", ["lc", "nlc"])

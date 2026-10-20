@@ -3,7 +3,6 @@
 
 import io
 import json
-import os
 from decimal import Decimal, localcontext
 
 import pytest
@@ -11,6 +10,8 @@ import pytest
 from pyamplicol.api import Generator, ProcessRequest, ProcessSet, Runtime
 from pyamplicol.cli import run_cli
 from pyamplicol.config import resolve_config
+
+pytestmark = pytest.mark.loop_fast
 
 
 def _card(model, output, process, name, accuracy):
@@ -45,13 +46,9 @@ samples = 2
     ],
 )
 def test_real_declared_colour_generation_and_saved_components(
-    tmp_path, process, name, accuracy, components
+    loop_sm_colour_model, tmp_path, process, name, accuracy, components
 ):
-    model = os.environ.get("PYAMPLICOL_PUBLIC_COLOUR_MODEL")
-    if not model:
-        pytest.skip(
-            "set PYAMPLICOL_PUBLIC_COLOUR_MODEL to an explicitly prepared bundle"
-        )
+    model = str(loop_sm_colour_model)
     # A caller can select the adjoint installed-package proof independently from
     # the open-fundamental proof, which requires the corrected tensor dependency.
     output = tmp_path / name

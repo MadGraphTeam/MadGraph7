@@ -3,7 +3,6 @@
 
 import io
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -18,6 +17,8 @@ from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
 from pyamplicol.loops.strategy import R2Selection
 from pyamplicol.reporting import CallbackProgressSink
+
+pytestmark = pytest.mark.loop_fast
 
 
 def _result(*, correlated=False):
@@ -246,11 +247,11 @@ def test_cli_virtual_output_preserves_every_order_pole_and_decimal(correlated):
     assert "accuracy established" in human.getvalue()
 
 
-def test_actual_source_artifact_cli_keeps_ap_load_and_empty_axes(tmp_path):
-    artifact = os.environ.get("PYAMPLICOL_SOURCE_PUBLIC_ARTIFACT")
-    if not artifact:
-        pytest.skip("set PYAMPLICOL_SOURCE_PUBLIC_ARTIFACT for the native CLI test")
-    native = pytest.importorskip("_loop_reduction")
+def test_actual_source_artifact_cli_keeps_ap_load_and_empty_axes(
+    saved_loop_fixture, loop_native, tmp_path
+):
+    artifact = str(saved_loop_fixture("source-public-v3/gg"))
+    native = loop_native
     if not hasattr(native, "NativeVirtualRuntime"):
         pytest.skip("native virtual artifact consumer is not built")
     momenta = tmp_path / "empty.json"
@@ -291,11 +292,11 @@ def test_actual_source_artifact_cli_keeps_ap_load_and_empty_axes(tmp_path):
     assert payload["r2"]["requested"] == "model"
 
 
-def test_actual_source_artifact_cli_emits_batched_physical_coefficients(tmp_path):
-    artifact = os.environ.get("PYAMPLICOL_SOURCE_PUBLIC_ARTIFACT")
-    if not artifact:
-        pytest.skip("set PYAMPLICOL_SOURCE_PUBLIC_ARTIFACT for the native CLI test")
-    native = pytest.importorskip("_loop_reduction")
+def test_actual_source_artifact_cli_emits_batched_physical_coefficients(
+    saved_loop_fixture, loop_native, tmp_path
+):
+    artifact = str(saved_loop_fixture("source-public-v3/gg"))
+    native = loop_native
     if not hasattr(native, "NativeVirtualRuntime"):
         pytest.skip("native virtual artifact consumer is not built")
     from .test_loop_physical_gluons import _expected

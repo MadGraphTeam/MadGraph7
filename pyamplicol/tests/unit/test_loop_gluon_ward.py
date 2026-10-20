@@ -4,12 +4,13 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.loop_nightly
 
 
 class _LongitudinalKernel:
@@ -28,7 +29,9 @@ class _LongitudinalKernel:
         )
 
     def evaluate_batch(self, values):
-        import _loop_reduction as native
+        from pyamplicol.loops.native import load_loop_native
+
+        native = load_loop_native()
 
         columns = list(range(values.columns))
         for column, component in self.replacements.items():
@@ -42,7 +45,9 @@ class _LongitudinalKernel:
 
 def _complex_ket_projectors(program):
     """Expose the complex weighted ket; taking 2Re could hide a Ward failure."""
-    import _loop_reduction as native
+    from pyamplicol.loops.native import load_loop_native
+
+    native = load_loop_native()
     from symbolica import E, S
 
     from pyamplicol.loops.physical import _saved
@@ -94,17 +99,18 @@ def _complex_ket_projectors(program):
     return loop, counterterms
 
 
-@pytest.mark.parametrize("r2_strategy", ["model", "direct"])
+@pytest.mark.parametrize(
+    "r2_strategy",
+    ["model", pytest.param("direct", marks=pytest.mark.deferred_direct_r2)],
+)
 def test_complete_gluon_loop_ket_ward_cancels_rational_remainder(
-    monkeypatch, r2_strategy
+    loop_sm_ufo, loop_native, monkeypatch, r2_strategy
 ):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("native Ward control requires licensed Symbolica")
-    native = pytest.importorskip("_loop_reduction")
-    source_path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not source_path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    native = loop_native
+    source_path = str(loop_sm_ufo)
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.loops.physical_counterterms import (
         gluon_scattering_model_virtual_program,

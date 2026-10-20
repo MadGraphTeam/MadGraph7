@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -13,16 +12,15 @@ import pytest
 
 from pyamplicol.color.connections import ColorConnection, EmitGluon
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def source():
+def source(loop_sm_ufo, loop_native):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("licensed dependency generation required")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    path = str(loop_sm_ufo)
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.models.loop_import import load_raw_loop_model
 

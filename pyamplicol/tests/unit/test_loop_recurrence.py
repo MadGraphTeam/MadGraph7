@@ -8,6 +8,8 @@ from pyamplicol.loops.graphs import build_loop_process
 from pyamplicol.loops.kernels import CoefficientDAG
 from pyamplicol.loops.recurrence import build_open_loop_recurrence, separate_local_color
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
 def native():
@@ -34,6 +36,7 @@ def graphs(native):
     return {
         "dy": build(model, ["u", "u~"], ["e-", "e+"], "QCD"),
         "qcd": build(model, ["u", "u~"], ["d", "d~"], "QCD"),
+        "quark_gluon": build(model, ["u", "u~"], ["g", "g"], "QCD"),
         "scalar": build(hep.Model.phi4(), ["phi", "phi"], ["phi", "phi"], "SCALAR"),
     }
 
@@ -253,19 +256,21 @@ def test_multicolor_local_rule_rejects_without_su3_reconstruction(native):
 
 
 def test_family_affine_shift_is_applied_before_coefficient_extraction(native, graphs):
+    # The dependency's qcd_qed model has massive light quarks, so u u~ > d d~
+    # graphs now occupy distinct families; u u~ > g g retains shifted members.
     graph = next(
         g
-        for g in graphs["qcd"].loops
-        if any("P(0)" in str(image) for _, image in g.family.native.momentum_rules)
+        for g in graphs["quark_gluon"].loops
+        if any("P(" in str(image) for _, image in g.family.native.momentum_rules)
     )
     recurrence = build_open_loop_recurrence(graph, routing="family")
     assert recurrence.routing == "family"
     assert recurrence.loop_components != recurrence.dag.variables
+    variables = set(recurrence.dag.variables)
     for axis, expression in enumerate(recurrence.loop_components):
-        assert (
-            expression
-            == -recurrence.dag.variables[axis] + recurrence.momentum_parameters[0][axis]
-        )
+        # Reversed loop momentum plus a nonzero external affine shift.
+        shift = (expression + recurrence.dag.variables[axis]).expand()
+        assert shift != 0 and not variables & set(shift.get_all_symbols())
     _check_oracle(recurrence, native)
 
 

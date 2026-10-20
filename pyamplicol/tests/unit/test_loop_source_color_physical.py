@@ -2,20 +2,20 @@
 """Explicit source continuation composes paired scalars with complete model R2."""
 
 import json
-import os
 from dataclasses import replace
 from decimal import Decimal, localcontext
 from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.loop_nightly
+
 
 @pytest.fixture(scope="module")
-def prepared():
+def prepared(loop_sm_ufo, loop_native):
     symbolica = pytest.importorskip("symbolica")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path or not symbolica.is_licensed():
+    path = str(loop_sm_ufo)
+    if not symbolica.is_licensed():
         pytest.skip("licensed NLO source required")
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
@@ -172,12 +172,14 @@ def test_selected_source_rule_requires_explicit_continuation(prepared, programs)
         compile_program(prepared, source_color=missing, color_accuracy="lc")
 
 
-def test_source_formal_full_mixed_orders_match_independent_provider(tmp_path):
+def test_source_formal_full_mixed_orders_match_independent_provider(
+    loop_sm_ufo, loop_native, tmp_path
+):
     symbolica = pytest.importorskip("symbolica")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path or not symbolica.is_licensed():
+    path = str(loop_sm_ufo)
+    if not symbolica.is_licensed():
         pytest.skip("licensed NLO source required")
-    import _loop_reduction as native
+    native = loop_native
 
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
@@ -241,10 +243,10 @@ def test_source_formal_full_mixed_orders_match_independent_provider(tmp_path):
                 ), value
 
 
-def test_source_external_fields_keep_their_colour_grade(tmp_path):
+def test_source_external_fields_keep_their_colour_grade(loop_sm_ufo, tmp_path):
     symbolica = pytest.importorskip("symbolica")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path or not symbolica.is_licensed():
+    path = str(loop_sm_ufo)
+    if not symbolica.is_licensed():
         pytest.skip("licensed NLO source required")
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.portable import PortableLoopPlan, write_loop_pacbin
@@ -309,11 +311,10 @@ def test_source_external_fields_keep_their_colour_grade(tmp_path):
 
 
 @pytest.fixture(scope="module")
-def four_gluon_programs(tmp_path_factory):
+def four_gluon_programs(loop_sm_ufo, loop_native, tmp_path_factory):
     symbolica = pytest.importorskip("symbolica")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path or not symbolica.is_licensed():
+    path = str(loop_sm_ufo)
+    if not symbolica.is_licensed():
         pytest.skip("licensed NLO source required")
     from symbolica import E
 

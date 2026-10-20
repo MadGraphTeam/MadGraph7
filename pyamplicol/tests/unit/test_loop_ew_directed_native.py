@@ -2,26 +2,78 @@
 """Fresh saved/public EW transport over the independently checked source plans."""
 
 import json
-import os
 from decimal import Decimal, localcontext
+from fractions import Fraction
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
-from .test_loop_ew_directed_physical import COMPONENTS, TERMS, _check_complete
 from .test_loop_native_directed import _blocks, _values
-from .test_loop_ordered_projection_physical import _close_component
-from .test_loop_physical_correlations import _decimals
+from .test_loop_physical_correlations import _close_component, _conjugate, _decimals
 from .test_loop_source_portable import _forbid_source
+
+pytestmark = pytest.mark.loop_physics
+
+
+COMPONENTS = ("born", "virtual", "bare", "uv", "r2", "uv_local", "uv_external_fields")
+TERMS = ("first", "second")
+
+
+def _factor(value):
+    rational = Fraction(str(value))
+    return Decimal(rational.numerator) / Decimal(rational.denominator)
+
+
+def _check_complete(result, ordinary, factors, tolerance):
+    values = {name: _decimals(getattr(result, name)) for name in (*COMPONENTS, *TERMS)}
+    for name in COMPONENTS:
+        _close_component(
+            values[name][:, 0],
+            _decimals(getattr(ordinary, name)),
+            tolerance,
+            scale=values[name],
+        )
+    for value in values.values():
+        # Compare each integrated term independently: equality of their sum
+        # alone would not establish the directed assembly contract.
+        for index, factor in enumerate(factors):
+            _close_component(
+                value[:, index], _factor(factor) * value[:, 0], tolerance, scale=value
+            )
+        _close_component(
+            value[:, 1] + value[:, 2], 0 * value[:, 0], tolerance, scale=value
+        )
+        _close_component(
+            value[:, 3] + value[:, 4], 0 * value[:, 0], tolerance, scale=value
+        )
+    for name in COMPONENTS:
+        _close_component(
+            values[name][:, 2],
+            _conjugate(values[name][:, 3]),
+            tolerance,
+            scale=values[name],
+        )
+    _close_component(
+        values["second"][:, 2],
+        _conjugate(values["first"][:, 3]),
+        tolerance,
+        scale=values["first"],
+    )
+    _close_component(values["virtual"], values["first"] + values["second"], tolerance)
+    _close_component(
+        values["virtual"], values["bare"] + values["uv"] + values["r2"], tolerance
+    )
+    _close_component(
+        values["uv"], values["uv_local"] + values["uv_external_fields"], tolerance
+    )
+    return values
 
 
 @pytest.fixture(scope="module")
-def ew_runtime():
-    root = os.environ.get("PYAMPLICOL_EW_COLOR_FIXTURES")
-    if not root:
-        pytest.skip("actual independently checked EW saved plans required")
+def ew_runtime(saved_loop_fixture):
+    root = str(saved_loop_fixture("ew-quark-directed"))
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native

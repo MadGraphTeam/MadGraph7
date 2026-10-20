@@ -3,7 +3,6 @@
 
 import io
 import json
-import os
 from decimal import Decimal, localcontext
 
 import pytest
@@ -11,6 +10,8 @@ import pytest
 from pyamplicol.api import Generator, ProcessRequest, ProcessSet, Runtime
 from pyamplicol.cli import run_cli
 from pyamplicol.config import resolve_config
+
+pytestmark = pytest.mark.loop_fast
 
 
 def _card(model, output):
@@ -52,10 +53,8 @@ samples = 2
 
 
 @pytest.fixture
-def public_request(tmp_path):
-    model = os.environ.get("PYAMPLICOL_PUBLIC_LOOP_MODEL")
-    if not model:
-        pytest.skip("set PYAMPLICOL_PUBLIC_LOOP_MODEL to the prepared QCD source model")
+def public_request(loop_sm_compiled_model, tmp_path):
+    model = str(loop_sm_compiled_model)
     card = tmp_path / "virtual.toml"
     output = tmp_path / "generated"
     card.write_text(_card(model, output))
@@ -93,10 +92,12 @@ def test_real_public_virtual_cli_plan_never_compiles_numerators(
     assert dy["orders"]["virtual"][0]["order"] == [["QCD", 2], ["QED", 4]]
 
 
-def test_real_public_generation_roundtrips_two_processes_and_cli(public_request):
+def test_real_public_generation_roundtrips_two_processes_and_cli(
+    loop_native, public_request
+):
     # Publication must use an authentic staged extension and build metadata.
     # Deliberately do not replace target_info, identity or the runtime loader.
-    native = pytest.importorskip("_loop_reduction")
+    native = loop_native
     if not hasattr(native, "NativeVirtualRuntime"):
         pytest.skip("native public virtual runtime is not built")
     card, output = public_request

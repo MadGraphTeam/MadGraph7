@@ -12,6 +12,8 @@ import pytest
 from pyamplicol.loops.graphs import build_loop_process
 from pyamplicol.loops.orders import BornLoopPair
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
 def hep():
@@ -97,7 +99,9 @@ def test_joint_corrections_include_mixed_boxes_and_exact_interferences(catalogue
 
 def test_native_families_share_denominators_without_merging_graphs(catalogues):
     ir = catalogues[("QCD", "QED")]
-    assert len(ir.families) == 11
+    # The dependency's qcd_qed model gives every quark and lepton a symbolic
+    # mass, so bubbles of different species occupy distinct families.
+    assert len(ir.families) == 16
     by_family = defaultdict(list)
     for graph in ir.loops:
         by_family[graph.family.family_index].append(graph)
@@ -222,11 +226,11 @@ print(json.dumps(result))
 """
 
 
-def test_optional_madloop_graph_selection_matches_native_catalogue(catalogues):
-    source = os.environ.get("PYAMPLICOL_MADGRAPH_SOURCE")
-    model = os.environ.get("PYAMPLICOL_EW_NLO_UFO_REFERENCE")
-    if source is None or model is None:
-        pytest.skip("set MadGraph source and full-EW NLO UFO reference paths")
+def test_optional_madloop_graph_selection_matches_native_catalogue(
+    loop_qcd_qed_sm_ufo, madgraph_source, catalogues
+):
+    source = str(madgraph_source)
+    model = str(loop_qcd_qed_sm_ufo)
     result = subprocess.run(
         [sys.executable, "-c", _MADLOOP_PROBE, source, model],
         check=True,

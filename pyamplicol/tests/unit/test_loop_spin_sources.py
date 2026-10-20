@@ -8,13 +8,15 @@ import pytest
 from pyamplicol.loops.physical_process import quark_gluon_qcd_program
 from pyamplicol.loops.spin_sources import NativeSpinSourcePlan, replace_vector_sources
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module", params=("double", "double-double", "arbitrary"))
-def bare(request):
+def bare(loop_native, request):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("licensed dependency generation required")
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     from pyamplicol.models import BuiltinSMModel
 
     return quark_gluon_qcd_program(

@@ -25,10 +25,11 @@ from pyamplicol.loops.physical_source import NativeSourceModelProgram
 from . import test_loop_bose_field_transport as field_tests
 from .test_public_virtual_directed import _directed
 
+pytestmark = pytest.mark.loop_fast
 
-@pytest.fixture
-def field_control():
-    return field_tests.field_control.__wrapped__()
+# Reuse the real loop_sm field-rule fixtures.
+source_plan = field_tests.source_plan
+field_control = field_tests.field_control
 
 
 def _recording_source(permutation=(0, 1, 3, 4, 2)):
@@ -180,6 +181,7 @@ def test_selected_ordinary_view_hides_only_unproved_features(monkeypatch):
         helicities=[[-1, 1, -1, -1, -1], [-1, 1, 1, 1, 1]],
         spin_projections=[{"legs": [3]}],
     )
+    original._metadata["selected_correlations"]["spin_classes"] = [[3]]
     original._metadata.update(
         physics_scope="selected-process",
         external_permutation=list(range(5)),

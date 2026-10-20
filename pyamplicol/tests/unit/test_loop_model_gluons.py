@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 from collections import Counter
 from dataclasses import replace
 
@@ -15,15 +14,15 @@ from pyamplicol.loops.model_gluons import prepare_gluon_counterterm_basis
 from pyamplicol.loops.wavefunction import match_external_field_counterterms
 from pyamplicol.models.loop_import import load_raw_loop_model
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def source():
+def source(loop_sm_ufo):
     s = pytest.importorskip("symbolica")
     if not s.is_licensed():
         pytest.skip("native local gluon rules require licensed Symbolica")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    path = str(loop_sm_ufo)
     from symbolica.community import hepkit as h
 
     return build_loop_model(load_raw_loop_model(path)), h

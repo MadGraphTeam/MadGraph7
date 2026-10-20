@@ -10,10 +10,13 @@ from pyamplicol.api.errors import EvaluationError
 
 from .test_public_virtual_directed import _directed
 
+pytestmark = pytest.mark.loop_fast
+
 
 def _runtime(monkeypatch):
     runtime, native, calls = _directed(monkeypatch)
     runtime._backend._metadata["plan"]["spin_projections"] = [{"legs": [1]}]
+    runtime._backend._metadata["selected_correlations"]["spin_classes"] = [[1]]
     observed = []
     evaluate = native.evaluate_directed
 

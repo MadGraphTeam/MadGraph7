@@ -12,16 +12,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def portable_control(tmp_path_factory):
+def portable_control(loop_sm_ufo, loop_native, tmp_path_factory):
     symbolica = pytest.importorskip("symbolica")
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     if not symbolica.is_licensed() or not hasattr(backend, "PortableLoopPlan"):
         pytest.skip("licensed generation and native portable bridge required")
-    source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not source:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE")
+    source = str(loop_sm_ufo)
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.loops.physical_counterterms import (
         distinct_flavour_model_virtual_program,
@@ -82,7 +82,13 @@ def _forbid_producer(monkeypatch):
     ],
 )
 def test_complete_graph_free_views(
-    portable_control, monkeypatch, arithmetic, precision, engine, tolerance
+    loop_reference_path,
+    portable_control,
+    monkeypatch,
+    arithmetic,
+    precision,
+    engine,
+    tolerance,
 ):
     from pyamplicol.loops.portable import PortableLoopPlan
 
@@ -163,28 +169,22 @@ def test_complete_graph_free_views(
         with pytest.raises(NotImplementedError, match="portable control"):
             operation()
     if arithmetic == "double":
-        reference_path = os.environ.get("PYAMPLICOL_UUDD_COMPONENT_REFERENCE")
-        if reference_path:
-            reference = json.loads(Path(reference_path).read_text())
-            for name, key in (
-                ("bare", "bare"),
-                ("uv", "uv"),
-                ("r2", "r2"),
-                ("virtual", "full"),
-            ):
-                actual = np.asarray(
-                    getattr(result, name).to_decimal(), dtype=float
-                ).reshape(3, 3, 2)[:, :, 0]
-                expected_values = [
-                    [
-                        row[key][pole]
-                        for pole in ("finite", "single_pole", "double_pole")
-                    ]
-                    for row in reference["rows"]
-                ]
-                np.testing.assert_allclose(
-                    actual, expected_values, rtol=4e-11, atol=1e-14
-                )
+        reference_path = str(loop_reference_path("uudd-component-control"))
+        reference = json.loads(Path(reference_path).read_text())
+        for name, key in (
+            ("bare", "bare"),
+            ("uv", "uv"),
+            ("r2", "r2"),
+            ("virtual", "full"),
+        ):
+            actual = np.asarray(
+                getattr(result, name).to_decimal(), dtype=float
+            ).reshape(3, 3, 2)[:, :, 0]
+            expected_values = [
+                [row[key][pole] for pole in ("finite", "single_pole", "double_pole")]
+                for row in reference["rows"]
+            ]
+            np.testing.assert_allclose(actual, expected_values, rtol=4e-11, atol=1e-14)
 
 
 def _rewrite(path, destination, mutate, *, wrong_kind=False):
@@ -228,7 +228,10 @@ def _rewrite(path, destination, mutate, *, wrong_kind=False):
             "representative",
         ),
         (lambda d: d["families"][0].update(exact_state="missing"), "reference"),
-        (lambda d: d["families"][0].update(sector_indices=[999]), "sectors"),
+        (
+            lambda d: d["families"][0].update(sector_indices=[999]),
+            "dual Born family selection",
+        ),
         (lambda d: d["order_layout"]["born"][0]["order"][0].__setitem__(1, -1), "u32"),
         (lambda d: d.update(producer_graph={}), "unknown field"),
         (
@@ -393,16 +396,18 @@ def test_native_order_semantics(portable_control, tmp_path, mutation, message):
         PortableLoopPlan.open(path)
 
 
-@pytest.fixture(scope="module", params=["direct_gg", "model_top"])
-def extended_control(request, tmp_path_factory):
+@pytest.fixture(
+    scope="module",
+    params=[
+        pytest.param("direct_gg", marks=pytest.mark.deferred_direct_r2),
+        "model_top",
+    ],
+)
+def extended_control(loop_sm_ufo, loop_native, request, tmp_path_factory):
     symbolica = pytest.importorskip("symbolica")
-    backend = pytest.importorskip("_loop_reduction")
-    source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if (
-        not symbolica.is_licensed()
-        or not source
-        or not hasattr(backend, "PortableLoopPlan")
-    ):
+    backend = loop_native
+    source = str(loop_sm_ufo)
+    if not symbolica.is_licensed() or not hasattr(backend, "PortableLoopPlan"):
         pytest.skip("licensed source model and native portable bridge required")
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.loops.physical_counterterms import (
@@ -436,7 +441,7 @@ def extended_control(request, tmp_path_factory):
 
 
 def test_direct_sectors_and_nonzero_fields_survive_portable_rebinding(
-    extended_control, monkeypatch
+    extended_control, monkeypatch, loop_reference
 ):
     from pyamplicol.loops.portable import PortableLoopPlan
 
@@ -501,13 +506,12 @@ def test_direct_sectors_and_nonzero_fields_survive_portable_rebinding(
         )
         if direct:
             assert any(f.rational_reducer is not None for f in view.bare.families)
-        reference_path = os.environ.get(
-            "PYAMPLICOL_GG_COMPONENT_REFERENCE"
-            if direct
-            else "PYAMPLICOL_TOP_PAIR_COMPONENT_REFERENCE"
-        )
-        if arithmetic == "double" and reference_path:
-            rows = json.loads(Path(reference_path).read_text())["rows"][:2]
+        if arithmetic == "double":
+            rows = loop_reference(
+                "gluon-scattering-component-control"
+                if direct
+                else "top-pair-component-control"
+            )["rows"][:2]
             for name, key in (
                 ("virtual", "full"),
                 ("bare", "bare"),
@@ -564,6 +568,7 @@ def test_direct_sectors_and_nonzero_fields_survive_portable_rebinding(
         previous = view
 
 
+@pytest.mark.deferred_direct_r2
 def test_native_direct_metadata_rejects_mixed_or_uncertified_sectors(
     extended_control, tmp_path
 ):
@@ -680,10 +685,10 @@ def test_jit_projector_binding_retains_portable_ordered_physics(
     ],
 )
 def test_shared_core_complete_coordinator(
-    portable_control, monkeypatch, arithmetic, precision, engine, tolerance
+    loop_native, portable_control, monkeypatch, arithmetic, precision, engine, tolerance
 ):
     """One Rust call executes the same saved plan, with no Python event stages."""
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     from pyamplicol.loops.portable import PortableLoopPlan
 
     _, path, points = portable_control
@@ -771,9 +776,11 @@ def test_shared_core_complete_coordinator(
         )
 
 
-def test_shared_core_direct_and_nonzero_fields(extended_control, monkeypatch):
+def test_shared_core_direct_and_nonzero_fields(
+    loop_native, extended_control, monkeypatch
+):
     """The same native sequence carries Delta sectors and nonzero LSZ terms."""
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     from pyamplicol.loops.portable import PortableLoopPlan
 
     original, path, points = extended_control

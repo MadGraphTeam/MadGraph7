@@ -10,6 +10,8 @@ from pyamplicol.loops.orders import (
     compile_order_plan,
 )
 
+pytestmark = pytest.mark.loop_fast
+
 B20 = (("QCD", 2),)
 B02 = (("QED", 2),)
 L40 = (("QCD", 4),)

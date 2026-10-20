@@ -2,21 +2,20 @@
 """Exact admitted source products and the two-point typed endpoint relation."""
 
 import json
-import os
 from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def prepared():
+def prepared(loop_sm_ufo):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("source kernels require licensed Symbolica")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    path = str(loop_sm_ufo)
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations
     from pyamplicol.models.loop_import import load_raw_loop_model

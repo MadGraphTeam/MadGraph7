@@ -7,6 +7,8 @@ from decimal import Decimal, localcontext
 
 import pytest
 
+pytestmark = pytest.mark.loop_fast
+
 
 def _bubble_plan(destination, *, rank=4):
     from symbolica import E, Expression, S
@@ -161,9 +163,8 @@ def _bubble_plan(destination, *, rank=4):
 
 
 @pytest.fixture(scope="module")
-def bubble_plans(tmp_path_factory):
+def bubble_plans(loop_native, tmp_path_factory):
     symbolica = pytest.importorskip("symbolica")
-    pytest.importorskip("_loop_reduction")
     if not symbolica.is_licensed():
         pytest.skip("licensed exact evaluator preparation required")
     root = tmp_path_factory.mktemp("portable-rank")
@@ -181,9 +182,10 @@ def bubble_plans(tmp_path_factory):
     ],
 )
 def test_saved_rank_four_bubble_uses_backend_domain(
-    bubble_plans, arithmetic, precision, engine, tolerance
+    loop_native, bubble_plans, arithmetic, precision, engine, tolerance
 ):
-    from _loop_reduction import NativeLoopProgram, PortableLoopPlan
+    NativeLoopProgram = loop_native.NativeLoopProgram
+    PortableLoopPlan = loop_native.PortableLoopPlan
 
     valid, unsupported = bubble_plans
     # Cold loading does not impose a guessed reducer-domain ceiling. Only the

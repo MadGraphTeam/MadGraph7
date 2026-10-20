@@ -5,7 +5,6 @@ Fixtures only add a scalar overflow diagnostic to an existing input guard. They
 exercise failure routing; they are not new physical models or reference numbers.
 """
 
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -16,14 +15,12 @@ from pyamplicol.api import VirtualArithmeticSpec, VirtualStabilityPolicy
 from pyamplicol.api.errors import EvaluationError
 from pyamplicol.api.virtual_results import LaurentCoefficients
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def controls():
-    directory = os.environ.get("PYAMPLICOL_SOURCE_BINDING_RESCUE_FIXTURES")
-    if directory is None:
-        pytest.skip(
-            "set PYAMPLICOL_SOURCE_BINDING_RESCUE_FIXTURES to saved guard controls"
-        )
+def controls(saved_loop_fixture):
+    directory = str(saved_loop_fixture("source-binding-rescue-v43ff063"))
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native
@@ -83,7 +80,7 @@ def test_public_retained_policy_returns_complete_rescued_observables(controls, k
     pristine = (
         root / "source-colour-components/public-artifact"
         if kind == "resolved"
-        else root / "projected-spin/lc-artifact"
+        else root / "projected-spin-v43ff063/lc-artifact"
     )
     with pytest.raises(EvaluationError):
         Runtime.load(controls / f"{kind}-artifact", model_parameters=PARAMETERS)

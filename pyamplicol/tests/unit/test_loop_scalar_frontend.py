@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from decimal import Decimal
 from pathlib import Path
 
@@ -11,6 +10,8 @@ import pytest
 
 from pyamplicol.loops.scalar_frontend import ScalarFunctionLibrary, lower_scalar_program
 from pyamplicol.models.loop_import import RawLoopModel, load_raw_loop_model
+
+pytestmark = pytest.mark.loop_fast
 
 
 @pytest.fixture
@@ -100,8 +101,10 @@ def test_epsilon_helper_argument_is_not_silently_opaque(source):
     "arithmetic,precision",
     [("double", None), ("double-double", None), ("arbitrary", 90)],
 )
-def test_native_helpers_conditions_and_precision(source, arithmetic, precision):
-    native = pytest.importorskip("_loop_reduction")
+def test_native_helpers_conditions_and_precision(
+    loop_native, source, arithmetic, precision
+):
+    native = loop_native
     from symbolica import S
 
     library = ScalarFunctionLibrary(load_raw_loop_model(source, restriction="full"))
@@ -149,8 +152,10 @@ def test_native_helpers_conditions_and_precision(source, arithmetic, precision):
     "arithmetic,precision",
     [("double", None), ("double-double", None), ("arbitrary", 70)],
 )
-def test_active_invalid_predicate_and_inactive_branch(source, arithmetic, precision):
-    native = pytest.importorskip("_loop_reduction")
+def test_active_invalid_predicate_and_inactive_branch(
+    loop_native, source, arithmetic, precision
+):
+    native = loop_native
     from symbolica import S
 
     library = ScalarFunctionLibrary(load_raw_loop_model(source, restriction="full"))
@@ -180,10 +185,8 @@ def test_active_invalid_predicate_and_inactive_branch(source, arithmetic, precis
         assert Decimal(result.to_decimal()[0][0]) == 1
 
 
-def test_complete_gmu_scalar_source_coverage():
-    configured = os.environ.get("PYAMPLICOL_EW_UFO")
-    if not configured:
-        pytest.skip("set PYAMPLICOL_EW_UFO to the full Gmu source fixture")
+def test_complete_gmu_scalar_source_coverage(loop_gmu_ufo):
+    configured = str(loop_gmu_ufo)
     raw = load_raw_loop_model(Path(configured), restriction="full")
     program = lower_scalar_program(raw)
     assert len(program.definitions) == 197 + 107 + 1809
@@ -207,8 +210,10 @@ def test_namespace_alias_keeps_record_identity(source):
     "arithmetic,precision",
     [("double", None), ("double-double", None), ("arbitrary", 90)],
 )
-def test_native_component_access_preserves_extremes(source, arithmetic, precision):
-    native = pytest.importorskip("_loop_reduction")
+def test_native_component_access_preserves_extremes(
+    loop_native, source, arithmetic, precision
+):
+    native = loop_native
     from symbolica import S
 
     library = ScalarFunctionLibrary(load_raw_loop_model(source, restriction="full"))

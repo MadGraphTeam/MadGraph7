@@ -2,7 +2,6 @@
 """Actual native saved-source LC consumer, independent from cold generation."""
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -12,15 +11,12 @@ from pyamplicol import Runtime
 from pyamplicol.api import VirtualArithmeticSpec, VirtualStabilityPolicy
 from pyamplicol.api.errors import EvaluationError
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def artifact():
-    path = os.environ.get("PYAMPLICOL_SOURCE_PUBLIC_LC_ARTIFACT")
-    if not path:
-        pytest.skip(
-            "set PYAMPLICOL_SOURCE_PUBLIC_LC_ARTIFACT for actual signed anchors"
-        )
-    pytest.importorskip("_loop_reduction")
+def artifact(saved_loop_fixture, loop_native):
+    path = str(saved_loop_fixture("source-colour-components/public-artifact"))
     source = Path(path).parent / "gg-lc-expected.json"
     return Path(path), json.loads(source.read_text())
 

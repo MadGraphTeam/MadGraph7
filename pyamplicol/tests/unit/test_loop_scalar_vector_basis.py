@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.loop_fast
+
 
 def source(entries, *, pdgs=(250, 23), spins=(1, 3), colors=(1, 1)):
     return SimpleNamespace(

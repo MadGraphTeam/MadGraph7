@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -13,13 +12,15 @@ import pytest
 
 from pyamplicol.loops.physical_process import top_pair_qcd_program
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def native():
+def native(loop_native):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("native generation requires licensed Symbolica")
-    return pytest.importorskip("_loop_reduction")
+    return loop_native
 
 
 @pytest.fixture(scope="module")
@@ -89,7 +90,14 @@ def test_original_decimal_fixture_is_exactly_on_shell(points):
     ],
 )
 def test_massive_bare_native_pipeline(
-    native, points, arithmetic, precision, engine, coefficient_engine, tolerance
+    loop_reference_path,
+    native,
+    points,
+    arithmetic,
+    precision,
+    engine,
+    coefficient_engine,
+    tolerance,
 ):
     program = top_pair_qcd_program(
         backend=native,
@@ -114,16 +122,15 @@ def test_massive_bare_native_pipeline(
             ):
                 assert abs(Decimal(actual) - target) < abs(target) * tolerance
             assert all(Decimal(value) == 0 for value in result.virtual[index, :, 1])
-    path = os.environ.get("PYAMPLICOL_TOP_PAIR_COMPONENT_REFERENCE")
-    if path:
-        reference = json.loads(Path(path).read_text())
-        for index, row in enumerate(reference["rows"]):
-            np.testing.assert_allclose(
-                result.virtual[index, :, 0].astype(float),
-                [row["bare"][key] for key in ("finite", "single_pole", "double_pole")],
-                rtol=1e-10,
-                atol=1e-13,
-            )
+    path = str(loop_reference_path("top-pair-component-control"))
+    reference = json.loads(Path(path).read_text())
+    for index, row in enumerate(reference["rows"]):
+        np.testing.assert_allclose(
+            result.virtual[index, :, 0].astype(float),
+            [row["bare"][key] for key in ("finite", "single_pole", "double_pole")],
+            rtol=1e-10,
+            atol=1e-13,
+        )
     # The MP finite term is only compared with a binary64 external reference;
     # exact Born and the universal double pole supply stronger precision tests.
     assert all(status == "success" for row in result.statuses for _, status in row)

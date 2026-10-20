@@ -2,7 +2,6 @@
 """Saved actual charged-vector sources retain all three physical states."""
 
 import json
-import os
 from copy import deepcopy
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -13,12 +12,12 @@ from .test_loop_native_directed import _blocks, _values
 from .test_loop_physical_correlations import _close
 from .test_loop_portable import _rewrite
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def massive_sources():
-    fixture = os.environ.get("PYAMPLICOL_MASSIVE_VECTOR_FIXTURES")
-    if not fixture:
-        pytest.skip("retained actual charged-vector source artifacts required")
+def massive_sources(saved_loop_fixture):
+    fixture = str(saved_loop_fixture("massive-vector-sources-v43ff063"))
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native

@@ -19,12 +19,12 @@ from pyamplicol.models.loading import compile_model_source
 
 from .test_loop_generation_public_runtime import _card
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module", params=(1, 2), ids=("outgoing", "incoming"))
-def photon_artifact(request, tmp_path_factory):
-    source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not source:
-        pytest.skip("requires the complete loop_sm source fixture")
+def photon_artifact(loop_sm_ufo, request, tmp_path_factory):
+    source = str(loop_sm_ufo)
     root = tmp_path_factory.mktemp(f"photon-{request.param}")
     retained = os.environ.get("PYAMPLICOL_PHOTON_ARTIFACTS")
     output = (

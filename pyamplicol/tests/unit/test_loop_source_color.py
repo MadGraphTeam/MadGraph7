@@ -16,6 +16,8 @@ from pyamplicol.loops.scalar_bindings import (
 from pyamplicol.loops.source_color import prepare_source_color_scalars
 from pyamplicol.models.loop_import import load_raw_loop_model
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture
 def source(tmp_path):
@@ -251,7 +253,7 @@ def test_partial_ordinary_rule_mapping_requires_every_nonzero_entry(source):
                 )
 
 
-def test_scheme_tie_uses_shared_fixed_inputs_and_rejects_mutation(source):
+def test_scheme_tie_uses_shared_fixed_inputs_and_rejects_mutation(loop_native, source):
     from dataclasses import replace
 
     from symbolica import E
@@ -266,7 +268,6 @@ def test_scheme_tie_uses_shared_fixed_inputs_and_rejects_mutation(source):
         source, (("GCplain", 0),), program=owner.program, fixed_parameters={"a": "1"}
     )
     declared.require_whole_rules((), fixed)
-    pytest.importorskip("_loop_reduction")
     runtime = NativeScalarBindings(fixed)
     before = runtime.snapshot()
     with pytest.raises(ValueError, match="fixed"):
@@ -274,7 +275,9 @@ def test_scheme_tie_uses_shared_fixed_inputs_and_rejects_mutation(source):
     assert runtime.snapshot() is before
 
 
-def test_exact_replacement_outputs_share_source_values_and_diagnostics(source):
+def test_exact_replacement_outputs_share_source_values_and_diagnostics(
+    loop_native, source
+):
     from symbolica import E, S
 
     nc = S("source_colour_test::Nc")
@@ -294,7 +297,6 @@ def test_exact_replacement_outputs_share_source_values_and_diagnostics(source):
         plan.formal.expressions[index].value
         - nc * guarded.value**2 / S("symbolica::pi")
     ).expand() == 0
-    pytest.importorskip("_loop_reduction")
     owner = NativeScalarBindings(plan.coefficients)
     old = owner.snapshot()
     with pytest.raises(ArithmeticError, match="active diagnostics"):
@@ -358,9 +360,9 @@ def test_exact_grades_keep_laurent_axes_and_owning_program(source):
     ],
 )
 def test_native_grades_retain_exact_updates_scales_and_saved_views(
-    source, arithmetic, precision, tolerance, bit
+    loop_native, source, arithmetic, precision, tolerance, bit
 ):
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     outputs = (("GC", -2), ("GC", -1), ("GC", 0), ("conditional", 0))
     owner_plan = prepare_scalar_bindings(source, outputs)
     owner = NativeScalarBindings(owner_plan, arithmetic=arithmetic, precision=precision)
@@ -455,8 +457,7 @@ def test_native_grades_retain_exact_updates_scales_and_saved_views(
     assert view.evaluate_native(bad).row_ids == [71]
 
 
-def test_zero_coefficients_do_not_erase_active_diagnostics(source):
-    pytest.importorskip("_loop_reduction")
+def test_zero_coefficients_do_not_erase_active_diagnostics(loop_native, source):
     plan = prepare(source, (("zero", 0),))
     assert plan.grades == (0,)
     assert plan.coefficients.expressions[0].value == 0
@@ -466,8 +467,7 @@ def test_zero_coefficients_do_not_erase_active_diagnostics(source):
     assert all(Decimal(component) == 0 for component in runtime.values.to_decimal()[0])
 
 
-def test_semantic_replacement_preserves_its_own_active_diagnostic(source):
-    pytest.importorskip("_loop_reduction")
+def test_semantic_replacement_preserves_its_own_active_diagnostic(loop_native, source):
     from symbolica import S
 
     nc = S("source_colour_test::Nc")
@@ -506,7 +506,7 @@ def test_unsupported_colour_dependence_is_explicit(source, output, match):
         prepare(source, ((output, 0),))
 
 
-def test_semantic_identity_is_exact_explicit_and_update_safe(source):
+def test_semantic_identity_is_exact_explicit_and_update_safe(loop_native, source):
     from symbolica import E, S
 
     nc = S("source_colour_test::Nc")
@@ -529,7 +529,6 @@ def test_semantic_identity_is_exact_explicit_and_update_safe(source):
             prepare_source_color_scalars(
                 source, outputs, nc=nc, parameter_identities=identities_
             )
-    pytest.importorskip("_loop_reduction")
     fixed = prepare_source_color_scalars(
         source,
         (("external_colour", 0),),

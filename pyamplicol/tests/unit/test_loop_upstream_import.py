@@ -17,6 +17,8 @@ from pyamplicol.models.loop_import import (
     raw_loop_model_from_dict,
 )
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture
 def nlo_source(tmp_path: Path) -> Path:

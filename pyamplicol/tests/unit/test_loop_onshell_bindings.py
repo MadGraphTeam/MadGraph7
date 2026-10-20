@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 """Physical mass-shell bindings are exact model identities, not tolerances."""
 
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +16,8 @@ from pyamplicol.loops.recurrence import (
 )
 
 from .test_loop_kinematics import native
+
+pytestmark = pytest.mark.loop_fast
 
 __all__ = ["native"]
 
@@ -91,9 +92,9 @@ def test_physical_bindings_include_dependent_leg_and_reversed_routing(
     ],
 )
 def test_exact_mass_updates_share_carrier_and_keep_raw_offshell_oracle(
-    native, massive_recurrences, arithmetic, precision
+    loop_native, native, massive_recurrences, arithmetic, precision
 ):
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     plan = build_loop_kinematics(massive_recurrences[1], physical=True)
     options = dict(arithmetic=arithmetic, precision=precision)
     parameters = tuple(
@@ -161,10 +162,10 @@ def test_exact_mass_updates_share_carrier_and_keep_raw_offshell_oracle(
 
 
 def test_equal_current_values_do_not_merge_distinct_mass_parameters(
-    native, massive_process
+    loop_native, native, massive_process
 ):
     s, _, _ = native
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     graph = next(g for g in massive_process.loops if set(g.loop_species) == {2, 6, 21})
     recurrence = build_open_loop_recurrence(graph, routing="family")
     plan = build_loop_kinematics(
@@ -208,11 +209,11 @@ def test_equal_current_values_do_not_merge_distinct_mass_parameters(
         ("outputs", "shape/reference"),
     ],
 )
-def test_native_loader_rejects_malformed_kinematic_bindings(tmp_path, kind, message):
-    backend = pytest.importorskip("_loop_reduction")
-    source = os.environ.get("PYAMPLICOL_RESOLVED_SOURCE_PACBIN")
-    if not source:
-        pytest.skip("set PYAMPLICOL_RESOLVED_SOURCE_PACBIN to a retained control")
+def test_native_loader_rejects_malformed_kinematic_bindings(
+    saved_loop_fixture, loop_native, tmp_path, kind, message
+):
+    backend = loop_native
+    source = str(saved_loop_fixture("source-portable-v3/gg-resolved.pacbin"))
     from .test_loop_portable import _rewrite
 
     def mutate(data):

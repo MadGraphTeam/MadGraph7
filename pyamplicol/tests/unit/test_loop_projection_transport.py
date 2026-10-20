@@ -2,20 +2,20 @@
 """Projected weights survive graph-free transport and exact arithmetic rebinding."""
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def source():
+def source(loop_sm_ufo, loop_native):
     symbolica = pytest.importorskip("symbolica")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not symbolica.is_licensed() or not path:
+    path = str(loop_sm_ufo)
+    if not symbolica.is_licensed():
         pytest.skip("licensed loop model required")
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.models.loop_import import load_raw_loop_model
@@ -24,8 +24,10 @@ def source():
 
 
 @pytest.mark.parametrize("accuracy", ["full", "lc", "nlc"])
-def test_projected_model_transport(source, accuracy, tmp_path, monkeypatch):
-    import _loop_reduction as native
+def test_projected_model_transport(
+    loop_native, source, accuracy, tmp_path, monkeypatch
+):
+    native = loop_native
 
     from pyamplicol.loops import physical_counterterms, physical_process
     from pyamplicol.loops.physical_counterterms import drell_yan_model_virtual_program

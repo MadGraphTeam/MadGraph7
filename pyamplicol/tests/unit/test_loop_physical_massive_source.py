@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
@@ -13,13 +12,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def source_model():
+def source_model(loop_gmu_ufo, loop_native):
     symbolica = pytest.importorskip("symbolica")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_EW_UFO_REFERENCE")
-    if not symbolica.is_licensed() or not path:
+    path = str(loop_gmu_ufo)
+    if not symbolica.is_licensed():
         pytest.skip("licensed Symbolica and full Gmu UFO reference required")
     from pyamplicol.loops.counterterms import prepare_counterterm_model
     from pyamplicol.loops.covariant_model import build_covariant_structure

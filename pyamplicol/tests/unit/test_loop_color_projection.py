@@ -5,6 +5,8 @@ import pytest
 
 from pyamplicol.loops.color_projection import prepare_color_projection
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
 def symbols():

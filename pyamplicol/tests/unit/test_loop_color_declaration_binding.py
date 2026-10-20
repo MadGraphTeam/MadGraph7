@@ -2,7 +2,6 @@
 """Explicit bundle colour input binds exact shared source values and constraints."""
 
 import json
-import os
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -23,6 +22,8 @@ from pyamplicol.models.loop_color_declaration import (
 from pyamplicol.models.loop_declaration import LoopSchemeDeclaration
 
 from .test_loop_source_color import source
+
+pytestmark = pytest.mark.loop_fast
 
 __all__ = ["source"]
 
@@ -188,7 +189,7 @@ def test_effective_scheme_must_match_explicit_colour_scheme(source):
         )
 
 
-def test_real_source_whole_rule_recipes_rebind_after_json_roundtrip():
+def test_real_source_whole_rule_recipes_rebind_after_json_roundtrip(loop_sm_ufo):
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.models.loop_color_declaration import (
         resolve_loop_color_declaration,
@@ -198,9 +199,7 @@ def test_real_source_whole_rule_recipes_rebind_after_json_roundtrip():
 
     from .test_loop_source_color_physical import declaration as source_declaration
 
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE for whole source R2 conformance")
+    path = str(loop_sm_ufo)
     raw = load_raw_loop_model(path)
     options = dict(
         born_order_bounds={"QCD": 2, "QED": 0},

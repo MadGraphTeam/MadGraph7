@@ -19,6 +19,8 @@ from pyamplicol.loops.scalar_frontend import lower_scalar_program
 from pyamplicol.loops.vertex_symmetry import symmetric_boson_slots
 from pyamplicol.models.loop_import import capture_raw_loop_model
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture
 def hep():

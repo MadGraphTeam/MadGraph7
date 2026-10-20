@@ -4,23 +4,21 @@
 from __future__ import annotations
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.loop_nightly
+
 
 @pytest.fixture(scope="module")
-def control():
+def control(loop_sm_ufo, loop_native):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("licensed native generation required")
-    pytest.importorskip("_loop_reduction")
-    source_path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not source_path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    source_path = str(loop_sm_ufo)
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.loops.physical_counterterms import (
         quark_three_gluon_model_virtual_program,
@@ -51,10 +49,8 @@ def _components(result):
     )
 
 
-def _check_reference(result):
-    path = os.environ.get("PYAMPLICOL_QUARK_THREE_GLUON_COMPONENT_REFERENCE")
-    if not path:
-        return
+def _check_reference(loop_reference_path, result):
+    path = str(loop_reference_path("quark-three-gluon-component-control"))
     reference = json.loads(Path(path).read_text())
     np.testing.assert_allclose(
         result.born[:, 0].astype(float),
@@ -88,6 +84,7 @@ def _check_reference(result):
     ],
 )
 def test_five_leg_components_poles_and_exact_coupling(
+    loop_reference_path,
     control, arithmetic, precision, bit, tolerance
 ):
     from symbolica import E, Expression
@@ -106,7 +103,7 @@ def test_five_leg_components_poles_and_exact_coupling(
         points, ["1000000"] * 3, model_values=["0.118", "173"]
     )
     assert all(status == "success" for row in result.statuses for _, status in row)
-    _check_reference(result)
+    _check_reference(loop_reference_path, result)
     factor = (
         Expression.evaluator_multiple(
             [-E("35/3") * E("118/1000") / (2 * E("pi"))],

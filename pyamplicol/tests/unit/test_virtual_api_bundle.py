@@ -1,8 +1,12 @@
 # SPDX-License-Identifier: 0BSD
 """Virtual exports reuse ordinary payload transport without tree ME templates."""
 
+import pytest
+
 from pyamplicol.artifacts.api_bundle import api_bundle_payloads
 from pyamplicol.generation.artifact_writer import _default_api_bundle_hook
+
+pytestmark = pytest.mark.loop_fast
 
 
 def test_virtual_bundle_carries_every_language_and_explicit_physics_contract():

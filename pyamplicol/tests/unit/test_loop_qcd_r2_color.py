@@ -2,21 +2,20 @@
 """Published HV rational tensors against the complete independent SU(3) UFO."""
 
 import json
-import os
 from dataclasses import replace
 from itertools import permutations
 
 import pytest
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def source():
+def source(loop_sm_ufo):
     s = pytest.importorskip("symbolica")
     if not s.is_licensed():
         pytest.skip("exact source tensor conformance requires licensed Symbolica")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    path = str(loop_sm_ufo)
     from ufo_model_loader.model import Model
 
     from pyamplicol.loops.model import CovariantKernelCatalogue, build_loop_model

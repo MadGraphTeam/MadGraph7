@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import copy
-import os
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from pyamplicol.loops.request_scope import prepare_loop_request_scope
+
+pytestmark = pytest.mark.loop_fast
 
 
 def _raw():
@@ -170,10 +170,8 @@ def test_supplied_species_facts_must_name_actual_species_and_declared_orders():
         _validated_species_orders(model, {2: "QCD"})
 
 
-def test_real_qcd_source_scope_excludes_only_proved_unrelated_basis():
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path or not Path(path).is_dir():
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+def test_real_qcd_source_scope_excludes_only_proved_unrelated_basis(loop_sm_ufo):
+    path = str(loop_sm_ufo)
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("native graph control requires licensed Symbolica")
@@ -190,7 +188,7 @@ def test_real_qcd_source_scope_excludes_only_proved_unrelated_basis():
 
     raw = prepare_loop_restrictions(load_raw_loop_model(path)).derived
     before = raw.to_dict()
-    with pytest.raises(ValueError, match="Lorentz spin signature"):
+    with pytest.raises(ValueError, match="spin slots"):
         build_covariant_structure(raw)
     scope = prepare_loop_request_scope(
         raw,

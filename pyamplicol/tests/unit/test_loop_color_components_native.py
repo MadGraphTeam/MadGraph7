@@ -3,7 +3,6 @@
 
 import io
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -11,16 +10,13 @@ import pytest
 
 from .test_loop_native_failures import NEAR
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def component_plan():
-    pytest.importorskip("_loop_reduction")
-    source = os.environ.get("PYAMPLICOL_COLOR_COMPONENT_PACBIN")
-    expected = os.environ.get("PYAMPLICOL_COLOR_COMPONENT_EXPECTED")
-    if not source or not expected:
-        pytest.skip(
-            "set the saved source LC plan and independent producer expectations"
-        )
+def component_plan(saved_loop_fixture, loop_native):
+    source = str(saved_loop_fixture("source-colour-components/gg-lc.pacbin"))
+    expected = str(saved_loop_fixture("source-colour-components/gg-lc-expected.json"))
     return Path(source), json.loads(Path(expected).read_text())
 
 
@@ -46,9 +42,9 @@ def _close(actual, expected, tolerance):
     ],
 )
 def test_actual_component_axes_and_all_laurent_sums(
-    component_plan, monkeypatch, arithmetic, precision, engine, tolerance
+    loop_native, component_plan, monkeypatch, arithmetic, precision, engine, tolerance
 ):
-    import _loop_reduction as native
+    native = loop_native
 
     from .test_loop_source_portable import _forbid_source
 
@@ -107,8 +103,8 @@ def test_actual_component_axes_and_all_laurent_sums(
     assert empty.born.columns == inclusive.born.columns
 
 
-def test_component_reduction_and_early_state_failure_ids(component_plan):
-    import _loop_reduction as native
+def test_component_reduction_and_early_state_failure_ids(loop_native, component_plan):
+    native = loop_native
 
     path, control = component_plan
     runtime = native.NativeLoopProgram(str(path), reduction_engine="generic")
@@ -170,8 +166,8 @@ def test_component_reduction_and_early_state_failure_ids(component_plan):
         runtime.evaluate(points, ["1000000"] * 2, point_ids=[failed_id] * 2)
 
 
-def test_component_subset_rescue_preserves_opaque_ids(component_plan):
-    import _loop_reduction as native
+def test_component_subset_rescue_preserves_opaque_ids(loop_native, component_plan):
+    native = loop_native
 
     path, control = component_plan
     runtime = native.NativeLoopProgram(str(path), reduction_engine="fast")
@@ -217,9 +213,9 @@ def test_component_subset_rescue_preserves_opaque_ids(component_plan):
 
 
 def test_one_component_projection_failure_keeps_component_identity(
-    component_plan, tmp_path
+    loop_native, component_plan, tmp_path
 ):
-    import _loop_reduction as native
+    native = loop_native
     from symbolica import E, S
 
     from pyamplicol.generation.evaluator_container import (
@@ -286,9 +282,9 @@ def test_one_component_projection_failure_keeps_component_identity(
     ],
 )
 def test_saved_partition_is_checked_before_execution(
-    component_plan, tmp_path, mutation, message
+    loop_native, component_plan, tmp_path, mutation, message
 ):
-    import _loop_reduction as native
+    native = loop_native
 
     from .test_loop_portable import _rewrite
 

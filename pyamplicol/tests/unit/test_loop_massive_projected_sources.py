@@ -2,7 +2,6 @@
 """Actual declared-colour W source composition; no assumed SM continuation."""
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -11,6 +10,8 @@ import pytest
 from .test_loop_massive_vector_sources import (
     test_charged_three_state_sources_and_exact_replay as _check_three_states,
 )
+
+pytestmark = pytest.mark.loop_physics
 
 
 def assert_retained_formal_completion(original, projected):
@@ -154,10 +155,8 @@ def assert_retained_incomplete_declaration_rejected(
 
 
 @pytest.fixture(scope="module")
-def projected_massive():
-    root = os.environ.get("PYAMPLICOL_MASSIVE_PROJECTED_FIXTURES")
-    if not root:
-        pytest.skip("actual declared-colour massive source artifacts required")
+def projected_massive(saved_loop_fixture):
+    root = str(saved_loop_fixture("massive-projected-sources-v43ff063"))
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native

@@ -2,7 +2,6 @@
 """Paired model-owned sources across independently generated d/s QCD members."""
 
 import json
-import os
 from dataclasses import replace
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -20,12 +19,14 @@ from pyamplicol.loops.spin_sources import NativeSpinSourcePlan
 
 from .test_loop_physical_correlations import _close, _conjugate, _decimals, _histories
 
+pytestmark = pytest.mark.loop_nightly
+
 
 @pytest.fixture(scope="module")
-def source_pair(tmp_path_factory):
+def source_pair(loop_sm_ufo, tmp_path_factory):
     symbolica = pytest.importorskip("symbolica")
-    source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not source or not symbolica.is_licensed():
+    source = str(loop_sm_ufo)
+    if not symbolica.is_licensed():
         pytest.skip("licensed loop_sm source control required")
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarations

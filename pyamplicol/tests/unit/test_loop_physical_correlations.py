@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from collections import Counter
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -20,13 +19,15 @@ from pyamplicol.loops.physical_correlations import (
 )
 from pyamplicol.loops.physical_process import distinct_flavour_qcd_program
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def native():
+def native(loop_native):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("licensed dependency generation required")
-    return pytest.importorskip("_loop_reduction")
+    return loop_native
 
 
 @pytest.fixture(scope="module")
@@ -36,13 +37,11 @@ def points():
 
 
 @pytest.fixture(scope="module")
-def model_source(native):
+def model_source(loop_sm_ufo, native):
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.models.loop_import import load_raw_loop_model
 
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    path = str(loop_sm_ufo)
     return build_loop_model(load_raw_loop_model(path))
 
 
@@ -247,6 +246,22 @@ def _conjugate(values):
     result = values.copy()
     result[..., 1] *= -1
     return result
+
+
+def _close_component(actual, expected, tolerance, *, scale=None):
+    actual, expected = (
+        np.asarray(actual, dtype=object),
+        np.asarray(expected, dtype=object),
+    )
+    assert actual.shape == expected.shape
+    norm = max(
+        Decimal("1e-100"),
+        *(abs(value) for value in (expected if scale is None else scale).flat),
+    )
+    assert all(
+        abs(a - b) <= tolerance * norm
+        for a, b in zip(actual.flat, expected.flat, strict=True)
+    )
 
 
 @pytest.mark.parametrize(

@@ -8,6 +8,8 @@ import pytest
 from pyamplicol.api.errors import DependencyError
 from pyamplicol.loops import native
 
+pytestmark = pytest.mark.loop_fast
+
 
 def test_loop_module_uses_existing_native_identity(monkeypatch):
     loop = object()

@@ -15,6 +15,8 @@ from pyamplicol.loops.strategy import (
     select_r2_strategy,
 )
 
+pytestmark = pytest.mark.loop_fast
+
 ARITHMETICS = frozenset({"double", "double-double", "arbitrary"})
 MODEL = R2Branch(R2Strategy.MODEL, ARITHMETICS)
 DIRECT = R2Branch(R2Strategy.DIRECT, ARITHMETICS)

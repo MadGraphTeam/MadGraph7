@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import replace
 from decimal import Decimal, localcontext
 from pathlib import Path
@@ -19,16 +18,15 @@ from pyamplicol.loops.physical_counterterms import (
     top_pair_model_virtual_program,
 )
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def source():
+def source(loop_sm_ufo, loop_native):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("native generation requires licensed Symbolica")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to the original loop_sm model")
+    path = str(loop_sm_ufo)
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.models.loop_import import load_raw_loop_model
 
@@ -276,7 +274,13 @@ def _top_uv_expected(point, scale, alpha_s):
     ],
 )
 def test_complete_top_pair_includes_actual_external_field_factors(
-    source, arithmetic, precision, engine, coefficient_engine, tolerance
+    loop_reference_path,
+    source,
+    arithmetic,
+    precision,
+    engine,
+    coefficient_engine,
+    tolerance,
 ):
     fixture = (
         Path(__file__).resolve().parents[2] / "tools/loop_reference/top_pair_qcd.json"
@@ -296,27 +300,23 @@ def test_complete_top_pair_includes_actual_external_field_factors(
     result = program.evaluate_decimal(
         points, ["1000000"] * 3, model_values=["0.118", "173"]
     )
-    reference_path = os.environ.get("PYAMPLICOL_TOP_PAIR_COMPONENT_REFERENCE")
-    if reference_path:
-        reference = json.loads(Path(reference_path).read_text())
-        for index, row in enumerate(reference["rows"]):
-            for name, key in (
-                ("bare", "bare"),
-                ("uv", "uv"),
-                ("r2", "r2"),
-                ("virtual", "full"),
-                ("uv_local", "uv_vertex"),
-                ("uv_external_fields", "wf"),
-            ):
-                np.testing.assert_allclose(
-                    getattr(result, name)[index, :, 0].astype(float),
-                    [
-                        row[key][pole]
-                        for pole in ("finite", "single_pole", "double_pole")
-                    ],
-                    rtol=1e-10,
-                    atol=1e-13,
-                )
+    reference_path = str(loop_reference_path("top-pair-component-control"))
+    reference = json.loads(Path(reference_path).read_text())
+    for index, row in enumerate(reference["rows"]):
+        for name, key in (
+            ("bare", "bare"),
+            ("uv", "uv"),
+            ("r2", "r2"),
+            ("virtual", "full"),
+            ("uv_local", "uv_vertex"),
+            ("uv_external_fields", "wf"),
+        ):
+            np.testing.assert_allclose(
+                getattr(result, name)[index, :, 0].astype(float),
+                [row[key][pole] for pole in ("finite", "single_pole", "double_pole")],
+                rtol=1e-10,
+                atol=1e-13,
+            )
     scales, alpha = ["900000", "2100000"], "0.100000000000000000000000001"
     rebound = program.evaluate_decimal(points[1:], scales, model_values=[alpha, "173"])
     with localcontext() as context:
@@ -354,7 +354,13 @@ def test_complete_top_pair_includes_actual_external_field_factors(
     ],
 )
 def test_complete_uudd_components_precisions_and_scale_binding(
-    source, arithmetic, precision, engine, coefficient_engine, tolerance
+    loop_reference_path,
+    source,
+    arithmetic,
+    precision,
+    engine,
+    coefficient_engine,
+    tolerance,
 ):
     fixture = Path(__file__).resolve().parents[2] / "tools/loop_reference/uudd_qcd.json"
     points = np.asarray(json.loads(fixture.read_text())["points"], dtype=str)
@@ -372,25 +378,21 @@ def test_complete_uudd_components_precisions_and_scale_binding(
     result = program.evaluate_decimal(
         points, ["1000000"] * 3, model_values=["0.118", "173"]
     )
-    reference_path = os.environ.get("PYAMPLICOL_UUDD_COMPONENT_REFERENCE")
-    if reference_path:
-        reference = json.loads(Path(reference_path).read_text())
-        for index, row in enumerate(reference["rows"]):
-            for name, key in (
-                ("bare", "bare"),
-                ("uv", "uv"),
-                ("r2", "r2"),
-                ("virtual", "full"),
-            ):
-                np.testing.assert_allclose(
-                    getattr(result, name)[index, :, 0].astype(float),
-                    [
-                        row[key][pole]
-                        for pole in ("finite", "single_pole", "double_pole")
-                    ],
-                    rtol=4e-11,
-                    atol=1e-14,
-                )
+    reference_path = str(loop_reference_path("uudd-component-control"))
+    reference = json.loads(Path(reference_path).read_text())
+    for index, row in enumerate(reference["rows"]):
+        for name, key in (
+            ("bare", "bare"),
+            ("uv", "uv"),
+            ("r2", "r2"),
+            ("virtual", "full"),
+        ):
+            np.testing.assert_allclose(
+                getattr(result, name)[index, :, 0].astype(float),
+                [row[key][pole] for pole in ("finite", "single_pole", "double_pole")],
+                rtol=4e-11,
+                atol=1e-14,
+            )
     # Exact Born/UV controls provide precision evidence independently of the
     # binary64 complete reference, whose digits cannot certify MP finite terms.
     scales = ["900000", "2100000"]
@@ -471,11 +473,9 @@ def test_model_r2_completes_native_bare_in_all_precisions(
 
 @pytest.mark.parametrize("coefficient_engine", ["interpreted", "jit"])
 def test_complete_result_against_actual_madloop_and_uncalibrated_basis_rejected(
-    source, points, coefficient_engine
+    loop_reference_path, source, points, coefficient_engine
 ):
-    path = os.environ.get("PYAMPLICOL_DRELL_YAN_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_DRELL_YAN_REFERENCE to the MadLoop report")
+    path = str(loop_reference_path("drell-yan-control"))
     reference = json.loads(Path(path).read_text())
     program = drell_yan_model_virtual_program(
         source, coefficient_engine=coefficient_engine
@@ -638,15 +638,20 @@ def test_partial_real_reducer_failure_evicts_prior_families(source, options):
     baseline = program.evaluate_ordered_native(
         good[:2], ["1000000"] * 2, model_values=values
     )
-    # Exact-forward physical routing now creates equal denominators. The owner
-    # rejects this domain before returning lane statuses; it is not rescuable.
-    with pytest.raises(ValueError, match="raised or repeated loop propagators"):
-        program.evaluate_ordered_partial_native(
-            np.stack([good[0], forward, good[1]]),
-            ["1000000"] * 3,
-            model_values=values,
-            point_ids=[8, 400, 2],
-        )
+    # Exact-forward physical routing creates equal denominators. NinjaRS reports
+    # raised/repeated propagators per lane, so only that point fails.
+    forward_result = program.evaluate_ordered_partial_native(
+        np.stack([good[0], forward, good[1]]),
+        ["1000000"] * 3,
+        model_values=values,
+        point_ids=[8, 400, 2],
+    )
+    assert forward_result.batch.point_ids == [8, 2]
+    assert {f.point_id for f in forward_result.failures} == {400}
+    assert all(
+        f.stage == "loop reduction" and "RepeatedPropagator" in f.detail
+        for f in forward_result.failures
+    )
 
     # Test the sparse transport boundary with distinct, deliberately collinear
     # shifts at a later box. This is not the physical forward amplitude. The
@@ -656,15 +661,21 @@ def test_partial_real_reducer_failure_evicts_prior_families(source, options):
     original = family.reducer
 
     class DegenerateOneLane:
-        point_id = 400
+        # Reducer rows are local channels (039a1772): select the channels of
+        # one point position in the three-point batch, never a caller label.
+        position, points = 1, 3
 
         def evaluate_batch(self, shifts, masses, scales, coefficients, *, s_matrix):
-            good_rows = [
-                index
-                for index, row in enumerate(shifts.row_ids)
-                if row != self.point_id
-            ]
-            bad_ids = [row for row in shifts.row_ids if row == self.point_id]
+            per_point = shifts.rows // self.points
+            bad = (
+                set()
+                if self.position is None
+                else set(
+                    range(self.position * per_point, (self.position + 1) * per_point)
+                )
+            )
+            good_rows = [index for index in range(shifts.rows) if index not in bad]
+            bad_ids = [shifts.row_ids[index] for index in sorted(bad)]
 
             def replace_lane(batch, entries):
                 replacement = program.bare.backend.NativeBatch.from_decimal(
@@ -711,10 +722,10 @@ def test_partial_real_reducer_failure_evicts_prior_families(source, options):
         assert actual.agreement_rows(
             expected.take_rows([0, 1], row_ids=[8, 2]), "1e-13", "1e-100"
         ) == [(8, True), (2, True)]
-    broken.point_id = 1  # Ordinary evaluation assigns contiguous point IDs.
+    # Ordinary evaluation of the same three-point batch fails as a whole.
     with pytest.raises(ArithmeticError, match="DegenerateGram"):
         program.evaluate_ordered_native(mixed, ["1000000"] * 3, model_values=values)
-    broken.point_id = 400
+    broken.position = None
     # A later changing-size call cannot retain omitted values from the failed batch.
     repeat = program.evaluate_ordered_partial_native(
         good[1:2], ["1000000"], model_values=values, point_ids=[2]
@@ -797,7 +808,8 @@ def test_pointwise_family_masses_follow_exact_invariant_compaction(source, point
     result = bare._evaluate_currents_native(currents, failures)
     assert failures.point_ids == {71}
     assert result.batch.point_ids == [29, 83]
-    assert seen[0].row_ids == [29, 83]
+    # Reducer channel rows are local after 039a1772; opaque IDs stay on the batch.
+    assert seen[0].row_ids == [0, 1]
     columns = family.kinematics.propagators
     expected = [("3", "0")] * columns + [("5", "0")] * columns
     assert all(

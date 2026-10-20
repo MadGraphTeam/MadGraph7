@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -13,13 +12,15 @@ import pytest
 
 from pyamplicol.loops.physical_process import distinct_flavour_qcd_program
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def native():
+def native(loop_native):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("native generation requires a licensed Symbolica runtime")
-    return pytest.importorskip("_loop_reduction")
+    return loop_native
 
 
 @pytest.fixture(scope="module")
@@ -116,13 +117,9 @@ def test_multi_graph_bare_process_born_ir_poles_and_parameter_rebinding(
 
 @pytest.mark.parametrize("engine", ["fast", "generic"])
 def test_bare_process_agrees_with_independent_madloop_components(
-    native, points, engine
+    loop_reference_path, native, points, engine
 ):
-    path = os.environ.get("PYAMPLICOL_UUDD_COMPONENT_REFERENCE")
-    if path is None:
-        pytest.skip(
-            "set PYAMPLICOL_UUDD_COMPONENT_REFERENCE to the MadLoop component report"
-        )
+    path = str(loop_reference_path("uudd-component-control"))
     reference = json.loads(Path(path).read_text())
     assert reference["fixture"]["loop_quark_flavours"] == 6
     assert reference["fixture"]["renormalization_flavours"] == 5

@@ -2,7 +2,6 @@
 """Partial Python output over retained physical artifacts; no graph generation."""
 
 import json
-import os
 from decimal import Decimal
 from pathlib import Path
 
@@ -14,12 +13,12 @@ from pyamplicol.api.errors import CompatibilityError, EvaluationError
 
 from .test_runtime_source_binding_rescue import POINT, _close
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def retained():
-    directory = os.environ.get("PYAMPLICOL_PARTIAL_RESULT_FIXTURES")
-    if directory is None:
-        pytest.skip("set PYAMPLICOL_PARTIAL_RESULT_FIXTURES to retained loop fixtures")
+def retained(saved_loop_fixtures):
+    directory = str(saved_loop_fixtures)
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native
@@ -94,7 +93,7 @@ def test_actual_partial_resolved_preserves_c6_and_exact_carriers(
 
 
 def test_actual_grouped_source_masks_keep_complex_values_and_real_zero(retained):
-    runtime = Runtime.load(retained / "projected-spin/lc-artifact")
+    runtime = Runtime.load(retained / "projected-spin-v43ff063/lc-artifact")
     a = [0, ("0.800000000000000000000000000000000001", "-0.16"), 0, ("-0.6", "0.12")]
     b = [0, 0, ("1", "0.2"), 0]
     good = {3: a, 4: b}
@@ -167,7 +166,7 @@ def test_partial_return_preserves_complete_joint_source_rescue(retained):
         "1e-8",
         "1e-9",
     )
-    runtime = Runtime.load(retained / "projected-spin/lc-artifact")
+    runtime = Runtime.load(retained / "projected-spin-v43ff063/lc-artifact")
     runtime.set_spin_correlation_vectors(
         {3: [0, "0.8", 0, "-0.6"], 4: [0, 0, ("1", "0.2"), 0]}
     )

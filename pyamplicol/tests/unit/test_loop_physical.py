@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -13,13 +12,15 @@ import pytest
 
 from pyamplicol.loops.physical import DrellYanBareProgram
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def native():
+def native(loop_native):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("native generation requires a licensed Symbolica runtime")
-    return pytest.importorskip("_loop_reduction")
+    return loop_native
 
 
 @pytest.fixture(scope="module")
@@ -155,12 +156,10 @@ def test_native_physical_input_bits_beyond_binary64_survive_all_stages(native, p
         )
 
 
-def test_bare_result_against_actual_independent_madloop(native, points):
-    path = os.environ.get("PYAMPLICOL_DRELL_YAN_REFERENCE")
-    if not path:
-        pytest.skip(
-            "set PYAMPLICOL_DRELL_YAN_REFERENCE to the independent MadLoop report"
-        )
+def test_bare_result_against_actual_independent_madloop(
+    loop_reference_path, native, points
+):
+    path = str(loop_reference_path("drell-yan-control"))
     reference = json.loads(Path(path).read_text())
     assert reference["actual_poles"] and reference["provider"].startswith("MadLoop")
     program = DrellYanBareProgram(backend=native)

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -18,16 +17,15 @@ from pyamplicol.loops.physical_counterterms import (
     top_pair_model_virtual_program,
 )
 
+pytestmark = pytest.mark.loop_nightly
+
 
 @pytest.fixture(scope="module")
-def source():
+def source(loop_sm_ufo, loop_native):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("native color controls require licensed Symbolica")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    path = str(loop_sm_ufo)
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.models.loop_import import load_raw_loop_model
 
@@ -95,7 +93,7 @@ def test_model_color_projection_cannot_mutate_shared_bare(source, first_accuracy
     ],
 )
 def test_conditional_laurent_collection_keeps_runtime_branches(
-    arithmetic, precision, tolerance
+    loop_native, arithmetic, precision, tolerance
 ):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
@@ -105,7 +103,7 @@ def test_conditional_laurent_collection_keeps_runtime_branches(
     from pyamplicol.loops.physical import _saved
     from pyamplicol.loops.physical_color import expand_color_conditionals
 
-    native = pytest.importorskip("_loop_reduction")
+    native = loop_native
     nc, mass, scale, other = S(
         "if_color_test::Nc",
         "if_color_test::mass",
@@ -274,8 +272,9 @@ def test_top_field_color_is_projected_with_all_virtual_sectors(
         ("arbitrary", 50, "generic", "interpreted", Decimal("3e-40")),
     ],
 )
+@pytest.mark.deferred_direct_r2
 def test_gluon_direct_rectangular_projection_and_fixed_nf(
-    source, arithmetic, precision, reducer, coefficients, tolerance
+    loop_reference_path, source, arithmetic, precision, reducer, coefficients, tolerance
 ):
     from symbolica import E, Expression
 
@@ -336,23 +335,22 @@ def test_gluon_direct_rectangular_projection_and_fixed_nf(
     assert all(Decimal(value) == 0 for value in lc.uv_external_fields.flat)
     _close(nlc.uv_local[:, 0], full.uv_local[:, 0], tolerance, (9, 8))
     _close(nlc.uv_external_fields, full.uv_external_fields, tolerance, (9, 8))
-    reference_path = os.environ.get("PYAMPLICOL_GG_COMPONENT_REFERENCE")
-    if reference_path:
-        reference = json.loads(Path(reference_path).read_text())
-        for name, key in (
-            ("bare", "bare"),
-            ("r2", "r2"),
-            ("uv", "uv"),
-            ("uv_local", "uv_vertex"),
-            ("uv_external_fields", "wf"),
-            ("virtual", "full"),
-        ):
-            np.testing.assert_allclose(
-                getattr(full, name)[:, :, 0].astype(float),
-                [
-                    [row[key][p] for p in ("finite", "single_pole", "double_pole")]
-                    for row in reference["rows"]
-                ],
-                rtol=5e-11,
-                atol=1e-10,
-            )
+    reference_path = str(loop_reference_path("gluon-scattering-component-control"))
+    reference = json.loads(Path(reference_path).read_text())
+    for name, key in (
+        ("bare", "bare"),
+        ("r2", "r2"),
+        ("uv", "uv"),
+        ("uv_local", "uv_vertex"),
+        ("uv_external_fields", "wf"),
+        ("virtual", "full"),
+    ):
+        np.testing.assert_allclose(
+            getattr(full, name)[:, :, 0].astype(float),
+            [
+                [row[key][p] for p in ("finite", "single_pole", "double_pole")]
+                for row in reference["rows"]
+            ],
+            rtol=5e-11,
+            atol=1e-10,
+        )

@@ -2,20 +2,19 @@
 """Saved shared weights retain the original physical schedule as an oracle."""
 
 import json
-import os
 from pathlib import Path
 
 import pytest
 
 from .test_loop_portable import _rewrite
 
+pytestmark = pytest.mark.loop_physics
+
 
 @pytest.fixture(scope="module")
-def weight_artifacts():
-    root = os.environ.get("PYAMPLICOL_DUAL_WEIGHT_FIXTURES")
-    if not root:
-        pytest.skip("set PYAMPLICOL_DUAL_WEIGHT_FIXTURES to retained physical controls")
-    native = pytest.importorskip("_loop_reduction")
+def weight_artifacts(saved_loop_fixture, loop_native):
+    root = str(saved_loop_fixture("dual-born-weights"))
+    native = loop_native
     path = (
         Path(__file__).resolve().parents[2]
         / "tools/loop_reference/gluon_scattering_qcd.json"

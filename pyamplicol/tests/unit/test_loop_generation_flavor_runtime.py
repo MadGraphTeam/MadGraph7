@@ -2,7 +2,6 @@
 """Exact public group selection against independently generated member plans."""
 
 import json
-import os
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
@@ -25,6 +24,8 @@ from pyamplicol.loops.model_compatibility import prepare_loop_sm_scalar_declarat
 from pyamplicol.models.loading import compile_model_source
 
 from .test_loop_generation_public_runtime import _card
+
+pytestmark = pytest.mark.loop_physics
 
 
 def test_identity_species_candidates_preserve_signed_bijections_without_caps():
@@ -98,7 +99,8 @@ def test_unavailable_public_member_admission_retains_independent_generation(
     )
     programs = tuple(
         SimpleNamespace(
-            source_bare=SimpleNamespace(structure=structure, external_request=request)
+            source_bare=SimpleNamespace(structure=structure, external_request=request),
+            virtual=SimpleNamespace(source_color=None),
         )
         for request in requests
     )
@@ -137,10 +139,8 @@ def test_unavailable_public_member_admission_retains_independent_generation(
 
 
 @pytest.fixture(scope="module")
-def model_path(tmp_path_factory):
-    source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not source:
-        pytest.skip("original loop_sm source required")
+def model_path(loop_sm_ufo, tmp_path_factory):
+    source = str(loop_sm_ufo)
     from pyamplicol import _rusticol
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native

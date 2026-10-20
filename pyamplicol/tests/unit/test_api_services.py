@@ -26,6 +26,8 @@ from pyamplicol.api import (
 from pyamplicol.api.results import GenerationPlan
 from pyamplicol.config import BenchmarkConfig, GenerationConfig
 
+pytestmark = pytest.mark.loop_fast
+
 
 class _GeneratorBackend:
     def __init__(self) -> None:

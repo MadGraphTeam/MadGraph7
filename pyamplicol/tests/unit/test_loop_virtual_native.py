@@ -2,17 +2,18 @@
 """Delivery lifecycle over an actual verified, source-owned virtual artifact."""
 
 import json
-import os
 from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.loop_fast
 
-def test_native_virtual_clear_keeps_parameter_owner_and_immutable_results():
-    native = pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NATIVE_VIRTUAL_ARTIFACT")
-    if path is None:
-        pytest.skip("requires a retained verified source virtual artifact")
+
+def test_native_virtual_clear_keeps_parameter_owner_and_immutable_results(
+    saved_loop_fixture, loop_native
+):
+    native = loop_native
+    path = str(saved_loop_fixture("source-public-v3/gg"))
     handle = native.NativeVirtualRuntime(path, process="gg")
     metadata = json.loads(handle.metadata_json())
     assert metadata["physics"]["contribution_kind"] == "virtual"

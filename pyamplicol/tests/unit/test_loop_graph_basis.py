@@ -12,6 +12,8 @@ from pyamplicol.loops.graph_basis import (
 from pyamplicol.loops.graphs import build_loop_process
 from pyamplicol.loops.recurrence import build_open_loop_recurrence
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
 def native():
@@ -273,14 +275,14 @@ def test_quartic_loop_family_routing_exact(native, process):
     ],
 )
 def test_quartic_alternatives_execute_as_native_precise_batches(
-    native, process, arithmetic, precision, tolerance
+    loop_native, native, process, arithmetic, precision, tolerance
 ):
     from decimal import Decimal, localcontext
     from fractions import Fraction
 
     from pyamplicol.loops.kernels import NativeCoefficientDAG
 
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     s, _, _ = native
     graph = next(graph for graph in process.born if len(graph.vertices) == 1)
     recurrence = build_color_tree_recurrence(graph)

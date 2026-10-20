@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -20,13 +19,14 @@ from pyamplicol.loops.stability import (
     NumericalVerificationError,
 )
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def source():
+def source(loop_sm_ufo, loop_native):
     symbolica = pytest.importorskip("symbolica")
-    pytest.importorskip("_loop_reduction")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not symbolica.is_licensed() or not path:
+    path = str(loop_sm_ufo)
+    if not symbolica.is_licensed():
         pytest.skip("licensed Symbolica and loop_sm reference required")
     from pyamplicol.loops.model import build_loop_model
     from pyamplicol.models.loop_import import load_raw_loop_model
@@ -281,7 +281,7 @@ def test_partial_preparation_isolates_finite_original_state_overflow(
         failure.stage == "external state preparation" for failure in result.failures
     )
     assert result.totals.nonfinite_rows() == []
-    with pytest.raises(ValueError, match="external state lane"):
+    with pytest.raises(ValueError, match="external state preparation failed"):
         model.evaluate_ordered_native(
             mixed, ["1000000"] * 2, model_values=["0.118", "132.507"]
         )

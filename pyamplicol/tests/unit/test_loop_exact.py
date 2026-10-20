@@ -3,6 +3,8 @@ import pytest
 
 from pyamplicol.loops.exact import require_exact_numbers
 
+pytestmark = pytest.mark.loop_fast
+
 
 def test_exact_guard_preserves_rational_complex_and_nested_constants():
     sym = pytest.importorskip("symbolica")

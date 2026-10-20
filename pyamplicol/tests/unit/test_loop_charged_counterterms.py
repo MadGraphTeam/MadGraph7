@@ -2,22 +2,21 @@
 """Charged FFV source rules retain flavour metadata and the tested local frame."""
 
 import json
-import os
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.loop_fast
+
 
 @pytest.fixture(scope="module")
-def source():
+def source(loop_sm_ufo):
     symbolica = pytest.importorskip("symbolica")
     if not symbolica.is_licensed():
         pytest.skip("source local tensors require licensed Symbolica")
-    path = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    if not path:
-        pytest.skip("set PYAMPLICOL_NLO_UFO_REFERENCE to loop_sm")
+    path = str(loop_sm_ufo)
     from ufo_model_loader.model import Model
 
     from pyamplicol.loops.model import CovariantKernelCatalogue, build_loop_model

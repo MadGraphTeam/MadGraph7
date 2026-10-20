@@ -19,6 +19,8 @@ from tools.loop_reference.graph_r2_oracle import (
     sample_bindings,
 )
 
+pytestmark = [pytest.mark.loop_fast, pytest.mark.deferred_direct_r2]
+
 
 @pytest.fixture(scope="module")
 def process():
@@ -288,13 +290,13 @@ def native_controls(recurrences):
     ],
 )
 def test_graph_local_r2_native_reduction_matches_full_trace(
-    native_controls, size, arithmetic, precision, tolerance
+    loop_native, native_controls, size, arithmetic, precision, tolerance
 ):
     from decimal import Decimal, localcontext
 
     from pyamplicol.loops.kernels import NativeCoefficientDAG
 
-    backend = pytest.importorskip("_loop_reduction")
+    backend = loop_native
     recurrence, columns, names, polynomial, inputs, oracle, kinematics, masses = (
         native_controls[size]
     )

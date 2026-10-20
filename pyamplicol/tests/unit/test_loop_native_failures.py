@@ -2,13 +2,14 @@
 """Actual compact reduction failures preserve physical and resolved identities."""
 
 import json
-import os
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from .test_loop_artifact_writer import source_process, target_metadata, write_artifact
+
+pytestmark = pytest.mark.loop_physics
 
 __all__ = ["target_metadata"]
 
@@ -21,11 +22,8 @@ NEAR = [
 
 
 @pytest.fixture(scope="module")
-def source_plan():
-    pytest.importorskip("_loop_reduction")
-    source = os.environ.get("PYAMPLICOL_RESOLVED_SOURCE_PACBIN")
-    if not source:
-        pytest.skip("set PYAMPLICOL_RESOLVED_SOURCE_PACBIN to an actual gg control")
+def source_plan(saved_loop_fixture, loop_native):
+    source = str(saved_loop_fixture("source-portable-v3/gg-resolved.pacbin"))
     fixture = (
         Path(__file__).resolve().parents[2]
         / "tools/loop_reference/gluon_scattering_qcd.json"
@@ -36,8 +34,10 @@ def source_plan():
 
 
 @pytest.mark.parametrize("resolved", [False, True])
-def test_actual_reduction_failure_compacts_whole_points(source_plan, resolved):
-    import _loop_reduction as native
+def test_actual_reduction_failure_compacts_whole_points(
+    loop_native, source_plan, resolved
+):
+    native = loop_native
 
     path, points = source_plan
     runtime = native.NativeLoopProgram(
@@ -109,9 +109,9 @@ def test_public_error_carries_native_failure_fields(
 @pytest.mark.parametrize("arithmetic", ["double", "double-double"])
 @pytest.mark.parametrize("resolved", [False, True])
 def test_early_state_and_scale_failures_keep_exact_original_ids(
-    source_plan, arithmetic, resolved
+    loop_native, source_plan, arithmetic, resolved
 ):
-    import _loop_reduction as native
+    native = loop_native
 
     path, points = source_plan
     runtime = native.NativeLoopProgram(
@@ -179,11 +179,11 @@ def test_early_state_and_scale_failures_keep_exact_original_ids(
 
 @pytest.mark.parametrize("resolved", [False, True])
 def test_native_replay_preserves_failures_from_distinct_stages(
-    source_plan, tmp_path, resolved
+    loop_native, source_plan, tmp_path, resolved
 ):
     import io
 
-    import _loop_reduction as native
+    native = loop_native
     from symbolica import E, S
 
     from pyamplicol.generation.evaluator_container import (

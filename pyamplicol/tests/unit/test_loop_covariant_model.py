@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import pytest
 
 from pyamplicol.loops.covariant_model import build_covariant_structure
 from pyamplicol.models.loop_import import RawLoopModel, load_raw_loop_model
+
+pytestmark = pytest.mark.loop_physics
 
 
 @pytest.fixture
@@ -218,10 +219,8 @@ def test_nonzero_hypercharge_still_requires_chiral_convention(source, key):
 
 
 @pytest.fixture(scope="module")
-def gmu():
-    configured = os.environ.get("PYAMPLICOL_EW_UFO")
-    if not configured:
-        pytest.skip("set PYAMPLICOL_EW_UFO to the full Gmu fixture")
+def gmu(loop_gmu_ufo):
+    configured = str(loop_gmu_ufo)
     raw = load_raw_loop_model(Path(configured), restriction="full")
     with pytest.raises(ValueError, match="goldstoneboson"):
         build_covariant_structure(raw)
@@ -342,12 +341,13 @@ def test_unknown_gmu_mismatch_and_extra_quantum_mismatch_reject(gmu):
         )
 
 
-def test_fixed_masses_are_structural_and_shared_with_numeric_bindings(source):
+def test_fixed_masses_are_structural_and_shared_with_numeric_bindings(
+    loop_native, source
+):
     from decimal import Decimal
 
     from pyamplicol.loops.scalar_bindings import NativeScalarBindings
 
-    pytest.importorskip("_loop_reduction")
     raw = load_raw_loop_model(source, restriction="full")
     original = raw.to_dict()
     fixed = build_covariant_structure(raw, fixed_parameters={"M": "0"})
@@ -532,3 +532,19 @@ V3=Vertex('V3',[P.s,P.s,P.s],['1'],[L],{(0,0):C3})
     assert structure.perturbative_species_orders[100] == frozenset({"QCD", "QED"})
     # V2 is exactly zero under the fixed source input, so it supplies no fact.
     assert 101 not in structure.perturbative_species_orders
+
+
+@pytest.mark.parametrize(
+    "fields,expected",
+    [
+        ({"GoldstoneBoson": True}, True),
+        ({"goldstoneboson": True}, True),
+        ({"GoldstoneBoson": False, "goldstone": True}, True),
+        ({"GoldstoneBoson": False, "goldstoneboson": False}, False),
+        ({}, False),
+    ],
+)
+def test_source_goldstone_honours_every_established_ufo_spelling(fields, expected):
+    from pyamplicol.loops.covariant_model import source_goldstone
+
+    assert source_goldstone(fields) is expected

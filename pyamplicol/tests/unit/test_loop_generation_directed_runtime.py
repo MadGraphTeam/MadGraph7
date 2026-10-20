@@ -3,7 +3,6 @@
 
 import io
 import json
-import os
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
@@ -18,12 +17,14 @@ from pyamplicol.models.loading import compile_model_source
 
 from .test_loop_generation_public_runtime import _card
 
+pytestmark = pytest.mark.loop_fast
 
-def test_fresh_public_virtual_dipole_matches_recola(tmp_path):
-    source = os.environ.get("PYAMPLICOL_NLO_UFO_REFERENCE")
-    reference = os.environ.get("PYAMPLICOL_RECOLA_DIRECTED_REFERENCE")
-    if not source or not reference:
-        pytest.skip("requires original loop_sm and the independent Recola dipole data")
+
+def test_fresh_public_virtual_dipole_matches_recola(
+    loop_reference_path, loop_sm_ufo, tmp_path
+):
+    source = str(loop_sm_ufo)
+    reference = str(loop_reference_path("directed-recola-control"))
     from pyamplicol._internal.versions import verify_native_module
     from pyamplicol.loops.native import load_loop_native
 

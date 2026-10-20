@@ -20,6 +20,8 @@ from pyamplicol.models.loop_preparation import (
     with_loop_preparation,
 )
 
+pytestmark = pytest.mark.loop_fast
+
 
 def test_exact_sidecar_is_copy_safe_and_conflicts_do_not_round():
     raw = capture_raw_loop_model(ModuleType("preparation_fixture"))
