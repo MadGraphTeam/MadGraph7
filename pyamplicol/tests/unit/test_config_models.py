@@ -43,7 +43,11 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 104
+    assert len(FIELD_REGISTRY) == 108
+    assert FIELD_REGISTRY["loop.preparation"].nullable
+    assert (
+        FIELD_REGISTRY["loop.preparation.fixed_parameters"].kind == "map_exact_scalar"
+    )
     assert "evaluation.stability" in CONFIG_SECTIONS
     assert FIELD_REGISTRY["evaluation.stability.higher"].kind == "list_str"
     assert FIELD_REGISTRY["evaluation.on_failure"].default == "raise"

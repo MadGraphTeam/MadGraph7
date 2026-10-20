@@ -18,6 +18,7 @@ if TYPE_CHECKING:
         LoopModelDeclaration,
         LoopSchemeDeclaration,
     )
+    from pyamplicol.models.loop_preparation import LoopPreparation
 
 from .errors import ConfigurationError
 
@@ -1341,15 +1342,65 @@ class LoopModelConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class LoopPreparationConfig:
+    """An explicit whole override; None on LoopConfig means source inheritance."""
+
+    compatibility: str | None = field(
+        default=None, metadata=_setting("str", nullable=True)
+    )
+    covariant_multiplets: Mapping[str, tuple[int, ...]] = field(
+        default_factory=dict,
+        metadata=_setting("map_list_int", dynamic_kind="list_int"),
+    )
+    fixed_parameters: Mapping[str, str | tuple[str, str]] = field(
+        default_factory=dict,
+        metadata=_setting("map_exact_scalar", dynamic_kind="exact_scalar"),
+    )
+
+    def __post_init__(self) -> None:
+        try:
+            prepared = self.to_preparation()
+        except (TypeError, ValueError, DecimalException) as error:
+            raise ConfigurationError(f"loop.preparation: {error}") from error
+        object.__setattr__(
+            self,
+            "covariant_multiplets",
+            MappingProxyType(
+                {
+                    str(pdg): partners
+                    for pdg, partners in prepared.covariant_multiplets.items()
+                }
+            ),
+        )
+        object.__setattr__(self, "fixed_parameters", prepared.fixed_parameters)
+
+    def to_preparation(self) -> LoopPreparation:
+        from pyamplicol.models.loop_preparation import LoopPreparation
+
+        return LoopPreparation(
+            self.compatibility,
+            {key: value for key, value in self.covariant_multiplets.items()},
+            self.fixed_parameters,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class LoopConfig:
     r2_strategy: R2Strategy = field(
         default=R2Strategy.AUTO, metadata=_setting("str", choices=tuple(R2Strategy))
     )
     model: LoopModelConfig = field(default_factory=LoopModelConfig, metadata=_section())
+    preparation: LoopPreparationConfig | None = field(default=None, metadata=_section())
 
     def __post_init__(self) -> None:
         if not isinstance(self.model, LoopModelConfig):
             raise ConfigurationError("loop.model must be a LoopModelConfig")
+        if self.preparation is not None and not isinstance(
+            self.preparation, LoopPreparationConfig
+        ):
+            raise ConfigurationError(
+                "loop.preparation must be a LoopPreparationConfig or null"
+            )
         object.__setattr__(
             self, "r2_strategy", _enum(self.r2_strategy, R2Strategy, "loop.r2_strategy")
         )

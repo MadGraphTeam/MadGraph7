@@ -12,7 +12,13 @@ from typing import Any, NoReturn, TypeVar, cast, get_type_hints
 
 from .errors import ConfigurationError
 from .models import Action, ProcessEntry, RunConfig
-from .registry import CONFIG_SECTIONS, FIELD_REGISTRY, ConfigField, default_values
+from .registry import (
+    CONFIG_SECTIONS,
+    FIELD_REGISTRY,
+    ConfigField,
+    default_values,
+    section_type,
+)
 
 _DataclassT = TypeVar("_DataclassT")
 
@@ -232,7 +238,25 @@ def _coerce(
 
     kind = item.kind
     result: object
-    if kind == "str":
+    if kind == "section":
+        if not isinstance(value, Mapping):
+            raise ConfigurationError(f"{item.path} must be a table or null")
+        _coerce_flat(_flatten_mapping(value, prefix=item.path), base_dir=base_dir)
+        result = dict(value)
+    elif kind == "exact_scalar":
+        if isinstance(value, str):
+            result = value
+        elif (
+            isinstance(value, (list, tuple))
+            and len(value) == 2
+            and all(isinstance(part, str) for part in value)
+        ):
+            result = tuple(value)
+        else:
+            raise ConfigurationError(
+                f"{item.path} requires a decimal string or two decimal strings"
+            )
+    elif kind == "str":
         if not isinstance(value, str):
             raise ConfigurationError(f"{item.path} must be a string")
         if item.path == "model.source":
@@ -286,10 +310,15 @@ def _coerce(
         result = tuple(cast(Sequence[int], value))
     elif kind == "process_entries":
         result = _coerce_process_entries(value, item.path)
-    elif kind in ("map_list_str", "map_int"):
+    elif kind in ("map_list_str", "map_int", "map_list_int", "map_exact_scalar"):
         if not isinstance(value, Mapping):
             raise ConfigurationError(f"{item.path} must be a table")
-        dynamic_kind = "list_str" if kind == "map_list_str" else "int"
+        dynamic_kind = {
+            "map_list_str": "list_str",
+            "map_int": "int",
+            "map_list_int": "list_int",
+            "map_exact_scalar": "exact_scalar",
+        }[kind]
         converted: dict[str, object] = {}
         for key, entry in value.items():
             if not isinstance(key, str) or not key:
@@ -349,8 +378,29 @@ def parse_override(
     return ConfigOverride(path, _coerce(item, parsed, base_dir=root))
 
 
-def _apply_value(values: dict[str, object], path: str, value: object) -> None:
-    _item, dynamic_key = _field_for_path(path)
+def _apply_value(
+    values: dict[str, object], path: str, value: object, *, base_dir: Path
+) -> None:
+    item, dynamic_key = _field_for_path(path)
+    if item.kind == "section":
+        for child_path, default in default_values().items():
+            if child_path.startswith(path + "."):
+                values[child_path] = default
+        values[path] = None if value is None else {}
+        if value is not None:
+            for child_path, child_value in _coerce_flat(
+                _flatten_mapping(cast(Mapping[str, object], value), prefix=path),
+                base_dir=base_dir,
+            ).items():
+                _apply_value(values, child_path, child_value, base_dir=base_dir)
+        return
+    for parent_path, parent in FIELD_REGISTRY.items():
+        if (
+            parent.kind == "section"
+            and path.startswith(parent_path + ".")
+            and values[parent_path] is None
+        ):
+            values[parent_path] = {}
     if dynamic_key is None:
         values[path] = value
         return
@@ -393,7 +443,12 @@ def _build_dataclass(
         path = f"{prefix}.{item.name}" if prefix else item.name
         if item.metadata.get("config_section"):
             try:
-                kwargs[item.name] = _build_dataclass(hints[item.name], path, values)
+                child, nullable = section_type(hints[item.name])
+                kwargs[item.name] = (
+                    None
+                    if nullable and values[path] is None
+                    else _build_dataclass(child, path, values)
+                )
             except ConfigurationError as exc:
                 _extend_errors(errors, exc)
         else:
@@ -452,11 +507,13 @@ def resolve_config(
     card_flat = _coerce_flat(card_fields, base_dir=root, _errors=card_errors)
     _raise_errors(card_errors)
     for path, value in card_flat.items():
-        _apply_value(values, path, value)
+        _apply_value(values, path, value, base_dir=root)
 
     if action is not None:
         action_item = FIELD_REGISTRY["action"]
-        _apply_value(values, "action", _coerce(action_item, action, base_dir=root))
+        _apply_value(
+            values, "action", _coerce(action_item, action, base_dir=root), base_dir=root
+        )
 
     if dedicated:
         dedicated_errors: list[str] = []
@@ -466,7 +523,7 @@ def resolve_config(
         )
         _raise_errors(dedicated_errors)
         for path, value in dedicated_flat.items():
-            _apply_value(values, path, value)
+            _apply_value(values, path, value, base_dir=root)
 
     override_errors: list[str] = []
     for raw_override in overrides:
@@ -478,7 +535,7 @@ def resolve_config(
             )
             item, _dynamic_key = _field_for_path(parsed_override.path)
             normalized = _coerce(item, parsed_override.value, base_dir=root)
-            _apply_value(values, parsed_override.path, normalized)
+            _apply_value(values, parsed_override.path, normalized, base_dir=root)
         except ConfigurationError as exc:
             _extend_errors(override_errors, exc)
     _raise_errors(override_errors)
@@ -501,7 +558,7 @@ def resolve_config(
                         f"cannot clamp missing configuration field {clamp.path!r}"
                     )
                 requested_value = parent[dynamic_key]
-            _apply_value(effective_values, clamp.path, effective_value)
+            _apply_value(effective_values, clamp.path, effective_value, base_dir=root)
             records.append(
                 ConfigClamp(
                     path=clamp.path,

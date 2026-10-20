@@ -7639,6 +7639,7 @@ class GenerationBackend:
     ) -> _ResolvedModel:
         if isinstance(source, CompiledModel):
             compiled = self._private_compiled_model(source)
+            self._require_model_support(compiled)
             is_builtin = self._is_builtin_compiled_model(compiled)
             return _ResolvedModel(
                 self._source_for_compiled_model(compiled),
@@ -7687,6 +7688,7 @@ class GenerationBackend:
                         ),
                         simplify=source.simplify,
                         cache_dir=cache_dir,
+                        require_supported=not self._loop_execution_enabled,
                     )
                 )
                 if compiled is None:
@@ -7699,6 +7701,7 @@ class GenerationBackend:
             raise
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             raise ModelError(str(exc)) from exc
+        self._require_model_support(compiled)
         is_builtin = self._is_builtin_compiled_model(compiled)
         return _ResolvedModel(
             source,
@@ -7713,6 +7716,19 @@ class GenerationBackend:
         if not isinstance(payload, _CompiledModelPayload):
             raise ModelError("compiled model handle has an invalid private payload")
         return payload
+
+    def _require_model_support(self, compiled: _CompiledModelPayload) -> None:
+        """Keep model issues; the selected contribution owns scalar capability."""
+        from ..models.loading import _raise_for_unsupported
+        from ..models.loop_preparation import require_loop_model_source
+
+        try:
+            if self._loop_execution_enabled:
+                require_loop_model_source(compiled)
+            else:
+                _raise_for_unsupported(compiled, require_supported=True)
+        except ValueError as error:
+            raise ModelError(str(error)) from error
 
     @staticmethod
     def _source_for_compiled_model(compiled: _CompiledModelPayload) -> ModelSource:
@@ -7730,6 +7746,7 @@ class GenerationBackend:
     ) -> _ResolvedModel:
         if isinstance(source, CompiledModel):
             compiled = self._private_compiled_model(source)
+            self._require_model_support(compiled)
             if self._is_builtin_compiled_model(compiled):
                 return _ResolvedModel(
                     self._source_for_compiled_model(compiled),
@@ -7784,10 +7801,12 @@ class GenerationBackend:
                         simplify=source.simplify,
                         cache_dir=cache_dir,
                         use_cache=use_cache,
+                        require_supported=not self._loop_execution_enabled,
                     )
                 )
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             raise ModelError(str(exc)) from exc
+        self._require_model_support(compiled)
         if self._is_builtin_compiled_model(compiled):
             return _ResolvedModel(
                 source,

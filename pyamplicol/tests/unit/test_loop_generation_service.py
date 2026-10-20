@@ -285,6 +285,7 @@ def _colour_backend(monkeypatch, accuracy, declaration):
         LoopModelDeclaration,
         LoopSchemeDeclaration,
     )
+    from pyamplicol.models.loop_preparation import LoopPreparation
 
     scheme = LoopSchemeDeclaration(
         "HV", "4d", "source", "source", "real", "source", "fixture"
@@ -306,6 +307,10 @@ def _colour_backend(monkeypatch, accuracy, declaration):
         service, "resolve_loop_model_declaration", lambda *a, **kw: loop
     )
     monkeypatch.setattr(service, "with_loop_model_declaration", lambda value, _: value)
+    monkeypatch.setattr(
+        service, "resolve_loop_preparation", lambda *a: LoopPreparation()
+    )
+    monkeypatch.setattr(service, "with_loop_preparation", lambda value, _: value)
     monkeypatch.setattr(
         service, "resolve_loop_color_declaration", lambda _: declaration(scheme)
     )
@@ -383,7 +388,7 @@ def test_colour_owner_is_bound_once_per_actual_inferred_order_scope(monkeypatch)
     prepared_calls, colour_calls = [], []
 
     def prepare(*args, **kwargs):
-        owner = SimpleNamespace(scope=kwargs)
+        owner = SimpleNamespace(scope=kwargs, structure=SimpleNamespace(diagnostics=()))
         prepared_calls.append(owner)
         return owner
 
@@ -403,7 +408,7 @@ def test_colour_owner_is_bound_once_per_actual_inferred_order_scope(monkeypatch)
         c.owner is p
         for c, p in zip(context.source_colors, context.prepared, strict=True)
     )
-    assert all(p.scope["fixed_parameters"] is fixed for p in context.prepared)
+    assert all(p.scope["fixed_parameters"] == fixed for p in context.prepared)
     assert context.prepared[0].scope["loop_order_bounds"] == {
         "QED": (0, 2),
         "QCD": (0, 2),
@@ -576,13 +581,16 @@ def test_full_auto_missing_colour_capability_uses_fresh_direct_owner(
 ):
     from pyamplicol.generation import loop_service as service
     from pyamplicol.loops.source_color import SourceColorCapabilityUnavailable
+    from pyamplicol.models.loop_preparation import LoopPreparation
 
     backend = GenerationBackend(
         loop_config(color={"accuracy": "full", "contraction": "auto"}), None
     )
     original, continuation, direct_result = object(), object(), object()
     context = SimpleNamespace(
-        resolved=SimpleNamespace(compiled=original), corrections=("QCD",)
+        resolved=SimpleNamespace(compiled=original),
+        corrections=("QCD",),
+        preparation=LoopPreparation(),
     )
     bounds = dict(born_order_bounds={"QCD": (0, 2)}, loop_order_bounds={"QCD": (0, 4)})
     calls = []
@@ -598,7 +606,12 @@ def test_full_auto_missing_colour_capability_uses_fresh_direct_owner(
     prepared = SimpleNamespace(scope=SimpleNamespace(**bounds), compile=compile_formal)
 
     def prepare_direct(compiled, **options):
-        assert compiled is original and options == bounds
+        assert compiled is original and options == {
+            **bounds,
+            "fixed_parameters": None,
+            "compatibility": None,
+            "covariant_multiplets": None,
+        }
         calls.append("fresh")
 
         def compile_direct(*args, **kwargs):

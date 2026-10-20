@@ -167,6 +167,33 @@ mixed loops; two independent single-correction claims are not combined. Likewise
 a request for `["QCD", "QED"]` is sent once to the joint graph-selection machinery,
 rather than evaluated as the union of the two single requests.
 
+Source preparation is a separate explicit input. `LoopPreparation` and
+`with_loop_preparation` from `pyamplicol.models` attach an immutable copy of the
+compatibility profile, covariant multiplet PDGs and fixed exact parameters to the
+existing raw-source sidecar. The corresponding `[loop.preparation]` table carries
+`compatibility`, `covariant_multiplets` and `fixed_parameters`; the typed Python
+form is `LoopConfig(preparation=LoopPreparationConfig(...))`.
+
+Omitting this table (or using `preparation=None` in Python) inherits the source
+sidecar. An explicit empty table clears the entire source preparation record.
+A nonempty table also replaces the whole record: omitted fields do not inherit.
+`--set 'loop.preparation={}'` clears it; `--set 'loop.preparation=null'` restores
+inheritance. A leaf override creates an explicit record when none was present.
+Multiplet keys are signed PDGs, with integer member lists. Fixed values are
+decimal strings or pairs of decimal strings, never binary64 approximations.
+The actual source compiler checks parameter names, real/complex types, restriction
+ties, supported compatibility profiles and partner consistency. Exact colour
+scheme ties must agree with preparation values; full-colour automatic fallback
+preserves this base preparation while dropping the unavailable colour extension.
+
+Planning reports the selected preparation and the actual source compatibility
+diagnostics. These inputs do not certify UV/R2 completeness or a physics scheme.
+Virtual model resolution retains shared exclusions and original issue records,
+while deferring tree-only scalar registry diagnostics to the source scalar
+frontend. A source accepted for loop preparation can therefore remain unsupported
+by tree kernels; tree requests continue to reject that capability. Dry-run still
+requires an already compiled model or matching cache and never generates graphs.
+
 The supplied MadLoop `loop_sm` has a known source reference mismatch: the four-G0
 vertex `V_1001` points at the three-slot constant tensor `SSS1`. A broad prepared
 scope therefore requires the existing explicit

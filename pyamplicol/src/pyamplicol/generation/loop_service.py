@@ -33,6 +33,11 @@ from pyamplicol.models.loop_declaration import (
     resolve_loop_model_declaration,
     with_loop_model_declaration,
 )
+from pyamplicol.models.loop_preparation import (
+    LoopPreparation,
+    resolve_loop_preparation,
+    with_loop_preparation,
+)
 
 from .dag_algorithms import infer_minimal_coupling_order_limits
 from .loop_artifact import LoopExecutionMetadata, LoopProcessArtifact
@@ -138,6 +143,7 @@ class _LoopContext:
     prepared: tuple
     corrections: tuple[str, ...]
     source_colors: tuple
+    preparation: LoopPreparation
     color_declaration: Any = None
 
 
@@ -162,6 +168,10 @@ def _prepare(backend, processes, source, *, planning, phase, consider_fft=True):
     )
     declaration.require_declared_completion(strategy="model")
     compiled = with_loop_model_declaration(compiled, declaration)
+    preparation = resolve_loop_preparation(
+        compiled.raw_loop_model, run.loop.preparation
+    )
+    compiled = with_loop_preparation(compiled, preparation)
     color_data = None
     fixed_parameters = None
     projected = run.color.accuracy in ("lc", "nlc")
@@ -208,7 +218,10 @@ def _prepare(backend, processes, source, *, planning, phase, consider_fft=True):
                 compiled,
                 born_order_bounds=born,
                 loop_order_bounds=loop,
-                fixed_parameters=fixed_parameters,
+                fixed_parameters=preparation.merged_fixed_parameters(fixed_parameters)
+                or None,
+                compatibility=preparation.compatibility,
+                covariant_multiplets=preparation.covariant_multiplets or None,
             )
             color = None
             if color_data is not None:
@@ -226,6 +239,7 @@ def _prepare(backend, processes, source, *, planning, phase, consider_fft=True):
         tuple(prepared),
         corrections,
         tuple(source_colors),
+        preparation,
         color_data,
     )
 
@@ -292,6 +306,13 @@ def _plan_result(backend, processes, blockers, *, context=None, coverage=()):
             "flavor_transport_checked": False,
             "processes": tuple(coverage),
             "model_declaration": context.declaration.to_dict() if context else None,
+            "model_preparation": context.preparation.to_dict() if context else None,
+            "source_compatibility_diagnostics": tuple(
+                tuple(dict(item) for item in prepared.structure.diagnostics)
+                for prepared in context.prepared
+            )
+            if context
+            else (),
         },
         requested_settings=backend._configuration.requested,
         effective_settings=backend._configuration.effective,
@@ -546,6 +567,9 @@ def _compile_color_operation(backend, context, prepared, entry, source_color):
             context.resolved.compiled,
             born_order_bounds=prepared.scope.born_order_bounds,
             loop_order_bounds=prepared.scope.loop_order_bounds,
+            fixed_parameters=context.preparation.merged_fixed_parameters() or None,
+            compatibility=context.preparation.compatibility,
+            covariant_multiplets=context.preparation.covariant_multiplets or None,
         )
         return compile_owned(direct, None), str(unavailable)
 
