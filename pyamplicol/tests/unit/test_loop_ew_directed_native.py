@@ -119,7 +119,7 @@ def test_saved_ew_complete_components_and_both_terms(
         shifted = str(gf * (1 + Decimal(2) ** -bit))
         ordinary.source_state.update({"Gf": (shifted, "0")})
         changed_snapshot = directed.source_state.update({"Gf": (shifted, "0")})
-        assert changed_snapshot.overrides["Gf"] == (shifted, "0")
+        assert tuple(changed_snapshot.overrides["Gf"]) == (shifted, "0")
         rows = [2, 0, 2]
         selected = [points[i] for i in rows]
         selected_scales = [scales[i] for i in rows]
