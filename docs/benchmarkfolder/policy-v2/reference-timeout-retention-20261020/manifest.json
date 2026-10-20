@@ -1,0 +1,1446 @@
+{
+  "schema": "failed-reference-retention-v2",
+  "status": "failed",
+  "acceptance_evidence": false,
+  "original_report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020",
+  "scope": "Entire failed full-eight run, complete six-case raw records, closed controller log, stale parent output evidence and read-only warmup diagnostics. No extraction/promotion.",
+  "files": {
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-1/MadLoopParams.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-1/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-1/build.json": {
+      "sha256": "1c54de0018e043a22a3fcffa2f4844bd13fa9d62865b64a48c2648944f0252e5",
+      "bytes": 8428
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-1/compiled-sources.json": {
+      "sha256": "120054b1323b433d40d74d1f68fab2177ea7b19ee29f97d7e7a0ecc31ff20b24",
+      "bytes": 23655
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-1/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-1/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-1/worker.f": {
+      "sha256": "8e6016cbbbc9bc200473b9519d9dc6c9d3a75f85dc47f3b22af8d0ae44848abb",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-6/MadLoopParams.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-6/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-6/build.json": {
+      "sha256": "977ac590de5f9d220a0ce4af5a654408196560f26773ee702c17ddeb1b9d1c93",
+      "bytes": 8428
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-6/compiled-sources.json": {
+      "sha256": "120054b1323b433d40d74d1f68fab2177ea7b19ee29f97d7e7a0ecc31ff20b24",
+      "bytes": 23655
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-6/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-6/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-6/worker.f": {
+      "sha256": "8e6016cbbbc9bc200473b9519d9dc6c9d3a75f85dc47f3b22af8d0ae44848abb",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-7/MadLoopParams.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-7/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-7/build.json": {
+      "sha256": "1da59e1eefce704669e617ffd2034ff5520bd29040edc8c2e0a175850831965a",
+      "bytes": 8386
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-7/compiled-sources.json": {
+      "sha256": "120054b1323b433d40d74d1f68fab2177ea7b19ee29f97d7e7a0ecc31ff20b24",
+      "bytes": 23655
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-7/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-7/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-1-baseline-7/worker.f": {
+      "sha256": "8e6016cbbbc9bc200473b9519d9dc6c9d3a75f85dc47f3b22af8d0ae44848abb",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-1/MadLoopParams.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-1/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-1/build.json": {
+      "sha256": "ecadb19163b7a83ebfce053eb6479f848625bf4a3fb20fd5b335c8e8422a0040",
+      "bytes": 8429
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-1/compiled-sources.json": {
+      "sha256": "58ba2642b4234b94b941e23bb89eb283172b087e12ca1429679992b9b1575f2f",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-1/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-1/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-1/worker.f": {
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-6/MadLoopParams.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-6/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-6/build.json": {
+      "sha256": "0e2f0897bc46db7bc11885fcf3f51e9e697de4552b32d7088dc4ce951b31fe6e",
+      "bytes": 8429
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-6/compiled-sources.json": {
+      "sha256": "58ba2642b4234b94b941e23bb89eb283172b087e12ca1429679992b9b1575f2f",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-6/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-6/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-6/worker.f": {
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-7/MadLoopParams.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-7/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-7/build.json": {
+      "sha256": "33eb03cf177e92b7a75f4e1b965ef8316811a6a819922f410d7ae219fdd6ee3a",
+      "bytes": 8385
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-7/compiled-sources.json": {
+      "sha256": "58ba2642b4234b94b941e23bb89eb283172b087e12ca1429679992b9b1575f2f",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-7/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-7/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-2-baseline-7/worker.f": {
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-1/MadLoopParams.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-1/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-1/build.json": {
+      "sha256": "0b51ce5afd0c048d182bda1ae8a990b6ec0d4220608163e45fcca411b943e6ac",
+      "bytes": 8429
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-1/compiled-sources.json": {
+      "sha256": "e0dc29c34c71c78f9a582383eca62c896203e613df83145bb5a4997b35e76b9f",
+      "bytes": 63907
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-1/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-1/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-1/worker.f": {
+      "sha256": "3e56a4efdfe5d8350a80955b60b842f15cac2c1d47c039421e96b675ae5cef76",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-6/MadLoopParams.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-6/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-6/build.json": {
+      "sha256": "e0111436a6f5b2ec9f5d365f84f6b72902951d1ae9902da500c83e1731e3e89c",
+      "bytes": 8429
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-6/compiled-sources.json": {
+      "sha256": "e0dc29c34c71c78f9a582383eca62c896203e613df83145bb5a4997b35e76b9f",
+      "bytes": 63907
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-6/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-6/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-6/worker.f": {
+      "sha256": "3e56a4efdfe5d8350a80955b60b842f15cac2c1d47c039421e96b675ae5cef76",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-7/MadLoopParams.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-7/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-7/build.json": {
+      "sha256": "e95c69bff6ad4f1e475dedb6268c977869e2abbd630fdbc299325a6f96807f03",
+      "bytes": 8385
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-7/compiled-sources.json": {
+      "sha256": "e0dc29c34c71c78f9a582383eca62c896203e613df83145bb5a4997b35e76b9f",
+      "bytes": 63907
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-7/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-7/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/ew-3-baseline-7/worker.f": {
+      "sha256": "3e56a4efdfe5d8350a80955b60b842f15cac2c1d47c039421e96b675ae5cef76",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-1/MadLoopParams.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-1/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-1/build.json": {
+      "sha256": "7cf97ab15026de3b8394c2024832a1a124dc3597bbfabbc6a73c2ba240087dc7",
+      "bytes": 8430
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-1/compiled-sources.json": {
+      "sha256": "9d6413614b1072a65fbbfa8b05cedda972a94ba8a6911a7cd53b76c324a0bcbf",
+      "bytes": 16774
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-1/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-1/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-1/worker.f": {
+      "sha256": "8e6016cbbbc9bc200473b9519d9dc6c9d3a75f85dc47f3b22af8d0ae44848abb",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-6/MadLoopParams.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-6/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-6/build.json": {
+      "sha256": "4b45b268da8bda24ec74d18d7ac8b3a9628436ab27307ed69ddde7a6b443b1f1",
+      "bytes": 8430
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-6/compiled-sources.json": {
+      "sha256": "9d6413614b1072a65fbbfa8b05cedda972a94ba8a6911a7cd53b76c324a0bcbf",
+      "bytes": 16774
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-6/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-6/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-6/worker.f": {
+      "sha256": "8e6016cbbbc9bc200473b9519d9dc6c9d3a75f85dc47f3b22af8d0ae44848abb",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-7/MadLoopParams.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-7/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-7/build.json": {
+      "sha256": "adac69d4e87fa9be9ec171ae8044f982fffedf6aca5c50569062f45208222eab",
+      "bytes": 8387
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-7/compiled-sources.json": {
+      "sha256": "9d6413614b1072a65fbbfa8b05cedda972a94ba8a6911a7cd53b76c324a0bcbf",
+      "bytes": 16774
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-7/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-7/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-1-baseline-7/worker.f": {
+      "sha256": "8e6016cbbbc9bc200473b9519d9dc6c9d3a75f85dc47f3b22af8d0ae44848abb",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-1/MadLoopParams.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-1/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-1/build.json": {
+      "sha256": "08b8d73ef1f21cab531e3bf98f34cdd8afeac6260784729547e42866edaed21c",
+      "bytes": 8428
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-1/compiled-sources.json": {
+      "sha256": "67585a134aed42f374c74453e5014611db779a4b2d780ca939624af1e80d0b4c",
+      "bytes": 22496
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-1/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-1/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-1/worker.f": {
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-6/MadLoopParams.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-6/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-6/build.json": {
+      "sha256": "9af6d8785e173d20b38aeeed301f82253771f4e9ceefeefde604a29bd1387cde",
+      "bytes": 8429
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-6/compiled-sources.json": {
+      "sha256": "67585a134aed42f374c74453e5014611db779a4b2d780ca939624af1e80d0b4c",
+      "bytes": 22496
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-6/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-6/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-6/worker.f": {
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-7/MadLoopParams.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-7/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-7/build.json": {
+      "sha256": "e589fb748ee21bebf369dcbe709fccaf4a32cc54facf4252f90ac3f9f6243a7c",
+      "bytes": 8386
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-7/compiled-sources.json": {
+      "sha256": "67585a134aed42f374c74453e5014611db779a4b2d780ca939624af1e80d0b4c",
+      "bytes": 22496
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-7/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-7/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-2-baseline-7/worker.f": {
+      "sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-1/MadLoopParams.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-1/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-1/build.json": {
+      "sha256": "677c6abd4152818ccceefcd924e98b954d1f95973a4bfc75f8ae47bb136304b1",
+      "bytes": 8430
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-1/compiled-sources.json": {
+      "sha256": "5fd861a38e4350a468445b9d861cddb45ba69bdd305a2bc49e41d71a25a56e43",
+      "bytes": 29257
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-1/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-1/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-1/worker.f": {
+      "sha256": "3e56a4efdfe5d8350a80955b60b842f15cac2c1d47c039421e96b675ae5cef76",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-6/MadLoopParams.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-6/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-6/build.json": {
+      "sha256": "2b0bac66674d36589b28711fa04e06a7f1a81012fc9b28eace22f5d86acaccbe",
+      "bytes": 8429
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-6/compiled-sources.json": {
+      "sha256": "5fd861a38e4350a468445b9d861cddb45ba69bdd305a2bc49e41d71a25a56e43",
+      "bytes": 29257
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-6/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-6/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-6/worker.f": {
+      "sha256": "3e56a4efdfe5d8350a80955b60b842f15cac2c1d47c039421e96b675ae5cef76",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-7/MadLoopParams.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-7/MadLoop_makefile_definitions": {
+      "sha256": "0df0ef9bf777b2155751ed001cc3410a607f5bf1f256c3e5d7d617a153108f11",
+      "bytes": 1938
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-7/build.json": {
+      "sha256": "007662e9b91beb2b4e74e1ec1b187a55717d803e479949af667774368dcd6cf5",
+      "bytes": 8387
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-7/compiled-sources.json": {
+      "sha256": "5fd861a38e4350a468445b9d861cddb45ba69bdd305a2bc49e41d71a25a56e43",
+      "bytes": 29257
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-7/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-7/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-3-baseline-7/worker.f": {
+      "sha256": "3e56a4efdfe5d8350a80955b60b842f15cac2c1d47c039421e96b675ae5cef76",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-1/MadLoopParams.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-1/MadLoop_makefile_definitions": {
+      "sha256": "c1ea1230fc6a0cc9c77706b6a627a26fd1f340b44ec6986c77e85aa39ab2a746",
+      "bytes": 1974
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-1/build.json": {
+      "sha256": "a13d86b49aade6743252da32dcbb8590783028b621a7e163124c17e4249bf0c7",
+      "bytes": 8464
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-1/compiled-sources.json": {
+      "sha256": "421fce050690e5e79d7c27eb11da1770bc27bdf84547aa3f753aaac23c4aecba",
+      "bytes": 31145
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-1/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-1/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-1/worker.f": {
+      "sha256": "ac2dc40423ab197d29c4ef45881c899220e6310b687e3642f7a4ab52d5cc072f",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-6/MadLoopParams.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-6/MadLoop_makefile_definitions": {
+      "sha256": "c1ea1230fc6a0cc9c77706b6a627a26fd1f340b44ec6986c77e85aa39ab2a746",
+      "bytes": 1974
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-6/build.json": {
+      "sha256": "4aac7082a98bf9b39e0a7193552b0e5001ff0fb645c1d9207da1603ef8bea5b2",
+      "bytes": 8464
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-6/compiled-sources.json": {
+      "sha256": "421fce050690e5e79d7c27eb11da1770bc27bdf84547aa3f753aaac23c4aecba",
+      "bytes": 31145
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-6/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-6/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-6/worker.f": {
+      "sha256": "ac2dc40423ab197d29c4ef45881c899220e6310b687e3642f7a4ab52d5cc072f",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-7/MadLoopParams.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-7/MadLoop_makefile_definitions": {
+      "sha256": "c1ea1230fc6a0cc9c77706b6a627a26fd1f340b44ec6986c77e85aa39ab2a746",
+      "bytes": 1974
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-7/build.json": {
+      "sha256": "088d5bd1aaded02f28281861db2a89ef35ad3040008111ccfbc4b8cd2cbd88de",
+      "bytes": 8420
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-7/compiled-sources.json": {
+      "sha256": "421fce050690e5e79d7c27eb11da1770bc27bdf84547aa3f753aaac23c4aecba",
+      "bytes": 31145
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-7/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-7/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/builds/qcd-4-baseline-7/worker.f": {
+      "sha256": "ac2dc40423ab197d29c4ef45881c899220e6310b687e3642f7a4ab52d5cc072f",
+      "bytes": 4672
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-1-baseline-1-0.json": {
+      "sha256": "fe9460a2d4a3afa32ce02ba001fed70222032f7df8d81284701009321360ae41",
+      "bytes": 60950
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-1-baseline-1-1.json": {
+      "sha256": "389e098994525a6a3f1a5abb117e8259497a62b6b5788cb47489c4609d7629ad",
+      "bytes": 60949
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-1-baseline-1-calibration.json": {
+      "sha256": "d9e565c0f6d7d9afc29bd93dff52412203d085ca93f88ac1dd840627724d71aa",
+      "bytes": 60884
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-1-baseline-6-0.json": {
+      "sha256": "e30d90f2407056c4d395c6d6fde595d7d0d6090c731b9314abc8067cefac3015",
+      "bytes": 60860
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-1-baseline-6-1.json": {
+      "sha256": "20491ff6b77986e9063c9595c76b340bd2a77b71ca7150687cfd21a9419c9d00",
+      "bytes": 60860
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-1-baseline-6-calibration.json": {
+      "sha256": "ecadd50b7beff963e41f4dd2bc2ceec0994c1b4f79feef05d9097b39a264ed87",
+      "bytes": 60793
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-1-baseline-7-0.json": {
+      "sha256": "824d8501e3df1370f7b703426810b373fea6e7c4cbf855c6151180c701f9ea38",
+      "bytes": 60906
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-1-baseline-7-1.json": {
+      "sha256": "5247b95cc1ef2b264b07e35b04a00bda5ad8ac80d3ae1be1955ead37daad38a9",
+      "bytes": 60905
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-1-baseline-7-calibration.json": {
+      "sha256": "8265fded51a45b98f0d52993444366e95560296f870d3b6d751a8bdd9d7bfda5",
+      "bytes": 60839
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-2-baseline-1-0.json": {
+      "sha256": "7ae42e52436f4d20bade75553e7a937190ab05cb95e956ad36f2bd3271e48577",
+      "bytes": 63032
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-2-baseline-1-1.json": {
+      "sha256": "c8e7531f3abe28deda2273c0fe537608d33a1aa7554630c9aabe19301cec6a48",
+      "bytes": 63032
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-2-baseline-1-calibration.json": {
+      "sha256": "0f911ef468330eb7363355a1053f54a47202ba7b0a3d5981d95d0f065bd58aaf",
+      "bytes": 62966
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-2-baseline-6-0.json": {
+      "sha256": "2257798317fb1ca87c8187310c6c63d8f67c0d5cd2404efe20b1358a307b5cee",
+      "bytes": 62998
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-2-baseline-6-1.json": {
+      "sha256": "0a4c28660f4490fc2faca33f44bdc2ff31d9326fcc26773fb23a57a2b373388b",
+      "bytes": 62999
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-2-baseline-6-calibration.json": {
+      "sha256": "3d2708c5835cf070f4815304071fa7aa1071254258e4df5f96d0502b379efa0a",
+      "bytes": 62933
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-2-baseline-7-0.json": {
+      "sha256": "aa4ea47b9d53c478bd9100163041ec5cfecc8113296cc1f2788e6f4edf93dd6b",
+      "bytes": 62950
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-2-baseline-7-1.json": {
+      "sha256": "571b32d2512f3dca589542a947a3afe907fb58464e553d535e575a4063f68561",
+      "bytes": 62950
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-2-baseline-7-calibration.json": {
+      "sha256": "ae1132ae96330fbee4b765ca3de4a18954ec2856e5725a0443aa8f6710683dec",
+      "bytes": 62891
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-3-baseline-1-0.json": {
+      "sha256": "bd65c3963234c050a0965716ff73ce814117e3e6dec7632c648502805c3583b0",
+      "bytes": 63280
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-3-baseline-1-1.json": {
+      "sha256": "31f76756b08382506bb393f3428f03305e87453bec46f056662b70161e725608",
+      "bytes": 63280
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-3-baseline-1-calibration.json": {
+      "sha256": "207939de8bcf896b8737139ccdb48323ba3dcca84534cb6947ef89c0a77529b1",
+      "bytes": 63214
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-3-baseline-6-0.json": {
+      "sha256": "23639c9b499cef1a967c5d3061b2e09c87578cbd3406ff2a0046ec613b4b4fba",
+      "bytes": 63355
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-3-baseline-6-1.json": {
+      "sha256": "7d18e732eb50bdbe36cdf06a76d4f95ddc210014622c8cbc9882d74dc25fde94",
+      "bytes": 63351
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-3-baseline-6-calibration.json": {
+      "sha256": "3eb1499bd05c403469b5bf28de83123bf4b3e025f1c8ce305601377ff10e7d4c",
+      "bytes": 63289
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-3-baseline-7-0.json": {
+      "sha256": "0454951502679226050c38a50c9bfe131292b2201fb802512c986ff52b5d863a",
+      "bytes": 63263
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-3-baseline-7-1.json": {
+      "sha256": "972a726595b6fdcef0245354b929721bc0728d1f1fd57d4b804b2f9b0fb446cd",
+      "bytes": 63258
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/ew-3-baseline-7-calibration.json": {
+      "sha256": "9fa17d7c4af9068faa428ffb9b7b75634bf20f2d323569d206bff616e3b92514",
+      "bytes": 63192
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-1-baseline-1-0.json": {
+      "sha256": "a84031b8add0cbb6d25cbf48e8d431022783a66e6a64d1ca66bd063e5691d401",
+      "bytes": 60149
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-1-baseline-1-1.json": {
+      "sha256": "15e6570dff8c789d1d7065b728ccc8ea6e164e56c1a36a734be777ee54ffc655",
+      "bytes": 60148
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-1-baseline-1-calibration.json": {
+      "sha256": "bf9760ce10de0b56caa3db2882a57489197e527aeb08f5c03312fdffea30f8eb",
+      "bytes": 60083
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-1-baseline-6-0.json": {
+      "sha256": "28e66c68c54cac02a2e2466568c6746f329de17d3dbecd176d85809bbe4ab375",
+      "bytes": 59059
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-1-baseline-6-1.json": {
+      "sha256": "6373beea74fddff523f4ca8e95458dbda5247ac14e93b72a118956508c303f25",
+      "bytes": 59047
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-1-baseline-6-calibration.json": {
+      "sha256": "838f9fa6b2b439ca664546d6ea1458c3d477cae7dc0658405990203ef4b0615f",
+      "bytes": 58982
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-1-baseline-7-0.json": {
+      "sha256": "4c80a2f8956066166e8a76b07bde04d315453c078590bebe673bd95db53deddb",
+      "bytes": 60080
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-1-baseline-7-1.json": {
+      "sha256": "45ddcfd494d71576aa1e69ff7f84d8df1ad90f0ea24aed1eb9102f6f67086323",
+      "bytes": 60071
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-1-baseline-7-calibration.json": {
+      "sha256": "ebf6d6fea2737d30acd5fb4eb2c36007f1882472373895a9877af4c1194a593f",
+      "bytes": 60006
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-2-baseline-1-0.json": {
+      "sha256": "a430221f311db16f7ce5c5d316dff9aeb459e922708cfb0ec693f5c87335a2ed",
+      "bytes": 61079
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-2-baseline-1-1.json": {
+      "sha256": "e827149c54557c01f0ae8e80e5aae0d3c08f5850aae1b7c74fd28cbeef6d7634",
+      "bytes": 61079
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-2-baseline-1-calibration.json": {
+      "sha256": "d9771ce4a652bcb73dfdf26fac8466dd5a8123e5b3dfa6fc7a53a1d4cb06e5f0",
+      "bytes": 61011
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-2-baseline-6-0.json": {
+      "sha256": "73155cf3db34e7761cadd2112e57adb7ad67fae86f75626d2bea1fd1a19c41bc",
+      "bytes": 61096
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-2-baseline-6-1.json": {
+      "sha256": "37e94b8a9b017614b2ff691ba7544f2b5637c93c8c9cb864282c7b72740b0dac",
+      "bytes": 61104
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-2-baseline-6-calibration.json": {
+      "sha256": "ff153dc4fa95f4ac669ccdbf44246bbb8628300ad9a80ad3f12cb1c8091aaac7",
+      "bytes": 61036
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-2-baseline-7-0.json": {
+      "sha256": "291c9b0f8160f36cf52e7975ff55c04ce3d315b762878ec14c839e957653bd3e",
+      "bytes": 61027
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-2-baseline-7-1.json": {
+      "sha256": "9373b93f53f59d8319c8522b1603e8d587733eadd13b24e7b137aea0c3b90cea",
+      "bytes": 61025
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-2-baseline-7-calibration.json": {
+      "sha256": "6218e69fbc32c4fa08345f646c9609cc7edac5da2795a4a120580d087a46a456",
+      "bytes": 60961
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-3-baseline-1-0.json": {
+      "sha256": "66c40a3475ab460c29ee3f648e669d03e6473c91fcc597fd7a99043409729238",
+      "bytes": 61642
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-3-baseline-1-1.json": {
+      "sha256": "061746f4d588f2752346e6d1562d256115fd231751292575be8ad53fbb4a380c",
+      "bytes": 61644
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-3-baseline-1-calibration.json": {
+      "sha256": "0a3f5a4c5e6c90951c3b2edbac4d499d4b627a28348b8f564049aae1270dcd29",
+      "bytes": 61576
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-3-baseline-6-0.json": {
+      "sha256": "d9b2f9af89c8e264a1d536b1630b25c7d96f89fb48982576968bbc00f9ea5428",
+      "bytes": 63557
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-3-baseline-6-1.json": {
+      "sha256": "4958d999612b921d7678b82fa255cb4e18f00d49c0a81fb329d73d0286e0802d",
+      "bytes": 63563
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-3-baseline-6-calibration.json": {
+      "sha256": "6d0f772d9327191ec0f16f7c9ec91f7788ad11acdeb607d998da97f3d96a1d56",
+      "bytes": 63491
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-3-baseline-7-0.json": {
+      "sha256": "ab0661ccb5160ad154d47c21487fe11bb19f8b0e2e60abe3fa07b0600115a2cf",
+      "bytes": 63474
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-3-baseline-7-1.json": {
+      "sha256": "ba8e24f2e2a33c9dd59beeb5e8bdc6fd8c5e217672ca7b5d3f9bee9385b2c4e6",
+      "bytes": 63482
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/data/qcd-3-baseline-7-calibration.json": {
+      "sha256": "2b4067b86624123249f959554348a6928fc77f9621cc28a50de57a61b0fbb44a",
+      "bytes": 63415
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-1/MadLoopParams-1.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-1/MadLoopParams-6.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-1/MadLoopParams-7.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-1/compilation-history/1f6f46063c8b10ba.json": {
+      "sha256": "1f6f46063c8b10ba8a8330496599f3dc41d5c757e16399ea92f99765c74e72f9",
+      "bytes": 5236
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-1/compilation.json": {
+      "sha256": "836923598192ef88d39cd5822f55d4c5e79572001f75fda58ac1c671e197dce2",
+      "bytes": 5888
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-1/compiled-source-manifests/63fd2f906e7c5281e057cf74f8fe7f8596b8cd477a1f599d9970bd7caa7b2ba9.json": {
+      "sha256": "00deef011544056695764fc021e85b00df2cb242565ae6ca102ae51c8830003d",
+      "bytes": 23655
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-1/compiled-sources.json": {
+      "sha256": "00deef011544056695764fc021e85b00df2cb242565ae6ca102ae51c8830003d",
+      "bytes": 23655
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-1/generated-sources-observed.json": {
+      "sha256": "f30f1fafc3106720e83d68117d7946dc330d51775e707f42eef373220981daa8",
+      "bytes": 23808
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-1/generation.json": {
+      "sha256": "8743386524667720ff883ed6c815395242a3fdeef7f7be5c938cb184f2bab336",
+      "bytes": 535
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-1/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-2/MadLoopParams-1.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-2/MadLoopParams-6.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-2/MadLoopParams-7.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-2/compilation-history/917bd1ea3d7ce03f.json": {
+      "sha256": "917bd1ea3d7ce03fc7791c7a9bebec21972c5ee447d4fa8b622b79ae6a691b01",
+      "bytes": 5236
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-2/compilation.json": {
+      "sha256": "a4c148a1e898e239e2c71729b3aa9e5ea34342abb0e49b99660923232f55fe66",
+      "bytes": 5888
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-2/compiled-source-manifests/3fb531f999c8541b06ce7fbe2c0f4e5c8d5e7f5c2b5c23109b6b84b4035eb701.json": {
+      "sha256": "cd73e31d7154d3c76511c11ea0cb9c6750f3d613d8ac1d1b96b30c9b653dea45",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-2/compiled-sources.json": {
+      "sha256": "cd73e31d7154d3c76511c11ea0cb9c6750f3d613d8ac1d1b96b30c9b653dea45",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-2/generated-sources-observed.json": {
+      "sha256": "4c477eed3ff2e6aa25df3b6996299c2c95ed5b20eefd776f90485a41b42085bd",
+      "bytes": 40710
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-2/generation.json": {
+      "sha256": "fd9e6900d1f8e000c776c07e0c37544db71a53caddebbfbeef4509dedb56e600",
+      "bytes": 535
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-2/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-3/MadLoopParams-1.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-3/MadLoopParams-6.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-3/MadLoopParams-7.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-3/compilation-history/c1388d1c060fc9fe.json": {
+      "sha256": "c1388d1c060fc9fe587646e4118ce86d11e80d4d4980974d5e96bf16683b57e5",
+      "bytes": 5235
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-3/compilation.json": {
+      "sha256": "2bdf2ca6d3e6fecc20d041fe30b9dd3269f40951471ac737815445bc2c3899b8",
+      "bytes": 5888
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-3/compiled-source-manifests/084c0e828c91c772b0ae9a1a86becc04292a7966f44e80f1d67b5dcc1707eb63.json": {
+      "sha256": "c36cd82c2d60961aea1bc182b9f7c09cc4c8b54f6fc0b69c38f4a1f564bdc14f",
+      "bytes": 63907
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-3/compiled-sources.json": {
+      "sha256": "c36cd82c2d60961aea1bc182b9f7c09cc4c8b54f6fc0b69c38f4a1f564bdc14f",
+      "bytes": 63907
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-3/generated-sources-observed.json": {
+      "sha256": "45c45e65c2b419b1e0bbedec6f0c02a91fa62233757de8ccbbac084bade5eac8",
+      "bytes": 64060
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-3/generation.json": {
+      "sha256": "10b04a12a60bf9e4bc7a6c6b1b7523bfc2431227cf54a3c7f155275e697b4763",
+      "bytes": 535
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/ew-3/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-1/MadLoopParams-1.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-1/MadLoopParams-6.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-1/MadLoopParams-7.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-1/compilation-history/ce9c46124e4cf538.json": {
+      "sha256": "ce9c46124e4cf538fbacf6957b482c345d654b10cb70b6806dc57d021d1ec2d0",
+      "bytes": 5236
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-1/compilation.json": {
+      "sha256": "d641223b905893cc12c1c938b2dfd402a156e504373ed7b517ca7b86cf33222f",
+      "bytes": 5888
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-1/compiled-source-manifests/34070caf362367821f021faf7b122fef3d07b3707851646d54c786f95af93137.json": {
+      "sha256": "2326930fc53f6e7a5f4a392b60c4d9094c99455121839d03f46844ba16f0861d",
+      "bytes": 16774
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-1/compiled-sources.json": {
+      "sha256": "2326930fc53f6e7a5f4a392b60c4d9094c99455121839d03f46844ba16f0861d",
+      "bytes": 16774
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-1/generated-sources-observed.json": {
+      "sha256": "927e512dc0b3078037a9d32b111ad07e64b4960bf86ced19a26318c51dedac9e",
+      "bytes": 16927
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-1/generation.json": {
+      "sha256": "d6d19cd31d01328d689619f35c88d809b918e723250c13c1218fe4f4b61f290d",
+      "bytes": 534
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-1/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-2/MadLoopParams-1.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-2/MadLoopParams-6.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-2/MadLoopParams-7.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-2/compilation-history/3ba54785a3403ed8.json": {
+      "sha256": "3ba54785a3403ed87a2646606062881de0a0a6bf4205900a93494e0629fddae6",
+      "bytes": 5235
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-2/compilation.json": {
+      "sha256": "7cdadd4ee60391d86001eee0741aa551f30b8d1717563a1ea3e733f0d641f548",
+      "bytes": 5887
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-2/compiled-source-manifests/065ed57c6821c488ff31f3dd07b525631c4969b312b72a70c437f43e7a27f988.json": {
+      "sha256": "61591e7be4db1407406017745bef14200064ffd8b6cc1645c9a48aab011caca0",
+      "bytes": 22496
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-2/compiled-sources.json": {
+      "sha256": "61591e7be4db1407406017745bef14200064ffd8b6cc1645c9a48aab011caca0",
+      "bytes": 22496
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-2/generated-sources-observed.json": {
+      "sha256": "db87e6642e8ac36bd4a985049afc29e681e17564dd05792ac96aab0d27cd1a35",
+      "bytes": 22649
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-2/generation.json": {
+      "sha256": "7d0ca08e4eb68382f639ffb4814434f6d97254708becef02033b5cf373879b2a",
+      "bytes": 534
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-2/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-3/MadLoopParams-1.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-3/MadLoopParams-6.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-3/MadLoopParams-7.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-3/compilation-history/d872770b91cd1d7f.json": {
+      "sha256": "d872770b91cd1d7f8aebe88a0a5bf2871ae5ef4ccafd795eb16bbf72266e832b",
+      "bytes": 5236
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-3/compilation.json": {
+      "sha256": "db99ad5287ac517864449fa9451609849fff6ac2a427732952e8e0a42294082a",
+      "bytes": 5888
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-3/compiled-source-manifests/3b5f342f2f2b5044ecb82abaffe8d3b629d4d4f809d52e8dfc95ba3bad365722.json": {
+      "sha256": "816dab3c7277614dce5d9e2c91320653b825a61d33b129101bb4cd1c4dbc2646",
+      "bytes": 29257
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-3/compiled-sources.json": {
+      "sha256": "816dab3c7277614dce5d9e2c91320653b825a61d33b129101bb4cd1c4dbc2646",
+      "bytes": 29257
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-3/generated-sources-observed.json": {
+      "sha256": "eaaeeb53d2e14267cddc13eb9b8d60a7235645527c27b8fd51c2b54ba7192a95",
+      "bytes": 29410
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-3/generation.json": {
+      "sha256": "bfd05be9cdf41d4164a439ab49b6db002a6955c31af5a0cee48505b30d89d7d2",
+      "bytes": 534
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-3/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-4/MadLoopParams-1.dat": {
+      "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-4/MadLoopParams-6.dat": {
+      "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-4/MadLoopParams-7.dat": {
+      "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+      "bytes": 13241
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-4/compilation-history/80b7544cd69123e1.json": {
+      "sha256": "80b7544cd69123e16ca4a7a9ee3fc1590f53e9f0002d55fcaec383a76f4a9b47",
+      "bytes": 5272
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-4/compilation.json": {
+      "sha256": "50f80cab116b3f253a66092290a45d43b9ca2f36604a6d5baa053565c92c152f",
+      "bytes": 5923
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-4/compiled-source-manifests/dae662b91c902973e99d371f6100c28db3984183dfa63866873f988c40028f68.json": {
+      "sha256": "3019339211c554231c24fc5f8e4cac49e5f79bbacd05be5ea117782ffbe7cb82",
+      "bytes": 31145
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-4/compiled-sources.json": {
+      "sha256": "3019339211c554231c24fc5f8e4cac49e5f79bbacd05be5ea117782ffbe7cb82",
+      "bytes": 31145
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-4/generated-sources-observed.json": {
+      "sha256": "b035cbf57bc92985b1b7caedf26d8cd94e8a30214ef6d07b29e91955b80f82e3",
+      "bytes": 31298
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-4/generation.json": {
+      "sha256": "2415c879c07b3db9316a7f38cd61529a59a315c478478c6b5d72cd1cfd0b2fb2",
+      "bytes": 534
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/inputs/baseline/qcd-4/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-ew-1-baseline-1.log": {
+      "sha256": "0f8b4f60f0540361ca517626ea269af1b3702fc66422e6dc3320ad0d27192ca4",
+      "bytes": 7308
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-ew-1-baseline-6.log": {
+      "sha256": "6403e912b2e51485db96a820ca483ed77f975c4759de02525bfb18ecf669c152",
+      "bytes": 7308
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-ew-1-baseline-7.log": {
+      "sha256": "a5f90729e3b741110b126bdb38b62b4a9f88699b2b1208b7db3a54eb93ea6d6d",
+      "bytes": 7308
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-ew-2-baseline-1.log": {
+      "sha256": "ef6d32d260c00bbb83dbb96aec960df66e23caf678f3163b82da6eba0a7dd14e",
+      "bytes": 7308
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-ew-2-baseline-6.log": {
+      "sha256": "5deed8959cb917510fb0ef5ed0844e2cbde2d8433b05b19841730575d9a7c85d",
+      "bytes": 7308
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-ew-2-baseline-7.log": {
+      "sha256": "ec5eefef89ae3f704e6cc233ef6df69e55ad3eb38bfec6d300f6e9e059080b98",
+      "bytes": 7308
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-ew-3-baseline-1.log": {
+      "sha256": "484c4d0e6a590efc5c76b03715bfca3ab0767aff20b28622222e5fafce188dda",
+      "bytes": 8061
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-ew-3-baseline-6.log": {
+      "sha256": "ace8da881b8ba3f1c1c6ccc0d2b9ea616d0a36f24b69cb02515623d792449a48",
+      "bytes": 8061
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-ew-3-baseline-7.log": {
+      "sha256": "42b3159980510148a6f4436108998f1f0d9a73b33f9b9abc7b57e5f662d9671a",
+      "bytes": 8061
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-qcd-1-baseline-1.log": {
+      "sha256": "57a2689f2bdc761159af899b5e1df29cea9cd06f736a06561b9affbfdde6baf3",
+      "bytes": 7312
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-qcd-1-baseline-6.log": {
+      "sha256": "5c0d4898bed0311521c50b10112ff893621f50eb7ebf049c7e389e1a79ff9506",
+      "bytes": 7312
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-qcd-1-baseline-7.log": {
+      "sha256": "c9aa62528983a2a5be3dfcea44b38b808303c5ab56c2199d1b580286a07b737a",
+      "bytes": 7312
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-qcd-2-baseline-1.log": {
+      "sha256": "7f978bf872245f1506fadb28b33d5175ad47bc20dbb80b4d9d0ae6d883d2d927",
+      "bytes": 8059
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-qcd-2-baseline-6.log": {
+      "sha256": "5309b23966cf2b5585da6f1fbbc9424d3d76f147077ff9e29da0638f61e859a7",
+      "bytes": 8059
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-qcd-2-baseline-7.log": {
+      "sha256": "d5a9ba4d8a58d2c1b7cdca0726799c6293f7bf593d808bcc847d19ee8153f3ac",
+      "bytes": 8059
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-qcd-3-baseline-1.log": {
+      "sha256": "c1dc49b10e85b8fc3e736b3c87f4d074c64285e318d29b541614f15a71e518ee",
+      "bytes": 8059
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-qcd-3-baseline-6.log": {
+      "sha256": "44c7c9f2a6070ef6ed02f3a1ede4328f9ffb262c420ccd237095c694484166c3",
+      "bytes": 8059
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-qcd-3-baseline-7.log": {
+      "sha256": "6dbfeb7e4097528e928b59fc566d2d952fd1f53791d791836693c432200738b9",
+      "bytes": 8059
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-qcd-4-baseline-1.log": {
+      "sha256": "91edb5f254b76b3adbf1cee221c1af5c4e4dd2ea3b292adff1db18619e483887",
+      "bytes": 9573
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-qcd-4-baseline-6.log": {
+      "sha256": "3a7806eb9c4f141d81b024f172aefb3dd968789d0dc316108363716c6679aa14",
+      "bytes": 9573
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/compile-qcd-4-baseline-7.log": {
+      "sha256": "06f5a69f6c81c17b0c93a61b8534c6e68375afc8ef773f3fbc9e6438e68690a5",
+      "bytes": 9573
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/fresh-link-ew-1.log": {
+      "sha256": "05cec166361652501e43b0233db5447711fab11e605a51c19cad83bc078c82f3",
+      "bytes": 7260
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/fresh-link-ew-2.log": {
+      "sha256": "aafc6f18bbca95bf1aebe6589b42b20ae39ed2ef5f4035f7be1db289d2934dd0",
+      "bytes": 7260
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/fresh-link-ew-3.log": {
+      "sha256": "de2408714358f1556b0eddd57764097c9f5b9a43efe83ba3e9030a87c32ae3a3",
+      "bytes": 8013
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/fresh-link-qcd-1.log": {
+      "sha256": "222ac522b727efca36c485dd25ccf54f693cabc353f582bfc2098e44eed59bc6",
+      "bytes": 7262
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/fresh-link-qcd-2.log": {
+      "sha256": "43e1459c2a5d69da942b56008861b304f8acc9eae5a79e323fc1392bac7f3ffe",
+      "bytes": 8009
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/fresh-link-qcd-3.log": {
+      "sha256": "9601c2161e3c7863059c825b2a70aeb8a11c64e8d046a5217631f54fb8e4c360",
+      "bytes": 8009
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/fresh-link-qcd-4.log": {
+      "sha256": "762b25971e9bd363f71e246fd018e0c8bfb27c6be4ec4baceade4ac2b1966d2c",
+      "bytes": 9523
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/model-rebuild-ew-1.log": {
+      "sha256": "4796e37749b818ded7b2b95cbba55200ce5f39553cd3d55f4aeaff55f7251ead",
+      "bytes": 1387
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/model-rebuild-ew-2.log": {
+      "sha256": "4796e37749b818ded7b2b95cbba55200ce5f39553cd3d55f4aeaff55f7251ead",
+      "bytes": 1387
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/model-rebuild-ew-3.log": {
+      "sha256": "fda407be4dc470005d7bf8775845cf926fb7189e371bee1e6fbed1373c747d71",
+      "bytes": 1586
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/model-rebuild-qcd-1.log": {
+      "sha256": "4796e37749b818ded7b2b95cbba55200ce5f39553cd3d55f4aeaff55f7251ead",
+      "bytes": 1387
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/model-rebuild-qcd-2.log": {
+      "sha256": "4796e37749b818ded7b2b95cbba55200ce5f39553cd3d55f4aeaff55f7251ead",
+      "bytes": 1387
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/model-rebuild-qcd-3.log": {
+      "sha256": "4796e37749b818ded7b2b95cbba55200ce5f39553cd3d55f4aeaff55f7251ead",
+      "bytes": 1387
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/model-rebuild-qcd-4.log": {
+      "sha256": "4796e37749b818ded7b2b95cbba55200ce5f39553cd3d55f4aeaff55f7251ead",
+      "bytes": 1387
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-ew-1-baseline-1.log": {
+      "sha256": "9c3dfb22d5a6bc5916387cac259a43529fbb5e86da9cd90be2417c07ad582331",
+      "bytes": 7372
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-ew-1-baseline-6.log": {
+      "sha256": "c89a79b2f6e6b3dde8a69c78f59feadb5c6d0275d1dbf55face98c2a3486d009",
+      "bytes": 9927
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-ew-1-baseline-7.log": {
+      "sha256": "cdb076f77fdee3ea2e41ee354779abe81356a399564cc28b63c8c3de0bab835d",
+      "bytes": 8571
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-ew-2-baseline-1.log": {
+      "sha256": "c1fb887b69f29069b22062e2d25dd2a940660aa6fb5bec735f17bc6b0f47238f",
+      "bytes": 5636
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-ew-2-baseline-6.log": {
+      "sha256": "b540a16543d5d05a647f48f34c8db564ec8713c8c80827fdc2f317587e3f3a12",
+      "bytes": 8191
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-ew-2-baseline-7.log": {
+      "sha256": "5b7bc4d28c407130d1806144d0adbebd13f8add87160738c6842b2834e866eef",
+      "bytes": 6835
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-ew-3-baseline-1.log": {
+      "sha256": "c1fb887b69f29069b22062e2d25dd2a940660aa6fb5bec735f17bc6b0f47238f",
+      "bytes": 5636
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-ew-3-baseline-6.log": {
+      "sha256": "b540a16543d5d05a647f48f34c8db564ec8713c8c80827fdc2f317587e3f3a12",
+      "bytes": 8191
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-ew-3-baseline-7.log": {
+      "sha256": "5b7bc4d28c407130d1806144d0adbebd13f8add87160738c6842b2834e866eef",
+      "bytes": 6835
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-qcd-1-baseline-1.log": {
+      "sha256": "9c3dfb22d5a6bc5916387cac259a43529fbb5e86da9cd90be2417c07ad582331",
+      "bytes": 7372
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-qcd-1-baseline-6.log": {
+      "sha256": "c89a79b2f6e6b3dde8a69c78f59feadb5c6d0275d1dbf55face98c2a3486d009",
+      "bytes": 9927
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-qcd-1-baseline-7.log": {
+      "sha256": "cdb076f77fdee3ea2e41ee354779abe81356a399564cc28b63c8c3de0bab835d",
+      "bytes": 8571
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-qcd-2-baseline-1.log": {
+      "sha256": "c1fb887b69f29069b22062e2d25dd2a940660aa6fb5bec735f17bc6b0f47238f",
+      "bytes": 5636
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-qcd-2-baseline-6.log": {
+      "sha256": "b540a16543d5d05a647f48f34c8db564ec8713c8c80827fdc2f317587e3f3a12",
+      "bytes": 8191
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-qcd-2-baseline-7.log": {
+      "sha256": "5b7bc4d28c407130d1806144d0adbebd13f8add87160738c6842b2834e866eef",
+      "bytes": 6835
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-qcd-3-baseline-1.log": {
+      "sha256": "c1fb887b69f29069b22062e2d25dd2a940660aa6fb5bec735f17bc6b0f47238f",
+      "bytes": 5636
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-qcd-3-baseline-6.log": {
+      "sha256": "b540a16543d5d05a647f48f34c8db564ec8713c8c80827fdc2f317587e3f3a12",
+      "bytes": 8191
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-qcd-3-baseline-7.log": {
+      "sha256": "5b7bc4d28c407130d1806144d0adbebd13f8add87160738c6842b2834e866eef",
+      "bytes": 6835
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-qcd-4-baseline-1.log": {
+      "sha256": "c1fb887b69f29069b22062e2d25dd2a940660aa6fb5bec735f17bc6b0f47238f",
+      "bytes": 5636
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/points/ew-1.dat": {
+      "sha256": "5869f48fc0546031f7c50ee8f68a4b0104fa6da66bc3b434e47d1422edcbb576",
+      "bytes": 29269
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/points/ew-2.dat": {
+      "sha256": "ed6f3f83033372061ed6de45c05a366aeeb68a63ddd006998682f406174e7b53",
+      "bytes": 38804
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/points/ew-3.dat": {
+      "sha256": "c030e6c68d53e9ecc1e2ac5ee99e4f81d97a80268dcbe3a0dc76065655a492a1",
+      "bytes": 48558
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/points/qcd-1.dat": {
+      "sha256": "bd8a00c863710123dd62cb5e079dcd11d2aebdcf49d8128313bbd6ecc6de1099",
+      "bytes": 29223
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/points/qcd-2.dat": {
+      "sha256": "6efb8cb1752f37badd187e17aff2103eb6814402dbaeaa598165a83d22bd0b63",
+      "bytes": 38804
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/points/qcd-3.dat": {
+      "sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41",
+      "bytes": 48552
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/points/qcd-4.dat": {
+      "sha256": "d66b0c04ee3d8e6ed90ef1fbf97abb9cd444d9ea1f84a508850688bff317b52d",
+      "bytes": 58316
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/protocol.json": {
+      "sha256": "3186af1b265e5600c1e7a6f6d4385e89aba34e3563ff4b200507d1f304d219a4",
+      "bytes": 2870
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/rejected/qcd-4-failure.json": {
+      "sha256": "c394465c739f4b254ee24eaf7aeaa14f022dfea706a544f65c131226e3fde6e6",
+      "bytes": 31940
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/run-status.json": {
+      "sha256": "6f6ec2bd796097188a392f839cfed398fc3d711516b1c73c47c686e115548b19",
+      "bytes": 582
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/sources/ninjars_benchmark.py": {
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+      "bytes": 49893
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/sources/ninjars_benchmark_references_v2.py": {
+      "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c",
+      "bytes": 18761
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/sources/ninjars_benchmark_worker.f": {
+      "sha256": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79",
+      "bytes": 4704
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/sources/ninjars_benchmark_workers.py": {
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "bytes": 44582
+    },
+    "docs/benchmarkfolder/policy-v2/reference-collection-plan/README.md": {
+      "sha256": "bf6882751fea2b70fe7e6e213397afc1d3672e057df5574a830ed4ba67633b2d",
+      "bytes": 1366
+    },
+    "docs/benchmarkfolder/policy-v2/reference-collection-plan/cases.json": {
+      "sha256": "f7fdf15ae6e0b20852144ce484a02ddc98ce13ff84bddb57154e77e1e7fbbbd3",
+      "bytes": 1338
+    },
+    "docs/benchmarkfolder/policy-v2/reference-collection-plan/command.sh": {
+      "sha256": "056232f26e37cf8f7185743b874f253ee79f43a1248c5736f5686670e3832f48",
+      "bytes": 505
+    },
+    "docs/benchmarkfolder/policy-v2/reference-collection-plan/launch.json": {
+      "sha256": "975102715eafcafc1d5a7591e240de8ad94b8e3e6dd7d83636986edd68224965",
+      "bytes": 3652
+    },
+    "docs/benchmarkfolder/policy-v2/reference-timeout-retention-20261020/README.md": {
+      "sha256": "92b766865663f5c10c6b32eabaffc76ad91b9dda2beabf5a2241f2f5b86b0c98",
+      "bytes": 2058
+    },
+    "docs/benchmarkfolder/policy-v2/reference-timeout-retention-20261020/collector.log": {
+      "sha256": "e9412cc1ced3f2f932e0dc79718be444500ded8626ffb1e734321b183c3a2807",
+      "bytes": 4051
+    },
+    "docs/benchmarkfolder/policy-v2/reference-timeout-retention-20261020/stale-output-provenance.json": {
+      "sha256": "c8e1a7f8f6b905a867f7e804c202b70324a3457b644bb2af9a181e379ed02ecf",
+      "bytes": 2252
+    },
+    "docs/benchmarkfolder/policy-v2/reference-timeout-retention-20261020/stale-parent-outputs/dimensions.dat": {
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "bytes": 37
+    },
+    "docs/benchmarkfolder/policy-v2/reference-timeout-retention-20261020/stale-parent-outputs/timed_status.dat": {
+      "sha256": "a9a0cf945b1f75a7c90abefda15979a7058f22b5a13efae5e75a489960bd0c30",
+      "bytes": 54
+    },
+    "docs/benchmarkfolder/policy-v2/reference-timeout-retention-20261020/stale-parent-outputs/timing.dat": {
+      "sha256": "edbdf4b8f9413642a0361bc19b8cd79028f86a3ff8f93c5441057e7712551139",
+      "bytes": 53
+    },
+    "docs/benchmarkfolder/policy-v2/reference-timeout-retention-20261020/stale-parent-outputs/values.dat": {
+      "sha256": "bfbbb825fab858c87890bc603e251073596c16958579fd0f9cf4c31cc3717a0a",
+      "bytes": 31000
+    },
+    "docs/benchmarkfolder/policy-v2/reference-timeout-retention-20261020/validation.json": {
+      "sha256": "e54e8805a595faa3c105f561f13806027e77ea0cb380e9160f3bbbce497dfb20",
+      "bytes": 3422
+    },
+    "docs/benchmarkfolder/policy-v2/reference-timeout-retention-20261020/verify.py": {
+      "sha256": "dcc477a3c1ea388c6dffabaf6daaa1b711d083ce922a0494797a0664f048109e",
+      "bytes": 8440
+    },
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/warmup-policy/inspection.json": {
+      "sha256": "86775842cbdf79bd8685a22a031e50d70e58270c1f0dff1b0cbd593e87d50f33",
+      "bytes": 1809
+    },
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/warmup-policy/return-code-and-helicity-excerpts.txt": {
+      "sha256": "fc8d6b8c74898191ec78956370505cdf9ddf2f56f52006d460102ed168de34d9",
+      "bytes": 4201
+    },
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/warmup-policy/stdout-snapshot.log": {
+      "sha256": "c1fb887b69f29069b22062e2d25dd2a940660aa6fb5bec735f17bc6b0f47238f",
+      "bytes": 5636
+    },
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/warmup-policy/worker-source.f": {
+      "sha256": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79",
+      "bytes": 4704
+    },
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/workload-scaling/README.md": {
+      "sha256": "3f590f83c826c56eae81ef1aece3a4122d5af4cbf0ccf2d0221b988eb7e4ad9a",
+      "bytes": 1755
+    },
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/workload-scaling/analysis.json": {
+      "sha256": "c07988385429fdbfd2cf76783d13b9b5e8c4a8ed00b943edf455fce1df3341ed",
+      "bytes": 968496
+    },
+    "docs/benchmarkfolder/policy-v2/reference-diagnostics/qcd4-ct-warmup-20261020/workload-scaling/analyze.py": {
+      "sha256": "197e91cc01552029653831c6a751eb62d48a148a043a6cb2acec211cc47c32ce",
+      "bytes": 8039
+    }
+  },
+  "identity_sha256": "628c7fbf524aeac42cff116ad10bf3343fbce7ca9c111a64813861ba944b81ca"
+}

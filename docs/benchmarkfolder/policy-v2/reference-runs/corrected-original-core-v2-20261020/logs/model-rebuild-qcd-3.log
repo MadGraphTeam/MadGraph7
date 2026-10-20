@@ -1,0 +1,16 @@
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o flavor_couplings.o flavor_couplings.f
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o couplings.o couplings.f
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o lha_read.o lha_read.f
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o printout.o printout.f
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o rw_para.o rw_para.f
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o model_functions.o model_functions.f
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o get_color.o get_color.f
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o couplings1.o couplings1.f
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o couplings2.o couplings2.f
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o couplings3.o couplings3.f
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o mp_couplings1.o mp_couplings1.f
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o mp_couplings2.o mp_couplings2.f
+gfortran -w -fPIC  -ffixed-line-length-132 -fPIC  -c -o mp_couplings3.o mp_couplings3.f
+ar cru  ../../lib/libmodel.a  flavor_couplings.o couplings.o lha_read.o printout.o rw_para.o model_functions.o get_color.o couplings1.o couplings2.o couplings3.o mp_couplings1.o mp_couplings2.o mp_couplings3.o
+ar: `u' modifier ignored since `D' is the default (see `U')
+ranlib  ../../lib/libmodel.a

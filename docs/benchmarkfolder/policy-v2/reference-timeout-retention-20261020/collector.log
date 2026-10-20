@@ -1,0 +1,79 @@
+qcd-1 baseline 1 ready 7.343361e-05
+qcd-1 baseline 6 ready 4.591989e-05
+qcd-1 baseline 7 ready 6.251646e-05
+qcd-1 baseline 1 0 7.538782e-05
+qcd-1 baseline 6 0 4.7167390000000004e-05
+qcd-1 baseline 7 0 6.449876999999999e-05
+qcd-1 baseline 7 1 6.393167e-05
+qcd-1 baseline 6 1 4.64449e-05
+qcd-1 baseline 1 1 7.481501e-05
+ew-1 baseline 1 ready 0.00036073451
+ew-1 baseline 6 ready 0.00021109248
+ew-1 baseline 7 ready 0.00028130788
+ew-1 baseline 1 0 0.00036136261
+ew-1 baseline 6 0 0.00021389999
+ew-1 baseline 7 0 0.00028167338
+ew-1 baseline 7 1 0.00028512909
+ew-1 baseline 6 1 0.00021616381
+ew-1 baseline 1 1 0.00036266062
+qcd-2 baseline 1 ready 0.0022988942
+qcd-2 baseline 6 ready 0.0013815686699999998
+qcd-2 baseline 7 ready 0.00248891089
+qcd-2 baseline 1 0 0.00223380723
+qcd-2 baseline 6 0 0.00138257408
+qcd-2 baseline 7 0 0.00248388418
+qcd-2 baseline 7 1 0.00247782674
+qcd-2 baseline 6 1 0.0013840223800000002
+qcd-2 baseline 1 1 0.00223476643
+ew-2 baseline 1 ready 0.00140516997
+ew-2 baseline 6 ready 0.00082629825
+ew-2 baseline 7 ready 0.0018991450300000002
+ew-2 baseline 1 0 0.00144534574
+ew-2 baseline 6 0 0.00083162847
+ew-2 baseline 7 0 0.00185638335
+ew-2 baseline 7 1 0.00185803295
+ew-2 baseline 6 1 0.00081518541
+ew-2 baseline 1 1 0.00141962813
+qcd-3 baseline 1 ready 1.9385128713
+qcd-3 baseline 6 ready 0.10226159633
+qcd-3 baseline 7 ready 0.057278771109999994
+qcd-3 baseline 1 0 1.9393344162
+qcd-3 baseline 6 0 0.10249180505
+qcd-3 baseline 7 0 0.06090355028
+qcd-3 baseline 7 1 0.060963377129999996
+qcd-3 baseline 6 1 0.10223057803999999
+qcd-3 baseline 1 1 1.94133933484
+ew-3 baseline 1 ready 0.08375089846
+ew-3 baseline 6 ready 0.10141462446
+ew-3 baseline 7 ready 0.07704738795
+ew-3 baseline 1 0 0.08365762385
+ew-3 baseline 6 0 0.10132788258
+ew-3 baseline 7 0 0.07607041137000001
+ew-3 baseline 7 1 0.07644368222
+ew-3 baseline 6 1 0.0978244943
+ew-3 baseline 1 1 0.07576842461
+Traceback (most recent call last):
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tools/ninjars_benchmark_references_v2.py", line 341, in <module>
+    main()
+    ~~~~^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tools/ninjars_benchmark_references_v2.py", line 335, in main
+    print(json.dumps(collect(args.correction, args.config, cases, args.run_id, args.cpu,
+                     ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                            args.timeout, args.fresh_parity, args.representative, args.points_root,
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                            tuple(map(int, args.backends.split(",")))), indent=2))
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tools/ninjars_benchmark_references_v2.py", line 194, in collect
+    workers.run_case(case, ("baseline",), backends, config, args,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                     worker_work, report, run_id)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tools/ninjars_benchmark_workers.py", line 433, in run_case
+    worker = Worker(["taskset", "-c", str(args.cpu), "./check", str(points)],
+                    directory, report / "logs" / f"worker-{case['id']}-{source}-{backend}.log",
+                    env=environment(job), timeout=args.timeout)
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tools/ninjars_benchmark_workers.py", line 102, in __init__
+    fields = self._message()
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tools/ninjars_benchmark_workers.py", line 134, in _message
+    raise ProtocolError(f"Worker protocol timeout; see {self.log}")
+ninjars_benchmark_workers.ProtocolError: Worker protocol timeout; see /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-qcd-4-baseline-1.log

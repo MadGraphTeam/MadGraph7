@@ -1,0 +1,25 @@
+{
+  "status": "failed",
+  "requested_cases": [
+    "qcd-1",
+    "ew-1",
+    "qcd-2",
+    "ew-2",
+    "qcd-3",
+    "ew-3",
+    "qcd-4",
+    "ew-4"
+  ],
+  "completed_cases": [
+    "qcd-1",
+    "ew-1",
+    "qcd-2",
+    "ew-2",
+    "qcd-3",
+    "ew-3"
+  ],
+  "source_role": "original_helper_corrected",
+  "acceptance_eligible": false,
+  "error_type": "ProtocolError",
+  "error": "Worker protocol timeout; see /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-20261020/logs/worker-qcd-4-baseline-1.log"
+}

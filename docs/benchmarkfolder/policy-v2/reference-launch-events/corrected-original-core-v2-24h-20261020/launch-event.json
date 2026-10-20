@@ -1,0 +1,22 @@
+{
+  "schema": "reference-launch-event-v2",
+  "run_id": "corrected-original-core-v2-24h-20261020",
+  "utc": "2026-10-20T19:36:09.611453+00:00",
+  "state": "launch-command-issued",
+  "command": [
+    "bash",
+    "docs/benchmarkfolder/policy-v2/reference-collection-plan-24h/command.sh"
+  ],
+  "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+  "plan": {
+    "path": "docs/benchmarkfolder/policy-v2/reference-collection-plan-24h/launch.json",
+    "sha256": "33c82ed42df7ba622e028b085658baedf2df15bcd05eced08d05a0e01e4a28b7"
+  },
+  "command_sha256": "41b9d08301a93064bfa66d152b3bc8a1a787ec3859198bf1dae8145b2b88648c",
+  "stdout_stderr_log": ".benchmark-work/logs/corrected-original-core-v2-24h-20261020.log",
+  "cpu": 207,
+  "phase_timeout_seconds": 86400,
+  "root_authorized": true,
+  "numerical_settings_changed": false,
+  "full_core_timing_launched": false
+}

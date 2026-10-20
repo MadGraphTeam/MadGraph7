@@ -1,0 +1,184 @@
+{
+  "status": "failed",
+  "accepted_complete_series": false,
+  "completed_case_count": 6,
+  "completed_repetition_records": 36,
+  "completed_calibration_records": 18,
+  "requested_cases": [
+    "qcd-1",
+    "ew-1",
+    "qcd-2",
+    "ew-2",
+    "qcd-3",
+    "ew-3",
+    "qcd-4",
+    "ew-4"
+  ],
+  "failure_case": "qcd-4",
+  "failure_stage": "initialize-before-READY",
+  "qcd4_accepted_measurements": 0,
+  "rejected_raw_outputs_are_measurements": false,
+  "physics_evaluations_started": false,
+  "cases": {
+    "qcd-1": {
+      "status_counts": {
+        "1": {
+          "211": 100
+        },
+        "6": {
+          "216": 100
+        },
+        "7": {
+          "217": 100
+        }
+      },
+      "repetitions_numerically_identical": true,
+      "comparisons": {
+        "0": {
+          "passed": true,
+          "pairs": 3,
+          "failures": []
+        },
+        "1": {
+          "passed": true,
+          "pairs": 3,
+          "failures": []
+        }
+      }
+    },
+    "ew-1": {
+      "status_counts": {
+        "1": {
+          "211": 100
+        },
+        "6": {
+          "216": 100
+        },
+        "7": {
+          "217": 100
+        }
+      },
+      "repetitions_numerically_identical": true,
+      "comparisons": {
+        "0": {
+          "passed": true,
+          "pairs": 3,
+          "failures": []
+        },
+        "1": {
+          "passed": true,
+          "pairs": 3,
+          "failures": []
+        }
+      }
+    },
+    "qcd-2": {
+      "status_counts": {
+        "1": {
+          "211": 100
+        },
+        "6": {
+          "216": 100
+        },
+        "7": {
+          "217": 100
+        }
+      },
+      "repetitions_numerically_identical": true,
+      "comparisons": {
+        "0": {
+          "passed": true,
+          "pairs": 3,
+          "failures": []
+        },
+        "1": {
+          "passed": true,
+          "pairs": 3,
+          "failures": []
+        }
+      }
+    },
+    "ew-2": {
+      "status_counts": {
+        "1": {
+          "211": 100
+        },
+        "6": {
+          "216": 100
+        },
+        "7": {
+          "217": 100
+        }
+      },
+      "repetitions_numerically_identical": true,
+      "comparisons": {
+        "0": {
+          "passed": true,
+          "pairs": 3,
+          "failures": []
+        },
+        "1": {
+          "passed": true,
+          "pairs": 3,
+          "failures": []
+        }
+      }
+    },
+    "qcd-3": {
+      "status_counts": {
+        "1": {
+          "329": 52,
+          "211": 48
+        },
+        "6": {
+          "216": 98,
+          "328": 2
+        },
+        "7": {
+          "217": 100
+        }
+      },
+      "repetitions_numerically_identical": true,
+      "comparisons": {
+        "0": {
+          "passed": true,
+          "pairs": 3,
+          "failures": []
+        },
+        "1": {
+          "passed": true,
+          "pairs": 3,
+          "failures": []
+        }
+      }
+    },
+    "ew-3": {
+      "status_counts": {
+        "1": {
+          "211": 99,
+          "329": 1
+        },
+        "6": {
+          "216": 98,
+          "328": 2
+        },
+        "7": {
+          "217": 100
+        }
+      },
+      "repetitions_numerically_identical": true,
+      "comparisons": {
+        "0": {
+          "passed": true,
+          "pairs": 3,
+          "failures": []
+        },
+        "1": {
+          "passed": true,
+          "pairs": 3,
+          "failures": []
+        }
+      }
+    }
+  }
+}
