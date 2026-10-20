@@ -39,7 +39,19 @@ def test_reprojected_bank_belongs_to_target_and_all_its_sources(actual_reuse, ac
 
 
 @pytest.mark.parametrize(
-    "change", ("source", "captured_source", "process", "scalar", "formal", "bank")
+    "change",
+    (
+        "source",
+        "captured_source",
+        "process",
+        "scalar",
+        "formal",
+        "bank",
+        "captured_formal",
+        "captured_projection",
+        "prepared_scalar",
+        "average",
+    ),
 )
 def test_reuse_rejects_foreign_actual_owner_boundaries(actual_reuse, change):
     from pyamplicol.loops.directed_color_projection import reproject_directed_color_bank
@@ -67,7 +79,32 @@ def test_reuse_rejects_foreign_actual_owner_boundaries(actual_reuse, change):
         target.bare.formal_color_metrics = None
     elif change == "bank":
         bank = replace(bank, plan=target.prepared)
-    with pytest.raises(ValueError, match=r"owner|process|source|projection"):
+    elif change == "captured_formal":
+        prepared = replace(
+            target.bare.prepared,
+            metadata=tuple(
+                (name, None if name == "formal_color_metrics" else value)
+                for name, value in target.bare.prepared.metadata
+            ),
+        )
+        target.bare._prepared_process = prepared
+        target._prepared_model = replace(target.prepared, bare=prepared)
+    elif change == "captured_projection":
+        target._prepared_model = replace(
+            target.prepared,
+            metadata=tuple(
+                (name, None if name == "color_projection" else value)
+                for name, value in target.prepared.metadata
+            ),
+        )
+    elif change == "prepared_scalar":
+        target.bare.model_state = copy(target.bare.model_state)
+        target.bare.model_state.prepared = control["other"].bare.model_state.prepared
+    elif change == "average":
+        target.bare.initial_average *= 2
+    with pytest.raises(
+        ValueError, match=r"owner|process|source|projection|normalization"
+    ):
         reproject_directed_color_bank(reference, bank, target)
     control["bank"].require_owner(reference)
     control["prepared"]["lc"].bare.color_bank.require_owner(control["targets"]["lc"])

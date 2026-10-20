@@ -608,42 +608,50 @@ def prepare_directed_color_bank(model, histories):
 
 
 def reproject_directed_color_bank(reference_model, reference_bank, target_model):
-    """Make a new LC/NLC/full bank for the same actual process and source.
+    """Reuse exact colour support while retaining each actual model's owner.
 
-    The target keeps its normally prepared currents, formal metrics and source
-    states. Cross-species owner substitution is not part of this factory.
+    Process, mass and scalar-plan equality are not colour-algebra premises.
+    This factory constructs target-owned weights; it does not share numerical
+    amplitudes or admit flavour transport. Each target binds its own averaging.
     """
     reference_bank.require_owner(reference_model)
-    source = reference_model.source_color
-    if (
-        source is None
-        or target_model.source_color is not source
-        or any(
-            dict(model.prepared.metadata).get("source_color") is not source
-            for model in (reference_model, target_model)
-        )
-        or reference_model.bare.process is not target_model.bare.process
-        or reference_model.bare.model_state is None
-        or target_model.bare.model_state is None
-        or reference_model.bare.model_state.plan
-        is not target_model.bare.model_state.plan
-    ):
-        raise ValueError(
-            "directed reprojection requires the same actual process/source"
-        )
+    for model in (reference_model, target_model):
+        bare, captured = model.bare, model.prepared
+        prepared = bare.prepared
+        metadata, bare_metadata = dict(captured.metadata), dict(prepared.metadata)
+        source, scalar = model.source_color, bare.model_state
+        formal = getattr(bare, "formal_color_metrics", None)
+        if (
+            captured.bare is not prepared
+            or formal is None
+            or source is None
+            or metadata.get("source_color") is not source
+            or metadata.get("color_projection") is not model.color_projection
+            or bare_metadata.get("formal_color_metrics") is not formal
+            or bare_metadata.get("process") is not bare.process
+            or scalar is None
+            or scalar.plan is None
+            or scalar.plan is not prepared.source_producer_plan
+            or scalar.prepared is not prepared.source_scalars
+            or source.model.scalar_program is not scalar.plan.program
+            or source.nc != formal.nc
+        ):
+            raise ValueError(
+                "directed reprojection requires each model's actual "
+                "prepared/formal/source owner"
+            )
     left, left_legs, reference_inputs = _model_color_inputs(reference_model)
     right, right_legs, target_inputs = _model_color_inputs(target_model)
     if (
         reference_bank.formal is not left
         or reference_bank.projection.nc != left.nc
         or left.nc != right.nc
-        or left.initial_average != right.initial_average
         or left.born_degrees != right.born_degrees
         or left.virtual_degrees != right.virtual_degrees
         or left_legs != right_legs
     ):
         raise ValueError(
-            "directed reprojection changes formal normalization or sectors"
+            "directed reprojection changes formal Nc, sectors or colour ports"
         )
     projection = reproject_directed_color_columns(
         reference_bank.projection, right.accuracy, reference_inputs, target_inputs
