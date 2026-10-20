@@ -3,6 +3,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -249,6 +250,85 @@ class NinjaRSReportV2Test(unittest.TestCase):
         self.policy.path(filename).write_text("{}")
         with self.assertRaisesRegex(ValueError, "changed after"):
             self.snapshot()
+
+
+class NinjaRSProfileReportTest(unittest.TestCase):
+    """Exercise retained CPU samples without launching numerical workers."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(dir=report.ROOT / ".ninjars-build/tmp",
+                                                prefix="profile-report-test-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        evidence = report.REPORT / "policy-v2/profiles"
+        name = "profile-controller-original-qcd1-retry2-20261020"
+        self.directory = self.root / "profile"
+        shutil.copytree(evidence / name, self.directory)
+        self.profile_path = self.directory / "profile.json"
+        self.profile = report.policy.read(self.profile_path)
+        self.binding = report.policy.read(report.policy.check_file(self.profile["binding"]))
+        self.correction = report.policy.validate_correction(
+            report.REPORT / "policy-v2/model-correction.json")
+        self.dataset = {"measurements_sha256": {
+            self.profile["measurement"]["path"]: self.profile["measurement"]["sha256"]}}
+        self.raw = evidence / "controller-evidence-20261020/raw-perf" / (name + ".perf")
+        self.inputs = {}
+
+    def evaluate(self):
+        self.profile_path.write_text(json.dumps(self.profile))
+        spec = self.root / "spec.json"
+        spec.write_text(json.dumps(report.policy.seal({
+            "schema": "profile-report-evidence-v2",
+            "profiles": [{"profile": report.policy.bound_file(self.profile_path),
+                          "raw_perf": report.policy.bound_file(self.raw)}]})))
+        return report.profile_snapshot(spec, self.dataset, [self.binding],
+                                       self.correction, self.inputs)
+
+    def test_recompute_retained_samples_and_all_raw_blocks(self):
+        result = self.evaluate()[0]
+        self.assertEqual(result["samples"], 405)
+        self.assertEqual(result["evaluations"], 90000)
+        self.assertEqual(result["points"], 100)
+        self.assertEqual(result["status_counts"], {"216": 90000})
+        self.assertEqual(result["categories"]["fortran_dp_numerator"]["samples"], 194)
+        self.assertIn(report.policy.relative(self.raw), self.inputs)
+
+    def test_other_dataset_and_changed_worker_are_rejected(self):
+        self.dataset["measurements_sha256"] = {}
+        with self.assertRaisesRegex(ValueError, "this dataset"):
+            self.evaluate()
+        self.dataset["measurements_sha256"][self.profile["measurement"]["path"]] = self.profile["measurement"]["sha256"]
+        self.binding["targets"][self.profile["target"]]["executable_sha256"] = "different"
+        with self.assertRaisesRegex(ValueError, "source/runtime"):
+            self.evaluate()
+
+    def test_changed_raw_values_are_not_hidden_by_pass_flags(self):
+        values = self.directory / "block-1/values.dat"
+        lines = values.read_text().splitlines()
+        fields = lines[0].split()
+        fields[3] = str(float(fields[3]) + 1.)
+        lines[0] = " ".join(fields)
+        values.write_text("\n".join(lines) + "\n")
+        with self.assertRaisesRegex(ValueError, "physical rows"):
+            self.evaluate()
+
+    def test_forged_sample_shares_and_missing_raw_recording_are_rejected(self):
+        self.profile["partition"]["categories"]["fortran_dp_numerator"]["percent"] = 0.
+        with self.assertRaisesRegex(ValueError, "classification"):
+            self.evaluate()
+        self.profile = report.policy.read(self.profile_path)
+        self.raw = self.root / "wrong.perf"
+        self.raw.write_bytes(b"unrelated recording")
+        with self.assertRaisesRegex(ValueError, "Changed profile evidence"):
+            self.evaluate()
+
+    def test_incomplete_or_acceptance_labelled_profiles_are_rejected(self):
+        for key, value in (("complete", False), ("acceptance_eligible", True)):
+            saved = self.profile[key]
+            self.profile[key] = value
+            with self.assertRaisesRegex(ValueError, "diagnostic profile"):
+                self.evaluate()
+            self.profile[key] = saved
 
 
 if __name__ == "__main__":

@@ -1,0 +1,31 @@
+{
+  "schema": "read-only-profile-controller-validation-v2",
+  "results": {
+    "profile-controller-original-qcd1-20261020": {
+      "complete": false,
+      "error": "FileNotFoundError(2, 'No such file or directory')"
+    },
+    "profile-controller-original-qcd1-retry1-20261020": {
+      "complete": true,
+      "blocks": 3,
+      "evaluations": 90000,
+      "points": 100,
+      "samples": 409,
+      "all_rows_exact": true
+    },
+    "profile-controller-original-qcd1-retry2-20261020": {
+      "complete": true,
+      "blocks": 3,
+      "evaluations": 90000,
+      "points": 100,
+      "samples": 405,
+      "all_rows_exact": true
+    }
+  },
+  "script": {
+    "path": "docs/benchmarkfolder/policy-v2/profiles/controller-evidence-20261020/verify.py",
+    "sha256": "d0ca489eff263e6a23bf5e414edcfbd642bfe45a4844a5bed62e8db79cd84ead"
+  },
+  "scope": "Read/hash/parse existing outputs and captured stacks only; no worker, compiler or perf execution",
+  "identity_sha256": "77c9ad36205acda3885607b6da52b407617d390fe22a19414a38c0b3c6eac8cf"
+}

@@ -219,6 +219,44 @@ The final top-level benchmark report is replaced only after the complete
 required measurements are qualified. No v2 acceptance data is implied by the
 layout fixture used during development.
 
+## Diagnostic CPU profiles
+
+`tools/ninjars_profile_v2.py` clones an exact bound worker and samples it after
+initialization/warming. Pass the final runtime binding, one non-calibration
+measurement from the same dataset, its complete point stream, target key,
+CPU and a fresh run identifier. For example:
+
+```sh
+python tools/ninjars_profile_v2.py \
+  --binding FINAL_RUNTIME_BINDING --correction docs/benchmarkfolder/policy-v2/model-correction.json \
+  --measurement FINAL_MEASUREMENT --points RETAINED_POINT_STREAM \
+  --target qcd-3-candidate-8 --run-id FINAL_PROFILE_ID --cpu 207 \
+  --perf PERF_EXECUTABLE --blocks 3 --loops 3
+```
+
+Coordinate the one-process Symbolica slot for NinjaRS. This is profiling, not
+acceptance timing; profiler overhead and output serialization between commands
+are inside the sampled interval. Each final traversal must match every
+reference coefficient, accuracy estimate and status exactly. Source, runtime,
+executable and physical/numerical card identities are checked before and after.
+The original worker remains unchanged.
+
+Retain the recording identified by `profile.json:perf_command` alongside the
+profile evidence, without modifying the completed run. Create a JSON manifest
+using `ninjars_benchmark_policy_v2.seal` with schema
+`profile-report-evidence-v2` and a `profiles` list. Each entry has `profile` and
+`raw_perf` records returned by `policy.bound_file` for the completed
+`profile.json` and retained recording. Pass this manifest as `--profile-spec`
+to the report renderer.
+
+The renderer requires each profile's exact measurement to belong to the
+published dataset. It rechecks role/source/runtime bindings, reparses every
+raw output block, and recomputes category counts from retained stacks. Its
+snapshot includes all profile input hashes and the manifest path. The profiling
+page labels sample shares separately from measured timing; no sample count or
+share can change a performance decision. Earlier research profiles cannot
+silently substitute for final-build measurements.
+
 ## Checks and development attempts
 
 Run focused tests with:

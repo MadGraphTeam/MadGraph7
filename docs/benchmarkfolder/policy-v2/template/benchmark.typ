@@ -353,6 +353,72 @@ transport carries actual binary128 input into 256-bit arithmetic. Context cleanu
 joins the retained worker. See `audit.md` for scope, evidence and remaining limits.
 
 #pagebreak()
+#section-label[PROFILING · SAMPLED CPU WORK]
+= Where evaluation time is spent
+#note[
+  *Diagnostic samples, separate from timing acceptance.* Profiles run a copy of an
+  exact measured worker after initialization and warming. Sampling includes profiler
+  overhead and output serialization between complete stream traversals. Percentages
+  are CPU-clock sample shares, not exclusive stage timers. They are never used to
+  decide the five-percent performance gate.
+]
+#v(7pt)
+#let profile-labels = (
+  fortran_dp_numerator: [Fortran numerator · DP],
+  fortran_qp_numerator: [Fortran numerator · QP],
+  dp_tensor: [Native DP tensor expansion],
+  compensated_dp_tensor: [Compensated DP tensor expansion],
+  mp_tensor: [Higher-precision tensor expansion],
+  mp_scalar_masters: [Higher-precision scalar masters],
+  mp_geometry: [Higher-precision cut geometry],
+  mp_reduction: [Higher-precision reduction],
+  bridge_numeric_transport: [Numeric transport],
+  other: [Other / unclassified],
+)
+#let source-labels = (
+  original: "original",
+  candidate_corrected: "candidate",
+  original_helper_corrected: "corrected original",
+)
+#let backend-labels = ("1": "CutTools", "6": "Ninja", "7": "Collier", "8": "NinjaRS")
+#if data.profiles.len() == 0 {
+  small[No diagnostic profile has been supplied for this dataset. Earlier research
+    profiles remain separate evidence and are not presented as current measurements.]
+} else {
+  for p in data.profiles {
+    block(breakable: false)[
+      #v(7pt)
+      #text(fill: navy, weight: "semibold")[
+        #label(p.case) · #source-labels.at(p.role) #backend-labels.at(str(p.backend))
+      ]
+      #linebreak()
+      #small[
+        #p.points points · #value-fmt(p.evaluations) evaluations · #p.blocks blocks ·
+        #value-fmt(p.samples) samples · CPU #p.cpu
+      ]
+      #v(4pt)
+      #tab((2fr, 0.8fr, 0.8fr),
+        table.header(th[Observed work], th[Samples], th[Share]),
+        ..p.categories.pairs().map(((name, item)) => (
+          profile-labels.at(name), value-fmt(item.samples),
+          [#fmt(item.percent, digits: 1)%],
+        )).flatten(),
+      )
+    ]
+  }
+}
+#v(8pt)
+#small[
+  Each sample uses the first recognized stack owner or ancestor; unmatched work
+  stays “other”. In particular, the scalar-master category covers higher-precision
+  NinjaRS masters only. Every recorded block must reproduce all point/order
+  coefficients, accuracy estimates and statuses of its bound measurement exactly.
+  The report reader rechecks source/runtime identities, cards, retained raw outputs,
+  raw recording hashes and stack-category counts. Full paths, hashes and usage
+  counts are in `report-data.json`.
+]
+
+#pagebreak()
 #section-label[REPRODUCIBILITY · PINNED SOURCES AND RETAINED INPUTS]
 = Source and toolchain record
 #tab((1.05fr, 2.6fr), left-columns: (0, 1),
@@ -395,6 +461,8 @@ python tools/ninjars_report_v2.py DATASET --compile
   The renderer independently recomputes all numerical comparisons and confidence
   intervals. It rejects changed inputs and stale conclusions, and writes into a
   new directory so earlier reports remain intact.
+  When diagnostic profiles are included, also pass `--profile-spec` with the
+  retained profile manifest listed in the snapshot's input hashes.
 ]
 #v(5pt)
 #small[
