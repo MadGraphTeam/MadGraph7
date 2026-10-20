@@ -51,7 +51,7 @@ else:
     import madgraph.various.misc as misc
     import madgraph.iolibs.file_writers as file_writers
     import madgraph.iolibs.files as files 
-    import models.check_param_card as param_card_reader
+    import madgraph.models.check_param_card as param_card_reader
     from madgraph import MG5DIR, MadGraph5Error, InvalidCmd
 
 
@@ -5904,7 +5904,9 @@ template_on = \
 # CONTROL The extra running scale (not QCD)                       *
 #    Such running is NOT include in systematics computation            *
 #***********************************************************************
+ %(fixed_extra_scale)s = fixed_extra_scale ! False means dynamical scale
  %(mue_ref_fixed)s  =  mue_ref_fixed ! scale to use if fixed scale mode
+ %(mue_over_ref)s   =  mue_over_ref  ! ratio to mur if dynamical scale
 """
 running_block_nlo = RunBlock('RUNNING', template_on=template_on, template_off="")
     
@@ -5991,7 +5993,7 @@ class RunCardNLO(RunCard):
         self.add_param('mcatnlo_delta', False)
         self.add_param('fixed_ren_scale', False)
         self.add_param('fixed_fac_scale', False)
-        self.add_param('fixed_extra_scale', True, hidden=True, system=True) # set system since running from Ellis-Sexton scale not implemented
+        self.add_param('fixed_extra_scale', True, hidden=True) # False: the extra (EFT) running scale follows muR event by event
         self.add_param('mur_ref_fixed', 91.118, shortcut={'mz':91.118, 'mw':80.419, 'mt':172.5, 'mh':125.0})                       
         self.add_param('muf1_ref_fixed', -1.0, hidden=True)
         self.add_param('muf_ref_fixed', 91.118, shortcut={'mz':91.118, 'mw':80.419, 'mt':172.5, 'mh':125.0})                       
@@ -6007,7 +6009,7 @@ class RunCardNLO(RunCard):
         self.add_param('muf_over_ref', 1.0)                       
         self.add_param('muf1_over_ref', -1.0, hidden=True)                       
         self.add_param('muf2_over_ref', -1.0, hidden=True)
-        self.add_param('mue_over_ref', 1.0, hidden=True, system=True) # forbid the user to modigy due to incorrect handling of the Ellis-Sexton scale
+        self.add_param('mue_over_ref', 1.0, hidden=True, comment='ratio mu_other/muR for dynamical scale') # the Ellis-Sexton scale must stay equal to muR when this is used
         self.add_param('qes_over_ref', -1.0, hidden=True)
         self.add_param('reweight_scale', [True], fortran_name='lscalevar')
         self.add_param('rw_rscale_down', -1.0, hidden=True)        
@@ -6660,6 +6662,8 @@ class RunCardMG7(RunCard):
         self.dynamic_sections = collections.OrderedDict()
         # unknown sections preserved for round-trip
         self.extra_sections = collections.OrderedDict()
+        # <kind>_parameters.<name> = value in [custom_functions]: kind -> {name: value}
+        self.custom_function_parameters = collections.OrderedDict()
         # set while read(from_banner=True) fills the card, see __setitem__
         self._from_banner = False
         super(RunCardMG7, self).__init__(*args, **opts)
@@ -6909,6 +6913,17 @@ class RunCardMG7(RunCard):
             comment="apply the [cuts] to the decay products of on-shell particles")
         self.add_toml_param('phasespace', 'adaptive_symmetry_sampling', True,
             comment="sample symmetric channels adaptively")
+
+        # ------------------------- [custom_functions] -----------------
+        # user functions built with bin/init_custom_func; "" disables them
+        self.add_toml_param('custom_functions', 'cut', "",
+            comment="custom cut, a .so library or a .py file, e.g. lib/custom_cut.so")
+        self.add_toml_param('custom_functions', 'scale', "",
+            comment="custom scale, replaces dynamical_scale_choice")
+        self.add_toml_param('custom_functions', 'pdf', "",
+            comment="custom PDF, replaces the PDF set (not alpha_s)")
+        self.add_toml_param('custom_functions', 'bias', "",
+            comment="custom event bias")
 
         # ----------------------------- [madnis] -----------------------
         self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True,
@@ -7248,7 +7263,10 @@ class RunCardMG7(RunCard):
             elif sl in self.toml_sections:
                 for key, value in content.items():
                     internal = '%s.%s' % (sl, key.lower())
-                    if internal in self.derived_beam_keys:
+                    if sl == 'custom_functions' and isinstance(value, dict):
+                        for name, parameter in value.items():
+                            self.set_custom_parameter(key.lower(), name, parameter)
+                    elif internal in self.derived_beam_keys:
                         # a card written before the per-beam energies/PDFs
                         self.set(internal, value, user=True)
                     elif internal in self:
@@ -7328,7 +7346,42 @@ class RunCardMG7(RunCard):
                     return
             if lname in self.energy_params:
                 value = self.parse_energy(value)
+            parts = lname.split('.')
+            if len(parts) == 3 and parts[0] == 'custom_functions':
+                # set custom_functions.cut_parameters.pt_min 30
+                self.set_custom_parameter(parts[1], parts[2], value)
+                return
         return super(RunCardMG7, self).set(name, value, *args, **opts)
+
+    custom_function_kinds = ('cut', 'scale', 'pdf', 'bias')
+
+    def set_custom_parameter(self, table, name, value):
+        """Set the parameter ``name`` of a custom function, written
+        ``<kind>_parameters.<name> = value`` in ``[custom_functions]``."""
+        kind = table[:-len('_parameters')] if table.endswith('_parameters') else None
+        if kind not in self.custom_function_kinds:
+            raise InvalidRunCard(
+                "unknown key custom_functions.%s.%s: parameters are set as "
+                "<table>.<name> with <table> one of %s" % (table, name,
+                ', '.join('%s_parameters' % k for k in self.custom_function_kinds)))
+        if isinstance(value, str):
+            value = self.format_variable(value, float, name=name)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise InvalidRunCard(
+                "custom_functions.%s.%s must be a number, not %r" % (table, name, value))
+        self.custom_function_parameters.setdefault(kind, collections.OrderedDict())[
+            name] = float(value)
+
+    def custom_parameters(self, kind):
+        """The parameters of the custom ``kind`` function, {name: value}."""
+        return dict(self.custom_function_parameters.get(kind, {}))
+
+    def format_custom_parameters(self):
+        """Render the ``<kind>_parameters.<name> = value`` lines of [custom_functions]."""
+        return '\n'.join(
+            '%s_parameters.%s = %r' % (kind, name, value)
+            for kind, parameters in self.custom_function_parameters.items()
+            for name, value in parameters.items())
 
     def is_cut_name(self, name):
         """True if ``name`` addresses a cut entry of the ``[cuts]`` section
@@ -7657,6 +7710,10 @@ class RunCardMG7(RunCard):
             text = text.replace('$%s' % section,
                                 self.format_dynamic_section(section))
 
+        text = text.replace('$custom_function_parameters\n',
+                            self.format_custom_parameters() + '\n'
+                            if self.custom_function_parameters else '')
+
         # preserve any unknown section read from an existing card
         for section, content in self.extra_sections.items():
             block = '\n[%s]\n' % section
@@ -7837,7 +7894,7 @@ class RunCardMG7(RunCard):
         if 'parameter_dict' in model and model['parameter_dict']:
             return complex(model['parameter_dict'][name])
 
-        import models.model_reader as model_reader
+        import madgraph.models.model_reader as model_reader
         namespace = dict(vars(model_reader))
         namespace['ZERO'] = 0.
         for param in model['parameters'][('external',)]:

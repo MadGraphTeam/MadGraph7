@@ -916,7 +916,8 @@ DataLayout EventGenerator::combined_layout() const {
     return DataLayout(
         EventRecord::layout(
             EventRecord::f_weight | EventRecord::f_subproc_index |
-            EventRecord::f_event_data | _channels.at(0)->event_layout_extra_flags()
+            EventRecord::f_event_data |
+            (_channels.at(0)->event_layout_extra_flags() & ~EventRecord::f_bias)
         ),
         ParticleRecord::layout(
             ParticleRecord::f_particle_data |
@@ -927,7 +928,8 @@ DataLayout EventGenerator::combined_layout() const {
 
 DataLayout
 EventGenerator::output_layout(int event_flags, std::size_t particle_flags) const {
-    int extra_flags = _channels.at(0)->event_layout_extra_flags();
+    int extra_flags =
+        _channels.at(0)->event_layout_extra_flags() & ~EventRecord::f_bias;
     std::vector<int> syst_ids;
     if (_systematics) {
         if (!_systematics->config().write_inputs) {
@@ -1180,6 +1182,7 @@ void EventGenerator::read_and_combine(
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_partial_weights;
     bool has_subproc_index =
         _channels.at(0)->event_layout_extra_flags() & EventRecord::f_subproc_index;
+    bool has_bias = _channels.at(0)->event_layout_extra_flags() & EventRecord::f_bias;
 
     for (std::size_t event_index = 0; event_index < event_count; ++event_index) {
         std::size_t random_index = rand_gen.generate_int(channel_data.back().cum_count);
@@ -1217,6 +1220,10 @@ void EventGenerator::read_and_combine(
                 std::max(1., std::abs(weight) / channel->max_weight()), weight
             ) *
             norm_factor;
+        if (has_bias) {
+            // unweighted with the bias b, so the event carries 1 / b
+            event_out.weight() = event_out.weight() / event_in.bias().value();
+        }
         event_out.subprocess_index() = has_subproc_index
             ? event_in.subprocess_index().value()
             : static_cast<int>(channel->status().subprocess);

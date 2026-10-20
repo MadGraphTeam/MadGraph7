@@ -26,11 +26,11 @@ import shutil
 import unittest as base_unittest
 import tests.unit_tests as unittest
 import madgraph.core.base_objects as base_objects
-import models
-import models.import_ufo as import_ufo
-import models.usermod as usermod
-import models as ufomodels
-import models.model_reader as model_reader
+import madgraph.models as models
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.usermod as usermod
+import madgraph.models as ufomodels
+import madgraph.models.model_reader as model_reader
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.various.misc as misc
 _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]

@@ -90,7 +90,7 @@ else:
     import madgraph.various.FO_analyse_card as FO_analyse_card 
     import madgraph.iolibs.save_load_object as save_load_object
     import madgraph.madevent.gen_crossxhtml as gen_crossxhtml
-    import models.check_param_card as param_card_mod
+    import madgraph.models.check_param_card as param_card_mod
     import madgraph.madevent.sum_html as sum_html
     import madgraph.various.citation as citation
 #    import madgraph.various.histograms as histograms # imported later to not slow down the loading of the code
@@ -256,8 +256,8 @@ class CheckValidForCmd(object):
         elif MADEVENT:
             sys.path.append(self.options['mg5_path'])
         try:
-            import models.model_reader as model_reader
-            import models.import_ufo as import_ufo
+            import madgraph.models.model_reader as model_reader
+            import madgraph.models.import_ufo as import_ufo
         except ImportError:
             raise self.ConfigurationError('''Can\'t load MG5.
             The variable mg5_path should not be correctly configure.''')
@@ -1101,7 +1101,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
 
         if self.options['mg5_path']:
             sys.path.append(self.options['mg5_path'])
-            import models.import_ufo as import_ufo
+            import madgraph.models.import_ufo as import_ufo
             complexmass = self.proc_characteristics['complex_mass_scheme']
             with misc.MuteLogger(['madgraph.model'],[50]):
                 out= import_ufo.import_model(pjoin(self.me_dir,'bin','internal','ufomodel'),

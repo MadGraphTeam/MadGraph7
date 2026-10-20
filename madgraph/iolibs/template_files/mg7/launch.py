@@ -35,12 +35,13 @@ import madspace as ms
 # madspace is imported; stop its install directory from shadowing the caller's
 # yaml/packaging/... for the rest of what is now MG5's own session.
 _drop_install_path()
-from models.check_param_card import ParamCard, group_auto_widths
-from models.model_reader import Alphas_Runner
+from madgraph.models.check_param_card import ParamCard, group_auto_widths
+from madgraph.models.model_reader import Alphas_Runner
 from madgraph.iolibs.template_files.mg7 import hwu_output
 from madgraph.iolibs.template_files.mg7 import plots
 from madgraph.iolibs.template_files.mg7 import systematics_summary
 from madgraph.iolibs.template_files.mg7 import npy_to_lhe
+from madgraph.iolibs.template_files.mg7.custom_function_loader import load_custom_function
 from madgraph.various.banner import RunCardMG7
 from madgraph.various import misc
 from madgraph.interface.extended_cmd import Cmd
@@ -299,6 +300,7 @@ class MadgraphProcess:
         self.init_backend()
         self.init_event_dir()
         self.init_context()
+        self.init_custom_functions()
         self.init_cuts()
         self.init_histograms()
         self.init_generator_config()
@@ -551,6 +553,58 @@ class MadgraphProcess:
             self.pool_sizes.append(pool_size)
             self.contexts.append(ms.Context(device=device, thread_count=pool_size))
 
+    CUSTOM_FUNCTION_KINDS = ("cut", "scale", "pdf", "bias")
+
+    def init_custom_functions(self) -> None:
+        """Load the functions of [custom_functions], building the libraries
+        first. They are loaded before the matrix elements, so that they have the
+        same index in every context and in a gridpack made from this run."""
+        self.custom_functions = {}
+        self.custom_function_paths = []
+        for kind in self.CUSTOM_FUNCTION_KINDS:
+            path = self.run_card["custom_functions"][kind]
+            if not path:
+                continue
+            build_dir = f"custom_{kind}"
+            if path.endswith(".so") and os.path.isfile(os.path.join(build_dir, "Makefile")):
+                self.build_custom_function(build_dir)
+            if not os.path.isfile(path):
+                raise RuntimeError(
+                    f"[custom_functions] {kind} = {path!r}: file not found. "
+                    "Create a .so library or a .py file with bin/init_custom_func."
+                )
+            parameters = self.run_card.custom_parameters(kind)
+            apis = load_custom_function(
+                ms, self.contexts, self.device_types, kind, path, parameters
+            )
+            if len({api.index() for api in apis}) != 1:
+                raise RuntimeError(f"custom {kind} function loaded at different indices")
+            self.custom_functions[kind] = apis[0]
+            self.custom_function_paths.append([kind, path, parameters])
+            logger.info("Using the custom %s function %s", kind, path)
+
+    @staticmethod
+    def build_custom_function(build_dir: str) -> None:
+        """Run make in a custom_<kind> directory, logging to compile.log."""
+        log_path = os.path.join(build_dir, "compile.log")
+        with open(log_path, "w") as log:
+            returncode = subprocess.call(
+                ["make"], cwd=build_dir, stdout=log, stderr=subprocess.STDOUT
+            )
+        if returncode != 0:
+            raise RuntimeError(
+                f"Compilation of {build_dir} failed with exit status {returncode}; "
+                f"see {log_path} for details"
+            )
+
+    def custom_function(self, kind: str, particle_count: int, pid_options: list):
+        """The ms.CustomFunction of [custom_functions] <kind>, or None."""
+        api = self.custom_functions.get(kind)
+        if api is None:
+            return None
+        function_type = getattr(ms.CustomFunction, kind)
+        return ms.CustomFunction(api, function_type, particle_count, pid_options)
+
     def parse_observable(self, name: str, order_observable: str) -> dict:
         parts = name.split("-")
         sum_momenta = False
@@ -738,6 +792,10 @@ class MadgraphProcess:
             fact_scale2=beam_args["fact_scale2"],
             scale_factor=float(beam_args.get("scale_factor", 1.)),
         )
+        if self.is_decay and self.custom_functions.pop("scale", None) is not None:
+            logger.warning("custom scale ignored: a decay uses the decaying mass")
+        if self.is_decay and self.custom_functions.pop("pdf", None) is not None:
+            logger.warning("custom pdf ignored: a decay has no parton densities")
         if self.is_decay:
             # One scale is available for a decay -- the decaying mass -- so use
             # it, fixed, whatever the card asks for.
@@ -769,7 +827,6 @@ class MadgraphProcess:
         self.pdf_dir = self.lhapdf.find_set(pdf_set)
         if self.pdf_dir is None:
             raise RuntimeError(self._no_pdf_message(pdf_set))
-        self.pdf_grid = ms.PdfGrid(os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}_0000.dat"))
         # A second grid only when the beams differ (and have a PDF at all);
         # otherwise beam 2 shares the first one.
         self.pdf_grid2 = None
@@ -778,13 +835,22 @@ class MadgraphProcess:
             self.pdf_dir2 = self.ensure_pdf_set(self.pdf_set2).find_set(self.pdf_set2)
             if self.pdf_dir2 is None:
                 raise RuntimeError(self._no_pdf_message(self.pdf_set2))
-            self.pdf_grid2 = ms.PdfGrid(os.path.join(
-                self.pdf_dir2, self.pdf_set2, f"{self.pdf_set2}_0000.dat"))
-            logger.info("PDF sets: %s (beam 1), %s (beam 2); alpha_s from %s",
-                        pdf_set, self.pdf_set2, pdf_set)
+            if "pdf" not in self.custom_functions:
+                self.pdf_grid2 = ms.PdfGrid(os.path.join(
+                    self.pdf_dir2, self.pdf_set2, f"{self.pdf_set2}_0000.dat"))
+                logger.info("PDF sets: %s (beam 1), %s (beam 2); alpha_s from %s",
+                            pdf_set, self.pdf_set2, pdf_set)
         self.alphas_grid = ms.AlphaSGrid(os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}.info"))
+        if "pdf" in self.custom_functions:
+            # alpha_s still comes from the PDF set of the run card
+            self.pdf_grid = ms.CustomPdf(self.custom_functions["pdf"])
+        else:
+            self.pdf_grid = ms.PdfGrid(
+                os.path.join(self.pdf_dir, pdf_set, f"{pdf_set}_0000.dat")
+            )
         for context in self.contexts:
-            self.pdf_grid.initialize_globals(context)
+            if not isinstance(self.pdf_grid, ms.CustomPdf):
+                self.pdf_grid.initialize_globals(context)
             if self.pdf_grid2 is not None:
                 # the prefix ms.Integrand reads the second beam's grid from
                 # (Integrand::pdf2_prefix)
@@ -799,14 +865,21 @@ class MadgraphProcess:
         """The native scale/PDF weights are requested ([systematics] enable, or
         the legacy [generation] systematics alias)."""
         try:
-            if self.run_card["systematics"]["enable"]:
-                return True
+            enabled = bool(self.run_card["systematics"]["enable"])
         except Exception:
-            pass
-        try:
-            return bool(self.run_card["generation"]["systematics"])
-        except Exception:
+            enabled = False
+        if not enabled:
+            try:
+                enabled = bool(self.run_card["generation"]["systematics"])
+            except Exception:
+                enabled = False
+        if enabled and "pdf" in getattr(self, "custom_functions", {}):
+            # the variations re-evaluate the PDF set, which a custom PDF replaces
+            if not getattr(self, "_warned_custom_pdf_systematics", False):
+                logger.warning("systematics are disabled with a custom pdf")
+                self._warned_custom_pdf_systematics = True
             return False
+        return enabled
 
     @staticmethod
     def pdf_set_info(info_path: str) -> dict:
@@ -1027,7 +1100,9 @@ class MadgraphProcess:
             entries = [entries]
         beam = self.run_card["beam"]
         generated = None
-        if not (beam["fixed_ren_scale"] and beam["fixed_fact_scale"]):
+        # a custom scale replaces dynamical_scale_choice, so no variation is redundant
+        custom_scale = "scale" in getattr(self, "custom_functions", {})
+        if not (beam["fixed_ren_scale"] and beam["fixed_fact_scale"] or custom_scale):
             generated = self._DYN_SCALE_CODES.get(beam["dynamical_scale_choice"])
         codes = []
         for raw in entries:
@@ -2041,6 +2116,17 @@ class MadgraphProcess:
             shutil.copytree("backend", os.path.join(gridpack_path, "backend"))
         else:
             shutil.copytree("lib", lib_path)
+        # the gridpack refers to its own copies, by paths relative to it
+        gridpack_custom_paths = []
+        for kind, path, parameters in self.custom_function_paths:
+            rel_path = os.path.normpath(path)
+            if os.path.isabs(rel_path) or rel_path.startswith(".."):
+                rel_path = os.path.join("custom_functions", kind, os.path.basename(path))
+            target = os.path.join(gridpack_path, rel_path)
+            if not os.path.exists(target):
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                shutil.copy(path, target)
+            gridpack_custom_paths.append([kind, rel_path, parameters])
 
         if self.run_card["gridpack"]["include_madspace_source"]:
             shutil.copytree(
@@ -2117,10 +2203,16 @@ class MadgraphProcess:
         shutil.copy(
             os.path.join(os.path.dirname(__file__), "gridpack.py"), gen_events_file
         )
+        shutil.copy(
+            os.path.join(os.path.dirname(__file__), "custom_function_loader.py"),
+            os.path.join(bin_path, "custom_function_loader.py"),
+        )
         os.chmod(gen_events_file, 0o755)
 
         data = {
             "matrix_elements": matrix_elements,
+            # loaded before the matrix elements, as in the run
+            "custom_functions": gridpack_custom_paths,
             "me_parameters": me_parameters(self.run_card),
             "source_hash": ms.SOURCE_HASH,
         }
@@ -2557,8 +2649,14 @@ class MadgraphSubprocess:
             # pdg id 0 is in no group, so the particle is never selected
             return [0 if i - n_in in uncut else pid for i, pid in enumerate(pids)]
 
-        self.cuts = (
-            ms.Cuts([
+        # custom cuts and scales see the PDG ids of the first flavor, like the
+        # built-in cuts, which select by flavor-independent groups
+        representative_pids = [self.flavor_pids()[0]]
+        custom_cut = self.process.custom_function(
+            "cut", self.particle_count, representative_pids
+        )
+        if len(self.process.cut_data) > 0:
+            self.cuts = ms.Cuts([
                 ms.CutItem(
                     observable=build_observable(
                         cut_pids(cut_item.observable_kwargs),
@@ -2569,10 +2667,11 @@ class MadgraphSubprocess:
                     mode=cut_item.mode,
                 )
                 for cut_item in self.process.cut_data
-            ])
-            if len(self.process.cut_data) > 0
-            else None
-        )
+            ], custom_cut)
+        elif custom_cut is not None:
+            self.cuts = ms.Cuts(self.particle_count, custom_cut)
+        else:
+            self.cuts = None
         # A flavor standing for both beam orientations draws the orientation
         # before the phase-space mapping, so boost, cuts and PDFs all see it.
         self.mirror_beams = not self.process.is_decay and self.has_mirrored_flavors()
@@ -2605,7 +2704,11 @@ class MadgraphSubprocess:
         )
 
         self.scale = ms.EnergyScale(
-            particle_count=self.particle_count, **self.process.scale_kwargs
+            particle_count=self.particle_count,
+            custom_scale=self.process.custom_function(
+                "scale", self.particle_count, representative_pids
+            ),
+            **self.process.scale_kwargs
         )
 
         if self.process.run_card["run"]["dummy_matrix_element"]:
@@ -2619,6 +2722,17 @@ class MadgraphSubprocess:
                         me_parameters(self.process.run_card)
                     )
                 self.matrix_elements.append(mat)
+
+    def flavor_pids(self) -> list[list[int]]:
+        """PDG ids of the external particles for every flavor of the
+        integrand, in the order of its flavor index."""
+        pids = []
+        for flav in self.meta["flavors"]:
+            if self.unmerged_meta is not None:
+                subproc_index = self.meta["subprocesses"][flav["subprocess"]]
+                flav = self.unmerged_meta[subproc_index]["flavors"][flav["flavor"]]
+            pids.append(flav["options"][0])
+        return pids
 
     def build_multi_channel_data(self) -> MultiChannelData:
         if self.multi_channel_data is not None:
@@ -3309,6 +3423,7 @@ class MadgraphSubprocess:
             )
         partial_weights = self.process.systematics_enabled()
         madnis_args = self.process.run_card["madnis"]
+        custom_bias = self.process.custom_function("bias", self.particle_count, flavors)
         integrands = []
         for channel in phasespace.channels:
             integrands.append(ms.Integrand(
@@ -3340,6 +3455,7 @@ class MadgraphSubprocess:
                 flavor_subproc_indices,
                 flavor_per_subproc_remap,
                 madnis_args["compressed_channel_weight_count"],
+                custom_bias,
                 None if self.process.leptonic else self.process.pdf_grid2,
             ))
         #print(integrands[1].function())
@@ -4128,7 +4244,7 @@ def _add_time_of_flight(lhe_path, threshold, param_card_path, log):
         import madgraph.various.lhe_parser as lhe_parser
     except ImportError:
         import internal.lhe_parser as lhe_parser
-    from models import check_param_card as param_card_mod
+    from madgraph.models import check_param_card as param_card_mod
     from madgraph.various import misc as _misc
     import madgraph.iolibs.files as files
 
@@ -4320,7 +4436,7 @@ def _proc_characteristic(me_dir=None) -> dict:
 
 def load_process_model(me_dir=None):
     """Import the UFO model this process was generated with, as
-    :func:`models.import_ufo.import_model` builds it -- the object every
+    :func:`madgraph.models.import_ufo.import_model` builds it -- the object every
     model-level consumer of the param_card expects (see
     :meth:`MG7Cmd.get_model`). None when the process recorded no model, or when
     that model no longer imports.
@@ -4333,7 +4449,7 @@ def load_process_model(me_dir=None):
     cms = _proc_characteristic(me_dir).get('complex_mass_scheme', False)
     key = (ref, bool(cms))
     if key not in _model_cache:
-        import models.import_ufo as import_ufo
+        import madgraph.models.import_ufo as import_ufo
         try:
             with misc.MuteLogger(['madgraph.model'], [50]):
                 _model_cache[key] = import_ufo.import_model(
@@ -4528,7 +4644,7 @@ def detect_param_scan(param_card_path):
     else None."""
     if not os.path.exists(param_card_path):
         return None
-    from models import check_param_card as param_card_mod
+    from madgraph.models import check_param_card as param_card_mod
     it = param_card_mod.ParamCardIterator(param_card_path)
     for block in it.order:
         for param in block:
@@ -4547,7 +4663,7 @@ def run_scan(iterator, card_path, switch=None) -> None:
     with open(os.path.join("Cards", "run_card.toml"), "rb") as f:
         run_name = tomllib.load(f).get("run", {}).get("run_name", "run")
 
-    from models import check_param_card as param_card_mod
+    from madgraph.models import check_param_card as param_card_mod
     is_param_scan = isinstance(iterator, param_card_mod.ParamCardIterator)
 
     backup = card_path + ".scan_bak"

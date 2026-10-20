@@ -30,6 +30,7 @@ elif (_LOCAL_MADSPACE_DIR / "install.py").is_file():
     sys.path.insert(0, str(_LOCAL_INSTALL_DIR))
 
 import madspace as ms
+from custom_function_loader import load_custom_function
 import glob
 import json
 import tomllib
@@ -256,8 +257,16 @@ def main() -> None:
     # gridpack; gridpacks written before they were recorded used the default
     me_parameters = madspace_data.get("me_parameters", {})
     globals_path = os.path.join("data", "globals.tar")
-    for context, backend in zip(contexts, backends):
+    for context in contexts:
         context.load_globals(globals_path)
+    # custom functions come first, as in the run that made the gridpack
+    device_types = [b if b in ("cuda", "hip") else "cpu" for b in backends]
+    for entry in madspace_data.get("custom_functions", []):
+        # [kind, path, parameters]; older gridpacks store fewer entries
+        entry = entry if isinstance(entry, list) else ["", entry]
+        kind, path, parameters = (entry + [{}])[:3]
+        load_custom_function(ms, contexts, device_types, kind, path, parameters)
+    for context, backend in zip(contexts, backends):
         for me_path in madspace_data["matrix_elements"]:
             context.load_matrix_element(
                 me_path.format(device=backend), param_card_path, me_parameters

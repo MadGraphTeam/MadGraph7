@@ -31,7 +31,7 @@ import tempfile
 import unittest
 
 import madgraph.interface.master_interface as mgcmd
-import models.check_param_card as check_param_card
+import madgraph.models.check_param_card as check_param_card
 from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
 
 pjoin = os.path.join

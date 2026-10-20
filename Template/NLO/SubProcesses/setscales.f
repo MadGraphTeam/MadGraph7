@@ -181,6 +181,10 @@ c the value of variable scale in common block /to_scale/
 c this is to avoid too low dynamic scales      
       double precision minscaleR
       parameter (minscaleR=2d0)
+c scale passed to the model: the extra running scale (muprime of the
+c running Wilson coefficients) follows muR through it
+      double precision model_scale
+      common /model_scale/model_scale
 c After recomputing alphaS, be sure to set 'calculatedBorn' to false
       logical calculatedBorn
       common/ccalculatedBorn/calculatedBorn
@@ -204,6 +208,7 @@ c
 c The following is for backward compatibility. DO NOT REMOVE
       scale=muR
       g=sqrt(4d0*pi*alphas(scale))
+      model_scale=muR
       call update_as_param()
 c Reset calculatedBorn, because the couplings might have been changed.
 c This is needed in particular for the MC events, because there the

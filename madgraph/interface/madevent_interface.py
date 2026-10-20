@@ -89,7 +89,7 @@ else:
     import madgraph.madevent.combine_runs as combine_runs
     import madgraph.various.lhe_parser as lhe_parser
 #    import madgraph.various.histograms as histograms  # imported later to not slow down the loading of the code
-    import models.check_param_card as check_param_card
+    import madgraph.models.check_param_card as check_param_card
     from madgraph.iolibs.files import ln    
     from madgraph import InvalidCmd, MadGraph5Error, MG5DIR, ReadWrite
 

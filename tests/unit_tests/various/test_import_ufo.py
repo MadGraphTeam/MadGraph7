@@ -26,10 +26,10 @@ import tests.unit_tests as unittest
 import madgraph.interface.master_interface as Cmd
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_algebra as color
-import models.import_ufo as import_ufo
-import models.model_reader as model_reader
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.model_reader as model_reader
 import madgraph.iolibs.export_v4 as export_v4
-import models as ufomodels
+import madgraph.models as ufomodels
 import madgraph.various.misc as misc
 
 _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0]
@@ -60,7 +60,7 @@ class TestImportUFO(unittest.TestCase):
 
     def test_get_symmetric_lorentz(self):
 
-        import models as ufomodels
+        import madgraph.models as ufomodels
         ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
         ufo2mg5_converter = import_ufo.UFOMG5Converter(ufo_model)    
         model = ufo2mg5_converter.load_model()
@@ -120,7 +120,7 @@ class TestImportUFO(unittest.TestCase):
     def test_reshape_FFV_coeff(self):
         """ test the possiblity to reshape FFV vertex"""
 
-        import models as ufomodels
+        import madgraph.models as ufomodels
         ufo_model = ufomodels.load_model(import_ufo.find_ufo_path('sm'), decay=False)
         ufo2mg5_converter = import_ufo.UFOMG5Converter(ufo_model, FFV=False)    
         model = ufo2mg5_converter.load_model()
@@ -165,7 +165,7 @@ class TestImportUFO(unittest.TestCase):
     def test_reshape_FFV_coeff_gamma5_and_vector(self):
         """test that Gamma5(1,-1)*Gamma(3,2,-1) and Gamma(3,2,1) are handled correctly"""
 
-        import models as ufomodels
+        import madgraph.models as ufomodels
         path = os.path.join(_file_path, '..', 'input_files', 'DM_pion')
         ufo_model = ufomodels.load_model(path, decay=False)
         ufo2mg5_converter = import_ufo.UFOMG5Converter(ufo_model, FFV=False)

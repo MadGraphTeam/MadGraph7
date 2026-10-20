@@ -823,7 +823,7 @@ class MG7CmdTest(unittest.TestCase):
         """End to end: the dependent parameters of the param_card are the ones
         the model computes from the free ones (here M_W from G_F/M_Z/alpha)."""
         from madgraph.interface.common_run_interface import AskforEditCard
-        from models.check_param_card import ParamCard
+        from madgraph.models.check_param_card import ParamCard
 
         self.write_model_txt(os.path.join(_MG_ROOT, 'models', 'sm'))
         path = os.path.join(self.me_dir, 'Cards', 'param_card.dat')
@@ -849,7 +849,7 @@ class MG7CmdTest(unittest.TestCase):
 
         self.write_model_txt(os.path.join(_MG_ROOT, 'models', 'sm'))
         self.launch._model_cache.clear()
-        with mock.patch('models.import_ufo.import_model',
+        with mock.patch('madgraph.models.import_ufo.import_model',
                         side_effect=TimeOutError):
             self.assertRaises(TimeOutError, self.launch.load_process_model,
                               self.me_dir)

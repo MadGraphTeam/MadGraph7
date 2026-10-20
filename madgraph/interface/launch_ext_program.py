@@ -856,7 +856,7 @@ class MadMatrixLauncher(ExtLauncher):
                 return current
         except Exception:
             pass
-        import models.import_ufo as import_ufo
+        import madgraph.models.import_ufo as import_ufo
         try:
             with misc.MuteLogger(['madgraph.model'], [50]):
                 return import_ufo.import_model(ref)

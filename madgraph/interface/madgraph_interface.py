@@ -100,12 +100,12 @@ import madgraph.various.cluster as cluster
 
 import madgraph.fks.fks_tag as fks_tag
 
-import models as ufomodels
-import models.import_ufo as import_ufo
-import models.write_param_card as param_writer
-import models.check_param_card as check_param_card
-import models.model_reader as model_reader
-import models.build_restriction_lib as build_restrict_lib
+import madgraph.models as ufomodels
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.write_param_card as param_writer
+import madgraph.models.check_param_card as check_param_card
+import madgraph.models.model_reader as model_reader
+import madgraph.models.build_restriction_lib as build_restrict_lib
 
 import aloha.aloha_fct as aloha_fct
 import aloha.create_aloha as create_aloha
@@ -4279,7 +4279,7 @@ This implies that with decay chains:
                     return
         
         #Need to do the work!!!        
-        import models.usermod as usermod
+        import madgraph.models.usermod as usermod
         try:
             base_model = copy.deepcopy(usermod.UFOModel(self._curr_model.get('modelpath')))
         except Exception:
@@ -4316,8 +4316,8 @@ This implies that with decay chains:
             add model sm_onia --fock_states_only
         A Fock state is only kept if its constituents exist in the current model."""
 
-        import models.import_ufo as import_ufo
-        import models.import_boundstates as ufo_boundstates
+        import madgraph.models.import_ufo as import_ufo
+        import madgraph.models.import_boundstates as ufo_boundstates
 
         if os.path.isdir(model_name):
             path = model_name
@@ -7958,6 +7958,47 @@ This implies that with decay chains:
                 continue
         return False
 
+    def get_rge_parameters_used(self):
+        """Parameters evolved by the RGE of the model (running.py, aS excluded)
+        on which a coupling of the generated diagrams depends."""
+
+        model = self._curr_model
+        if not model or not model.get('running_elements'):
+            return set()
+        couplings = set()
+        for amp in self._curr_amps or []:
+            try:
+                amps = amp.get_amplitudes() if hasattr(amp, 'get_amplitudes') else [amp]
+                for one_amp in amps:
+                    for diag in one_amp.get('diagrams'):
+                        for vertex in diag.get('vertices'):
+                            if not vertex.get('id'):
+                                continue
+                            inter = model.get_interaction(vertex.get('id'))
+                            couplings.update(inter.get('couplings').values())
+            except Exception:
+                # unknown amplitude layout (loop, NLO...): assume the worst
+                couplings.update(c.name for coups in model.get('couplings').values()
+                                 for c in coups)
+        return model.get_rge_parameters_used(couplings)
+
+    def warn_rge_not_supported(self):
+        """The RGE of running.py is only implemented in the madevent and
+        aMC@NLO Fortran code: say loudly that the other outputs keep the
+        running parameters at their param_card value."""
+
+        used = self.get_rge_parameters_used()
+        if not used:
+            return
+        logger.warning(
+            "The model evolves some parameters with the scale (running.py), "
+            "and the process depends on %s. 'output %s' does NOT implement this "
+            "running: these parameters keep the value given in the param_card "
+            "(at the scale Q= of their block) for every event, whatever "
+            "fixed_extra_scale / mue_ref_fixed / mue_over_ref say. Only alpha_s "
+            "runs. Use 'output madevent' to include the running."
+            % (', '.join(sorted(used)), self._export_format))
+
     def has_fock_state(self, args):
         """True if one of the process tokens names a Fock state or a bound-state
         label (which expands into Fock states)."""
@@ -8001,7 +8042,7 @@ This implies that with decay chains:
     def add_default_fockstates(self):
         """Load the Fock states shipped by the current model (its boundstates.py),
         replacing any Fock state of a previously imported model."""
-        import models.import_boundstates as ufo_boundstates
+        import madgraph.models.import_boundstates as ufo_boundstates
         self._fockstates = ufo_boundstates.get_boundstates_ufo(self._curr_model)
 
         return self._fockstates
@@ -10748,7 +10789,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         and/or couplings are the one asked by the user. Return the path of the
         new model."""
 
-        import models.usermod as usermod
+        import madgraph.models.usermod as usermod
 
         if not name:
             default = '%s_customized' % os.path.basename(model_path.rstrip('/'))
@@ -12363,6 +12404,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             raise self.InvalidCmd("Bound states (onia) can only be written out "
                     "with 'output %s', not with 'output %s'."
                     % ("' or 'output ".join(self._onia_formats), self._export_format))
+
+        if self._export_format not in self._v4_export_formats + ['aloha']:
+            self.warn_rge_not_supported()
 
         noclean = '-noclean' in args
         force = '-f' in args

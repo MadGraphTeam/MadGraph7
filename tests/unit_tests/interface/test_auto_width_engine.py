@@ -36,7 +36,7 @@ import madgraph.core.base_objects as base_objects
 import madgraph.interface.madevent_interface as madevent_interface
 import madgraph.interface.master_interface as mgcmd
 from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
-from models.model_reader import Alphas_Runner
+from madgraph.models.model_reader import Alphas_Runner
 
 pjoin = os.path.join
 

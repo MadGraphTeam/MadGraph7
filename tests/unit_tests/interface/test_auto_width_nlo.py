@@ -39,9 +39,9 @@ import madgraph
 import madgraph.interface.common_run_interface as common_run
 import madgraph.interface.madevent_interface as madevent_interface
 import madgraph.interface.master_interface as mgcmd
-import models.check_param_card as check_param_card
-import models.import_ufo as import_ufo
-import models.model_reader as model_reader
+import madgraph.models.check_param_card as check_param_card
+import madgraph.models.import_ufo as import_ufo
+import madgraph.models.model_reader as model_reader
 from madgraph.iolibs.template_files.mg7 import bootstrap as mg7_bootstrap
 
 pjoin = os.path.join

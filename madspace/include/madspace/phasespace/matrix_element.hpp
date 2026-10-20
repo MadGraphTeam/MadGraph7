@@ -40,15 +40,21 @@ class MatrixElement : public FunctionGenerator {
 public:
     /// A quantity the matrix element can be asked to consume.
     enum MatrixElementInput {
-        momenta_in,         ///< Final-state momenta.
-        alpha_s_in,         ///< Strong coupling.
-        flavor_in,          ///< Flavour assignment.
-        random_color_in,    ///< Random number for the color draw.
-        random_helicity_in, ///< Random number for the helicity draw.
-        random_diagram_in,  ///< Random number for the diagram draw.
-        helicity_in,        ///< Fixed helicity.
-        channel_in,         ///< Multi-channel index.
-        diagram_in          ///< Fixed diagram.
+        momenta_in,           ///< Final-state momenta.
+        alpha_s_in,           ///< Strong coupling.
+        flavor_in,            ///< Flavour assignment.
+        random_color_in,      ///< Random number for the color draw.
+        random_helicity_in,   ///< Random number for the helicity draw.
+        random_diagram_in,    ///< Random number for the diagram draw.
+        helicity_in,          ///< Fixed helicity.
+        channel_in,           ///< Multi-channel index.
+        diagram_in,           ///< Fixed diagram.
+        particle_count_in,    ///< Number of external particles (custom functions).
+        pdg_ids_in,           ///< PDG ids of the external particles.
+        momentum_fraction_in, ///< Momentum fraction of an incoming parton.
+        scale_in,             ///< Energy scale, e.g. the factorization scale.
+        pdg_id_in,            ///< PDG id of a single parton.
+        beam_index_in         ///< Index of the beam (0 or 1).
     };
 
     /// A quantity the matrix element can be asked to produce.
@@ -57,7 +63,13 @@ public:
         diagram_amp2_out,   ///< Per-diagram squared amplitudes.
         color_index_out,    ///< Sampled color.
         helicity_index_out, ///< Sampled helicity.
-        diagram_index_out   ///< Sampled diagram.
+        diagram_index_out,  ///< Sampled diagram.
+        cut_out,            ///< Custom cut value, 0 rejects the event.
+        ren_scale_out,      ///< Custom renormalization scale.
+        fact_scale1_out,    ///< Custom factorization scale, first incoming.
+        fact_scale2_out,    ///< Custom factorization scale, second incoming.
+        pdf_out,            ///< Custom parton density x f(x, Q).
+        bias_out            ///< Custom event bias.
     };
 
     /**

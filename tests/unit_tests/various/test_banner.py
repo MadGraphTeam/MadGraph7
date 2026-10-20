@@ -22,7 +22,7 @@ import tempfile
 import madgraph.various.banner as bannermod
 import madgraph.various.misc as misc
 import os
-import models
+import madgraph.models as models
 import io
 import re
 import sys
@@ -2168,7 +2168,7 @@ class TestRunCardMG7Histograms(unittest.TestCase):
         PhysicsObjectError, and a Model gave 0. MW is an internal parameter
         of sm-full, so it has to be evaluated from the external ones.
         """
-        import models.import_ufo as import_ufo
+        import madgraph.models.import_ufo as import_ufo
         import madgraph.core.base_objects as base_objects
         import madgraph.loop.loop_base_objects as loop_base_objects
 
