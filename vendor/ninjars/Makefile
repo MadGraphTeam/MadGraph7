@@ -29,7 +29,7 @@ libninjars.a: rust mninjars.o compiler-runtime
 install: libninjars.a
 	mkdir -p "$(PREFIX)/lib" "$(PREFIX)/include"
 	cp libninjars.a mninjars.mod ninjars-native-libs.txt ninjars-link-before.txt "$(PREFIX)/lib/"
-	cp ninjars.h "$(PREFIX)/include/"
+	cp ninjars.h mninjars.f90 "$(PREFIX)/include/"
 
 check: libninjars.a
 	$(CARGO) test --locked -- --test-threads=1

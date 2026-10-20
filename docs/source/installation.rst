@@ -61,11 +61,14 @@ directory. A successful installation retains its build log and exact Cargo
 manifest and lockfile. Cargo target and intermediate build caches are kept
 under the installation prefix; explicit ``CARGO_TARGET_DIR`` and
 ``CARGO_BUILD_BUILD_DIR`` settings are respected.
+The installation includes ``include/mninjars.f90`` and ``include/ninjars.h``
+alongside the compiled Fortran module in ``lib``.
 
 Both standalone Fortran and aMC@NLO exports support NinjaRS. With
 ``set output_dependencies internal``, the exporter copies its archive, Fortran
-module and link metadata into the output directory. The generated makefiles
-still require the target platform's native compiler/runtime libraries.
+module, available interface sources and link metadata into the output directory.
+The generated makefiles still require the target platform's native
+compiler/runtime libraries.
 
 The linker must resolve GNU Fortran's arithmetic helpers before loading the
 Rust static archive. Otherwise Rust's compiler builtins can replace the

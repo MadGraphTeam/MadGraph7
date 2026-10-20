@@ -1,0 +1,3 @@
+mkdir -p "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/interface-source-packaging/installed/lib" "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/interface-source-packaging/installed/include"
+cp libninjars.a mninjars.mod ninjars-native-libs.txt ninjars-link-before.txt "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/interface-source-packaging/installed/lib/"
+cp ninjars.h mninjars.f90 "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/interface-source-packaging/installed/include/"

@@ -1,0 +1,32 @@
+{
+  "passed": true,
+  "scope": "Installation copy recipe, internal dependency copy and module-source recompilation",
+  "numerical_archive_rebuilt": false,
+  "compiler": "GNU Fortran (GCC) 15.3.0",
+  "commands": [
+    [
+      "make",
+      "-o",
+      "libninjars.a",
+      "install",
+      "PREFIX=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/interface-source-packaging/installed"
+    ],
+    [
+      "gfortran",
+      "-O3",
+      "-fPIC",
+      "-c",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/interface-source-packaging/relocated/lib/mninjars.f90"
+    ]
+  ],
+  "copied_regular_files_sha256": {
+    "libninjars.a": "72a820a1fb74904e9b3d3a43562132b365a947304ac41abced46f5d407a0c816",
+    "mninjars.mod": "6287900997f38309c54b5dd7e77195ec4330e4c8e7f8d34ec6f73424c821edfa",
+    "ninjars-config.json": "89cea270ad081f2df49f06734d4fd18cf96fbd1daa12009a33a4fa52f7df5d1f",
+    "ninjars-native-libs.txt": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+    "ninjars-link-before.txt": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+    "ninjars.h": "11fc2ef05b222bd208c91145f90b9f7b80ced5668c5b60f30ac1bf17a5395f0e",
+    "mninjars.f90": "221c76db293213657fea5c6fc8a62b110f17173971704f3b7ea7b4ce87c04732"
+  },
+  "recompiled_module_sha256": "6287900997f38309c54b5dd7e77195ec4330e4c8e7f8d34ec6f73424c821edfa"
+}

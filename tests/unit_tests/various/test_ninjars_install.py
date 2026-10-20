@@ -176,6 +176,7 @@ class TestNinjaRSInstaller(unittest.TestCase):
         include = self.root / 'include'
         include.mkdir()
         (include / 'ninjars.h').write_text('/* header */\n')
+        (include / 'mninjars.f90').write_text('module mninjars\nend module\n')
         copied = self.root / 'export' / 'lib'
         self.assertEqual(exporter.link_TIR(
             str(copied), str(lib), 'libninjars.a', 'ninjars'), str(copied))
@@ -183,7 +184,8 @@ class TestNinjaRSInstaller(unittest.TestCase):
         shutil.rmtree(include)
         self.assertTrue(ninjars_install.supports_quad_precision(copied))
         for name in ('libninjars.a', 'mninjars.mod', 'ninjars-config.json',
-                     'ninjars-native-libs.txt', 'ninjars-link-before.txt', 'ninjars.h'):
+                     'ninjars-native-libs.txt', 'ninjars-link-before.txt',
+                     'ninjars.h', 'mninjars.f90'):
             self.assertTrue((copied / name).is_file(), name)
             self.assertFalse((copied / name).is_symlink(), name)
 

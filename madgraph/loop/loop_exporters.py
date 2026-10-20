@@ -2138,6 +2138,9 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 header = pjoin(libpath, os.pardir, 'include', 'ninjars.h')
                 if os.path.isfile(header):
                     sources.append(header)
+                module_source = pjoin(libpath, os.pardir, 'include', 'mninjars.f90')
+                if os.path.isfile(module_source):
+                    sources.append(module_source)
                 for source in sources:
                     if os.path.isfile(source):
                         destination = pjoin(targetPath, os.path.basename(source))
