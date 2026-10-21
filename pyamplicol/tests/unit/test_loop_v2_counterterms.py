@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 from collections import Counter, defaultdict
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from decimal import Context, Decimal, localcontext
 from fractions import Fraction
@@ -377,30 +376,22 @@ def _complex(value) -> DecimalComplex:
     return DecimalComplex(Decimal(value), Decimal(0))
 
 
-@contextmanager
 def _exact_u1_weights():
     """Evaluate tree rows with the exact U(1)-subtraction colour weight 1/N_c.
 
     The tree engine stores that interaction weight as binary64 1/3
     (``GenericDAG`` ``color_weight``), which limits multi-line block rows to
     ~1e-17 in any carrier (design §3.2 item 4: graded U(1) currents, WP2.4).
-    The oracle restores the exact weight so that the 200-bit comparison tests
-    the sites, not that rounding.
+    The tree runtime's ``exact_weights`` hook, which the slice assembly uses
+    for the same reason, restores the exact weight so that the 200-bit
+    comparison tests the sites, not that rounding.
     """
 
     from symbolica import E
 
-    from pyamplicol.generation import stage_expressions
+    from pyamplicol.generation.stage_expressions import exact_weights
 
-    rounded = complex(1 / NC)
-    original = stage_expressions._exact_complex_expression
-
-    def exact(value):
-        return E(f"1/{NC}") if value == rounded else original(value)
-
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(stage_expressions, "_exact_complex_expression", exact)
-        yield
+    return exact_weights({complex(1 / NC): E(f"1/{NC}")})
 
 
 def _block_rows(ct: CountertermSlice, point, parameters, digits):
