@@ -31,12 +31,13 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `0d0d7e7a8033431b60a8580731084742e0655cda`.
-- Symbolica `e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8`, the owner's integration
-  revision published on `https://github.com/alphal00p/symbolica`.
-- FeynKit `1e8063a763d3aa515749c33616ee59aa827705be`, the owner's coherent
+- NinjaRS `aa6a6307dd081dc3714f9accebc0df9e5561ae73`.
+- Symbolica, Numerica and Graphica `9cdc2949cdb153478c1eca0d40690dc0abfc616e`,
+  the owner's integration revision published on
+  `https://github.com/alphal00p/symbolica`.
+- FeynKit `d1904bf2bd5bf4f26969a73b415095e941a55610`, the owner's coherent
   dependency revision recorded by NinjaRS.
-- oneloopmaster `09b2c7497743db875ed446da95123175dd00b1c8`.
+- oneloopmaster `8ec256fc26cb361b20e10f59c19beb35717ef32c`.
 
 From this crate's directory, using the shared workspace environment:
 

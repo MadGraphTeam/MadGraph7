@@ -2,7 +2,7 @@
 
 The `loop` development branch currently integrates Rust Symbolica 3.0.1,
 Numerica and Graphica from the tested
-[`e679e8c` integration fork](https://github.com/ValentinHirschi/symbolica/commit/e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8),
+[`9cdc294` integration fork](https://github.com/alphal00p/symbolica/commit/9cdc2949cdb153478c1eca0d40690dc0abfc616e),
 and SymJIT 2.27.3. These pins are recorded by Cargo. This is a source integration,
 with Rust 1.96 or newer required; it is not a completed release dependency set.
 The published Python/Community distribution is pinned to 3.0.2 (kernel 3.0.1),
