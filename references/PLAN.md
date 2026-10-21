@@ -794,3 +794,19 @@ resume metadata. The earlier pause note is a historical checkpoint.
   Root independently verifies the seventeen-file successful proof. The first
   failed attempt remains unchanged. The actual CLI installation has started
   from this exact archived source, followed by relocated standalone/NLO tests.
+- The final actual CLI installation and copied-export proof passes from that
+  same source: ABI 3, compiled Fortran native DP/compensated DP/binary128 calls,
+  relocated standalone return codes 110/120/218 with CutTools agreement, twenty
+  NLO pole checks and soft/collinear checks without failures, and forty-two
+  archived-source Python checks. Root verifies the sealed sixty-eight-file
+  proof and publishes archive
+  `800a941faf3cdfdab764fdffe1d5ab73f84984a786aa194596b753af6b6f5d42`
+  and its nine matching artifacts through the tested installation transaction.
+  Both complete copies of the former installation and the alias journal are
+  retained. Earlier numerical proofs keep their original identities.
+- Freeze the resulting committed generator and installed artifacts for fresh
+  eight-process, loop-induced and extra challenging two-to-four generation.
+  Generation/build durations remain separate from warmed performance. Final
+  correctness, stability, original-Ninja runtime gates and the final report
+  remain outstanding; no goal-completion or PR claim is authorized by these
+  installation checks alone.

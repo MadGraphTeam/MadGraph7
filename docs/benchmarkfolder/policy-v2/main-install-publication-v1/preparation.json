@@ -1,0 +1,219 @@
+{
+  "aliases_before": {
+    "libninjars.a": {
+      "kind": "symlink",
+      "target": "../ninjars/lib/libninjars.a"
+    },
+    "mninjars.mod": {
+      "kind": "symlink",
+      "target": "../ninjars/lib/mninjars.mod"
+    },
+    "ninjars-config.json": {
+      "kind": "symlink",
+      "target": "../ninjars/lib/ninjars-config.json"
+    },
+    "ninjars-link-before.txt": {
+      "kind": "symlink",
+      "target": "../ninjars/lib/ninjars-link-before.txt"
+    },
+    "ninjars-native-libs.txt": {
+      "kind": "symlink",
+      "target": "../ninjars/lib/ninjars-native-libs.txt"
+    }
+  },
+  "common_alias_directory": "HEPTools/lib",
+  "compiler_calls": 0,
+  "copied_installation_record": {
+    "bytes": 7141,
+    "path": "docs/benchmarkfolder/policy-v2/main-install-publication-v1/private-installation.json",
+    "sha256": "b0403b1e54d0a846d62fefe8c17a3f22a139966e91ded128c260f25e72aa5d14"
+  },
+  "engine_calls": 0,
+  "helper": {
+    "bytes": 15671,
+    "path": "docs/benchmarkfolder/policy-v2/main-install-publication-v1/publish.py",
+    "sha256": "22aa735f3a23748830d5acc38e13f045d0dc9d1d8ad8c1d459078387a1e09479"
+  },
+  "installation_revision": "d05b59f3277ce0d727cb2816d8b7ad45107e58c4",
+  "installer_transaction": {
+    "bytes": 14638,
+    "path": "madgraph/various/ninjars_install.py",
+    "sha256": "e2b83749c222077e309db3ebe99ee5847b7d66db6fb29d1cfce246344de36646"
+  },
+  "main_destination": "HEPTools/ninjars",
+  "new_archive_sha256": "800a941faf3cdfdab764fdffe1d5ab73f84984a786aa194596b753af6b6f5d42",
+  "new_tree": {
+    "bytes": 298638525,
+    "entries": {
+      ".": {
+        "kind": "directory",
+        "mode": 448
+      },
+      "Cargo.lock": {
+        "bytes": 78237,
+        "kind": "file",
+        "mode": 420,
+        "sha256": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25"
+      },
+      "Cargo.toml": {
+        "bytes": 1343,
+        "kind": "file",
+        "mode": 420,
+        "sha256": "a025c54a99707cf3f950c1a24aaa4144f3f78941f2c00472dc83122ff39360e4"
+      },
+      "include": {
+        "kind": "directory",
+        "mode": 448
+      },
+      "include/mninjars.f90": {
+        "bytes": 8497,
+        "kind": "file",
+        "mode": 384,
+        "sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05"
+      },
+      "include/ninjars.h": {
+        "bytes": 4120,
+        "kind": "file",
+        "mode": 384,
+        "sha256": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c"
+      },
+      "install.log": {
+        "bytes": 4252,
+        "kind": "file",
+        "mode": 384,
+        "sha256": "d85f20930f293758488dca0afdc0f6918696a153dcf8150deff37bb9eeb19b25"
+      },
+      "lib": {
+        "kind": "directory",
+        "mode": 448
+      },
+      "lib/libninjars.a": {
+        "bytes": 298539680,
+        "kind": "file",
+        "mode": 384,
+        "sha256": "800a941faf3cdfdab764fdffe1d5ab73f84984a786aa194596b753af6b6f5d42"
+      },
+      "lib/mninjars.mod": {
+        "bytes": 1986,
+        "kind": "file",
+        "mode": 384,
+        "sha256": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec"
+      },
+      "lib/ninjars-config.json": {
+        "bytes": 354,
+        "kind": "file",
+        "mode": 384,
+        "sha256": "2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7"
+      },
+      "lib/ninjars-link-before.txt": {
+        "bytes": 8,
+        "kind": "file",
+        "mode": 384,
+        "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab"
+      },
+      "lib/ninjars-native-libs.txt": {
+        "bytes": 48,
+        "kind": "file",
+        "mode": 384,
+        "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871"
+      }
+    },
+    "files": 10,
+    "identity_sha256": "41d58dfa633fbfb64b9b4d986695146e61b18ffc7fb743720174ee8931dfa1ff"
+  },
+  "old_archive_sha256": "1199bc84570bee76a6b162a86fd5c191479236b2c0617fe4bf250d5de0d9df32",
+  "old_prefix_backup_copy": ".benchmark-work/policy-v2/main-install-publication-v1/old-prefix-copy",
+  "old_tree": {
+    "bytes": 298637107,
+    "entries": {
+      ".": {
+        "kind": "directory",
+        "mode": 493
+      },
+      "Cargo.lock": {
+        "bytes": 78237,
+        "kind": "file",
+        "mode": 420,
+        "sha256": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25"
+      },
+      "Cargo.toml": {
+        "bytes": 1343,
+        "kind": "file",
+        "mode": 420,
+        "sha256": "a025c54a99707cf3f950c1a24aaa4144f3f78941f2c00472dc83122ff39360e4"
+      },
+      "include": {
+        "kind": "directory",
+        "mode": 493
+      },
+      "include/mninjars.f90": {
+        "bytes": 8497,
+        "kind": "file",
+        "mode": 420,
+        "sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05"
+      },
+      "include/ninjars.h": {
+        "bytes": 4120,
+        "kind": "file",
+        "mode": 420,
+        "sha256": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c"
+      },
+      "install.log": {
+        "bytes": 3570,
+        "kind": "file",
+        "mode": 420,
+        "sha256": "2aab298298ba2bdddb69c254d49cf2e7632b08a957fe6927966384d66c427ba1"
+      },
+      "lib": {
+        "kind": "directory",
+        "mode": 493
+      },
+      "lib/libninjars.a": {
+        "bytes": 298538944,
+        "kind": "file",
+        "mode": 420,
+        "sha256": "1199bc84570bee76a6b162a86fd5c191479236b2c0617fe4bf250d5de0d9df32"
+      },
+      "lib/mninjars.mod": {
+        "bytes": 1986,
+        "kind": "file",
+        "mode": 420,
+        "sha256": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec"
+      },
+      "lib/ninjars-config.json": {
+        "bytes": 354,
+        "kind": "file",
+        "mode": 420,
+        "sha256": "2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7"
+      },
+      "lib/ninjars-link-before.txt": {
+        "bytes": 8,
+        "kind": "file",
+        "mode": 420,
+        "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab"
+      },
+      "lib/ninjars-native-libs.txt": {
+        "bytes": 48,
+        "kind": "file",
+        "mode": 420,
+        "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871"
+      }
+    },
+    "files": 10,
+    "identity_sha256": "5cdf473fa38ae6ea7a121556cc7ede9b1e03d3a9afe2d6ccfb1b4373be6d2447"
+  },
+  "preparation_revision": "9fdc8f749a909fb7aad360761f5b12a0ebc04a3d",
+  "prepared_installation": ".benchmark-work/policy-v2/main-install-publication-v1/transaction/install",
+  "prepared_utc": "2026-10-21T01:20:12.871200+00:00",
+  "private_installation_record": {
+    "bytes": 7141,
+    "path": "docs/benchmarkfolder/policy-v2/install-export-abi3-final-v1/installation.json",
+    "sha256": "b0403b1e54d0a846d62fefe8c17a3f22a139966e91ded128c260f25e72aa5d14"
+  },
+  "private_source_at_preparation": ".benchmark-work/policy-v2/install-export-abi3-final-v1/source/HEPTools/ninjars-unavailable",
+  "publication_authorized": false,
+  "schema": "main-ninjars-publication-preparation-v1",
+  "scope": "Copies only; old main installation and common aliases remain unchanged. Publication awaits private SA/NLO proof and an explicit root command.",
+  "status": "prepared-not-published",
+  "transaction_stage": ".benchmark-work/policy-v2/main-install-publication-v1/transaction"
+}

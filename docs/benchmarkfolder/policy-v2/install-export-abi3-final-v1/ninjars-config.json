@@ -1,0 +1,21 @@
+{
+  "abi_version": 3,
+  "quad_precision": true,
+  "native_libs": [
+    "-ldl",
+    "-lgcc_s",
+    "-lutil",
+    "-lrt",
+    "-lpthread",
+    "-lm",
+    "-ldl",
+    "-lc"
+  ],
+  "local_sources": {},
+  "fortran_compiler": "gfortran",
+  "link_before": [
+    "-lgcc_s"
+  ],
+  "link_order_version": 1,
+  "compiler_runtime": "gnu-linux-libgcc_s-before-rust"
+}
