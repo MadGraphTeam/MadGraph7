@@ -26,7 +26,7 @@ This is the implementation design of the shared-recursion one-loop engine ("v2")
 **Paths.**
 
 - Python: `src/pyamplicol/…`; Rust: `rust/…`; both relative to `pyamplicol/`.
-- `ninjars:` is the pinned checkout `workspace/cache/cargo/git/checkouts/ninjars-3842d69907c1a3a3/0d0d7e7/crates/ninjars/src/`.
+- `ninjars:` is the checkout `workspace/cache/cargo/git/checkouts/ninjars-3842d69907c1a3a3/0d0d7e7/crates/ninjars/src/`, where the [V] line references were verified. The pinned revision is now aa6a6307 (`…/aa6a630/`, a fast-forward); line numbers there may differ.
 - `revision/` is `workspace/tmp/engine-v2/revision/`.
 - "This host" is the AMD EPYC 9754 used for all local measurements, one pinned idle core.
 
@@ -1118,7 +1118,7 @@ Hence C_α = 2 Re C_α^{half} [I, derived; the absorptive parts sit in the integ
 - **NinjaRS.** The fast engine for f64; the generic engine for DD/AP.
   - Today the generic engine's numerator ingress is `PolynomialNumerator`, built from a Symbolica expression (`ninjars-symbolica/src/polynomial.rs:258` [V]). At rank 7 it has 330 parameters, and its compile cost is unmeasured (WP2.3 measures it).
   - A generic-precision tensor numerator exists only in the CLI harness (`ninjars-cli/src/case_check/harness.rs:1290`, `TensorGenericNumerator<T>` [V]). Request 8 (§11.5) asks the owner to upstream it.
-  - Float(128) needs the coordinated Symbolica pin 9cdc2949 (NinjaRS guidance [V]).
+  - Float(128) needs Symbolica 9cdc2949 (NinjaRS guidance [V]), pinned since the coordinated re-pin (WP0.2).
 
 ### 10.2 Triggers, cheapest first
 
@@ -1158,7 +1158,7 @@ Statuses:
 
 - NJet needed quadruple precision for 1.37 % (6 gluons) and 8.63 % (7 gluons) of points with unitarity in double [L 1209.0100 `njet.tex:1161-1227`].
 - Ninja's exact Laurent expansions avoid the OPP sampling part of that instability [L-s 1403.1229].
-- NinjaRS 0d0d7e7 loses 5×10⁻⁹–10⁻⁵ on ill-conditioned n = 7 lanes in binary64, fixed on the candidate main (guidance [V]). The guidance expects many n = 7 μ² lanes to need DoubleFloat at a 10⁻⁸ target.
+- NinjaRS 0d0d7e7 lost 5×10⁻⁹–10⁻⁵ on ill-conditioned n = 7 lanes in binary64; the fix is in the pinned main aa6a6307 (guidance [V]; not re-measured here). The guidance expects many n = 7 μ² lanes to need DoubleFloat at a 10⁻⁸ target.
 
 WP2.3 measures on 10⁴ points per process:
 
@@ -1191,7 +1191,7 @@ Re-reduce flagged families in DoubleFloat from their binary64 coefficients (the 
 - **Buckets.** One `FastAmplitude::new(N, R, FastOptions::default())` per bucket; rank ≤ N + 2 is enforced (`ninjars:fast/engine.rs:620-632` [V]).
   - Lanes are (family, point, sector, column), and every lane carries its own shifts, masses and S-matrix (`FastInput`, `ninjars:fast/mod.rs:60-79` [V]).
   - So unrelated families share calls: 5–11 physical calls per batch instead of one per family (§11.4). The re-test reuses the same buckets.
-- **Per-lane rank.** After the coordinated re-pin, buckets merge by N.
+- **Per-lane rank.** Pinned NinjaRS aa6a6307 reduces a lane declared at rank n+2 at its own rank (`FastNumerator::lane_rank`), bitwise as declaring that rank, so buckets may merge by N. `runtime/v2_reduce.rs` still buckets by (N, true rank), with the same results; merging by N is open.
 - **Master cache.** A pyAmpliCol-side `CachingMasters` wrapper implements `FastMasters` (`ninjars:fast/masters.rs:56-64` [V]) and is cleared per batch.
   - Keys are the exact bit patterns of the request arguments. This works because all S-matrices come from one invariant table per event.
   - **Canonicalisation only where the outputs are invariant:** C0 under the triangle's symmetry group acting consistently on its external invariants and masses, and D0 under the dihedral relabelling of the box acting consistently on (p_i², s12, s23, m_i²). A0 needs none.
@@ -1286,7 +1286,7 @@ Sources:
 
 These may be pushed to NinjaRS main under the 20 October authorisation (`MASTER_PLAN.md:96-103` [V]), in priority order:
 
-1. **Coordinated re-pin** to the new mains with per-lane rank, plus an upstream test that lanes of unrelated families give bitwise the same result batched and unbatched.
+1. **Coordinated re-pin** to the new mains with per-lane rank: done (WP0.2). Still requested: an upstream test that lanes of unrelated families give bitwise the same result batched and unbatched.
 2. **Transposed / multi-numerator reduction.** H numerators share one geometry; equivalently, each family's integrals of all monomials are returned once. This enables schedule 3 for correlations and resolved outputs.
    - The owner's study (`docs/audits/transpose-probe.md` [V]) is a symbolic instruction count on a three-propagator, rank-3 toy, starting from Laurent callback heads.
    - It is a negative result at one numerator per changing point (`:21`). Its thresholds, H > 1.85 and H > 3.97 for fixed geometry, are explicitly not timing predictions (`:45`).
@@ -1420,10 +1420,10 @@ Also deleted: the 18 `RETAINED_*` injection tests and the per-process timing fac
 | 7 | Many-observable cost (directed ×2·N_hist; resolved ×H) | High / medium | Seed-column sharing of trees; schedule 3 with transposed reduction (request 2) after a measured prototype; cost-model policy |
 | 8 | Electroweak prerequisites (Feynman gauge in the tree engine, complex-mass scheme, R6) | Certain / high for EW members | Wave 3 work package with its own gates; QCD members unaffected |
 | 9 | Python generation time at 7 legs (tree DAG) | Medium / low | Rust builder (WP3.1) |
-| 10 | Dependency coordination (re-pin, Symbolica pin for Float, upstreaming the generic tensor numerator) | Medium / medium | WP0.2 with the NinjaRS owner; stay on 0d0d7e7 until announced |
+| 10 | Dependency coordination (re-pin, Symbolica pin for Float, upstreaming the generic tensor numerator) | Medium / medium | WP0.2 with the NinjaRS owner; re-pinned together to the announced mains (NinjaRS aa6a6307, oneloopmaster 8ec256fc, Symbolica 9cdc2949); later bumps only on owner announcements, again in one coordinated rebuild |
 | 11 | Three executors (F, B, M) diverge | Low / low | F kept small; O4 in CI |
 | 12 | Asymptotics: B's Θ((n−1)!·4ⁿ) seed term grows at n ≥ 8 | Low (required set n ≤ 7) | M (WP2.8) is the planned path and the default for n ≥ 8 |
-| 13 | Complex-mass master defects (NinjaRS guidance [V]): one-/two-mass boxes with wide widths wrong, also in OneLOop (fixed in the candidate); still open: C0(0,0,0; m_complex,0,m_real) wrong on all routes, generic-engine small-\|p²\| unequal-mass bubbles fail, opposite-mass two-mass boxes near collinear limits ≈10⁻⁸, real negative m² not the −i0 limit | Medium / high for CMS processes | CMS processes gated on the re-pin; per-defect regression points in WP2.3; affected master signatures refused or forced to the re-test plus rescue; no silent use |
+| 13 | Complex-mass master defects (NinjaRS guidance [V]): one-/two-mass boxes with wide widths wrong, also in OneLOop (fixed in oneloopmaster 8ec256fc, pinned); still open: C0(0,0,0; m_complex,0,m_real) wrong on all routes, generic-engine small-\|p²\| unequal-mass bubbles fail, opposite-mass two-mass boxes near collinear limits ≈10⁻⁸, real negative m² not the −i0 limit | Medium / high for CMS processes | Re-pin done; the CMS controls pass on it in double, DoubleFloat and AP80, zero width included; per-defect regression points in WP2.3; affected master signatures refused or forced to the re-test plus rescue; no silent use |
 | 14 | Electroweak family proliferation (gg→tt̄e⁻e⁺g EW: 2.5× QCD families by MadLoop's ratio, heptagons through the lepton line) | Medium / medium | Gate E0 with exact counts before EW timing work; species sharing by mass; M for certified EW classes |
 | 15 | Provider baselines drift (MadLoop exports rebuilt with production flags during this revision; Recola cache defect at N = 7 with COLLIER 1.2.9/1.2.10) | Medium / low | One protocol for all providers at G1 and R3; production and protocol columns both reported; provider versions frozen in the report |
 
@@ -1463,6 +1463,10 @@ Total ≈ 270 agent-days [I].
   - *Depends:* owner.
   - *Accept:* batched equals unbatched bitwise for unrelated-family lanes (upstream test); pyAmpliCol loop tests green on the new pins.
   - *Size:* S (2) on the pyAmpliCol side.
+  - *Status:* re-pin done on `work/v2-repin`.
+    - Pins: NinjaRS aa6a6307 and oneloopmaster 8ec256fc; Symbolica 9cdc2949 for both the native and the Python Community kernel; FeynKit d1904bf2 in the native only (the Community overlay keeps gammaloop 0cfb7dbb9).
+    - Build pair: native `loop-native-v2-repin-783aaf47` (digest b71edd24) with Community `community-release-python-9cdc2949` (`dependencies/README.md`).
+    - Loop tests are green on that pair. The upstream batched-vs-unbatched test is still requested (§11.5, request 1).
 - **WP0.3 Kernel gate G0 (new).**
   - *Goal:* Rust segment kernels generic over T with the generic raise over `ninjars::fast::tensor_layout`: split (dense and structured vertex), fused, and register-blocked fused.
     - Benchmark on the probe's synthetic shapes immediately (seed: `revision/kbench/`), then on real trie shapes exported by WP1.3 for gg→gggg and uu~→e⁻e⁺dd~g.

@@ -575,3 +575,71 @@ fn profiling_forwards_owner_rank_n2_callbacks() {
     check!(FastPolynomialReducer);
     check!(FastTensorPolynomialReducer);
 }
+
+#[test]
+fn profiling_keeps_owner_per_lane_rank_lowering() {
+    use rusticol_loop_reduction::FastTensorPolynomialReducer;
+    // Declared rank 6 = n+2 at n = 4; lanes with a = 0 have rank 5, which
+    // NinjaRS reduces with its rank <= n+1 engine (FastNumerator::lane_rank,
+    // lower_rank, restore_rank), bitwise as if rank 5 were declared. The
+    // profiling wrapper must forward that, or profiled lanes keep the rank n+2
+    // engine. The rank-6 part is homogeneous, so no coefficient is shared.
+    let sixth = parse!("q0^2*q1^2*q2^2 + 3/7*q3^6 - 2*mu2*q0^3*q2 + q0*q1^4*q3");
+    let fifth =
+        parse!("b*((q0*q1 - q2*q3 + 1/2)*(q0^2 + q1*q3 - 3)*(q2 + 2) + mu2*(q0 - q3) - 5/4)");
+    let shifts = [
+        [0., 0., 0., 0.],
+        [341. / 128., 86. / 128., -115. / 128., 83. / 128.],
+        [180. / 128., 118. / 128., -44. / 128., 191. / 128.],
+        [521. / 128., 104. / 128., 34. / 128., 257. / 128.],
+    ]
+    .repeat(3);
+    let masses = [C64::real(1.); 12];
+    let scales = [1.; 3];
+    let c = |re: f64| Complex::new(re, 0.);
+    // (a, b) per lane: two rank-5 lanes and one rank-6 lane.
+    let full = [c(0.), c(1.), c(0.), c(-1.5), c(1.), c(1.)];
+    let bits = |value: &Laurent<C64>| {
+        [&value.finite, &value.single_pole, &value.double_pole]
+            .map(|z| (z.re.to_bits(), z.im.to_bits()))
+    };
+    let run = |reducer: &mut FastTensorPolynomialReducer, lanes: usize, parameters: &[_]| {
+        reducer
+            .evaluate(
+                &[7, 5, 3][..lanes],
+                FastInput {
+                    lanes,
+                    shifts: &shifts[..4 * lanes],
+                    masses_squared: &masses[..4 * lanes],
+                    scales_squared: &scales[..lanes],
+                    s_matrix: None,
+                },
+                parameters,
+            )
+            .unwrap()
+            .into_iter()
+            .map(|lane| {
+                assert_eq!(lane.status, FastStatus::Success, "lane {}", lane.id);
+                bits(lane.value.as_ref().unwrap())
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut declared_six = FastTensorPolynomialReducer::new(
+        4,
+        parse!("a") * &sixth + &fifth,
+        variables(),
+        vec![parse!("a"), parse!("b")],
+    )
+    .unwrap();
+    let plain = run(&mut declared_six, 3, &full);
+    declared_six.set_profiling(true);
+    let profiled = run(&mut declared_six, 3, &full);
+    assert!(declared_six.take_profile().numerator_calls > 0);
+    assert_eq!(profiled, plain);
+    let mut declared_five =
+        FastTensorPolynomialReducer::new(4, fifth, variables(), vec![parse!("b")]).unwrap();
+    for profiling in [false, true] {
+        declared_five.set_profiling(profiling);
+        assert_eq!(run(&mut declared_five, 2, &[c(1.), c(-1.5)]), plain[..2]);
+    }
+}

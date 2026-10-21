@@ -187,26 +187,12 @@ def test_source_semantic_cms_components_and_precise_update(cms_program):
     assert program.source_bare.structure is structure
 
 
-@pytest.mark.parametrize(
-    "cms_program",
-    [
-        CASES[0],
-        CASES[1],
-        pytest.param(
-            CASES[2],
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason=(
-                    "NinjaRS 5f35b07: AP80 sqrt-square mass precision changes "
-                    "the scalar box branch; see reproduce_cms_zero_box.py. "
-                    "Mandatory AP zero-width validation remains open."
-                ),
-            ),
-        ),
-    ],
-    indirect=True,
-)
+@pytest.mark.parametrize("cms_program", CASES, indirect=True)
 def test_source_semantic_cms_zero_width(cms_program):
+    # AP80 failed here through NinjaRS 0d0d7e7 / Symbolica e679e8c1: the
+    # sqrt-square mass took the other scalar box branch than the reparsed one
+    # (reproduce_cms_zero_box.py). Symbolica 9cdc2949 keeps factors of +-1
+    # exact, so both now agree and AP80 matches the zero-width reference.
     _view, _structure, program, reference, _bit, _tolerance = cms_program
     # The same graph/CT program consumes updated original width inputs. The
     # original unmodified CMS reference equals the real-mass reference here.
@@ -228,8 +214,7 @@ def standard_source(loop_native, loop_gmu_ufo):
     [
         pytest.param(CASES[0], ("finite", "small", "zero"), id="double"),
         pytest.param(CASES[1], ("finite", "small", "zero"), id="double-double"),
-        # The zero-width AP80 gate remains the separate strict xfail above.
-        pytest.param(CASES[2], ("finite", "small"), id="arbitrary80"),
+        pytest.param(CASES[2], ("finite", "small", "zero"), id="arbitrary80"),
     ],
 )
 def test_standard_cms_complete_components_across_width_updates(

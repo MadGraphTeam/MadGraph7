@@ -2,7 +2,7 @@
 
 The `loop` development branch currently integrates Rust Symbolica 3.0.1,
 Numerica and Graphica from the tested
-[`e679e8c` integration fork](https://github.com/ValentinHirschi/symbolica/commit/e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8),
+[`9cdc294` integration fork](https://github.com/alphal00p/symbolica/commit/9cdc2949cdb153478c1eca0d40690dc0abfc616e),
 and SymJIT 2.27.3. These pins are recorded by Cargo. This is a source integration,
 with Rust 1.96 or newer required; it is not a completed release dependency set.
 The published Python/Community distribution is pinned to 3.0.2 (kernel 3.0.1),
@@ -16,6 +16,38 @@ update the binary format.
 The release lock records the actual dependency versions, but the source patches
 still fail the published-crate gate. Publication requires an upstream release
 containing the integration fixes; this branch is not yet publishable.
+
+The loop development builds (`work/v2-repin`) use one Symbolica kernel,
+alphal00p 9cdc2949, on both sides:
+
+- **Native:** the Rust pin above.
+- **Python:** a release rebuild of the Community overlay. Only its Symbolica,
+  Numerica and Graphica paths moved, from e679e8c1 to 9cdc2949. The rest of the
+  overlay is unchanged: symbolica_community 17c8aeb with the workspace overlay
+  patch, gammaloop open-duality candidate 0cfb7dbb9, fastSecDec 14a9296, and the
+  same `--locked` lock.
+
+Python-side Float evaluation runs on the Community kernel. That covers
+`loops/v2/assemble.py` `_replay`, `loops/v2/catalogue.py`
+`evaluate_with_precision` and `runtime/symbolica_exact.py`. At e679e8c1 the
+kernel would keep the ±1 product rounding that 9cdc2949 fixes, the bug that
+sent the AP80 CMS box down the wrong branch in the native. The serialized
+evaluator state is identical at both revisions, so the earlier split was
+compatible but not coherent.
+
+The Community gammaloop stays at the overlay's 0cfb7dbb9. The native's FeynKit
+d1904bf2 (recorded by NinjaRS aa6a6307) lacks PR155 (dual endpoints) and three
+other overlay fixes. No gammaloop data crosses the native boundary, so the two
+sides can differ there.
+
+Build pair (workspace `builds/`):
+
+- native `loop-native-v2-repin-783aaf47`, digest `b71edd24…`;
+- Community `community-release-python-9cdc2949`, wheel sha256 `149e63a5…`.
+
+Switching Community from e679e8c1 to 9cdc2949 left the legacy O1/O2 captures
+byte-identical. The v2 slice totals moved by at most 9.8e-62 (row-normalized)
+at 200 bits, and binary64 values were bitwise unchanged.
 
 pyAmpliCol defaults to published runtime dependencies and release-mode native
 builds. Historical pinned-source candidate machinery is retained, but its
