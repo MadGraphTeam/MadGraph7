@@ -797,11 +797,12 @@ def test_family_recursion_runs_on_the_block_table(models, text, born):
 
 
 @pytest.mark.loop_fast
-def test_born_is_the_tree_program_bucketed_by_exact_order(models):
+@pytest.mark.parametrize("accuracy", ["full", "lc"])
+def test_born_is_the_tree_program_bucketed_by_exact_order(models, accuracy):
     compiled, model, _structure = models
-    # The Born keeps the requested accuracy; this leading-colour tree has
-    # both the QCD and the electroweak exchange.
-    process = _process(compiled, "u u~ > d d~", "lc")
+    # Both colour accuracies keep the QCD and the electroweak exchange
+    # between the two quark lines (full colour used to drop the latter).
+    process = _process(compiled, "u u~ > d d~", accuracy)
     born_limits = {"QCD": 2, "QED": 2}
     blocks = build_tree_blocks(
         process,
@@ -843,6 +844,29 @@ def test_born_is_the_tree_program_bucketed_by_exact_order(models):
     assert {block.key for block in blocks.blocks} == {
         block.key for block in full.blocks
     }
+
+
+@pytest.mark.loop_fast
+def test_full_colour_born_keeps_electroweak_roots_with_a_gluon(models):
+    compiled, model, _structure = models
+    limits = {"QCD": 3, "QED": 2}
+    by_accuracy = {
+        accuracy: build_tree_blocks(
+            _process(compiled, "u u~ > d d~ g", accuracy),
+            model,
+            born_coupling_orders=limits,
+            block_coupling_orders=limits,
+        ).born_orders
+        for accuracy in ("full", "lc")
+    }
+    assert (
+        by_accuracy["full"]
+        == by_accuracy["lc"]
+        == (
+            (("QCD", 1), ("QED", 2)),
+            (("QCD", 3),),
+        )
+    )
 
 
 @pytest.mark.loop_fast
