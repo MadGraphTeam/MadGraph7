@@ -6,39 +6,59 @@ Two MadLoop-style checks, individually configurable and combinable:
 * **Rotation checks.** The point is evaluated again with its external momenta
   rotated by each user-supplied rotation (any number, including none). A
   rotation is an exact rational orthogonal matrix, so the rotated point is
-  exactly on shell and the virtual is unchanged in exact arithmetic; the
-  difference measures the rounding of the whole evaluation (trees, dressing,
-  reduction, counterterms).
+  exactly on shell and every reduction lane's integral (a Lorentz scalar) is
+  unchanged in exact arithmetic; the differences measure the rounding of the
+  whole evaluation (trees, dressing, reduction, counterterms).
 * **Reduction-direction check.** Every family lane is reduced a second time
   with the loop direction reversed (``V2Reducer.reduce(check=True)``, the
   NinjaRS adapter's reversed frame), reusing the numerator coefficients and
   the cached masters. It measures the reduction alone, at the cost of a
   second reduction pass.
 
-The estimate of a check is the largest deviation of the virtual's Laurent
-coefficients (the finite part only, in finite-only mode) relative to the
-sector's largest coefficient, over every squared-order sector: |V_rotated - V|
-for a rotation, and for the reduction direction the error budget
-sum_f |Omega_f - Omega'_f| over the families (design §10.2). The combined
-estimate adds, coefficient by coefficient, the largest rotation deviation and
-the reduction budget: the rotations sample the rounding of the whole
-evaluation and the budget bounds the reduction's, and one difference of two
-evaluations with comparable rounding can underestimate either evaluation's
-error (NinjaRS's reversed frame tracks the true error within a factor of
-about 2). Roundings common to every evaluation (couplings, kernel constants,
-the final sums) are sampled by no check, so the combined estimate also carries
-a floor of a few units in the last place of the carrier. Without a requested
-check no estimate exists: ``LoopSlice.evaluate`` then returns
-``stability=None``.
-Escalating the precision is the caller's decision.
+Every check yields an absolute error budget per squared-order sector and
+Laurent coefficient that lets no two contributions cancel (design §10.2):
+sum_f |Omega_f - Omega'_f| over the reduction lanes (bare part), plus, for a
+rotation, the deviations of the local components (R2, UV vertex, fields). A
+single difference of two evaluations can be accidentally small (its ratio to
+the true error has a heavy tail), the budget over many lanes cannot.
+
+The estimate of a configuration combines its checks per sector and Laurent
+coefficient as
+
+    E = SAFETY x (max over rotations of their budgets + reduction budget)
+        + FLOOR_UNITS x u x S,
+
+with u the unit roundoff of the carrier and S the absolute sum of the
+contributions (sum_f |bare_f| plus the absolute local components): the
+factor 2 covers a difference of two evaluations with comparable rounding,
+which understates either one's error by up to about 2, and the floor covers
+roundings no check samples (master integrals at the same exact invariants,
+couplings, kernel constants, the final sums). Calibration on every slice point
+and on two exact rotations of each (36 binary64 samples, four processes)
+bounds the true error by 0.9 E or less for every configuration: the
+reduction check alone, one rotation, two rotations, and either with the
+reduction check.
+
+``StabilityEstimate.relative`` measures E against each sector's largest
+Laurent coefficient (the comparison metric of the oracles); ``coefficients``
+measures it against each coefficient itself, so ``finite`` is the relative
+accuracy of the finite part. Without a requested check no estimate exists:
+``LoopSlice.evaluate`` then returns ``stability=None``. Escalating the
+precision is the caller's decision.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+import math
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Any
+
+SAFETY = 2
+FLOOR_UNITS = 16
+ROTATION = "rotation-{}"
+REDUCTION = "reduction-direction"
 
 _AXES = {"x": 1, "y": 2, "z": 3}
 
@@ -74,6 +94,44 @@ class Rotation:
         rows = [[Fraction(int(i == j)) for j in range(3)] for i in range(3)]
         rows[a][a], rows[a][b], rows[b][a], rows[b][b] = c, -s, s, c
         return cls(tuple(tuple(row) for row in rows))
+
+    @classmethod
+    def from_axis_angle(
+        cls, axis: Sequence[float], angle: float, *, resolution: int = 10**6
+    ) -> Rotation:
+        """An exact rotation within ~1/``resolution`` of ``angle`` (radians,
+        right-handed) about the direction ``axis``.
+
+        The unit quaternion (cos(angle/2), sin(angle/2) n) is rounded to
+        rationals with denominators up to ``resolution``; the Euler-Rodrigues
+        matrix of any rational quaternion is exactly orthogonal, so the rotated
+        point stays exactly on shell.
+        """
+
+        norm = math.sqrt(sum(float(x) ** 2 for x in axis))
+        if len(axis) != 3 or not norm or not math.isfinite(angle):
+            raise ValueError("a rotation needs a non-zero 3-axis and a finite angle")
+        half = angle / 2
+        a, b, c, d = (
+            Fraction(value).limit_denominator(resolution)
+            for value in (
+                math.cos(half),
+                *(math.sin(half) * float(x) / norm for x in axis),
+            )
+        )
+        n = a * a + b * b + c * c + d * d
+        if not n:
+            raise ValueError("the rounded quaternion vanishes; raise the resolution")
+        rows = (
+            (a * a + b * b - c * c - d * d, 2 * (b * c - a * d), 2 * (b * d + a * c)),
+            (2 * (b * c + a * d), a * a - b * b + c * c - d * d, 2 * (c * d - a * b)),
+            (2 * (b * d - a * c), 2 * (c * d + a * b), a * a - b * b - c * c + d * d),
+        )
+        return cls(tuple(tuple(x / n for x in row) for row in rows))
+
+    @property
+    def is_identity(self) -> bool:
+        return self.matrix == ((1, 0, 0), (0, 1, 0), (0, 0, 1))
 
     def __matmul__(self, other: Rotation) -> Rotation:
         return Rotation(
@@ -121,6 +179,8 @@ class StabilityChecks:
         rotations = tuple(self.rotations)
         if any(not isinstance(r, Rotation) for r in rotations):
             raise TypeError("rotation checks take Rotation records")
+        if any(r.is_identity for r in rotations):
+            raise ValueError("the identity is no rotation check")
         object.__setattr__(self, "rotations", rotations)
 
     @property
@@ -147,95 +207,166 @@ def relative(reference: Mapping[Any, Any], absolute: Mapping[Any, Any]) -> float
     return worst
 
 
+def per_coefficient(
+    reference: Mapping[Any, Any], absolute: Mapping[Any, Any]
+) -> tuple[float, ...]:
+    """Largest absolute deviation of each Laurent coefficient relative to the
+    coefficient itself, over sectors (``inf`` for a deviation of an exact 0)."""
+
+    width = len(next(iter(reference.values())).coefficients)
+    worst = [0.0] * width
+    for sector, laurent in reference.items():
+        for k, (value, error) in enumerate(
+            zip(laurent.coefficients, absolute[sector].coefficients, strict=True)
+        ):
+            value, error = abs(float(value)), abs(float(error))
+            if error:
+                worst[k] = max(worst[k], error / value if value else math.inf)
+    return tuple(worst)
+
+
 def deviation(reference: Mapping[Any, Any], other: Mapping[Any, Any]) -> float:
     """Relative deviation of ``other``'s Laurent coefficients from the
     ``reference`` ones over sectors (``relative`` of their differences)."""
 
-    return relative(
-        reference,
-        {
-            sector: _Deviation(
-                tuple(
-                    b - a
-                    for a, b in zip(
-                        laurent.coefficients, other[sector].coefficients, strict=True
-                    )
+    return relative(reference, differences(reference, other))
+
+
+def differences(reference: Mapping[Any, Any], other: Mapping[Any, Any]) -> dict:
+    """|other - reference| per sector and Laurent coefficient."""
+
+    return {
+        sector: Budget(
+            tuple(
+                abs(b - a)
+                for a, b in zip(
+                    laurent.coefficients, other[sector].coefficients, strict=True
                 )
             )
-            for sector, laurent in reference.items()
-        },
-    )
+        )
+        for sector, laurent in reference.items()
+    }
 
 
 @dataclass(frozen=True, slots=True)
-class _Deviation:
-    coefficients: tuple[Any, ...]
+class Budget:
+    """Absolute errors per Laurent coefficient (a ``Laurent``-like record)."""
+
+    coefficients: tuple[float, ...]
 
 
 @dataclass(frozen=True)
 class StabilityEstimate:
-    """The relative accuracy estimate of one evaluation.
+    """The relative accuracy estimate of one evaluation (module docstring).
 
-    ``relative`` is the combined estimate (module docstring) and ``checks``
-    the individual ones, each the largest absolute deviation of the virtual's
-    Laurent coefficients relative to the sector's largest one (``relative``):
-    for a rotation, |V_rotated - V|; for the reduction direction, the error
-    budget sum_f |Omega_f - Omega'_f| of the families' contributions (design
-    §10.2), which lets no two families' errors cancel. ``families`` holds
-    |Omega - Omega'| per reduction lane when that check ran.
+    ``relative`` is E against each sector's largest Laurent coefficient,
+    ``coefficients`` E per Laurent coefficient against that coefficient
+    (finite, then the poles when computed). ``checks`` holds each check's own
+    budget against the Laurent vector, without safety factor and floor.
+    ``budgets`` (absolute, per check and sector) and ``scale`` (the absolute
+    sums S) let ``subset`` re-combine fewer checks; ``families`` holds
+    |Omega - Omega'| per reduction lane when the reduction check ran.
     """
 
     relative: float
+    coefficients: tuple[float, ...]
     checks: Mapping[str, float]
+    budgets: Mapping[str, Mapping[Any, Budget]] = field(repr=False)
+    reference: Mapping[Any, Any] = field(repr=False)
+    scale: Mapping[Any, Budget] = field(repr=False)
+    roundoff: float = field(repr=False)
     families: Mapping[Any, Any] | None = field(default=None, repr=False)
+
+    @property
+    def finite(self) -> float:
+        """The relative accuracy estimate of the finite part."""
+        return self.coefficients[0]
 
     @classmethod
     def from_checks(
         cls,
         reference: Mapping[Any, Any],
-        rotations: Sequence[Mapping[Any, Any]] = (),
-        reduction: Mapping[Any, Any] | None = None,
+        budgets: Mapping[str, Mapping[Any, Any]],
+        *,
+        scale: Mapping[Any, Any],
+        roundoff: float,
         families: Mapping[Any, Any] | None = None,
-        floor: float = 0.0,
     ) -> StabilityEstimate:
-        """Combine absolute Laurent deviations per sector: one mapping per
-        rotation and the reduction budget; ``floor`` is the carrier's
-        relative rounding floor."""
+        """Combine the absolute budgets of named checks (``ROTATION`` and
+        ``REDUCTION`` names) for the reference Laurent values per sector;
+        ``scale`` are the absolute sums S and ``roundoff`` the carrier's unit
+        roundoff."""
 
-        checks = {f"rotation-{i}": item for i, item in enumerate(rotations)}
-        if reduction is not None:
-            checks["reduction-direction"] = reduction
-        if not checks:
+        if not budgets:
             raise ValueError("a stability estimate needs at least one check")
+        unknown = [
+            name
+            for name in budgets
+            if name != REDUCTION and not name.startswith(ROTATION.format(""))
+        ]
+        if unknown:
+            raise ValueError(f"unknown stability checks {unknown}")
+        rotations = [b for name, b in budgets.items() if name != REDUCTION]
+        reduction = budgets.get(REDUCTION)
         combined = {}
         for sector, laurent in reference.items():
             width = len(laurent.coefficients)
-            rotated = [
-                max(
-                    (abs(float(r[sector].coefficients[k])) for r in rotations),
+
+            def sampled(k: int, sector=sector) -> float:
+                rotated = max(
+                    (_at(r[sector], k) for r in rotations),
                     default=0.0,
                 )
-                for k in range(width)
-            ]
-            budget = (
-                [abs(float(x)) for x in reduction[sector].coefficients]
-                if reduction is not None
-                else [0.0] * width
-            )
-            combined[sector] = _Deviation(
-                tuple(a + b for a, b in zip(rotated, budget, strict=True))
+                return rotated + (_at(reduction[sector], k) if reduction else 0.0)
+
+            combined[sector] = Budget(
+                tuple(
+                    SAFETY * sampled(k) + FLOOR_UNITS * roundoff * _at(scale[sector], k)
+                    for k in range(width)
+                )
             )
         return cls(
-            relative(reference, combined) + floor,
-            {name: relative(reference, item) for name, item in checks.items()},
+            relative(reference, combined),
+            per_coefficient(reference, combined),
+            {name: relative(reference, item) for name, item in budgets.items()},
+            dict(budgets),
+            reference,
+            scale,
+            roundoff,
             families,
         )
 
+    def subset(self, names: Iterable[str]) -> StabilityEstimate:
+        """The estimate an evaluation with only the checks ``names`` returns."""
+
+        names = tuple(names)
+        missing = [name for name in names if name not in self.budgets]
+        if missing:
+            raise KeyError(f"checks {missing} did not run")
+        return StabilityEstimate.from_checks(
+            self.reference,
+            {name: self.budgets[name] for name in names},
+            scale=self.scale,
+            roundoff=self.roundoff,
+            families=self.families if REDUCTION in names else None,
+        )
+
+
+def _at(budget: Any, k: int) -> float:
+    return abs(float(budget.coefficients[k]))
+
 
 __all__ = [
+    "FLOOR_UNITS",
+    "REDUCTION",
+    "ROTATION",
+    "SAFETY",
+    "Budget",
     "Rotation",
     "StabilityChecks",
     "StabilityEstimate",
     "deviation",
+    "differences",
+    "per_coefficient",
     "relative",
 ]

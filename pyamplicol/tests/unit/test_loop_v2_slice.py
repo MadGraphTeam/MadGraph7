@@ -19,15 +19,21 @@ binary64 and at 200 bits. Oracles:
 * O4: schedules F and B give identical numerators in exact arithmetic on the
   physical tree rows and seeds;
 * O9: the virtual's poles equal Catani's operator from the Born and its
-  colour correlations (1e-10);
+  colour correlations (1e-10), also with the model's default parameters;
+* the Born closed at leg 1's vertex is the tree runtime's Born (its amplitude
+  roots, phase included) on the tree engine's colour basis;
+* the sign rule's scope: loop fermion vertices that are not pure vector
+  currents are refused at generation;
 * finite-only evaluations and the stability estimates of the runtime API
-  (REQUIREMENTS_ADDENDUM B, C).
+  (REQUIREMENTS_ADDENDUM B, C), every check configuration bracketing the true
+  binary64 error.
 """
 
 from __future__ import annotations
 
 import gzip
 import json
+import math
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
@@ -41,13 +47,18 @@ from pyamplicol.loops.v2.assemble import (
     Precision,
     SliceRequest,
 )
+from pyamplicol.loops.v2.conventions import FermionSignError
 from pyamplicol.loops.v2.families import shifts
 from pyamplicol.loops.v2.poly_affine import size, substitute
 from pyamplicol.loops.v2.stability import (
+    REDUCTION,
+    ROTATION,
     Rotation,
     StabilityChecks,
     StabilityEstimate,
     deviation,
+    differences,
+    per_coefficient,
 )
 from tools.loop_reference import legacy_capture
 
@@ -326,6 +337,137 @@ def test_poles_equal_catani(evaluated, name, carrier):
             assert abs(float(virtual.double_pole - double)) <= POLE_TOLERANCE * scale
 
 
+@pytest.mark.loop_physics
+def test_default_model_parameters(slices, loop_sm_compiled_model, loop_native):
+    """Without overrides alpha_s and mu_R are the model's own parameters,
+    found by their UFO/SLHA codes; names must be adjustable externals."""
+
+    from pyamplicol.models.loading import load_compiled_model
+
+    slice_ = slices("uux_uux")
+    assert (slice_.scale_parameter, slice_.alpha_s_parameter) == ("MU_R", "aS")
+    fixture = _fixture("uux_uux")
+    result = slice_.evaluate(fixture["points"][0], fixture["scales_squared"][0])
+    ((single, double),) = result.ir_poles.values()
+    virtual = _only(result.components["virtual"])
+    scale = max(abs(single), abs(double))
+    assert abs(virtual.single_pole - single) <= POLE_TOLERANCE * scale
+    assert abs(virtual.double_pole - double) <= POLE_TOLERANCE * scale
+    control = legacy_capture.CONTROLS["uux_uux"]
+    for options in ({"alpha_s_parameter": "alpha"}, {"scale_parameter": "MB"}):
+        request = SliceRequest(
+            control.process,
+            control.born_order_bounds,
+            control.loop_order_bounds,
+            fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+            **options,
+        )
+        with pytest.raises(ValueError, match="adjustable external"):
+            LoopSlice.generate(
+                load_compiled_model(loop_sm_compiled_model), request, loop_native
+            )
+
+
+# ----------------------------------------------------------------- conventions
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["gg_gg", "uux_ddxg", "uux_uux"])
+def test_born_closure_is_the_tree_runtime_born(slices, name):
+    """The Born closed at the vertex of leg 1 equals the tree runtime's Born,
+    the amplitude roots of the GenericDAG compiler summed per helicity and
+    colour sector, phase included: <b|M_h> agree on every element b of the
+    tree engine's colour basis (identical-flavour signs on uu~ -> uu~)."""
+
+    from pyamplicol.color.connections import contract_connected_tensor_nc_terms
+    from pyamplicol.loops.v2 import assemble
+    from pyamplicol.loops.v2.colour import born_basis
+
+    slice_ = slices(name)
+    fixture = _fixture(name)
+    point = [[Fraction(x) for x in leg] for leg in fixture["points"][0]]
+    precision = Precision.arbitrary(30)
+    numbers = assemble._Numbers(precision)
+    basis = born_basis(slice_.blocks)
+    assert not any(tensor.normalization_power for tensor in basis.tensors)
+    with numbers.scope():
+        closure = slice_._point(
+            point, Fraction(fixture["scales_squared"][0]), PARAMETERS, precision, True
+        )
+        roots = assemble.TreeRows(slice_.blocks.born_dag, slice_.compiled).evaluate(
+            [[assemble._to_decimal(x) for x in leg] for leg in point],
+            closure.parameters,
+            numbers,
+            amplitudes=True,
+        )
+
+        def overlap(bra, ket):
+            cells = contract_connected_tensor_nc_terms(bra, ket)
+            return sum(
+                (
+                    numbers.colour(cell.scaled(Fraction(3) ** power), 0)
+                    for power, cell in cells.items()
+                ),
+                numbers.zero,
+            )
+
+        runtime: dict = {}
+        for root in slice_.blocks.born_roots:
+            (value,) = roots[(root.root_id, "amplitude-root")]
+            key = (
+                tuple((label - 1, h) for label, h in root.helicities),
+                root.coupling_orders,
+                0
+                if root.color_sector_id is None
+                else basis.sector_ids.index(root.color_sector_id),
+            )
+            runtime[key] = runtime.get(key, numbers.zero) + value
+        worst = largest = 0.0
+        for row, vectors in closure.born_vectors.items():
+            for order, vector in vectors.items():
+                for bra in basis.tensors:
+                    mine = sum(
+                        (
+                            value
+                            * numbers.real(Fraction(3) ** power)
+                            * overlap(bra, assemble._single(tensor, basis.legs))
+                            for (tensor, power), value in vector.items()
+                        ),
+                        numbers.zero,
+                    )
+                    theirs = sum(
+                        (
+                            amplitude * overlap(bra, basis.tensors[c])
+                            for (r, o, c), amplitude in runtime.items()
+                            if (r, o) == (row, order)
+                        ),
+                        numbers.zero,
+                    )
+                    worst = max(worst, abs(mine - theirs))
+                    largest = max(largest, abs(theirs))
+    assert largest > 0 and worst <= 1e-25 * largest, worst / largest
+
+
+@pytest.mark.loop_physics
+def test_loop_fermion_vertices_must_be_vector(loop_sm_compiled_model, loop_native):
+    """The -1 per loop fermion propagator holds for vector couplings: a quark
+    loop through a chiral Z vertex is refused at generation (O13 EW, WP3.2)."""
+
+    from pyamplicol.models.loading import load_compiled_model
+
+    with pytest.raises(FermionSignError, match="not a pure vector coupling"):
+        LoopSlice.generate(
+            load_compiled_model(loop_sm_compiled_model),
+            SliceRequest(
+                "u u~ > d d~",
+                {"QCD": 0, "QED": 2},
+                {"QCD": 2, "QED": 2},
+                fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+            ),
+            loop_native,
+        )
+
+
 # ----------------------------------------------------------------- O2 / O7
 
 
@@ -385,11 +527,16 @@ def _magnitude(z) -> float:
     return float(z.real * z.real + z.imag * z.imag) ** 0.5 if z else 0.0
 
 
-# Binary64 dressing loses up to ~2e-12 of a family's largest coefficient on
-# these controls (cancellations in shifted frames; the legacy binary64 capture
-# itself misses its 200-bit values by up to 8e-12), above the design's 1e-13.
+# Open, awaiting the user's decision on the bound (no relaxation): binary64
+# family numerators miss 1e-13 on the quark controls (worst 2.1e-12 on
+# uu~ -> dd~g, a triangle's rank-0 coefficient that cancels ~100x in its
+# frame). Binary64 tree rows and Born amplitudes carry ~2e-14 and the
+# binary64 dressing ~2e-13; with the 200-bit rows and amplitudes rounded to
+# binary64 and dressed exactly every family is within 1.3e-14, so 1e-13 needs
+# trees and dressing beyond binary64. The legacy binary64 capture misses its
+# own 200-bit values by up to 8.5e-12 in its own frames.
 _O2_BINARY64_OPEN = pytest.mark.xfail(
-    strict=True, reason="binary64 family numerators miss 1e-13 (open, see report)"
+    strict=True, reason="binary64 family numerators miss 1e-13 (needs sign-off)"
 )
 
 
@@ -526,24 +673,41 @@ def test_finite_only_equals_the_finite_part(slices, evaluated, name, carrier):
     """poles=False: the same slice, finite parts equal, pole parts absent."""
 
     fixture = _fixture(name)
-    full = evaluated(name, carrier)[0]
-    finite = slices(name).evaluate(
-        fixture["points"][0],
-        fixture["scales_squared"][0],
-        parameters=PARAMETERS,
-        precision=CARRIERS[carrier],
-        poles=False,
-    )
-    assert finite.ir_poles is None and finite.stability is None
-    assert len(finite.totals) == 7
-    assert finite.born == full.born
-    for component in COMPONENTS:
-        for sector, value in finite.components[component].items():
-            reference = full.components[component][sector]
-            assert value.single_pole is None and value.double_pole is None
-            assert value.finite == reference.finite, component
-    for lane, value in finite.families.items():
-        assert value.coefficients == full.families[lane].coefficients[:1]
+    for full, point, scale in zip(
+        evaluated(name, carrier),
+        fixture["points"],
+        fixture["scales_squared"],
+        strict=True,
+    ):
+        finite = slices(name).evaluate(
+            point,
+            scale,
+            parameters=PARAMETERS,
+            precision=CARRIERS[carrier],
+            poles=False,
+        )
+        assert finite.ir_poles is None and finite.stability is None
+        assert len(finite.totals) == 7
+        assert finite.born == full.born
+        for component in COMPONENTS:
+            for sector, value in finite.components[component].items():
+                reference = full.components[component][sector]
+                assert value.single_pole is None and value.double_pole is None
+                assert value.finite == reference.finite, component
+        for lane, value in finite.families.items():
+            assert value.coefficients == full.families[lane].coefficients[:1]
+
+
+# Every configuration of the two binary64 checks of ``evaluated``.
+CONFIGURATIONS = (
+    (REDUCTION,),
+    (ROTATION.format(0),),
+    (ROTATION.format(1),),
+    (ROTATION.format(0), ROTATION.format(1)),
+    (ROTATION.format(0), REDUCTION),
+    (ROTATION.format(1), REDUCTION),
+    (ROTATION.format(0), ROTATION.format(1), REDUCTION),
+)
 
 
 @pytest.mark.loop_physics
@@ -552,33 +716,42 @@ def test_stability_checks_are_optional_and_combinable(slices, evaluated):
     point, scale = fixture["points"][0], fixture["scales_squared"][0]
     slice_ = slices("uux_uux")
 
-    def run(checks):
-        return slice_.evaluate(point, scale, parameters=PARAMETERS, stability=checks)
+    def run(checks, **options):
+        return slice_.evaluate(
+            point, scale, parameters=PARAMETERS, stability=checks, **options
+        ).stability
 
-    assert run(None).stability is None
-    assert run(StabilityChecks()).stability is None
-    reduction = run(StabilityChecks(reduction_direction=True)).stability
-    assert set(reduction.checks) == {"reduction-direction"}
-    assert reduction.families and all(
-        float(x) >= 0 for errors in reduction.families.values() for x in errors
+    assert run(None) is None
+    assert run(StabilityChecks()) is None
+    full = evaluated("uux_uux", "double")[0].stability
+    assert set(full.checks) == set(CONFIGURATIONS[-1])
+    # A configuration returns exactly the combination of its own checks.
+    for checks, names in (
+        (StabilityChecks(reduction_direction=True), CONFIGURATIONS[0]),
+        (StabilityChecks(ROTATIONS[:1]), CONFIGURATIONS[1]),
+    ):
+        alone, subset = run(checks), full.subset(names)
+        assert (alone.relative, alone.coefficients, alone.checks) == (
+            subset.relative,
+            subset.coefficients,
+            subset.checks,
+        )
+        assert (alone.families is None) == (REDUCTION not in names)
+        assert full.relative >= alone.relative
+    assert full.families and all(
+        float(x) >= 0 for errors in full.families.values() for x in errors
     )
-    one = run(StabilityChecks(ROTATIONS[:1])).stability
-    assert set(one.checks) == {"rotation-0"} and one.families is None
-    both = evaluated("uux_uux", "double")[0].stability
-    assert set(both.checks) == {"reduction-direction", "rotation-0", "rotation-1"}
-    floor = Precision.double().rounding_floor
-    assert both.relative <= sum(both.checks.values()) + floor
-    assert both.relative >= max(both.checks.values())
-    # A single check's estimate is that check plus the rounding floor.
-    assert one.relative == both.checks["rotation-0"] + floor
-    assert reduction.relative == both.checks["reduction-direction"] + floor
+    finite = run(StabilityChecks(ROTATIONS[:1], True), poles=False)
+    assert len(finite.coefficients) == 1 and finite.finite == finite.coefficients[0]
 
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", SLICE)
 def test_stability_estimates_bracket_the_true_error(evaluated, name):
-    """The binary64 estimate is at least the true error against 200 bits
-    (and stays a meaningful bound for these well-conditioned points)."""
+    """Every check configuration's binary64 estimate is at least the true
+    error against 200 bits, for the Laurent vector and for each coefficient
+    (the finite part's own relative error included), and stays a meaningful
+    bound on these well-conditioned points."""
 
     for f64, ap in zip(
         evaluated(name, "double"), evaluated(name, "arbitrary-200"), strict=True
@@ -588,7 +761,15 @@ def test_stability_estimates_bracket_the_true_error(evaluated, name):
             for sector, value in ap.components["virtual"].items()
         }
         error = deviation(truth, f64.components["virtual"])
-        assert 0 < error <= f64.stability.relative < 1e-10, (error, f64.stability)
+        errors = per_coefficient(truth, differences(truth, f64.components["virtual"]))
+        assert error > 0
+        for names in CONFIGURATIONS:
+            estimate = f64.stability.subset(names)
+            assert error <= estimate.relative < 1e-10, (names, error, estimate)
+            for k, (mine, bound) in enumerate(
+                zip(errors, estimate.coefficients, strict=True)
+            ):
+                assert mine <= bound, (names, LAURENT[k], mine, bound)
 
 
 @pytest.mark.loop_fast
@@ -605,5 +786,17 @@ def test_rotations_are_exact():
         Rotation(((1, 0, 0), (0, 1, 0), (0, 0, -1)))
     with pytest.raises(ValueError, match="exactly 1"):
         Rotation.about("z", "1/2", "1/2")
+    # Any axis and angle: an exact rotation within 1/resolution.
+    near = Rotation.from_axis_angle((0, 0, 2), math.atan2(4, 3))
+    for row, exact in zip(near.matrix, ROTATIONS[0].matrix, strict=True):
+        assert all(
+            abs(x - y) < Fraction(1, 10**5) for x, y in zip(row, exact, strict=True)
+        )
+    axis = (1, -2, 3)
+    tilted = Rotation.from_axis_angle(axis, 2.5)
+    image = tilted.apply([[Fraction(1), *map(Fraction, axis)]])[0]
+    assert all(abs(x - y) < 1e-5 for x, y in zip(image[1:], axis, strict=True))
+    with pytest.raises(ValueError, match="identity"):
+        StabilityChecks((Rotation.from_axis_angle((1, 0, 0), 0.0),))
     with pytest.raises(ValueError, match="at least one check"):
-        StabilityEstimate.from_checks({})
+        StabilityEstimate.from_checks({}, {}, scale={}, roundoff=2.0**-53)

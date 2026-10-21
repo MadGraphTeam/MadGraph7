@@ -29,8 +29,11 @@ Runtime options (REQUIREMENTS_ADDENDUM B and C):
   absent (``None``), not zero.
 * ``stability`` requests estimates (``stability.StabilityChecks``): rotation
   checks re-evaluate the point with rotated momenta, the reduction-direction
-  check re-reduces every lane in the reversed frame. With no check requested
-  the result carries no estimate.
+  check re-reduces every lane in the reversed frame; each check's error budget
+  sums the deviations of every reduction lane (and, for rotations, of the
+  local components), and ``stability.StabilityEstimate`` combines them with a
+  calibrated safety factor and rounding floor, for the Laurent vector and per
+  coefficient. With no check requested the result carries no estimate.
 
 Colour (design §7.4). Colour vectors keep every literal tensor's N_c power,
 and with a source-owned continuation (``SliceRequest.colour_declaration``)
@@ -45,8 +48,9 @@ continuation and N_c-exact Born tensors (no graded U(1) pieces yet, WP2.4).
 
 The IR-pole check (design §10.2 item 3, O9) predicts the 1/eps^2 and 1/eps
 coefficients of the renormalised virtual from Catani's operator, built from
-the same Born colour vectors and exact colour-correlation matrices (full
-colour, massless coloured legs).
+the same Born colour vectors and exact colour-correlation matrices (QCD
+corrections at full colour, massless coloured legs), with alpha_s and the
+light flavours taken from the bound model parameters.
 
 This is the Python reference path of the slice (gate S1); the native executor
 (WP2.1) replaces steps 1-5 without changing the conventions.
@@ -58,7 +62,7 @@ import json
 import math
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
 from itertools import product
@@ -81,6 +85,7 @@ from .blocks import TreeBlocks, build_tree_blocks
 from .catalogue import build_loop_kernel_catalogue
 from .colour import BornBasis, ColourAccuracy, SeedColour, SeedTable, build_seed_table
 from .conventions import (
+    FERMION_SPIN,
     LOOP_FACTOR_DENOMINATOR,
     LeafWeights,
     Normalisation,
@@ -97,11 +102,13 @@ from .ct_sites import (
     Carrier as SiteCarrier,
 )
 from .families import (
+    ZERO,
     FamilyKey,
     FamilySet,
     LoopOrderSelection,
     ModelLoopCatalogue,
     Orders,
+    _mass_name,
     _set_partitions,
     add_orders,
     generate_families,
@@ -110,9 +117,18 @@ from .families import (
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
 from .poly_affine import MonomialLayout, leg_momentum
 from .schedules import LoopSchedules, build_schedules, cheapest
-from .stability import StabilityChecks, StabilityEstimate
+from .stability import (
+    REDUCTION,
+    ROTATION,
+    Budget,
+    StabilityChecks,
+    StabilityEstimate,
+    differences,
+)
 
 COMPONENTS = ("virtual", "bare", "uv", "r2", "uv_local", FIELD_COMPONENT)
+# Components summed from local insertions (no reduction lane).
+LOCAL_COMPONENTS = ("r2", "uv_local", FIELD_COMPONENT)
 LAURENT = ("finite", "single_pole", "double_pole")
 GUARD_DIGITS = 20
 # Interpreted Symbolica replays derive their precision from the inputs' digits.
@@ -148,12 +164,12 @@ class Precision:
         return cls("arbitrary", digits)
 
     @property
-    def rounding_floor(self) -> float:
-        """The relative rounding no stability check samples (``stability``):
-        eight units of the last binary64 bit, or ten of the last digit."""
+    def unit_roundoff(self) -> float:
+        """The unit roundoff: 2^-53 in binary64, half a unit of the last of
+        ``digits`` decimal digits otherwise."""
         if self.digits is None:
-            return 2.0**-50
-        return 10.0 ** (1 - self.digits)
+            return 2.0**-53
+        return 0.5 * 10.0 ** (1 - self.digits)
 
     @property
     def working_digits(self) -> int:
@@ -240,15 +256,22 @@ def _decimal_power(base: Decimal, exponent: int) -> Decimal:
 
 
 class TreeRows:
-    """Block currents of the tree runtime at one point (design §3.2 exports).
+    """Currents of the tree runtime at one point (design §3.2 exports).
 
-    The stage program of the blocks DAG is replayed by Symbolica evaluators,
-    in binary64 or at a given number of decimal digits. Rows are the tree
-    runtime's values: the source wavefunction of a single leg, otherwise the
-    current including its own propagator, keyed by (current id, variant).
+    The stage program of a tree DAG (the blocks DAG; the Born DAG for its
+    amplitude roots) is replayed by Symbolica evaluators, in binary64 or at a
+    given number of decimal digits. Rows are the tree runtime's values: the
+    source wavefunction of a single leg, otherwise the current including its
+    own propagator, keyed by (current id, variant); ``amplitudes=True`` adds
+    the amplitude-root outputs, keyed by (root id, "amplitude-root").
+
+    The stage replay of ``generation/numerical_current_warmup.py`` is not
+    reused: it replays at decimal precision only and binds the model's
+    binary64 defaults, while the slice also needs binary64 replays and derived
+    parameters of overridden inputs at the carrier's precision.
     """
 
-    def __init__(self, blocks: TreeBlocks, compiled: Any):
+    def __init__(self, dag: Any, compiled: Any):
         from pyamplicol.generation.contracts import StageCompilationInput
         from pyamplicol.generation.runtime_schema import (
             build_runtime_expression_schema,
@@ -260,7 +283,6 @@ class TreeRows:
 
         self.compiled = compiled
         model = CompiledUFOModel(compiled)
-        dag = blocks.blocks_dag
         with _exact_u1_subtraction_weights():
             runtime_schema = build_runtime_expression_schema(
                 dag, model, process_id="loop-v2-blocks"
@@ -274,7 +296,13 @@ class TreeRows:
             )
         self.schema = runtime_schema.to_mapping()
         self.stages = blueprint.stages
+        self._amplitude_stage = blueprint.amplitude_stage
+        self._roots = {
+            int(root["output_index"]): int(root["root_id"])
+            for root in self.schema["amplitude_stage"]["roots"]
+        }
         self._evaluators = tuple(_stage_evaluator(stage) for stage in self.stages)
+        self._amplitude_evaluator = None
         layout = self.schema["parameter_layout"]
         self._value_count = int(layout["value_component_count"])
         self._offset = self._value_count + int(layout["momentum_parameter_count"])
@@ -342,12 +370,10 @@ class TreeRows:
         point: Sequence[Sequence[Decimal]],
         parameters: Mapping[str, str],
         numbers: _Numbers,
+        *,
+        amplitudes: bool = False,
     ) -> dict[tuple[int, str], tuple[Any, ...]]:
-        from pyamplicol.runtime.symbolica_exact import (
-            _fill_momenta,
-            _fill_sources,
-            _upcast_complex_inputs,
-        )
+        from pyamplicol.runtime.symbolica_exact import _fill_momenta, _fill_sources
 
         digits = numbers.precision.working_digits
         values = self._model_values(parameters, digits)
@@ -369,23 +395,7 @@ class TreeRows:
                         convert(*z) for z in state[start:stop]
                     )
         for stage, evaluator in zip(self.stages, self._evaluators, strict=True):
-            inputs = [zero] * stage.parameter_count
-            for component in stage.input_components:
-                inputs[component.parameter_index] = state[component.global_component]
-            if numbers.double:
-                raw = evaluator.evaluate_complex(
-                    [[complex(float(re), float(im)) for re, im in inputs]]
-                )[0]
-                outputs = [(Decimal(z.real), Decimal(z.imag)) for z in raw]
-                converted = [complex(z) for z in raw]
-            else:
-                raw = evaluator.evaluate_complex_with_prec(
-                    _upcast_complex_inputs(tuple(inputs), digits), digits
-                )
-                outputs = [
-                    tuple(Decimal(x) for x in value.to_decimal_tuple()) for value in raw
-                ]
-                converted = [convert(*z) for z in outputs]
+            outputs, converted = self._replay(stage, evaluator, state, numbers)
             for slot in stage.output_slots:
                 state[slot.component_start : slot.component_stop] = outputs[
                     slot.output_start : slot.output_stop
@@ -395,7 +405,43 @@ class TreeRows:
                         rows[(slot.current_id, str(record["variant"]))] = tuple(
                             converted[slot.output_start : slot.output_stop]
                         )
+        if amplitudes:
+            stage = self._amplitude_stage
+            if self._amplitude_evaluator is None:
+                self._amplitude_evaluator = _stage_evaluator(stage)
+            _outputs, converted = self._replay(
+                stage, self._amplitude_evaluator, state, numbers
+            )
+            for slot in stage.output_slots:
+                root = self._roots[slot.component_start]
+                rows[(root, "amplitude-root")] = tuple(
+                    converted[slot.output_start : slot.output_stop]
+                )
         return rows
+
+    @staticmethod
+    def _replay(stage, evaluator, state, numbers: _Numbers):
+        """One stage on the global state: (Decimal outputs, carrier values)."""
+
+        from pyamplicol.runtime.symbolica_exact import _upcast_complex_inputs
+
+        zero = (Decimal(0), Decimal(0))
+        inputs = [zero] * stage.parameter_count
+        for component in stage.input_components:
+            inputs[component.parameter_index] = state[component.global_component]
+        if numbers.double:
+            raw = evaluator.evaluate_complex(
+                [[complex(float(re), float(im)) for re, im in inputs]]
+            )[0]
+            return [(Decimal(z.real), Decimal(z.imag)) for z in raw], [
+                complex(z) for z in raw
+            ]
+        digits = numbers.precision.working_digits
+        raw = evaluator.evaluate_complex_with_prec(
+            _upcast_complex_inputs(tuple(inputs), digits), digits
+        )
+        outputs = [tuple(Decimal(x) for x in value.to_decimal_tuple()) for value in raw]
+        return outputs, [numbers.pair(*z) for z in outputs]
 
 
 def _stage_evaluator(stage: Any) -> Any:
@@ -663,7 +709,8 @@ class PointResult:
     finite-only mode). ``families`` keeps each reduction lane's raw integrals
     ``(family, loop order, sector) -> Laurent``. ``ir_poles`` is Catani's
     prediction of the virtual's (single, double) poles per sector, ``None``
-    in finite-only mode; ``stability`` is ``None`` unless checks were asked.
+    in finite-only mode, at leading colour and for non-QCD corrections;
+    ``stability`` is ``None`` unless checks were asked.
     """
 
     born: Mapping[Orders, Any]
@@ -682,7 +729,8 @@ class PointResult:
 
 @dataclass(frozen=True)
 class SliceRequest:
-    """A loop request of the slice: a process and its exact coupling orders."""
+    """A loop request of the slice: a process, the bounds of its Born coupling
+    orders and the exact coupling orders of its loop amplitude."""
 
     process: str
     born_orders: Mapping[str, int]
@@ -694,6 +742,11 @@ class SliceRequest:
     # A source-owned formal-N_c continuation (``LoopColorDeclaration``); LC
     # needs it for the counterterm and field colour grades (design §6.7).
     colour_declaration: Any = None
+    # External model parameters of the renormalisation scale and of alpha_s
+    # (IR-pole check). By default the UFO/SLHA codes identify them: (LOOP, 1)
+    # and (SMINPUTS, 3), as in MG5_aMC loop models.
+    scale_parameter: str | None = None
+    alpha_s_parameter: str | None = None
 
 
 @dataclass
@@ -724,6 +777,10 @@ class LoopSlice:
     tree_rows: TreeRows
     layout: MonomialLayout
     native: Any
+    reading: TreeReading
+    weights: LeafWeights
+    scale_parameter: str
+    alpha_s_parameter: str | None
     _cache: dict = field(default_factory=dict, repr=False)
 
     # -- generation ------------------------------------------------------------
@@ -758,6 +815,16 @@ class LoopSlice:
                 f"{request.accuracy.upper()} needs a source-owned formal-N_c "
                 "continuation of the counterterms (design §6.7)"
             )
+        scale_parameter = _external_parameter(
+            compiled, request.scale_parameter, _LHA_SCALE, fixed
+        )
+        alpha_s_parameter = (
+            _external_parameter(
+                compiled, request.alpha_s_parameter, _LHA_ALPHA_S, fixed
+            )
+            if set(request.corrections) == {"QCD"}
+            else None
+        )
         prepared = prepare_loop_request_model(
             compiled,
             born_order_bounds=dict(request.born_orders),
@@ -825,11 +892,13 @@ class LoopSlice:
             compiled, counterterm_entries=list({id(e): e for e in entries}.values())
         )
         closure = SiteClosure(blocks, data, catalogue)
+        readings = rx.reading_skeletons(plan)
+        weights = LeafWeights(data, closure._ends)
+        for skeleton in readings:
+            weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
         born_terms = _born_terms(blocks, table, closure, ordinary)
         basis = _born_tensors(closure, born_terms)
-        seed_table, class_of = build_seed_table(
-            colour, rx.reading_skeletons(plan), basis
-        )
+        seed_table, class_of = build_seed_table(colour, readings, basis)
         born_orders = blocks.born_orders
         sectors: dict[Orders, set[tuple[Orders, Orders]]] = defaultdict(set)
         for a in born_orders:
@@ -874,7 +943,7 @@ class LoopSlice:
                 (sector, frozenset(pairs)) for sector, pairs in sorted(sectors.items())
             ),
             normalisation=Normalisation.of(structure.native, incoming, outgoing),
-            tree_rows=TreeRows(blocks, compiled),
+            tree_rows=TreeRows(blocks.blocks_dag, compiled),
             layout=MonomialLayout.native(
                 native,
                 # The executor bounds a node's rank by its inputs' rank plus
@@ -886,6 +955,10 @@ class LoopSlice:
                 ),
             ),
             native=native,
+            reading=TreeReading(data),
+            weights=weights,
+            scale_parameter=scale_parameter,
+            alpha_s_parameter=alpha_s_parameter,
         )
 
     # -- evaluation ------------------------------------------------------------
@@ -921,9 +994,8 @@ class LoopSlice:
         )
         if not stability.enabled:
             return reference.result
-        virtual = reference.result.components["virtual"]
-        rotations = []
-        for rotation in stability.rotations:
+        budgets = {}
+        for index, rotation in enumerate(stability.rotations):
             rotated = self._evaluate(
                 rotation.apply(exact_point),
                 scale,
@@ -932,36 +1004,17 @@ class LoopSlice:
                 poles,
                 False,
             )
-            rotations.append(
-                {
-                    sector: Laurent(
-                        *[
-                            abs(a - b)
-                            for a, b in zip(
-                                value.coefficients,
-                                virtual[sector].coefficients,
-                                strict=True,
-                            )
-                        ]
-                    )
-                    for sector, value in rotated.result.components["virtual"].items()
-                }
-            )
+            budgets[ROTATION.format(index)] = reference.rotation_budget(rotated)
+        if stability.reduction_direction:
+            budgets[REDUCTION] = reference.retest_budget
         estimate = StabilityEstimate.from_checks(
-            virtual,
-            rotations,
-            reference.retest_budget,
-            reference.family_deviations,
-            floor=precision.rounding_floor,
+            reference.result.components["virtual"],
+            budgets,
+            scale=reference.absolute,
+            roundoff=precision.unit_roundoff,
+            families=reference.family_deviations,
         )
-        return PointResult(
-            reference.result.born,
-            reference.result.components,
-            reference.result.totals,
-            reference.result.families,
-            reference.result.ir_poles,
-            estimate,
-        )
+        return replace(reference.result, stability=estimate)
 
     def _evaluate(self, point, scale, parameters, precision, poles, retest):
         with _Numbers(precision).scope():
@@ -973,7 +1026,7 @@ class LoopSlice:
         numbers = _Numbers(precision)
         values = dict(parameters)
         values.update(self.request.fixed_parameters)
-        values["MU_R"] = _decimal_string(
+        values[self.scale_parameter] = _decimal_string(
             _sqrt_fraction(scale, precision.working_digits)
         )
         return _PointEvaluation(self, point, scale, values, numbers, poles)
@@ -1513,10 +1566,7 @@ class _PointEvaluation:
             _BlockRows(slice_, rows),
             self.incoming,
             constants,
-            reading=slice_._cache.setdefault("reading", TreeReading(slice_.data)),
-        )
-        weights = slice_._cache.setdefault(
-            "weights", LeafWeights(slice_.data, slice_.closure._ends)
+            reading=slice_.reading,
         )
         executor = rx.ReferenceExecutor(
             kinematics,
@@ -1524,7 +1574,7 @@ class _PointEvaluation:
             momenta=self.incoming,
             layout=slice_.layout,
             carrier=carrier,
-            weight=weights,
+            weight=slice_.weights,
         )
         with carrier.scope():
             if schedule == "B":
@@ -1654,11 +1704,15 @@ class _PointEvaluation:
                         zero,
                     )
                 )
-        # Catani's operator is the full-colour pole prediction.
-        full = slice_.request.accuracy == "full"
-        ir_poles = self._ir_poles() if self.poles and full else None
+        # Catani's operator is the full-colour pole prediction of QCD corrections.
+        checked = slice_.request.accuracy == "full" and slice_.alpha_s_parameter
+        ir_poles = self._ir_poles() if self.poles and checked else None
         self.result = PointResult(
             dict(self.born), components, tuple(totals), dict(self.families), ir_poles
+        )
+        self.absolute = self._lane_budget(
+            {lane: value.coefficients for lane, value in self.families.items()},
+            [components[name] for name in LOCAL_COMPONENTS],
         )
         self.retest_budget = None
         self.family_deviations = None
@@ -1674,19 +1728,49 @@ class _PointEvaluation:
                 )
                 for lane in self.families
             }
-            # |delta bare| <= 2 |delta Omega| / (16 pi^2 average) per lane.
-            factor = 2 / (
-                LOOP_FACTOR_DENOMINATOR * math.pi**2 * slice_.normalisation.average
+            self.retest_budget = self._lane_budget(self.family_deviations)
+
+    # -- stability budgets (``stability``) -------------------------------------------
+
+    def _lane_budget(self, lanes, local=()) -> dict[Orders, Budget]:
+        """Per sector, sum_lanes |delta bare| <= 2 |delta Omega| / (16 pi^2
+        average) plus the absolute local components."""
+
+        factor = 2 / (
+            LOOP_FACTOR_DENOMINATOR * math.pi**2 * self.slice.normalisation.average
+        )
+        width = 3 if self.poles else 1
+        budget = {sector: [0.0] * width for sector, _pairs in self.slice.sectors}
+        for (_family, _loop, sector), errors in lanes.items():
+            for k, error in enumerate(errors):
+                budget[sector][k] += factor * float(abs(error))
+        for components in local:
+            for sector, laurent in components.items():
+                for k, value in enumerate(laurent.coefficients):
+                    budget[sector][k] += abs(float(value))
+        return {sector: Budget(tuple(values)) for sector, values in budget.items()}
+
+    def rotation_budget(self, rotated: _PointEvaluation) -> dict[Orders, Budget]:
+        """The error budget of one rotation check: every reduction lane's
+        integral and every local component is rotation invariant."""
+
+        zero = Laurent(*[self.numbers.zero] * (3 if self.poles else 1))
+        lanes = {
+            lane: tuple(
+                a - b
+                for a, b in zip(
+                    rotated.families.get(lane, zero).coefficients,
+                    self.families.get(lane, zero).coefficients,
+                    strict=True,
+                )
             )
-            budget: dict[Orders, list[float]] = {
-                sector: [0.0] * width for sector, _pairs in slice_.sectors
-            }
-            for (_family, _loop, sector), errors in self.family_deviations.items():
-                for k, error in enumerate(errors):
-                    budget[sector][k] += factor * float(error)
-            self.retest_budget = {
-                sector: Laurent(*values) for sector, values in budget.items()
-            }
+            for lane in self.families.keys() | rotated.families.keys()
+        }
+        local = [
+            differences(self.result.components[name], rotated.result.components[name])
+            for name in LOCAL_COMPONENTS
+        ]
+        return self._lane_budget(lanes, local)
 
     # -- IR poles ----------------------------------------------------------------------
 
@@ -1718,8 +1802,9 @@ class _PointEvaluation:
                 for (tensor, power), value in vector.items():
                     scaled = value * numbers.real(three**power)
                     folded[tensor] = folded.get(tensor, numbers.zero) + scaled
-        light = _light_flavours(slice_.data)
-        alpha = numbers.real(Fraction(self.parameters["aS"]))
+        values = _kernel_parameters(slice_.compiled, self.parameters)
+        light = _light_flavours(slice_.data, values)
+        alpha = numbers.real(values[slice_.alpha_s_parameter])
         prefactor = alpha / (2 * numbers.pi)
         mu2 = numbers.real(self.scale)
         correction = add_orders(tuple((name, 2) for name in slice_.request.corrections))
@@ -1923,14 +2008,50 @@ def _mass_values(
     }
 
 
-def _light_flavours(data) -> int:
+def _light_flavours(data, values: Mapping[str, Fraction]) -> int:
+    """Quark flavours (colour triplets) whose bound mass is zero."""
+
     return sum(
         1
         for p in data["particles"]
-        if int(p["spin"]) == 2
+        if int(p["spin"]) == FERMION_SPIN
         and int(p["color"]) == 3
-        and str(p["mass"]).upper() in ("ZERO", "0")
+        and (_mass_name(p["mass"]) == ZERO or values.get(p["mass"]) == 0)
     )
+
+
+# UFO/SLHA codes of the renormalisation scale and of alpha_s (SliceRequest).
+_LHA_SCALE = ("LOOP", (1,))
+_LHA_ALPHA_S = ("SMINPUTS", (3,))
+
+
+def _external_parameter(
+    compiled, name: str | None, code: tuple[str, tuple[int, ...]], fixed
+) -> str:
+    """An adjustable external model parameter, given or found by its code."""
+
+    externals = {
+        record.name: record
+        for record in compiled.ir.parameters
+        if record.nature == "external"
+    }
+    if name is None:
+        block, numbers = code
+        found = [
+            record.name
+            for record in externals.values()
+            if (record.lhablock or "").upper() == block
+            and tuple(record.lhacode) == numbers
+        ]
+        if len(found) != 1:
+            raise ValueError(
+                f"no unique external parameter with code {block} {numbers}; "
+                "name it in the SliceRequest"
+            )
+        (name,) = found
+    if name not in externals or name in fixed:
+        raise ValueError(f"{name!r} is not an adjustable external model parameter")
+    return name
 
 
 def _casimir(representation: int) -> Fraction:
