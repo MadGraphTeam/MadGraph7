@@ -22,6 +22,16 @@ with other tools (MadLoop, Recola, OpenLoops2, ...): faster than MadLoop, and at
 most 1.30x each available matched Recola/OpenLoops reference (section D gives
 the comparison protocol). Correctness requirements are likewise unchanged.
 
+Performance priorities (user, 2026-10-21):
+- What matters is 2->3 and higher multiplicities. The gates apply to processes
+  with at least five external legs (2->3 and beyond); 2->2 timings are reported
+  but carry no gate, and being faster than MadLoop at 2->2 is not a goal.
+- The aspiration at 2->3 and beyond is to be the fastest of all tools (MadLoop,
+  Recola, OpenLoops2, ...). The formal acceptance threshold remains: faster than
+  MadLoop and at most 1.30x each matched Recola/OpenLoops reference.
+- Optimisation effort should therefore target the asymptotic, high-multiplicity
+  regime first (the required 2->5 set and the 2->3/2->4 ladder below it).
+
 Consequences: lifting/integrand-sum reduction, hybrid rescue tiers, schedule
 choices, etc. may be adopted whenever measured faster at equal correctness.
 
@@ -58,7 +68,8 @@ choices, etc. may be adopted whenever measured faster at equal correctness.
 
 - The performance gate (faster than MadLoop; <= 1.30x each available Recola /
   OpenLoops) is mandatory and is evaluated on the FINITE PART ONLY, for a normal
-  evaluation comparable across tools.
+  evaluation comparable across tools, for processes with 2->3 and higher
+  multiplicity (2->2 timings are reported without a gate).
 - Reference codes run in their production mode with pole computation disabled
   whenever they allow it (OpenLoops truepoles 0; Recola without IR-pole
   evaluation; MadLoop at its production setting), Collier caches as in production.
