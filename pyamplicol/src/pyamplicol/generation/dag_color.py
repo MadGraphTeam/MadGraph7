@@ -104,6 +104,10 @@ def loop_block_word_open_ends(
     return (labels[0] not in fundamental, labels[-1] not in antifundamental)
 
 
+def _cyclically_increasing(first: int, second: int, third: int) -> bool:
+    return first < second < third or second < third < first or third < first < second
+
+
 class ColorEngine:
     """Local colour-flow engine used by the process-generic recursion."""
 
@@ -836,7 +840,34 @@ class ColorEngine:
         second = first_label(right_groups)
         if first is None or second is None:
             return True
-        return first < second < rest or second < rest < first or rest < first < second
+        return _cyclically_increasing(first, second, rest)
+
+    def _shared_lc_singlet_vertex_orientation_allowed(
+        self,
+        left_index: CurrentIndex,
+        right_index: CurrentIndex,
+        vertex: Vertex,
+    ) -> bool:
+        """``_singlet_vertex_orientation_allowed`` for shared LC orderings.
+
+        Shared orderings carry no sector lines, but a colour-singlet current
+        carries complete lines, so its coloured labels stand for them.
+        """
+
+        if self._loop_blocks or any(
+            self._particle_has_colour(pdg) for pdg in vertex.particles[:2]
+        ):
+            return True
+        left = self._shared_lc_coloured_labels.intersection(left_index.external_labels)
+        right = self._shared_lc_coloured_labels.intersection(
+            right_index.external_labels
+        )
+        if not left or not right or not left.isdisjoint(right):
+            return True
+        rest = self._shared_lc_coloured_labels - left - right
+        if not rest:
+            return True
+        return _cyclically_increasing(min(left), min(right), min(rest))
 
     def _lc_combined_line_groups(
         self,
@@ -1065,9 +1096,12 @@ class ColorEngine:
             self._ordered_combination_labels_cache[cache_key] = labels
             return labels
         if self._shared_lc_orderings:
-            labels = self._shared_lc_ordered_combination_labels(
-                left_index,
-                right_index,
+            labels = (
+                self._shared_lc_ordered_combination_labels(left_index, right_index)
+                if self._shared_lc_singlet_vertex_orientation_allowed(
+                    left_index, right_index, vertex
+                )
+                else None
             )
             self._ordered_combination_labels_cache[cache_key] = labels
             return labels
