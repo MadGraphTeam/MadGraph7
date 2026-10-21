@@ -4074,7 +4074,7 @@ c H-event
          endif
       enddo
       return
- 30   format(i15,1x,i2,6(1x,d14.8),6(1x,i2),1x,i8,1x,d18.12,1x,d18.12)
+ 30   format(i15,1x,i2,6(1x,d14.8),6(1x,i5),1x,i8,1x,d18.12,1x,d18.12)
       end
       
       
