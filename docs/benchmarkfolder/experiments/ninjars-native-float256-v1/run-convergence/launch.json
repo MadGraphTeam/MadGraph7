@@ -1,0 +1,49 @@
+{
+  "complete": false,
+  "stage": "convergence",
+  "production_modified": false,
+  "command": [
+    "taskset",
+    "-c",
+    "190",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-native-float256-v1/build/release/deps/madloop_ninjars-d2e7d23d47ff74ab",
+    "--ignored",
+    "--exact",
+    "native_study_tests::discrepancies_at_256_and_384",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cpu": 190,
+  "timeout_seconds": 1800,
+  "runner_sha256": "301d7f39574be2d2d70876eff3d70751bafadaa2837ccba538279598a18ef992",
+  "prepared_sha256": "c61f2a58b944e2bd7f17bd1c9b66e0104316f2c565d00b4d5aa03f4a991c9e42",
+  "build_sha256": "e0263cf7882f0258679c286f9d97edb1b9df5c0c68fcc628a783fa1a5fcce7f2",
+  "input_sha256": "1fafb19d4b534c3e222e5b265dfd8b139f262d3353f847a5c39955c468fa9f4d",
+  "executable_sha256": "a8963a8009a7c263d7dee4ab2711f4cbb417b85a81ac560d1d42ed5477d75b2f",
+  "shared_libraries": {
+    "/nix/store/m07syxhld8hpprrdmzq565ziia6vlw9l-xgcc-15.3.0-libgcc/lib/libgcc_s.so.1": {
+      "resolved": "/nix/store/m07syxhld8hpprrdmzq565ziia6vlw9l-xgcc-15.3.0-libgcc/lib/libgcc_s.so.1",
+      "sha256": "ae2bd6022e9a79c88e58327b50f3f2f78bf70ad26ceedd238b9f3e218379740c"
+    },
+    "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libm.so.6": {
+      "resolved": "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libm.so.6",
+      "sha256": "864704dfd98b7025f21dd1dcc8f8f1f6388ecb44aa984b075f0188c253d4ab53"
+    },
+    "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6": {
+      "resolved": "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6",
+      "sha256": "b8cb091b34bdd88f6902eebff8761f9ea306e6789b4ac4d06d4470c0d568c80c"
+    },
+    "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/ld-linux-x86-64.so.2": {
+      "resolved": "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/ld-linux-x86-64.so.2",
+      "sha256": "05657061620b22dbeb881cd13630ef66d39916d3b9c2a8efeb9ec6244367051f"
+    },
+    "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib64/ld-linux-x86-64.so.2": {
+      "resolved": "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/ld-linux-x86-64.so.2",
+      "sha256": "05657061620b22dbeb881cd13630ef66d39916d3b9c2a8efeb9ec6244367051f"
+    }
+  },
+  "symbolica_lock_dir": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/symbolica-locks",
+  "performance_claim": false,
+  "started_utc": "2026-10-20T23:17:32.797079+00:00",
+  "pid": 2022260
+}

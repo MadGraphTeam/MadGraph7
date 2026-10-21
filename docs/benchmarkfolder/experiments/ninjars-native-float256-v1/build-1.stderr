@@ -1,0 +1,4 @@
+   Compiling oneloop v0.1.0 (https://github.com/alphal00p/oneloopmaster.git?rev=09b2c7497743db875ed446da95123175dd00b1c8#09b2c749)
+   Compiling madloop-ninjars v0.1.0 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-native-float256-v1/bridge)
+   Compiling ninjars-symbolica v0.1.0 (https://github.com/alphal00p/ninjars?rev=0d0d7e7a8033431b60a8580731084742e0655cda#0d0d7e7a)
+    Finished `release` profile [optimized] target(s) in 70m 25s

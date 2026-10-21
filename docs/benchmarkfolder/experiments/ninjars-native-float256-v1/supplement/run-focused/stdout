@@ -1,0 +1,21 @@
+
+running 1 test
+test native_study_tests::supplement::returned_shape_error_retains_entries_and_late_policy ... ┌────────────────────────────────────────────────────────┐
+│ You are running a restricted Symbolica instance.       │
+│                                                        │
+│ For non-commercial use only, limited to one            │
+│ Symbolica thread per user.                             │
+│                                                        │
+├─ Unlock all cores ─────────────────────────────────────┤
+│                                                        │
+│ Hobbyists and students: free annual key                │
+│ https://symbolica.io/license/#get-hobbyist-license     │
+│                                                        │
+│ Free 30-day professional trial:                        │
+│ https://symbolica.io/license/#get-trial-license        │
+│                                                        │
+└────────────────────────────────────────────────────────┘
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 4.16s
+

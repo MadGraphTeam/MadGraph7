@@ -1,0 +1,26 @@
+--- a/vendor/ninjars/Cargo.toml
++++ b/vendor/ninjars/Cargo.toml
+@@ -14,7 +14,7 @@
+ 
+ [dependencies]
+ ninjars = { git = "https://github.com/alphal00p/ninjars", rev = "0d0d7e7a8033431b60a8580731084742e0655cda" }
+-ninjars-symbolica = { git = "https://github.com/alphal00p/ninjars", rev = "0d0d7e7a8033431b60a8580731084742e0655cda", features = ["native-masters"] }
++ninjars-symbolica = { git = "https://github.com/alphal00p/ninjars", rev = "0d0d7e7a8033431b60a8580731084742e0655cda", features = ["native-masters", "native-kernels"] }
+ symbolica = { version = "3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr", "bincode", "serde", "tracing_max_level_info"] }
+ 
+ [patch.crates-io]
+--- a/vendor/ninjars/src/lib.rs
++++ b/vendor/ninjars/src/lib.rs
+@@ -525,8 +525,11 @@
+         }
+         if !self.entries.contains_key(&(n, rank)) {
+             let prototype = Float::new(precision);
++            // Use upstream's generated native kernels at the existing Float precision.
++            // Geometry, tensor callbacks and scalar masters remain separate providers.
+             let kernels = SymbolicaAmplitudeKernels::new(n, rank, prototype.clone())
+-                .map_err(|e| e.to_string())?;
++                .map_err(|e| e.to_string())?
++                .with_native_kernels();
+             self.entries.insert(
+                 (n, rank),
+                 MpEntry {

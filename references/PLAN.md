@@ -786,3 +786,11 @@ resume metadata. The earlier pause note is a historical checkpoint.
   committed revision and fresh proof/work namespace. An explicit repository-
   local Cargo cache option reuses compiled dependencies; source/executable
   proof remains bound to the corrected revision and no failed run is passed.
+- Corrected candidate `d05b59f3277ce0d727cb2816d8b7ad45107e58c4` passes
+  the final one-binary proof: twenty-four ordinary tests, sixty-three physical
+  fixture calls, and all 1,392 retained requests at 256/384 bits. All 11,136
+  historical ASCII fields match exactly; exact-rational physical Laurent,
+  rational diagnostic and finite-split checks pass without raw sign changes.
+  Root independently verifies the seventeen-file successful proof. The first
+  failed attempt remains unchanged. The actual CLI installation has started
+  from this exact archived source, followed by relocated standalone/NLO tests.

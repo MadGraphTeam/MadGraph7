@@ -1,0 +1,390 @@
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread '<unnamed>' (1950826) panicked at src/lib.rs:470:49:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: madloop_ninjars::pairs
+   5: <madloop_ninjars::MpState>::evaluate
+   6: madloop_ninjars::native_study_tests::observe
+   7: madloop_ninjars::native_study_tests::policies_rebind_fail_recover_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.

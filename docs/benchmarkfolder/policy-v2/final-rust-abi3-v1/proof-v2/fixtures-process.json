@@ -1,0 +1,27 @@
+{
+  "command": [
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/final-rust-abi3-v2/final-libtest",
+    "--ignored",
+    "--exact",
+    "final_precision_tests::seven_physical_fixtures_all_modes",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": ".benchmark-work/policy-v2/final-rust-abi3-v2/source/vendor/ninjars",
+  "exit_code": 0,
+  "started_utc": "2026-10-21T01:11:35.815972+00:00",
+  "wall_seconds": 6.263860982027836,
+  "stdout": {
+    "path": "docs/benchmarkfolder/policy-v2/final-rust-abi3-v1/proof-v2/fixtures.stdout",
+    "sha256": "c485208417942e62e29957f305a5b294edd1045caefe0fb83fe3f3a056be7cb0",
+    "bytes": 40206
+  },
+  "stderr": {
+    "path": "docs/benchmarkfolder/policy-v2/final-rust-abi3-v1/proof-v2/fixtures.stderr",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "process_id": 507535,
+  "remaining_process_group_members": [],
+  "all_children_exited": true
+}

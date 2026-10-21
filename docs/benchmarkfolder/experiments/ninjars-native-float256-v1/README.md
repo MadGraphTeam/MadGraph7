@@ -1,9 +1,16 @@
 # Isolated native Float256 study
 
-The fixed numerical study and supplemental state controls pass. Request timing
-is prepared and remains held until allocation's complete-process study finishes
-and the root grants a quiet window. No native dispatch change has been applied
-to production; its default and public entry points remain interpreted.
+The fixed numerical study and supplemental state controls pass. The completed
+seven-triplet request screen demonstrates no gain for either native policy, so
+root selected the existing interpreted production kernels. No native dispatch
+change or additional native Cargo feature is being promoted.
+
+Denominator-only/interpreted ratio: 1.021698, 95% interval [0.973592, 1.045666].
+Full-native/interpreted ratio: 1.007070, interval [0.981060, 1.040110]. The
+predeclared full-native/denominator-only ratio is 0.985683, interval
+[0.957748, 1.027690]. All 21 measurements and all request outputs are retained;
+no additional repetition was run. These are private request-scope measurements,
+not full MadLoop performance or the original-Ninja acceptance gate.
 
 All arms use the same corrected signed-zero parser, original generic tensor,
 113-bit recovered input values widened to 256 bits, scalar provider and
@@ -101,11 +108,14 @@ the 12 new state controls. No additional compile was used to hide the collision.
 - `transport_equivalence.py`: exact-rational binary128 return comparison.
 - `SCREENING-PLAN.md`: fixed seven-triplet request study; this is not full
   MadLoop evaluation or a final performance gate.
-- `supplement/`: separate source, build recovery, ordinary tests and 12 controls.
+- `supplement/`: separate source, build recovery, ordinary tests, 12 controls,
+  successful CPU preflight and the completed seven-triplet request screen.
 - `run_supplement.py`, `screen_preflight.py`, `analyze_screening.py`: independently
   reviewed screening controller, host qualification and fixed statistics.
 
-Large raw and derived files will be archived only after sampling finishes,
-using `archive_large.py` with deterministic gzip and both compressed and
-original hashes. Its materializer restores the original paths for the frozen
-analyzers. No raw observations or failed attempts are discarded.
+Large raw and derived files are archived with `archive_large.py` using
+deterministic gzip and both compressed and original hashes. Its materializer
+restores the original paths for the frozen analyzers. No raw observations or
+failed attempts are discarded. The two minimal production candidates in
+`production-proposals-v1/` remain unapplied negative-study proposals; the
+separate generic final-test patch is reusable with interpreted production.

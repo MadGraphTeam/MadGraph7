@@ -1,0 +1,61 @@
+{
+  "complete": false,
+  "stage": "screening",
+  "production_modified": false,
+  "command": [
+    "taskset",
+    "-c",
+    "190",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-native-float256-v1/supplement/native-supplement-test-binary",
+    "--ignored",
+    "--exact",
+    "native_study_tests::supplement::fixed_request_screening_seven_triplets",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cpu": 190,
+  "timeout_seconds": 3600,
+  "runner_sha256": "6a88bf06878dd06e1f1d17cc41dea6f2379c7c55c371b64d294c998b4d4947bd",
+  "build_completed_sha256": "689f86c5f4cf106e818ac0618f3fe2ec6916b15f7c332259c53f7d9897ca01d5",
+  "executable_sha256": "26d8648fe69fe4fe38fade56352d950aebd0d7f3e7bce23d94a3387f06e20578",
+  "input_sha256": "1fafb19d4b534c3e222e5b265dfd8b139f262d3353f847a5c39955c468fa9f4d",
+  "controls_sha256": "b407a22d99df3fe8f10d6be777711e153487d539aa7cb1567fbb56f743154817",
+  "shared_libraries": {
+    "/nix/store/m07syxhld8hpprrdmzq565ziia6vlw9l-xgcc-15.3.0-libgcc/lib/libgcc_s.so.1": {
+      "resolved": "/nix/store/m07syxhld8hpprrdmzq565ziia6vlw9l-xgcc-15.3.0-libgcc/lib/libgcc_s.so.1",
+      "sha256": "ae2bd6022e9a79c88e58327b50f3f2f78bf70ad26ceedd238b9f3e218379740c"
+    },
+    "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libm.so.6": {
+      "resolved": "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libm.so.6",
+      "sha256": "864704dfd98b7025f21dd1dcc8f8f1f6388ecb44aa984b075f0188c253d4ab53"
+    },
+    "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6": {
+      "resolved": "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6",
+      "sha256": "b8cb091b34bdd88f6902eebff8761f9ea306e6789b4ac4d06d4470c0d568c80c"
+    },
+    "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/ld-linux-x86-64.so.2": {
+      "resolved": "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/ld-linux-x86-64.so.2",
+      "sha256": "05657061620b22dbeb881cd13630ef66d39916d3b9c2a8efeb9ec6244367051f"
+    },
+    "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib64/ld-linux-x86-64.so.2": {
+      "resolved": "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/ld-linux-x86-64.so.2",
+      "sha256": "05657061620b22dbeb881cd13630ef66d39916d3b9c2a8efeb9ec6244367051f"
+    }
+  },
+  "full_MadLoop_performance_claim": false,
+  "thread_environment": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "started_utc": "2026-10-21T00:37:44.655486+00:00",
+  "handoff": {
+    "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/supplement/root-screening-handoff.json",
+    "sha256": "56771c70f90f9b21c9de52fae9520ea0c643363f8d6c5e3f3450ba207e3fe5c4"
+  },
+  "controller_affinity": [
+    2
+  ],
+  "pid": 4175993
+}

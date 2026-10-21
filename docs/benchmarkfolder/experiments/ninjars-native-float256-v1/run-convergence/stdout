@@ -1,0 +1,21 @@
+
+running 1 test
+test native_study_tests::discrepancies_at_256_and_384 ... ┌────────────────────────────────────────────────────────┐
+│ You are running a restricted Symbolica instance.       │
+│                                                        │
+│ For non-commercial use only, limited to one            │
+│ Symbolica thread per user.                             │
+│                                                        │
+├─ Unlock all cores ─────────────────────────────────────┤
+│                                                        │
+│ Hobbyists and students: free annual key                │
+│ https://symbolica.io/license/#get-hobbyist-license     │
+│                                                        │
+│ Free 30-day professional trial:                        │
+│ https://symbolica.io/license/#get-trial-license        │
+│                                                        │
+└────────────────────────────────────────────────────────┘
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 21 filtered out; finished in 120.35s
+

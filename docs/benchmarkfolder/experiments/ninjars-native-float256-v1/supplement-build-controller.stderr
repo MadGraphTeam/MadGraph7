@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/build_supplement.py", line 96, in <module>
+    if __name__ == '__main__': main()
+                               ~~~~^^
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/build_supplement.py", line 78, in main
+    assert len(artifacts) == 1 and ROOT/artifacts[0]['path'] != original_exe
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

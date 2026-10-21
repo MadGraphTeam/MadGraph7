@@ -1,0 +1,52 @@
+{
+  "complete": true,
+  "engine_calls": 0,
+  "performance_claim": false,
+  "script_sha256": "46e226411e54768b54cead62b3bfcafc959e41a709f38a953463c75a549289a1",
+  "rounding_helper_sha256": "ac4379084e1d80aaf3b28e046cf1eb9382e8a198fee94c0aa01bf3604a5c07be",
+  "raw_sha256": "b407a22d99df3fe8f10d6be777711e153487d539aa7cb1567fbb56f743154817",
+  "records": 1392,
+  "binary128_fields_compared_per_native_policy": 11136,
+  "binary128_rounding": "Independent exact-rational nearest-even113significantbit recovery; finite normal outputs only; zero signs compared separately",
+  "ascii_changes": [
+    {
+      "sequence": 574,
+      "policy": "FullNative",
+      "field": 2,
+      "native_ascii": "2.02434572125048861169300483215028380445e-37",
+      "interpreted_ascii": "2.02434572125048861169300483215028380446e-37",
+      "represented_binary128_equal": true,
+      "zero_sign_changed": false
+    },
+    {
+      "sequence": 578,
+      "policy": "FullNative",
+      "field": 3,
+      "native_ascii": "-4.52363809968089687260655452146266723951e-38",
+      "interpreted_ascii": "-4.52363809968089687260655452146266723952e-38",
+      "represented_binary128_equal": true,
+      "zero_sign_changed": false
+    },
+    {
+      "sequence": 1270,
+      "policy": "FullNative",
+      "field": 2,
+      "native_ascii": "2.02434572125048861169300483215028380445e-37",
+      "interpreted_ascii": "2.02434572125048861169300483215028380446e-37",
+      "represented_binary128_equal": true,
+      "zero_sign_changed": false
+    },
+    {
+      "sequence": 1274,
+      "policy": "FullNative",
+      "field": 3,
+      "native_ascii": "-4.52363809968089687260655452146266723951e-38",
+      "interpreted_ascii": "-4.52363809968089687260655452146266723952e-38",
+      "represented_binary128_equal": true,
+      "zero_sign_changed": false
+    }
+  ],
+  "represented_binary128_changes": [],
+  "all_returned_binary128_values_and_zero_signs_equal": true,
+  "does_not_claim_raw256bit_equality": true
+}

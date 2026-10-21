@@ -1,0 +1,60 @@
+{
+  "complete": true,
+  "executed": false,
+  "production_modified": false,
+  "authorised_scope": "One serial release-test compile only; MP/test execution held",
+  "prepared_sha256": "c61f2a58b944e2bd7f17bd1c9b66e0104316f2c565d00b4d5aa03f4a991c9e42",
+  "builder_sha256": "fa98905726e558377bba855e1faef2e3aa7e20e882a87a0357ea5f2200b3a0ed",
+  "copy_command": [
+    "taskset",
+    "-c",
+    "190",
+    "cp",
+    "-a",
+    "--reflink=auto",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-transport-audit-v1/build/release",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-native-float256-v1/build/release"
+  ],
+  "cache_policy": "Private reflinks/copies; no hard links or shared-cache mutation",
+  "command": [
+    "taskset",
+    "-c",
+    "190",
+    "cargo",
+    "test",
+    "--manifest-path",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-native-float256-v1/bridge/Cargo.toml",
+    "--locked",
+    "--offline",
+    "--release",
+    "--lib",
+    "--features",
+    "fenv-test-support",
+    "--no-run",
+    "--message-format=json"
+  ],
+  "environment": {
+    "CARGO_TARGET_DIR": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-native-float256-v1/target",
+    "CARGO_BUILD_BUILD_DIR": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-native-float256-v1/build",
+    "CARGO_BUILD_JOBS": "1",
+    "TMPDIR": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp"
+  },
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)\nbinary: rustc\ncommit-hash: 48a229ceaefd4985c50990b14116b6d856af0985\ncommit-date: 2026-09-01\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.1\nLLVM version: 22.1.8\n",
+  "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)\n",
+  "started_utc": "2026-10-20T22:05:01.238176+00:00",
+  "pid": 2962840,
+  "controller_lost": true,
+  "original_parent_wait_status_available": false,
+  "recovery": "build-recovery-result.json",
+  "executables": [
+    {
+      "path": ".benchmark-work/experiments/ninjars-native-float256-v1/build/release/deps/madloop_ninjars-d2e7d23d47ff74ab",
+      "sha256": "a8963a8009a7c263d7dee4ab2711f4cbb417b85a81ac560d1d42ed5477d75b2f"
+    }
+  ],
+  "completion_evidence": "Cargo JSON build-finished success and exact artifact hash; observed orphan exit fields",
+  "logs": {
+    "build-1.stdout": "57c7e6bf8466076e5c49818b93bc1737c141a43a70876899348092cb6effe068",
+    "build-1.stderr": "283d4d90914fbe299638510d4b92fb8cbfb28976c9b5f7637c43b399b42417e5"
+  }
+}

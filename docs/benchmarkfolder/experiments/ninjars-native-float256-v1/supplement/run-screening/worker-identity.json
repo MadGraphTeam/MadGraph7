@@ -1,0 +1,13 @@
+{
+  "pid": 4175993,
+  "ppid": 4175879,
+  "state": "S",
+  "start_ticks": 57676577,
+  "command": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-native-float256-v1/supplement/native-supplement-test-binary --ignored --exact native_study_tests::supplement::fixed_request_screening_seven_triplets --test-threads=1 --nocapture",
+  "affinity": [
+    190
+  ],
+  "recorded_utc": "2026-10-21T00:37:51.855362+00:00",
+  "executable_sha256": "26d8648fe69fe4fe38fade56352d950aebd0d7f3e7bce23d94a3387f06e20578",
+  "plan": "fixed7triplets;1392requestsperarm;alloutputsretained"
+}

@@ -1,0 +1,75 @@
+{
+  "schema": "final-rust-abi3-proof-manifest-v1",
+  "revision": "d05b59f3277ce0d727cb2816d8b7ad45107e58c4",
+  "files": {
+    "build-process.json": {
+      "sha256": "9767557a55129402fa1b159034dfa856418dec60e65e7e8bc5348eecb1c39d5d",
+      "bytes": 877
+    },
+    "build-record.json": {
+      "sha256": "9a3cab316bde64bef41c23cd6cfde87d29483c242fb7a6a38996abeca98dc449",
+      "bytes": 6201
+    },
+    "build.stderr": {
+      "sha256": "49cbc5ca122945ec49a3b9baed9586551c7a368144442e090d26dfe5e5de588a",
+      "bytes": 227
+    },
+    "build.stdout": {
+      "sha256": "ebd4eb1ad65172b9a95557a3a77420304120ec9cffc29911c0e5c652ed3bf3ae",
+      "bytes": 465570
+    },
+    "collect.py": {
+      "sha256": "42de440f0f4b13b21ddd261fee901d4eabd343a035ffca3cb41e18ea02f8bacd",
+      "bytes": 25582
+    },
+    "fixtures-process.json": {
+      "sha256": "c991e759a466ef2ee6cba16c5a47063f2472cc1e0e0b73883d7e36cefa711403",
+      "bytes": 985
+    },
+    "fixtures.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "fixtures.stdout": {
+      "sha256": "c485208417942e62e29957f305a5b294edd1045caefe0fb83fe3f3a056be7cb0",
+      "bytes": 40206
+    },
+    "ordinary-process.json": {
+      "sha256": "0c7470fefc60583db1486c4f03088ca3bb7efe53b095e69ed1906a884b8ee983",
+      "bytes": 892
+    },
+    "ordinary.stderr": {
+      "sha256": "46677f3354ad03a8424fe6cd03debc7fe7aa6f5860e479f92addcef11171032e",
+      "bytes": 662
+    },
+    "ordinary.stdout": {
+      "sha256": "6fd607f8057075acbe0280536576b71c3010c75e0102ef55deb5610f660fa57f",
+      "bytes": 11471
+    },
+    "replay-convergence-process.json": {
+      "sha256": "8108c883fdacabc47d8ce7b2e4317633540f411fc49f0544a0df38dd16b21fd3",
+      "bytes": 1008
+    },
+    "replay-convergence.jsonl": {
+      "sha256": "d4ba8a038f622cc3283e6b1f1e0276b2e0676e0fb0f7abadd7531460e9997db2",
+      "bytes": 27729990
+    },
+    "replay-convergence.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "replay-convergence.stdout": {
+      "sha256": "d83d981ff2d7dcef50b7ed27ca1011ade410ece90c661aa370a76e2bb9a9d380",
+      "bytes": 1858
+    },
+    "request.json": {
+      "sha256": "c362f79297bd3f0a5fc173f5e349445aac38059e83f4bd523c7823d82034eda8",
+      "bytes": 6434
+    },
+    "unit-proof.json": {
+      "sha256": "fc0733051d49495222fee2fb655d468d0860f841fb35f698d4f1dadf40adc932",
+      "bytes": 38237
+    }
+  },
+  "count": 17
+}
