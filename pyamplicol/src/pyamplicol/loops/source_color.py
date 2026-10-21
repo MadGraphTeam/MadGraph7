@@ -433,6 +433,39 @@ def prepare_source_color_formal(
     return formal
 
 
+def _inline_colour_helpers(formal, nc):
+    """Inline the source helpers that receive Nc through their arguments.
+
+    A helper is opaque to the grading, so e.g. the top-quark field
+    renormalisation cond(MT, 0, CF ...) would hide its Nc inside a call. Its
+    exact body exposes Nc in native conditionals, which the grading collects
+    when the conditions are Nc-independent (``expand_color_conditionals``);
+    other helper calls stay opaque.
+    """
+
+    if not any(
+        nc in part.get_all_symbols()
+        for expression in formal.expressions
+        for part in (expression.value, expression.diagnostic)
+    ):
+        return formal
+    library = formal.program.library
+
+    def depends(arguments) -> bool:
+        return any(nc in argument.get_all_symbols() for argument in arguments)
+
+    return replace(
+        formal,
+        expressions=tuple(
+            ScalarExpression(
+                library.inline(expression.value, depends),
+                library.inline(expression.diagnostic, depends),
+            )
+            for expression in formal.expressions
+        ),
+    )
+
+
 def prepare_source_color_scalars(
     raw,
     outputs,
@@ -457,6 +490,7 @@ def prepare_source_color_scalars(
         anonymous_definitions=anonymous_definitions,
         exact_outputs=exact_outputs,
     )
+    formal = _inline_colour_helpers(formal, nc)
     for output, expression in zip(formal.outputs, formal.expressions, strict=True):
         if nc in expression.diagnostic.get_all_symbols():
             raise NotImplementedError(
