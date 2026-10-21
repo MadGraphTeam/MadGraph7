@@ -1052,13 +1052,13 @@ V_{αβ,k} = B†K^{αβ}_{BL}L_k + L_k†K^{αβ}_{LB}B, with K_{LB}^{αβ} = (
 
 ### 7.8 Caps
 
-The loop path never passes `max_sectors` (`color/plan_build.py:21` [V]) and does not inherit `MAX_ADJOINT_GLUONS = 12` (`color/adjoint_kernel.py:20` [V]). Direct contraction is always available when FFT eligibility (degree ≤ 10 today) fails.
+The loop path never passes `max_sectors` (`color/plan_build.py:21` [V]), and the 12-gluon/int64 guard of `color/adjoint_kernel.py` is removed (WP2.4). Direct contraction is always available when FFT eligibility fails.
 
 Verified for WP2.4 [V]:
 - `loops/v2` calls neither `color/plan_build.py` nor `color/adjoint_kernel.py`. Its Born plan is the tree engine's trace basis, and no caller in the repository passes `max_sectors`.
 - The seed FFT has no degree bound. It enumerates S_m only when |S_m| ≤ the Born basis size, the structural condition for a regular orbit, and contracts directly otherwise.
 - The native plan's own bound is its factorial and `u32` index storage.
-- `MAX_ADJOINT_GLUONS` remains the tree engine's DDM-basis resource bound (dense int64 kernels on S_{n−2}) and is outside the loop path.
+- `color/adjoint_kernel.py` has no gluon cap. The dense DDM kernel ((n−2)! entries, sweeps over S_{n−1}) uses int64 while its exact bound N_c^n·4^{n−2} fits, and exact Python integers otherwise. Above `DENSE_ADJOINT_GLUONS = 12` an overlap is evaluated on its own (`ladder_overlap`: both ladders' 2^{n−2} traces, integer cycle counting, about 6 s per entry at n = 13), so the tree DDM plan no longer refuses more than 12 gluons. The automatic tree basis choice still prefers the trace basis above that size; this is a resource preference, not a cap. Tests: every dense entry for n ≤ 6 at N_c = 2, 3, 5 equals `ladder_overlap` (all three accuracies), and the object fallback and a 13-gluon entry are checked.
 
 ---
 
