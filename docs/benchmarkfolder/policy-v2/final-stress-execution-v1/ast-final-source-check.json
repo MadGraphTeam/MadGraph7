@@ -1,0 +1,34 @@
+{
+  "schema": "stress-operational-source-ast-v1",
+  "files": {
+    "early_build.py": {
+      "sha256": "6df2786a59c4cc11ff5e931a22edd15a7f6bcdc0c2c80bbb2e635451662d274c",
+      "bytes": 15386,
+      "functions": [
+        "read",
+        "sources",
+        "runtime",
+        "owned_generation",
+        "built_runtime",
+        "prepare",
+        "attach_core"
+      ]
+    },
+    "write_specs.py": {
+      "sha256": "aaa57e404288bf1bce158067b68adaaaf36ac5244b13109cf8e0a8c3c72cdb69",
+      "bytes": 9110,
+      "functions": [
+        "read",
+        "write",
+        "prepare",
+        "early",
+        "bind",
+        "main"
+      ]
+    }
+  },
+  "parsed": true,
+  "project_modules_imported": false,
+  "cli_build_engine_executions": 0,
+  "tests_executed": 0
+}

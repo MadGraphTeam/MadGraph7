@@ -1,0 +1,1893 @@
+{
+  "candidate_bytes": 172173207,
+  "candidate_count": 9,
+  "candidates": [
+    {
+      "bytes": 27623411,
+      "compressed_evidence": {
+        "bytes": 1567620,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/convergence-analysis.json.gz",
+        "sha256": "0e11234591bf68dfa38804c9cc874e06f9db5900f7b9a822bb9e00fde8f67244"
+      },
+      "git_payload_manifested": false,
+      "kind": "materialized-plaintext-duplicate",
+      "native_manifest": {
+        "bytes": 30019,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/manifest.json",
+        "sha256": "38887d55ab8276fa2ee4cd64905012dcd946e9d18d668d7087cd7e5c15b1b9d5"
+      },
+      "observed_process_uses": [],
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/convergence-analysis.json",
+      "recommendation": "Root may remove this exact path after a fresh no-open-process check; preserve compressed/durable proof inputs",
+      "regenerable": true,
+      "regenerate_command": "python -B docs/benchmarkfolder/experiments/ninjars-native-float256-v1/archive_large.py materialize",
+      "sha256": "47b21ee384d318459e5732c56c4311fac3f697e6c2a58993d856845aa7e0757b"
+    },
+    {
+      "bytes": 13484973,
+      "compressed_evidence": {
+        "bytes": 497987,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/replay-analysis.json.gz",
+        "sha256": "c38916f6dcc6d40a48e94ea3566f3f481265abe3b7a36ffedb108a0225063870"
+      },
+      "git_payload_manifested": false,
+      "kind": "materialized-plaintext-duplicate",
+      "native_manifest": {
+        "bytes": 30019,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/manifest.json",
+        "sha256": "38887d55ab8276fa2ee4cd64905012dcd946e9d18d668d7087cd7e5c15b1b9d5"
+      },
+      "observed_process_uses": [],
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/replay-analysis.json",
+      "recommendation": "Root may remove this exact path after a fresh no-open-process check; preserve compressed/durable proof inputs",
+      "regenerable": true,
+      "regenerate_command": "python -B docs/benchmarkfolder/experiments/ninjars-native-float256-v1/archive_large.py materialize",
+      "sha256": "60a52511feac16e5bc7435b24e774d1c3f0bd18e39c75e0283d0042b7fa5a97a"
+    },
+    {
+      "bytes": 31882703,
+      "compressed_evidence": {
+        "bytes": 5723427,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-convergence/raw.jsonl.gz",
+        "sha256": "fc485f1b8cd0ddfe3cf11a722c5ebfad895f2ed4149a5b19bf45dfdc82bfbb71"
+      },
+      "git_payload_manifested": false,
+      "kind": "materialized-plaintext-duplicate",
+      "native_manifest": {
+        "bytes": 30019,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/manifest.json",
+        "sha256": "38887d55ab8276fa2ee4cd64905012dcd946e9d18d668d7087cd7e5c15b1b9d5"
+      },
+      "observed_process_uses": [],
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-convergence/raw.jsonl",
+      "recommendation": "Root may remove this exact path after a fresh no-open-process check; preserve compressed/durable proof inputs",
+      "regenerable": true,
+      "regenerate_command": "python -B docs/benchmarkfolder/experiments/ninjars-native-float256-v1/archive_large.py materialize",
+      "sha256": "8ed0c8f0709ef2c162ae69998094a89d21b2eb125e571cd8b8cb64cf78370965"
+    },
+    {
+      "bytes": 20006818,
+      "compressed_evidence": {
+        "bytes": 3338022,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-replay/raw.jsonl.gz",
+        "sha256": "f558cca7ce05f513bfa18653031391a2230088e64affca6f2fde93737b1c389c"
+      },
+      "git_payload_manifested": false,
+      "kind": "materialized-plaintext-duplicate",
+      "native_manifest": {
+        "bytes": 30019,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/manifest.json",
+        "sha256": "38887d55ab8276fa2ee4cd64905012dcd946e9d18d668d7087cd7e5c15b1b9d5"
+      },
+      "observed_process_uses": [],
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-replay/raw.jsonl",
+      "recommendation": "Root may remove this exact path after a fresh no-open-process check; preserve compressed/durable proof inputs",
+      "regenerable": true,
+      "regenerate_command": "python -B docs/benchmarkfolder/experiments/ninjars-native-float256-v1/archive_large.py materialize",
+      "sha256": "b407a22d99df3fe8f10d6be777711e153487d539aa7cb1567fbb56f743154817"
+    },
+    {
+      "bytes": 2884,
+      "compressed_evidence": {
+        "bytes": 1327,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/screening-analysis.json.gz",
+        "sha256": "53eb16383f507d7e3c768c0cbab2935bf6c0148aa20f8878872cd77bc2422fd8"
+      },
+      "git_payload_manifested": false,
+      "kind": "materialized-plaintext-duplicate",
+      "native_manifest": {
+        "bytes": 30019,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/manifest.json",
+        "sha256": "38887d55ab8276fa2ee4cd64905012dcd946e9d18d668d7087cd7e5c15b1b9d5"
+      },
+      "observed_process_uses": [],
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/screening-analysis.json",
+      "recommendation": "Root may remove this exact path after a fresh no-open-process check; preserve compressed/durable proof inputs",
+      "regenerable": true,
+      "regenerate_command": "python -B docs/benchmarkfolder/experiments/ninjars-native-float256-v1/archive_large.py materialize",
+      "sha256": "7fd21fb937937db6987cf3353eab5d65de70f9ab4a34c9c776ca778f5a8022c8"
+    },
+    {
+      "bytes": 14436401,
+      "compressed_evidence": {
+        "bytes": 4572852,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/supplement/run-screening/raw.jsonl.gz",
+        "sha256": "caaccbda3b83e9e58b189191f6efb00ba7261670f0af66786303ae14831d739d"
+      },
+      "git_payload_manifested": false,
+      "kind": "materialized-plaintext-duplicate",
+      "native_manifest": {
+        "bytes": 30019,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/manifest.json",
+        "sha256": "38887d55ab8276fa2ee4cd64905012dcd946e9d18d668d7087cd7e5c15b1b9d5"
+      },
+      "observed_process_uses": [],
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/supplement/run-screening/raw.jsonl",
+      "recommendation": "Root may remove this exact path after a fresh no-open-process check; preserve compressed/durable proof inputs",
+      "regenerable": true,
+      "regenerate_command": "python -B docs/benchmarkfolder/experiments/ninjars-native-float256-v1/archive_large.py materialize",
+      "sha256": "27f0de1ffa745cc200c85f3e27db03bde2184ee0b88711ad13b8cfbd3f86555e"
+    },
+    {
+      "bytes": 21950900,
+      "files": 2445,
+      "git_payload_manifested": false,
+      "kind": "completed-regression-comparison-scratch",
+      "observed_process_uses": [],
+      "path": ".benchmark-work/final-regression-review-v1",
+      "recommendation": "Root may remove this exact path after a fresh no-open-process check; preserve compressed/durable proof inputs",
+      "retained_proof": {
+        "bytes": 4392,
+        "path": "docs/benchmarkfolder/policy-v2/final-regressions-v1/manifest.json",
+        "sha256": "1f7979f1449dd734f7b2da7c54bd5cc93b74436b66fc8f3bb367308afdea22a5"
+      },
+      "scope": "Private regenerated comparison trees and commands; durable inputs/logs/scripts survive in sealed final-regressions-v1, whose verifier does not read these scratch trees",
+      "symlinks": 0
+    },
+    {
+      "bytes": 21446540,
+      "files": 2450,
+      "git_payload_manifested": false,
+      "kind": "completed-regression-comparison-scratch",
+      "observed_process_uses": [],
+      "path": ".benchmark-work/final-regression-fks-review-v1",
+      "recommendation": "Root may remove this exact path after a fresh no-open-process check; preserve compressed/durable proof inputs",
+      "retained_proof": {
+        "bytes": 4392,
+        "path": "docs/benchmarkfolder/policy-v2/final-regressions-v1/manifest.json",
+        "sha256": "1f7979f1449dd734f7b2da7c54bd5cc93b74436b66fc8f3bb367308afdea22a5"
+      },
+      "scope": "Private regenerated comparison trees and commands; durable inputs/logs/scripts survive in sealed final-regressions-v1, whose verifier does not read these scratch trees",
+      "symlinks": 0
+    },
+    {
+      "bytes": 21338577,
+      "files": 2451,
+      "git_payload_manifested": false,
+      "kind": "completed-regression-comparison-scratch",
+      "observed_process_uses": [],
+      "path": ".benchmark-work/final-regression-fks-review-v2-absent",
+      "recommendation": "Root may remove this exact path after a fresh no-open-process check; preserve compressed/durable proof inputs",
+      "retained_proof": {
+        "bytes": 4392,
+        "path": "docs/benchmarkfolder/policy-v2/final-regressions-v1/manifest.json",
+        "sha256": "1f7979f1449dd734f7b2da7c54bd5cc93b74436b66fc8f3bb367308afdea22a5"
+      },
+      "scope": "Private regenerated comparison trees and commands; durable inputs/logs/scripts survive in sealed final-regressions-v1, whose verifier does not read these scratch trees",
+      "symlinks": 0
+    }
+  ],
+  "cleanup_performed": false,
+  "compiler_calls": 0,
+  "engine_calls": 0,
+  "native_materialization_index": {
+    "bytes": 2614,
+    "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/compressed-artifacts.json",
+    "sha256": "21beb7c1583ee0d920565c92007a97c573aa977255663f3cfee1bf687af9ca86"
+  },
+  "observed_utc": "2026-10-21T01:27:14.460023+00:00",
+  "proposed_exact_native_ignore_rules": [
+    "/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/convergence-analysis.json",
+    "/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/replay-analysis.json",
+    "/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-convergence/raw.jsonl",
+    "/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-replay/raw.jsonl",
+    "/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/screening-analysis.json",
+    "/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/supplement/run-screening/raw.jsonl"
+  ],
+  "required_installation_manifest": {
+    "bytes": 9880,
+    "path": "docs/benchmarkfolder/policy-v2/install-export-abi3-final-v1/manifest.json",
+    "sha256": "3c2be54aea3014ee08ea7db462439f6344837d60630683bf4f8a25146f3fb24d"
+  },
+  "revision_at_end": "2bf47cd477c6a8eaeef07a4f649434dfe38a4260",
+  "revision_at_start": "2bf47cd477c6a8eaeef07a4f649434dfe38a4260",
+  "same_uid_process_observation": {
+    "observed_utc": "2026-10-21T01:27:14.254013+00:00",
+    "permission_denied": 10,
+    "processes_vanished_during_scan": 1,
+    "same_uid_processes_examined": 78,
+    "scope": "Same UID cwd, file descriptors and mapped paths only; no command arguments, signals or future-use guarantee",
+    "uid": 1134,
+    "uses": []
+  },
+  "schema": "publication-cleanup-readiness-v1",
+  "scope": "No cleanup; only nine exact candidates, current untracked paths, their relevant seals and a point-in-time same-UID process-use check",
+  "source_changed": false,
+  "untracked_build_findings": [],
+  "untracked_classification_counts": {
+    "preexisting-user-workspace-file: preserve": 1,
+    "required-reference-evidence: append-only-owner-review": 322,
+    "required-reference-pause-resume-ledger": 2,
+    "six-native-materializations: remove-or-ignore-exactly": 6,
+    "this-readonly-cleanup-audit": 1,
+    "unclassified: preserve-for-root-owner-review": 1
+  },
+  "untracked_count": 333,
+  "untracked_files": [
+    {
+      "bytes": 27623411,
+      "classification": "six-native-materializations: remove-or-ignore-exactly",
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/convergence-analysis.json"
+    },
+    {
+      "bytes": 13484973,
+      "classification": "six-native-materializations: remove-or-ignore-exactly",
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/replay-analysis.json"
+    },
+    {
+      "bytes": 31882703,
+      "classification": "six-native-materializations: remove-or-ignore-exactly",
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-convergence/raw.jsonl"
+    },
+    {
+      "bytes": 20006818,
+      "classification": "six-native-materializations: remove-or-ignore-exactly",
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-replay/raw.jsonl"
+    },
+    {
+      "bytes": 2884,
+      "classification": "six-native-materializations: remove-or-ignore-exactly",
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/screening-analysis.json"
+    },
+    {
+      "bytes": 14436401,
+      "classification": "six-native-materializations: remove-or-ignore-exactly",
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/supplement/run-screening/raw.jsonl"
+    },
+    {
+      "bytes": 10459,
+      "classification": "unclassified: preserve-for-root-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/final-stress-execution-v1/early_build.py"
+    },
+    {
+      "bytes": 6363,
+      "classification": "required-reference-pause-resume-ledger",
+      "path": "docs/benchmarkfolder/policy-v2/reference-resume-20261021T0002Z/before.json"
+    },
+    {
+      "bytes": 9458,
+      "classification": "required-reference-pause-resume-ledger",
+      "path": "docs/benchmarkfolder/policy-v2/reference-resume-20261021T0002Z/resume.json"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-1/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-1/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8428,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-1/build.json"
+    },
+    {
+      "bytes": 23655,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-1/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-1/make_opts"
+    },
+    {
+      "bytes": 4537,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-1/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-1/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-6/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-6/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8428,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-6/build.json"
+    },
+    {
+      "bytes": 23655,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-6/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-6/make_opts"
+    },
+    {
+      "bytes": 4537,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-6/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-6/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-7/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-7/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8384,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-7/build.json"
+    },
+    {
+      "bytes": 23655,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-7/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-7/make_opts"
+    },
+    {
+      "bytes": 4537,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-7/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-7/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-1/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-1/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8429,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-1/build.json"
+    },
+    {
+      "bytes": 40557,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-1/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-1/make_opts"
+    },
+    {
+      "bytes": 4537,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-1/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-1/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-6/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-6/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8429,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-6/build.json"
+    },
+    {
+      "bytes": 40557,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-6/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-6/make_opts"
+    },
+    {
+      "bytes": 4537,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-6/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-6/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-7/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-7/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8386,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-7/build.json"
+    },
+    {
+      "bytes": 40557,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-7/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-7/make_opts"
+    },
+    {
+      "bytes": 4537,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-7/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-7/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-1/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-1/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8427,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-1/build.json"
+    },
+    {
+      "bytes": 63907,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-1/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-1/make_opts"
+    },
+    {
+      "bytes": 4537,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-1/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-1/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-6/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-6/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8426,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-6/build.json"
+    },
+    {
+      "bytes": 63907,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-6/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-6/make_opts"
+    },
+    {
+      "bytes": 4537,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-6/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-6/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-7/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-7/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8385,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-7/build.json"
+    },
+    {
+      "bytes": 63907,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-7/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-7/make_opts"
+    },
+    {
+      "bytes": 4537,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-7/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-7/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-1/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-1/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8429,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-1/build.json"
+    },
+    {
+      "bytes": 16774,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-1/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-1/make_opts"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-1/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-1/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-6/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-6/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8429,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-6/build.json"
+    },
+    {
+      "bytes": 16774,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-6/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-6/make_opts"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-6/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-6/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-7/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-7/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8386,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-7/build.json"
+    },
+    {
+      "bytes": 16774,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-7/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-7/make_opts"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-7/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-7/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-1/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-1/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8429,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-1/build.json"
+    },
+    {
+      "bytes": 22496,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-1/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-1/make_opts"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-1/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-1/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-6/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-6/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8430,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-6/build.json"
+    },
+    {
+      "bytes": 22496,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-6/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-6/make_opts"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-6/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-6/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-7/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-7/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8386,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-7/build.json"
+    },
+    {
+      "bytes": 22496,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-7/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-7/make_opts"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-7/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-7/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-1/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-1/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8429,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-1/build.json"
+    },
+    {
+      "bytes": 29257,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-1/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-1/make_opts"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-1/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-1/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-6/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-6/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8430,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-6/build.json"
+    },
+    {
+      "bytes": 29257,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-6/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-6/make_opts"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-6/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-6/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-7/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1938,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-7/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8386,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-7/build.json"
+    },
+    {
+      "bytes": 29257,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-7/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-7/make_opts"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-7/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-7/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-1/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1974,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-1/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8466,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-1/build.json"
+    },
+    {
+      "bytes": 31145,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-1/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-1/make_opts"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-1/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-1/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-6/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1974,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-6/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8466,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-6/build.json"
+    },
+    {
+      "bytes": 31145,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-6/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-6/make_opts"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-6/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-6/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-7/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1974,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-7/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8423,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-7/build.json"
+    },
+    {
+      "bytes": 31145,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-7/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-7/make_opts"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-7/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-4-baseline-7/worker.f"
+    },
+    {
+      "bytes": 60963,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-1-baseline-1-0.json"
+    },
+    {
+      "bytes": 60953,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-1-baseline-1-1.json"
+    },
+    {
+      "bytes": 60887,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-1-baseline-1-calibration.json"
+    },
+    {
+      "bytes": 60872,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-1-baseline-6-0.json"
+    },
+    {
+      "bytes": 60872,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-1-baseline-6-1.json"
+    },
+    {
+      "bytes": 60796,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-1-baseline-6-calibration.json"
+    },
+    {
+      "bytes": 60916,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-1-baseline-7-0.json"
+    },
+    {
+      "bytes": 60905,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-1-baseline-7-1.json"
+    },
+    {
+      "bytes": 60840,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-1-baseline-7-calibration.json"
+    },
+    {
+      "bytes": 63042,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-2-baseline-1-0.json"
+    },
+    {
+      "bytes": 63039,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-2-baseline-1-1.json"
+    },
+    {
+      "bytes": 62967,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-2-baseline-1-calibration.json"
+    },
+    {
+      "bytes": 63004,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-2-baseline-6-0.json"
+    },
+    {
+      "bytes": 63003,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-2-baseline-6-1.json"
+    },
+    {
+      "bytes": 62946,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-2-baseline-6-calibration.json"
+    },
+    {
+      "bytes": 62954,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-2-baseline-7-0.json"
+    },
+    {
+      "bytes": 62955,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-2-baseline-7-1.json"
+    },
+    {
+      "bytes": 62889,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-2-baseline-7-calibration.json"
+    },
+    {
+      "bytes": 63288,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-3-baseline-1-0.json"
+    },
+    {
+      "bytes": 63289,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-3-baseline-1-1.json"
+    },
+    {
+      "bytes": 63217,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-3-baseline-1-calibration.json"
+    },
+    {
+      "bytes": 63355,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-3-baseline-6-0.json"
+    },
+    {
+      "bytes": 63362,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-3-baseline-6-1.json"
+    },
+    {
+      "bytes": 63290,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-3-baseline-6-calibration.json"
+    },
+    {
+      "bytes": 63262,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-3-baseline-7-0.json"
+    },
+    {
+      "bytes": 63268,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-3-baseline-7-1.json"
+    },
+    {
+      "bytes": 63195,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-3-baseline-7-calibration.json"
+    },
+    {
+      "bytes": 60161,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-1-baseline-1-0.json"
+    },
+    {
+      "bytes": 60161,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-1-baseline-1-1.json"
+    },
+    {
+      "bytes": 60086,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-1-baseline-1-calibration.json"
+    },
+    {
+      "bytes": 59062,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-1-baseline-6-0.json"
+    },
+    {
+      "bytes": 59052,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-1-baseline-6-1.json"
+    },
+    {
+      "bytes": 58986,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-1-baseline-6-calibration.json"
+    },
+    {
+      "bytes": 60075,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-1-baseline-7-0.json"
+    },
+    {
+      "bytes": 60075,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-1-baseline-7-1.json"
+    },
+    {
+      "bytes": 60010,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-1-baseline-7-calibration.json"
+    },
+    {
+      "bytes": 61084,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-2-baseline-1-0.json"
+    },
+    {
+      "bytes": 61083,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-2-baseline-1-1.json"
+    },
+    {
+      "bytes": 61026,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-2-baseline-1-calibration.json"
+    },
+    {
+      "bytes": 61109,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-2-baseline-6-0.json"
+    },
+    {
+      "bytes": 61109,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-2-baseline-6-1.json"
+    },
+    {
+      "bytes": 61043,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-2-baseline-6-calibration.json"
+    },
+    {
+      "bytes": 61038,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-2-baseline-7-0.json"
+    },
+    {
+      "bytes": 61031,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-2-baseline-7-1.json"
+    },
+    {
+      "bytes": 60964,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-2-baseline-7-calibration.json"
+    },
+    {
+      "bytes": 61644,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-3-baseline-1-0.json"
+    },
+    {
+      "bytes": 61647,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-3-baseline-1-1.json"
+    },
+    {
+      "bytes": 61581,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-3-baseline-1-calibration.json"
+    },
+    {
+      "bytes": 63567,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-3-baseline-6-0.json"
+    },
+    {
+      "bytes": 63566,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-3-baseline-6-1.json"
+    },
+    {
+      "bytes": 63493,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-3-baseline-6-calibration.json"
+    },
+    {
+      "bytes": 63476,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-3-baseline-7-0.json"
+    },
+    {
+      "bytes": 63476,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-3-baseline-7-1.json"
+    },
+    {
+      "bytes": 63411,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-3-baseline-7-calibration.json"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-1/MadLoopParams-1.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-1/MadLoopParams-6.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-1/MadLoopParams-7.dat"
+    },
+    {
+      "bytes": 5236,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-1/compilation-history/1f6f46063c8b10ba.json"
+    },
+    {
+      "bytes": 5887,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-1/compilation.json"
+    },
+    {
+      "bytes": 23655,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-1/compiled-source-manifests/63fd2f906e7c5281e057cf74f8fe7f8596b8cd477a1f599d9970bd7caa7b2ba9.json"
+    },
+    {
+      "bytes": 23655,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-1/compiled-sources.json"
+    },
+    {
+      "bytes": 23808,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-1/generated-sources-observed.json"
+    },
+    {
+      "bytes": 535,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-1/generation.json"
+    },
+    {
+      "bytes": 4537,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-1/param_card.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-2/MadLoopParams-1.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-2/MadLoopParams-6.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-2/MadLoopParams-7.dat"
+    },
+    {
+      "bytes": 5236,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-2/compilation-history/917bd1ea3d7ce03f.json"
+    },
+    {
+      "bytes": 5888,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-2/compilation.json"
+    },
+    {
+      "bytes": 40557,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-2/compiled-source-manifests/3fb531f999c8541b06ce7fbe2c0f4e5c8d5e7f5c2b5c23109b6b84b4035eb701.json"
+    },
+    {
+      "bytes": 40557,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-2/compiled-sources.json"
+    },
+    {
+      "bytes": 40710,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-2/generated-sources-observed.json"
+    },
+    {
+      "bytes": 535,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-2/generation.json"
+    },
+    {
+      "bytes": 4537,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-2/param_card.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-3/MadLoopParams-1.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-3/MadLoopParams-6.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-3/MadLoopParams-7.dat"
+    },
+    {
+      "bytes": 5235,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-3/compilation-history/c1388d1c060fc9fe.json"
+    },
+    {
+      "bytes": 5887,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-3/compilation.json"
+    },
+    {
+      "bytes": 63907,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-3/compiled-source-manifests/084c0e828c91c772b0ae9a1a86becc04292a7966f44e80f1d67b5dcc1707eb63.json"
+    },
+    {
+      "bytes": 63907,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-3/compiled-sources.json"
+    },
+    {
+      "bytes": 64060,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-3/generated-sources-observed.json"
+    },
+    {
+      "bytes": 535,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-3/generation.json"
+    },
+    {
+      "bytes": 4537,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/ew-3/param_card.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-1/MadLoopParams-1.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-1/MadLoopParams-6.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-1/MadLoopParams-7.dat"
+    },
+    {
+      "bytes": 5236,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-1/compilation-history/ce9c46124e4cf538.json"
+    },
+    {
+      "bytes": 5887,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-1/compilation.json"
+    },
+    {
+      "bytes": 16774,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-1/compiled-source-manifests/34070caf362367821f021faf7b122fef3d07b3707851646d54c786f95af93137.json"
+    },
+    {
+      "bytes": 16774,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-1/compiled-sources.json"
+    },
+    {
+      "bytes": 16927,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-1/generated-sources-observed.json"
+    },
+    {
+      "bytes": 534,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-1/generation.json"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-1/param_card.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-2/MadLoopParams-1.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-2/MadLoopParams-6.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-2/MadLoopParams-7.dat"
+    },
+    {
+      "bytes": 5235,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-2/compilation-history/3ba54785a3403ed8.json"
+    },
+    {
+      "bytes": 5888,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-2/compilation.json"
+    },
+    {
+      "bytes": 22496,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-2/compiled-source-manifests/065ed57c6821c488ff31f3dd07b525631c4969b312b72a70c437f43e7a27f988.json"
+    },
+    {
+      "bytes": 22496,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-2/compiled-sources.json"
+    },
+    {
+      "bytes": 22649,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-2/generated-sources-observed.json"
+    },
+    {
+      "bytes": 534,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-2/generation.json"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-2/param_card.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-3/MadLoopParams-1.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-3/MadLoopParams-6.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-3/MadLoopParams-7.dat"
+    },
+    {
+      "bytes": 5236,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-3/compilation-history/d872770b91cd1d7f.json"
+    },
+    {
+      "bytes": 5888,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-3/compilation.json"
+    },
+    {
+      "bytes": 29257,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-3/compiled-source-manifests/3b5f342f2f2b5044ecb82abaffe8d3b629d4d4f809d52e8dfc95ba3bad365722.json"
+    },
+    {
+      "bytes": 29257,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-3/compiled-sources.json"
+    },
+    {
+      "bytes": 29410,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-3/generated-sources-observed.json"
+    },
+    {
+      "bytes": 534,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-3/generation.json"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-3/param_card.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-4/MadLoopParams-1.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-4/MadLoopParams-6.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-4/MadLoopParams-7.dat"
+    },
+    {
+      "bytes": 5272,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-4/compilation-history/80b7544cd69123e1.json"
+    },
+    {
+      "bytes": 5924,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-4/compilation.json"
+    },
+    {
+      "bytes": 31145,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-4/compiled-source-manifests/dae662b91c902973e99d371f6100c28db3984183dfa63866873f988c40028f68.json"
+    },
+    {
+      "bytes": 31145,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-4/compiled-sources.json"
+    },
+    {
+      "bytes": 31298,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-4/generated-sources-observed.json"
+    },
+    {
+      "bytes": 534,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-4/generation.json"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/inputs/baseline/qcd-4/param_card.dat"
+    },
+    {
+      "bytes": 29269,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/ew-1.dat"
+    },
+    {
+      "bytes": 38804,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/ew-2.dat"
+    },
+    {
+      "bytes": 48558,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/ew-3.dat"
+    },
+    {
+      "bytes": 29223,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/qcd-1.dat"
+    },
+    {
+      "bytes": 38804,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/qcd-2.dat"
+    },
+    {
+      "bytes": 48552,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/qcd-3.dat"
+    },
+    {
+      "bytes": 58316,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/qcd-4.dat"
+    },
+    {
+      "bytes": 2874,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/protocol.json"
+    },
+    {
+      "bytes": 336,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/run-status.json"
+    },
+    {
+      "bytes": 49893,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/sources/ninjars_benchmark.py"
+    },
+    {
+      "bytes": 18761,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/sources/ninjars_benchmark_references_v2.py"
+    },
+    {
+      "bytes": 4704,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/sources/ninjars_benchmark_worker.f"
+    },
+    {
+      "bytes": 44582,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/sources/ninjars_benchmark_workers.py"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1974,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8464,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/build.json"
+    },
+    {
+      "bytes": 31145,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/make_opts"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-6/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1974,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-6/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8464,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-6/build.json"
+    },
+    {
+      "bytes": 31145,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-6/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-6/make_opts"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-6/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-6/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-7/MadLoopParams.dat"
+    },
+    {
+      "bytes": 1974,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-7/MadLoop_makefile_definitions"
+    },
+    {
+      "bytes": 8421,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-7/build.json"
+    },
+    {
+      "bytes": 31145,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-7/compiled-sources.json"
+    },
+    {
+      "bytes": 2781,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-7/make_opts"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-7/param_card.dat"
+    },
+    {
+      "bytes": 4672,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-7/worker.f"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/MadLoopParams-1.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/MadLoopParams-6.dat"
+    },
+    {
+      "bytes": 13241,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/MadLoopParams-7.dat"
+    },
+    {
+      "bytes": 5272,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/compilation-history/80b7544cd69123e1.json"
+    },
+    {
+      "bytes": 5923,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/compilation.json"
+    },
+    {
+      "bytes": 31145,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/compiled-source-manifests/dae662b91c902973e99d371f6100c28db3984183dfa63866873f988c40028f68.json"
+    },
+    {
+      "bytes": 31145,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/compiled-sources.json"
+    },
+    {
+      "bytes": 31298,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/generated-sources-observed.json"
+    },
+    {
+      "bytes": 534,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/generation.json"
+    },
+    {
+      "bytes": 2471,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/param_card.dat"
+    },
+    {
+      "bytes": 58316,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/points/qcd-4.dat"
+    },
+    {
+      "bytes": 2876,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/protocol.json"
+    },
+    {
+      "bytes": 259,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/run-status.json"
+    },
+    {
+      "bytes": 49893,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/sources/ninjars_benchmark.py"
+    },
+    {
+      "bytes": 18761,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/sources/ninjars_benchmark_references_v2.py"
+    },
+    {
+      "bytes": 4704,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/sources/ninjars_benchmark_worker.f"
+    },
+    {
+      "bytes": 44582,
+      "classification": "required-reference-evidence: append-only-owner-review",
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/sources/ninjars_benchmark_workers.py"
+    },
+    {
+      "bytes": 11651,
+      "classification": "this-readonly-cleanup-audit",
+      "path": "docs/benchmarkfolder/publication-cleanup-readiness-v1/capture.py"
+    },
+    {
+      "bytes": 560,
+      "classification": "preexisting-user-workspace-file: preserve",
+      "path": "vendor/StdHEP/fail"
+    }
+  ]
+}

@@ -1,0 +1,129 @@
+{
+  "candidates_before": [
+    {
+      "bytes": 27623411,
+      "durable_compressed_record": {
+        "bytes": 1567620,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/convergence-analysis.json.gz",
+        "sha256": "0e11234591bf68dfa38804c9cc874e06f9db5900f7b9a822bb9e00fde8f67244"
+      },
+      "kind": "file",
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/convergence-analysis.json",
+      "sha256": "47b21ee384d318459e5732c56c4311fac3f697e6c2a58993d856845aa7e0757b"
+    },
+    {
+      "bytes": 13484973,
+      "durable_compressed_record": {
+        "bytes": 497987,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/replay-analysis.json.gz",
+        "sha256": "c38916f6dcc6d40a48e94ea3566f3f481265abe3b7a36ffedb108a0225063870"
+      },
+      "kind": "file",
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/replay-analysis.json",
+      "sha256": "60a52511feac16e5bc7435b24e774d1c3f0bd18e39c75e0283d0042b7fa5a97a"
+    },
+    {
+      "bytes": 31882703,
+      "durable_compressed_record": {
+        "bytes": 5723427,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-convergence/raw.jsonl.gz",
+        "sha256": "fc485f1b8cd0ddfe3cf11a722c5ebfad895f2ed4149a5b19bf45dfdc82bfbb71"
+      },
+      "kind": "file",
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-convergence/raw.jsonl",
+      "sha256": "8ed0c8f0709ef2c162ae69998094a89d21b2eb125e571cd8b8cb64cf78370965"
+    },
+    {
+      "bytes": 20006818,
+      "durable_compressed_record": {
+        "bytes": 3338022,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-replay/raw.jsonl.gz",
+        "sha256": "f558cca7ce05f513bfa18653031391a2230088e64affca6f2fde93737b1c389c"
+      },
+      "kind": "file",
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-replay/raw.jsonl",
+      "sha256": "b407a22d99df3fe8f10d6be777711e153487d539aa7cb1567fbb56f743154817"
+    },
+    {
+      "bytes": 2884,
+      "durable_compressed_record": {
+        "bytes": 1327,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/screening-analysis.json.gz",
+        "sha256": "53eb16383f507d7e3c768c0cbab2935bf6c0148aa20f8878872cd77bc2422fd8"
+      },
+      "kind": "file",
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/screening-analysis.json",
+      "sha256": "7fd21fb937937db6987cf3353eab5d65de70f9ab4a34c9c776ca778f5a8022c8"
+    },
+    {
+      "bytes": 14436401,
+      "durable_compressed_record": {
+        "bytes": 4572852,
+        "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/supplement/run-screening/raw.jsonl.gz",
+        "sha256": "caaccbda3b83e9e58b189191f6efb00ba7261670f0af66786303ae14831d739d"
+      },
+      "kind": "file",
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/supplement/run-screening/raw.jsonl",
+      "sha256": "27f0de1ffa745cc200c85f3e27db03bde2184ee0b88711ad13b8cfbd3f86555e"
+    },
+    {
+      "bytes": 21950900,
+      "files": 2445,
+      "full_file_map_sha256": "24783edb22e2ef9fafbe2a9bd7b062dfcfb804f549e10d14766d2635b9935853",
+      "kind": "directory",
+      "path": ".benchmark-work/final-regression-review-v1"
+    },
+    {
+      "bytes": 21446540,
+      "files": 2450,
+      "full_file_map_sha256": "6cd4811bd1b8009acbcfe249b0ba366bd22ded472efcd8afda55a758b5cc58d0",
+      "kind": "directory",
+      "path": ".benchmark-work/final-regression-fks-review-v1"
+    },
+    {
+      "bytes": 21338577,
+      "files": 2451,
+      "full_file_map_sha256": "4fb7b9982b53929123bd2eaa3cb5ef6d5d37c624b3aa5481673196f0a068e92d",
+      "kind": "directory",
+      "path": ".benchmark-work/final-regression-fks-review-v2-absent"
+    }
+  ],
+  "compiler_calls": 0,
+  "durable_proofs_before": [
+    {
+      "files": 195,
+      "passed": true,
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/manifest.json",
+      "sha256": "38887d55ab8276fa2ee4cd64905012dcd946e9d18d668d7087cd7e5c15b1b9d5"
+    },
+    {
+      "files": 27,
+      "passed": true,
+      "path": "docs/benchmarkfolder/policy-v2/final-regressions-v1/manifest.json",
+      "sha256": "1f7979f1449dd734f7b2da7c54bd5cc93b74436b66fc8f3bb367308afdea22a5"
+    }
+  ],
+  "engine_calls": 0,
+  "fresh_same_uid_process_observation": {
+    "observed_utc": "2026-10-21T01:30:57.299201+00:00",
+    "permission_denied": 10,
+    "processes_vanished_during_scan": 0,
+    "same_uid_processes_examined": 77,
+    "scope": "Same UID cwd, file descriptors and mapped paths only; no command arguments, signals or future-use guarantee",
+    "uid": 1134,
+    "uses": []
+  },
+  "known_completed_workers": {
+    "matches": [],
+    "scope": "Only exact completed regression collector/harness script names and selected unittest module arguments; no unrelated command arguments retained",
+    "unreadable_same_uid_commands": 0
+  },
+  "permission_limit": "The same-UID observation records permission-denied/vanished processes and cannot guarantee absence of all inaccessible or later opens. Root explicitly approved this bounded cleanup with that disclosed limit.",
+  "preexisting_vendor_StdHEP_fail_touched": false,
+  "readiness_manifest_sha256": "4927a8d3b657ffb099eadca907461e153efc307a804b1593470c3603225630f9",
+  "removed": [],
+  "revision": "2bf47cd477c6a8eaeef07a4f649434dfe38a4260",
+  "root_handoff": "root-authorized-exact-nine-20261021-fresh-process-and-seal-check",
+  "schema": "publication-cleanup-execution-v1",
+  "started_utc": "2026-10-21T01:30:57.977721+00:00"
+}

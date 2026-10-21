@@ -1,0 +1,17 @@
+{
+  "cleanup_result_unchanged_sha256": "3d07c31bfef9db8b5fa0f2935b6447aa08b425771c682d285ee33d42df600751",
+  "deferred_patch_sha256": "60e00ef5c5f0136ae3cd70901bba45fa7bd36c8e5cac193e49f03b93c58a9055",
+  "exact_rules": [
+    "/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/convergence-analysis.json",
+    "/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/replay-analysis.json",
+    "/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-convergence/raw.jsonl",
+    "/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-replay/raw.jsonl",
+    "/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/screening-analysis.json",
+    "/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/supplement/run-screening/raw.jsonl"
+  ],
+  "only_our_unique_header_and_six_lines_removed": true,
+  "other_ignore_lines_changed": false,
+  "reason": "Root coordination: early stress generation source equivalence rejects non-documentation source changes; defer six exact ignore rules until generation ends.",
+  "restored_ignore_sha256": "30b6bce4ef82440a4ab1c6a0190cec801f3e023bd1978df5175038f8c181608f",
+  "temporarily_appended_ignore_sha256": "2dd8eaa701529c4f306a71d969b65c028f2cc3850e16ba4de92d4db9decf3e85"
+}

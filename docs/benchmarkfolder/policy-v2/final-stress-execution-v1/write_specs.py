@@ -12,6 +12,7 @@ import ninjars_benchmark as bench
 import ninjars_benchmark_policy_v2 as policy
 import ninjars_supplement_v2 as supplement
 import ninjars_stress_v2 as stress
+import early_build
 
 HERE = Path(__file__).resolve().parent
 
@@ -31,12 +32,19 @@ def prepare(args):
     signature = read(args.runtime_signature)
     stress.check_expected(expected, signature)
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-    if revision != args.commit:
+    early = None
+    if args.early_result:
+        result = policy.verified(read(args.early_result), "stress-early-build-result-v1")
+        early = policy.verified(read(supplement.checked(result["registration"])), early_build.SCHEMA)
+    generation_revision = early["generation_revision"] if early else revision
+    if generation_revision != args.commit:
         raise ValueError("Explicit final committed source does not match HEAD")
     if bench.content_digest(bench.generator_tree_state()) != expected["candidate_generator_identity_sha256"]:
         raise ValueError("Final generator tree differs from the core identity")
     installation = read(args.installation)
-    if installation["revision"] != revision or installation["files"]["lib/libninjars.a"] != args.archive_sha256:
+    numerical_revision = args.numerical_revision or installation["revision"]
+    early_build.sources(numerical_revision)
+    if installation["revision"] != numerical_revision or installation["files"]["lib/libninjars.a"] != args.archive_sha256:
         raise ValueError("Actual-CLI final installation uses another revision/archive")
     stress.check_installed(expected, signature)
     if supplement.digest(ROOT / "HEPTools/ninjars/lib/libninjars.a") != args.archive_sha256:
@@ -45,12 +53,38 @@ def prepare(args):
             "report": policy.relative(args.report), "work": policy.relative(args.work),
             "physical_cards": {"loop_sm": supplement.bound(args.loop_sm_card),
                                "loop_qcd_qed_sm_Gmu": supplement.bound(args.ew_card)},
-            "final_source": {"revision": revision, "installation": supplement.bound(args.installation),
+            "final_source": {"revision": generation_revision, "numerical_revision": numerical_revision,
+                             "installation": supplement.bound(args.installation),
                              "installed_archive_sha256": args.archive_sha256},
             "purpose": "Approved two-process stress generation/build/masses only; numerical collection separate"}
+    if early:
+        if (spec["report"] != early["report"] or spec["work"] != early["work"] or
+                spec["physical_cards"] != early["physical_cards"]):
+            raise ValueError("Early source/card namespace differs from final reader inputs")
+        attached = early_build.attach_core(args.early_result, expected, signature)
+        spec["reuse_verified_early_preparation"] = supplement.bound(attached)
     write(HERE / "prepare-spec.json", spec)
     return {"prepared_spec": supplement.bound(HERE / "prepare-spec.json"),
             "cli_or_compiler_or_engine_executions": 0}
+
+
+def early(args):
+    revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    if revision != args.generation_revision:
+        raise ValueError("Actual HEAD differs from the requested generation freeze")
+    early_build.sources(args.numerical_revision)
+    signature = read(args.runtime_signature)
+    spec = {"generation_revision": revision, "numerical_revision": args.numerical_revision,
+            "generator_identity_sha256": bench.content_digest(bench.generator_tree_state()),
+            "archive_sha256": args.archive_sha256, "runtime_signature": signature,
+            "publication": supplement.bound(args.publication),
+            "physical_cards": {"loop_sm": supplement.bound(args.loop_sm_card),
+                               "loop_qcd_qed_sm_Gmu": supplement.bound(args.ew_card)},
+            "report": policy.relative(args.report), "work": policy.relative(args.work)}
+    early_build.runtime(spec)
+    write(HERE / "early-spec.json", spec)
+    return {"early_spec": supplement.bound(HERE / "early-spec.json"),
+            "core_dataset_identity_asserted": False, "cli_or_compiler_or_engine_executions": 0}
 
 
 def bind(args):
@@ -96,6 +130,8 @@ def main():
     commands = parser.add_subparsers(dest="action", required=True)
     first = commands.add_parser("prepare")
     first.add_argument("--commit", required=True)
+    first.add_argument("--numerical-revision")
+    first.add_argument("--early-result", type=Path)
     first.add_argument("--archive-sha256", required=True)
     first.add_argument("--expected", required=True, type=Path)
     first.add_argument("--runtime-signature", required=True, type=Path)
@@ -104,10 +140,20 @@ def main():
     first.add_argument("--ew-card", required=True, type=Path)
     first.add_argument("--report", required=True, type=Path)
     first.add_argument("--work", required=True, type=Path)
+    initial = commands.add_parser("early")
+    initial.add_argument("--generation-revision", required=True)
+    initial.add_argument("--numerical-revision", required=True)
+    initial.add_argument("--archive-sha256", required=True)
+    initial.add_argument("--runtime-signature", required=True, type=Path)
+    initial.add_argument("--publication", required=True, type=Path)
+    initial.add_argument("--loop-sm-card", required=True, type=Path)
+    initial.add_argument("--ew-card", required=True, type=Path)
+    initial.add_argument("--report", required=True, type=Path)
+    initial.add_argument("--work", required=True, type=Path)
     second = commands.add_parser("bind")
     second.add_argument("--cpu", required=True, type=int)
     args = parser.parse_args()
-    result = prepare(args) if args.action == "prepare" else bind(args)
+    result = early(args) if args.action == "early" else prepare(args) if args.action == "prepare" else bind(args)
     print(json.dumps(result, indent=2))
 
 

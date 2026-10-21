@@ -1,0 +1,6 @@
+set automatic_html_opening False
+set auto_update 0
+set nb_core 1
+set fortran_compiler gfortran
+install ninjars --prefix=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/install-export-abi3-final-v1/source/HEPTools --jobs=1
+quit

@@ -1,7 +1,8 @@
 # Parameterized final stress execution
 
-This source-only template does not launch anything. It was prepared during the
-allocation quiet window; the new writer has not been executed or syntax-tested.
+This source-only template does not launch anything. The operational scripts
+have been checked with Python AST parsing without importing project modules.
+They have not run CLI generation, builds, reductions or tests.
 The tested stress reader/API remains frozen separately in
 `../stress-reader-validation-v1`. All actual work requires the final committed
 source/archive and the root's build or serialized engine handoff.
@@ -12,6 +13,48 @@ descriptor, actual-CLI installation proof and fixed physical cards. It checks
 these against the current clean generator/main installation before writing a
 preparation spec. It never calls `bin/madgraph`, make, a worker or an engine.
 The numerical setup is the approved twenty-point/two-process plan, unchanged.
+
+## Early CLI/build phase without a future core identity
+
+The final numerical revision is
+`d05b59f3277ce0d727cb2816d8b7ad45107e58c4`, while the actual generation HEAD
+also contains later documentation/evidence commits. The controller proves exact
+tracked generator/vendor source equality, records allowed documentation/test
+differences separately and rejects untracked numerical input. The pre-task
+`vendor/StdHEP/fail` installer diagnostic is explicitly inventoried separately.
+It checks the main publication, all ten installed artifacts, exact archived
+bridge source hashes and the full reducer descriptor again on each built output.
+Every CLI/make command owns a new process group with a six-hour timeout and
+TERM/KILL/reaping on failure. Only the existing CLI/build/masses/point functions
+run; no loop amplitude or engine is initialized.
+
+After root commits these scripts and holds HEAD fixed, use the reserved CPU6,7
+for the existing loop-induced candidate exports and then the two stress builds:
+
+```sh
+taskset -c 6,7 python tools/ninjars_supplement_v2.py generate-candidate
+python docs/benchmarkfolder/policy-v2/final-stress-execution-v1/write_specs.py early \
+  --generation-revision "$FROZEN_HEAD" \
+  --numerical-revision d05b59f3277ce0d727cb2816d8b7ad45107e58c4 \
+  --archive-sha256 800a941faf3cdfdab764fdffe1d5ab73f84984a786aa194596b753af6b6f5d42 \
+  --runtime-signature "$RUNTIME_SIGNATURE_JSON" \
+  --publication docs/benchmarkfolder/policy-v2/main-install-publication-v1/transition.json \
+  --loop-sm-card "$FIXED_LOOP_SM_PARAM_CARD" --ew-card "$FIXED_EW_PARAM_CARD" \
+  --report "$STRESS_REPORT_ROOT" --work "$STRESS_WORK_ROOT"
+taskset -c 6,7 python docs/benchmarkfolder/policy-v2/final-stress-execution-v1/early_build.py \
+  docs/benchmarkfolder/policy-v2/final-stress-execution-v1/early-spec.json
+```
+
+This writes immutable source/runtime registration and exact first point bytes
+without asserting any core dataset identity. It retains real generation/build
+records and derived controls. Once the actual core dataset is available, use
+the `prepare` writer command below with `--commit "$FROZEN_HEAD"`,
+`--numerical-revision d05b59f3277ce0d727cb2816d8b7ad45107e58c4` and
+`--early-result "$STRESS_REPORT_ROOT/early-result.json"`. That operation creates
+a new real-core-linked preparation manifest and validates it with the existing
+stress reader; it never changes or regenerates the early assets. Skip the
+separate `tools/ninjars_stress_v2.py prepare` command when reusing early assets.
+No early measurement or alternate numerical validation layer is introduced.
 
 Use full paths within this repository. The expected-identities JSON has exactly:
 
