@@ -411,34 +411,21 @@ def _stage_evaluator(stage: Any) -> Any:
     )
 
 
-class _exact_u1_subtraction_weights:
+def _exact_u1_subtraction_weights():
     """Build stage expressions with the exact U(1)-subtraction weight 1/N_c.
 
     The tree engine stores that colour weight as binary64 (``GenericDAG``
     interactions), which caps multi-line block rows at ~1e-17 in any carrier;
     graded U(1) currents replace it in WP2.4 (design §3.2 item 4). Until then
-    the Python slice restores the exact rational while its stage expressions
-    are built. Binary64 values are unchanged (1/N_c rounds to the same double).
+    the slice builds its stage expressions with the exact rational (binary64
+    values are unchanged: 1/N_c rounds to the same double).
     """
 
-    def __enter__(self):
-        from symbolica import E
+    from symbolica import E
 
-        from pyamplicol.generation import stage_expressions
+    from pyamplicol.generation.stage_expressions import exact_weights
 
-        rounded = complex(1 / NC)
-        self._module = stage_expressions
-        self._original = original = stage_expressions._exact_complex_expression
-
-        def exact(value):
-            return E(f"1/{NC}") if value == rounded else original(value)
-
-        stage_expressions._exact_complex_expression = exact
-        return self
-
-    def __exit__(self, *exc):
-        self._module._exact_complex_expression = self._original
-        return False
+    return exact_weights({complex(1 / NC): E(f"1/{NC}")})
 
 
 # --------------------------------------------------------------------- seeds
