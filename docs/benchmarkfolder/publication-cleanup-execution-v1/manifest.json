@@ -1,0 +1,34 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 2889,
+      "sha256": "4f1f48c1586ce496c9a9c66f23b5375bc69fd2357fe8cbe656ce7efad36a9a12"
+    },
+    "cleanup-result.json": {
+      "bytes": 7744,
+      "sha256": "3d07c31bfef9db8b5fa0f2935b6447aa08b425771c682d285ee33d42df600751"
+    },
+    "cleanup-started.json": {
+      "bytes": 5619,
+      "sha256": "9cac33d66a0e380b23b2c85eac222046cf14aa3416f4cb8889de06f0b94f23fd"
+    },
+    "cleanup.py": {
+      "bytes": 11503,
+      "sha256": "9a6d4dbdae69786d2c71e0487c83fe4d96b480902de09820f02fad03ba197771"
+    },
+    "deferred-native-ignore.patch": {
+      "bytes": 680,
+      "sha256": "60e00ef5c5f0136ae3cd70901bba45fa7bd36c8e5cac193e49f03b93c58a9055"
+    },
+    "ignore-deferral.json": {
+      "bytes": 1257,
+      "sha256": "24d475ed9a90473ae1b6c2ff27ada97154bf686f5526ea17561d63c6b8b715d7"
+    },
+    "verify.py": {
+      "bytes": 4161,
+      "sha256": "ea26e8332253722c4daa3d6c97720f7be554508105d507d73d61ba01287da819"
+    }
+  },
+  "identity_sha256": "0456de57ce9e121e3c1cd36ef3d93ca1f74031ae18d5cc4478126b5876f59488",
+  "schema": "publication-cleanup-execution-seal-v1"
+}
