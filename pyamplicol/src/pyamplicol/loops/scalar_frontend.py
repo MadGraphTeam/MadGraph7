@@ -212,6 +212,7 @@ class ScalarFunctionLibrary:
         """
         from symbolica import Replacement, S
 
+        original = expression
         while True:
             before = expression
             for head, (parameters, body) in self._bodies.items():
@@ -242,7 +243,8 @@ class ScalarFunctionLibrary:
                     head(*wildcards), rewrite, rhs_cache_size=0
                 )
             if expression == before:
-                return expression
+                # Unchanged expressions keep their identity (and term order).
+                return original if expression == original else before
 
     def lower(
         self, source: str, *, locals: dict[str, Any] | None = None, closed: bool = False

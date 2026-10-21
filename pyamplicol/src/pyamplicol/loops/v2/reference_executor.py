@@ -77,6 +77,7 @@ from .colour import (
     PositionColour,
     SectorPair,
     SeedColour,
+    SeedCombination,
     SeedTable,
     _exact_number,
     build_seed_table,
@@ -1351,7 +1352,7 @@ class ColourSeeds:
     def __init__(
         self,
         table: SeedTable,
-        class_of: Mapping[Skeleton, int],
+        class_of: Mapping[Skeleton, SeedCombination],
         born: Mapping[Row, Mapping[tuple[int, Orders], Any]],
         pairs: Iterable[SectorPair],
         accuracy: ColourAccuracy = "full",
@@ -1364,7 +1365,7 @@ class ColourSeeds:
         for row, amplitudes in born.items():
             seeds = table.seeds(
                 pairs,
-                {key: exact(value) for key, value in amplitudes.items()},
+                {key: {0: exact(value)} for key, value in amplitudes.items()},
                 accuracy,
                 cast=lambda cell: Complex(cell.real, cell.imag),
                 conjugate=lambda value: value.conjugate(),
@@ -1385,14 +1386,19 @@ class ColourSeeds:
 
     def seed(self, skeleton, contents):
         reading = _reading(skeleton, contents)
-        c = self.class_of.get(reading)
-        if c is None:
+        combination = self.class_of.get(reading)
+        if combination is None:
             raise KeyError("reading without a seed class; build with every reading")
-        key = (c, skeleton.orders)
-        if key not in self._admitted:
-            raise KeyError(f"no sector pair admits class {c} at {skeleton.orders}")
+        order = skeleton.orders
+        for c, _x in combination:
+            if (c, order) not in self._admitted:
+                raise KeyError(f"no sector pair admits class {c} at {order}")
         # An admitted key absent from a row is a zero colour weight or Born.
-        return key, {row: (seeds.get(key, 0),) for row, seeds in self._rows.items()}
+        weights = [(c, Complex(x.real, x.imag)) for c, x in combination]
+        return (combination, order), {
+            row: (sum((w * seeds.get((c, order), 0) for c, w in weights), 0),)
+            for row, seeds in self._rows.items()
+        }
 
 
 def _reading(skeleton: Skeleton, contents: Sequence[Content]) -> Skeleton:

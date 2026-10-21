@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: 0BSD
-"""Generic colour seeds of the loop engine (design §3.4, §7.1-§7.5, WP1.4).
+"""Colour seeds of the loop engine (design §3.4, §7, WP1.4, WP2.4).
 
 Colour lives only in exact seed tables. Every skeleton has a *seed class*
 kappa_s, the colour vector obtained by closing its colour flow: the product of
 the vertex colour tensors of its positions and of the colour-flow strings of
 its block words, contracted around the loop. kappa_s is a sum of external
 colour structures (open strings, traces, powers of N_c), so it holds for any
-model whose coloured vertices lower to colour flow; no Feynman diagram and no
-decomposition theorem is used. The seed table is
+model whose coloured vertices lower to colour flow; no Feynman diagram is
+used. The seed table is
 
     K[c, b] = <b | kappa_c>,
 
@@ -27,42 +27,51 @@ Conventions a consumer relies on:
   the Born's full-colour plan (with its endpoint-pairing phase), so the Born
   colour vector is sum_b A0[b] |b>, the vector whose Gram matrix is the tree
   engine's Born metric.
-* **Contents.** In this generic mode a content is one routing term in one
-  colour state ``PositionColour``: the vertex rule, one of its colour
-  structures, the UFO legs the loop and the blocks occupy, and one block word
-  per attached block current. Its kinematics is the sum of the vertex terms of
-  that colour structure on those legs (couplings times the colour-flow
-  normalisation 2^(-p/2) of ``loops.v2.catalogue``) times the block currents of
-  those words. Seeds absorb the matching 2^(p/2), so kappa carries no sqrt(2).
+* **Contents.** A content is one routing term in one colour state
+  ``PositionColour``: the vertex rule, one of its colour structures, the UFO
+  legs the loop and the blocks occupy, and one block word per attached block
+  current. Its kinematics is the sum of the vertex terms of that colour
+  structure on those legs (couplings times the colour-flow normalisation
+  2^(-p/2) of ``loops.v2.catalogue``) times the block currents of those words.
+  Seeds absorb the matching 2^(p/2), so kappa carries no sqrt(2).
+* **Seeds.** A skeleton's seed is a combination sum_c x_c kappa_c of table
+  classes (``build_seed_table``): its generic colour vector, or with
+  certified compressions (``CompressedColour``, design §7.2) a combination of
+  primitives: Tr_adj(F^sigma) for adjoint rings, tr(tau^sigma) for closed
+  fundamental loops and quark rings for loops with quark and gluon arcs. Each
+  compression carries a loop-level certificate (``CompressionCertificate``).
+  Compression changes only the seed table, never the dressing; the family
+  numerators equal the generic ones because pure-gluon blocks are Lie
+  elements (``COMPRESSION_THEOREMS``).
+* **N_c grades.** Blocks with U(1)-subtraction pieces enter with their grade
+  (``BlockColourFlow.nc_grade``) and the Born amplitude A0[b] is split into
+  grades (``SeedTable.seeds``), so seeds are exact in N_c; a process whose
+  blocks mix grades has only full colour (design §3.2 item 4).
 * **Signs.** kappa uses the plain colour-flow strings of the blocks.
   ``Block.wick_sign``, the skeleton's fermion sign epsilon_s, its automorphism
   weight and its i-factors belong to the leaf weight (design §3.3), never to K.
 * **Projection** (design §7.4). P is the largest N_c degree of a nonzero cell
-  of a squared-order sector. LC keeps degree P, NLC keeps P, P-1 and P-2 and FC
-  keeps every power; N_c = 3 is substituted after projection and the external
-  average after that.
+  of a squared-order sector (Born grades included). LC keeps degree P, NLC
+  keeps P, P-1 and P-2 and FC keeps every power (``kept``); N_c = 3 is
+  substituted after projection and the external average after that.
 * **Leading colour** (design §7.5). The face degree of a class is the U(N_c)
   index-loop count of its colour flow glued to the Born basis (integer cycle
-  counting, no numerics). ``certify_leading_colour`` proves for a sector that
-  the face rule keeps exactly the classes whose exact degree is P. It runs on
-  the full seed table, after generation; nothing prunes skeletons before
-  numerics yet. A generic content keeps its vertex's full UFO colour, so LC
-  drops whole seed classes only (in QCD the quark loops); dropping gluon
-  contents structurally needs colour-ordered contents (WP2.4).
-
-LC and NLC need N_c-exact blocks: a process whose tree program uses numeric
-U(1)-subtraction currents is refused (design §3.2 item 4); FC is always
-available.
+  counting, no numerics); ``certify_leading_colour`` proves for a sector that
+  the face rule keeps exactly the classes whose exact degree is P. On
+  colour-ordered (planar) skeletons the rule is local
+  (``PlanarLeadingColour``, against ``leading_born_flows``); the slice prunes
+  every skeleton whose exact seed cells lie below the kept powers before any
+  numerics (``assemble.LoopSlice``).
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from functools import cached_property, lru_cache
-from itertools import count, product
+from itertools import count, permutations, product
 from typing import Any, Literal
 
 from pyamplicol.color.connections import (
@@ -88,8 +97,8 @@ from pyamplicol.color.correlator_matrices import (
 )
 
 from .blocks import Block, BlockColourFlow, TreeBlocks, _NativeFields
-from .families import Orders, Position, _model_data, add_orders
-from .skeletons import Skeleton
+from .families import ExternalLeg, Orders, Position, _model_data, add_orders
+from .skeletons import Content, Skeleton
 
 Label = Hashable
 Laurent = Mapping[int, ExactColorCoefficient]
@@ -98,7 +107,6 @@ ColourAccuracy = Literal["lc", "nlc", "full"]
 SectorPair = tuple[Orders, Orders]
 
 _ONE = ExactColorCoefficient(1)
-_U1_SUBTRACTION = "u1-subtraction-color-flow-vector"
 
 # --------------------------------------------------------------------- networks
 
@@ -529,7 +537,8 @@ def block_colour_network(
 
     A string s -> a_1 .. a_k -> e is (tau^a_k .. tau^a_1)^e_s; an adjoint field
     closes its open ends with (tau^X)^in_out. ``open_label`` names the field's
-    colour index (X, or the open fundamental end).
+    colour index (X, or the open fundamental end). A block of N_c grade g
+    (U(1)-subtraction pieces, whose rows carry 3^g) contributes N_c^g 3^(-g).
     """
 
     incoming = open_label if field_representation == -3 else (open_label, "in")
@@ -544,7 +553,14 @@ def block_colour_network(
         strings.append(ColourString(incoming, (open_label,), outgoing))
     elif field_representation not in (1, 3, -3):
         raise NotImplementedError(f"block field colour {field_representation}")
-    return (ColourProduct(strings=tuple(strings)),)
+    grade = flow.nc_grade or 0
+    return (
+        ColourProduct(
+            ExactColorCoefficient(Fraction(NC) ** -grade),
+            strings=tuple(strings),
+            nc_power=grade,
+        ),
+    )
 
 
 _UFO_SLOT = re.compile(r"ufo_c_(\d+)$")
@@ -647,6 +663,29 @@ class SeedColour:
 
     # -- seeds ---------------------------------------------------------------
 
+    def attached_blocks(self, content: Content) -> tuple[Block, ...]:
+        """The tree block of each attached block current of a content.
+
+        Every routing term of a content must resolve to the same blocks: the
+        content's colour (and so its seed) is that of any one term.
+        """
+
+        state = content.colour
+        if not isinstance(state, PositionColour):
+            raise TypeError("seed classes need PositionColour contents")
+        found = None
+        for term in content.terms:
+            blocks = tuple(
+                self._words[(current.mask, current.field, current.orders)][word]
+                for current, word in zip(term.blocks, state.words, strict=True)
+            )
+            if found is None:
+                found = blocks
+            elif blocks != found:
+                raise ValueError("the routing terms of a content differ in colour")
+        assert found is not None
+        return found
+
     def seed(self, skeleton: Skeleton) -> ConnectedColorTensor:
         """kappa_s: the closed colour flow of a skeleton (module docstring)."""
 
@@ -654,9 +693,7 @@ class SeedColour:
         factors: list[ColourNetwork] = []
         for position, content in enumerate(skeleton.contents):
             state = content.colour
-            if not isinstance(state, PositionColour):
-                raise TypeError("seed classes need PositionColour contents")
-            term = content.terms[0]
+            blocks = self.attached_blocks(content)
             in_leg, out_leg, *attached = state.legs
             slots: dict[int, Label] = {
                 in_leg: ("loop", (position - 1) % count_),
@@ -670,23 +707,47 @@ class SeedColour:
                 kind, value = label
                 return slots[value] if kind == "leg" else ("dummy", position, value)
 
-            factors.append(
-                relabel(self._vertex[(state.rule, state.colour_index)], rename)
-            )
-            for j, (current, word) in enumerate(
-                zip(term.blocks, state.words, strict=True)
-            ):
-                block = self._words[(current.mask, current.field, current.orders)][word]
+            factors.append(relabel(self.vertex_network(state), rename))
+            for j, block in enumerate(blocks):
                 factors.append(
                     block_colour_network(
                         block.colour_flow,
                         self._representations,
-                        int(self._fields.by_pdg[block.key.particle_id]["color"]),
+                        self.field_colour(block),
                         ("block", position, j),
                     )
                 )
         external = {label: label for label in self._representations}
         return canonical_seed(reduce_network(multiply(*factors), self.legs, external))
+
+    def vertex_network(self, state: PositionColour) -> ColourNetwork:
+        """The colour of a content's vertex structure, labelled ("leg", i) by
+        its UFO legs (seed normalisation, module docstring)."""
+
+        return self._vertex[(state.rule, state.colour_index)]
+
+    def field_colour(self, block: Block) -> int:
+        return int(self._fields.by_pdg[block.key.particle_id]["color"])
+
+    def species_colour(self, name: str) -> int:
+        """Colour representation of a loop species (incoming field name)."""
+
+        return int(self._fields.by_name[name]["color"])
+
+    def all_adjoint_rules(self) -> tuple[tuple[str, int], ...]:
+        """(rule, colour index) of every vertex structure whose legs are all
+        adjoint: the vertices that pure-gluon tree blocks are built from."""
+
+        return tuple(
+            sorted(
+                key
+                for key in self._vertex
+                if all(
+                    int(self._fields.by_name[name]["color"]) == 8
+                    for name in self._rules[key[0]]["particles"]
+                )
+            )
+        )
 
     # -- helpers -------------------------------------------------------------
 
@@ -716,12 +777,13 @@ class SeedColour:
 
     @cached_property
     def formal_nc(self) -> bool:
-        """Whether every tree current is exact in N_c (no numeric U(1) pieces)."""
+        """Whether every block is exact in N_c: its numeric U(1)-subtraction
+        pieces have one N_c grade (``BlockColourFlow.nc_grade``)."""
 
-        return not any(
-            current.index.auxiliary_kind == _U1_SUBTRACTION
-            for dag in (self.blocks.blocks_dag, self.blocks.born_dag)
-            for current in dag.currents
+        return all(
+            block.colour_flow.nc_grade is not None
+            for block in self.blocks.blocks
+            if block.key.auxiliary_kind is None
         )
 
 
@@ -743,6 +805,622 @@ def canonical_seed(seed: ConnectedColorTensor) -> ConnectedColorTensor:
         ),
         power % 2,
     )
+
+
+# ------------------------------------------------------- certified compressions
+
+PrimitiveKind = Literal["adjoint-ring", "fundamental-trace", "quark-ring"]
+
+# The theorem behind each certified compression (design §3.4, §7.2).
+COMPRESSION_THEOREMS: Mapping[PrimitiveKind, str] = {
+    "adjoint-ring": (
+        "Del Duca, Dixon, Maltoni, hep-ph/9910563 sec. 3: a ring of adjoint "
+        "lines whose vertices are products of structure constants is "
+        "Tr(F^sigma) times the colour-ordered ring. A pure-gluon tree current "
+        "sum_w J(w) tau^w is a Lie element (shuffle/Kleiss-Kuijf relations), "
+        "and ad is a Lie homomorphism, so ad(sum_w J(w) tau^w) = "
+        "sum_w J(w) F^w: each block word w enters as F^w."
+    ),
+    "fundamental-trace": (
+        "A closed fundamental loop is Tr(prod tau^b) over its attachments. A "
+        "pure-gluon tree current sum_w J(w) tau^w is a Lie element, hence "
+        "traceless: its U(1) (-1/N_c Tr) piece vanishes and the block enters "
+        "as tau^w, so the seed is Tr(tau^sigma) of the concatenated word."
+    ),
+    "quark-ring": (
+        "Del Duca, Dixon, Maltoni, hep-ph/9910563 (one quark line, LoopColorqqNew) "
+        "in its colour-flow form: on a ring with quark and gluon arcs, every "
+        "pure-gluon block on a gluon arc enters as F^w and on a quark arc as "
+        "tau^w (the Lie-element arguments of the two other classes); the "
+        "positions where the loop line changes and every other block keep "
+        "their exact colour, so the seed depends on the arcs' letter words."
+    ),
+}
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class Primitive:
+    """A certified primitive seed class (design §7.2).
+
+    ``word`` lists external adjoint legs in matrix-product order:
+    ``adjoint-ring`` is Tr_adj(F^w_1 ... F^w_n) with
+    (F^a)_xy = tr(tau^x [tau^a, tau^y]) (the adjoint representation in the
+    tau basis), ``fundamental-trace`` is tr(tau^w_1 ... tau^w_n). A
+    ``quark-ring`` word lists one descriptor per ring position
+    (``_ring_network``): ("adjoint", letters) for (F^letters)_{in out},
+    ("fundamental", letters, forward) for a tau string and ("exact",
+    network) for a position kept exactly. Words are canonical
+    (``canonical_primitive``).
+    """
+
+    kind: PrimitiveKind
+    word: tuple[int, ...]
+
+    def un_terms(self) -> tuple[tuple[int, tuple[tuple[int, ...], ...], int], ...]:
+        """The U(N) expansion: (sign, traces in natural order, N_c power).
+
+        Tr_adj(prod_i ad tau^w_i) = sum_S (-1)^|not S| tr(tau^w_S)
+        tr(tau^reversed(w_not S)) over the gl(N_c) action Y -> XY - YX (the
+        identity direction carries no trace since ad 1 = 0); empty traces
+        are N_c. Single-letter traces are kept: their U(N) values cancel the
+        U(1) components, so U(N) contractions of the whole expansion are the
+        SU(N) ones.
+        """
+
+        if self.kind == "fundamental-trace":
+            return ((1, (self.word,), 0),)
+        n = len(self.word)
+        out = []
+        for mask in range(1 << n):
+            inside = tuple(a for i, a in enumerate(self.word) if mask >> i & 1)
+            outside = tuple(
+                reversed([a for i, a in enumerate(self.word) if not mask >> i & 1])
+            )
+            traces = tuple(trace for trace in (inside, outside) if trace)
+            out.append((-1 if (n - len(inside)) % 2 else 1, traces, 2 - len(traces)))
+        return tuple(out)
+
+    def network(self) -> ColourNetwork:
+        """The exact colour network (natural-order traces, explicit N_c)."""
+
+        if self.kind == "quark-ring":
+            return _ring_network(self.word)
+        return tuple(
+            ColourProduct(ExactColorCoefficient(sign), traces=traces, nc_power=power)
+            for sign, traces, power in self.un_terms()
+        )
+
+    def tensor(self, legs: Sequence[ColorLeg]) -> ConnectedColorTensor:
+        """The SU(N_c) literal tensor (single-letter traces vanish)."""
+
+        external = {leg.label: leg.label for leg in legs}
+        return reduce_network(self.network(), legs, external)
+
+
+def canonical_primitive(
+    kind: PrimitiveKind, word: Sequence[int]
+) -> tuple[Primitive, int]:
+    """(canonical primitive, sign) with Primitive(kind, word) = sign x canonical.
+
+    Both traces are cyclic; an adjoint ring also equals (-1)^n times its
+    reflection (F^a is antisymmetric).
+    """
+
+    word = tuple(word)
+    n = len(word)
+    if kind == "quark-ring":
+        best = min((word[i:] + word[:i] for i in range(n)), key=repr)
+        return Primitive(kind, best), 1
+    candidates = [(word[i:] + word[:i], 1) for i in range(n)] or [((), 1)]
+    if kind == "adjoint-ring":
+        mirror = tuple(reversed(word))
+        sign = -1 if n % 2 else 1
+        candidates += [(mirror[i:] + mirror[:i], sign) for i in range(n)]
+    best, sign = min(candidates)
+    return Primitive(kind, best), sign
+
+
+def _ring_network(positions: Sequence[tuple]) -> ColourNetwork:
+    """The colour of a ring of position descriptors (``Primitive.word``).
+
+    Position p joins the loop labels ("loop", p-1) (its "in") and
+    ("loop", p) (its "out"); external legs keep their integer labels and
+    every other label of an exact position is local.
+    """
+
+    count_ = len(positions)
+    factors = []
+    for p, descriptor in enumerate(positions):
+        in_label, out_label = ("loop", (p - 1) % count_), ("loop", p)
+        kind = descriptor[0]
+        if kind == "adjoint":
+            factors.append(_adjoint_chain(descriptor[1], in_label, out_label, p))
+        elif kind == "fundamental":
+            _kind, letters, forward = descriptor
+            row, col = (out_label, in_label) if forward else (in_label, out_label)
+            factors.append((ColourProduct(strings=(ColourString(row, letters, col),)),))
+        else:
+            names = {"in": in_label, "out": out_label}
+
+            def rename(label: Label, p=p, names=names) -> Label:
+                if isinstance(label, int):
+                    return label  # an external leg
+                return names.get(label, ("local", p, label))
+
+            factors.append(relabel(descriptor[1], rename))
+    return multiply(*factors)
+
+
+def _adjoint_chain(
+    letters: Sequence[Label], row: Label, col: Label, tag: Hashable
+) -> ColourNetwork:
+    """(F^l_1 ... F^l_k)_{row col} with fresh dummy labels tagged ``tag``."""
+
+    if not letters:
+        return (ColourProduct(traces=((row, col),)),)
+    labels = [row, *(("chain", tag, i) for i in range(len(letters) - 1)), col]
+    factors = []
+    for i, letter in enumerate(letters):
+        x, y = labels[i], labels[i + 1]
+        factors.append(
+            (
+                ColourProduct(traces=((x, letter, y),)),
+                ColourProduct(ExactColorCoefficient(-1), traces=((x, y, letter),)),
+            )
+        )
+    return multiply(*factors)
+
+
+def _solve(
+    columns: Sequence[ConnectedColorTensor], target: ConnectedColorTensor
+) -> tuple[ExactColorCoefficient, ...] | None:
+    """Exact coefficients x with sum_j x_j columns_j = target, or None.
+
+    Columns have real rational coefficients; the real and imaginary parts
+    of the target are solved separately by Fraction elimination.
+    """
+
+    if target.normalization_power or any(c.normalization_power for c in columns):
+        return None
+    keys = sorted(
+        {(t.tensor, t.nc_power) for c in (*columns, target) for t in c.terms},
+        key=repr,
+    )
+    index = {key: i for i, key in enumerate(keys)}
+
+    def vector(tensor: ConnectedColorTensor, part: str) -> list[Fraction]:
+        out = [Fraction(0)] * len(keys)
+        for t in tensor.terms:
+            out[index[(t.tensor, t.nc_power)]] += getattr(t.coefficient, part)
+        return out
+
+    matrix = [vector(column, "real") for column in columns]
+    if any(
+        any(column.imag for column in (t.coefficient for t in c.terms)) for c in columns
+    ):
+        return None
+    solutions = []
+    for part in ("real", "imag"):
+        solution = _eliminate(matrix, vector(target, part))
+        if solution is None:
+            return None
+        solutions.append(solution)
+    return tuple(
+        ExactColorCoefficient(re, im) for re, im in zip(*solutions, strict=True)
+    )
+
+
+def _eliminate(
+    columns: Sequence[Sequence[Fraction]], rhs: Sequence[Fraction]
+) -> list[Fraction] | None:
+    """One exact solution of sum_j x_j columns_j = rhs (free unknowns zero)."""
+
+    unknowns = len(columns)
+    rows = [
+        [columns[j][i] for j in range(unknowns)] + [rhs[i]] for i in range(len(rhs))
+    ]
+    pivots = []
+    rank = 0
+    for j in range(unknowns):
+        pivot = next((i for i in range(rank, len(rows)) if rows[i][j]), None)
+        if pivot is None:
+            continue
+        rows[rank], rows[pivot] = rows[pivot], rows[rank]
+        head = rows[rank][j]
+        rows[rank] = [value / head for value in rows[rank]]
+        for i, row in enumerate(rows):
+            if i != rank and row[j]:
+                factor = row[j]
+                rows[i] = [a - factor * b for a, b in zip(row, rows[rank], strict=True)]
+        pivots.append(j)
+        rank += 1
+    if any(row[-1] for row in rows[rank:]):
+        return None
+    solution = [Fraction(0)] * unknowns
+    for i, j in enumerate(pivots):
+        solution[j] = rows[i][-1]
+    return solution
+
+
+@dataclass(frozen=True, slots=True)
+class VertexDecomposition:
+    """A vertex structure as a sum of products over its adjoint slots.
+
+    Adjoint loop lines: V(in, out, b...) = sum c (F^b_pi1 ... F^b_pik)_{in out};
+    fundamental loop lines: V = sum c (tau^b_pi1 ... tau^b_pik)^row_col with
+    (row, col) = (out, in) if ``forward`` else (in, out). ``terms`` hold
+    (c, pi) with pi indexing the adjoint slots.
+    """
+
+    kind: PrimitiveKind
+    terms: tuple[tuple[ExactColorCoefficient, tuple[int, ...]], ...]
+    forward: bool = True
+
+
+def decompose_vertex(
+    network: ColourNetwork,
+    in_label: Label,
+    out_label: Label,
+    slots: Sequence[Label],
+    kind: PrimitiveKind,
+) -> VertexDecomposition | None:
+    """Exact decomposition of a vertex network over ordered slot products.
+
+    The colour-space identity behind a certified compression: the vertex is
+    proved, exactly in N_c, to be a combination of the products of the
+    compression's generators over its adjoint slots ``slots`` (every other
+    label of ``network`` is internal or a colour-singlet leg).
+    """
+
+    legs, external = [], {}
+    if kind == "adjoint-ring":
+        ends = {in_label: 8, out_label: 8}
+        forward = True
+    else:
+        rows = {s.row for p in network for s in p.strings}
+        cols = {s.col for p in network for s in p.strings}
+        if {in_label, out_label} != (rows | cols) & {in_label, out_label}:
+            return None
+        forward = out_label in rows and in_label in cols
+        if not forward and not (in_label in rows and out_label in cols):
+            return None
+        row, col = (out_label, in_label) if forward else (in_label, out_label)
+        ends = {row: -3, col: 3}
+    for i, label in enumerate([*ends, *slots], start=1):
+        external[label] = i
+        legs.append(ColorLeg(i, ends.get(label, 8)))
+    target = reduce_network(network, legs, external)
+    orders = tuple(permutations(range(len(slots))))
+    columns = []
+    for order in orders:
+        letters = [slots[k] for k in order]
+        if kind == "adjoint-ring":
+            candidate = _adjoint_chain(letters, in_label, out_label, "decompose")
+        else:
+            candidate = (
+                ColourProduct(strings=(ColourString(row, tuple(letters), col),)),
+            )
+        columns.append(reduce_network(candidate, legs, external))
+    solution = _solve(columns, target)
+    if solution is None:
+        return None
+    return VertexDecomposition(
+        kind,
+        tuple((c, order) for c, order in zip(solution, orders, strict=True) if c),
+        forward,
+    )
+
+
+Combination = tuple[tuple[Hashable, ExactColorCoefficient], ...]
+
+
+class CompressedColour:
+    """Certified compressions of generic seed classes (design §3.4, §7.2).
+
+    A position compresses when its loop lines are both adjoint (gluons,
+    ghosts) and every attached block is a pure-gluon current, or both
+    fundamental and every block is pure-gluon or colour singlet, and its
+    vertex decomposes exactly over the adjoint slots (``decompose_vertex``):
+    the blocks then enter through their letters (F^w or tau^w). Every other
+    position keeps its exact colour. A skeleton of compressed positions only
+    is an adjoint ring or a closed fundamental loop; one that mixes them with
+    exact positions (a quark line through the loop) is a quark ring. Its
+    seed is sum_t c_t P_t over the primitives P (``combination``), equal to
+    its generic seed summed over the words of its blocks by the theorems of
+    ``COMPRESSION_THEOREMS``. ``certificate`` adds the tree vertices
+    (pure-gluon blocks are Lie elements) and the smallest instance.
+    """
+
+    def __init__(self, colour: SeedColour):
+        self.colour = colour
+        self._vertices: dict[tuple, VertexDecomposition | None] = {}
+        self._contents: dict[int, tuple[Content, tuple | None]] = {}
+        self._products: dict[tuple, ExactColorCoefficient] = {}
+
+    def _letters(self, block: Block) -> tuple[int, ...] | None:
+        """M_w = tau^w_k ... tau^w_1 of a pure-gluon block, in matrix order."""
+
+        flow = block.colour_flow
+        if (
+            self.colour.field_colour(block) != 8
+            or flow.nc_grade != 0
+            or flow.singlet_labels
+            or len(flow.strings) != 1
+            or not (flow.incoming_open and flow.outgoing_open)
+            or any(self.colour._representations[a] != 8 for a in flow.strings[0])
+        ):
+            return None
+        return tuple(reversed(flow.strings[0]))
+
+    def _singlet(self, block: Block) -> bool:
+        return self.colour.field_colour(block) == 1 and not block.colour_flow.strings
+
+    def decomposition(
+        self, state: PositionColour, kind: PrimitiveKind, slots: tuple[int, ...]
+    ) -> VertexDecomposition | None:
+        """The vertex of ``state`` over its adjoint block legs ``slots``."""
+
+        key = (state.rule, state.colour_index, state.legs, slots, kind)
+        if key not in self._vertices:
+            in_leg, out_leg, *_attached = state.legs
+            self._vertices[key] = decompose_vertex(
+                self.colour.vertex_network(state),
+                ("leg", in_leg),
+                ("leg", out_leg),
+                [("leg", leg) for leg in slots],
+                kind,
+            )
+        return self._vertices[key]
+
+    def _content(self, content: Content) -> tuple:
+        """(position kind, single-leg compressed blocks, terms) of a content.
+
+        Kinds: "adjoint" (adjoint loop lines, pure-gluon blocks) and
+        "fundamental" (quark loop lines, pure-gluon or singlet blocks) when the
+        vertex decomposes, terms ((term id, descriptor), ...); otherwise
+        "exact", whose one term keeps the vertex and block colour.
+        """
+
+        # Contents are shared by many skeletons; their hash is costly.
+        cached = self._contents.get(id(content))
+        if cached is not None and cached[0] is content:
+            return cached[1]
+        found = self._compressed(content) or (
+            "exact",
+            True,
+            (((None, 0), ("exact", self._exact_network(content))),),
+        )
+        self._contents[id(content)] = (content, found)
+        return found
+
+    def _compressed(self, content: Content) -> tuple | None:
+        colour = self.colour
+        loop = {colour.species_colour(content.loop_in)}
+        loop.add(colour.species_colour(content.loop_out))
+        if loop == {8}:
+            kind: PrimitiveKind = "adjoint-ring"
+        elif loop <= {3, -3}:
+            kind = "fundamental-trace"
+        else:
+            return None
+        blocks = colour.attached_blocks(content)
+        letters, slots = [], []
+        _in, _out, *attached = content.colour.legs
+        for leg, block in zip(attached, blocks, strict=True):
+            word = self._letters(block)
+            if word is not None:
+                letters.append(word)
+                slots.append(leg)
+            elif not (kind == "fundamental-trace" and self._singlet(block)):
+                return None
+        decomposition = self.decomposition(content.colour, kind, tuple(slots))
+        if decomposition is None:
+            return None
+        position = "adjoint" if kind == "adjoint-ring" else "fundamental"
+        terms = []
+        for t, (_c, order) in enumerate(decomposition.terms):
+            word = tuple(a for k in order for a in letters[k])
+            descriptor = (
+                (position, word)
+                if position == "adjoint"
+                else (position, word, decomposition.forward)
+            )
+            terms.append(((id(decomposition), t), descriptor))
+        return position, all(len(w) == 1 for w in letters), tuple(terms)
+
+    def _exact_network(self, content: Content) -> ColourNetwork:
+        """A content's vertex and block colour with labels "in", "out" for
+        its loop lines (``_ring_network``)."""
+
+        colour = self.colour
+        state = content.colour
+        in_leg, out_leg, *attached = state.legs
+        slots: dict[int, Label] = {in_leg: "in", out_leg: "out"}
+        slots.update((leg, ("block", j)) for j, leg in enumerate(attached))
+
+        def rename(label: Label) -> Label:
+            kind, value = label
+            return slots[value] if kind == "leg" else ("dummy", value)
+
+        factors = [relabel(colour.vertex_network(state), rename)]
+        for j, block in enumerate(colour.attached_blocks(content)):
+            factors.append(
+                block_colour_network(
+                    block.colour_flow,
+                    colour._representations,
+                    colour.field_colour(block),
+                    ("block", j),
+                )
+            )
+        return multiply(*factors)
+
+    def _coefficient(self, ids: tuple) -> ExactColorCoefficient:
+        found = self._products.get(ids)
+        if found is None:
+            by_id = {id(d): d for d in self._vertices.values() if d is not None}
+            found = _ONE
+            for vertex, t in ids:
+                if vertex is not None:
+                    found = found * by_id[vertex].terms[t][0]
+            self._products[ids] = found
+        return found
+
+    def kind(self, skeleton: Skeleton) -> PrimitiveKind | None:
+        """The compression class of a skeleton, or None (generic seed)."""
+
+        kinds = {self._content(content)[0] for content in skeleton.contents}
+        if kinds == {"adjoint"}:
+            return "adjoint-ring"
+        if kinds == {"fundamental"}:
+            return "fundamental-trace"
+        if "exact" in kinds and len(kinds) > 1:
+            return "quark-ring"
+        return None
+
+    def combination(self, skeleton: Skeleton) -> Combination | None:
+        """sum_t c_t P_t of a certified skeleton, or None (generic seed)."""
+
+        kind = self.kind(skeleton)
+        if kind is None:
+            return None
+        infos = [self._content(content) for content in skeleton.contents]
+        out: dict[Primitive, ExactColorCoefficient] = {}
+        for choice in product(*(info[2] for info in infos)):
+            descriptors = tuple(descriptor for _ids, descriptor in choice)
+            if kind == "quark-ring":
+                primitive, sign = canonical_primitive(kind, descriptors)
+            else:
+                word = self._ring_word(kind, descriptors)
+                if word is None:
+                    return None
+                primitive, sign = canonical_primitive(kind, word)
+            coefficient = self._coefficient(tuple(ids for ids, _d in choice))
+            out[primitive] = out.get(primitive, ExactColorCoefficient()) + (
+                coefficient if sign == 1 else coefficient.scaled(-1)
+            )
+        return tuple(sorted(((p, c) for p, c in out.items() if c), key=repr))
+
+    def single_legged(self, skeleton: Skeleton) -> bool:
+        """Whether every compressed block of a certified skeleton is one
+        external leg (its compression needs no Lie-element identity)."""
+
+        return all(self._content(content)[1] for content in skeleton.contents)
+
+    @staticmethod
+    def _ring_word(kind: PrimitiveKind, descriptors) -> tuple[int, ...] | None:
+        """The primitive word of one product of position terms around a ring."""
+
+        if kind == "adjoint-ring":
+            return tuple(a for _kind, word in descriptors for a in word)
+        count_ = len(descriptors)
+        strings = []
+        for position, (_kind, word, forward) in enumerate(descriptors):
+            in_label, out_label = ("loop", (position - 1) % count_), ("loop", position)
+            row, col = (out_label, in_label) if forward else (in_label, out_label)
+            strings.append(ColourString(row, word, col))
+        try:
+            opened, traces, empty = _join_strings(strings, lambda label: True)
+        except ValueError:
+            return None
+        if opened or len(traces) + empty != 1:
+            return None
+        return traces[0] if traces else ()
+
+    def certificate(
+        self, combinations: Mapping[Skeleton, Combination]
+    ) -> dict[PrimitiveKind, CompressionCertificate]:
+        """Loop-level certificates of the compressions of ``combinations``.
+
+        Per class: the smallest skeleton with single-leg blocks has its
+        generic seed recomputed and compared exactly (a mismatch is an
+        error). A class without such an instance, or a model whose
+        all-adjoint tree vertices are not Lie-type, is not certified and
+        keeps generic seeds.
+        """
+
+        trees = _lie_vertices(self.colour, self.colour.all_adjoint_rules())
+        if trees is None:
+            return {}  # pure-gluon blocks are not certified Lie elements
+        instances: dict[PrimitiveKind, tuple] = {}
+        for skeleton in combinations:
+            if not self.single_legged(skeleton):
+                continue
+            kind = self.kind(skeleton)
+            size = (len(skeleton.contents), repr(skeleton.contents))
+            if kind not in instances or size < instances[kind][0]:
+                instances[kind] = (size, skeleton)
+        out = {}
+        for kind, (_size, skeleton) in instances.items():
+            generic = self.colour.seed(skeleton)
+            compressed = _combination_tensor(combinations[skeleton], self.colour.legs)
+            if canonical_seed(compressed) != generic:
+                raise ArithmeticError(
+                    f"{kind} compression differs from the generic seed of "
+                    f"{skeleton.family}"
+                )
+            out[kind] = CompressionCertificate(
+                kind,
+                tuple(
+                    key
+                    for key, value in self._vertices.items()
+                    if value is not None and kind in (key[-1], "quark-ring")
+                ),
+                trees,
+                skeleton,
+                COMPRESSION_THEOREMS[kind],
+            )
+        return out
+
+
+def _combination_tensor(
+    combination: Combination, legs: Sequence[ColorLeg]
+) -> ConnectedColorTensor:
+    terms = []
+    for primitive, c in combination:
+        terms.extend(
+            TensorTerm(c * t.coefficient, t.tensor, t.nc_power)
+            for t in primitive.tensor(legs).terms
+        )
+    return ConnectedColorTensor(tuple(legs), tuple(terms))
+
+
+def _lie_vertices(
+    colour: SeedColour, rules: Iterable[tuple[str, int]]
+) -> tuple[tuple[str, int], ...] | None:
+    """The all-adjoint tree vertex structures, each proved a Lie-type product
+    (ad over its other legs), so pure-gluon tree currents are Lie elements;
+    None if one is not."""
+
+    out = []
+    for rule, index in rules:
+        network = colour._vertex[(rule, index)]
+        count_ = len(colour._rules[rule]["particles"])
+        legs = [("leg", i) for i in range(1, count_ + 1)]
+        if (
+            decompose_vertex(network, legs[0], legs[1], legs[2:], "adjoint-ring")
+            is None
+        ):
+            return None
+        out.append((rule, index))
+    return tuple(out)
+
+
+@dataclass(frozen=True)
+class CompressionCertificate:
+    """A loop-level certificate of one compression (design §7.2).
+
+    ``vertices``: the loop vertex structures proved exact combinations of
+    generator products (``decompose_vertex``); ``tree_vertices``: the
+    all-adjoint tree vertices proved Lie-type; ``instance``: the smallest
+    skeleton of the class with single-leg blocks, whose generic seed equals
+    its compressed seed exactly; ``theorem``: the cited theorem.
+    """
+
+    kind: PrimitiveKind
+    vertices: tuple[tuple, ...]
+    tree_vertices: tuple[tuple[str, int], ...]
+    instance: Skeleton
+    theorem: str
 
 
 # ------------------------------------------------------------------ seed tables
@@ -820,20 +1498,33 @@ def _max_degree(cells: Iterable[Laurent]) -> int | None:
     )
 
 
-def project(cell: Laurent, degree: int | None, accuracy: ColourAccuracy):
-    """One cell at N_c = 3 after LC/NLC/FC truncation at leading degree P."""
+# Powers below the leading degree P that each accuracy keeps (design §7.4).
+_DEPTH = {"lc": 0, "nlc": 2}
 
-    if accuracy not in ("lc", "nlc", "full"):
+
+def kept(power: int, degree: int | None, accuracy: ColourAccuracy) -> bool:
+    """Whether a colour cell of N_c power ``power`` survives the projection
+    of a sector of leading degree ``degree`` (P): LC keeps P, NLC keeps P,
+    P-1 and P-2 (odd powers included), FC keeps every power."""
+
+    if accuracy == "full":
+        return True
+    if accuracy not in _DEPTH:
         raise ValueError(f"unknown colour accuracy {accuracy!r}")
-    floor = None
-    if accuracy != "full":
-        if degree is None:
-            return ExactColorCoefficient()
-        floor = degree - (0 if accuracy == "lc" else 2)
+    return degree is not None and degree - _DEPTH[accuracy] <= power <= degree
+
+
+def project(
+    cell: Laurent, degree: int | None, accuracy: ColourAccuracy, shift: int = 0
+) -> ExactColorCoefficient:
+    """N_c^shift times one cell at N_c = 3 after LC/NLC/FC truncation at
+    leading degree P (``shift`` is the N_c grade of the Born amplitude the
+    cell multiplies)."""
+
     total = ExactColorCoefficient()
     for power, value in cell.items():
-        if floor is None or floor <= power <= degree:
-            total = total + value.scaled(Fraction(NC) ** power)
+        if kept(power + shift, degree, accuracy):
+            total = total + value.scaled(Fraction(NC) ** (power + shift))
     return total
 
 
@@ -841,18 +1532,30 @@ def project(cell: Laurent, degree: int | None, accuracy: ColourAccuracy):
 class SeedTable:
     """Exact seed tables K[c, b] = <b|kappa_c> (design §7.1).
 
-    ``classes`` are the distinct seed vectors, ``orders[c]`` the loop
-    amplitude orders of the skeletons of class c and ``cells[c][b]`` the
-    Laurent coefficients of K. Squared-order sectors are given as their
-    (Born order, loop order) pairs. ``formal_nc`` is false when the tree
-    currents carry numeric U(1) pieces; then only full colour is exact.
+    ``classes`` are the distinct seed vectors (generic colour vectors or
+    certified ``Primitive`` classes), ``orders[c]`` the loop amplitude orders
+    of the skeletons using class c and ``cells[c][b]`` the Laurent
+    coefficients of K. Squared-order sectors are given as their (Born order,
+    loop order) pairs. ``formal_nc`` is false when the tree currents carry
+    numeric U(1) pieces of mixed N_c grade; then only full colour is exact.
+    ``certificates`` holds the loop-level certificate of every compression
+    the classes use.
     """
 
     basis: BornBasis
-    classes: tuple[ConnectedColorTensor, ...]
+    classes: tuple[ConnectedColorTensor | Primitive, ...]
     orders: tuple[frozenset[Orders], ...]
     cells: tuple[tuple[Laurent, ...], ...]
     formal_nc: bool = True
+    certificates: Mapping[PrimitiveKind, CompressionCertificate] = field(
+        default_factory=dict
+    )
+
+    def tensor(self, c: int) -> ConnectedColorTensor:
+        """The colour vector of class c (a primitive's SU(N_c) expansion)."""
+
+        seed = self.classes[c]
+        return seed.tensor(self.basis.legs) if isinstance(seed, Primitive) else seed
 
     def admitted(self, pairs: Iterable[SectorPair]):
         """(class, loop order, basis element, Born order) entering a sector."""
@@ -865,10 +1568,29 @@ class SeedTable:
                         if (born_order, order) in pairs:
                             yield c, order, b, born_order
 
-    def degree(self, pairs: Iterable[SectorPair]) -> int | None:
-        """P: the leading N_c degree of the sector's nonzero cells (§7.4)."""
+    def degree(
+        self,
+        pairs: Iterable[SectorPair],
+        born_grades: Mapping[tuple[int, Orders], Iterable[int]] | None = None,
+    ) -> int | None:
+        """P: the leading N_c degree of the sector's nonzero cells (§7.4).
 
-        return _max_degree(self.cells[c][b] for c, _o, b, _a in self.admitted(pairs))
+        ``born_grades`` lists the N_c grades of the Born amplitude of each
+        (basis element, Born order); by default every amplitude has grade 0.
+        """
+
+        return max(
+            (
+                power + grade
+                for c, _o, b, a in self.admitted(pairs)
+                for power, value in self.cells[c][b].items()
+                if value
+                for grade in (
+                    (0,) if born_grades is None else born_grades.get((b, a), ())
+                )
+            ),
+            default=None,
+        )
 
     def class_degree(self, c: int) -> int | None:
         return _max_degree(self.cells[c])
@@ -876,7 +1598,7 @@ class SeedTable:
     def seeds(
         self,
         pairs: Iterable[SectorPair],
-        born: Mapping[tuple[int, Orders], Any],
+        born: Mapping[tuple[int, Orders], Mapping[int, Any]],
         accuracy: ColourAccuracy = "full",
         *,
         cast: Callable[[ExactColorCoefficient], Any] = complex,
@@ -886,9 +1608,13 @@ class SeedTable:
         """U0[c, loop order] = sum_b K[c, b] conj(A0[b, Born order]) (§7.3).
 
         ``born`` maps (basis element, Born order) to one helicity's Born
-        amplitude in any carrier; ``cast`` converts exact cells into it. No
-        external average is applied. ``degree`` overrides P, e.g. when the
-        sector's counterterm and field cells raise it.
+        amplitude split into N_c grades, ``{grade: amplitude}`` in any
+        carrier: A0[b] = sum_g N_c^g A0[b, g]. ``cast`` converts exact cells
+        into the carrier. The projection acts on the products K[c, b] N_c^g
+        (N_c real, so conjugation leaves the grades alone). No external
+        average is applied. ``degree`` overrides P, e.g. when the sector's
+        counterterm and field cells raise it; by default it is the degree of
+        the seed cells with the grades of ``born``.
         """
 
         pairs = frozenset(pairs)
@@ -899,57 +1625,158 @@ class SeedTable:
                     "process has numeric U(1)-subtraction currents (design §3.2)"
                 )
             if degree is None:
-                degree = self.degree(pairs)
+                degree = self.degree(
+                    pairs, {key: tuple(value) for key, value in born.items()}
+                )
+        if accuracy == "full":
+            # Every grade is kept: sum the Born at N_c = 3 first.
+            born = {key: {0: _at_three(grades, cast)} for key, grades in born.items()}
         out: dict[tuple[int, Orders], Any] = {}
         for c, order, b, born_order in self.admitted(pairs):
-            amplitude = born.get((b, born_order))
-            weight = project(self.cells[c][b], degree, accuracy)
-            if amplitude is None or not weight:
-                continue
-            term = cast(weight) * conjugate(amplitude)
-            key = (c, order)
-            out[key] = term if key not in out else out[key] + term
+            for grade, amplitude in born.get((b, born_order), {}).items():
+                weight = project(self.cells[c][b], degree, accuracy, grade)
+                if not weight:
+                    continue
+                term = cast(weight) * conjugate(amplitude)
+                key = (c, order)
+                out[key] = term if key not in out else out[key] + term
         return out
+
+
+def _at_three(
+    grades: Mapping[int, Any], cast: Callable[[ExactColorCoefficient], Any]
+) -> Any:
+    """sum_g 3^g A0[b, g] in the carrier (grades in their given order)."""
+
+    total = None
+    for grade, amplitude in grades.items():
+        value = (
+            amplitude
+            if grade == 0
+            else amplitude * cast(ExactColorCoefficient(Fraction(NC) ** grade))
+        )
+        total = value if total is None else total + value
+    return total
+
+
+SeedCombination = tuple[tuple[int, ExactColorCoefficient], ...]
 
 
 def build_seed_table(
     colour: SeedColour,
     skeletons: Iterable[Skeleton],
     basis: BornBasis | None = None,
-) -> tuple[SeedTable, dict[Skeleton, int]]:
+    *,
+    compress: bool = False,
+) -> tuple[SeedTable, dict[Skeleton, SeedCombination]]:
     """Seed classes of ``skeletons`` and their exact table K.
 
-    ``basis`` defaults to the tree engine's Born basis (``born_basis``); any
-    set of literal colour tensors whose amplitudes the caller provides works.
+    Returns the table and each skeleton's seed as a combination
+    sum_c x_c kappa_c of table classes: one generic class with weight one,
+    or with ``compress`` a combination of certified primitives
+    (``CompressedColour``; each compression's loop-level certificate is
+    checked on its smallest instance, ``SeedTable.certificates``). Skeletons
+    outside every certified class keep their generic seed. ``basis``
+    defaults to the tree engine's Born basis (``born_basis``); any set of
+    literal colour tensors whose amplitudes the caller provides works.
     """
 
     if basis is None:
         basis = born_basis(colour.blocks)
-    index: dict[ConnectedColorTensor, int] = {}
-    orders: list[set[Orders]] = []
-    class_of: dict[Skeleton, int] = {}
-    for skeleton in skeletons:
-        seed = colour.seed(skeleton)
+    skeletons = list(skeletons)
+    table = SeedTable(basis, (), (), (), colour.formal_nc)
+    compressed = CompressedColour(colour) if compress else None
+    combinations: dict[Skeleton, Combination] = {}
+    if compressed is not None:
+        for skeleton in skeletons:
+            combination = compressed.combination(skeleton)
+            if combination is not None:
+                combinations[skeleton] = combination
+        certificates = compressed.certificate(combinations)
+        table = replace(table, certificates=certificates)
+        combinations = {
+            skeleton: combination
+            for skeleton, combination in combinations.items()
+            if compressed.kind(skeleton) in certificates
+        }
+    return _extended(table, {}, colour, skeletons, compressed, combinations)
+
+
+def extend_seed_table(
+    table: SeedTable,
+    class_of: Mapping[Skeleton, SeedCombination],
+    colour: SeedColour,
+    skeletons: Iterable[Skeleton],
+    *,
+    compress: bool = False,
+) -> tuple[SeedTable, dict[Skeleton, SeedCombination]]:
+    """``table`` and ``class_of`` with the seeds of further skeletons (e.g.
+    new readings of the same skeletons). Existing classes keep their index;
+    compressions are used only where ``table`` holds their certificate."""
+
+    return _extended(
+        table,
+        class_of,
+        colour,
+        [s for s in skeletons if s not in class_of],
+        CompressedColour(colour) if compress else None,
+        {},
+    )
+
+
+def _extended(
+    table: SeedTable,
+    class_of: Mapping[Skeleton, SeedCombination],
+    colour: SeedColour,
+    skeletons: Sequence[Skeleton],
+    compressed: CompressedColour | None,
+    combinations: Mapping[Skeleton, Combination],
+) -> tuple[SeedTable, dict[Skeleton, SeedCombination]]:
+    basis = table.basis
+    index: dict[Hashable, int] = {seed: c for c, seed in enumerate(table.classes)}
+    orders: list[set[Orders]] = [set(row) for row in table.orders]
+    class_of = dict(class_of)
+
+    def row(seed: Hashable, order: Orders) -> int:
         c = index.setdefault(seed, len(index))
         if c == len(orders):
             orders.append(set())
-        orders[c].add(skeleton.orders)
-        class_of[skeleton] = c
+        orders[c].add(order)
+        return c
+
+    for skeleton in skeletons:
+        combination = combinations.get(skeleton)
+        if (
+            combination is None
+            and compressed is not None
+            and compressed.kind(skeleton) in table.certificates
+        ):
+            combination = compressed.combination(skeleton)
+        if combination is None:
+            class_of[skeleton] = ((row(colour.seed(skeleton), skeleton.orders), _ONE),)
+        else:
+            class_of[skeleton] = tuple(
+                (row(primitive, skeleton.orders), c) for primitive, c in combination
+            )
     classes = tuple(index)
+    cells = list(table.cells)
     # Term-factored (design §7.2): <b|t> once per distinct structure t.
     overlaps: dict[ColorTensor, tuple[Laurent, ...]] = {}
-    cells = []
-    for seed in classes:
+    primitive_cells = _PrimitiveCells(basis)
+    for seed in classes[len(cells) :]:
+        if isinstance(seed, Primitive):
+            cells.append(primitive_cells(seed))
+            continue
         if seed.normalization_power:
             raise ValueError("a seed class carries an irrational sqrt(2) factor")
-        row: list[dict[int, ExactColorCoefficient]] = [{} for _ in basis.tensors]
+        row_cells: list[dict[int, ExactColorCoefficient]] = [{} for _ in basis.tensors]
         for term in seed.terms:
             if term.tensor not in overlaps:
                 ket = ConnectedColorTensor(basis.legs, (TensorTerm(_ONE, term.tensor),))
                 overlaps[term.tensor] = tuple(
                     contract_connected_tensor_nc_terms(b, ket) for b in basis.tensors
                 )
-            for cell, overlap in zip(row, overlaps[term.tensor], strict=True):
+            for cell, overlap in zip(row_cells, overlaps[term.tensor], strict=True):
                 for power, value in overlap.items():
                     key = power + term.nc_power
                     cell[key] = cell.get(key, ExactColorCoefficient()) + (
@@ -957,16 +1784,336 @@ def build_seed_table(
                     )
         cells.append(
             tuple(
-                {power: value for power, value in cell.items() if value} for cell in row
+                {power: value for power, value in cell.items() if value}
+                for cell in row_cells
             )
         )
-    cells = tuple(cells)
     return (
-        SeedTable(
-            basis, classes, tuple(map(frozenset, orders)), cells, colour.formal_nc
+        replace(
+            table,
+            classes=classes,
+            orders=tuple(map(frozenset, orders)),
+            cells=tuple(cells),
         ),
         class_of,
     )
+
+
+class _PrimitiveCells:
+    """K[P, b] of certified primitives, by integer cycle counting.
+
+    An adjoint ring is U(1)-free in every external label (ad 1 = 0), so its
+    SU(N_c) overlaps are the U(N_c) ones of its expansion
+    (``Primitive.un_terms``): N_c to the number of index loops
+    (``face_count``) of each term. Fundamental traces and quark rings use the
+    exact SU(N_c) contraction. Overlaps depend on the labels only through the
+    relabelling that sends the primitive word to 1..n, so they are cached on
+    the relabelled basis tensor (single-trace bases: (n-1)! distinct ones).
+    """
+
+    def __init__(self, basis: BornBasis):
+        self.basis = basis
+        self._cache: dict[Hashable, Laurent] = {}
+
+    def __call__(self, primitive: Primitive) -> tuple[Laurent, ...]:
+        if primitive.kind == "quark-ring":
+            ket = primitive.tensor(self.basis.legs)
+            return tuple(
+                contract_connected_tensor_nc_terms(bra, ket)
+                for bra in self.basis.tensors
+            )
+        rename = {label: i for i, label in enumerate(primitive.word, start=1)}
+        return tuple(self._cell(primitive, b, rename) for b in self.basis.tensors)
+
+    def _cell(self, primitive: Primitive, bra: ConnectedColorTensor, rename) -> Laurent:
+        key = _relabel_key(bra, rename)
+        if key is None:
+            return self._overlap(primitive.kind, primitive.word, bra)
+        key = (primitive.kind, len(primitive.word), key)
+        found = self._cache.get(key)
+        if found is None:
+            word = tuple(range(1, len(primitive.word) + 1))
+            found = self._cache[key] = self._overlap(
+                primitive.kind, word, _relabel_tensor(bra, rename)
+            )
+        return found
+
+    @staticmethod
+    def _overlap(
+        kind: PrimitiveKind, word: tuple[int, ...], bra: ConnectedColorTensor
+    ) -> Laurent:
+        primitive = Primitive(kind, word)
+        if kind == "fundamental-trace":
+            return contract_connected_tensor_nc_terms(bra, primitive.tensor(bra.legs))
+        if bra.normalization_power % 2:
+            raise ValueError("a Born tensor has an odd inverse sqrt(2) power")
+        scale = Fraction(1, 2 ** (bra.normalization_power // 2))
+        out: dict[int, ExactColorCoefficient] = {}
+        for sign, traces, power in primitive.un_terms():
+            # Literal traces list tr(tau^w_k .. tau^w_1) (module docstring).
+            ket = ColorTensor((), tuple(tuple(reversed(t)) for t in traces))
+            for term in bra.terms:
+                exponent = power + term.nc_power + face_count(term.tensor, ket)
+                out[exponent] = out.get(exponent, ExactColorCoefficient()) + (
+                    term.coefficient.conjugate().scaled(scale * sign)
+                )
+        return {p: value for p, value in out.items() if value}
+
+
+def _relabel_key(tensor: ConnectedColorTensor, rename: Mapping[int, int]) -> Hashable:
+    """A cheap key of ``_relabel_tensor(tensor, rename)`` (None if unmapped)."""
+
+    if any(leg.representation not in (1, 8) for leg in tensor.legs):
+        return None
+    try:
+        return tensor.normalization_power, tuple(
+            (
+                term.coefficient,
+                term.nc_power,
+                tuple(
+                    sorted(
+                        _canonical_rotation(tuple(rename[a] for a in trace))
+                        for trace in term.tensor.traces
+                    )
+                ),
+            )
+            for term in tensor.terms
+        )
+    except KeyError:
+        return None
+
+
+def _canonical_rotation(trace: tuple[int, ...]) -> tuple[int, ...]:
+    if not trace:
+        return trace
+    i = trace.index(min(trace))
+    return trace[i:] + trace[:i]
+
+
+def _relabel_tensor(
+    tensor: ConnectedColorTensor, rename: Mapping[int, int]
+) -> ConnectedColorTensor | None:
+    """``tensor`` with adjoint labels renamed, or None if one is not mapped."""
+
+    labels = {leg.label for leg in tensor.legs if leg.representation == 8}
+    if not labels <= set(rename) or any(
+        leg.representation not in (1, 8) for leg in tensor.legs
+    ):
+        return None
+    legs = tuple(
+        ColorLeg(rename[leg.label], 8) for leg in tensor.legs if leg.representation == 8
+    )
+    return ConnectedColorTensor(
+        legs,
+        tuple(
+            TensorTerm(
+                term.coefficient,
+                ColorTensor(
+                    (),
+                    tuple(
+                        tuple(rename[label] for label in trace)
+                        for trace in term.tensor.traces
+                    ),
+                ),
+                term.nc_power,
+            )
+            for term in tensor.terms
+        ),
+        tensor.normalization_power,
+    )
+
+
+# ------------------------------------------------------ planar leading colour
+
+# (strings q -> adjoints -> qbar, sorted; traces, canonical rotation, sorted)
+FlowKey = tuple[tuple[tuple[int, ...], ...], tuple[tuple[int, ...], ...]]
+
+
+def outer_flow(
+    labels: Sequence[int], representations: Mapping[int, int]
+) -> FlowKey | None:
+    """The colour flow of a cyclic colour word read forward (design §7.5).
+
+    ``representations`` are outgoing colour representations (3 a quark,
+    -3 an antiquark, 8 an adjoint, 1 a singlet, skipped). A string runs from
+    a quark through the following adjoints to the next antiquark; adjoints
+    between an antiquark and the next quark close into one trace (all of
+    them for an all-adjoint word). None if a quark follows a quark before an
+    antiquark (no planar flow).
+    """
+
+    coloured = [a for a in labels if representations[a] != 1]
+    n = len(coloured)
+    if not any(abs(representations[a]) == 3 for a in coloured):
+        return ((), (_canonical_rotation(tuple(coloured)),) if coloured else ())
+    strings, used = [], set()
+    for i, label in enumerate(coloured):
+        if representations[label] != 3:
+            continue
+        string = [label]
+        j = (i + 1) % n
+        while True:
+            other = coloured[j]
+            if representations[other] == 8:
+                string.append(other)
+            elif representations[other] == -3:
+                string.append(other)
+                break
+            else:
+                return None
+            j = (j + 1) % n
+        strings.append(tuple(string))
+        used.update(string)
+    leftover = tuple(a for a in coloured if a not in used)
+    return (
+        tuple(sorted(strings)),
+        (_canonical_rotation(leftover),) if leftover else (),
+    )
+
+
+def sector_flow(sector: Any) -> FlowKey:
+    """The ``outer_flow`` key of a tree-engine colour sector."""
+
+    strings = tuple(sorted(line.coloured_labels for line in sector.open_color_lines))
+    traces = (
+        (_canonical_rotation(tuple(sector.trace_labels)),)
+        if sector.trace_labels
+        else ()
+    )
+    return strings, traces
+
+
+def leading_born_flows(born_dag: Any) -> frozenset[FlowKey]:
+    """Colour flows of the Born's leading sectors (design §7.5).
+
+    A Born root's N_c grade is minus the number of U(1)-subtraction pieces
+    of its trees (``blocks.u1_grades``); the leading sectors are those whose
+    roots reach the largest grade.
+    """
+
+    from .blocks import u1_grades
+
+    grades = u1_grades(born_dag)
+    best: dict[int, int] = {}
+    for root in born_dag.amplitude_roots:
+        left, right = grades[root.left_id], grades[root.right_id]
+        if left is None or right is None:
+            raise ValueError("a Born root mixes N_c grades")
+        sector = root.color_sector_id or 0
+        best[sector] = max(best.get(sector, left + right), left + right)
+    top = max(best.values())
+    by_id = {sector.id: sector for sector in born_dag.color_plan.sectors}
+    return frozenset(
+        sector_flow(by_id[sector]) for sector, grade in best.items() if grade == top
+    )
+
+
+class PlanarLeadingColour:
+    """The face rule of design §7.5 on colour-ordered (planar) skeletons.
+
+    Skeleton contents carry colour words over letters (leg masks, as
+    ``skeletons.PlanarWords``: a coloured leg, or a group of colour-singlet
+    legs). A skeleton reaches the leading degree P iff, read forward or
+    backward, (a) its word's outer flow is a leading Born flow
+    (``leading_born_flows``) with every singlet letter in a colourless gap
+    (an antiquark followed by a quark); and (b) its loop face is bounded by
+    colour lines only: no closed quark loop, no coloured block attached
+    inside a fermion arc, and every quark propagator in a colourless gap of
+    that reading. Closed quark loops have degree P-1 and the other classes
+    P-2 or less, which the exact seed tables certify (``certify_leading_
+    colour``); the rule only selects, before any numerics.
+    """
+
+    def __init__(
+        self,
+        legs: Sequence[ExternalLeg],
+        catalogue: Any,
+        leading: Iterable[FlowKey],
+    ):
+        self.catalogue = catalogue
+        self.leading = frozenset(leading)
+        # Outgoing representations: legs carry the incoming field.
+        self.representations = {
+            leg.index + 1: (-leg.colour if abs(leg.colour) == 3 else leg.colour)
+            for leg in legs
+        }
+
+    def _letter(self, letter: int) -> int | None:
+        """The coloured leg label of a letter; None for a singlet letter."""
+
+        labels = [i + 1 for i in range(letter.bit_length()) if letter >> i & 1]
+        coloured = [a for a in labels if self.representations[a] != 1]
+        if not coloured:
+            return None
+        if len(labels) != 1:
+            raise ValueError(f"letter {letter:#b} groups coloured legs")
+        return coloured[0]
+
+    def _singlets_in_colourless_gaps(self, reading: Sequence[int | None]) -> bool:
+        n, reps = len(reading), self.representations
+        for i, label in enumerate(reading):
+            if label is not None:
+                continue
+            before, after = (i - 1) % n, (i + 1) % n
+            while reading[before] is None:
+                before = (before - 1) % n
+            while reading[after] is None:
+                after = (after + 1) % n
+            if reps[reading[before]] != -3 or reps[reading[after]] != 3:
+                return False
+        return True
+
+    def _colourless_gaps(self, labels: Sequence[int | None]) -> set[int] | None:
+        """Word gaps k (between letters k and k+1) that are colourless in a
+        leading reading of the word, or None if no reading is leading."""
+
+        n, reps = len(labels), self.representations
+        for forward in (True, False):
+            reading = list(labels) if forward else list(reversed(labels))
+            flow = outer_flow([a for a in reading if a is not None], reps)
+            if flow not in self.leading or not self._singlets_in_colourless_gaps(
+                reading
+            ):
+                continue
+            step = 1 if forward else -1
+            gaps = set()
+            for k in range(n):
+                before, after = (k, k + 1) if forward else (k + 1, k)
+                before, after = before % n, after % n
+                while labels[before] is None:
+                    before = (before - step) % n
+                while labels[after] is None:
+                    after = (after + step) % n
+                if reps[labels[before]] == -3 and reps[labels[after]] == 3:
+                    gaps.add(k)
+            return gaps
+        return None
+
+    def keep(self, skeleton: Skeleton) -> bool:
+        contents = skeleton.contents
+        species = self.catalogue.species
+        quark = [abs(species(c.loop_out).colour) == 3 for c in contents]
+        if all(quark):
+            return False  # closed quark loop: degree P-1
+        word: list[int | None] = []
+        ends = []
+        for position, content in enumerate(contents):
+            word.extend(self._letter(letter) for letter in content.colour)
+            ends.append(len(word) - 1)
+            if (
+                quark[position]
+                and quark[position - 1]
+                and any(
+                    abs(species(block.field).colour) != 1
+                    for term in content.terms
+                    for block in term.blocks
+                )
+            ):
+                return False  # coloured attachment inside a fermion arc
+        gaps = self._colourless_gaps(word)
+        if gaps is None:
+            return False
+        return all(ends[i] in gaps for i in range(len(contents)) if quark[i])
 
 
 # --------------------------------------------------------------- leading colour
@@ -1053,12 +2200,12 @@ def certify_leading_colour(
         raise ValueError("the sector has no nonzero seed cell")
     faces: list[int | None] = []
     exact: list[int | None] = []
-    for c, seed in enumerate(table.classes):
+    for c in range(len(table.classes)):
         if c not in elements:
             faces.append(None)
             exact.append(None)
             continue
-        face = face_degree(seed, table.basis, sorted(elements[c]))
+        face = face_degree(table.tensor(c), table.basis, sorted(elements[c]))
         value = _max_degree(table.cells[c][b] for b in elements[c])
         if value is not None and (face is None or value > face):
             raise ArithmeticError(f"seed class {c} exceeds its face degree")
@@ -1079,21 +2226,32 @@ def certify_leading_colour(
 
 
 __all__ = [
+    "COMPRESSION_THEOREMS",
     "BornBasis",
     "ColourNetwork",
     "ColourProduct",
     "ColourString",
+    "CompressedColour",
+    "CompressionCertificate",
     "LeadingColourCertificate",
     "PositionColour",
+    "Primitive",
+    "PrimitiveKind",
     "SeedColour",
+    "SeedCombination",
     "SeedTable",
+    "VertexDecomposition",
     "block_colour_network",
     "born_basis",
     "build_seed_table",
+    "canonical_primitive",
     "canonical_seed",
     "certify_leading_colour",
+    "decompose_vertex",
+    "extend_seed_table",
     "face_count",
     "face_degree",
+    "kept",
     "multiply",
     "project",
     "reduce_network",

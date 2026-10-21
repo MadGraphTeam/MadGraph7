@@ -3,9 +3,10 @@
 
 Every value comes from the v2 generators and the Python reference executor;
 FeynKit diagrams appear only inside the frozen legacy oracles. The slice
-processes are gg -> gg (full and leading colour, massless b), uu~ -> dd~g and
-the identical-flavour sign controls uu~ -> uu~ and uu~ -> uu~g (O13), in
-binary64 and at 200 bits. Oracles:
+processes are gg -> gg (massless b), uu~ -> dd~g and the identical-flavour
+sign controls uu~ -> uu~ and uu~ -> uu~g (O13), in binary64 and at 200 bits,
+and the leading- and next-to-leading-colour projections of gg -> gg,
+uu~ -> ggg, uu~ -> dd~g, Drell-Yan and uu~ -> tt~. Oracles:
 
 * providers (O8): MadLoop, Recola and OpenLoops within 1e-9 (the
   required-references metric) for the virtual's three Laurent coefficients;
@@ -163,12 +164,58 @@ def test_born_and_components_equal_legacy(evaluated, name, carrier):
         assert list(result.totals) == totals
 
 
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("carrier", tuple(CARRIERS))
+def test_massive_quark_line_equals_legacy(slices, carrier):
+    """uu~ -> tt~: an open massive fermion line through the loop, read with
+    the transposed mass sign (``conventions.TreeReading.mass_signs``), gives
+    the legacy Born and components (no IR-pole prediction with massive legs)."""
+
+    fixture = _fixture("tt")
+    results = fixture["results"]["arbitrary-200"]
+    for index, (point, scale) in enumerate(
+        zip(fixture["points"], fixture["scales_squared"], strict=True)
+    ):
+        result = slices("tt").evaluate(
+            point, scale, parameters=PARAMETERS, precision=CARRIERS[carrier]
+        )
+        assert result.ir_poles is None
+        _assert_legacy(results, index, result, LEGACY_TOLERANCE[carrier])
+
+
 # ----------------------------------------------------------------- colour
+
+
+# Controls with legacy LC and NLC projections (``legacy_capture``); Drell-Yan
+# is the photon-only control, so the Z is excluded from its v2 request.
+PROJECTED = ("gg_gg", "uux_ggg", "uux_ddxg", "dy", "tt")
+DRELL_YAN_PARAMETERS = {"aS": "0.118", "aEWM1": "132.507"}
+
+
+def _request(name: str, **options) -> SliceRequest:
+    control = legacy_capture.CONTROLS[name]
+    process, ignored = control.process, ()
+    if control.drell_yan:
+        process, ignored = control.process.removesuffix(" / z"), (23,)
+    return SliceRequest(
+        process,
+        control.born_order_bounds,
+        control.loop_order_bounds,
+        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+        ignored_particle_ids=ignored,
+        **options,
+    )
+
+
+def _parameters(name: str) -> dict[str, str]:
+    return (
+        DRELL_YAN_PARAMETERS if legacy_capture.CONTROLS[name].drell_yan else PARAMETERS
+    )
 
 
 @pytest.fixture(scope="module")
 def declared(loop_sm_compiled_model, loop_native):
-    """gg -> gg with the committed QCD colour continuation, per accuracy."""
+    """A control with the committed QCD colour continuation, per accuracy."""
 
     from pyamplicol.models.loading import load_compiled_model
     from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
@@ -177,24 +224,16 @@ def declared(loop_sm_compiled_model, loop_native):
         json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
     )
     compiled = load_compiled_model(loop_sm_compiled_model)
-    control = legacy_capture.CONTROLS["gg_gg"]
-    built: dict[str, LoopSlice] = {}
+    built: dict[tuple[str, str], LoopSlice] = {}
 
-    def build(accuracy: str) -> LoopSlice:
-        if accuracy not in built:
-            built[accuracy] = LoopSlice.generate(
+    def build(name: str, accuracy: str) -> LoopSlice:
+        if (name, accuracy) not in built:
+            built[name, accuracy] = LoopSlice.generate(
                 compiled,
-                SliceRequest(
-                    control.process,
-                    control.born_order_bounds,
-                    control.loop_order_bounds,
-                    fixed_parameters=legacy_capture.FIXED_PARAMETERS,
-                    accuracy=accuracy,
-                    colour_declaration=declaration,
-                ),
+                _request(name, accuracy=accuracy, colour_declaration=declaration),
                 loop_native,
             )
-        return built[accuracy]
+        return built[name, accuracy]
 
     return build
 
@@ -213,13 +252,16 @@ def _assert_legacy(results, index, result, tolerance):
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("carrier", tuple(CARRIERS))
-def test_leading_colour_equals_legacy(declared, carrier):
-    """gg -> gg at LC: leading degrees and every component against the
-    legacy LC projection (four-gluon R2 from the general-N_c HV rule)."""
+@pytest.mark.parametrize("accuracy", ("lc", "nlc"))
+@pytest.mark.parametrize("name", PROJECTED)
+def test_colour_projections_equal_legacy(declared, name, accuracy, carrier):
+    """LC and NLC: leading degrees and every component against the legacy
+    projections (design §7.4-§7.6; graded Born amplitudes and U(1) pieces,
+    four-gluon R2 from the general-N_c HV rule)."""
 
-    slice_ = declared("lc")
-    fixture = _fixture("gg_gg")
-    reference = fixture["leading_colour"]
+    slice_ = declared(name, accuracy)
+    fixture = _fixture(name)
+    reference = fixture["colour_projections"][accuracy]
     born, virtual = _only(slice_.degrees()["born"]), _only(slice_.degrees()["virtual"])
     assert (born, virtual) == (reference["born_degree"], reference["virtual_degree"])
     results = reference["results"]["arbitrary-200"]
@@ -227,7 +269,7 @@ def test_leading_colour_equals_legacy(declared, carrier):
         zip(fixture["points"], fixture["scales_squared"], strict=True)
     ):
         result = slice_.evaluate(
-            point, scale, parameters=PARAMETERS, precision=CARRIERS[carrier]
+            point, scale, parameters=_parameters(name), precision=CARRIERS[carrier]
         )
         assert result.ir_poles is None  # Catani's operator is full colour
         _assert_legacy(results, index, result, LEGACY_TOLERANCE[carrier])
@@ -243,7 +285,7 @@ def test_declared_continuation_keeps_full_colour(declared):
     for index, (point, scale) in enumerate(
         zip(fixture["points"], fixture["scales_squared"], strict=True)
     ):
-        result = declared("full").evaluate(point, scale, parameters=PARAMETERS)
+        result = declared("gg_gg", "full").evaluate(point, scale, parameters=PARAMETERS)
         _assert_legacy(results, index, result, LEGACY_TOLERANCE["double"])
         ((single, double),) = result.ir_poles.values()
         virtual = _only(result.components["virtual"])
@@ -550,7 +592,7 @@ def _weights(layout, length, momenta):
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("carrier", tuple(CARRIERS))
-@pytest.mark.parametrize("name", SLICE)
+@pytest.mark.parametrize("name", (*SLICE, "tt"))
 def test_family_numerators_equal_o2(slices, name, carrier):
     """O2 and the O7 family sets: every v2 family numerator equals its legacy
     family's (200-bit capture) after an exact affine frame map, symmetrised

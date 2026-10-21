@@ -454,16 +454,19 @@ def _inline_colour_helpers(formal, nc):
     def depends(arguments) -> bool:
         return any(nc in argument.get_all_symbols() for argument in arguments)
 
-    return replace(
-        formal,
-        expressions=tuple(
-            ScalarExpression(
-                library.inline(expression.value, depends),
-                library.inline(expression.diagnostic, depends),
-            )
-            for expression in formal.expressions
-        ),
+    expressions = tuple(
+        ScalarExpression(
+            library.inline(expression.value, depends),
+            library.inline(expression.diagnostic, depends),
+        )
+        for expression in formal.expressions
     )
+    if all(
+        new.value is old.value and new.diagnostic is old.diagnostic
+        for new, old in zip(expressions, formal.expressions, strict=True)
+    ):
+        return formal
+    return replace(formal, expressions=expressions)
 
 
 def prepare_source_color_scalars(
