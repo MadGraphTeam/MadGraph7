@@ -1288,14 +1288,17 @@ rules, scalar definitions and exporter files remain untouched. The compact
 fixture labels this distinction and compares bare/UV/R2/total separately at a
 continuum point and three points around the Z pole. Zero-width continuation
 uses the original unmodified CMS reference and passes in double and DoubleFloat.
-At 80 decimal digits, two real-mass box families expose a separate dependency
-branch failure: masses produced by `sqrt(M²)` then squaring and numerically equal
-reparsed masses give opposite scalar-box imaginary parts. A native Rust probe
-confirms exact mass-value equality with positive zero signs, but component
-precision changes from `(267,266)` to `(266,266)` bits. The constant-numerator
-probe in `tools/loop_reference/reproduce_cms_zero_box.py` reproduces this without
-UFO data or process generation. The AP80 zero-width physical test is a strict
-expected failure; its required validation remains open. No mass rounding, tiny
+At 80 decimal digits, two real-mass box families exposed a separate dependency
+branch failure through Symbolica e679e8c1: masses produced by `sqrt(M²)` then
+squaring and numerically equal reparsed masses gave opposite scalar-box
+imaginary parts. A native Rust probe confirmed exact mass-value equality with
+positive zero signs, but component precision changes from `(267,266)` to
+`(266,266)` bits. The constant-numerator probe in
+`tools/loop_reference/reproduce_cms_zero_box.py` reproduces this without UFO
+data or process generation. Symbolica 9cdc2949 (a `Float` product with an exact
+±1 keeps the other factor's precision) makes both inputs take the same branch,
+also with the earlier NinjaRS and oneloopmaster pins, and the AP80 zero-width
+physical test passes against the zero-width reference. No mass rounding, tiny
 term pruning or integral correction is applied. Finite-width tests pass in all
 three carriers and also check exact Gf updates beyond binary64.
 The independent Recola comparison requires the same Laurent normalization as
@@ -1518,9 +1521,11 @@ corrections of quark Yukawa/Goldstone vertices) use the same exact FFS bases and
 physical frame as the tree vertices; `e+ e- > t t~ h` matches MadLoop for
 every component. Family denominators reach the reducer in loop-cycle order
 (`kinematics.py`), the conventional D0 argument order: oneloopmaster 09b2c74
-misevaluates a soft-divergent box with massive emitters, such as the
-(m, m, 0, m) boxes of these processes, when its propagators are labelled
-non-adjacently (finite without the soft pole in binary64, NaN in DoubleFloat). Other two-point chiral, reversed-endpoint or momentum-leg tensors
+misevaluated a soft-divergent box with massive emitters, such as the
+(m, m, 0, m) boxes of these processes, when its propagators were labelled
+non-adjacently (finite without the soft pole in binary64, NaN in DoubleFloat).
+The pinned 8ec256fc relabels such boxes inside its numerical entry points; the
+order is kept. Other two-point chiral, reversed-endpoint or momentum-leg tensors
 remain outside this admission. Scalar source coefficients,
 loop groups, matching and all process-level cancellations are independent gates.
 
