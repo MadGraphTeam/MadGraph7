@@ -1,0 +1,17 @@
+{
+  "scope": "software synthetic/mocked data and card parser only; no compiler,engine,MP,perf",
+  "cpu": 180,
+  "started_utc": "2026-10-21T18:44:58.500846+00:00",
+  "finished_utc": "2026-10-21T18:44:58.798595+00:00",
+  "sources": {
+    "tools/ninjars_paper_numerator_v3.py": {
+      "sha256": "045721c175b89f4ed9f7af0a538b5519c027a5e63dee2b11b89e83de15957ae3",
+      "bytes": 21695
+    },
+    "tests/unit_tests/loop/test_ninjars_paper_numerator_v3.py": {
+      "sha256": "27b16466fe86c20be20156d334d20e4b4c960749ab91d61c784d368df33abd54",
+      "bytes": 7112
+    }
+  },
+  "returncode": 1
+}

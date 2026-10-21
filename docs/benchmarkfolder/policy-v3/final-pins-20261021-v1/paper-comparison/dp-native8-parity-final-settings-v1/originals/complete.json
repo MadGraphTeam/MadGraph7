@@ -1,0 +1,27 @@
+{
+  "schema": "qcd1-nrs8-native-dp-recorder-parity-v1",
+  "backends": [
+    8
+  ],
+  "physical_points": 100,
+  "transformations": 3,
+  "results": {
+    "8-plain": {
+      "path": ".benchmark-work/paper-dp-stability-20261021-v1/nrs8-qcd1-parity-final-settings-v1/8-plain-result.json",
+      "sha256": "1fb2d898bccf5c073bc3b077d965515dfef20c1d35f52a537ee87583b6a65223"
+    },
+    "8-observed": {
+      "path": ".benchmark-work/paper-dp-stability-20261021-v1/nrs8-qcd1-parity-final-settings-v1/8-observed-result.json",
+      "sha256": "b9fe828d94f59709c9e6c7902eb3041d4bfb066d9928e4d42dbd4f22b568a85f"
+    }
+  },
+  "nativeDP_recorder_parity_pass": true,
+  "four_tool_campaign_complete": false,
+  "timing_or_perf_claimed": false,
+  "qualification_performed": false,
+  "frozen_dp_snapshot": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/nrs8-qcd1-parity-final-settings-v1/ninjars_dp_stability_frozen_b0fa.py",
+    "sha256": "b0fa3802df8e195a0d23474afd7211bbd3cfadaa872d4f41d9bbbb4c4ee14daa"
+  },
+  "original_source_unchanged": true
+}

@@ -1,0 +1,185 @@
+--- attempt-3/tools/ninjars_paper_numerator_v3.py
++++ attempt-4/tools/ninjars_paper_numerator_v3.py
+@@ -234,6 +234,14 @@
+         "label": "Remaining full-evaluation work, including stability/rescue/repeated construction and other path differences; not pure reduction"}
+ 
+ 
++def checked_raw_capture(capture, directory, inventory):
++    require(set(capture) == {*workers.OUTPUTS, "dimensions.dat"}, "Incomplete construction raw")
++    for name, record in capture.items():
++        path = supplement.checked(record)
++        require(path == directory / name, "Calibration or other raw reused")
++        require(inventory.get(policy.relative(path)) == record["sha256"], "Construction raw missing from result inventory")
++
++
+ def report_snapshot(filename, expected=None, inputs=None):
+     result = policy.verified(read(filename), RUN)
+     require(result["acceptance_eligible"] is False, "Construction cannot be promoted to normal timing")
+@@ -245,7 +253,8 @@
+     total = full.report_snapshot(supplement.checked(spec["ordinary_result"]), expected=expected, inputs=inputs)
+     report = policy.path(result["report"]); status = read(report / "status.json")
+     require(status["status"] == "complete" and status["completed"] == status["requested"] == list(ordinary["cases"]), "Incomplete construction series")
+-    summary = {"schema": SUMMARY, "acceptance_eligible": False, "source": supplement.bound(filename), "cases": {}}
++    summary = {"schema": SUMMARY, "acceptance_eligible": False, "source": supplement.bound(filename),
++        "ordinary_result": spec["ordinary_result"], "cases": {}}
+     for cid, case in ordinary["cases"].items():
+         cell = report / "cases" / cid; build = read(cell / "build.json")
+         require(build["ready_for_numerical"] and not build["compile_only"] and build["parent"] == spec["parents"][cid], "Unqualified construction parent/probe")
+@@ -284,8 +293,7 @@
+             loops = 1 if r == "calibration" else max(1, math.ceil(1. / calibration["seconds"]))
+             require(row["loops"] == loops, "Changed construction count")
+             directory = cell / "raw" / (cid + "-candidate-6") / ("construction-" + str(r))
+-            require(set(row["raw_capture"]) == {*workers.OUTPUTS, "dimensions.dat"}, "Incomplete construction raw")
+-            for name, record in row["raw_capture"].items(): require(supplement.checked(record) == directory / name, "Calibration or other raw reused")
++            checked_raw_capture(row["raw_capture"], directory, result["files"])
+             actual = parse_outputs(directory, 100, loops)
+             require(all(row[k] == v for k, v in actual.items()), "Construction raw disagrees")
+             if r == "calibration": calibration = row
+--- attempt-3/tests/test_ninjars_paper_numerator_v3.py
++++ attempt-4/tests/test_ninjars_paper_numerator_v3.py
+@@ -1,5 +1,6 @@
+ """DP construction scope and structural contracts; no numerical engines."""
+ import json
++from contextlib import ExitStack, contextmanager, nullcontext
+ from pathlib import Path
+ import shutil
+ import sys
+@@ -18,13 +19,14 @@
+         self.addCleanup(self.temp.cleanup)
+         self.root = Path(self.temp.name)
+ 
+-    def raw(self, code=110, accuracy=-1., loops=1):
+-        (self.root / "timing.dat").write_text("1.0 2.0\n")
+-        (self.root / "dimensions.dat").write_text("1 1 0\n")
+-        (self.root / "values.dat").write_text("".join(
++    def raw(self, code=110, accuracy=-1., loops=1, directory=None):
++        directory = directory or self.root
++        (directory / "timing.dat").write_text("1.0 2.0\n")
++        (directory / "dimensions.dat").write_text("1 1 0\n")
++        (directory / "values.dat").write_text("".join(
+             "%d %d %d 0.0 2.0 0.0 0.0 %s\n" % (p, o, code, accuracy)
+             for p in range(1, 101) for o in (0, 1)))
+-        (self.root / "timed_status.dat").write_text("%d %d\n" % (code, loops*100))
++        (directory / "timed_status.dat").write_text("%d %d\n" % (code, loops*100))
+ 
+     def cards(self):
+         card = num.MadLoopParam(str(ROOT / "Template/loop_material/StandAlone/Cards/MadLoopParams.dat"))
+@@ -123,6 +125,118 @@
+             with self.assertRaises(ValueError): num.prepare({"output": str(self.root), "state": {"compiled_manifest": {"other": 1}}}, {}, self.root / "copy", self.root / "report")
+             clone.assert_not_called()
+ 
++    def test_every_raw_file_must_belong_to_result_inventory(self):
++        self.raw()
++        capture = {name: num.supplement.bound(self.root / name) for name in (*num.workers.OUTPUTS, "dimensions.dat")}
++        inventory = {record["path"]: record["sha256"] for record in capture.values()}
++        num.checked_raw_capture(capture, self.root, inventory)
++        for missing in capture.values():
++            malformed = dict(inventory); del malformed[missing["path"]]
++            with self.subTest(path=missing["path"]), self.assertRaisesRegex(ValueError, "missing from result inventory"):
++                num.checked_raw_capture(capture, self.root, malformed)
++        malformed = dict(inventory); malformed[capture["values.dat"]["path"]] = "0" * 64
++        with self.assertRaisesRegex(ValueError, "missing from result inventory"):
++            num.checked_raw_capture(capture, self.root, malformed)
++
++    def test_raw_inventory_does_not_allow_another_command_path(self):
++        self.raw()
++        capture = {name: num.supplement.bound(self.root / name) for name in (*num.workers.OUTPUTS, "dimensions.dat")}
++        inventory = {record["path"]: record["sha256"] for record in capture.values()}
++        with self.assertRaisesRegex(ValueError, "other raw reused"):
++            num.checked_raw_capture(capture, self.root / "another-command", inventory)
++
++    def test_summary_exposes_validated_ordinary_result_authority(self):
++        report = self.root / "report"; report.mkdir()
++        parent = self.root / "ordinary.json"; parent.write_text("{}")
++        spec = report / "input-spec.json"; num.bench.dump(spec, {"ordinary_result": num.supplement.bound(parent)})
++        num.bench.dump(report / "status.json", {"status": "complete", "requested": [], "completed": []})
++        result = report / "result.json"
++        num.bench.dump(result, num.policy.seal({"schema": num.RUN, "acceptance_eligible": False,
++            "files": {}, "specification": num.supplement.bound(spec), "report": num.policy.relative(report)}))
++        with mock.patch.object(num, "validate_spec", return_value={"cases": {}}), mock.patch.object(num.full, "report_snapshot", return_value={}) as validate:
++            summary = num.report_snapshot(result)
++        validate.assert_called_once_with(parent, expected=None, inputs=None)
++        self.assertEqual(summary["ordinary_result"], num.supplement.bound(parent))
++        self.assertFalse(summary["acceptance_eligible"])
++
++    def collection_fixture(self, fail_sequence=None, startup_failure=False):
++        report, work = self.root / "report", self.root / "work"
++        points = self.root / "points.dat"; points.write_text("mock hundred-point transport\n")
++        parent = self.root / "ordinary.json"; parent.write_text("{}")
++        case = {"definition": {"id": "mock"}, "points": num.supplement.bound(points),
++            "helicity_index": 10, "physical_helicity": [-1, 1, -1], "origin": {"reducer_runtime": {}}}
++        spec = {"ordinary_result": num.supplement.bound(parent), "report": num.policy.relative(report),
++            "work": num.policy.relative(work), "sources": {}, "timeout": 1.,
++            "parents": {"mock": {"filter": {"sha256": "matched"}}}}
++        spec_path = self.root / "spec.json"; num.bench.dump(spec_path, spec)
++        handoff = self.root / "handoff.json"; num.bench.dump(handoff, {"root_authorized": True,
++            "phase": num.RUN, "cpu": 207, "specification_sha256": num.workers.digest(spec_path)})
++        instances, runtime_exit = [], []
++        owner = self
++
++        class SyntheticWorker:
++            def __init__(self, command, directory, log, **kwargs):
++                self.sequence = 0; self.points = 100; self.directory = directory; self.closed = False
++                instances.append(self)
++                if startup_failure: raise RuntimeError("injected constructor failure")
++
++            def run(self, loops):
++                self.sequence += 1; owner.raw(loops=loops, directory=self.directory)
++                if self.sequence == fail_sequence: raise RuntimeError("injected RUN failure")
++                return 1.
++
++            def close(self): self.closed = True
++
++        def prepare(parent, case, output, cell):
++            directory = output / "SubProcesses/P0_mock"; directory.mkdir(parents=True)
++            return directory, {"ready_for_numerical": True, "state": {}}
++
++        @contextmanager
++        def runtime(cell):
++            try: yield
++            finally: runtime_exit.append(str(cell))
++
++        patches = ExitStack()
++        for target, name, replacement in ((num, "validate_spec", mock.Mock(return_value={"cases": {"mock": case}})),
++                (num.full, "report_snapshot", mock.Mock(return_value={})), (num, "prepare", prepare),
++                (num.full, "target_state", mock.Mock(return_value={})),
++                (num, "filter_record", mock.Mock(return_value={"sha256": "matched"})),
++                (num.workers, "Worker", SyntheticWorker), (num.ownership, "owned_runtime", runtime),
++                (num.workers, "isolated_harness", lambda *args: nullcontext()),
++                (num, "report_snapshot", mock.Mock(return_value={"synthetic": True})),
++                (num.os, "sched_getaffinity", mock.Mock(return_value={207}))):
++            patches.enter_context(mock.patch.object(target, name, replacement))
++        patches.enter_context(mock.patch.dict(num.os.environ, {name: "1" for name in num.pair.THREADS}))
++        self.addCleanup(patches.close)
++        return spec_path, handoff, report, instances, runtime_exit
++
++    def test_mock_collection_keeps_calibration_separate_and_closes_worker(self):
++        spec, handoff, report, instances, exits = self.collection_fixture()
++        self.assertEqual(num.collect(spec, handoff, True), {"synthetic": True})
++        self.assertEqual(len(instances), 1); self.assertEqual(instances[0].sequence, 9)
++        self.assertTrue(instances[0].closed); self.assertEqual(len(exits), 1)
++        data = report / "cases/mock/data"
++        self.assertEqual({p.name for p in data.glob("*.json")}, {str(r) + ".json" for r in ("calibration", *range(8))})
++        self.assertEqual(json.loads((report / "status.json").read_text())["status"], "complete")
++        self.assertTrue((report / "result.json").is_file())
++
++    def test_mock_run_failure_retains_raw_before_parsing_and_closes_worker(self):
++        spec, handoff, report, instances, exits = self.collection_fixture(fail_sequence=3)
++        with self.assertRaisesRegex(RuntimeError, "RUN failure"): num.collect(spec, handoff, True)
++        self.assertTrue(instances[0].closed); self.assertEqual(len(exits), 1)
++        raw = report / "cases/mock/raw/mock-candidate-6/construction-1"
++        self.assertEqual({p.name for p in raw.iterdir()}, {*num.workers.OUTPUTS, "dimensions.dat"})
++        self.assertEqual(json.loads((report / "status.json").read_text())["status"], "failed")
++        self.assertFalse((report / "result.json").exists())
++
++    def test_mock_startup_failure_exits_owned_context_without_measurement(self):
++        spec, handoff, report, instances, exits = self.collection_fixture(startup_failure=True)
++        with self.assertRaisesRegex(RuntimeError, "constructor failure"): num.collect(spec, handoff, True)
++        self.assertEqual(len(exits), 1)
++        self.assertEqual(instances[0].sequence, 0)
++        self.assertEqual(json.loads((report / "status.json").read_text())["status"], "failed")
++        self.assertFalse((report / "result.json").exists())
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

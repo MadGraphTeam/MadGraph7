@@ -453,7 +453,7 @@ def _local_path(value):
 
 
 def _successful_command(record, inputs):
-    if record.get("exit_code") != 0 or record.get("reaped") is not True:
+    if record.get("exit_code") != 0 or record.get("reaped",record.get("reaped_at_record")) is not True:
         raise ValueError("Physical DP command failed or was not reaped")
     for name in ("stdout", "stderr"):
         _bound(ROOT, record[name], inputs)
@@ -518,6 +518,222 @@ def validate_dp_settings(origin, target, tool):
     return overrides
 
 
+def resolve_origin(run, release, inputs=None):
+    """Resolve existing core, control, or stress generation/point authorities.
+
+    A benchmark alias never rewrites the actual generation case. In particular,
+    the loop export's ten-point smoke is separate from the paper's100-point
+    stream. This function reads metadata only, with no builds/evaluations.
+    """
+    import ninjars_benchmark_policy_v2 as policy_v2
+    root = _local_path(release["generation_root"])
+    core_path = root/"status.json"
+    core = _read_bound({"path":str(core_path),"sha256":digest(core_path)},inputs)
+    authority = run.get("origin_authority")
+    generation_case = run["case"]
+    source_proof = None
+    measurement_origin = None
+    if authority is None:
+        status, status_path = core, core_path
+        case = status["cases"].get(generation_case)
+        points = root/"points"/(generation_case+".dat")
+        point_record = {"path":str(points),"sha256":digest(points)}
+        if not case or point_record["sha256"] != case["physical_inputs"]["points"]["sha256"]:
+            raise ValueError("Core DP point authority differs")
+    elif authority.get("kind") == "controls-v3":
+        generation_case = authority["generation_case"]
+        status_path = _bound(ROOT,authority["generation"],inputs)
+        status = json.loads(status_path.read_text())
+        if (status.get("schema") != "final-release-control-generation-v1" or
+                any(status.get(flag) is not True for flag in ("complete","preserved_existing_inputs",
+                    "dependencies_unchanged","original_archive_unchanged")) or
+                status.get("git_revision") != release["generation_revision"] or
+                status.get("generator_tree_state") != core["generator_tree_state"] or
+                status.get("generator_tree_state_sha256") != release["generator_identity_sha256"]):
+            raise ValueError("Control generation belongs to another/incomplete actual cohort")
+        case = status["cases"].get(generation_case)
+        import ninjars_paper_timing_v3 as timing
+        measurement = timing.validate_spec(_read_bound(authority["measurement"],inputs))
+        cohort_keys = {"numerical_revision","generation_revision","generator_identity_sha256",
+                       "runtime_identity_sha256","archive_sha256"}
+        point_case = measurement["cases"].get(run["case"])
+        if (not case or case.get("status") != "complete" or not point_case or
+                point_case.get("actual_generation_case") != generation_case or
+                point_case["definition"] != {**case["case"],"id":run["case"]} or
+                measurement["controls_generation"] != authority["generation"] or
+                set(measurement["candidate_cohort"]) != cohort_keys or
+                any(measurement["candidate_cohort"][key] != release[key] for key in cohort_keys)):
+            raise ValueError("Loop benchmark alias/process/cohort differs from its declared export")
+        origin = point_case["origin"]
+        if (_local_path(point_case["output"]) != _local_path(case["output"]) or
+                _read_bound(origin["generation"],inputs) != case["generation"] or
+                _read_bound(origin["compilation"],inputs) != case["compilation"] or
+                origin["reducer_runtime"]["identity_sha256"] != release["runtime_identity_sha256"]):
+            raise ValueError("Loop measurement origin differs from actual control export")
+        root = status_path.parent
+        points = _bound(ROOT,point_case["points"],inputs)
+        point_record = point_case["points"]
+        if int(points.read_text().split()[0]) != 100:
+            raise ValueError("Loop paper measurement requires its complete100-point stream")
+        measurement_origin = origin
+    elif authority.get("kind") == "stress-v3":
+        generation_case = authority["generation_case"]
+        final_path = _bound(ROOT,authority["generation"],inputs)
+        final = policy_v2.verified(json.loads(final_path.read_text()),"final-pin-stress-generation-v1")
+        fields = {"generation_revision":"generation_revision","generator_identity_sha256":"generator_identity_sha256",
+                  "runtime_identity_sha256":"runtime_identity_sha256","archive_sha256":"archive_sha256"}
+        if (final.get("status") != "complete" or any(final.get(k) != release[v] for k,v in fields.items()) or
+                final.get("all_registered_children_reaped") is not True or final.get("amplitude_evaluations") != 0 or
+                final.get("initialized_symbolica_workers") != 0):
+            raise ValueError("Stress generation belongs to another/incomplete actual cohort")
+        early = policy_v2.verified(_read_bound(final["early_build_result"],inputs),"stress-early-build-result-v1")
+        status_path = _bound(ROOT,early["status"],inputs)
+        status = json.loads(status_path.read_text())
+        if status.get("status") != "complete" or status.get("amplitude_evaluations") != 0:
+            raise ValueError("Stress actual export preparation is incomplete")
+        case = status["cases"].get(generation_case)
+        if (not case or run["case"] != generation_case or
+                case["source_proof"] != early["source_proofs"].get(generation_case)):
+            raise ValueError("Stress DP case differs from actual source proof")
+        source_proof = policy_v2.verified(_read_bound(case["source_proof"],inputs),"stress-generation-source-v1")
+        import ninjars_stress_v2 as stress
+        config_item = final["fixed_inputs"]["configurations/ordinary"]
+        config_paths = [_bound(ROOT,config_item[key],inputs) for key in ("current","original")]
+        configuration = json.loads(config_paths[0].read_text())
+        if (config_paths[0].read_bytes() != config_paths[1].read_bytes() or
+                configuration != stress.configuration("ordinary") or
+                source_proof["case"] != next((c for c in configuration["cases"] if c["id"] == generation_case),None)):
+            raise ValueError("Stress process/configuration differs from fixed preregistration")
+        point_item = final["fixed_inputs"]["point_files/"+generation_case]
+        points = _bound(ROOT,point_item["current"],inputs)
+        if (points.read_bytes() != _bound(ROOT,point_item["original"],inputs).read_bytes() or
+                point_item["current"] != early["point_files"].get(generation_case)):
+            raise ValueError("Stress measurement points differ from original fixed stream")
+        point_record = point_item["current"]
+        if int(points.read_text().split()[0]) != configuration["points_per_case"]:
+            raise ValueError("Stress measurement point denominator changed")
+        for key in ("cli_card","cli_log","physical_card"):
+            _bound(ROOT,source_proof[key],inputs)
+        command = _bound(ROOT,source_proof["cli_card"],inputs).read_text()
+        log = _bound(ROOT,source_proof["cli_log"],inputs).read_text()
+        if ("generate "+source_proof["case"]["process"]+"\n" not in command or
+                "Error detected in sub-command" in log or "interrupted in sub-command" in log):
+            raise ValueError("Actual stress CLI process generation failed/differs")
+        case = {**case,"status":"complete","case":source_proof["case"]}
+        root = final_path.parent
+    else:
+        raise ValueError("Unknown DP origin authority")
+    if not case or case.get("status") != "complete":
+        raise ValueError("DP case is absent from its actual CLI generation authority")
+    origin = _local_path(case["output"])
+    retained = root/"inputs/candidate"/generation_case
+    records = {name:_read_bound({"path":str(retained/name),"sha256":digest(retained/name)},inputs)
+               for name in ("generation.json","compilation.json","compiled-sources.json")}
+    if source_proof:
+        for name,key in (("generation.json","generation"),("compilation.json","compilation"),
+                         ("compiled-sources.json","compiled_manifest")):
+            if records[name] != source_proof[key]:
+                raise ValueError("Stress retained original records differ from sealed source proof")
+        if source_proof["reducer_runtime"]["identity_sha256"] != release["runtime_identity_sha256"]:
+            raise ValueError("Stress source proof names another reduction runtime")
+    elif authority:
+        if records["generation.json"] != case["generation"] or records["compilation.json"] != case["compilation"]:
+            raise ValueError("Control retained original records differ from actual generation")
+    if measurement_origin and (_read_bound(measurement_origin["compiled_manifest"],inputs) != records["compiled-sources.json"] or
+            _bound(ROOT,measurement_origin["physical_card"],inputs).read_bytes() != (retained/"param_card.dat").read_bytes()):
+        raise ValueError("Loop measurement manifest/card differs from actual retained export")
+    resolved = {"case":case,"origin":origin,"retained":retained,"records":records,"points":points,
+                "point_record":point_record,"generation_case":generation_case}
+    return resolve_measurement(run,release,resolved,inputs)
+
+
+def resolve_measurement(run, release, resolved, inputs=None):
+    """Allow only a separately preregistered, replay-validated random stream."""
+    authority = run.get("measurement_authority")
+    if authority is None:
+        return resolved
+    if (authority.get("kind") != "random-dp-v1" or authority.get("case") != run["case"] or
+            set(authority) != {"kind","manifest","case"}):
+        raise ValueError("Unknown or grafted DP measurement authority")
+    import ninjars_dp_random_points as random_points
+    expected = {key:release[key] for key in ("numerical_revision","generation_revision",
+        "generator_identity_sha256","runtime_identity_sha256","archive_sha256")}
+    retained_inputs = {}
+    manifest,config = random_points.validate_manifest(_bound(ROOT,authority["manifest"],inputs),
+                                    expected_release=expected,inputs=retained_inputs)
+    for path,sha256 in retained_inputs.items():
+        _bound(ROOT,{"path":path,"sha256":sha256},inputs)
+    cid = authority["case"]
+    declared, measured = config["cases"].get(cid),manifest["cases"].get(cid)
+    definition = {**resolved["case"]["case"],"id":run["case"]}
+    if (not declared or not measured or declared["definition"] != definition or
+            declared["actual_generation_case"] != resolved["generation_case"] or
+            declared["origin_authority"] != run.get("origin_authority") or
+            declared["masses"] != resolved["case"].get("masses")):
+        raise ValueError("Random measurement process/masses/origin differs from actual CLI generation")
+    if (_bound(ROOT,declared["physical_card"],inputs).read_bytes() !=
+            (resolved["retained"]/"param_card.dat").read_bytes()):
+        raise ValueError("Random measurement physical card differs from actual CLI origin")
+    points = _bound(ROOT,measured["points"],inputs)
+    if (measured["points_count"] != config["points_per_case"] or measured["points_count"] != run["N"] or
+            int(points.read_text().split()[0]) != run["N"] or measured["seed"] != declared["seed"]):
+        raise ValueError("Random measurement denominator/seed differs from its preregistration")
+    _bound(ROOT,measured["metadata"],inputs)
+    return {**resolved,"points":points,"point_record":measured["points"],
+            "measurement_authority":authority,"sample_kind":("random-boosted-on-shell-descriptive"
+                if definition["nfinal"] == 1 else "preregistered-random-SM-DP"),
+            "seed":declared["seed"],"cuts":declared["cuts"],"center_of_mass_energy_gev":(
+                declared["masses"][2] if definition["nfinal"] == 1 else config["energy_gev"])}
+
+
+def parse_native_guard(path):
+    """Verify the audited native-only guard, including failed native statuses."""
+    names = ("create","dp","compensated","mp","destroy","nonnull")
+    pattern = re.compile(r"(\w+)(?: status=(-?\d+))?"+
+                         "".join(" "+name+r"=(\d+)" for name in names))
+    lines,previous,statuses,lifecycle = Path(path).read_text().splitlines(),[0]*6,Counter(),Counter()
+    if len(lines) < 5:
+        raise ValueError("Missing native guard boundaries/calls")
+    for index,line in enumerate(lines):
+        match = pattern.fullmatch(line)
+        if not match:
+            raise ValueError("Malformed native guard record")
+        event,status = match[1],int(match[2]) if match[2] is not None else None
+        counts = list(map(int,match.groups()[2:]))
+        expected = previous.copy()
+        if event in ("GUARD_BEGIN","GUARD_FINAL"):
+            if status is not None or (event == "GUARD_BEGIN" and index != 0) or (event == "GUARD_FINAL" and index != len(lines)-1):
+                raise ValueError("Reordered native guard boundary")
+        else:
+            if index in (0,len(lines)-1) or status is None or not -(2**31) <= status < 2**31:
+                raise ValueError("Missing native return status/boundary")
+            if event == "CREATE_RETURN":
+                expected[0] += 1
+                lifecycle["create:"+str(status)] += 1
+            elif event == "NATIVE_DP_RETURN":
+                expected[1] += 1
+                statuses[str(status)] += 1
+            elif event == "DESTROY_RETURN":
+                expected[4] += 1
+                expected[5] = counts[5]
+                if counts[5]-previous[5] not in (0,1):
+                    raise ValueError("Invalid native non-NULL teardown count")
+                lifecycle["destroy:"+str(status)] += 1
+            else:
+                raise ValueError("Forbidden compensated/MP or unknown native guard event")
+        if counts != expected:
+            raise ValueError("Native guard counter/event mismatch")
+        previous = counts
+    if (not lines[0].startswith("GUARD_BEGIN ") or not lines[-1].startswith("GUARD_FINAL ") or
+            not previous[0] or not previous[1] or previous[2] or previous[3] or
+            previous[5] != previous[0] or previous[4] < previous[5] or
+            any(not key.endswith(":0") for key in lifecycle)):
+        raise ValueError("Missing native lifecycle/DP evaluation or forbidden precision")
+    return {"boundary_counts":dict(zip(names,previous)),"native_per_call_status_counts":dict(statuses),
+            "lifecycle_status_counts":dict(lifecycle),"events":len(lines),"no_compensated_or_mp_entry":True,
+            "native_error_returns_retained":sum(v for key,v in statuses.items() if key != "0")}
+
+
 def validate_target_qualification(run, release, runpaths, inputs=None):
     """Bind a private diagnostic to the existing actual CLI/cohort authorities.
 
@@ -538,27 +754,17 @@ def validate_target_qualification(run, release, runpaths, inputs=None):
     thread_environment = {name:"1" for name in pair.THREADS}
     if start.get("thread_environment") != thread_environment or len(start.get("cpu",[])) != 1:
         raise ValueError("Parity CPU/thread settings are not bound")
-    root = _local_path(release["generation_root"])
-    status_path = root/"status.json"
-    _bound(ROOT,{"path":str(status_path),"sha256":digest(status_path)},inputs)
-    case = json.loads(status_path.read_text())["cases"].get(run["case"])
-    if not case or case.get("status") != "complete":
-        raise ValueError("DP case is absent from the validated actual CLI cohort")
-    origin = _local_path(case["output"])
-    retained = root/"inputs/candidate"/run["case"]
-    records = {}
-    for name in ("generation.json","compilation.json","compiled-sources.json"):
-        path = retained/name
-        records[name] = _read_bound({"path":str(path),"sha256":digest(path)},inputs)
+    resolved = resolve_origin(run,release,inputs)
+    case,origin,retained,records = (resolved[key] for key in ("case","origin","retained","records"))
     manifest = records["compiled-sources.json"]
     identity = pair.validate_origin_records("candidate",origin,records["generation.json"],
                                           records["compilation.json"],manifest)
     if (identity["revision"] != release["generation_revision"] or
             identity["tree_state_sha256"] != release["generator_identity_sha256"]):
         raise ValueError("Actual DP origin source differs from its explicit cohort")
-    points = root/"points"/(run["case"]+".dat")
+    points = resolved["points"]
     if (runpaths["points"].read_bytes() != points.read_bytes() or
-            digest(points) != case["physical_inputs"]["points"]["sha256"] or
+            digest(points) != resolved["point_record"]["sha256"] or
             run["process"] != case["case"]["process"] or
             run["nexternal"] != case["case"]["nfinal"]+2):
         raise ValueError("DP process/points differ from its actual CLI case")
@@ -637,21 +843,28 @@ def validate_target_qualification(run, release, runpaths, inputs=None):
         expected_command = [str(directory/"check"),str(points),str(run["tool"]),str(run["helicity"]),str(rawpath)]
         if execution["command"] != expected_command:
             raise ValueError("Physical DP executable/point/selector command differs")
+        if run["tool"] == 8 and not result.get("additional_link_flags"):
+            raise ValueError("Native NinjaRS DP qualification requires the startup-through-teardown guard")
         if result.get("additional_link_flags"):
-            if run["tool"] == 8:
-                raise ValueError("Legacy numerical-entry guard cannot qualify NinjaRS8")
             guard = _bound(ROOT,start["guard_source"],inputs)
-            if digest(guard) != "13f5702a530ede39a74333d266bb3078799e7b3f9889a29c9c2fdd2683176477":
-                raise ValueError("Unknown legacy numerical-entry guard source")
+            expected_guard_source = ("88cfb41cf17a545665e30563c39f0bd58ae9b9c0075203e0e5c27531d5e0c06c" if run["tool"] == 8
+                else "13f5702a530ede39a74333d266bb3078799e7b3f9889a29c9c2fdd2683176477")
+            if digest(guard) != expected_guard_source:
+                raise ValueError("Unknown native/legacy numerical-entry guard source")
             obj = _bound(ROOT,result["guard_object"],inputs)
             symbols = ("ninjars_context_create","ninjars_evaluate_dp","ninjars_evaluate_dp_compensated",
                        "ninjars_evaluate_mp","ninjars_context_destroy")
             flags = str(obj)+" -L$(LIBDIR) -ldhelas -lmodel $(LINK_LOOP_LIBS) $(LDFLAGS) "+" ".join("-Wl,--wrap="+s for s in symbols)
             expected_guard = "GUARD_FINAL create=0 dp=0 compensated=0 mp=0 destroy=1 nonnull=0"
-            if (result["additional_link_flags"] != flags or
-                    _bound(ROOT,result["guard"],inputs).read_text().splitlines() !=
-                    [expected_guard.replace("GUARD_FINAL","NULL_TEARDOWN_FORWARDED"),expected_guard]):
-                raise ValueError("Legacy parity entered a numerical NinjaRS path or changed link guard")
+            guard_path = _bound(ROOT,result["guard"],inputs)
+            if result["additional_link_flags"] != flags:
+                raise ValueError("Parity changed the exact diagnostic link guard")
+            if run["tool"] == 8:
+                actual_guard = parse_native_guard(guard_path)
+                if result.get("guard_observations") != actual_guard:
+                    raise ValueError("Retained native guard counts/statuses differ from raw boundary log")
+            elif guard_path.read_text().splitlines() != [expected_guard.replace("GUARD_FINAL","NULL_TEARDOWN_FORWARDED"),expected_guard]:
+                raise ValueError("Legacy parity entered a numerical NinjaRS path")
             expected_build = ["make","-j1","check","LINKLIBS="+flags]
         else:
             expected_build = ["make","-j1","check"]
@@ -678,11 +891,21 @@ def validate_target_qualification(run, release, runpaths, inputs=None):
     if (results["plain"].get("additional_link_flags") != results["observed"].get("additional_link_flags") or
             results["plain"].get("guard_object") != results["observed"].get("guard_object")):
         raise ValueError("Plain and observed parity link boundaries differ")
+    if results["observed"].get("additional_link_flags") and (
+            _bound(ROOT,results["plain"]["guard"],inputs).read_bytes() !=
+            _bound(ROOT,results["observed"]["guard"],inputs).read_bytes()):
+        raise ValueError("Plain and observed guard entry/status sequences differ")
     parity = validate_recorder_parity(parsed["plain"],parsed["observed"],run["tool"])
     receipt_keys = ("physical_coefficients_compared","zero_coefficients_compared","f64_bitexact")
     if any(retained_parity.get(key) != parity[key] for key in receipt_keys):
         raise ValueError("Retained parity receipt contradicts independently replayed raw rows")
     return {"source_runtime_qualified":True,"recorder_parity_qualified":True,
+            "benchmark_case":run["case"],"generation_case":resolved["generation_case"],
+            "measurement_points":resolved["point_record"],
+            "measurement_authority":resolved.get("measurement_authority"),
+            "sample_kind":resolved.get("sample_kind",run.get("sample_kind","fixed-core-pilot")),
+            "seed":resolved.get("seed"),"cuts":resolved.get("cuts"),
+            "center_of_mass_energy_gev":resolved.get("center_of_mass_energy_gev"),
             "settings":settings,"runtime_identity_sha256":release["runtime_identity_sha256"],
             "source_manifest_sha256":results["observed"]["compiled_manifest"]["files_sha256"],
             "executable_sha256":results["observed"]["executable_sha256"],
@@ -731,6 +954,10 @@ def report_snapshot(manifest_or_summary, expected=None, inputs=None):
         raise ValueError("Unknown DP instrumentation")
     if not isinstance(data.get("runs"),list) or not data["runs"]:
         raise ValueError("DP authority has no observed runs")
+    requested_tools = data.get("requested_tools",list(TOOLS))
+    if (type(requested_tools) is not list or any(type(tool) is not int for tool in requested_tools) or
+            requested_tools not in (list(TOOLS),[6,8])):
+        raise ValueError("DP requested tools must explicitly declare legacy four-tool or Ninja6/NinjaRS8 scope")
     thresholds = data.get("thresholds", [10.**(-16+i/5) for i in range(81)])
     if not thresholds or thresholds != sorted(set(thresholds)):
         raise ValueError("DP threshold grid must be nonempty and strictly increasing")
@@ -738,7 +965,7 @@ def report_snapshot(manifest_or_summary, expected=None, inputs=None):
     seen = set()
     for run in data["runs"]:
         case, tool, n, nso = run["case"], int(run["tool"]), int(run["N"]), int(run["nso"])
-        if tool not in TOOLS or (case,tool) in seen or n <= 0:
+        if tool not in requested_tools or (case,tool) in seen or n <= 0:
             raise ValueError("Invalid or duplicate DP run")
         seen.add((case,tool))
         receipt, runpaths, execution = validate_run_sources(run,inputs)
@@ -777,34 +1004,45 @@ def report_snapshot(manifest_or_summary, expected=None, inputs=None):
                      if obs["metadata"] is not None)
             for index,name in enumerate(COUNTER_NAMES) if index >= 15}
         entry["physical_qualified"] = False
+        entry["sample_kind"] = run.get("sample_kind","fixed-core-pilot")
+        entry["measurement_authority"] = run.get("measurement_authority")
+        entry["seed"],entry["cuts"],entry["center_of_mass_energy_gev"] = None,None,None
         if run.get("qualification"):
             if not cohort_validated:
                 raise ValueError("Physical DP qualification requires a validated explicit cohort")
             entry["qualification"] = validate_target_qualification(run,release,runpaths,inputs)
             entry["physical_qualified"] = True
+            for name in ("sample_kind","measurement_authority","seed","cuts","center_of_mass_energy_gev"):
+                entry[name] = entry["qualification"][name]
         group = cases.setdefault(case,{"id":case,"tools":{},"group":run.get("group","unspecified"),
-                 "process":run.get("process",case),"sample_kind":run.get("sample_kind","fixed-core-pilot"),
-                 "N":n,"helicity":run["helicity"]})
+                 "process":run.get("process",case),"sample_kind":entry["sample_kind"],
+                 "seed":entry["seed"],"cuts":entry["cuts"],"measurement_authority":entry["measurement_authority"],
+                 "center_of_mass_energy_gev":entry["center_of_mass_energy_gev"],
+                 "N":n,"helicity":run["helicity"],"requested_tools":requested_tools})
         if group["tools"] and any(v["N"] != n for v in group["tools"].values()):
             raise ValueError("Different point denominators for tools")
         if group["tools"] and any(v["point_stream"]["sha256"] != run["artifacts"]["points"]["sha256"] or
                 v["helicity"] != run["helicity"] for v in group["tools"].values()):
             raise ValueError("Tools use different points or helicities")
+        if group["tools"] and any(v["measurement_authority"] != entry["measurement_authority"] or
+                v["sample_kind"] != entry["sample_kind"] for v in group["tools"].values()):
+            raise ValueError("Tools use different measurement/sample authorities")
         group["tools"][str(tool)] = entry
     for case in cases.values():
-        if set(case["tools"]) != {str(t) for t in TOOLS}:
+        if set(case["tools"]) != {str(t) for t in requested_tools}:
             all_complete = False
     physical_qualified = (all_complete and cohort_validated and
         all(entry["physical_qualified"] for case in cases.values() for entry in case["tools"].values()))
     return {"schema": SCHEMA, "manifest": {"path":str(path),"sha256":digest(path)},
             "stream":"forced_dp_self_consistency", "rescue_enabled":False,
+            "requested_tools":requested_tools,"coverage_scope":"declared requested tools and cases only",
             "requested_precision":"native-double", "thresholds":thresholds,
             "floating_point_rounding":"nearest observed before/after every call",
             "cohort": data["cohort"], "observations_complete": all_complete,
             "cohort_record":data.get("cohort_record"), "cohort_validated":cohort_validated,
             "complete": physical_qualified, "physical_qualified": physical_qualified,
             "physical_qualification_pending": None if physical_qualified else
-                "Every declared case needs all four actual cohort/runtime target bindings and instrumented-process parity controls",
+                "Every declared case needs all requested actual cohort/runtime target bindings and instrumented-process parity controls",
             "qualification": "diagnostic only; does not replace correctness or timing gates",
             "estimator": "(max(v)-min(v))/abs(mean(v)); failures count above every finite threshold",
             "interval_method": "Wilson two-sided 95%; exact one-sided 95% zero-event upper bound",

@@ -1,0 +1,30 @@
+{
+  "byte_verified_hardlinked_bytes": 0,
+  "byte_verified_hardlinked_files": 0,
+  "command": [
+    "git",
+    "archive",
+    "--format=tar",
+    "aec2e50b8fc714729287871b345861485a2bb837"
+  ],
+  "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+  "elapsed_seconds": 16.02569990500342,
+  "exit_code": 0,
+  "file_or_symlink_members": 33093,
+  "finished_utc": "2026-10-21T19:39:01.726262+00:00",
+  "ignored_parents_before_overlay": {
+    ".benchmark-work": false,
+    ".ninjars-build": false
+  },
+  "immutable_pool": ".benchmark-work/pristine-software-portability-20261021-v1/source",
+  "native_calls": 0,
+  "new_copied_bytes": 1583704473,
+  "new_copied_files": 33048,
+  "overlay_policy": "Every overlay unlinks its target before writing new bytes, protecting earlier observations and source images.",
+  "regular_file_payload_bytes": 1583704473,
+  "schema": "ninjars-targeted-software-archive-v1",
+  "source": ".benchmark-work/affected-software-126-20261021-v1/source",
+  "source_revision": "aec2e50b8fc714729287871b345861485a2bb837",
+  "started_utc": "2026-10-21T19:38:45.700559+00:00",
+  "symlinks": 45
+}

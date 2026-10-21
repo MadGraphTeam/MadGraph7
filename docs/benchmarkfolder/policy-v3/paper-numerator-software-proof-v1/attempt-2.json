@@ -1,0 +1,18 @@
+{
+  "scope": "software synthetic/mocked data and card parser only; no compiler,engine,MP,perf",
+  "cpu": 180,
+  "started_utc": "2026-10-21T18:45:31.909825+00:00",
+  "finished_utc": "2026-10-21T18:45:32.419762+00:00",
+  "sources": {
+    "tools/ninjars_paper_numerator_v3.py": {
+      "sha256": "20d845c981d8b321dded05835d164df308d52e423c6dce99c02f7210f9db310d",
+      "bytes": 21726
+    },
+    "tests/unit_tests/loop/test_ninjars_paper_numerator_v3.py": {
+      "sha256": "4b6c7184c0f2258a6a550003224423a381612303bc7086a6c55c27ffc03533c1",
+      "bytes": 7094
+    }
+  },
+  "returncode": 0,
+  "delta": "Import existing MadLoopParam from banner; it is local to benchmark.configure, not exported by benchmark module"
+}

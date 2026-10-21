@@ -1,0 +1,51 @@
+{
+  "scope": "Two compile/link-only probes; no generated executable, Worker, SETPARA, reduction or MP call",
+  "parent_scope": "Prior unmeasured ordinary HEL compile outputs; cloned selector8\u21926 runtime card only. Not completed Ninja6 timing parents and never valid numerator collection inputs.",
+  "pid": 3062513,
+  "pgid": 3062511,
+  "start_ticks": 64243870,
+  "affinity": [
+    6
+  ],
+  "started_utc": "2026-10-21T18:52:17.711763+00:00",
+  "status": "complete",
+  "completed": [
+    {
+      "case": "qcd-1",
+      "private_report": ".benchmark-work/paper-numerator-compatibility-v1/cases/qcd-1",
+      "build": {
+        "path": ".benchmark-work/paper-numerator-compatibility-v1/cases/qcd-1/build.json",
+        "sha256": "1dda0b19154d98672adaddef649358b108740fff7ad66c481cfee4c089767231",
+        "bytes": 162390
+      },
+      "compile_only": true,
+      "ready_for_numerical": false,
+      "executable_sha256": "a98a60575cb286d8e3d0b38517e967d5f470e44870ae5bf00ffc4b529027e8a0",
+      "helicity_filters_created": 0
+    },
+    {
+      "case": "supplement-gg-hh",
+      "private_report": ".benchmark-work/paper-numerator-compatibility-v1/cases/supplement-gg-hh",
+      "build": {
+        "path": ".benchmark-work/paper-numerator-compatibility-v1/cases/supplement-gg-hh/build.json",
+        "sha256": "9b58acf7ee396d625a7e1430a93e22719fb37b476d369cc17d19ad5e3fc5f31f",
+        "bytes": 161375
+      },
+      "compile_only": true,
+      "ready_for_numerical": false,
+      "executable_sha256": "92c0424e46e40ada9839c2a468db0dd9ebf66e8d0f8d39f3cfebd1e109f03086",
+      "helicity_filters_created": 0
+    }
+  ],
+  "controller": {
+    "path": ".benchmark-work/paper-numerator-compatibility-v1/compile-only.py",
+    "sha256": "c8db4f6483fd100d3996d9f1ba8e4d60b9749e4ef7f1ab16630c01bb19dfd931",
+    "bytes": 4209
+  },
+  "producer": {
+    "path": "tools/ninjars_paper_numerator_v3.py",
+    "sha256": "2d46a9495f3a817e7438e0c246639f524ab29093b4fe05988769d1624f60410f",
+    "bytes": 23773
+  },
+  "finished_utc": "2026-10-21T18:52:36.802383+00:00"
+}

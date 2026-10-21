@@ -229,10 +229,28 @@ class RawReader(unittest.TestCase):
                 dp.report_snapshot(path,expected={"cohort":manifest["cohort"]})
             self.assertEqual(snap["cases"]["software"]["tools"]["7"]["thresholds"][0]["k"],1)
             self.assertEqual(snap["cases"]["software"]["tools"]["8"]["thresholds"][0]["k"],0)
+            self.assertEqual(snap["requested_tools"],[1,6,7,8])
             dp.dump(p/"summary.json",snap)
             self.assertEqual(dp.report_snapshot(p/"summary.json"),snap)
             Path(runs[0]["raw"]["path"]).write_text("tampered\n")
             with self.assertRaises(ValueError):dp.report_snapshot(p/"summary.json")
+            manifest["requested_tools"]=[6,8]
+            manifest["runs"]=[run for run in runs if run["tool"] in (6,8)]
+            dp.dump(path,manifest);pair=dp.report_snapshot(path)
+            self.assertTrue(pair["observations_complete"])
+            self.assertEqual(pair["requested_tools"],[6,8])
+            self.assertEqual(pair["cases"]["software"]["requested_tools"],[6,8])
+            self.assertEqual(set(pair["cases"]["software"]["tools"]),{"6","8"})
+            manifest["runs"]=[manifest["runs"][0]];dp.dump(path,manifest)
+            self.assertFalse(dp.report_snapshot(path)["observations_complete"])
+            manifest["runs"].append(runs[0]);dp.dump(path,manifest)
+            with self.assertRaisesRegex(ValueError,"Invalid or duplicate DP run"):dp.report_snapshot(path)
+            manifest["runs"]=[runs[1]];manifest["requested_tools"]=[8,6];dp.dump(path,manifest)
+            with self.assertRaisesRegex(ValueError,"requested tools"):dp.report_snapshot(path)
+            manifest["requested_tools"]=[True,6,7,8];dp.dump(path,manifest)
+            with self.assertRaisesRegex(ValueError,"requested tools"):dp.report_snapshot(path)
+            manifest["requested_tools"]=[6.0,8.0];dp.dump(path,manifest)
+            with self.assertRaisesRegex(ValueError,"requested tools"):dp.report_snapshot(path)
 
     def test_rescued_manifest_cannot_be_relabelled_dp(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -427,6 +445,211 @@ class SemanticQualification(unittest.TestCase):
         self.assertEqual(parity["numerical_failure_observations"],{"nonfinite_result":1})
         observed["observations"][(1,1)]["rows"][0]["raw"][1]="Inf"
         with self.assertRaisesRegex(ValueError,"nonfinite output token"):dp.validate_recorder_parity(plain,observed,1)
+
+
+class OriginResolution(unittest.TestCase):
+    def setUp(self):
+        SemanticQualification.setUp(self)
+        self.core_path=self.root/"generation/status.json"
+        core=json.loads(self.core_path.read_text());core["generator_tree_state"]={"tracked":{"fixture":"hash"},"untracked":{}}
+        self.put(self.core_path,core)
+        self.core=core
+
+    def controls(self):
+        import sys,shutil
+        root=self.root/"controls";alias="control-fixture";cid="supplement-fixture"
+        row=copy.deepcopy(self.core["cases"]["fixture"]);row["case"]["id"]=alias
+        old=self.root/"generation/inputs/candidate/fixture";new=root/"inputs/candidate"/alias
+        shutil.copytree(old,new)
+        row["generation"]=json.loads((new/"generation.json").read_text())
+        row["compilation"]=json.loads((new/"compilation.json").read_text())
+        status={"schema":"final-release-control-generation-v1","git_revision":"revision",
+            "generator_tree_state":self.core["generator_tree_state"],"generator_tree_state_sha256":"generator",
+            "cases":{alias:row},**{k:True for k in ("complete","preserved_existing_inputs","dependencies_unchanged","original_archive_unchanged")}}
+        status_record=self.put(root/"status.json",status)
+        points=self.put(self.root/"loop-measurements.dat","100\n"+"0 0 0 0\n"*300)
+        origins={key:{"path":str(new/name),"sha256":dp.digest(new/name)} for key,name in
+            (("generation","generation.json"),("compilation","compilation.json"),("compiled_manifest","compiled-sources.json"),("physical_card","param_card.dat"))}
+        origins["reducer_runtime"]={"identity_sha256":"runtime"}
+        spec={"candidate_cohort":{"numerical_revision":"revision",**{k:self.release[k] for k in ("generation_revision","generator_identity_sha256","runtime_identity_sha256","archive_sha256")}},"controls_generation":status_record,"cases":{cid:{
+            "definition":{**row["case"],"id":cid},"actual_generation_case":alias,"output":str(self.origin),
+            "origin":origins,"points":points}}}
+        spec_record=self.put(root/"measurement.json",spec)
+        sys.modules["ninjars_paper_timing_v3"]=SimpleNamespace(validate_spec=lambda value:value)
+        self.addCleanup(sys.modules.pop,"ninjars_paper_timing_v3",None)
+        self.release["numerical_revision"]="revision"
+        run={**self.run,"case":cid,"N":100,"origin_authority":{"kind":"controls-v3",
+            "generation_case":alias,"generation":status_record,"measurement":spec_record}}
+        return run,status,spec
+
+    def stress(self):
+        import sys,shutil
+        root=self.root/"stress";cid="fixture";case={"id":cid,"process":"software fixture","nfinal":1}
+        retained=root/"inputs/candidate"/cid;shutil.copytree(self.root/"generation/inputs/candidate/fixture",retained)
+        source={"schema":"stress-generation-source-v1","case":case,
+            **{key:json.loads((retained/name).read_text()) for key,name in
+               (("generation","generation.json"),("compilation","compilation.json"),("compiled_manifest","compiled-sources.json"))},
+            "reducer_runtime":{"identity_sha256":"runtime"},
+            "physical_card":self.put(root/"card","physical software fixture\n"),
+            "cli_card":self.put(root/"command.mg5","generate software fixture\n"),
+            "cli_log":self.put(root/"log","export completed\n")}
+        proof=self.put(root/"source.json",source)
+        status=self.put(root/"status.json",{"status":"complete","amplitude_evaluations":0,"cases":{
+            cid:{"output":str(self.origin),"source_proof":proof}}})
+        point={"path":str(self.points),"sha256":dp.digest(self.points)}
+        config={"points_per_case":1,"cases":[case]}
+        current=self.put(root/"ordinary.json",config);original=self.put(root/"original.json",config)
+        early=self.put(root/"early.json",{"schema":"stress-early-build-result-v1","status":status,
+            "source_proofs":{cid:proof},"point_files":{cid:point}})
+        final={"schema":"final-pin-stress-generation-v1","status":"complete","all_registered_children_reaped":True,
+            "amplitude_evaluations":0,"initialized_symbolica_workers":0,"early_build_result":early,
+            **{key:self.release[key] for key in ("generation_revision","generator_identity_sha256","runtime_identity_sha256","archive_sha256")},
+            "fixed_inputs":{"configurations/ordinary":{"current":current,"original":original},
+                            "point_files/fixture":{"current":point,"original":point}}}
+        authority=self.put(root/"final.json",final)
+        policy=sys.modules["ninjars_benchmark_policy_v2"]
+        def verified(value,schema):
+            if value.get("schema")!=schema:raise ValueError("Invalid software fixture schema")
+            return value
+        policy.verified=verified
+        sys.modules["ninjars_stress_v2"]=SimpleNamespace(configuration=lambda variant:config)
+        self.addCleanup(sys.modules.pop,"ninjars_stress_v2",None)
+        run={**self.run,"origin_authority":{"kind":"stress-v3","generation_case":cid,"generation":authority}}
+        return run,final,source
+
+    def test_core_resolution_preserves_original_authority(self):
+        result=dp.resolve_origin(self.run,self.release)
+        self.assertEqual(result["origin"],self.origin)
+        self.assertEqual(result["generation_case"],"fixture")
+
+    def test_loop_measurement_count_is_separate_from_export_smoke(self):
+        run,status,spec=self.controls();result=dp.resolve_origin(run,self.release)
+        self.assertEqual(result["generation_case"],"control-fixture")
+        self.assertEqual(result["case"]["case"]["id"],"control-fixture")
+        self.assertEqual(result["points"].read_text().split()[0],"100")
+        self.assertEqual(result["case"]["physical_inputs"]["points"]["path"],str(self.points))
+
+    def test_loop_alias_graft_and_wrong_actual_cohort_fail(self):
+        run,status,spec=self.controls();spec["cases"][run["case"]]["actual_generation_case"]="wrong"
+        run["origin_authority"]["measurement"]=self.put(self.root/"controls/measurement.json",spec)
+        with self.assertRaisesRegex(ValueError,"alias/process/cohort"):dp.resolve_origin(run,self.release)
+        spec["cases"][run["case"]]["actual_generation_case"]="control-fixture"
+        run["origin_authority"]["measurement"]=self.put(self.root/"controls/measurement.json",spec)
+        status["git_revision"]="another-release"
+        run["origin_authority"]["generation"]=self.put(self.root/"controls/status.json",status)
+        with self.assertRaisesRegex(ValueError,"actual cohort"):dp.resolve_origin(run,self.release)
+
+    def test_loop_empty_cohort_and_short_point_override_fail(self):
+        run,status,spec=self.controls();cohort=spec["candidate_cohort"];spec["candidate_cohort"]={}
+        run["origin_authority"]["measurement"]=self.put(self.root/"controls/measurement.json",spec)
+        with self.assertRaisesRegex(ValueError,"alias/process/cohort"):dp.resolve_origin(run,self.release)
+        spec["candidate_cohort"]=cohort
+        spec["cases"][run["case"]]["points"]=self.put(self.root/"short.dat","1\n"+"0 0 0 0\n"*3)
+        run["origin_authority"]["measurement"]=self.put(self.root/"controls/measurement.json",spec)
+        with self.assertRaisesRegex(ValueError,"complete100-point"):dp.resolve_origin(run,self.release)
+
+    def test_stress_resolution_keeps_declared_small_denominator(self):
+        run,final,source=self.stress();result=dp.resolve_origin(run,self.release)
+        self.assertEqual(result["generation_case"],"fixture")
+        self.assertEqual(result["points"].read_text().split()[0],"1")
+
+    def test_stress_changed_fixed_stream_or_export_process_rejected(self):
+        run,final,source=self.stress()
+        other=self.put(self.root/"stress/wrong.dat","1\n"+"1 1 1 1\n"*3)
+        final["fixed_inputs"]["point_files/fixture"]["original"]=other
+        run["origin_authority"]["generation"]=self.put(self.root/"stress/final.json",final)
+        with self.assertRaisesRegex(ValueError,"original fixed stream"):dp.resolve_origin(run,self.release)
+
+    def test_unknown_origin_authority_does_not_fallback_to_core(self):
+        with self.assertRaisesRegex(ValueError,"Unknown DP origin"):
+            dp.resolve_origin({**self.run,"origin_authority":{"kind":"arbitrary"}},self.release)
+
+
+class NativeGuardReader(unittest.TestCase):
+    def parse(self,lines):
+        with tempfile.TemporaryDirectory() as temp:
+            p=Path(temp)/"native.log";p.write_text("\n".join(lines)+"\n")
+            return dp.parse_native_guard(p)
+
+    def native(self,status=0):
+        return ["GUARD_BEGIN create=0 dp=0 compensated=0 mp=0 destroy=0 nonnull=0",
+                "CREATE_RETURN status=0 create=1 dp=0 compensated=0 mp=0 destroy=0 nonnull=0",
+                f"NATIVE_DP_RETURN status={status} create=1 dp=1 compensated=0 mp=0 destroy=0 nonnull=0",
+                "DESTROY_RETURN status=0 create=1 dp=1 compensated=0 mp=0 destroy=1 nonnull=1",
+                "GUARD_FINAL create=1 dp=1 compensated=0 mp=0 destroy=1 nonnull=1"]
+
+    def test_native_error_return_is_retained_without_success_relabelling(self):
+        result=self.parse(self.native(2))
+        self.assertEqual(result["native_per_call_status_counts"],{"2":1})
+        self.assertEqual(result["native_error_returns_retained"],1)
+        self.assertTrue(result["no_compensated_or_mp_entry"])
+
+    def test_forbidden_precision_missing_boundary_and_counter_drift_fail(self):
+        original=self.native()
+        for lines in [original[:-1], [*original[:2],original[2].replace("NATIVE_DP_RETURN","FORBIDDEN_MP_ENTRY"),*original[3:]],
+                      [line.replace("dp=1","dp=2") for line in original]]:
+            with self.assertRaises(ValueError):self.parse(lines)
+
+    def test_lifecycle_errors_and_missing_native_status_fail(self):
+        original=self.native()
+        for lines in [[original[0],original[1].replace("status=0","status=1"),*original[2:]],
+                      [*original[:2],original[2].replace("status=0 ",""),*original[3:]]]:
+            with self.assertRaises(ValueError):self.parse(lines)
+
+
+class RandomMeasurementAuthority(unittest.TestCase):
+    def setUp(self):
+        SemanticQualification.setUp(self)
+        self.release["numerical_revision"]="revision"
+        self.resolved=dp.resolve_origin(self.run,self.release)
+        self.resolved["case"]["masses"]=[0.,0.,1.]
+        self.configuration={"points_per_case":1,"energy_gev":1000.,"cases":{"fixture":{"definition":{
+            **self.resolved["case"]["case"],"id":"fixture"},"actual_generation_case":"fixture",
+            "masses":[0.,0.,1.],"physical_card":{"path":str(self.resolved["retained"]/"param_card.dat"),
+                "sha256":dp.digest(self.resolved["retained"]/"param_card.dat")},
+            "origin_authority":None,"seed":20261021,"cuts":{"pt_min_gev":None,"delta_r_min":None}}}}
+        meta=self.put(self.root/"random-metadata.json",{"software_fixture":True})
+        self.manifest={"cases":{"fixture":{"points":{"path":str(self.points),"sha256":dp.digest(self.points)},
+            "metadata":meta,"points_count":1,"seed":20261021}}}
+        manifest_record=self.put(self.root/"random-manifest.json",self.manifest)
+        self.run["measurement_authority"]={"kind":"random-dp-v1","manifest":manifest_record,"case":"fixture"}
+        def validate(path,expected_release=None,inputs=None):
+            self.assertEqual(set(expected_release),{"numerical_revision","generation_revision","generator_identity_sha256","runtime_identity_sha256","archive_sha256"})
+            if inputs is not None:inputs[str(path)]=dp.digest(path)
+            return self.manifest,self.configuration
+        self.mock_random=mock.patch.dict(__import__("sys").modules,{"ninjars_dp_random_points":SimpleNamespace(validate_manifest=validate)})
+        self.mock_random.start();self.addCleanup(self.mock_random.stop)
+
+    def resolve(self):return dp.resolve_measurement(self.run,self.release,self.resolved)
+
+    def test_random_measurement_overrides_only_stream_and_labels_n1_descriptive(self):
+        result=self.resolve()
+        self.assertEqual(result["origin"],self.resolved["origin"])
+        self.assertEqual(result["generation_case"],"fixture")
+        self.assertEqual(result["sample_kind"],"random-boosted-on-shell-descriptive")
+        self.assertEqual(result["seed"],20261021)
+        self.assertEqual(result["center_of_mass_energy_gev"],1.)
+
+    def test_grafted_case_and_unknown_override_rejected(self):
+        self.run["measurement_authority"]["case"]="other"
+        with self.assertRaisesRegex(ValueError,"grafted"):self.resolve()
+        self.run["measurement_authority"]["case"]="fixture"
+        self.run["measurement_authority"]["kind"]="arbitrary-points"
+        with self.assertRaisesRegex(ValueError,"Unknown"):self.resolve()
+
+    def test_model_or_mass_or_source_authority_drift_rejected(self):
+        case=self.configuration["cases"]["fixture"]
+        case["masses"]=[0.,0.,2.]
+        with self.assertRaisesRegex(ValueError,"process/masses/origin"):self.resolve()
+        case["masses"]=[0.,0.,1.];case["definition"]["process"]="another process"
+        with self.assertRaisesRegex(ValueError,"process/masses/origin"):self.resolve()
+
+    def test_card_drift_and_denominator_drift_rejected(self):
+        case=self.configuration["cases"]["fixture"];saved=case["physical_card"]
+        case["physical_card"]=self.put(self.root/"other-card.dat","another physical card\n")
+        with self.assertRaisesRegex(ValueError,"physical card"):self.resolve()
+        case["physical_card"]=saved;self.manifest["cases"]["fixture"]["points_count"]=2
+        with self.assertRaisesRegex(ValueError,"denominator/seed"):self.resolve()
 
 
 if __name__=="__main__":unittest.main()

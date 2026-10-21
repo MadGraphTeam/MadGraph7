@@ -1,0 +1,187 @@
+{
+  "payload_bytes": 972627,
+  "payload_files": 43,
+  "payloads": {
+    "README.md": {
+      "bytes": 4265,
+      "sha256": "30432f74aa2e701c1f700957fb187aeecce072443c9776892d46cf0066ba4503"
+    },
+    "configuration.json": {
+      "bytes": 32162,
+      "sha256": "2e349c9e2cdc7629b7b03c8efc2f68e3420ce065bf24de608ed90916811fcccc"
+    },
+    "execution-record.json": {
+      "bytes": 2529,
+      "sha256": "25c5d4c951e494a8b5566c2b0647fb74e18dffb87f6e5484d49e504e5702f40b"
+    },
+    "logs/generate-actual-v2.log": {
+      "bytes": 147,
+      "sha256": "9805245529522fa7a9a5258d79e92e91c8813e0a2159fcf4beb68d060622ea74"
+    },
+    "logs/software-tests-closure-v1.log": {
+      "bytes": 118,
+      "sha256": "825873d1dabbba02b5dd8af3070490a85120ad506fe52f6c6e8b7c863be48f3c"
+    },
+    "logs/verify-actual-v2.log": {
+      "bytes": 60,
+      "sha256": "d58f14f9f26e855a2684e3f8ed993080365949e283ad4ac4b4e6da6d9914c287"
+    },
+    "manifest.json": {
+      "bytes": 24536,
+      "sha256": "b0164afb38d02ff1135155e676c09ffa3528fa27c45df1a48632018ae136768c"
+    },
+    "points/ew-1.dat": {
+      "bytes": 29270,
+      "sha256": "1070a621ef960e35a078db81b770ff7a777cfb3eb927928a15a9ca75fbd206be"
+    },
+    "points/ew-1.json": {
+      "bytes": 1885,
+      "sha256": "3e49dfef56af55d80b62982426e2b2bf92eec5914be1ead5eaec7a0eed174e52"
+    },
+    "points/ew-2.dat": {
+      "bytes": 38804,
+      "sha256": "a560af70540b8cf0f0a954690e12629dcf1ab88a39662f6f1f58a63c14508a1b"
+    },
+    "points/ew-2.json": {
+      "bytes": 1891,
+      "sha256": "ef30a49c3993b1f1ad2b61927c82321422be5a099c06a07c51c09cb552b8e911"
+    },
+    "points/ew-3.dat": {
+      "bytes": 48556,
+      "sha256": "c7ac6d1855e3105d2c4957841a5dc201770893063284b59c2e105ae7e5aa1b88"
+    },
+    "points/ew-3.json": {
+      "bytes": 1939,
+      "sha256": "7eda1a0dcc9979ccb5186ddbae9248cedba5edc9c234830df2d0eb65799466b8"
+    },
+    "points/ew-4.dat": {
+      "bytes": 58292,
+      "sha256": "29522a1c02a6d81e4aa267eb8fd45e749048e276f09092e4c634ca03f42e926f"
+    },
+    "points/ew-4.json": {
+      "bytes": 1957,
+      "sha256": "c5f56861f71a5fc49d6b153a945559eaa1ac01adc06527b16fd304f6d0c3dcc6"
+    },
+    "points/qcd-1.dat": {
+      "bytes": 29296,
+      "sha256": "fbbc45b0e89dd163d8eb56a07ad9672d95d2b88ae23319b48d2adf6ebffc220c"
+    },
+    "points/qcd-1.json": {
+      "bytes": 1876,
+      "sha256": "797cbc142a8d13543df23e5b38b6651ae8be64f69d31114917c48506daa94899"
+    },
+    "points/qcd-2.dat": {
+      "bytes": 38804,
+      "sha256": "4d0a64001d79f742013f93cf8fcb502704af01d37f3ef16f3bde11526733d47f"
+    },
+    "points/qcd-2.json": {
+      "bytes": 1870,
+      "sha256": "4a7884a568c8be2879d5ca2f9af25ee9b8df010919f0349c4063bf7b45e8c015"
+    },
+    "points/qcd-3.dat": {
+      "bytes": 48561,
+      "sha256": "2ff26146d6cf4d82d595bf822049231fe2b22ec2d9a0e397717bceaa36217ebd"
+    },
+    "points/qcd-3.json": {
+      "bytes": 1926,
+      "sha256": "be657b9ffe8c412a563548177c0045c0c8e22bd2631e289134653dc3036e770c"
+    },
+    "points/qcd-4.dat": {
+      "bytes": 58321,
+      "sha256": "795a8a9c581601cf92cc0c550e247bfcda5cae7024a51c02d2a4c5426cc26bdc"
+    },
+    "points/qcd-4.json": {
+      "bytes": 1955,
+      "sha256": "20ebde8e5ccad5f8495abce0f94850a331343560ac38225f5c02a67e536318a4"
+    },
+    "points/stress-ew-4-uu-4l.dat": {
+      "bytes": 58276,
+      "sha256": "675947d4da4828a973ddc8c3c32b3fa37709cd49478c45ed05f4efaac2710630"
+    },
+    "points/stress-ew-4-uu-4l.json": {
+      "bytes": 2322,
+      "sha256": "8149ea37abedd044004e13683e5b931e03e2e558d84abb8811320f9ae27941db"
+    },
+    "points/stress-qcd-4-gg-ttgg.dat": {
+      "bytes": 58312,
+      "sha256": "027029e542dbadba28129730ee4a813a2d79528a8bd49e3710bdc6cc5d916107"
+    },
+    "points/stress-qcd-4-gg-ttgg.json": {
+      "bytes": 2324,
+      "sha256": "00e16603bc2131dbfa2ea01751fe45b147aac9f12bcbcf2b7e42bd6f787d9189"
+    },
+    "points/supplement-gg-h.dat": {
+      "bytes": 29246,
+      "sha256": "284bc785c56df9537be05f9d3c2ae55cefff7f6d2e0c308bcaf422625a4df3c4"
+    },
+    "points/supplement-gg-h.json": {
+      "bytes": 2463,
+      "sha256": "57deab0a0970ee071300b41e7ff1538be042d818438f6f7bb285520a9c89ce7b"
+    },
+    "points/supplement-gg-hh.dat": {
+      "bytes": 38804,
+      "sha256": "78d9f0c963e674ec5af7171084868ab9faa67634b8d86180e7b45dd8145d4da1"
+    },
+    "points/supplement-gg-hh.json": {
+      "bytes": 2461,
+      "sha256": "5e7fcb843468c62653371676dd359138df064dc173a093e9a4d69ee5512e3e12"
+    },
+    "provenance.json": {
+      "bytes": 8194,
+      "sha256": "5567c641744ba6f1b8b41d7e51d45fa1b72114f4ed3d60db509ea8d99cd2990f"
+    },
+    "software-test-source.py": {
+      "bytes": 16088,
+      "sha256": "70c55ca324d0ffacf2bb58906bc82ea04ddb3c1bafb289303a02af7ff8f74b39"
+    },
+    "sources/madgraph/__init__.py": {
+      "bytes": 5852,
+      "sha256": "86145a5427f4ecd93636ff1a33a812676b0fea87b496a1f02ef94cf298f8d925"
+    },
+    "sources/madgraph/various/__init__.py": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "sources/madgraph/various/rambo.py": {
+      "bytes": 8120,
+      "sha256": "3b6945657ef995d697a23c55a2ca58725a966717c07fd25f1645e90df8781653"
+    },
+    "sources/tools/ninjars_benchmark.py": {
+      "bytes": 49893,
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237"
+    },
+    "sources/tools/ninjars_benchmark_policy_v2.py": {
+      "bytes": 53416,
+      "sha256": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a"
+    },
+    "sources/tools/ninjars_benchmark_references_v2.py": {
+      "bytes": 18761,
+      "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c"
+    },
+    "sources/tools/ninjars_benchmark_workers.py": {
+      "bytes": 44582,
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca"
+    },
+    "sources/tools/ninjars_dp_random_points.py": {
+      "bytes": 24433,
+      "sha256": "d2c4d033aa39a1e64efe026f3f8cca989564d429d762c2017c8df31805b209ce"
+    },
+    "sources/tools/ninjars_dp_stability.py": {
+      "bytes": 59202,
+      "sha256": "1a786a23f5985520c70bbd1d695f7c1fe77ca3800c7b617aec1a1354f5c81b6c"
+    },
+    "sources/tools/ninjars_supplement_v2.py": {
+      "bytes": 60858,
+      "sha256": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8"
+    }
+  },
+  "schema": "ninjars-random-point-publication-inventory-v2",
+  "scope": "Text-only publication of independent random DP point authority, Python software proof and provenance; no numerical amplitude or stability acceptance. Inventory excludes itself.",
+  "separate_held_v1": {
+    "bytes": 229184,
+    "configuration_sha256": "f2b3cbfa5fc8d18a7ae7195669291e89f12ce431d61c8c79774802ecedb738c5",
+    "files": 7,
+    "generated_point_files": 0,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v1"
+  }
+}

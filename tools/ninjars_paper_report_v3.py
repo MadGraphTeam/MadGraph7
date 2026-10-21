@@ -185,19 +185,30 @@ def ninja_ratios(numerator, denominator):
     return rows
 
 
-def figure_data(cases, thresholds, estimator="combined"):
+def selected_tools(requested_tools=None):
+    requested = [1, 6, 7, 8] if requested_tools is None else requested_tools
+    require(isinstance(requested, (list, tuple)) and all(type(tool) is int for tool in requested) and
+            list(requested) in ([1, 6, 7, 8], [6, 8]), "Unsupported or reordered requested tool selection")
+    return {str(tool): TOOLS[str(tool)] for tool in requested}
+
+
+def figure_data(cases, thresholds, estimator="combined", requested_tools=None):
     """Prepare plotting arrays; production summaries are revalidated upstream."""
     prepared = {}
     declared = list(thresholds)
+    selection = selected_tools(requested_tools)
     # Use the actual jump positions, rather than smoothing a coarsely sampled CDF.
     tail([{"point": 0, "classification": "all_zero", "delta": 0}], declared)
     for cid, case in cases.items():
+        require(selected_tools(case.get("requested_tools", requested_tools)) == selection,
+                "Case and figure requested tool selections differ")
+        require(set(case.get("tools", {})) <= set(selection), "Undeclared tool observations in selected figure")
         grid = sorted(set(declared + [row["delta"] for tool in case.get("tools", {}).values()
             for row in tool.get("scores", {}).get(estimator, [])
             if row.get("classification") == "finite" and type(row.get("delta")) in (int, float)
             and math.isfinite(row["delta"]) and declared[0] < row["delta"] < declared[-1]]))
         tools = {}
-        for backend in TOOLS:
+        for backend in selection:
             tool = case.get("tools", {}).get(backend)
             if tool is None or tool.get("status") in ("pending", "unavailable"):
                 tools[backend] = {"status": "pending" if tool is None else tool["status"], "tail": None, "ratio": None}
@@ -211,6 +222,7 @@ def figure_data(cases, thresholds, estimator="combined"):
             if value["tail"] is not None and ninja is not None:
                 value["ratio"] = ninja_ratios(value["tail"], ninja)
         prepared[cid] = {"process": case.get("process", cid), "N": case["N"],
+                         "requested_tools": [int(tool) for tool in selection],
                          "group": case.get("group", "unspecified"), "declared_thresholds": declared,
                          "sample_kind": case.get("sample_kind", "fixed pilot stream"),
                          "helicity": case.get("helicity", "not supplied"), "tools": tools}
@@ -218,11 +230,12 @@ def figure_data(cases, thresholds, estimator="combined"):
 
 
 def plot_stability(cases, thresholds, destination, estimator="combined", title="DP-only self-consistency",
-                   software_fixture=False):
+                   software_fixture=False, requested_tools=None):
     """Write vector plots with zero-tail bounds and real Ninja-denominator gaps."""
     destination = path(destination)
     require(not destination.exists(), "Preserve existing figures; choose a new destination")
-    data = figure_data(cases, thresholds, estimator)
+    selection = selected_tools(requested_tools)
+    data = figure_data(cases, thresholds, estimator, requested_tools)
     require(data, "No stability cases to plot")
     cache = ROOT / ".ninjars-build/paper-report-mpl"
     cache.mkdir(parents=True, exist_ok=True)
@@ -242,7 +255,7 @@ def plot_stability(cases, thresholds, destination, estimator="combined", title="
             for index, (cid, case) in enumerate(data.items()):
                 inner = outer[index//columns, index%columns].subgridspec(2, 1, height_ratios=(3, 1), hspace=.08)
                 top = fig.add_subplot(inner[0]); ratio = fig.add_subplot(inner[1], sharex=top)
-                for backend, label in TOOLS.items():
+                for backend, label in selection.items():
                     tool = case["tools"][backend]
                     if tool["tail"] is None:
                         top.plot([], [], color=COLORS[backend], label=label + " (" + tool["status"] + ")")
@@ -287,6 +300,7 @@ def plot_stability(cases, thresholds, destination, estimator="combined", title="
         else:
             os.environ["MPLCONFIGDIR"] = previous_cache
     return {"schema": "ninjars-dp-stability-figure-v1", "estimator": estimator, "cases": data,
+            "requested_tools": [int(tool) for tool in selection],
             "svg_sha256": hashlib.sha256(destination.read_bytes()).hexdigest(), "software_fixture": software_fixture,
             "qualification_eligible": False}
 
@@ -300,13 +314,18 @@ def component(filename, module_name, schema, expected, inputs):
     return value
 
 
-def table_rows(timing, inventories):
+def table_rows(timing, inventories, numerator=None):
     """Preserve physical rejection/status counts alongside measured elapsed cost."""
     cases = {} if timing is None else timing["cases"]
+    construction = {} if numerator is None else numerator["cases"]
+    require(numerator is None or timing is not None and set(construction) == set(cases),
+            "Construction cases must match the selected full timing study")
     return {cid: {"generated": inventories.get(cid, {"status": "pending"}),
                   "single_helicity": cases.get(cid, {"status": "pending"}),
-                  "numerator_dp": timing.get("numerator_dp", {"status": "pending"}) if timing else {"status": "pending"},
-                  "remaining": timing.get("remaining", {"status": "pending"}) if timing else {"status": "pending"},
+                  "numerator_dp": construction[cid] if cid in construction else
+                      timing.get("numerator_dp", {"status": "pending"}) if timing else {"status": "pending"},
+                  "remaining": construction[cid]["remaining"] if cid in construction else
+                      timing.get("remaining", {"status": "pending"}) if timing else {"status": "pending"},
                   "scope": "Single-helicity color-summed/rescue-on totals; failed-physics cost remains failed. Separate from full-helicity acceptance timing."}
             for cid in sorted(set(cases) | set(inventories))}
 
@@ -319,16 +338,18 @@ def plot_groups(snapshot, destination, software_fixture=False):
             dp.get("rescue_enabled") is False, "No actual DP-only summary")
     require(software_fixture or dp.get("physical_qualified") is True,
             "Physical figures require the DP producer's qualified runtime/process-parity authority")
+    selection = [int(tool) for tool in selected_tools(dp.get("requested_tools"))]
     groups = {}
     for cid, case in dp["cases"].items():
         group = case.get("group", "unspecified")
         require(re.fullmatch(r"[A-Za-z0-9_-]+", group) is not None, "Unsafe figure group name")
         groups.setdefault(group, {})[cid] = case
     return {group: plot_stability(cases, dp["thresholds"], path(destination) / (group + ".svg"),
-                software_fixture=software_fixture) for group, cases in groups.items()}
+                software_fixture=software_fixture, requested_tools=selection) for group, cases in groups.items()}
 
 
-def build_snapshot(timing=None, stability=None, expected=None, inventory=None):
+def build_snapshot(timing=None, stability=None, expected=None, inventory=None, numerator=None):
+    require(numerator is None or timing is not None, "Construction diagnostics require a selected full timing result")
     inputs = Inputs()
     timed = component(timing, "ninjars_paper_timing_v3", "ninjars-paper-timing-summary-v1",
                       expected["runtime_identity_sha256"] if expected else None, inputs) if timing else None
@@ -337,13 +358,23 @@ def build_snapshot(timing=None, stability=None, expected=None, inventory=None):
     if dp is not None:
         require(dp.get("stream") == "forced_dp_self_consistency" and dp.get("rescue_enabled") is False,
                 "DP-only figures require the actual unrescued DP stream")
+    construction = component(numerator, "ninjars_paper_numerator_v3", "ninjars-paper-construction-summary-v1",
+                             expected["runtime_identity_sha256"] if expected else None, inputs) if numerator else None
+    if construction is not None:
+        parent = construction.get("ordinary_result")
+        require(isinstance(parent, dict) and isinstance(parent.get("path"), str) and
+                isinstance(parent.get("sha256"), str) and parent == timed.get("source"),
+                "Construction parent must be the exact selected full timing result")
+        require(construction.get("acceptance_eligible") is False,
+                "Construction diagnostics cannot claim physical timing acceptance")
     inventories = {}
     if inventory is not None:
         definitions = json.loads(retain(inventory, inputs))
         for cid, definition in definitions.items():
             require(isinstance(cid, str) and isinstance(definition, dict), "Invalid process-inventory selection")
             inventories[cid] = process_inventory(**definition, inputs=inputs)
-    return {"schema": SCHEMA, "timing": timed, "stability": dp, "tables": table_rows(timed, inventories),
+    return {"schema": SCHEMA, "timing": timed, "stability": dp, "numerator": construction,
+            "tables": table_rows(timed, inventories, construction),
             "inputs_sha256": dict(sorted(inputs.items())),
             "qualification_eligible": False, "scope": "Paper-analogue diagnostic components; the complete full-helicity/rescue-on acceptance gate remains separate."}
 
@@ -352,6 +383,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timing", type=Path)
     parser.add_argument("--stability", type=Path)
+    parser.add_argument("--numerator", type=Path, help="Validated DP construction result tied to the exact selected timing study")
     parser.add_argument("--expected", type=Path)
     parser.add_argument("--inventory", type=Path, help="Case-to-generated-file selection for static process counts")
     parser.add_argument("--figures", type=Path, help="New destination directory for DP-only SVG groups")
@@ -360,7 +392,7 @@ def main():
     target = path(args.output)
     require(not target.exists(), "Preserve prior paper report snapshots")
     expected = json.loads(path(args.expected).read_text()) if args.expected else None
-    snapshot = build_snapshot(args.timing, args.stability, expected, args.inventory)
+    snapshot = build_snapshot(args.timing, args.stability, expected, args.inventory, args.numerator)
     if args.figures:
         require(not path(args.figures).exists(), "Preserve prior figure directories")
         snapshot["figures"] = plot_groups(snapshot, args.figures)

@@ -1,0 +1,9 @@
+# Separate DP construction software evidence
+
+The new construction producer and reader implement a separate DP numerator/Born/counterterm construction diagnostic. It uses the same selected physical helicity and 100-point stream as a future completed ordinary four-tool single-helicity run. Its private code skips loop reduction, requests direct DP, and disables forced stability and helicity double-checking only for this diagnostic. It requires status 110 and accuracy -1 on every measured call; these are not physical amplitude or stability results.
+
+Attempt 1 retains the real initial import failure. Attempts 2–3 pass the initial 14 tests. Attempt 4 passes all 20 tests, adding complete raw-inventory custody, validated ordinary-parent metadata, and mocked calibration/run/startup cleanup and raw-retention controls. Test data are synthetic; no Worker, generated executable, reducer, MP or perf ran.
+
+Two representative private qcd-1 and ggHH compile/link-only probes are separately retained under `paper-numerator-compile-proof-v1`. Their producer source is the exact attempt-3 snapshot. The final reader-only delta and added tests are retained here; every source/card/driver/collection transformation function is byte-identical, as recorded in readiness.json. No additional compile probe is needed for that delta.
+
+Actual collection is held. It requires a completed ordinary timing result, its actual warmed Ninja6 parent/filter, a fresh valid construction specification and explicit root CPU207 handoff. No calibration is promoted to a measured block. The consumer must bind the exact validated ordinary result path and SHA. A full-evaluation minus construction column is labelled remaining full-evaluation work, with independent uncertainty and negative results preserved; it is never called pure reduction or used for the full-sum performance gate.

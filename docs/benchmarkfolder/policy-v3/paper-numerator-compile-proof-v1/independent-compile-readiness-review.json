@@ -1,0 +1,74 @@
+{
+  "utc": "2026-10-21T19:05:42.453607+00:00",
+  "auditor_scope": "Read-only source/AST/hash/process-ledger audit. No test rerun, compiler, Worker, executable, SETPARA, reduction or MP call by auditor.",
+  "verdict": "PASS within declared preparation scope",
+  "numerical_acceptance_claimed": false,
+  "schema": "independent-paper-construction-compile-readiness-v1",
+  "inputs": [
+    {
+      "path": "docs/benchmarkfolder/policy-v3/paper-numerator-compile-proof-v1/status.json",
+      "sha256": "a92a813a1fec291cb0bd00bcc9a0f1b2a5e61b749bcbfbdb5d691b9938f5dffc",
+      "bytes": 2046
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/paper-numerator-compile-proof-v1/compile-only.py",
+      "sha256": "c8db4f6483fd100d3996d9f1ba8e4d60b9749e4ef7f1ab16630c01bb19dfd931",
+      "bytes": 4209
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/paper-numerator-compile-proof-v1/process-ledger.jsonl",
+      "sha256": "1a930499ed78d24d136d39f40c3f6325ee6a0bf19891478c2627434f20f9df45",
+      "bytes": 3158
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/paper-numerator-compile-proof-v1/cleanup.json",
+      "sha256": "3363fa6e29bb97079e5c4ebf97d8718288bd839ae49620ae6bedf9f2fd831294",
+      "bytes": 961
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/paper-numerator-software-proof-v1/attempt-3-sources/ninjars_paper_numerator_v3.py",
+      "sha256": "2d46a9495f3a817e7438e0c246639f524ab29093b4fe05988769d1624f60410f",
+      "bytes": 23773
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/paper-numerator-software-proof-v1/readiness.json",
+      "sha256": "a6587f8585a4a1e6170a9199d1d033a9901efc7f5a05e2df9c2bd9c652c9cc0d",
+      "bytes": 4183
+    }
+  ],
+  "compiled_source_sha256": "2d46a9495f3a817e7438e0c246639f524ab29093b4fe05988769d1624f60410f",
+  "current_reader_sha256": "6904b88f27b0fc32bb46fc84f5949dd9e51edc437f0016abc9e3af98a248ca25",
+  "actual_live_file_hash_checks": 511,
+  "six_owned_copy_make_groups_reaped_exit0_and_absent": true,
+  "observations": [
+    {
+      "case": "qcd-1",
+      "source_delta": [
+        "SubProcesses/P0_uux_z/check_sa.f",
+        "SubProcesses/P0_uux_z/loop_matrix.f"
+      ],
+      "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "executable_sha256": "a98a60575cb286d8e3d0b38517e967d5f470e44870ae5bf00ffc4b529027e8a0",
+      "compile_only": true,
+      "ready_for_numerical": false,
+      "filter_created": false
+    },
+    {
+      "case": "supplement-gg-hh",
+      "source_delta": [
+        "SubProcesses/P0_gg_hh/check_sa.f",
+        "SubProcesses/P0_gg_hh/loop_matrix.f"
+      ],
+      "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "executable_sha256": "92c0424e46e40ada9839c2a468db0dd9ebf66e8d0f8d39f3cfebd1e109f03086",
+      "compile_only": true,
+      "ready_for_numerical": false,
+      "filter_created": false
+    }
+  ],
+  "limits": [
+    "Exactly two compile/link-only probes, no executable invocation, initialized filter or valid numerical parent.",
+    "Source2d46 was compiled; current6904 differs only in reader custody/ordinary-result summary, with ten source/build/math functions independently byte-matched.",
+    "Compilation does not establish numerical correctness, initialization cost, construction timing or the1.05 performance gate."
+  ]
+}

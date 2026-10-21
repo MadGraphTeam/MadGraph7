@@ -1,0 +1,23 @@
+{
+  "command": [
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/nrs8-qcd1-parity-final-settings-v1/outputs/8-observed/SubProcesses/P0_uux_z/check",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-1.dat",
+    "8",
+    "-1",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/nrs8-qcd1-parity-final-settings-v1/8-observed.raw"
+  ],
+  "cwd": ".benchmark-work/paper-dp-stability-20261021-v1/nrs8-qcd1-parity-final-settings-v1/outputs/8-observed/SubProcesses/P0_uux_z",
+  "exit_code": 0,
+  "seconds_diagnostic_only": 0.06642137293238193,
+  "pid": 3702544,
+  "reaped_at_record": true,
+  "failure": null,
+  "stdout": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/nrs8-qcd1-parity-final-settings-v1/8-observed-execute.stdout",
+    "sha256": "1ffeb35dafa97052bb576f421a50acb3633e2d9999010ad7b922c724b95c67fe"
+  },
+  "stderr": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/nrs8-qcd1-parity-final-settings-v1/8-observed-execute.stderr",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

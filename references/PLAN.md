@@ -1001,3 +1001,47 @@ record its provenance and inspect scripts before running or adapting them.
   Use separate Python processes and work/report trees, exact single-backend
   selectors, one thread, and owned child groups. No concurrent final timing or
   profiling is permitted; those phases require a new explicit resource handoff.
+
+
+### Latest user steering — 21 October 2026
+
+The remaining benchmark and report work focuses on Ninja (6) and NinjaRS (8).
+Do not start new CutTools or COLLIER investigations, benchmarks, debugging or
+issue work. Preserve previously collected evidence with its original scope.
+The integration stays generic and legacy behavior remains covered by the
+existing software checks.
+
+Use the actual MadGraph7 `profile` CLI with explicit backend selection to
+measure its reduction stage and total MadLoop time per phase-space point.
+Document the precise timing boundary and keep this stage study distinct from
+the full warmed original-Ninja/NinjaRS performance gate. Preserve exact command
+cards, settings, source/runtime identities, seeds, raw outputs and repetitions.
+Use only Standard Model processes, including the agreed loop-induced and
+challenging cases. Add seeded random-point native-DP stability distributions;
+retain the fixed100-point correctness sample separately, with true denominators
+and explicit failure/zero-event treatment.
+
+Make timing and stability plots analogous to Figures1–3 of
+https://arxiv.org/pdf/1604.01363. The latest visual reference is
+https://github.com/alphal00p/ninjars/blob/main/docs/benchmark/benchmark.pdf:
+large readable coloured cells, detailed numerical information, elegant tables
+and legible scientific plots. Inspect its actual PDF/Typst source, retain
+attribution, and compile/visually check the final benchmark.pdf reproducibly.
+Do not open a PR; push the tested final branch and await further instructions.
+
+Resource isolation: normal/rescued NinjaRS numerical work retains the sole
+Symbolica/MP slot on CPU190. A separate, audited native-f64-only NinjaRS study
+may use CPU12, with private GNU link guards aborting every MP/compensated call
+from initialization onward. Native f64 context/master code has no Symbolica
+state or shared runtime file cache. Correctness-only optimized Ninja6 can use
+CPU14 with guards rejecting NinjaRS numerical entry. These parallel controls
+are not timing acceptance; final timings require the quiet reserved CPU207.
+
+Keep the validated numerical source at `856e76e669618ec8d0f799b9c8e6f86819dcd986`
+through its correctness, focused controls and full-sum core/loop timing runs.
+Their source guards bind the complete generator and vendor trees. Prepare the
+CLI stability correction and timing metadata privately, then apply, test and
+push them after those runs release the source hold. Run the requested actual
+CLI profiles against that committed diagnostic revision, retaining the separate
+source identities in the report. Do not weaken the guards or relabel earlier
+measurements to accommodate the later CLI change.

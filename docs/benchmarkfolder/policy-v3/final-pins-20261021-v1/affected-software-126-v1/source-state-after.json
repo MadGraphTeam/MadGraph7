@@ -1,0 +1,431 @@
+{
+  "all_six_process_groups_reaped": true,
+  "all_unchanged": true,
+  "files": {
+    "Template/loop_material/StandAlone/Cards/MadLoopParams.dat": {
+      "expected": "b643cd5f0b8dd11533c02430daa906473f6183cb38b99a12244425ff0ff9ef25",
+      "handed_over_root_after": "b643cd5f0b8dd11533c02430daa906473f6183cb38b99a12244425ff0ff9ef25",
+      "private_after": "b643cd5f0b8dd11533c02430daa906473f6183cb38b99a12244425ff0ff9ef25"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/README.md": {
+      "expected": "30432f74aa2e701c1f700957fb187aeecce072443c9776892d46cf0066ba4503",
+      "handed_over_root_after": "30432f74aa2e701c1f700957fb187aeecce072443c9776892d46cf0066ba4503",
+      "private_after": "30432f74aa2e701c1f700957fb187aeecce072443c9776892d46cf0066ba4503"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/configuration.json": {
+      "expected": "2e349c9e2cdc7629b7b03c8efc2f68e3420ce065bf24de608ed90916811fcccc",
+      "handed_over_root_after": "2e349c9e2cdc7629b7b03c8efc2f68e3420ce065bf24de608ed90916811fcccc",
+      "private_after": "2e349c9e2cdc7629b7b03c8efc2f68e3420ce065bf24de608ed90916811fcccc"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/execution-record.json": {
+      "expected": "25c5d4c951e494a8b5566c2b0647fb74e18dffb87f6e5484d49e504e5702f40b",
+      "handed_over_root_after": "25c5d4c951e494a8b5566c2b0647fb74e18dffb87f6e5484d49e504e5702f40b",
+      "private_after": "25c5d4c951e494a8b5566c2b0647fb74e18dffb87f6e5484d49e504e5702f40b"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/inventory.json": {
+      "expected": "a49474287623a4cfd62531e16f6f3dd454eab3095d25407e4166f21774aa3c55",
+      "handed_over_root_after": "a49474287623a4cfd62531e16f6f3dd454eab3095d25407e4166f21774aa3c55",
+      "private_after": "a49474287623a4cfd62531e16f6f3dd454eab3095d25407e4166f21774aa3c55"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/logs/generate-actual-v2.log": {
+      "expected": "9805245529522fa7a9a5258d79e92e91c8813e0a2159fcf4beb68d060622ea74",
+      "handed_over_root_after": "9805245529522fa7a9a5258d79e92e91c8813e0a2159fcf4beb68d060622ea74",
+      "private_after": "9805245529522fa7a9a5258d79e92e91c8813e0a2159fcf4beb68d060622ea74"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/logs/software-tests-closure-v1.log": {
+      "expected": "825873d1dabbba02b5dd8af3070490a85120ad506fe52f6c6e8b7c863be48f3c",
+      "handed_over_root_after": "825873d1dabbba02b5dd8af3070490a85120ad506fe52f6c6e8b7c863be48f3c",
+      "private_after": "825873d1dabbba02b5dd8af3070490a85120ad506fe52f6c6e8b7c863be48f3c"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/logs/verify-actual-v2.log": {
+      "expected": "d58f14f9f26e855a2684e3f8ed993080365949e283ad4ac4b4e6da6d9914c287",
+      "handed_over_root_after": "d58f14f9f26e855a2684e3f8ed993080365949e283ad4ac4b4e6da6d9914c287",
+      "private_after": "d58f14f9f26e855a2684e3f8ed993080365949e283ad4ac4b4e6da6d9914c287"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/manifest.json": {
+      "expected": "b0164afb38d02ff1135155e676c09ffa3528fa27c45df1a48632018ae136768c",
+      "handed_over_root_after": "b0164afb38d02ff1135155e676c09ffa3528fa27c45df1a48632018ae136768c",
+      "private_after": "b0164afb38d02ff1135155e676c09ffa3528fa27c45df1a48632018ae136768c"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-1.dat": {
+      "expected": "1070a621ef960e35a078db81b770ff7a777cfb3eb927928a15a9ca75fbd206be",
+      "handed_over_root_after": "1070a621ef960e35a078db81b770ff7a777cfb3eb927928a15a9ca75fbd206be",
+      "private_after": "1070a621ef960e35a078db81b770ff7a777cfb3eb927928a15a9ca75fbd206be"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-1.json": {
+      "expected": "3e49dfef56af55d80b62982426e2b2bf92eec5914be1ead5eaec7a0eed174e52",
+      "handed_over_root_after": "3e49dfef56af55d80b62982426e2b2bf92eec5914be1ead5eaec7a0eed174e52",
+      "private_after": "3e49dfef56af55d80b62982426e2b2bf92eec5914be1ead5eaec7a0eed174e52"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-2.dat": {
+      "expected": "a560af70540b8cf0f0a954690e12629dcf1ab88a39662f6f1f58a63c14508a1b",
+      "handed_over_root_after": "a560af70540b8cf0f0a954690e12629dcf1ab88a39662f6f1f58a63c14508a1b",
+      "private_after": "a560af70540b8cf0f0a954690e12629dcf1ab88a39662f6f1f58a63c14508a1b"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-2.json": {
+      "expected": "ef30a49c3993b1f1ad2b61927c82321422be5a099c06a07c51c09cb552b8e911",
+      "handed_over_root_after": "ef30a49c3993b1f1ad2b61927c82321422be5a099c06a07c51c09cb552b8e911",
+      "private_after": "ef30a49c3993b1f1ad2b61927c82321422be5a099c06a07c51c09cb552b8e911"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-3.dat": {
+      "expected": "c7ac6d1855e3105d2c4957841a5dc201770893063284b59c2e105ae7e5aa1b88",
+      "handed_over_root_after": "c7ac6d1855e3105d2c4957841a5dc201770893063284b59c2e105ae7e5aa1b88",
+      "private_after": "c7ac6d1855e3105d2c4957841a5dc201770893063284b59c2e105ae7e5aa1b88"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-3.json": {
+      "expected": "7eda1a0dcc9979ccb5186ddbae9248cedba5edc9c234830df2d0eb65799466b8",
+      "handed_over_root_after": "7eda1a0dcc9979ccb5186ddbae9248cedba5edc9c234830df2d0eb65799466b8",
+      "private_after": "7eda1a0dcc9979ccb5186ddbae9248cedba5edc9c234830df2d0eb65799466b8"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-4.dat": {
+      "expected": "29522a1c02a6d81e4aa267eb8fd45e749048e276f09092e4c634ca03f42e926f",
+      "handed_over_root_after": "29522a1c02a6d81e4aa267eb8fd45e749048e276f09092e4c634ca03f42e926f",
+      "private_after": "29522a1c02a6d81e4aa267eb8fd45e749048e276f09092e4c634ca03f42e926f"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-4.json": {
+      "expected": "c5f56861f71a5fc49d6b153a945559eaa1ac01adc06527b16fd304f6d0c3dcc6",
+      "handed_over_root_after": "c5f56861f71a5fc49d6b153a945559eaa1ac01adc06527b16fd304f6d0c3dcc6",
+      "private_after": "c5f56861f71a5fc49d6b153a945559eaa1ac01adc06527b16fd304f6d0c3dcc6"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-1.dat": {
+      "expected": "fbbc45b0e89dd163d8eb56a07ad9672d95d2b88ae23319b48d2adf6ebffc220c",
+      "handed_over_root_after": "fbbc45b0e89dd163d8eb56a07ad9672d95d2b88ae23319b48d2adf6ebffc220c",
+      "private_after": "fbbc45b0e89dd163d8eb56a07ad9672d95d2b88ae23319b48d2adf6ebffc220c"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-1.json": {
+      "expected": "797cbc142a8d13543df23e5b38b6651ae8be64f69d31114917c48506daa94899",
+      "handed_over_root_after": "797cbc142a8d13543df23e5b38b6651ae8be64f69d31114917c48506daa94899",
+      "private_after": "797cbc142a8d13543df23e5b38b6651ae8be64f69d31114917c48506daa94899"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-2.dat": {
+      "expected": "4d0a64001d79f742013f93cf8fcb502704af01d37f3ef16f3bde11526733d47f",
+      "handed_over_root_after": "4d0a64001d79f742013f93cf8fcb502704af01d37f3ef16f3bde11526733d47f",
+      "private_after": "4d0a64001d79f742013f93cf8fcb502704af01d37f3ef16f3bde11526733d47f"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-2.json": {
+      "expected": "4a7884a568c8be2879d5ca2f9af25ee9b8df010919f0349c4063bf7b45e8c015",
+      "handed_over_root_after": "4a7884a568c8be2879d5ca2f9af25ee9b8df010919f0349c4063bf7b45e8c015",
+      "private_after": "4a7884a568c8be2879d5ca2f9af25ee9b8df010919f0349c4063bf7b45e8c015"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-3.dat": {
+      "expected": "2ff26146d6cf4d82d595bf822049231fe2b22ec2d9a0e397717bceaa36217ebd",
+      "handed_over_root_after": "2ff26146d6cf4d82d595bf822049231fe2b22ec2d9a0e397717bceaa36217ebd",
+      "private_after": "2ff26146d6cf4d82d595bf822049231fe2b22ec2d9a0e397717bceaa36217ebd"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-3.json": {
+      "expected": "be657b9ffe8c412a563548177c0045c0c8e22bd2631e289134653dc3036e770c",
+      "handed_over_root_after": "be657b9ffe8c412a563548177c0045c0c8e22bd2631e289134653dc3036e770c",
+      "private_after": "be657b9ffe8c412a563548177c0045c0c8e22bd2631e289134653dc3036e770c"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-4.dat": {
+      "expected": "795a8a9c581601cf92cc0c550e247bfcda5cae7024a51c02d2a4c5426cc26bdc",
+      "handed_over_root_after": "795a8a9c581601cf92cc0c550e247bfcda5cae7024a51c02d2a4c5426cc26bdc",
+      "private_after": "795a8a9c581601cf92cc0c550e247bfcda5cae7024a51c02d2a4c5426cc26bdc"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-4.json": {
+      "expected": "20ebde8e5ccad5f8495abce0f94850a331343560ac38225f5c02a67e536318a4",
+      "handed_over_root_after": "20ebde8e5ccad5f8495abce0f94850a331343560ac38225f5c02a67e536318a4",
+      "private_after": "20ebde8e5ccad5f8495abce0f94850a331343560ac38225f5c02a67e536318a4"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/stress-ew-4-uu-4l.dat": {
+      "expected": "675947d4da4828a973ddc8c3c32b3fa37709cd49478c45ed05f4efaac2710630",
+      "handed_over_root_after": "675947d4da4828a973ddc8c3c32b3fa37709cd49478c45ed05f4efaac2710630",
+      "private_after": "675947d4da4828a973ddc8c3c32b3fa37709cd49478c45ed05f4efaac2710630"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/stress-ew-4-uu-4l.json": {
+      "expected": "8149ea37abedd044004e13683e5b931e03e2e558d84abb8811320f9ae27941db",
+      "handed_over_root_after": "8149ea37abedd044004e13683e5b931e03e2e558d84abb8811320f9ae27941db",
+      "private_after": "8149ea37abedd044004e13683e5b931e03e2e558d84abb8811320f9ae27941db"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/stress-qcd-4-gg-ttgg.dat": {
+      "expected": "027029e542dbadba28129730ee4a813a2d79528a8bd49e3710bdc6cc5d916107",
+      "handed_over_root_after": "027029e542dbadba28129730ee4a813a2d79528a8bd49e3710bdc6cc5d916107",
+      "private_after": "027029e542dbadba28129730ee4a813a2d79528a8bd49e3710bdc6cc5d916107"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/stress-qcd-4-gg-ttgg.json": {
+      "expected": "00e16603bc2131dbfa2ea01751fe45b147aac9f12bcbcf2b7e42bd6f787d9189",
+      "handed_over_root_after": "00e16603bc2131dbfa2ea01751fe45b147aac9f12bcbcf2b7e42bd6f787d9189",
+      "private_after": "00e16603bc2131dbfa2ea01751fe45b147aac9f12bcbcf2b7e42bd6f787d9189"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/supplement-gg-h.dat": {
+      "expected": "284bc785c56df9537be05f9d3c2ae55cefff7f6d2e0c308bcaf422625a4df3c4",
+      "handed_over_root_after": "284bc785c56df9537be05f9d3c2ae55cefff7f6d2e0c308bcaf422625a4df3c4",
+      "private_after": "284bc785c56df9537be05f9d3c2ae55cefff7f6d2e0c308bcaf422625a4df3c4"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/supplement-gg-h.json": {
+      "expected": "57deab0a0970ee071300b41e7ff1538be042d818438f6f7bb285520a9c89ce7b",
+      "handed_over_root_after": "57deab0a0970ee071300b41e7ff1538be042d818438f6f7bb285520a9c89ce7b",
+      "private_after": "57deab0a0970ee071300b41e7ff1538be042d818438f6f7bb285520a9c89ce7b"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/supplement-gg-hh.dat": {
+      "expected": "78d9f0c963e674ec5af7171084868ab9faa67634b8d86180e7b45dd8145d4da1",
+      "handed_over_root_after": "78d9f0c963e674ec5af7171084868ab9faa67634b8d86180e7b45dd8145d4da1",
+      "private_after": "78d9f0c963e674ec5af7171084868ab9faa67634b8d86180e7b45dd8145d4da1"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/supplement-gg-hh.json": {
+      "expected": "5e7fcb843468c62653371676dd359138df064dc173a093e9a4d69ee5512e3e12",
+      "handed_over_root_after": "5e7fcb843468c62653371676dd359138df064dc173a093e9a4d69ee5512e3e12",
+      "private_after": "5e7fcb843468c62653371676dd359138df064dc173a093e9a4d69ee5512e3e12"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/provenance.json": {
+      "expected": "5567c641744ba6f1b8b41d7e51d45fa1b72114f4ed3d60db509ea8d99cd2990f",
+      "handed_over_root_after": "5567c641744ba6f1b8b41d7e51d45fa1b72114f4ed3d60db509ea8d99cd2990f",
+      "private_after": "5567c641744ba6f1b8b41d7e51d45fa1b72114f4ed3d60db509ea8d99cd2990f"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/software-test-source.py": {
+      "expected": "70c55ca324d0ffacf2bb58906bc82ea04ddb3c1bafb289303a02af7ff8f74b39",
+      "handed_over_root_after": "70c55ca324d0ffacf2bb58906bc82ea04ddb3c1bafb289303a02af7ff8f74b39",
+      "private_after": "70c55ca324d0ffacf2bb58906bc82ea04ddb3c1bafb289303a02af7ff8f74b39"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/sources/madgraph/__init__.py": {
+      "expected": "86145a5427f4ecd93636ff1a33a812676b0fea87b496a1f02ef94cf298f8d925",
+      "handed_over_root_after": "86145a5427f4ecd93636ff1a33a812676b0fea87b496a1f02ef94cf298f8d925",
+      "private_after": "86145a5427f4ecd93636ff1a33a812676b0fea87b496a1f02ef94cf298f8d925"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/sources/madgraph/various/__init__.py": {
+      "expected": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "handed_over_root_after": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "private_after": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/sources/madgraph/various/rambo.py": {
+      "expected": "3b6945657ef995d697a23c55a2ca58725a966717c07fd25f1645e90df8781653",
+      "handed_over_root_after": "3b6945657ef995d697a23c55a2ca58725a966717c07fd25f1645e90df8781653",
+      "private_after": "3b6945657ef995d697a23c55a2ca58725a966717c07fd25f1645e90df8781653"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/sources/tools/ninjars_benchmark.py": {
+      "expected": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+      "handed_over_root_after": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+      "private_after": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/sources/tools/ninjars_benchmark_policy_v2.py": {
+      "expected": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a",
+      "handed_over_root_after": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a",
+      "private_after": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/sources/tools/ninjars_benchmark_references_v2.py": {
+      "expected": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c",
+      "handed_over_root_after": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c",
+      "private_after": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/sources/tools/ninjars_benchmark_workers.py": {
+      "expected": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "handed_over_root_after": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "private_after": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/sources/tools/ninjars_dp_random_points.py": {
+      "expected": "d2c4d033aa39a1e64efe026f3f8cca989564d429d762c2017c8df31805b209ce",
+      "handed_over_root_after": "d2c4d033aa39a1e64efe026f3f8cca989564d429d762c2017c8df31805b209ce",
+      "private_after": "d2c4d033aa39a1e64efe026f3f8cca989564d429d762c2017c8df31805b209ce"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/sources/tools/ninjars_dp_stability.py": {
+      "expected": "1a786a23f5985520c70bbd1d695f7c1fe77ca3800c7b617aec1a1354f5c81b6c",
+      "handed_over_root_after": "1a786a23f5985520c70bbd1d695f7c1fe77ca3800c7b617aec1a1354f5c81b6c",
+      "private_after": "1a786a23f5985520c70bbd1d695f7c1fe77ca3800c7b617aec1a1354f5c81b6c"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/sources/tools/ninjars_supplement_v2.py": {
+      "expected": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8",
+      "handed_over_root_after": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8",
+      "private_after": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/loop-execution/loop_pair.py": {
+      "expected": "7bec5833258c4ba6a57e51236aef865e71fd0abe8f41e24f83f5250474a47953",
+      "handed_over_root_after": "7bec5833258c4ba6a57e51236aef865e71fd0abe8f41e24f83f5250474a47953",
+      "private_after": "7bec5833258c4ba6a57e51236aef865e71fd0abe8f41e24f83f5250474a47953"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/loop-execution/prepare.py": {
+      "expected": "61e4cd68be577cc1f2e6bfcfdc4c4e3ca49fe17bc507c9513af19ad5cb82d926",
+      "handed_over_root_after": "61e4cd68be577cc1f2e6bfcfdc4c4e3ca49fe17bc507c9513af19ad5cb82d926",
+      "private_after": "61e4cd68be577cc1f2e6bfcfdc4c4e3ca49fe17bc507c9513af19ad5cb82d926"
+    },
+    "madgraph/__init__.py": {
+      "expected": "86145a5427f4ecd93636ff1a33a812676b0fea87b496a1f02ef94cf298f8d925",
+      "handed_over_root_after": "86145a5427f4ecd93636ff1a33a812676b0fea87b496a1f02ef94cf298f8d925",
+      "private_after": "86145a5427f4ecd93636ff1a33a812676b0fea87b496a1f02ef94cf298f8d925"
+    },
+    "madgraph/various/__init__.py": {
+      "expected": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "handed_over_root_after": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "private_after": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "madgraph/various/banner.py": {
+      "expected": "a9b248ffd66e40c45a1df12fe006f6d237241a9edbfa2c4937a1f9d4716c2beb",
+      "handed_over_root_after": "a9b248ffd66e40c45a1df12fe006f6d237241a9edbfa2c4937a1f9d4716c2beb",
+      "private_after": "a9b248ffd66e40c45a1df12fe006f6d237241a9edbfa2c4937a1f9d4716c2beb"
+    },
+    "madgraph/various/rambo.py": {
+      "expected": "3b6945657ef995d697a23c55a2ca58725a966717c07fd25f1645e90df8781653",
+      "handed_over_root_after": "3b6945657ef995d697a23c55a2ca58725a966717c07fd25f1645e90df8781653",
+      "private_after": "3b6945657ef995d697a23c55a2ca58725a966717c07fd25f1645e90df8781653"
+    },
+    "tests/unit_tests/loop/test_ninjars_dp_random_points.py": {
+      "expected": "70c55ca324d0ffacf2bb58906bc82ea04ddb3c1bafb289303a02af7ff8f74b39",
+      "handed_over_root_after": "70c55ca324d0ffacf2bb58906bc82ea04ddb3c1bafb289303a02af7ff8f74b39",
+      "private_after": "70c55ca324d0ffacf2bb58906bc82ea04ddb3c1bafb289303a02af7ff8f74b39"
+    },
+    "tests/unit_tests/loop/test_ninjars_dp_stability.py": {
+      "expected": "5d1882e242ffe7dfacb1fc2ff7ad0c17f533f833c2a3647510262aa358bf3cb8",
+      "handed_over_root_after": "5d1882e242ffe7dfacb1fc2ff7ad0c17f533f833c2a3647510262aa358bf3cb8",
+      "private_after": "5d1882e242ffe7dfacb1fc2ff7ad0c17f533f833c2a3647510262aa358bf3cb8"
+    },
+    "tests/unit_tests/loop/test_ninjars_final_loop_pair.py": {
+      "expected": "7d5a4052ccb9e29f9a7c6d96349ce0637fb9290f7108a994200bb11605079cf0",
+      "handed_over_root_after": "7d5a4052ccb9e29f9a7c6d96349ce0637fb9290f7108a994200bb11605079cf0",
+      "private_after": "7d5a4052ccb9e29f9a7c6d96349ce0637fb9290f7108a994200bb11605079cf0"
+    },
+    "tests/unit_tests/loop/test_ninjars_final_loop_preparation.py": {
+      "expected": "bfb9ca08ccf5ecc4d996f7569744c41325f2436bbd4a26835e9b055cc5c0aa66",
+      "handed_over_root_after": "bfb9ca08ccf5ecc4d996f7569744c41325f2436bbd4a26835e9b055cc5c0aa66",
+      "private_after": "bfb9ca08ccf5ecc4d996f7569744c41325f2436bbd4a26835e9b055cc5c0aa66"
+    },
+    "tests/unit_tests/loop/test_ninjars_paper_numerator_v3.py": {
+      "expected": "f49223c824a2cbc511ec542699cc050971dc08b3636d4d1bce2685f4a00f82e6",
+      "handed_over_root_after": "f49223c824a2cbc511ec542699cc050971dc08b3636d4d1bce2685f4a00f82e6",
+      "private_after": "f49223c824a2cbc511ec542699cc050971dc08b3636d4d1bce2685f4a00f82e6"
+    },
+    "tests/unit_tests/loop/test_ninjars_paper_report_v3.py": {
+      "expected": "01d13668d33630caea396623e31da00714f58b0067fd06ce78b129869f621c41",
+      "handed_over_root_after": "01d13668d33630caea396623e31da00714f58b0067fd06ce78b129869f621c41",
+      "private_after": "01d13668d33630caea396623e31da00714f58b0067fd06ce78b129869f621c41"
+    },
+    "tools/ninjars_benchmark.py": {
+      "expected": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+      "handed_over_root_after": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+      "private_after": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237"
+    },
+    "tools/ninjars_benchmark_driver.f": {
+      "expected": "7fde7bd50af7604424bdeab028616cb6c861251fbe748c0748dfe7be17a3fee4",
+      "handed_over_root_after": "7fde7bd50af7604424bdeab028616cb6c861251fbe748c0748dfe7be17a3fee4",
+      "private_after": "7fde7bd50af7604424bdeab028616cb6c861251fbe748c0748dfe7be17a3fee4"
+    },
+    "tools/ninjars_benchmark_extract.py": {
+      "expected": "a3d9fc8a5d44d39b16d1f7c2e562854e705f13d264fae3c8ff1ba478ec335777",
+      "handed_over_root_after": "a3d9fc8a5d44d39b16d1f7c2e562854e705f13d264fae3c8ff1ba478ec335777",
+      "private_after": "a3d9fc8a5d44d39b16d1f7c2e562854e705f13d264fae3c8ff1ba478ec335777"
+    },
+    "tools/ninjars_benchmark_pair_v3.py": {
+      "expected": "1e5fb83daa6021fc7c74350df60d16f64204a93887c7e511ac3347a513e78484",
+      "handed_over_root_after": "1e5fb83daa6021fc7c74350df60d16f64204a93887c7e511ac3347a513e78484",
+      "private_after": "1e5fb83daa6021fc7c74350df60d16f64204a93887c7e511ac3347a513e78484"
+    },
+    "tools/ninjars_benchmark_policy_v2.py": {
+      "expected": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a",
+      "handed_over_root_after": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a",
+      "private_after": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a"
+    },
+    "tools/ninjars_benchmark_policy_v3.py": {
+      "expected": "2fdd45f6c5b2e485d04f7ba81a1a13b38ec70017f186c8d72e20b5d574a30b8e",
+      "handed_over_root_after": "2fdd45f6c5b2e485d04f7ba81a1a13b38ec70017f186c8d72e20b5d574a30b8e",
+      "private_after": "2fdd45f6c5b2e485d04f7ba81a1a13b38ec70017f186c8d72e20b5d574a30b8e"
+    },
+    "tools/ninjars_benchmark_references_v2.py": {
+      "expected": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c",
+      "handed_over_root_after": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c",
+      "private_after": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c"
+    },
+    "tools/ninjars_benchmark_report_v3.py": {
+      "expected": "b10bb51af37a23540a99df252343fa676bea331a78a35f6e4d2e0fbf372834b1",
+      "handed_over_root_after": "b10bb51af37a23540a99df252343fa676bea331a78a35f6e4d2e0fbf372834b1",
+      "private_after": "b10bb51af37a23540a99df252343fa676bea331a78a35f6e4d2e0fbf372834b1"
+    },
+    "tools/ninjars_benchmark_worker.f": {
+      "expected": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79",
+      "handed_over_root_after": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79",
+      "private_after": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79"
+    },
+    "tools/ninjars_benchmark_workers.py": {
+      "expected": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "handed_over_root_after": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "private_after": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca"
+    },
+    "tools/ninjars_controls.py": {
+      "expected": "886b2bd51e827e2714ca85ea28cd4bda4761deca64a15af0fc476ad46a7ef309",
+      "handed_over_root_after": "886b2bd51e827e2714ca85ea28cd4bda4761deca64a15af0fc476ad46a7ef309",
+      "private_after": "886b2bd51e827e2714ca85ea28cd4bda4761deca64a15af0fc476ad46a7ef309"
+    },
+    "tools/ninjars_dp_random_points.py": {
+      "expected": "d2c4d033aa39a1e64efe026f3f8cca989564d429d762c2017c8df31805b209ce",
+      "handed_over_root_after": "d2c4d033aa39a1e64efe026f3f8cca989564d429d762c2017c8df31805b209ce",
+      "private_after": "d2c4d033aa39a1e64efe026f3f8cca989564d429d762c2017c8df31805b209ce"
+    },
+    "tools/ninjars_dp_stability.py": {
+      "expected": "fb819599e3734b37f6a40b8a9a6797609f842c3addd393aa946bc9d6b0edd8f6",
+      "handed_over_root_after": "fb819599e3734b37f6a40b8a9a6797609f842c3addd393aa946bc9d6b0edd8f6",
+      "private_after": "fb819599e3734b37f6a40b8a9a6797609f842c3addd393aa946bc9d6b0edd8f6"
+    },
+    "tools/ninjars_dp_stability_driver.f": {
+      "expected": "3d8d06325dd955408771b94873ee34ad438c0ba4a459e48bbfbbf69ed33d7dc7",
+      "handed_over_root_after": "3d8d06325dd955408771b94873ee34ad438c0ba4a459e48bbfbbf69ed33d7dc7",
+      "private_after": "3d8d06325dd955408771b94873ee34ad438c0ba4a459e48bbfbbf69ed33d7dc7"
+    },
+    "tools/ninjars_final_numerical.py": {
+      "expected": "589b05ef13289489b5dee1fb247da5f912d4c3abb6448126403af4f310bc6f9d",
+      "handed_over_root_after": "589b05ef13289489b5dee1fb247da5f912d4c3abb6448126403af4f310bc6f9d",
+      "private_after": "589b05ef13289489b5dee1fb247da5f912d4c3abb6448126403af4f310bc6f9d"
+    },
+    "tools/ninjars_paper_numerator_v3.py": {
+      "expected": "6904b88f27b0fc32bb46fc84f5949dd9e51edc437f0016abc9e3af98a248ca25",
+      "handed_over_root_after": "6904b88f27b0fc32bb46fc84f5949dd9e51edc437f0016abc9e3af98a248ca25",
+      "private_after": "6904b88f27b0fc32bb46fc84f5949dd9e51edc437f0016abc9e3af98a248ca25"
+    },
+    "tools/ninjars_paper_report_v3.py": {
+      "expected": "28bdc3d03d207a22950d0f965b42d5d7319f2a9d3c0d8cf264c596d83b6a4a6c",
+      "handed_over_root_after": "28bdc3d03d207a22950d0f965b42d5d7319f2a9d3c0d8cf264c596d83b6a4a6c",
+      "private_after": "28bdc3d03d207a22950d0f965b42d5d7319f2a9d3c0d8cf264c596d83b6a4a6c"
+    },
+    "tools/ninjars_paper_timing_v3.py": {
+      "expected": "4e88dc116763a83410071698e06081bd15858452e76ab1788d18767f70d67682",
+      "handed_over_root_after": "4e88dc116763a83410071698e06081bd15858452e76ab1788d18767f70d67682",
+      "private_after": "4e88dc116763a83410071698e06081bd15858452e76ab1788d18767f70d67682"
+    },
+    "tools/ninjars_precision_v2.py": {
+      "expected": "6f7a4ec0a0744ef816e38d6f6a5bb45844d3e9bc264c617bbc22da01a1bb9cb5",
+      "handed_over_root_after": "6f7a4ec0a0744ef816e38d6f6a5bb45844d3e9bc264c617bbc22da01a1bb9cb5",
+      "private_after": "6f7a4ec0a0744ef816e38d6f6a5bb45844d3e9bc264c617bbc22da01a1bb9cb5"
+    },
+    "tools/ninjars_profile_v2.py": {
+      "expected": "de1b55b0cb7e8b6854fac5179a3e808152a0328f91e8b826a903dc358e3d866d",
+      "handed_over_root_after": "de1b55b0cb7e8b6854fac5179a3e808152a0328f91e8b826a903dc358e3d866d",
+      "private_after": "de1b55b0cb7e8b6854fac5179a3e808152a0328f91e8b826a903dc358e3d866d"
+    },
+    "tools/ninjars_report.py": {
+      "expected": "0b1c874ce72bfad9085f88c69c3fa1dbdb6e1b219eb7dddab2b867dfe3220007",
+      "handed_over_root_after": "0b1c874ce72bfad9085f88c69c3fa1dbdb6e1b219eb7dddab2b867dfe3220007",
+      "private_after": "0b1c874ce72bfad9085f88c69c3fa1dbdb6e1b219eb7dddab2b867dfe3220007"
+    },
+    "tools/ninjars_report_qualifications_v3.py": {
+      "expected": "5efdecc8ad94371cc8bbb5131dccbaa1799a1c2797609dc5a56ef08360d9888f",
+      "handed_over_root_after": "5efdecc8ad94371cc8bbb5131dccbaa1799a1c2797609dc5a56ef08360d9888f",
+      "private_after": "5efdecc8ad94371cc8bbb5131dccbaa1799a1c2797609dc5a56ef08360d9888f"
+    },
+    "tools/ninjars_report_v2.py": {
+      "expected": "d9c50cbf0de7c848a95839ff1a7e2ee656933c36d21dbfab2d32a5a35504b9a2",
+      "handed_over_root_after": "d9c50cbf0de7c848a95839ff1a7e2ee656933c36d21dbfab2d32a5a35504b9a2",
+      "private_after": "d9c50cbf0de7c848a95839ff1a7e2ee656933c36d21dbfab2d32a5a35504b9a2"
+    },
+    "tools/ninjars_setup_references.py": {
+      "expected": "0ec39ed60724607a5bbd947d9c717a80528ad3160fe1b9117afef1a9eca1466a",
+      "handed_over_root_after": "0ec39ed60724607a5bbd947d9c717a80528ad3160fe1b9117afef1a9eca1466a",
+      "private_after": "0ec39ed60724607a5bbd947d9c717a80528ad3160fe1b9117afef1a9eca1466a"
+    },
+    "tools/ninjars_stress_v2.py": {
+      "expected": "82a23b54720b48dd21a2373f389f55a7e8b98923637a88ddfd72045f69f4ca55",
+      "handed_over_root_after": "82a23b54720b48dd21a2373f389f55a7e8b98923637a88ddfd72045f69f4ca55",
+      "private_after": "82a23b54720b48dd21a2373f389f55a7e8b98923637a88ddfd72045f69f4ca55"
+    },
+    "tools/ninjars_supplement_v2.py": {
+      "expected": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8",
+      "handed_over_root_after": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8",
+      "private_after": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8"
+    },
+    "tools/ninjars_upstream.py": {
+      "expected": "291b8be48a37ab241bced84c5e687537b6303ba6532431958c4288d2b744b0cf",
+      "handed_over_root_after": "291b8be48a37ab241bced84c5e687537b6303ba6532431958c4288d2b744b0cf",
+      "private_after": "291b8be48a37ab241bced84c5e687537b6303ba6532431958c4288d2b744b0cf"
+    }
+  },
+  "native_calls": 0,
+  "observed_utc": "2026-10-21T19:43:22.692497+00:00",
+  "schema": "ninjars-targeted-software-source-postcheck-v1",
+  "skips": 1,
+  "tests_run": 126
+}

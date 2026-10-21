@@ -1,0 +1,29 @@
+{
+  "command": [
+    "gcc",
+    "-O2",
+    "-std=c11",
+    "-Wall",
+    "-Werror",
+    "-I",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/vendor/ninjars",
+    "-c",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/nrs8-qcd1-parity-final-settings-v1/guard.c",
+    "-o",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/nrs8-qcd1-parity-final-settings-v1/guard.o"
+  ],
+  "cwd": ".",
+  "exit_code": 0,
+  "seconds_diagnostic_only": 0.11866581300273538,
+  "pid": 3694970,
+  "reaped_at_record": true,
+  "failure": null,
+  "stdout": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/nrs8-qcd1-parity-final-settings-v1/guard-compile.stdout",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stderr": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/nrs8-qcd1-parity-final-settings-v1/guard-compile.stderr",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

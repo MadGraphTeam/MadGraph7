@@ -1,0 +1,59 @@
+{
+  "affinity": [
+    180
+  ],
+  "amplitude_evaluations": 0,
+  "commands": [
+    {
+      "command": [
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+        "-B",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tools/ninjars_dp_random_points.py",
+        "generate",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/configuration.json"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+      "elapsed_seconds": 0.5083882129983976,
+      "finished_utc": "2026-10-21T19:34:15.787020+00:00",
+      "log": {
+        "bytes": 147,
+        "path": ".benchmark-work/dp-random-points-20261021-v1/generate-actual-v2.log",
+        "sha256": "9805245529522fa7a9a5258d79e92e91c8813e0a2159fcf4beb68d060622ea74"
+      },
+      "returncode": 0,
+      "started_utc": "2026-10-21T19:34:15.278635+00:00"
+    },
+    {
+      "command": [
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+        "-B",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tools/ninjars_dp_random_points.py",
+        "verify",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/manifest.json"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+      "elapsed_seconds": 0.49272012198343873,
+      "finished_utc": "2026-10-21T19:34:16.282747+00:00",
+      "log": {
+        "bytes": 60,
+        "path": ".benchmark-work/dp-random-points-20261021-v1/verify-actual-v2.log",
+        "sha256": "d58f14f9f26e855a2684e3f8ed993080365949e283ad4ac4b4e6da6d9914c287"
+      },
+      "returncode": 0,
+      "started_utc": "2026-10-21T19:34:15.790031+00:00"
+    }
+  ],
+  "configuration_sha256": "2e349c9e2cdc7629b7b03c8efc2f68e3420ce065bf24de608ed90916811fcccc",
+  "generator_sha256": "d2c4d033aa39a1e64efe026f3f8cca989564d429d762c2017c8df31805b209ce",
+  "native_reduction_calls": 0,
+  "python": {
+    "executable": "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+    "libc": [
+      "glibc",
+      "2.42"
+    ],
+    "platform": "Linux-6.18.45-x86_64-with-glibc2.42",
+    "version": "3.14.7 (main, Aug  5 2026, 10:29:49) [GCC 15.3.0]"
+  },
+  "scope": "Root-preauthorized Python point generation and physical/deterministic replay after audit_final accepted numerical_final successor review"
+}

@@ -1,0 +1,15 @@
+{
+  "observed_utc": "2026-10-21T19:03:58.492948+00:00",
+  "controller_pid": 3694119,
+  "start_ticks": 64312482,
+  "pgid": 3694117,
+  "cpu_affinity": [
+    12
+  ],
+  "state": "S",
+  "session_id": 81689,
+  "runner_sha256": "40ed325e8423cb5c12a6f0bb5f6b0a68009247ae71404eb62f0005fd6e63ee0d",
+  "guard_sha256": "88cfb41cf17a545665e30563c39f0bd58ae9b9c0075203e0e5c27531d5e0c06c",
+  "root_authorized_scope": "qcd1native8CPU12 after audit pass; no comp/MP",
+  "child_ownership": "existing process-ledger.jsonl"
+}

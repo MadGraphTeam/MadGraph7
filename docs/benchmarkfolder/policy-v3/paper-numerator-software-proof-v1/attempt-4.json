@@ -1,0 +1,18 @@
+{
+  "scope": "software synthetic/mocked data and card parser only; no compiler,engine,MP,perf",
+  "cpu": 180,
+  "started_utc": "2026-10-21T19:00:18.096761+00:00",
+  "finished_utc": "2026-10-21T19:00:19.165692+00:00",
+  "sources": {
+    "tools/ninjars_paper_numerator_v3.py": {
+      "sha256": "6904b88f27b0fc32bb46fc84f5949dd9e51edc437f0016abc9e3af98a248ca25",
+      "bytes": 24077
+    },
+    "tests/unit_tests/loop/test_ninjars_paper_numerator_v3.py": {
+      "sha256": "f49223c824a2cbc511ec542699cc050971dc08b3636d4d1bce2685f4a00f82e6",
+      "bytes": 14664
+    }
+  },
+  "returncode": 0,
+  "delta": "Require every raw artifact in the complete result inventory; expose validated ordinary-result authority; add six source-only custody/controller cleanup/raw-retention regressions; Fortran transformations unchanged from compile probes"
+}

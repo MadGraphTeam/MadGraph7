@@ -1,0 +1,251 @@
+{
+  "schema": "dp-random-measurement-source-validation-v1",
+  "source_before": {
+    ".benchmark-work/paper-dp-stability-20261021-v1/random-authority-override-v1/ninjars_dp_stability.py": "fb819599e3734b37f6a40b8a9a6797609f842c3addd393aa946bc9d6b0edd8f6",
+    ".benchmark-work/paper-dp-stability-20261021-v1/random-authority-override-v1/test_ninjars_dp_stability.py": "5d1882e242ffe7dfacb1fc2ff7ad0c17f533f833c2a3647510262aa358bf3cb8"
+  },
+  "source_after": {
+    ".benchmark-work/paper-dp-stability-20261021-v1/random-authority-override-v1/ninjars_dp_stability.py": "fb819599e3734b37f6a40b8a9a6797609f842c3addd393aa946bc9d6b0edd8f6",
+    ".benchmark-work/paper-dp-stability-20261021-v1/random-authority-override-v1/test_ninjars_dp_stability.py": "5d1882e242ffe7dfacb1fc2ff7ad0c17f533f833c2a3647510262aa358bf3cb8"
+  },
+  "software_tests": 44,
+  "failures": 0,
+  "errors": 0,
+  "cases": [
+    {
+      "case": "qcd-1",
+      "generation_case": "qcd-1",
+      "points": {
+        "bytes": 29296,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-1.dat",
+        "sha256": "fbbc45b0e89dd163d8eb56a07ad9672d95d2b88ae23319b48d2adf6ebffc220c"
+      },
+      "N": 100,
+      "seed": 20261021,
+      "cuts": {
+        "delta_r_min": null,
+        "eta_definition": "pseudorapidity",
+        "interpretation": "On-shell 2->1 random common boosts are descriptive, with no cuts",
+        "pt_min_gev": null
+      },
+      "sample_kind": "random-boosted-on-shell-descriptive",
+      "center_of_mass_energy_gev": 91.188
+    },
+    {
+      "case": "ew-1",
+      "generation_case": "ew-1",
+      "points": {
+        "bytes": 29270,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-1.dat",
+        "sha256": "1070a621ef960e35a078db81b770ff7a777cfb3eb927928a15a9ca75fbd206be"
+      },
+      "N": 100,
+      "seed": 20261022,
+      "cuts": {
+        "delta_r_min": null,
+        "eta_definition": "pseudorapidity",
+        "interpretation": "On-shell 2->1 random common boosts are descriptive, with no cuts",
+        "pt_min_gev": null
+      },
+      "sample_kind": "random-boosted-on-shell-descriptive",
+      "center_of_mass_energy_gev": 80.419
+    },
+    {
+      "case": "qcd-2",
+      "generation_case": "qcd-2",
+      "points": {
+        "bytes": 38804,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-2.dat",
+        "sha256": "4d0a64001d79f742013f93cf8fcb502704af01d37f3ef16f3bde11526733d47f"
+      },
+      "N": 100,
+      "seed": 20261023,
+      "cuts": {
+        "delta_r_min": 0.5,
+        "eta_definition": "pseudorapidity",
+        "interpretation": "Strict final-state cuts; loop-induced reference omits pT only",
+        "pt_min_gev": 50.0
+      },
+      "sample_kind": "preregistered-random-SM-DP",
+      "center_of_mass_energy_gev": 1000.0
+    },
+    {
+      "case": "ew-2",
+      "generation_case": "ew-2",
+      "points": {
+        "bytes": 38804,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-2.dat",
+        "sha256": "a560af70540b8cf0f0a954690e12629dcf1ab88a39662f6f1f58a63c14508a1b"
+      },
+      "N": 100,
+      "seed": 20261024,
+      "cuts": {
+        "delta_r_min": 0.5,
+        "eta_definition": "pseudorapidity",
+        "interpretation": "Strict final-state cuts; loop-induced reference omits pT only",
+        "pt_min_gev": 50.0
+      },
+      "sample_kind": "preregistered-random-SM-DP",
+      "center_of_mass_energy_gev": 1000.0
+    },
+    {
+      "case": "qcd-3",
+      "generation_case": "qcd-3",
+      "points": {
+        "bytes": 48561,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-3.dat",
+        "sha256": "2ff26146d6cf4d82d595bf822049231fe2b22ec2d9a0e397717bceaa36217ebd"
+      },
+      "N": 100,
+      "seed": 20261025,
+      "cuts": {
+        "delta_r_min": 0.5,
+        "eta_definition": "pseudorapidity",
+        "interpretation": "Strict final-state cuts; loop-induced reference omits pT only",
+        "pt_min_gev": 50.0
+      },
+      "sample_kind": "preregistered-random-SM-DP",
+      "center_of_mass_energy_gev": 1000.0
+    },
+    {
+      "case": "ew-3",
+      "generation_case": "ew-3",
+      "points": {
+        "bytes": 48556,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-3.dat",
+        "sha256": "c7ac6d1855e3105d2c4957841a5dc201770893063284b59c2e105ae7e5aa1b88"
+      },
+      "N": 100,
+      "seed": 20261026,
+      "cuts": {
+        "delta_r_min": 0.5,
+        "eta_definition": "pseudorapidity",
+        "interpretation": "Strict final-state cuts; loop-induced reference omits pT only",
+        "pt_min_gev": 50.0
+      },
+      "sample_kind": "preregistered-random-SM-DP",
+      "center_of_mass_energy_gev": 1000.0
+    },
+    {
+      "case": "qcd-4",
+      "generation_case": "qcd-4",
+      "points": {
+        "bytes": 58321,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-4.dat",
+        "sha256": "795a8a9c581601cf92cc0c550e247bfcda5cae7024a51c02d2a4c5426cc26bdc"
+      },
+      "N": 100,
+      "seed": 20261027,
+      "cuts": {
+        "delta_r_min": 0.5,
+        "eta_definition": "pseudorapidity",
+        "interpretation": "Strict final-state cuts; loop-induced reference omits pT only",
+        "pt_min_gev": 50.0
+      },
+      "sample_kind": "preregistered-random-SM-DP",
+      "center_of_mass_energy_gev": 1000.0
+    },
+    {
+      "case": "ew-4",
+      "generation_case": "ew-4",
+      "points": {
+        "bytes": 58292,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-4.dat",
+        "sha256": "29522a1c02a6d81e4aa267eb8fd45e749048e276f09092e4c634ca03f42e926f"
+      },
+      "N": 100,
+      "seed": 20261028,
+      "cuts": {
+        "delta_r_min": 0.5,
+        "eta_definition": "pseudorapidity",
+        "interpretation": "Strict final-state cuts; loop-induced reference omits pT only",
+        "pt_min_gev": 50.0
+      },
+      "sample_kind": "preregistered-random-SM-DP",
+      "center_of_mass_energy_gev": 1000.0
+    },
+    {
+      "case": "supplement-gg-h",
+      "generation_case": "control-gg-h",
+      "points": {
+        "bytes": 29246,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/supplement-gg-h.dat",
+        "sha256": "284bc785c56df9537be05f9d3c2ae55cefff7f6d2e0c308bcaf422625a4df3c4"
+      },
+      "N": 100,
+      "seed": 20261029,
+      "cuts": {
+        "delta_r_min": null,
+        "eta_definition": "pseudorapidity",
+        "interpretation": "On-shell 2->1 random common boosts are descriptive, with no cuts",
+        "pt_min_gev": null
+      },
+      "sample_kind": "random-boosted-on-shell-descriptive",
+      "center_of_mass_energy_gev": 125.0
+    },
+    {
+      "case": "supplement-gg-hh",
+      "generation_case": "control-gg-hh",
+      "points": {
+        "bytes": 38804,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/supplement-gg-hh.dat",
+        "sha256": "78d9f0c963e674ec5af7171084868ab9faa67634b8d86180e7b45dd8145d4da1"
+      },
+      "N": 100,
+      "seed": 20261030,
+      "cuts": {
+        "delta_r_min": 0.5,
+        "eta_definition": "pseudorapidity",
+        "interpretation": "Strict final-state cuts; loop-induced reference omits pT only",
+        "pt_min_gev": null
+      },
+      "sample_kind": "preregistered-random-SM-DP",
+      "center_of_mass_energy_gev": 1000.0
+    },
+    {
+      "case": "stress-qcd-4-gg-ttgg",
+      "generation_case": "stress-qcd-4-gg-ttgg",
+      "points": {
+        "bytes": 58312,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/stress-qcd-4-gg-ttgg.dat",
+        "sha256": "027029e542dbadba28129730ee4a813a2d79528a8bd49e3710bdc6cc5d916107"
+      },
+      "N": 100,
+      "seed": 20261031,
+      "cuts": {
+        "delta_r_min": 0.5,
+        "eta_definition": "pseudorapidity",
+        "interpretation": "Strict final-state cuts; loop-induced reference omits pT only",
+        "pt_min_gev": 50.0
+      },
+      "sample_kind": "preregistered-random-SM-DP",
+      "center_of_mass_energy_gev": 1000.0
+    },
+    {
+      "case": "stress-ew-4-uu-4l",
+      "generation_case": "stress-ew-4-uu-4l",
+      "points": {
+        "bytes": 58276,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/stress-ew-4-uu-4l.dat",
+        "sha256": "675947d4da4828a973ddc8c3c32b3fa37709cd49478c45ed05f4efaac2710630"
+      },
+      "N": 100,
+      "seed": 20261032,
+      "cuts": {
+        "delta_r_min": 0.5,
+        "eta_definition": "pseudorapidity",
+        "interpretation": "Strict final-state cuts; loop-induced reference omits pT only",
+        "pt_min_gev": 50.0
+      },
+      "sample_kind": "preregistered-random-SM-DP",
+      "center_of_mass_energy_gev": 1000.0
+    }
+  ],
+  "bound_inputs": 105,
+  "measurement_manifest": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/manifest.json",
+    "sha256": "b0164afb38d02ff1135155e676c09ffa3528fa27c45df1a48632018ae136768c"
+  },
+  "amplitude_evaluations": 0,
+  "compilations": 0
+}

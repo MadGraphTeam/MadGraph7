@@ -4,8 +4,9 @@
 provide source preparation and a strict raw reader. They do not start a MadLoop
 campaign, change the existing benchmark worker, or qualify a performance gate.
 Actual process compilation and evaluations require the orchestrator's resource
-handoff. Initial observations use the same 100 fixed core points for all four
-tools. Loop-induced and difficult 2→4 samples have their own declared inputs.
+handoff. The prospective comparison declares Ninja6 and NinjaRS8 and uses the
+same fixed core points for both. Historical four-tool records remain separate.
+Loop-induced and difficult 2→4 samples have their own declared inputs.
 
 ## Build preparation in a private generated copy
 
@@ -35,7 +36,7 @@ tools. Loop-induced and difficult 2→4 samples have their own declared inputs.
    ```
 
    `HELICITY_INDEX=-1` uses the complete helicity sum. A positive index must
-   bind the same physical helicity tuple for all four tools. The main
+   bind the same physical helicity tuple for every requested tool. The main
    production timing and the single-helicity timing table are different
    measurement streams and use their own executables.
 
@@ -125,8 +126,8 @@ the semantic source/runtime identity of the executable. Before physical
 figures are published, the orchestrator and independent reviewer must match
 each private original interface, generated source set, dependency archive,
 cards, points, selector, build, and executable to the already qualified
-cohort target. That actual preparation and runtime binding remains pending;
-this diagnostic reader must not be treated as the final publication authority.
+cohort target. Source-only preparation without the optional actual-target
+qualification below cannot serve as final publication authority.
 
 The summary schema is `ninjars-dp-stability-summary-v1`. Its `cases[id]`
 contains process/group/sample/helicity/N metadata and `tools["1"|"6"|"7"|"8"]`.
@@ -135,8 +136,8 @@ Each observed tool has `status`, `scores` for `combined`, `direction`, and
 counts, Wilson intervals, zero-event upper bounds, failure categories,
 hardware-flag observations, and raw/source bindings. Missing tools have no
 invented zero curve and make the overall summary incomplete.
-`observations_complete` describes raw coverage. In this preparation version,
-`complete` and `physical_qualified` remain false until the actual semantic
+`observations_complete` describes raw coverage of the explicitly requested
+tools. `complete` and `physical_qualified` remain false until the actual semantic
 target binding and instrumented-process parity controls have been supplied
 and independently validated. A complete self-consistency data file alone
 cannot promote physical results.
@@ -176,9 +177,14 @@ parity succeeds. Thus recorder qualification does not select successful points.
 
 `physical_qualified` denotes an actual source/runtime-bound observation stream;
 it is not a statement that all its numerical results are accurate or accepted.
-Individual legacy target controls may qualify while the summary remains
-incomplete. Summary completion requires every declared process to contain all
-four qualified, complete backend streams. It does not replace the independent
+Individual target controls may qualify while the summary remains incomplete.
+New prospective comparisons explicitly declare `requested_tools=[6,8]`; every
+declared process must contain both qualified, complete backend streams. An
+absent declaration retains the historical four-tool contract. Strict integer
+list validation rejects reordered, floating-point or boolean declarations;
+missing requested or extra undeclared runs cannot count as complete. Unused
+tools never receive invented observations or plot entries. Completion is scoped
+to the declared tools and cases. It does not replace the independent
 core correctness, performance, or whole-task completion gates. Missing NinjaRS8
 parity is reported as pending. All qualification is read-only: the reader never
 initializes MadLoop, creates a numerical context, or executes a benchmark.
@@ -192,4 +198,22 @@ visible as failed and qualification pending; it must not disappear from the
 case list or become a successful zero curve. Matched-prefix failure qualification
 must then be added and audited against that concrete failure before a qualified
 CDF is published. An unattempted backend is pending, not an observed failure.
+
+Core targets retain the explicit cohort's original generation authority.
+Loop-induced targets bind the existing control-generation status and its actual
+`generation_case`, then the held paper specification's independent 100-point
+measurement stream. The ten-point export smoke remains separate. Stress targets
+reuse the sealed final-result, early-result and source proofs plus the
+preregistered ordinary configuration and byte-identical 20-point streams.
+Benchmark aliases are explicit metadata; they never rename the recorded CLI
+generation. All three target kinds feed the same source, runtime, card,
+point/selector and parity checks.
+
+Backend8 qualification additionally requires the audited native-only C link
+guard from process startup through teardown. It forwards context creation,
+native DP evaluations and destruction with their original status returns;
+compensated DP and MP entries abort and remain failed controls. Every native
+return status and monotone boundary count is retained. Both plain and observed
+copies must have identical guard object/link flags and raw event sequences.
+This diagnostic guard is excluded from timing measurements.
 

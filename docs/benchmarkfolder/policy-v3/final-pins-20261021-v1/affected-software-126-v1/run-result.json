@@ -1,0 +1,219 @@
+{
+  "cpu_affinity": [
+    180
+  ],
+  "errors": 0,
+  "failures": 0,
+  "modules": 6,
+  "native_calls": 0,
+  "passed": true,
+  "records": [
+    {
+      "child_process_group_reaped": true,
+      "command": [
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+        "-B",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/run-module.py",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source",
+        "tests.unit_tests.loop.test_ninjars_dp_stability",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/actual-run-v1/test_ninjars_dp_stability.json"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+      "elapsed_seconds": 3.0068848710507154,
+      "errors": [],
+      "exit_code": 0,
+      "failures": [],
+      "finished_utc": "2026-10-21T19:42:42.440544+00:00",
+      "ignored_parents_before": {
+        ".benchmark-work": false,
+        ".ninjars-build": false
+      },
+      "loaded_from": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source/tests/unit_tests/loop/test_ninjars_dp_stability.py",
+      "log_bytes": 143,
+      "log_sha256": "7872339d5bb6ce96bd5100701935a30cbf591e28bbac5d84f41d706c7227a23d",
+      "module": "tests.unit_tests.loop.test_ninjars_dp_stability",
+      "passed": true,
+      "private_source": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source",
+      "process_id": 1581847,
+      "skipped": [],
+      "source_sha256": "5d1882e242ffe7dfacb1fc2ff7ad0c17f533f833c2a3647510262aa358bf3cb8",
+      "source_unchanged": true,
+      "started_utc": "2026-10-21T19:42:39.311541+00:00",
+      "tests_run": 44
+    },
+    {
+      "child_process_group_reaped": true,
+      "command": [
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+        "-B",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/run-module.py",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source",
+        "tests.unit_tests.loop.test_ninjars_paper_report_v3",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/actual-run-v1/test_ninjars_paper_report_v3.json"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+      "elapsed_seconds": 2.0401252569863573,
+      "errors": [],
+      "exit_code": 0,
+      "failures": [],
+      "finished_utc": "2026-10-21T19:42:44.767683+00:00",
+      "ignored_parents_before": {
+        ".benchmark-work": false,
+        ".ninjars-build": false
+      },
+      "loaded_from": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source/tests/unit_tests/loop/test_ninjars_paper_report_v3.py",
+      "log_bytes": 142,
+      "log_sha256": "6c8dcd9f3762b407e419671dec4e226a70e63a8f3bcf1a380af8e1a76f4f9352",
+      "module": "tests.unit_tests.loop.test_ninjars_paper_report_v3",
+      "passed": true,
+      "private_source": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source",
+      "process_id": 1583806,
+      "skipped": [
+        {
+          "reason": "Actual final generated source is not retained in this checkout",
+          "test": "test_actual_generated_qcd2_count_definitions_agree (tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_actual_generated_qcd2_count_definitions_agree)"
+        }
+      ],
+      "source_sha256": "01d13668d33630caea396623e31da00714f58b0067fd06ce78b129869f621c41",
+      "source_unchanged": true,
+      "started_utc": "2026-10-21T19:42:42.440843+00:00",
+      "tests_run": 31
+    },
+    {
+      "child_process_group_reaped": true,
+      "command": [
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+        "-B",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/run-module.py",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source",
+        "tests.unit_tests.loop.test_ninjars_paper_numerator_v3",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/actual-run-v1/test_ninjars_paper_numerator_v3.json"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+      "elapsed_seconds": 11.239038669969887,
+      "errors": [],
+      "exit_code": 0,
+      "failures": [],
+      "finished_utc": "2026-10-21T19:42:56.146943+00:00",
+      "ignored_parents_before": {
+        ".benchmark-work": false,
+        ".ninjars-build": false
+      },
+      "loaded_from": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source/tests/unit_tests/loop/test_ninjars_paper_numerator_v3.py",
+      "log_bytes": 120,
+      "log_sha256": "22ce974339281d6e80990e2008a23e6e4683da13a38f4847dcf22dabe5cf019d",
+      "module": "tests.unit_tests.loop.test_ninjars_paper_numerator_v3",
+      "passed": true,
+      "private_source": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source",
+      "process_id": 1586000,
+      "skipped": [],
+      "source_sha256": "f49223c824a2cbc511ec542699cc050971dc08b3636d4d1bce2685f4a00f82e6",
+      "source_unchanged": true,
+      "started_utc": "2026-10-21T19:42:44.768509+00:00",
+      "tests_run": 20
+    },
+    {
+      "child_process_group_reaped": true,
+      "command": [
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+        "-B",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/run-module.py",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source",
+        "tests.unit_tests.loop.test_ninjars_dp_random_points",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/actual-run-v1/test_ninjars_dp_random_points.json"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+      "elapsed_seconds": 1.606275444966741,
+      "errors": [],
+      "exit_code": 0,
+      "failures": [],
+      "finished_utc": "2026-10-21T19:42:57.869730+00:00",
+      "ignored_parents_before": {
+        ".benchmark-work": false,
+        ".ninjars-build": false
+      },
+      "loaded_from": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source/tests/unit_tests/loop/test_ninjars_dp_random_points.py",
+      "log_bytes": 118,
+      "log_sha256": "d4efb2a46b77c466165c961c584c2537f54eca64270d66e666938fa895b847a4",
+      "module": "tests.unit_tests.loop.test_ninjars_dp_random_points",
+      "passed": true,
+      "private_source": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source",
+      "process_id": 1594206,
+      "skipped": [],
+      "source_sha256": "70c55ca324d0ffacf2bb58906bc82ea04ddb3c1bafb289303a02af7ff8f74b39",
+      "source_unchanged": true,
+      "started_utc": "2026-10-21T19:42:56.147597+00:00",
+      "tests_run": 19
+    },
+    {
+      "child_process_group_reaped": true,
+      "command": [
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+        "-B",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/run-module.py",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source",
+        "tests.unit_tests.loop.test_ninjars_final_loop_pair",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/actual-run-v1/test_ninjars_final_loop_pair.json"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+      "elapsed_seconds": 0.1515175849199295,
+      "errors": [],
+      "exit_code": 0,
+      "failures": [],
+      "finished_utc": "2026-10-21T19:42:58.136797+00:00",
+      "ignored_parents_before": {
+        ".benchmark-work": false,
+        ".ninjars-build": false
+      },
+      "loaded_from": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source/tests/unit_tests/loop/test_ninjars_final_loop_pair.py",
+      "log_bytes": 109,
+      "log_sha256": "69d3092e799b33eb7dca64bf94a3536ab4fa9fc5969f0629675edb863629b707",
+      "module": "tests.unit_tests.loop.test_ninjars_final_loop_pair",
+      "passed": true,
+      "private_source": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source",
+      "process_id": 1595070,
+      "skipped": [],
+      "source_sha256": "7d5a4052ccb9e29f9a7c6d96349ce0637fb9290f7108a994200bb11605079cf0",
+      "source_unchanged": true,
+      "started_utc": "2026-10-21T19:42:57.869985+00:00",
+      "tests_run": 10
+    },
+    {
+      "child_process_group_reaped": true,
+      "command": [
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+        "-B",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/run-module.py",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source",
+        "tests.unit_tests.loop.test_ninjars_final_loop_preparation",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/actual-run-v1/test_ninjars_final_loop_preparation.json"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+      "elapsed_seconds": 0.12208670494146645,
+      "errors": [],
+      "exit_code": 0,
+      "failures": [],
+      "finished_utc": "2026-10-21T19:42:58.353898+00:00",
+      "ignored_parents_before": {
+        ".benchmark-work": false,
+        ".ninjars-build": false
+      },
+      "loaded_from": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source/tests/unit_tests/loop/test_ninjars_final_loop_preparation.py",
+      "log_bytes": 100,
+      "log_sha256": "cbe4b84d897ac017db0552ccb3a31855ff0fb172bc344c967c4c4c92eb19e624",
+      "module": "tests.unit_tests.loop.test_ninjars_final_loop_preparation",
+      "passed": true,
+      "private_source": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-126-20261021-v1/source",
+      "process_id": 1595286,
+      "skipped": [],
+      "source_sha256": "bfb9ca08ccf5ecc4d996f7569744c41325f2436bbd4a26835e9b055cc5c0aa66",
+      "source_unchanged": true,
+      "started_utc": "2026-10-21T19:42:58.137399+00:00",
+      "tests_run": 2
+    }
+  ],
+  "schema": "ninjars-targeted-software-run-v1",
+  "scope": "Six frozen software-only modules; fresh source archive plus explicit overlays, ignored fixture parents absent before every module; no real generated-program/native reducer/build calls.",
+  "skips": 1,
+  "tests_run": 126
+}

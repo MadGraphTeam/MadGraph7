@@ -204,6 +204,144 @@ class NinjaRSPaperReportV3Test(unittest.TestCase):
             report.plot_groups(snapshot, self.directory / "qualified")
             self.assertFalse(render.call_args.kwargs["software_fixture"])
 
+    def construction_fixture(self):
+        timing = self.directory / "full-result.json"; timing.write_text("{}")
+        numerator = self.directory / "construction-result.json"; numerator.write_text("{}")
+        parent = {"path": str(timing.relative_to(report.ROOT)),
+                  "sha256": hashlib.sha256(timing.read_bytes()).hexdigest()}
+        total = {"schema": "ninjars-paper-timing-summary-v1", "source": parent,
+                 "cases": {"fixture": {"backend": {"7": {"status": "failed_physics", "failed": 2}}}}}
+        residual = {"median_difference_seconds_per_point": -1., "confidence_interval95": [-2., .5],
+                    "bootstrap": "independent percentile; separate measurement sessions",
+                    "label": "Remaining full-evaluation work, including stability/rescue; not pure reduction",
+                    "ordinary_physics_status": "failed_physics"}
+        case = {"scope": "DP construction diagnostic; not physical amplitude/stability/rescue acceptance",
+                "median_seconds_per_point": 2., "confidence_interval95": [1.8, 2.1],
+                "timing_repetitions": 8, "points": 100, "remaining": {"7": residual},
+                "ordinary_physics_status": {"7": "failed_physics"}}
+        construction = {"schema": "ninjars-paper-construction-summary-v1", "acceptance_eligible": False,
+                        "ordinary_result": copy.deepcopy(parent), "cases": {"fixture": case}}
+        return timing, numerator, total, construction
+
+    def construction_readers(self, total, construction):
+        modules = {}
+        for name, value in (("ninjars_paper_timing_v3", total), ("ninjars_paper_numerator_v3", construction)):
+            modules[name] = SimpleNamespace(__file__=str(report.ROOT / "tools" / (name+".py")),
+                report_snapshot=mock.Mock(return_value=value))
+        return modules
+
+    def test_construction_requires_selected_timing_before_importing_reader(self):
+        with mock.patch.object(report.importlib, "import_module") as imported:
+            with self.assertRaisesRegex(ValueError, "selected full timing result"):
+                report.build_snapshot(numerator=self.directory / "any.json")
+            imported.assert_not_called()
+
+    def test_construction_retains_negative_residual_ci_failed_status_and_source(self):
+        timing, numerator, total, construction = self.construction_fixture()
+        modules = self.construction_readers(total, construction)
+        with mock.patch.object(report.importlib, "import_module", side_effect=lambda name: modules[name]):
+            snapshot = report.build_snapshot(timing=timing, numerator=numerator,
+                expected={"runtime_identity_sha256": "a"*64})
+        cell = snapshot["tables"]["fixture"]
+        self.assertEqual(cell["numerator_dp"], construction["cases"]["fixture"])
+        self.assertEqual(cell["remaining"]["7"], construction["cases"]["fixture"]["remaining"]["7"])
+        self.assertEqual(cell["remaining"]["7"]["median_difference_seconds_per_point"], -1.)
+        self.assertEqual(cell["remaining"]["7"]["confidence_interval95"], [-2., .5])
+        self.assertEqual(cell["remaining"]["7"]["ordinary_physics_status"], "failed_physics")
+        self.assertFalse(snapshot["qualification_eligible"])
+        modules["ninjars_paper_numerator_v3"].report_snapshot.assert_called_once()
+        self.assertEqual(modules["ninjars_paper_numerator_v3"].report_snapshot.call_args.kwargs["expected"], "a"*64)
+        for filename in (numerator, Path(modules["ninjars_paper_numerator_v3"].__file__)):
+            self.assertEqual(snapshot["inputs_sha256"][str(filename.relative_to(report.ROOT))],
+                             hashlib.sha256(filename.read_bytes()).hexdigest())
+
+    def test_other_construction_parent_path_or_hash_cannot_populate_timing_table(self):
+        timing, numerator, total, construction = self.construction_fixture()
+        for key, value in (("path", "other-campaign/result.json"), ("sha256", "b"*64)):
+            wrong = copy.deepcopy(construction); wrong["ordinary_result"][key] = value
+            modules = self.construction_readers(total, wrong)
+            with self.subTest(key=key), mock.patch.object(report.importlib, "import_module", side_effect=lambda name: modules[name]):
+                with self.assertRaisesRegex(ValueError, "exact selected full timing result"):
+                    report.build_snapshot(timing=timing, numerator=numerator)
+
+    def test_construction_without_parent_binding_or_with_acceptance_claim_rejects(self):
+        timing, numerator, total, construction = self.construction_fixture()
+        for wrong in ({k:v for k,v in construction.items() if k != "ordinary_result"},
+                      dict(construction, acceptance_eligible=True)):
+            modules = self.construction_readers(total, wrong)
+            with mock.patch.object(report.importlib, "import_module", side_effect=lambda name: modules[name]):
+                with self.assertRaises(ValueError): report.build_snapshot(timing=timing, numerator=numerator)
+
+    def test_missing_or_extra_construction_case_cannot_be_mixed_with_timing(self):
+        timing, numerator, total, construction = self.construction_fixture()
+        for cases in ({}, {**construction["cases"], "other": construction["cases"]["fixture"]}):
+            modules = self.construction_readers(total, dict(construction, cases=cases))
+            with mock.patch.object(report.importlib, "import_module", side_effect=lambda name: modules[name]):
+                with self.assertRaisesRegex(ValueError, "cases must match"):
+                    report.build_snapshot(timing=timing, numerator=numerator)
+
+    def test_timing_reader_rejection_blocks_construction_import(self):
+        timing, numerator, total, construction = self.construction_fixture()
+        modules = self.construction_readers(total, construction)
+        modules["ninjars_paper_timing_v3"].report_snapshot.side_effect = ValueError("ordinary source/runtime changed")
+        with mock.patch.object(report.importlib, "import_module", side_effect=lambda name: modules[name]):
+            with self.assertRaisesRegex(ValueError, "source/runtime changed"):
+                report.build_snapshot(timing=timing, numerator=numerator)
+        modules["ninjars_paper_numerator_v3"].report_snapshot.assert_not_called()
+
+    def two_tool_cases(self):
+        cases = self.cases()
+        cases["fixture"]["requested_tools"] = [6, 8]
+        cases["fixture"]["tools"].pop("1")
+        return cases
+
+    def test_declared_two_tool_curves_have_no_unrequested_cells(self):
+        data = report.figure_data(self.two_tool_cases(), [1e-9, 1e-5], requested_tools=[6, 8])["fixture"]
+        self.assertEqual(list(data["tools"]), ["6", "8"])
+        self.assertEqual(data["requested_tools"], [6, 8])
+        self.assertNotIn("1", data["tools"])
+        self.assertNotIn("7", data["tools"])
+        self.assertIsNotNone(data["tools"]["8"]["ratio"])
+
+    def test_unattempted_requested_tool_remains_pending_without_extra_tools(self):
+        cases = self.two_tool_cases(); cases["fixture"]["tools"].pop("8")
+        data = report.figure_data(cases, [1e-9, 1e-5], requested_tools=[6, 8])["fixture"]
+        self.assertEqual(list(data["tools"]), ["6", "8"])
+        self.assertEqual(data["tools"]["8"]["status"], "pending")
+        self.assertIsNone(data["tools"]["8"]["tail"])
+
+    def test_invalid_reordered_or_noninteger_tool_selection_is_rejected(self):
+        for selection in ([8, 6], [6], [6, 8, 7], [1, 8], [True, 8], [6., 8], ["6", "8"]):
+            with self.subTest(selection=selection), self.assertRaises(ValueError):
+                report.figure_data(self.two_tool_cases(), [1e-9, 1e-5], requested_tools=selection)
+
+    def test_undeclared_tools_or_case_selection_cannot_enter_two_tool_plot(self):
+        cases = self.two_tool_cases(); cases["fixture"]["tools"]["1"] = self.cases()["fixture"]["tools"]["1"]
+        with self.assertRaisesRegex(ValueError, "Undeclared"):
+            report.figure_data(cases, [1e-9, 1e-5], requested_tools=[6, 8])
+        cases = self.two_tool_cases(); cases["fixture"]["requested_tools"] = [1, 6, 7, 8]
+        with self.assertRaisesRegex(ValueError, "selections differ"):
+            report.figure_data(cases, [1e-9, 1e-5], requested_tools=[6, 8])
+
+    def test_group_render_propagates_validated_two_tool_selection(self):
+        snapshot = {"schema": report.SCHEMA, "stability": {"stream": "forced_dp_self_consistency",
+            "rescue_enabled": False, "physical_qualified": True, "requested_tools": [6, 8],
+            "cases": self.two_tool_cases(), "thresholds": [1e-9, 1e-5]}}
+        with mock.patch.object(report, "plot_stability", return_value={}) as render:
+            report.plot_groups(snapshot, self.directory / "two-tools")
+        self.assertEqual(render.call_args.kwargs["requested_tools"], [6, 8])
+        self.assertFalse(render.call_args.kwargs["software_fixture"])
+
+    def test_two_tool_svg_has_only_selected_legends(self):
+        filename = self.directory / "two-tool-layout.svg"
+        data = report.plot_stability(self.two_tool_cases(), [1e-9, 1e-5], filename,
+            software_fixture=True, requested_tools=[6, 8])
+        self.assertEqual(data["requested_tools"], [6, 8])
+        svg = filename.read_text()
+        self.assertIn("Ninja:", svg); self.assertIn("NinjaRS:", svg)
+        self.assertNotIn("CutTools", svg); self.assertNotIn("COLLIER", svg)
+        self.assertFalse(data["qualification_eligible"])
+
     def test_deterministic_synthetic_svg_labels_zeros_and_ratio_gaps(self):
         first, second = self.directory / "first.svg", self.directory / "second.svg"
         one = report.plot_stability(self.cases(), [1e-9, 1e-5], first, software_fixture=True)

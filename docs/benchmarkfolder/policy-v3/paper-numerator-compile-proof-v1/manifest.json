@@ -1,0 +1,118 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 1481,
+      "sha256": "2c30aa584fe2fcafbb45d512150756d9d45953e5f06072c92bdef6e2da71e3fd"
+    },
+    "cases/qcd-1/HelConfigs.dat": {
+      "bytes": 88,
+      "sha256": "4598f48b6b2ac00343f20c274f536e95cd7ccbd56b035f7292a9387e40b0f035"
+    },
+    "cases/qcd-1/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "abbbb4cc9090c3b18ef275c52c5cd3cb761b4e18f4207614450ccf184688adfa"
+    },
+    "cases/qcd-1/build.json": {
+      "bytes": 162390,
+      "sha256": "1dda0b19154d98672adaddef649358b108740fff7ad66c481cfee4c089767231"
+    },
+    "cases/qcd-1/check_sa.f": {
+      "bytes": 4792,
+      "sha256": "1c7d161ddd035baeb3419a057e8a2545425d88fd478775f11ccb8df5c1c13fd5"
+    },
+    "cases/qcd-1/compile.log": {
+      "bytes": 2365,
+      "sha256": "f378d08dd4f41c8953fbb7aa94d2f45b1b772d488abde74c0f613b5407133e4e"
+    },
+    "cases/qcd-1/loop_matrix.f": {
+      "bytes": 91619,
+      "sha256": "d70b16741312a41600179d87ac2bea57885eafa2335d1a59906ce2d5d5d02318"
+    },
+    "cases/qcd-1/ordinary-MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "cases/qcd-1/ordinary-loop_matrix.f": {
+      "bytes": 91620,
+      "sha256": "d413cd4d5e066be40c151862b50d4a2e8711052bb8154ca8f81c8d1bd47dbcb8"
+    },
+    "cases/qcd-1/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "cases/supplement-gg-hh/HelConfigs.dat": {
+      "bytes": 36,
+      "sha256": "63c09e295349032b7cc4bfbff5541477904b8e4a9eacc84c90b4a25952ea2c54"
+    },
+    "cases/supplement-gg-hh/MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "abbbb4cc9090c3b18ef275c52c5cd3cb761b4e18f4207614450ccf184688adfa"
+    },
+    "cases/supplement-gg-hh/build.json": {
+      "bytes": 161375,
+      "sha256": "9b58acf7ee396d625a7e1430a93e22719fb37b476d369cc17d19ad5e3fc5f31f"
+    },
+    "cases/supplement-gg-hh/check_sa.f": {
+      "bytes": 4791,
+      "sha256": "7bfb10e292f67cb728336658641f54743afea8aebc23c598dcdc006d9042def9"
+    },
+    "cases/supplement-gg-hh/compile.log": {
+      "bytes": 2395,
+      "sha256": "52780e8419068d37695a934109ebca8d3765dcec41b559efadc286a296afcdd7"
+    },
+    "cases/supplement-gg-hh/loop_matrix.f": {
+      "bytes": 107902,
+      "sha256": "6dfb7c779932fd25ec78a1ef229c53341c6c828bda65cbe4f75742dfafa2ec41"
+    },
+    "cases/supplement-gg-hh/ordinary-MadLoopParams.dat": {
+      "bytes": 13353,
+      "sha256": "31ed777a0739ced4904bc8f3e8dde3a8623a3b1171d62886e086fa27a73b1e9c"
+    },
+    "cases/supplement-gg-hh/ordinary-loop_matrix.f": {
+      "bytes": 107903,
+      "sha256": "26027b1e895daa4189004bc86563a9cdf8884296830f1dfdfdfbe0418a9b19dc"
+    },
+    "cases/supplement-gg-hh/param_card.dat": {
+      "bytes": 2471,
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "cleanup.json": {
+      "bytes": 961,
+      "sha256": "3363fa6e29bb97079e5c4ebf97d8718288bd839ae49620ae6bedf9f2fd831294"
+    },
+    "compile-only.py": {
+      "bytes": 4209,
+      "sha256": "c8db4f6483fd100d3996d9f1ba8e4d60b9749e4ef7f1ab16630c01bb19dfd931"
+    },
+    "independent-compile-readiness-review.json": {
+      "bytes": 3357,
+      "sha256": "e6d5bd243e7f3c44e2faf1c554068a9b6bf58813775b275bd4cf54e8d7907a58"
+    },
+    "logs/copy-profile-1.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/copy-profile-2.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/copy-profile-3.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "logs/copy-profile-4.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "process-ledger.jsonl": {
+      "bytes": 3158,
+      "sha256": "1a930499ed78d24d136d39f40c3f6325ee6a0bf19891478c2627434f20f9df45"
+    },
+    "status.json": {
+      "bytes": 2046,
+      "sha256": "a92a813a1fec291cb0bd00bcc9a0f1b2a5e61b749bcbfbdb5d691b9938f5dffc"
+    }
+  },
+  "schema": "paper-construction-compile-compatibility-seal-v1",
+  "scope": "Exactly two compile/link-only probes; no executable/Worker/SETPARA/reducer/MP; timing/numerical qualification pending"
+}

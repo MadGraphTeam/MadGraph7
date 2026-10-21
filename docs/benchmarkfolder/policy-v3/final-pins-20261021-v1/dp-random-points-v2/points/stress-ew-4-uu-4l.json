@@ -1,0 +1,74 @@
+{
+  "actual_generation_case": "stress-ew-4-uu-4l",
+  "cuts": {
+    "delta_r_min": 0.5,
+    "eta_definition": "pseudorapidity",
+    "interpretation": "Strict final-state cuts; loop-induced reference omits pT only",
+    "pt_min_gev": 50.0
+  },
+  "definition": {
+    "id": "stress-ew-4-uu-4l",
+    "model": "loop_qcd_qed_sm_Gmu",
+    "nfinal": 4,
+    "process": "u u~ > e+ e- mu+ mu- [virt=QED]"
+  },
+  "energy_gev": 1000.0,
+  "generation": {
+    "bytes": 10327,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/final-result.json",
+    "sha256": "a782c15c707a8b4e0f2ac7f0421eac9d80af3f59aff388b10a4cebd88f1345f9"
+  },
+  "masses": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "min_final_pt_gev": 50.67919956651234,
+  "min_pair_delta_r": 0.5035937058351966,
+  "origin_authority": {
+    "generation": {
+      "bytes": 10327,
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/final-result.json",
+      "sha256": "a782c15c707a8b4e0f2ac7f0421eac9d80af3f59aff388b10a4cebd88f1345f9"
+    },
+    "generation_case": "stress-ew-4-uu-4l",
+    "kind": "stress-v3"
+  },
+  "physical_card": {
+    "bytes": 4537,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/inputs/candidate/stress-ew-4-uu-4l/param_card.dat",
+    "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715"
+  },
+  "physical_validation": {
+    "external_masses": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "invariant_interpretation": "RAMBO orientations at fixed center-of-mass energy",
+    "max_relative_conservation_residual": 2.5011104298755525e-15,
+    "max_relative_mass_shell_residual": 1.3969838619232178e-15,
+    "physical_distinct_invariant_s": null,
+    "points": 100,
+    "serialized_distinct_configurations": 100,
+    "serialized_invariant_s_max": 1000000.0,
+    "serialized_invariant_s_min": 1000000.0,
+    "sha256": "675947d4da4828a973ddc8c3c32b3fa37709cd49478c45ed05f4efaac2710630",
+    "storage": "binary64 values serialized as 17 digits after decimal in exponential notation"
+  },
+  "points_count": 100,
+  "proposals": 154,
+  "rejected": 54,
+  "rejection_reasons": {
+    "delta_r": 8,
+    "pt": 46
+  },
+  "sample_kind": "independent-random-dp-measurement",
+  "seed": 20261032
+}
