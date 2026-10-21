@@ -157,9 +157,12 @@ class ProfileCLI(unittest.TestCase):
     def test_mock_cli_failure_retains_raw_and_exits_owned_context(self):
         case = self.case(); exits = []
         report, work = self.root / "report", self.root / "work"
+        source = self.put("source.py", "synthetic CLI source")
+        producer = cli.bound(Path(cli.__file__))
         spec = self.root / "spec.json"; spec.write_text(json.dumps({"phase": cli.PHASE, "ready": True,
             "schedule": [{"case": "qcd-2", "backend": 8, "repetition": 0, "npoints": 100}],
-            "sources": {}, "cases": {"qcd-2": case}, "report": cli.policy.relative(report),
+            "sources": {"producer": producer, "madgraph/various/process_checks.py": source},
+            "cases": {"qcd-2": case}, "report": cli.policy.relative(report),
             "work": cli.policy.relative(work), "timeout_seconds": 1}))
         handoff = self.root / "handoff.json"; handoff.write_text(json.dumps({"root_authorized": True,
             "phase": cli.PHASE, "cpu": 207, "specification_sha256": cli.workers.digest(spec)}))
@@ -172,6 +175,7 @@ class ProfileCLI(unittest.TestCase):
         def fake(command, **kwargs):
             kwargs["stdout"].write("injected actual-CLI failure\n")
             (kwargs["cwd"] / "profile_optimized_failed.log").write_text("failed raw output")
+            (kwargs["cwd"] / "MG5_debug").write_text("actual-work debug traceback\n")
             return mock.Mock(wait=mock.Mock(return_value=1))
 
         with mock.patch.object(cli.os, "sched_getaffinity", return_value={207}), \
@@ -185,6 +189,17 @@ class ProfileCLI(unittest.TestCase):
         self.assertFalse(result["complete"]); self.assertFalse(result["acceptance_eligible"])
         self.assertEqual((cell / "retained-work/profile_optimized_failed.log").read_text(), "failed raw output")
         self.assertIn("retained-work/profile_optimized_failed.log", result["files"])
+        debug = cell / "retained-work/MG5_debug"
+        self.assertEqual(debug.read_text(), "actual-work debug traceback\n")
+        self.assertEqual(result["files"]["retained-work/MG5_debug"], cli.bound(debug))
+        inputs = {}; failed = cli.failure_snapshot(cell / "result.json", inputs=inputs)
+        self.assertEqual(failed["status"], "failed")
+        self.assertEqual(failed["raw_files"]["retained-work/MG5_debug"], cli.bound(debug))
+        self.assertIn(cli.policy.relative(debug), inputs)
+        self.assertNotIn("timing", failed)
+        debug.write_text("tampered retained debug")
+        with self.assertRaisesRegex(ValueError, "Changed"):
+            cli.failure_snapshot(cell / "result.json")
 
     def metadata(self, backend=6):
         def text_record(text):

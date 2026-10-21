@@ -1,0 +1,22 @@
+{
+  "scope": "Root conditional application after three independent source/test PASS reviews; exact path expression and failure-debug custody only",
+  "files": {
+    "madgraph/various/process_checks.py": {
+      "before": "01ffc8538b1e19ca2de800abebffb8f11637f5e8478927e809181e171fc6f78c",
+      "after": "cd33bf00d8ef031efb1bd6eff498a4d88f68f4cf284c5aac52d4268c595df923",
+      "mode": "0o755"
+    },
+    "tools/ninjars_profile_cli_v3.py": {
+      "before": "8aed579e7bb3130651cf4fb585c5b701d60b35e2de2c7d79960301396882b20d",
+      "after": "c8f2bd5dc63ec20b9dfa74ff7af1f84fbfcfdc04aa33d080f9078f82d611075c",
+      "mode": "0o600"
+    },
+    "tests/unit_tests/loop/test_ninjars_profile_cli_v3.py": {
+      "before": "529c12e2a23e60731d02696dd70170948a89f1b34ff61a6c2f94aed2fcb086f4",
+      "after": "95335b618b8bc384b049efb1cb462230064bf71f05d9ff376eb2ae16b8453fe1",
+      "mode": "0o600"
+    }
+  },
+  "portable_test_sha256": "e55292377113a6a5370c578a9ada6c4f49e4bba7168bcbda8fefcb26222aad8b",
+  "native_calls": 0
+}

@@ -1,0 +1,9 @@
+test_default_installation_output_behavior_unchanged (__main__.OutputPath.test_default_installation_output_behavior_unchanged) ... ok
+test_original_fails_real_private_driver_lookup (__main__.OutputPath.test_original_fails_real_private_driver_lookup) ... ok
+test_profile_reuses_infos_in_explicit_private_output (__main__.OutputPath.test_profile_reuses_infos_in_explicit_private_output) ... ok
+test_standalone_stability_exports_into_explicit_private_output (__main__.OutputPath.test_standalone_stability_exports_into_explicit_private_output) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 1.296s
+
+OK

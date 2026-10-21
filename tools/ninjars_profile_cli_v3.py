@@ -353,7 +353,7 @@ def execute_one(spec_path, index, handoff_path, execute=False):
         raise
     finally:
         # All stdout/source/cache files already present remain after any failure.
-        for path in (*work.glob("profile_optimized_*.log"), *work.glob("stability_optimized_*.log"),
+        for path in (*work.glob("MG5_debug"), *work.glob("profile_optimized_*.log"), *work.glob("stability_optimized_*.log"),
                 *work.glob("SAVEDTMP_CHECK_*/SavedRunInfos/profile_timing_metadata.json"),
                 *work.glob("SAVEDTMP_CHECK_*/SubProcesses/P*_*/SavedStabilityRun_*.pkl")):
             target = report / "retained-work" / path.relative_to(work)

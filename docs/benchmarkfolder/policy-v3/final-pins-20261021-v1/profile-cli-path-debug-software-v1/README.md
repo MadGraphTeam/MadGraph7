@@ -1,0 +1,7 @@
+# Generic profile path and debug-custody regression
+
+The first actual private-directory QCD1 pilot completed timing but failed when stability looked for check_sa.f under the installation root. The captured traceback and failed descriptor remain historical; no accepted profile or NinjaRS cell was produced. The generic correction changes exactly stability's output-directory base from mg_root to output_path, matching timing and the constructor contract. Default installation-root behavior is preserved. No timing, precision, RNG, threshold or arithmetic changed.
+
+Four actual whole-method path controls use the real driver path handler and real temporary check_sa.f files, stopping before compilation or native execution. The retained private predecessor reproduces the old failure. The portable MG7 module tests fresh/reused profile information, standalone stability and the default root behavior. A separate one-glob change retains the actual private MG5_debug in failed CLI inventories; its mocked failure control checks completeFalse, bound raw/debug custody and tamper rejection.
+
+The affected live suite passed110/110 software tests (9 metadata,45 CLI,34 consumer,18 defaults,4 paths), without skips, compiler or native calls. The previous293-test scope and separate HH10 controls are not relabeled as this run. Both production deltas and test portability were independently source-reviewed. All profile execution remains held until tested source publication, a new specification/namespace and matching root resource authorization.

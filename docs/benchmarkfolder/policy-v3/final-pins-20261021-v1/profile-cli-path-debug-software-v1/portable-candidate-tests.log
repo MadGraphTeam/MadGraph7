@@ -1,0 +1,9 @@
+test_default_installation_output_behavior_unchanged (portable_path_candidate.OutputPath.test_default_installation_output_behavior_unchanged) ... ok
+test_profile_reuses_existing_process_in_explicit_private_output (portable_path_candidate.OutputPath.test_profile_reuses_existing_process_in_explicit_private_output) ... ok
+test_profile_reuses_infos_in_explicit_private_output (portable_path_candidate.OutputPath.test_profile_reuses_infos_in_explicit_private_output) ... ok
+test_standalone_stability_exports_into_explicit_private_output (portable_path_candidate.OutputPath.test_standalone_stability_exports_into_explicit_private_output) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 1.418s
+
+OK

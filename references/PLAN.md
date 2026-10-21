@@ -1133,3 +1133,26 @@ comparisons pass, and all six observed paired 95% confidence intervals have
 upper limits below 1.05 relative to the original Ninja baseline. This result
 applies only to that declared sample. The numerical source hold is released
 for the independently reviewed installed-default and CLI diagnostic changes.
+
+### Explicit-output profiling repair and multi-Higgs extension
+
+The additional `gg > HHH` and `gg > HHHH` processes were generated and
+compiled through the actual CLI and checked at two common 1 TeV points each.
+Ninja and NinjaRS agree for Born, Laurent and split-order results; maximum
+finite-part relative differences are 2.42e-14 and 3.87e-13. Preserve the
+original data-analysis import failure separately from its corrected read-only
+finalizer and independent numerical audit; no amplitudes were rerun for that
+correction.
+
+The first actual profile pilot completed Ninja timing but failed during
+stability because the existing MadLoop code used the installation directory
+in place of the explicit output directory. The same defect exists in the
+original baseline. Retain this pilot as incomplete, with no accepted timing
+comparison, and retain its zero-exit child/reaped-resource evidence.
+
+Repair only the stability output-directory base and retain the actual private
+work directory's debug log on failure. Four portable tests exercise the real
+driver-path handling; the coupled affected software suite passes 110 tests.
+Keep timing, RNG and numerical algorithms unchanged. Commit and push this
+source revision, then use a new source-bound twelve-case specification and
+new output namespace for the two-call pilot and subsequent profiles.

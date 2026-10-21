@@ -1,0 +1,44 @@
+{
+  "candidate": {
+    "bytes": 377065,
+    "path": ".benchmark-work/profile-cli-output-path-fix-v1/process_checks.patched.py",
+    "sha256": "cd33bf00d8ef031efb1bd6eff498a4d88f68f4cf284c5aac52d4268c595df923"
+  },
+  "compiler_invocations": 0,
+  "findings": [
+    "Only one expression changes stability export_dir base from installation mg_root to configured output_path; all other bytes identical.",
+    "Four controls execute actual whole stability method and real driver-path updater on actual temporary files, reproducing predecessor failure then private profile-infos, private standalone and default-root success.",
+    "The wrapper stops after real driver rewrite and before make/native process; timing/numerator/master/threshold/cache/rotation arithmetic remains unchanged."
+  ],
+  "followup": "Private test uses ignored OLD/NEW files; portable MG7 promotion must preserve assertions and source boundary before final coupled execution.",
+  "numerical_calls": 0,
+  "owner_result": {
+    "bytes": 1055,
+    "path": ".benchmark-work/profile-cli-output-path-fix-v1/result.json",
+    "sha256": "575c4b52cdd54b28a4e983b0086b9d9ec385326ea855a34b958c9e145b055d99"
+  },
+  "patch": {
+    "bytes": 515,
+    "path": ".benchmark-work/profile-cli-output-path-fix-v1/output-path.patch",
+    "sha256": "49ff24705cb1888ea511f9667ddf566d808843f27368bc90f19c8cddcb703a22"
+  },
+  "previous": {
+    "bytes": 377061,
+    "path": ".benchmark-work/profile-cli-output-path-fix-v1/process_checks.before.py",
+    "sha256": "01ffc8538b1e19ca2de800abebffb8f11637f5e8478927e809181e171fc6f78c"
+  },
+  "prior_actual_diagnosis": {
+    "bytes": 3086,
+    "path": ".benchmark-work/final-release-audit-20261021-v1/profile-private-output-path-diagnosis-v1.json",
+    "sha256": "d70d1756e0d55d691bde80b5f6f84d001464188a9d59b7572e5348a013c27999"
+  },
+  "recorded_utc": "2026-10-21T22:22:21.219887+00:00",
+  "schema": "independent-private-profile-output-path-fix-source-review-v1",
+  "status": "PASS-private-candidate",
+  "tests": {
+    "bytes": 5589,
+    "path": ".benchmark-work/profile-cli-output-path-fix-v1/test_output_path.py",
+    "sha256": "c675aaf32be67492472f78ee1ef5767cd82692d1a2e9e719256ab22744d820c3"
+  },
+  "tests_run_by_auditor": 0
+}

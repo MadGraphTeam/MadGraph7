@@ -1,0 +1,19 @@
+{
+  "status": "passed",
+  "scope": "Four software-only actual whole stability-method path controls with real fix_PSPoint_in_check and real temporary driver files; native/compiler boundary forbidden",
+  "tests": 4,
+  "native_calls": 0,
+  "compiler_calls": 0,
+  "candidate_sha256": "cd33bf00d8ef031efb1bd6eff498a4d88f68f4cf284c5aac52d4268c595df923",
+  "source_before_sha256": "01ffc8538b1e19ca2de800abebffb8f11637f5e8478927e809181e171fc6f78c",
+  "test_sha256": "c675aaf32be67492472f78ee1ef5767cd82692d1a2e9e719256ab22744d820c3",
+  "log_sha256": "53624ab3c11c53c40efd11989e3b5cb5610a118f121419b369b1c4b745404b88",
+  "one_expression_only": true,
+  "checks": [
+    "Actual predecessor raises missing check_sa.f in distinct private output",
+    "Candidate profile reuses actual private infos/driver",
+    "Candidate standalone stability setup and actual driver use same private output",
+    "Default installation-root output behavior unchanged"
+  ],
+  "preserved_attempt1": "Mock namespace omitted misc/logging; no native calls, original source/log retained"
+}

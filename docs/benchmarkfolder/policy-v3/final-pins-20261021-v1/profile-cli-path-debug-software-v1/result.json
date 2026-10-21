@@ -1,0 +1,29 @@
+{
+  "status": "passed",
+  "exit_code": 0,
+  "scope": "Affected live coupled9+45+34+18+4 software controls; no compiler or native execution",
+  "command": [
+    "taskset",
+    "-c",
+    "180",
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+    "-B",
+    "-m",
+    "unittest",
+    "tests.unit_tests.loop.test_ninjars_profile_timing_metadata",
+    "tests.unit_tests.loop.test_ninjars_profile_cli_v3",
+    "tests.unit_tests.loop.test_ninjars_cli_report_v3",
+    "tests.unit_tests.loop.test_ninjars_defaults",
+    "tests.unit_tests.loop.test_ninjars_profile_output_path",
+    "-v"
+  ],
+  "elapsed_seconds": 16.593315750942566,
+  "finished_utc": "2026-10-21T22:24:46.042846+00:00",
+  "sources": {
+    "madgraph/various/process_checks.py": "cd33bf00d8ef031efb1bd6eff498a4d88f68f4cf284c5aac52d4268c595df923",
+    "tools/ninjars_profile_cli_v3.py": "c8f2bd5dc63ec20b9dfa74ff7af1f84fbfcfdc04aa33d080f9078f82d611075c",
+    "tests/unit_tests/loop/test_ninjars_profile_cli_v3.py": "95335b618b8bc384b049efb1cb462230064bf71f05d9ff376eb2ae16b8453fe1"
+  },
+  "portable_test_sha256": "e55292377113a6a5370c578a9ada6c4f49e4bba7168bcbda8fefcb26222aad8b",
+  "log_sha256": "5f723e69ae1aa1ff8662ba7155959dd401393d4843ca7f2d3433ea9f7a053348"
+}

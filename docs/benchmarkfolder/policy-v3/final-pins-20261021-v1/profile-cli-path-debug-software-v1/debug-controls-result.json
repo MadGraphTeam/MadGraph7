@@ -1,0 +1,118 @@
+{
+  "scope": "Private-only exact debug retention change; synthetic mocked CLI failure and full existing software suite, no production/native/compiler/evaluation changes",
+  "inputs": {
+    "before/tools/ninjars_profile_cli_v3.py": {
+      "sha256": "8aed579e7bb3130651cf4fb585c5b701d60b35e2de2c7d79960301396882b20d",
+      "bytes": 33472
+    },
+    "before/tests/unit_tests/loop/test_ninjars_profile_cli_v3.py": {
+      "sha256": "529c12e2a23e60731d02696dd70170948a89f1b34ff61a6c2f94aed2fcb086f4",
+      "bytes": 39884
+    },
+    "source/tools/ninjars_profile_cli_v3.py": {
+      "sha256": "c8f2bd5dc63ec20b9dfa74ff7af1f84fbfcfdc04aa33d080f9078f82d611075c",
+      "bytes": 33497
+    },
+    "source/tests/unit_tests/loop/test_ninjars_profile_cli_v3.py": {
+      "sha256": "95335b618b8bc384b049efb1cb462230064bf71f05d9ff376eb2ae16b8453fe1",
+      "bytes": 40873
+    },
+    "run-software.py": {
+      "sha256": "886db1fb5f4f184f758770f48f0f9d0cb0bde12613dcd0afe7545afbe684ef12",
+      "bytes": 1138
+    }
+  },
+  "source_boundary": {
+    "sha256": "35e6c5f36b7a2ca03019ae3180d660b9b64449a3aa3fd801329d58be88ad373a",
+    "bytes": 406
+  },
+  "live_sources_before": {
+    "tools/ninjars_profile_cli_v3.py": {
+      "sha256": "8aed579e7bb3130651cf4fb585c5b701d60b35e2de2c7d79960301396882b20d",
+      "bytes": 33472
+    },
+    "tests/unit_tests/loop/test_ninjars_profile_cli_v3.py": {
+      "sha256": "529c12e2a23e60731d02696dd70170948a89f1b34ff61a6c2f94aed2fcb086f4",
+      "bytes": 39884
+    }
+  },
+  "live_sources_unchanged": true,
+  "private_sources_unchanged": true,
+  "runs": [
+    {
+      "label": "baseline-focused",
+      "command": [
+        "taskset",
+        "-c",
+        "180",
+        "python3",
+        "-B",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/profile-cli-debug-capture-fix-v1/run-software.py",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/profile-cli-debug-capture-fix-v1/before/tools/ninjars_profile_cli_v3.py",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/profile-cli-debug-capture-fix-v1/source/tests/unit_tests/loop/test_ninjars_profile_cli_v3.py",
+        "test_mock_cli_failure_retains_raw_and_exits_owned_context",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/profile-cli-debug-capture-fix-v1/baseline-focused-counts.json"
+      ],
+      "started_utc": "2026-10-21T22:20:44.032801+00:00",
+      "finished_utc": "2026-10-21T22:20:44.565510+00:00",
+      "elapsed_seconds": 0.5327258390607312,
+      "returncode": 1,
+      "tests_run": 1,
+      "tests_passed": 0,
+      "failures": 0,
+      "errors": 1,
+      "skipped": 0,
+      "successful": false
+    },
+    {
+      "label": "candidate-focused",
+      "command": [
+        "taskset",
+        "-c",
+        "180",
+        "python3",
+        "-B",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/profile-cli-debug-capture-fix-v1/run-software.py",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/profile-cli-debug-capture-fix-v1/source/tools/ninjars_profile_cli_v3.py",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/profile-cli-debug-capture-fix-v1/source/tests/unit_tests/loop/test_ninjars_profile_cli_v3.py",
+        "test_mock_cli_failure_retains_raw_and_exits_owned_context",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/profile-cli-debug-capture-fix-v1/candidate-focused-counts.json"
+      ],
+      "started_utc": "2026-10-21T22:20:44.566049+00:00",
+      "finished_utc": "2026-10-21T22:20:44.963502+00:00",
+      "elapsed_seconds": 0.3974710440961644,
+      "returncode": 0,
+      "tests_run": 1,
+      "tests_passed": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "successful": true
+    },
+    {
+      "label": "candidate-full",
+      "command": [
+        "taskset",
+        "-c",
+        "180",
+        "python3",
+        "-B",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/profile-cli-debug-capture-fix-v1/run-software.py",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/profile-cli-debug-capture-fix-v1/source/tools/ninjars_profile_cli_v3.py",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/profile-cli-debug-capture-fix-v1/source/tests/unit_tests/loop/test_ninjars_profile_cli_v3.py",
+        "all",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/profile-cli-debug-capture-fix-v1/candidate-full-counts.json"
+      ],
+      "started_utc": "2026-10-21T22:20:44.963856+00:00",
+      "finished_utc": "2026-10-21T22:20:47.580151+00:00",
+      "elapsed_seconds": 2.616319066961296,
+      "returncode": 0,
+      "tests_run": 45,
+      "tests_passed": 45,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "successful": true
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+--- a/madgraph/various/process_checks.py
++++ b/madgraph/various/process_checks.py
+@@ -1787,7 +1787,7 @@
+         else:
+             process = matrix_element
+         proc_name = process.shell_string()[2:]
+-        export_dir=pjoin(self.mg_root,("SAVED" if keep_folder else "")+\
++        export_dir=pjoin(self.output_path,("SAVED" if keep_folder else "")+\
+                                                 temp_dir_prefix+"_%s"%proc_name)
+         
+         tools_name=bannermod.MadLoopParam._ID_reduction_tool_map
