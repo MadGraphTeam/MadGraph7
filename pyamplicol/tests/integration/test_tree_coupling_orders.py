@@ -169,7 +169,7 @@ _DOUBLE_COUNTED_TRIPLE_GAUGE = pytest.mark.xfail(
     reason=(
         "the recurrence lane counts a triple-gauge vertex joining three quark "
         "lines once per cyclic order of the lines (twice): QED^8 is up to 15x "
-        "MadGraph; belongs to the recurrence-lane triple-gauge package"
+        "MadGraph; open issue WP2.9 of DESIGN section 16.2"
     ),
 )
 
@@ -299,8 +299,8 @@ def test_eager_lane_matches_madgraph(
     reason=(
         "the eager lane mispairs W exchanges among four quark lines: "
         "pure-electroweak u u~ > d d~ s s~ c c~ is 1.48x MadGraph at the "
-        "reference point (agrees without W-quark couplings); belongs to its "
-        "own package (DESIGN section 3.3)"
+        "reference point (agrees without W-quark couplings); open issue "
+        "WP2.9 of DESIGN section 16.2"
     ),
 )
 def test_eager_lane_pairs_w_exchanges_among_four_quark_lines(
