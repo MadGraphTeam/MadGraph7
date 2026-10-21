@@ -41,6 +41,10 @@ list of ``{"rows_out", "x", "rank_in", "count"}`` nodes, or the records of
 ``pyamplicol.loops.v2.schedules.trie_shapes``, whose ``x_rows`` is ``x``)
 instead of the design's counted work.
 
+``--export-programs DIR`` writes the schedule-B programs that the Python
+reference executor runs for the G0 processes (``PROGRAM_PROCESSES``) for the
+benchmark's real-trie runs.
+
 The fastest kernel form is reported for every benchmarked node shape,
 including the ``small-x`` set (at most two attached block rows) that does not
 enter the calibration. Leaf-seeded rank-0 nodes have no kernel yet, so their
@@ -427,6 +431,454 @@ def trie_shape_work(nodes: Iterable[Mapping[str, int]]) -> tuple[int, int, int]:
     return structured, dense, count
 
 
+# ----------------------------------------------------------- real trie programs
+
+# Processes whose real schedule-B programs gate G0 runs (DESIGN §5.4, WP0.3):
+# the loop_sm-no_b_mass configuration of tools/loop_v2_operation_counts.py.
+PROGRAM_PROCESSES: tuple[dict[str, object], ...] = (
+    {
+        "process": "gg>gggg",
+        "incoming": ["G", "G"],
+        "outgoing": ["G", "G", "G", "G"],
+        "born_orders": {"QCD": 4},
+        "colour": ("LC", "FC"),
+    },
+    {
+        "process": "uu~>e-e+dd~g",
+        "incoming": ["u", "u~"],
+        "outgoing": ["e-", "e+", "d", "d~", "G"],
+        "born_orders": {"QCD": 3, "QED": 2},
+        "colour": ("FC",),
+    },
+    {
+        "process": "uu~>e-e+ggg",
+        "incoming": ["u", "u~"],
+        "outgoing": ["e-", "e+", "G", "G", "G"],
+        "born_orders": {"QCD": 3, "QED": 2},
+        "colour": ("FC",),
+    },
+    {
+        "process": "gg>tt~gg",
+        "incoming": ["G", "G"],
+        "outgoing": ["t", "t~", "G", "G"],
+        "born_orders": {"QCD": 4},
+        "colour": ("FC",),
+    },
+    {
+        "process": "gg>tt~e-e+g",
+        "incoming": ["G", "G"],
+        "outgoing": ["t", "t~", "e-", "e+", "G"],
+        "born_orders": {"QCD": 3, "QED": 2},
+        "colour": ("FC",),
+    },
+)
+
+
+def _operation_counts_tool():
+    """``tools/loop_v2_operation_counts.py``: the WP1.5 configuration."""
+
+    import importlib.util
+
+    path = Path(__file__).resolve().with_name("loop_v2_operation_counts.py")
+    spec = importlib.util.spec_from_file_location("_loop_v2_operation_counts", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def program_plan(
+    prepared: Mapping[str, object], entry: Mapping[str, object], colour: str
+):
+    """(plan, kinematics, seeds) of one process in the configuration of
+    ``tools/loop_v2_operation_counts.py``: catalogue kernels, synthetic block
+    chiralities, cost-optimal frames, inclusive seeds (one column); LC keeps
+    the skeletons without a closed quark loop (all-gluon face rule)."""
+
+    from pyamplicol.loops.v2 import reference_executor as rx
+    from pyamplicol.loops.v2.families import (
+        LoopOrderSelection,
+        ModelBlockTable,
+        generate_families,
+    )
+    from pyamplicol.loops.v2.schedules import SkeletonView, build_schedules, cheapest
+    from pyamplicol.loops.v2.skeletons import PlanarWords
+
+    data, catalogue = prepared["data"], prepared["catalogue"]
+    born = dict(entry["born_orders"])  # type: ignore[arg-type]
+    loop = {**born, "QCD": born.get("QCD", 0) + 2}
+    selection = LoopOrderSelection(
+        frozenset({"QCD"}), frozenset({tuple(sorted(loop.items()))})
+    )
+    table = ModelBlockTable(
+        data, entry["incoming"], entry["outgoing"], cap=selection.cap
+    )
+    families = generate_families(table, catalogue, selection)
+    legs = families.legs
+    singlets = sum(1 << leg.index for leg in legs if abs(leg.colour) == 1)
+    letters = [1 << leg.index for leg in legs if abs(leg.colour) != 1]
+    words = PlanarWords(len(legs), letters + ([singlets] if singlets else []))
+    particles = {particle["name"]: particle for particle in data["particles"]}
+
+    def helicities(leg) -> tuple[int, ...]:
+        particle = particles[leg.field]
+        conserved = particle["spin"] == 2 and leg.mass.massless
+        return (1,) if conserved and particle["pdg_code"] > 0 else (-1, 1)
+
+    blocks = rx.SyntheticBlockRows(
+        [helicities(leg) for leg in legs],
+        chiralities=rx.block_chiralities(prepared["kernels"]),
+    )
+    kinematics = rx.CatalogueKinematics(
+        prepared["kernels"],
+        prepared["compiled"].ir.vertex_terms,
+        data,
+        blocks,
+        (),
+        rx.KernelConstants({}, rx.Carrier.exact()),
+    )
+    seeds = rx.SyntheticSeeds(blocks.row_set((1 << len(legs)) - 1), values=False)
+
+    def no_quark_loop(skeleton) -> bool:
+        return not any(
+            abs(catalogue.species(name).colour) == 3 for name in skeleton.species
+        )
+
+    view = SkeletonView(
+        catalogue, words, keep=no_quark_loop if colour == "LC" else None
+    )
+    plan = build_schedules(
+        families,
+        catalogue,
+        words,
+        policy=cheapest(lambda mask: len(blocks.row_set(mask))),
+        view=view,
+    )
+    return plan, kinematics, seeds
+
+
+@dataclass(frozen=True, slots=True)
+class _Object:
+    """An open-loop object of the program: a seed or the output of a step."""
+
+    seed: int  # seed id, or -1
+    step: int  # step index, or -1
+    rows: tuple[object, ...]
+    d_alpha: int
+    d_beta: int
+    rank: int  # the reference executor's structural rank
+    storage_rank: int  # the rank the object is stored at (>= rank)
+
+    @property
+    def diagonal(self) -> bool:
+        return self.seed >= 0
+
+
+class _ProgramBuilder:
+    """Walks schedule B exactly as ``ReferenceExecutor.run_b`` and records the
+    program: steps (one per dressed trie node, one per cut species of a family
+    accumulator), their edges with row links, and the kernel structures."""
+
+    def __init__(self, plan, kinematics, seeds):
+        self.plan = plan
+        self.kinematics = kinematics
+        self.seeds = seeds
+        self.contents: dict[object, int] = {}
+        self.content_records: list[dict[str, object]] = []
+        self.groups: dict[object, int] = {}
+        self.group_records: list[dict[str, object]] = []
+        self.currents: dict[tuple[int, int], int] = {}
+        self.factors: dict[tuple[int, int], int] = {}
+        self.factor_records: list[list[object]] = []
+        self.vertices: dict[tuple[int, int], int] = {}
+        self.seed_ids: dict[object, int] = {}
+        self.seed_rows: list[int] = []
+        self.steps: list[dict[str, object]] = []
+        self.consumed: set[int] = set()
+        self.work: dict[str, int] = {}
+
+    def _count(self, kind: str, value: int) -> None:
+        self.work[kind] = self.work.get(kind, 0) + value
+
+    def _content(self, content) -> tuple[int, object]:
+        shape = self.kinematics.shape(content)
+        found = self.contents.get(content)
+        if found is not None:
+            return found, shape
+        index = self.contents[content] = len(self.content_records)
+        split = []
+        for part in shape.split:
+            group = self.groups.get(part.key)
+            if group is None:
+                group = self.groups[part.key] = len(self.group_records)
+                self.group_records.append(
+                    {
+                        "width": part.width,
+                        "d_in": shape.loop_in,
+                        "d_out": shape.loop_out,
+                        "entries": [[b, nu, b2, *e] for b, nu, b2, e in part.entries],
+                    }
+                )
+            split.append([group, [shape.rows.index(row) for row in part.rows]])
+        self.content_records.append(
+            {
+                "d_in": shape.loop_in,
+                "d_out": shape.loop_out,
+                "degree": shape.degree,
+                "rows": len(shape.rows),
+                "fused": [[b, b2, *e] for b, b2, e in shape.fused],
+                "split": split,
+            }
+        )
+        return index, shape
+
+    def _id(self, table: dict, key) -> int:
+        return table.setdefault(key, len(table))
+
+    def _factor(self, content: int, shape, shift: int) -> int:
+        """X(J) of a content at a frame position: its block currents times the
+        vertex tensors of its split parts at that position."""
+
+        found = self.factors.get((content, shift))
+        if found is None:
+            vertices = [
+                self._id(self.vertices, (self.groups[part.key], shift))
+                for part in shape.split
+            ]
+            found = self.factors[(content, shift)] = len(self.factor_records)
+            self.factor_records.append([content, vertices])
+        return found
+
+    def run(self) -> None:
+        for family, (key, schedule) in enumerate(self.plan.schedules.items()):
+            self._family(family, key, schedule.trie)
+        steps = {i for i, step in enumerate(self.steps) if not step["trace"]}
+        if steps != self.consumed:
+            raise AssertionError("every open-loop object feeds exactly one edge")
+
+    def _family(self, family: int, key, trie) -> None:
+        before = [0]
+        for mask, _mass in trie.frame.apply(key):
+            before.append(before[-1] | mask)
+        full = before[-1]
+        leaves = []
+        for skeleton, ring in trie.leaves:
+            contents = [self.plan.view.content(segment.label) for segment in ring]
+            seed_key, rows = self.seeds.seed(skeleton, contents)
+            seed = self.seed_ids.get(seed_key)
+            if seed is None:
+                seed = self.seed_ids[seed_key] = len(self.seed_rows)
+                self.seed_rows.append(len(rows))
+            dimension = self.kinematics.shape(contents[0]).loop_in
+            leaves.append(_Object(seed, -1, tuple(rows), dimension, dimension, 0, 0))
+        values: dict[int, _Object] = {}
+        for index, node in enumerate(trie.nodes):
+            edges = [
+                (
+                    self.plan.view.content(segment.label),
+                    leaves[child] if node.depth == 1 else values.pop(child),
+                )
+                for segment, child in node.edges
+            ]
+            step = {
+                "family": family,
+                "depth": node.depth,
+                "shift": before[node.depth - 1],
+                "rank_in": node.rank_in,
+            }
+            if node.depth < len(trie.family):
+                values[index] = self._dress(
+                    edges, out_mask=full ^ before[node.depth], trace=False, **step
+                )
+                continue
+            # Accumulator: each cut species closes apart (reference executor).
+            cuts: dict[str, list] = {}
+            for content, source in edges:
+                cuts.setdefault(content.loop_out, []).append((content, source))
+            for species in sorted(cuts):
+                self._dress(cuts[species], out_mask=0, trace=True, **step)
+
+    def _dress(self, edges, *, out_mask, trace, family, depth, shift, rank_in):
+        from pyamplicol.loops.v2.reference_executor import restrict
+
+        shapes = [self._content(content)[1] for content, _source in edges]
+        (d_alpha,) = {source.d_alpha for _content, source in edges}
+        (d_out,) = {shape.loop_out for shape in shapes}
+        (diagonal,) = {source.diagonal for _content, source in edges}
+        degree = max(shape.degree for shape in shapes)
+        storage_in = max(
+            [rank_in] + [source.storage_rank for _content, source in edges]
+        )
+        c_in = comb(rank_in + 4, 4)
+        per_entry = 1 if diagonal else d_alpha * c_in
+        work = {"fused": 0, "split-accumulate": 0, "split-vertex": 0}
+        targets: dict[object, int] = {}
+        groups: dict[object, dict[str, object]] = {}
+        records = []
+        for (content, source), shape in zip(edges, shapes, strict=True):
+            if shape.loop_in != source.d_beta:
+                raise AssertionError("a segment does not fit its open-loop current")
+            index, _shape = self._content(content)
+            block_index = {row: i for i, row in enumerate(shape.rows)}
+            pairs = []
+            for position, row in enumerate(source.rows):
+                block = block_index.get(restrict(row, content.mask))
+                if block is not None:
+                    target = targets.setdefault(restrict(row, out_mask), len(targets))
+                    pairs.append((target, position, block))
+            work["fused"] += len(pairs) * len(shape.fused) * per_entry
+            width_scale = 1 if diagonal else d_alpha * source.d_beta * c_in
+            split = []
+            for k, part in enumerate(shape.split):
+                rows = {block_index[row] for row in part.rows}
+                links = [pair for pair in pairs if pair[2] in rows]
+                group = groups.get(part.key)
+                if group is None:
+                    number = self.groups[part.key]
+                    group = groups[part.key] = {
+                        "slot": len(groups),
+                        "group": number,
+                        "vertex": self._id(self.vertices, (number, shift)),
+                        "targets": set(),
+                    }
+                group["targets"].update(t for t, _s, _b in links)  # type: ignore[attr-defined]
+                work["split-accumulate"] += len(links) * part.width * width_scale
+                split.append(
+                    {
+                        "current": self._id(self.currents, (index, k)),
+                        "group": group["slot"],
+                        "links": [i for link in links for i in link],
+                    }
+                )
+            if not source.diagonal:
+                self.consumed.add(source.step)
+            records.append(
+                {
+                    "seed": source.seed,
+                    "child": source.step,
+                    "content": index,
+                    "factor": self._factor(index, shape, shift),
+                    "links": [i for pair in pairs for i in pair],
+                    "split": split,
+                }
+            )
+        step_groups = []
+        for group in groups.values():
+            targets_of = sorted(group["targets"])  # type: ignore[call-overload]
+            entries = len(self.group_records[group["group"]]["entries"])  # type: ignore[index, arg-type]
+            work["split-vertex"] += entries * per_entry * len(targets_of)
+            step_groups.append(
+                {
+                    "group": group["group"],
+                    "vertex": group["vertex"],
+                    "targets": targets_of,
+                }
+            )
+        kind = "seed" if diagonal else "step"
+        split_work = work["split-accumulate"] + work["split-vertex"]
+        for form, value in work.items():
+            self._count(f"{form}/{kind}", value)
+        self._count(f"best/{kind}", min(work["fused"], split_work))
+        self._count("dress-steps", 1)
+        self._count("edges", len(edges))
+        if trace:
+            if set(targets) - {()}:
+                raise AssertionError("a closure with undressed legs")
+            self._count(
+                "closure", d_alpha * comb(rank_in + degree + 4, 4) * len(targets)
+            )
+        self.steps.append(
+            {
+                "family": family,
+                "depth": depth,
+                "seeded": diagonal,
+                "trace": trace,
+                "rows": len(targets),
+                "d_alpha": d_alpha,
+                "d_out": d_out,
+                "degree": degree,
+                "rank_in": rank_in,
+                "storage_rank_in": storage_in,
+                "work": {"fused": work["fused"], "split": split_work},
+                "edges": records,
+                "groups": step_groups,
+            }
+        )
+        return _Object(
+            -1,
+            len(self.steps) - 1,
+            tuple(targets),
+            d_alpha,
+            d_out,
+            rank_in + degree,
+            storage_in + degree,
+        )
+
+    def program(self, process: str, colour: str) -> dict[str, object]:
+        content_of = {value: key for key, value in self.currents.items()}
+        return {
+            "process": process,
+            "colour": colour,
+            "families": len(self.plan.schedules),
+            "skeletons": sum(len(s.trie.leaves) for s in self.plan.schedules.values()),
+            "trie_nodes": sum(len(s.trie.nodes) for s in self.plan.schedules.values()),
+            "work": dict(sorted(self.work.items())),
+            "contents": self.content_records,
+            "groups": self.group_records,
+            "currents": [list(content_of[i]) for i in range(len(content_of))],
+            "factors": self.factor_records,
+            "vertices": [group for group, _shift in self.vertices],
+            "seeds": self.seed_rows,
+            "steps": self.steps,
+        }
+
+
+def trie_program(plan, kinematics, seeds, process: str, colour: str):
+    """The schedule-B program the reference executor runs, for the kernel
+    benchmark: per step its edges (child step or seed, content, row links per
+    kernel form) and the per-form work the reference executor counts."""
+
+    builder = _ProgramBuilder(plan, kinematics, seeds)
+    builder.run()
+    return builder.program(process, colour)
+
+
+def program_file_name(process: str, colour: str) -> str:
+    """``gg>tt~gg``, FC -> ``gg_ttxgg-FC.json``."""
+
+    return f"{process.replace('>', '_').replace('~', 'x')}-{colour}.json"
+
+
+def export_programs(
+    output: Path, ufo: Path, names: Sequence[str] | None = None
+) -> list[Path]:
+    """Write ``<process>-<colour>.json`` programs of ``PROGRAM_PROCESSES``."""
+
+    import tempfile
+
+    counts = _operation_counts_tool()
+    output.mkdir(parents=True, exist_ok=True)
+    written = []
+    with tempfile.TemporaryDirectory() as scratch:
+        prepared = counts.prepare(counts.compile_loop_sm(ufo, Path(scratch)))
+        for entry in PROGRAM_PROCESSES:
+            if names and entry["process"] not in names:
+                continue
+            for colour in entry["colour"]:  # type: ignore[union-attr]
+                plan, kinematics, seeds = program_plan(prepared, entry, colour)
+                program = trie_program(
+                    plan, kinematics, seeds, str(entry["process"]), colour
+                )
+                path = output / program_file_name(str(entry["process"]), colour)
+                path.write_text(json.dumps(program, separators=(",", ":")))
+                written.append(path)
+                print(
+                    f"{path}: {program['families']} families,"
+                    f" {len(program['steps'])} steps, work {program['work']}"  # type: ignore[arg-type]
+                )
+    return written
+
+
 def _band(values: tuple[float, float]) -> str:
     return f"{values[0]:.3g}-{values[1]:.3g}"
 
@@ -530,7 +982,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         help="JSON node shapes of a real trie: predicts its dressing time",
     )
+    parser.add_argument(
+        "--export-programs",
+        type=Path,
+        metavar="DIR",
+        help="write the real schedule-B programs of the G0 processes and exit",
+    )
+    parser.add_argument(
+        "--processes",
+        help="comma-separated subset of the G0 processes to export",
+    )
+    parser.add_argument(
+        "--ufo",
+        type=Path,
+        help="loop_sm UFO directory (default: as tools/loop_v2_operation_counts.py)",
+    )
     args = parser.parse_args(argv)
+    if args.export_programs is not None:
+        names = args.processes.split(",") if args.processes else None
+        ufo = args.ufo or _operation_counts_tool().UFO
+        export_programs(args.export_programs, ufo, names)
+        return 0
     if not args.benchmarks:
         print(f"{'process':14s} col  design recipe s/pt (with re-test)")
         for row in PROCESSES:

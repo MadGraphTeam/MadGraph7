@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections
 import importlib.util
 import json
 import sys
@@ -9,8 +10,6 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
-
-pytestmark = pytest.mark.loop_fast
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -33,6 +32,7 @@ def _row(process: str, colour: str = "FC"):
     )
 
 
+@pytest.mark.loop_fast
 def test_design_recipe_reproduces_table_1a() -> None:
     # DESIGN Table 1a targets (with the default re-test).
     expected = {
@@ -49,6 +49,7 @@ def test_design_recipe_reproduces_table_1a() -> None:
         assert high == pytest.approx(band[1], rel=5e-3)
 
 
+@pytest.mark.loop_fast
 def test_node_work_matches_the_design_constants() -> None:
     # Late step: rows 1, X 64, rank 6 -> C(10,4) = 210 coefficients.
     assert costmodel.node_work(1, 6, 64, costmodel.STRUCTURED) == 210 * min(
@@ -118,6 +119,7 @@ def _synthetic_report(
     return {"target_features": {}, "records": records}
 
 
+@pytest.mark.loop_fast
 def test_calibration_uses_measured_throughput_and_picks_lanes() -> None:
     report = _synthetic_report(1.0)
     calibrations = [costmodel.calibrate(report, lanes) for lanes in (8, 16)]
@@ -145,6 +147,7 @@ def test_calibration_uses_measured_throughput_and_picks_lanes() -> None:
     )
 
 
+@pytest.mark.loop_fast
 def test_small_x_shapes_inform_forms_but_not_the_calibration() -> None:
     report = _synthetic_report(1.0)
     calibration = costmodel.calibrate(report, 16)
@@ -154,6 +157,7 @@ def test_small_x_shapes_inform_forms_but_not_the_calibration() -> None:
     assert costmodel.poly_layout_ratio(report, 16) == pytest.approx(0.5)
 
 
+@pytest.mark.loop_fast
 def test_g0_verdict_follows_the_headroom(tmp_path: Path) -> None:
     fast = tmp_path / "fast.json"
     fast.write_text(json.dumps(_synthetic_report(1.0)))
@@ -167,6 +171,7 @@ def test_g0_verdict_follows_the_headroom(tmp_path: Path) -> None:
     assert costmodel.main([str(slow)]) == 1
 
 
+@pytest.mark.loop_fast
 def test_robust_lanes_avoids_a_collapse_in_any_report() -> None:
     def calibrations(*rates: float):
         return [
@@ -183,6 +188,7 @@ def test_robust_lanes_avoids_a_collapse_in_any_report() -> None:
     assert costmodel.robust_lanes(reports) == 16
 
 
+@pytest.mark.loop_fast
 def test_gate_is_evaluated_at_one_lane_count_for_every_report(tmp_path: Path) -> None:
     # Fastest at 8 lanes in the first report, collapsed at 8 in the second.
     paths = []
@@ -214,6 +220,7 @@ def test_gate_is_evaluated_at_one_lane_count_for_every_report(tmp_path: Path) ->
     assert passed == [True, False]
 
 
+@pytest.mark.loop_fast
 def test_trie_shapes_accept_the_families_export() -> None:
     nodes = [
         {"rows_out": 4, "x": 8, "rank_in": 2, "count": 3},
@@ -227,3 +234,74 @@ def test_trie_shapes_accept_the_families_export() -> None:
     assert dense == 3 * costmodel.node_work(4, 2, 8, costmodel.DENSE) + (
         costmodel.node_work(2, 0, 6, costmodel.DENSE)
     )
+
+
+def _check_program(program: dict) -> None:
+    """Row links and vertex groups stay inside the objects they index."""
+    steps, contents, seeds = program["steps"], program["contents"], program["seeds"]
+    consumed = collections.Counter()
+    for step in steps:
+        for edge in step["edges"]:
+            if edge["seed"] >= 0:
+                assert edge["child"] == -1 and step["seeded"]
+                source_rows = seeds[edge["seed"]]
+            else:
+                consumed[edge["child"]] += 1
+                assert steps[edge["child"]]["depth"] == step["depth"] - 1
+                source_rows = steps[edge["child"]]["rows"]
+            links = list(zip(*[iter(edge["links"])] * 3, strict=True))
+            assert links
+            for output, source, block in links:
+                assert output < step["rows"] and source < source_rows
+                assert block < contents[edge["content"]]["rows"]
+            for part in edge["split"]:
+                assert set(zip(*[iter(part["links"])] * 3, strict=True)) <= set(links)
+                assert part["group"] < len(step["groups"])
+        for group in step["groups"]:
+            assert set(group["targets"]) <= set(range(step["rows"]))
+        if step["trace"]:
+            assert step["rows"] == 1 and step["d_alpha"] == step["d_out"]
+    assert consumed == {i: 1 for i, step in enumerate(steps) if not step["trace"]}
+
+
+@pytest.mark.loop_physics
+def test_programs_are_the_reference_executor_walk(loop_sm_compiled_model) -> None:
+    """The exported program is the schedule-B walk of the reference executor:
+    the same per-form work, step by step, for gluon, quark-line, several
+    quark-line and massive loops, in full and leading colour."""
+
+    from pyamplicol.loops.v2 import reference_executor as rx
+    from pyamplicol.models.loading import load_compiled_model
+
+    counts = costmodel._operation_counts_tool()
+    prepared = counts.prepare(load_compiled_model(loop_sm_compiled_model))
+    cases = [
+        ({"incoming": ["G", "G"], "outgoing": ["G", "G"], "born_orders": {"QCD": 2}}, c)
+        for c in ("LC", "FC")
+    ]
+    cases += [
+        (
+            {
+                "incoming": ["u", "u~"],
+                "outgoing": ["d", "d~", "G"],
+                "born_orders": {"QCD": 3},
+            },
+            "FC",
+        ),
+        (
+            {
+                "incoming": ["G", "G"],
+                "outgoing": ["t", "t~"],
+                "born_orders": {"QCD": 2},
+            },
+            "FC",
+        ),
+    ]
+    for entry, colour in cases:
+        plan, kinematics, seeds = costmodel.program_plan(prepared, entry, colour)
+        program = costmodel.trie_program(plan, kinematics, seeds, "test", colour)
+        executor = rx.ReferenceExecutor(kinematics, seeds, numeric=False)
+        assert program["work"] == dict(executor.run_b(plan).counts)
+        assert len(program["steps"]) == program["work"]["dress-steps"]
+        _check_program(program)
+    assert costmodel.program_file_name("gg>tt~e-e+g", "FC") == "gg_ttxe-e+g-FC.json"
