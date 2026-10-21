@@ -562,6 +562,7 @@ class ColorEngine:
             closed_groups=self._closed_line_groups(
                 left.sector_id, ordered_external_labels
             ),
+            sector_id=left.sector_id,
         )
         if groups is None:
             return ()
@@ -782,7 +783,7 @@ class ColorEngine:
 
     def _closed_line_groups(
         self,
-        sector_id: int | None,
+        sector_id: int,
         ordered_external_labels: tuple[int, ...],
     ) -> frozenset[int]:
         """Line groups of ``sector_id`` whose labels all lie in a merge result."""
@@ -797,6 +798,46 @@ class ColorEngine:
             if labels.issuperset(group)
         )
 
+    def _singlet_vertex_orientation_allowed(
+        self,
+        sector_id: int | None,
+        left_groups: set[int],
+        right_groups: set[int],
+    ) -> bool:
+        """Whether a singlet vertex joining complete lines has its kept orientation.
+
+        A colour-singlet vertex whose legs carry three disjoint sets of complete
+        lines (WWA or WWZ between three quark lines) has the same colour factor
+        in both cyclic orders of those legs, and the sector's line orders admit
+        it once in each: in a line order the two non-root legs are merged
+        adjacent, left before right, and the root side holds every other line,
+        so the line order shows the legs as (left, right, rest). Only the order
+        whose smallest line labels increase cyclically is kept. A vertex with
+        no coloured root side has a single order.
+        """
+
+        sector = None if sector_id is None else self._sector_by_id.get(sector_id)
+        if sector is None:
+            return True
+        lines = sector.line_label_groups
+
+        def first_label(groups: Iterable[int]) -> int | None:
+            labels = [label for group in groups for label in lines[group]]
+            return min(labels) if labels else None
+
+        rest = first_label(
+            index
+            for index in range(len(lines))
+            if index not in left_groups and index not in right_groups
+        )
+        if rest is None:
+            return True
+        first = first_label(left_groups)
+        second = first_label(right_groups)
+        if first is None or second is None:
+            return True
+        return first < second < rest or second < rest < first or rest < first < second
+
     def _lc_combined_line_groups(
         self,
         left: ColorState,
@@ -804,6 +845,7 @@ class ColorEngine:
         vertex: Vertex,
         *,
         closed_groups: frozenset[int] = frozenset(),
+        sector_id: int | None = None,
     ) -> tuple[int, ...] | None:
         """Line groups of a merge, or ``None`` if the colour flow forbids it.
 
@@ -814,7 +856,9 @@ class ColorEngine:
         in it. ``closed_groups`` are the lines of the sector whose labels all
         lie in the result: an electroweak boson or U(1)-like exchange between
         open lines keeps both lines' ends in place, and a singlet result of
-        a line that absorbed such an exchange closes both lines.
+        a line that absorbed such an exchange closes both lines. Two singlet
+        inputs with disjoint complete lines keep one cyclic orientation
+        (``_singlet_vertex_orientation_allowed``).
         """
 
         left_colored = self._particle_has_colour(vertex.particles[0])
@@ -840,9 +884,17 @@ class ColorEngine:
             and left_groups
             and right_groups
             and left_groups != right_groups
-            and not groups.issubset(closed_groups)
         ):
-            return None
+            if not groups.issubset(closed_groups):
+                return None
+            if (
+                not left_colored
+                and left_groups.isdisjoint(right_groups)
+                and not self._singlet_vertex_orientation_allowed(
+                    sector_id, left_groups, right_groups
+                )
+            ):
+                return None
         return tuple(sorted(groups))
 
     def _particle_has_colour(self, pdg: int) -> bool:

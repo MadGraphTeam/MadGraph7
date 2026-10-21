@@ -12,15 +12,17 @@ electroweak triple-gauge vertices (u u~ > d d~ e+ e- beyond QCD^4 QED^4) are
 checked on the eager lane only: the recurrence lane disagrees with MadGraph
 and with its own eager lane there, independently of coupling orders.
 
-u u~ > d d~ s s~ (three quark lines, W exchange) is a strict xfail on both
-lanes: a triple-gauge vertex whose three legs carry three different quark
-lines is counted twice, once in each cyclic order of the lines (halving the
-WWA and WWZ couplings, or removing them, reproduces MadGraph in every squared
-order). The squared orders without the pure-electroweak amplitude, QCD^8 and
-QCD^6 QED^2, have no such vertex and are checked: they include the
-interference of the W pairing with the neutral pairing of the three lines.
-MadGraph 3.7 leaves colour-flow amplitudes of this process unassigned; the
-tool zeroes them (``_zero_colour_amplitudes``).
+u u~ > d d~ s s~ (three quark lines, W exchange) checks a triple-gauge vertex
+whose three legs carry three different quark lines. Its colour factor is the
+same in both cyclic orders of the lines, and the eager lane keeps one of them
+(``ColorEngine._singlet_vertex_orientation_allowed``); the recurrence lane
+still counts it once per order, i.e. twice (halving the WWA and WWZ couplings
+reproduces MadGraph there), a strict xfail. Its squared orders without the
+pure-electroweak amplitude, QCD^8 and QCD^6 QED^2, have no such vertex and
+are checked on the recurrence lane: they include the interference of the W
+pairing with the neutral pairing of the three lines. MadGraph 3.7 leaves
+colour-flow amplitudes of this process unassigned; the tool zeroes them
+(``_zero_colour_amplitudes``).
 """
 
 from __future__ import annotations
@@ -88,13 +90,14 @@ def _runtime(
     accuracy: str = "full",
     execution_mode: str = "recurrence",
     lc_flow_layout: str = "topology-replay",
+    limits: dict[str, int] = ORDER_LIMITS,
 ) -> Runtime:
     config = RunConfig(
         action="generate",
         model=ModelConfig(cache=False),
         color=ColorConfig(accuracy=accuracy, lc_flow_layout=lc_flow_layout),
         process=ProcessConfig(
-            coupling_order_policy="explicit", max_coupling_orders=ORDER_LIMITS
+            coupling_order_policy="explicit", max_coupling_orders=limits
         ),
         generation=GenerationConfig(
             workers=1,
@@ -160,9 +163,9 @@ _THREE_LINE_TRIPLE_GAUGE = "u u~ > d d~ s s~"
 _DOUBLE_COUNTED_TRIPLE_GAUGE = pytest.mark.xfail(
     strict=True,
     reason=(
-        "both tree lanes count a triple-gauge vertex joining three quark lines "
-        "once per cyclic order of the lines (twice): QED^8 is up to 15x "
-        "MadGraph; needs its own package with the recurrence-lane TGC issue"
+        "the recurrence lane counts a triple-gauge vertex joining three quark "
+        "lines once per cyclic order of the lines (twice): QED^8 is up to 15x "
+        "MadGraph; belongs to the recurrence-lane triple-gauge package"
     ),
 )
 
@@ -264,9 +267,7 @@ def test_three_line_orders_without_triple_gauge_vertices_match_madgraph(
         ("u u~ > d d~ e+ e-", "full"),
         ("u u~ > d d~ e+ e-", "lc"),
         ("u u~ > u u~ u u~", "full"),
-        pytest.param(
-            _THREE_LINE_TRIPLE_GAUGE, "full", marks=_DOUBLE_COUNTED_TRIPLE_GAUGE
-        ),
+        (_THREE_LINE_TRIPLE_GAUGE, "full"),
         pytest.param(
             "u u~ > u u~ u u~",
             "lc",
@@ -295,6 +296,34 @@ def test_eager_lane_matches_madgraph(
     )
 
     _assert_total_matches_madgraph(runtime.evaluate(reference["points"]), reference)
+
+
+def test_eager_lane_counts_a_three_line_triple_gauge_vertex_once(
+    sm_model: ModelSource, tmp_path: Path
+) -> None:
+    """QED^8 of u u~ > d d~ s s~ is the pure-electroweak amplitude squared,
+    where WWA/WWZ vertices join the three quark lines (12x MadGraph when
+    both cyclic orders of the lines kept them)."""
+
+    reference = _reference(_THREE_LINE_TRIPLE_GAUGE)
+    runtime = _runtime(
+        sm_model,
+        _THREE_LINE_TRIPLE_GAUGE,
+        tmp_path / "artifact",
+        execution_mode="eager",
+        limits={"QCD": 0, "QED": 4},
+    )
+    (column,) = (
+        index
+        for index, order in enumerate(reference["squared_orders"])
+        if order == {"QCD": 0, "QED": 8}
+    )
+    for point, (value, partials) in enumerate(
+        zip(runtime.evaluate(reference["points"]), reference["partials"], strict=True)
+    ):
+        value = complex(value)
+        assert value.imag == 0.0
+        assert math.isclose(value.real, partials[column], rel_tol=1e-12), point
 
 
 def test_leading_colour_lanes_agree_on_mixed_order_totals(
