@@ -82,27 +82,29 @@ Two of three judges chose Design 2 as the base. The physics judge chose Design 1
 - The providers' model restriction `loop_sm-no_b_mass`. With a massless b, the closed-quark mass classes are {u,d,s,c,b} and {t} [V `required/*/madloop-export.generation.json`; `tools/loop_reference/gluon_scattering_qcd.json` has `mb = 0`].
 - "Families" equals NinjaRS reductions per event per squared-order sector (stage 1), before the re-test.
 
-**Every v2 time below is a target until gates G0 (kernels on real tries) and G1 (end to end) measure it.**
+**Every v2 time below is a target until gates G0 (kernels on real tries) and G1 (end to end) measure it.** G0 has measured the dressing term on real tries (§5.4, "Gate G0 on real tries"): the last column of Table 1a replaces the modelled dressing by the measured one and keeps the modelled NinjaRS stage and outer factor.
 
 **Table 1a. v2 structure and targets.**
 
-| Process | Colour | Families | Skeletons | B-trie nodes | Dressing work, complex MAC/pt (structured–dense kernels) | NinjaRS stage, cached masters | **Target s/pt (with re-test)** |
-|---|---|---|---|---|---|---|---|
-| gg→gggg | FC | 1,100 | 9,180 | 7,619 | 1.3–2.4×10⁸ | 44–51 ms | **0.17–0.47** |
-| gg→gggg | LC | 550 | 3,060 | 2,723 | 4.7–7.9×10⁷ | 22–26 ms | **0.07–0.17** |
-| gg→ggggg | FC | 9,414 | 122,040 | 82,738 | 2.6–4.6×10⁹ | 0.85–1.0 s | **3.4–9.0** |
-| gg→ggggg | LC | 4,707 | 40,680 | 29,155 | 0.9–1.5×10⁹ | 0.43–0.50 s | **1.4–3.4** |
-| uu~→ggggg | FC | 5,258 | 91,440 | 56,861 | 0.86–1.6×10⁹ | 0.22–0.29 s | **1.0–3.0** |
-| uu~→ggggg | LC | 2,712 | 13,560 | 15,526 | 1.6–2.6×10⁸ | 92–124 ms | **0.28–0.66** |
-| uu~→e⁻e⁺dd~g | FC | 242 | 2,484 | 1,375 | 4.9–8.7×10⁶ | 1.8–3.3 ms | **0.007–0.020** |
-| uu~→e⁻e⁺dd~g | LC | 114 | 144 | 419 | 0.9–1.4×10⁶ | 0.5–0.9 ms | **0.0016–0.0041** |
-| uu~→e⁻e⁺ggg | FC | 463 | 3,990 | 2,774 | 2.1–3.6×10⁷ | 9–13 ms | **0.032–0.082** |
-| uu~→e⁻e⁺ggg | LC | 164 | 306 | 666 | 2.6–4.1×10⁶ | 1.5–2.1 ms | **0.0045–0.011** |
-| gg→tt̄gg | FC | 1,086 | 6,888 | 5,659 | 4.9–8.5×10⁷ | 19–27 ms | **0.070–0.19** |
-| gg→tt̄gg | LC | 375 | 1,224 | 1,702 | 1.3–2.2×10⁷ | 5–7 ms | **0.019–0.048** |
-| gg→tt̄e⁻e⁺g (QCD) | FC | 579 | 3,990 | 2,840 | 2.4–4.1×10⁷ | 10–14 ms | **0.035–0.092** |
-| gg→tt̄e⁻e⁺g (QCD) | LC | 164 | 306 | 666 | 3.6–5.9×10⁶ | 1.5–2.1 ms | **0.005–0.013** |
-| gg→tt̄e⁻e⁺g (EW) | FC | ≈1,450 [I] | gate E0 | gate E0 | ≈2–3.5× QCD [I] | ≈25–50 ms [I] | **0.07–0.32 [I]** |
+| Process | Colour | Families | Skeletons | B-trie nodes | Dressing work, complex MAC/pt (structured–dense kernels) | NinjaRS stage, cached masters | **Target s/pt (with re-test)** | **G0 s/pt: finite only / with re-test** |
+|---|---|---|---|---|---|---|---|---|
+| gg→gggg | FC | 1,100 | 9,180 | 7,619 | 1.3–2.4×10⁸ | 44–51 ms | **0.17–0.47** | **0.23–0.25 / 0.26–0.30** |
+| gg→gggg | LC | 550 | 3,060 | 2,723 | 4.7–7.9×10⁷ | 22–26 ms | **0.07–0.17** | **0.070–0.078 / 0.088–0.106** |
+| gg→ggggg | FC | 9,414 | 122,040 | 82,738 | 2.6–4.6×10⁹ | 0.85–1.0 s | **3.4–9.0** | 4.4–4.8 / 5.1–5.9 [I] |
+| gg→ggggg | LC | 4,707 | 40,680 | 29,155 | 0.9–1.5×10⁹ | 0.43–0.50 s | **1.4–3.4** | 1.4–1.8 / 1.7–2.4 [I] |
+| uu~→ggggg | FC | 5,258 | 91,440 | 56,861 | 0.86–1.6×10⁹ | 0.22–0.29 s | **1.0–3.0** | 1.2–1.5 / 1.4–1.9 [I] |
+| uu~→ggggg | LC | 2,712 | 13,560 | 15,526 | 1.6–2.6×10⁸ | 92–124 ms | **0.28–0.66** | 0.28–0.36 / 0.35–0.49 [I] |
+| uu~→e⁻e⁺dd~g | FC | 242 | 2,484 | 1,375 | 4.9–8.7×10⁶ | 1.8–3.3 ms | **0.007–0.020** | **0.0064–0.0083 / 0.0078–0.0118** |
+| uu~→e⁻e⁺dd~g | LC | 114 | 144 | 419 | 0.9–1.4×10⁶ | 0.5–0.9 ms | **0.0016–0.0041** | 0.0014–0.0023 / 0.0018–0.0033 [I] |
+| uu~→e⁻e⁺ggg | FC | 463 | 3,990 | 2,774 | 2.1–3.6×10⁷ | 9–13 ms | **0.032–0.082** | **0.035–0.040 / 0.042–0.054** |
+| uu~→e⁻e⁺ggg | LC | 164 | 306 | 666 | 2.6–4.1×10⁶ | 1.5–2.1 ms | **0.0045–0.011** | 0.0046–0.0059 / 0.0058–0.0082 [I] |
+| gg→tt̄gg | FC | 1,086 | 6,888 | 5,659 | 4.9–8.5×10⁷ | 19–27 ms | **0.070–0.19** | **0.078–0.090 / 0.093–0.119** |
+| gg→tt̄gg | LC | 375 | 1,224 | 1,702 | 1.3–2.2×10⁷ | 5–7 ms | **0.019–0.048** | 0.021–0.026 / 0.025–0.034 [I] |
+| gg→tt̄e⁻e⁺g (QCD) | FC | 579 | 3,990 | 2,840 | 2.4–4.1×10⁷ | 10–14 ms | **0.035–0.092** | **0.038–0.044 / 0.046–0.060** |
+| gg→tt̄e⁻e⁺g (QCD) | LC | 164 | 306 | 666 | 3.6–5.9×10⁶ | 1.5–2.1 ms | **0.005–0.013** | 0.0057–0.0074 / 0.0068–0.0096 [I] |
+| gg→tt̄e⁻e⁺g (EW) | FC | ≈1,450 [I] | gate E0 | gate E0 | ≈2–3.5× QCD [I] | ≈25–50 ms [I] | **0.07–0.32 [I]** | gate E0 |
+
+G0 column: bold rows are measured programs (production code generation, 16 lanes; §5.4, "Gate G0 on real tries"): the measured dressing plus the modelled NinjaRS stage (×1 finite only, ×1.75–2.0 with the re-test), times the outer factor 1.05–1.10. Rows marked [I] scale the measured dressing of their class (gg→gggg for the all-gluon rows, uu~→e⁻e⁺ggg for uu~→ggggg, otherwise the row's own FC program) by the Appendix B structured work; their upper end uses the measured class with the most time per unit of that work.
 
 **Table 1b. Providers on this host (s/pt, one pinned core) and the speed gate.** "Production" is each provider's fastest default output: finite part, with I-operator poles (OpenLoops) or no poles (Recola). "Protocol" is the required-references campaign's mode, which computes all actual poles (MASTER_PLAN §5.8 item 6).
 
@@ -764,6 +766,58 @@ What the probe shows:
 Every estimate in this document is then recalibrated. The low-multiplicity check is gg→gg: the recipe gives 0.6–1.7 ms at mb = 0, against MadLoop's 2.07–2.59 ms on this host. The inherited engine takes 14.3 ms, of which numerators are 9.2 ms and NinjaRS with masters 0.16 ms (`docs/performance_reports/loop/data/measurements.json` [V]).
 
 **2→6 stretch.** Eight gluons cost 2.0×10¹⁰ complex MAC for the gluon loop alone [M `otf/scaling8.log`], so tens of seconds per point in FC. M is the lever there, and is the default at n ≥ 8.
+
+**Gate G0 on real tries (results, 2026-10-21; WP0.3, second half).**
+
+*Method.*
+
+- `tools/loop_v2_costmodel.py --export-programs DIR` writes the schedule-B program that the Python reference executor runs (`ReferenceExecutor.run_b` over the WP1.3 families and schedules and the WP1.1 kernel catalogue), in the configuration of `tools/loop_v2_operation_counts.py`: loop_sm with mb = 0, synthetic block chirality rows (as WP1.5), cost-optimal frames, inclusive seeds, LC by the all-gluon face rule. A program lists every dressing step with its edges (child step or leaf seed, content with its catalogue entries, helicity row links) and split vertex groups. Its per-form counts equal the reference executor's exactly (`tests/unit/test_loop_v2_costmodel.py`; for gg→gggg, uu~→e⁻e⁺dd~g and uu~→e⁻e⁺ggg also `operation_counts.json`).
+- `benches/loop_v2_kernels.rs --program FILE` runs each program with the WP0.3 kernels as the executor will: each family trie depth-first, one output and one set of split accumulators per depth, fused factors X(J) built per (content, frame position) inside the timed run, leaf-seeded steps on a collapsed segment. Before any timing all five forms must give the same family numerators: the largest deviation is 1.4×10⁻¹⁵ of the largest component, over 6 programs × 3 lane counts × 3 code generations.
+- Per program it times every form, a walk without kernels, the per-step fastest form (oracle) and a per-step form rule, best of 3 after a warm-up, at 8, 16 and 32 lanes, in three code generations (baseline x86-64 = production, x86-64-v3, native AVX-512), each pinned to an idle core of its own CCX. The host was otherwise loaded: the synthetic probe measured 1.30 G at 16 lanes in this run (1.42 G in the kernel-gate run), and repeated runs spread by about ±10 %. Reports: `workspace/tmp/g0-real-tries/run2/` (`bench-*.json`, `costmodel.log`).
+
+*Real tries, production code generation, 16 lanes.* Counted work is the reference executor's per-step cheaper form (the unit of D); "÷ D" divides it by the Appendix B structured work. Times are dressing per point, fused-factor builds included.
+
+| Program | Steps | Edges | Row links | Counted work, 10⁶ CMAC/pt (÷ D) | Rule, ms/pt | Oracle | Best single form | G CMAC/s (counted) | Walk share | AVX2 / AVX-512 rule, ms/pt |
+|---|---|---|---|---|---|---|---|---|---|---|
+| gg→gggg FC | 18,712 | 36,330 | 1,498,140 | 235.6 (1.76) | 171 | 172 | 222 | 1.37 | 3.0 % | 170 / 122 |
+| gg→gggg LC | 8,024 | 15,570 | 642,060 | 60.3 (1.28) | 45.3 | 44.8 | 50.5 | 1.33 | 2.6 % | 44.1 / 32.7 |
+| uu~→e⁻e⁺dd~g FC | 1,969 | 5,942 | 76,352 | 5.5 (1.12) | 4.23 | 4.22 | 6.38 | 1.29 | 4.4 % | 4.06 / 3.14 |
+| uu~→e⁻e⁺ggg FC | 4,616 | 11,636 | 277,493 | 32.6 (1.55) | 23.8 | 23.7 | 35.1 | 1.37 | 3.8 % | 21.9 / 17.5 |
+| gg→tt̄gg FC | 9,168 | 21,833 | 995,360 | 75.1 (1.52) | 54.6 | 55.2 | 68.8 | 1.37 | 3.2 % | 57.4 / 49.1 |
+| gg→tt̄e⁻e⁺g FC | 4,220 | 10,433 | 481,888 | 35.6 (1.49) | 26.2 | 26.2 | 42.4 | 1.36 | 3.3 % | 27.4 / 18.9 |
+
+*What G0 shows.*
+
+1. **Throughput holds on real tries.** The kernels run 1.29–1.37 G counted CMAC/s per core in the production code generation (AVX2 1.30–1.48, AVX-512 1.53–1.93), the synthetic probe's rate on the same host state. The 45 % allowance for gathers and cache misses is not needed. The counted work is 1.12–1.76× the Appendix B D: ghost loops and both orientations of closed loops are separate skeletons (no C-parity folding yet, §7.2), and kernels carry the catalogue's entries; the measured times include all of it, so Table 1a's G0 column drops the quartic factor.
+2. **Dispatch is not the limiter.** The walk without kernels (traversal, segment set-up, output and accumulator clears) costs 1.5–4.3 µs per step, 2.6–4.4 % of the dressing. Step models fitted on the in-situ step times give 0 per step and 4.5–7.8 ns per inner-loop iteration for the fused form, 0–3.7 µs per step for the split form's vertex groups, and 11.7–14.8 ns per iteration for the register-blocked form; kernel work is 97 % of the modelled time. These replace the probe's empty-call lower bounds.
+3. **Lane count.** Geometric-mean time over the six programs relative to 16 lanes is 1.05 / 1.05 / 1.16 at 8 lanes and 1.02 / 0.97 / 1.01 at 32 lanes (baseline / AVX2 / AVX-512). **The executor's default is 16 lanes**: the smallest count within 5 % of the fastest in every code generation (`program_lanes`). 32 lanes gains nothing measurable and doubles the live objects and fused factors.
+4. **Kernel-form selection rule.** Per step, take the form f of {fused-structured, split-structured, fused-blocked} with the least t_f = c_f + i_f·n_f + W_f·L/r_f. Here W_f is the step's complex MACs per lane in form f, n_f its inner-loop iterations (W_f without the factor of input coefficients) and L the lane count. There is one constant table per code generation and lane count (`selection_rules`, fitted on gg→gggg FC). At 16 lanes, production code generation, (c, i, r) is fused (0, 4.5 ns, 1.39 G/s), split (0, 0, 1.28 G/s) and blocked (0, 11.7 ns, 1.43 G/s); under AVX-512 the blocked form reaches 3.6 G/s.
+   - Transferred to the other programs, the rule's step time is within 0.2–0.9 % of the per-step oracle (AVX2 0.5–2.5 %, AVX-512 2.3–4.4 %). Choosing the form with less counted work is within 0.2–12 %; the best single form is 7.5–70 % slower.
+   - In practice, leaf-seeded steps take the split form and rank ≥ 1 steps the fused form (the blocked form at high rank under AVX-512).
+   - This replaces the kernel-gate rule "split for X ≥ 4": on real tries the discriminant is the input rank, not X.
+5. **Verdict.** Upper end of the finite-only target (no checks) against the gate, headroom per code generation (baseline / AVX2 / AVX-512):
+   - gg→gggg 0.245 s against 3.8 s: ×15.5 / 15.6 / 19.9;
+   - uu~→e⁻e⁺ggg 0.040 s against 0.32 s: ×7.9 / 8.4 / 9.6;
+   - uu~→e⁻e⁺dd~g 8.3 ms against 45 ms: ×5.5 / 5.6 / 6.4;
+   - gg→tt̄gg 0.090 s against 0.63 s: ×7.1 / 6.8 / 7.6;
+   - gg→tt̄e⁻e⁺g (QCD) 0.044 s against 0.55 s: ×12.5 / 12.1 / 15.2.
+
+   **G0 passes** at 16 lanes in the production code generation: the thinnest headroom is ×5.5 against the required ×1.3 (the probe recipe gave ×2.15). WP4.6 is not promoted and stays a wave-4 option; runtime AVX2/AVX-512 kernel selection is worth 1.0–1.4× on dressing.
+6. **For WP2.1.**
+   - Fused factors X(J) per (content, frame position) are the largest per-batch state: gg→gggg FC has 6,839 of them, 2.2 M lane vectors (0.55 GB at 16 lanes), each read by 5.3 edges on average, and building them costs 0.06–0.54 ms/pt (0.3–1.5 % of the dressing). At 7 legs (10–15× the contents) they should be built per family bucket or per edge, not all at once.
+   - C-parity folding of closed loops and ghost-loop compression are the largest structural levers left for the gluon processes (counted work 1.5–1.76× Appendix B).
+   - Steps of input rank 1–4 in the fused form carry 60–80 % of the time, leaf-seeded split steps 10–20 %.
+
+*Not measured by G0* (recipe terms kept): the NinjaRS stage (§1.3 model), trees, seeds and counterterms (outer factor 1.05–1.10), real tree-block chirality rows (synthetic, as WP1.5), and LC for processes with quark lines (scaled from their FC class). G1 measures these end to end.
+
+*Reproduction* (bench with `CARGO_TARGET_DIR` in a scratch tree; add `RUSTFLAGS="-C target-cpu=..."` for the other code generations):
+
+```text
+python tools/loop_v2_costmodel.py --export-programs programs/
+cargo bench -p rusticol-core --features loop-v2 --bench loop_v2_kernels -- \
+    --program programs/gg_gggg-FC.json ... --json bench-baseline.json
+python tools/loop_v2_costmodel.py bench-baseline.json bench-x86-64-v3.json bench-native.json
+```
 
 ---
 
