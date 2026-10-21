@@ -15,7 +15,9 @@ binary64 and at 200 bits. Oracles:
   controls, so the binary64 comparison uses the 200-bit oracle;
 * the instrumented MadLoop component control of gg -> gg (1e-9);
 * O2: Born-weighted family numerators against the legacy capture after exact
-  affine frame maps, family sets equal modulo certified-zero families (O7);
+  affine frame maps (rank-r coefficients weighted by sqrt(s)^r, the units- and
+  frame-independent error of N(q) at |q| ~ sqrt(s)), family sets equal modulo
+  certified-zero families (O7);
 * O4: schedules F and B give identical numerators in exact arithmetic on the
   physical tree rows and seeds;
 * O9: the virtual's poles equal Catani's operator from the Born and its
@@ -46,6 +48,7 @@ from pyamplicol.loops.v2.assemble import (
     LoopSlice,
     Precision,
     SliceRequest,
+    _decimal_string,
 )
 from pyamplicol.loops.v2.conventions import FermionSignError
 from pyamplicol.loops.v2.families import shifts
@@ -527,37 +530,33 @@ def _magnitude(z) -> float:
     return float(z.real * z.real + z.imag * z.imag) ** 0.5 if z else 0.0
 
 
-# Open, awaiting the user's decision on the bound (no relaxation): binary64
-# family numerators miss 1e-13 on the quark controls (worst 2.1e-12 on
-# uu~ -> dd~g, a triangle's rank-0 coefficient that cancels ~100x in its
-# frame). Binary64 tree rows and Born amplitudes carry ~2e-14 and the
-# binary64 dressing ~2e-13; with the 200-bit rows and amplitudes rounded to
-# binary64 and dressed exactly every family is within 1.3e-14, so 1e-13 needs
-# trees and dressing beyond binary64. The legacy binary64 capture misses its
-# own 200-bit values by up to 8.5e-12 in its own frames.
-_O2_BINARY64_OPEN = pytest.mark.xfail(
-    strict=True, reason="binary64 family numerators miss 1e-13 (needs sign-off)"
-)
+def _weights(layout, length, momenta):
+    """sqrt(s)^rank per coefficient: the error of N(q) at |q| ~ sqrt(s).
+
+    Coefficients of rank r carry mass dimension D - r, so a maximum over raw
+    coefficients depends on the units and on the frame (a shift by p moves
+    weight between ranks): binary64 numerators of every implementation then
+    "miss" 1e-13 on structurally cancelling low-rank coefficients. On the
+    slice's first points the raw metric gives v2 binary64 up to 2.1e-12 and
+    the legacy binary64 capture up to 8.5e-12 (5.4e-13 on uu~ -> uu~, whose
+    box frames v2 shifts by p1); weighted, v2 is within 5.7e-14 and legacy
+    within 8.5e-12 (a bubble of uu~ -> uu~g), in either frame.
+    """
+
+    total = [a + b for a, b in zip(momenta[0], momenta[1], strict=True)]
+    energy = math.sqrt(float(total[0] ** 2 - sum(x * x for x in total[1:])))
+    return [energy ** sum(layout.exponents[i]) for i in range(length)]
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize(
-    ("name", "carrier"),
-    [
-        pytest.param(
-            name,
-            carrier,
-            marks=_O2_BINARY64_OPEN if carrier == "double" and name != "gg_gg" else (),
-        )
-        for name in SLICE
-        for carrier in CARRIERS
-    ],
-)
+@pytest.mark.parametrize("carrier", tuple(CARRIERS))
+@pytest.mark.parametrize("name", SLICE)
 def test_family_numerators_equal_o2(slices, name, carrier):
     """O2 and the O7 family sets: every v2 family numerator equals its legacy
     family's (200-bit capture) after an exact affine frame map, symmetrised
-    over the ring's automorphisms, which preserve the integral; the legacy
-    families without a v2 partner are exactly v2's certified-scaleless ones."""
+    over the ring's automorphisms, which preserve the integral, coefficients
+    weighted by sqrt(s)^rank; the legacy families without a v2 partner are
+    exactly v2's certified-scaleless ones."""
 
     from pyamplicol.loops.v2 import reference_executor as rx
 
@@ -612,8 +611,11 @@ def test_family_numerators_equal_o2(slices, name, carrier):
         if len(autos) > 1:
             mine = _symmetrised(mine, layout, momenta, autos)
             theirs = _symmetrised(theirs, layout, momenta, autos)
-        scale_ = max(map(_magnitude, theirs))
-        error = max(_magnitude(a - b) for a, b in zip(mine, theirs, strict=True))
+        weights = _weights(layout, len(theirs), momenta)
+        scale_ = max(_magnitude(b) * w for b, w in zip(theirs, weights, strict=True))
+        error = max(
+            _magnitude(a - b) * w for a, b, w in zip(mine, theirs, weights, strict=True)
+        )
         assert error <= O2_TOLERANCE[carrier] * scale_, (key, error / scale_)
     # v2 also logs the massless tadpoles the legacy selection never generates.
     keys = dict.fromkeys(entry.key for entry in slice_.families.scaleless)
@@ -756,20 +758,60 @@ def test_stability_estimates_bracket_the_true_error(evaluated, name):
     for f64, ap in zip(
         evaluated(name, "double"), evaluated(name, "arbitrary-200"), strict=True
     ):
-        truth = {
-            sector: Laurent(*[float(x) for x in value.coefficients])
-            for sector, value in ap.components["virtual"].items()
-        }
-        error = deviation(truth, f64.components["virtual"])
-        errors = per_coefficient(truth, differences(truth, f64.components["virtual"]))
-        assert error > 0
-        for names in CONFIGURATIONS:
-            estimate = f64.stability.subset(names)
-            assert error <= estimate.relative < 1e-10, (names, error, estimate)
-            for k, (mine, bound) in enumerate(
-                zip(errors, estimate.coefficients, strict=True)
-            ):
-                assert mine <= bound, (names, LAURENT[k], mine, bound)
+        _assert_brackets(f64, ap)
+
+
+# Out of sample: the estimate's two factors were calibrated on the 12 slice
+# points with ``ROTATIONS``; these points and checks are disjoint from both, and
+# their rotated momenta are non-terminating rationals.
+FRESH_FRAME = Rotation.from_axis_angle((2, -1, 3), 1.1)
+FRESH_CHECKS = StabilityChecks(
+    (
+        Rotation.from_axis_angle((1, 1, 0), 0.9),
+        Rotation.from_axis_angle((-1, 2, 2), 2.3),
+    ),
+    True,
+)
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", SLICE)
+def test_stability_estimates_bracket_out_of_sample(slices, name):
+    fixture = _fixture(name)
+    point = FRESH_FRAME.apply(
+        [[Fraction(x) for x in momentum] for momentum in fixture["points"][-1]]
+    )
+    scale = fixture["scales_squared"][-1]
+    f64, ap = (
+        slices(name).evaluate(
+            point,
+            scale,
+            parameters=PARAMETERS,
+            precision=CARRIERS[carrier],
+            stability=FRESH_CHECKS if carrier == "double" else None,
+        )
+        for carrier in ("double", "arbitrary-200")
+    )
+    _assert_brackets(f64, ap)
+
+
+def _assert_brackets(f64, ap):
+    """Every check configuration's estimate bounds the true binary64 error."""
+
+    truth = {
+        sector: Laurent(*[float(x) for x in value.coefficients])
+        for sector, value in ap.components["virtual"].items()
+    }
+    error = deviation(truth, f64.components["virtual"])
+    errors = per_coefficient(truth, differences(truth, f64.components["virtual"]))
+    assert error > 0
+    for names in CONFIGURATIONS:
+        estimate = f64.stability.subset(names)
+        assert error <= estimate.relative < 1e-10, (names, error, estimate)
+        for k, (mine, bound) in enumerate(
+            zip(errors, estimate.coefficients, strict=True)
+        ):
+            assert mine <= bound, (names, LAURENT[k], mine, bound)
 
 
 @pytest.mark.loop_fast
@@ -798,5 +840,9 @@ def test_rotations_are_exact():
     assert all(abs(x - y) < 1e-5 for x, y in zip(image[1:], axis, strict=True))
     with pytest.raises(ValueError, match="identity"):
         StabilityChecks((Rotation.from_axis_angle((1, 0, 0), 0.0),))
+    # Rotated momenta reach the reducer with the carrier's digits, uncapped.
+    third = _decimal_string(Fraction(1, 3), 130)
+    assert third == "0." + "3" * 130
+    assert _decimal_string(Fraction(1, 8), 5) == "0.125"
     with pytest.raises(ValueError, match="at least one check"):
         StabilityEstimate.from_checks({}, {}, scale={}, roundoff=2.0**-53)
