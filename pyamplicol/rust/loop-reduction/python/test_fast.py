@@ -152,7 +152,8 @@ def test_dense_mu_blocks_weighted_rank_and_overwrite_match_callback(expression):
 
 
 def test_dense_tensor_rejects_rank_and_nonpolynomial_without_truncation():
-    for expression in ["mu2^3", "q0^6"]:
+    # Rank n+3 at n = 4: beyond the owner's rank <= n+2.
+    for expression in ["mu2^3*q0", "q0^7"]:
         with pytest.raises(ValueError, match="rank"):
             PolynomialPlan(4, [expression, "0", "0"], [], engine="fast-tensor")
     with pytest.raises(ValueError, match="polynomial"):

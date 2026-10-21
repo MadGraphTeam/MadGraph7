@@ -124,8 +124,10 @@ def build_loop_kinematics(
         # Family denominators follow the loop cycle: every box (and every box
         # pinched from a larger cycle) reaches the masters with consecutive
         # propagators adjacent, as in the conventional D0 argument order.
-        # oneloopmaster 09b2c74 misclassifies a soft-divergent massive box in a
-        # non-adjacent labelling (finite in binary64, NaN in DoubleFloat).
+        # oneloopmaster 09b2c74 misclassified a soft-divergent massive box in a
+        # non-adjacent labelling (finite in binary64, NaN in DoubleFloat);
+        # 8ec256fc relabels D0 inside the numerical entry points pyAmpliCol
+        # uses (NativeFloat, NinjaRS master callbacks). The order is kept.
         # The cycle order is unique up to rotation and reflection, so it is
         # normalized on family indices and identical for all family graphs.
         cycle = [mapping[i] for i in _cycle_order(edges)]
