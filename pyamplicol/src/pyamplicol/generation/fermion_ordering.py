@@ -25,7 +25,9 @@ lines have two conventions:
   carries that ``-1`` where it is created. Roots of gluon-joined lines keep
   their sign, and QCD x electroweak interference between quark lines gets its
   Wick sign. The Rust recurrence builder applies the same factors
-  (``rusticol-core`` ``recurrence/fermion_ordering.rs``).
+  (``rusticol-core`` ``recurrence/fermion_ordering.rs``) except the global
+  ``gluon_joined_phase``, so the two lanes' amplitudes may differ by an
+  overall sign; squared results and their per-order partials agree.
 * **Colour flow** (``coloured_lines=False``, loop-request blocks). The colour
   flow owns the ordering of coloured lines; ``loops/v2/blocks.py`` documents
   how the loop engine turns those currents into Feynman-rule currents.
@@ -38,12 +40,13 @@ from dataclasses import replace
 
 from ..color.plan_types import LCColorSector
 from ..models.base import Model
-from ..processes.ir import CanonicalProcessIR, ProcessLegIR
-from .dag_types import CurrentIndex, GenericDAG
 
-# Auxiliary kind of the U(1) subtraction current of a colour-flow gluon
-# (``models/compiler_color_flow.py``).
-U1_SUBTRACTION_AUXILIARY = "u1-subtraction-color-flow-vector"
+# The colour-flow compiler owns the U(1) subtraction current's auxiliary kind.
+# It stays private there: every ``models/*.py`` file is hashed into the
+# compiled-model fingerprint, so exporting it would invalidate compiled models.
+from ..models.compiler_color_flow import _U1_SUBTRACTION_AUXILIARY
+from ..processes.ir import CanonicalProcessIR, ProcessLegIR
+from .dag_types import AmplitudeRoot, CurrentIndex, GenericDAG, InteractionNode
 
 
 def _external_fermion_requires_exterior_sign(
@@ -376,12 +379,12 @@ def apply_fermion_ordering_signs(
     def creation_sign(result_id: int) -> int:
         if (
             coloured_lines
-            and currents[result_id].index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY
+            and currents[result_id].index.auxiliary_kind == _U1_SUBTRACTION_AUXILIARY
         ):
             return -1
         return 1
 
-    def closure_sign(root) -> int:
+    def closure_sign(root: AmplitudeRoot) -> int:
         if not coloured_lines:
             return 1
         sector_id = root.color_sector_id
@@ -391,7 +394,7 @@ def apply_fermion_ordering_signs(
             None if sector_id is None else color_plan.sector(sector_id)
         )
 
-    def signed_interaction(interaction):
+    def signed_interaction(interaction: InteractionNode) -> InteractionNode:
         color_weight = signed_weight(
             interaction.color_weight,
             interaction.left_id,
@@ -402,7 +405,7 @@ def apply_fermion_ordering_signs(
             return interaction
         return replace(interaction, color_weight=color_weight)
 
-    def signed_root(root):
+    def signed_root(root: AmplitudeRoot) -> AmplitudeRoot:
         color_weight = signed_weight(
             root.color_weight,
             root.left_id,
@@ -421,7 +424,6 @@ def apply_fermion_ordering_signs(
 
 
 __all__ = [
-    "U1_SUBTRACTION_AUXILIARY",
     "FermionOrderingSign",
     "apply_fermion_ordering_signs",
     "gluon_joined_phase",
