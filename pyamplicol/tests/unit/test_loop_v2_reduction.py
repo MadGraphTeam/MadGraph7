@@ -23,14 +23,6 @@ pytestmark = pytest.mark.loop_physics
 REFERENCES = Path(__file__).resolve().parents[2] / "tools/loop_reference"
 
 
-@pytest.fixture(scope="module")
-def native(loop_native):
-    symbolica = pytest.importorskip("symbolica")
-    if not symbolica.is_licensed():
-        pytest.skip("native generation requires a licensed Symbolica runtime")
-    return loop_native
-
-
 class _RecordingPlan:
     def __init__(self, plan, meta, calls):
         self._plan, self._meta, self._calls = plan, meta, calls
@@ -117,7 +109,8 @@ def _capture(native, factory, fixture, arithmetic, precision, engine):
 
 
 _GLUONS = (physical_process.gluon_scattering_qcd_program, "gluon_scattering_qcd.json")
-# Unequal-mass (gluon, top) bubbles reach the bubble masters with both orders.
+# Unequal-mass (gluon, top) bubbles: the reversed check frame reaches the B2
+# masters with the swapped mass order at the same p^2.
 _TOPS = (
     partial(
         physical_process._qcd_process_program,
@@ -167,7 +160,7 @@ _FIVE_GLUONS = (_five_gluon_program, "quark_three_gluon_qcd.json")
 
 
 @pytest.fixture(scope="module")
-def captured(native):
+def captured(loop_native):
     cache = {}
 
     def capture(process, arithmetic="double", precision=None, engine="fast"):
@@ -179,7 +172,7 @@ def captured(native):
                 "gg_ggg": _FIVE_GLUONS,
             }[process]
             cache[key] = _capture(
-                native, factory, fixture, arithmetic, precision, engine
+                loop_native, factory, fixture, arithmetic, precision, engine
             )
         return cache[key]
 
@@ -215,10 +208,10 @@ def _statuses_succeed(batches):
 @pytest.mark.parametrize("process", ["gg_gg", "gg_ttx"])
 @pytest.mark.parametrize("legacy_engine", ["fast", "generic"])
 def test_v2_equals_the_polynomial_plan_on_legacy_family_numerators(
-    native, captured, process, legacy_engine
+    loop_native, captured, process, legacy_engine
 ):
     groups, legacy = captured(process, engine=legacy_engine)
-    direct, check = native.V2Reducer("double", None, "fast").reduce(groups)
+    direct, check = loop_native.V2Reducer("double", None, "fast").reduce(groups)
     assert check is None and _statuses_succeed(direct)
     for new, old in zip(direct, legacy, strict=True):
         assert new.values.row_ids == old.values.row_ids
@@ -230,13 +223,20 @@ def test_v2_equals_the_polynomial_plan_on_legacy_family_numerators(
             if g[0] == 2 and len(set(map(tuple, g[2].to_decimal()))) == 2
         ]
         assert unequal
+        # B2 masters are keyed by the ordered mass tuple (DESIGN §11.2), so the
+        # swapped orders of the reversed frame are new masters, not cache hits.
+        reducer = loop_native.V2Reducer("double", None, "fast")
+        reducer.reduce(groups)
+        alone = reducer.take_master_statistics()["B2"]["evaluated"]
+        reducer.reduce(groups, check=True)
+        assert reducer.take_master_statistics()["B2"]["evaluated"] > alone
 
 
 @pytest.mark.parametrize("process", ["gg_gg", "gg_ttx"])
-def test_cached_masters_equal_uncached_bitwise(native, captured, process):
+def test_cached_masters_equal_uncached_bitwise(loop_native, captured, process):
     groups, _ = captured(process)
-    cached = native.V2Reducer("double", None, "fast", cache_masters=True)
-    uncached = native.V2Reducer("double", None, "fast", cache_masters=False)
+    cached = loop_native.V2Reducer("double", None, "fast", cache_masters=True)
+    uncached = loop_native.V2Reducer("double", None, "fast", cache_masters=False)
     direct, check = cached.reduce(groups, check=True)
     plain, plain_check = uncached.reduce(groups, check=True)
     for a, b in zip(direct + check, plain + plain_check, strict=True):
@@ -248,7 +248,7 @@ def test_cached_masters_equal_uncached_bitwise(native, captured, process):
     assert 0 < hits < requests
     assert uncached.take_master_statistics()["D0"]["hits"] == 0
     # Lanes of other families and points in the same bucket change nothing.
-    alone = native.V2Reducer("double", None, "fast")
+    alone = loop_native.V2Reducer("double", None, "fast")
     for group, batched in zip(groups, direct, strict=True):
         assert (
             alone.reduce([group])[0][0].values.to_decimal()
@@ -258,10 +258,10 @@ def test_cached_masters_equal_uncached_bitwise(native, captured, process):
 
 @pytest.mark.parametrize("process", ["gg_gg", "gg_ttx"])
 def test_reduction_direction_check_agrees_and_poles_are_optional(
-    native, captured, process
+    loop_native, captured, process
 ):
     groups, _ = captured(process)
-    reducer = native.V2Reducer("double", None, "fast")
+    reducer = loop_native.V2Reducer("double", None, "fast")
     direct, check = reducer.reduce(groups, check=True)
     assert _statuses_succeed(direct + check)
     for a, b in zip(direct, check, strict=True):
@@ -283,10 +283,10 @@ def test_reduction_direction_check_agrees_and_poles_are_optional(
     [("double-double", None, "1e-28"), ("arbitrary", 40, "1e-36")],
 )
 def test_generic_engine_from_exponent_arrays_equals_legacy_extended_precision(
-    native, captured, arithmetic, precision, tolerance
+    loop_native, captured, arithmetic, precision, tolerance
 ):
     groups, legacy = captured("gg_ttx", arithmetic, precision, "generic")
-    reducer = native.V2Reducer(arithmetic, precision, "generic")
+    reducer = loop_native.V2Reducer(arithmetic, precision, "generic")
     assert reducer.take_master_statistics() is None
     direct, check = reducer.reduce(groups, check=True)
     assert _statuses_succeed(direct + check)
@@ -296,11 +296,11 @@ def test_generic_engine_from_exponent_arrays_equals_legacy_extended_precision(
 
 
 @pytest.mark.loop_nightly
-def test_master_hit_rate_on_five_gluons(native, captured, record_property):
+def test_master_hit_rate_on_five_gluons(loop_native, captured, record_property):
     """Report the cache hit rate of one gg -> ggg batch (about 7 min capture)."""
     groups, _ = captured("gg_ggg")
-    reducer = native.V2Reducer("double", None, "fast")
-    uncached = native.V2Reducer("double", None, "fast", cache_masters=False)
+    reducer = loop_native.V2Reducer("double", None, "fast")
+    uncached = loop_native.V2Reducer("double", None, "fast", cache_masters=False)
     rates = {}
     for check in (False, True):
         direct, reversed_ = reducer.reduce(groups, check=check)

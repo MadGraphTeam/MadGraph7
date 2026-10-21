@@ -1275,12 +1275,6 @@ def _analyse(v2: V2Slice, bare) -> LegacyAnalysis:
             assembled[choice] = (vector, tensor.normalization_power)
             predicted_skeletons |= skeletons
         # Every legacy colour term is (up to its vertex leg order) one choice.
-        # The match allows a sign: a legacy term's sign depends on FeynKit's
-        # vertex leg order (it has flipped between sessions for closed-quark
-        # boxes). The seeds are checked sign-exactly against the independent
-        # diagram closure above; the overall sign of seed x kinematics is
-        # fixed by O2 (``test_seed_sums_reproduce_legacy_contractions_via_o2``
-        # and the slice's family numerators).
         for term in terms:
             target = _raw(loop[term], oracle.formal)
             power = loop[term].normalization_power
@@ -1293,6 +1287,12 @@ def _analyse(v2: V2Slice, bare) -> LegacyAnalysis:
                 )
                 if candidate == target
             ]
+            # Up to a sign: the legacy term's vertex leg order may differ from
+            # the choice, and its capture has flipped the sign of some closed
+            # quark-loop T^a boxes between sessions. The seeds are matched
+            # sign-exactly to the diagram closure above, so this cannot hide a
+            # wrong kappa; the sign of seed x kinematics against legacy is O2's
+            # (test_loop_v2_slice.py::test_family_numerators_equal_o2).
             assert matches, (index, term)
             sign, choice = matches[0]
             coefficients, own, _skeletons = predictions[choice]

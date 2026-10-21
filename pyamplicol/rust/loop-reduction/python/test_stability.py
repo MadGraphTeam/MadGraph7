@@ -3,9 +3,8 @@
 
 from decimal import Decimal, localcontext
 
+import _loop_reduction as backend
 import pytest
-
-backend = pytest.importorskip("_loop_reduction")
 
 
 def batch(values, ids, *, arithmetic="arbitrary", precision=90, columns=1):
