@@ -78,6 +78,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
 from itertools import product
+from types import MappingProxyType
 from typing import Any
 
 from pyamplicol.color.connections import (
@@ -636,6 +637,11 @@ class SiteClosure:
                     BlockCurrent(key.external_mask, field_name, key.coupling_orders)
                 ].append(block)
         self._colours: dict[tuple, ConnectedColorTensor] = {}
+
+    @property
+    def fermion_ends(self) -> Mapping[int, int]:
+        """Coloured external fermions: label -> all-outgoing representation."""
+        return MappingProxyType(self._ends)
 
     def terms(self, site: CountertermSite) -> tuple[SiteTerm, ...]:
         return self.vertex_terms(site.rule.entries, site.blocks)

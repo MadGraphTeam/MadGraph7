@@ -893,7 +893,7 @@ class LoopSlice:
         )
         closure = SiteClosure(blocks, data, catalogue)
         readings = rx.reading_skeletons(plan)
-        weights = LeafWeights(data, closure._ends)
+        weights = LeafWeights(data, closure.fermion_ends)
         for skeleton in readings:
             weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
         born_terms = _born_terms(blocks, table, closure, ordinary)
@@ -1026,8 +1026,9 @@ class LoopSlice:
         numbers = _Numbers(precision)
         values = dict(parameters)
         values.update(self.request.fixed_parameters)
+        digits = precision.working_digits
         values[self.scale_parameter] = _decimal_string(
-            _sqrt_fraction(scale, precision.working_digits)
+            _sqrt_fraction(scale, digits), digits
         )
         return _PointEvaluation(self, point, scale, values, numbers, poles)
 
@@ -1605,7 +1606,8 @@ class _PointEvaluation:
             )
 
         def real(values):
-            return [[_decimal_string(x), "0"] for x in values]
+            working = numbers.precision.working_digits
+            return [[_decimal_string(x, working), "0"] for x in values]
 
         for (family, loop_order), numerator in sorted(numerators.items()):
             sequence = numerator.sequence
@@ -2101,8 +2103,9 @@ def _to_decimal(value: Fraction) -> Decimal:
     return Decimal(value.numerator) / Decimal(value.denominator)
 
 
-def _decimal_string(value: Any) -> str:
-    """Exact decimal digits of a terminating rational, else 60 significant."""
+def _decimal_string(value: Any, digits: int) -> str:
+    """Exact decimal digits of a terminating rational, else ``digits``
+    significant ones (the carrier's working digits)."""
 
     value = _fraction(value)
     denominator = value.denominator
@@ -2114,7 +2117,7 @@ def _decimal_string(value: Any) -> str:
             prec=len(str(value.numerator)) + len(str(value.denominator)) + 5
         ):
             return str(Decimal(value.numerator) / Decimal(value.denominator))
-    with localcontext(prec=80):
+    with localcontext(prec=digits):
         return str(Decimal(value.numerator) / Decimal(value.denominator))
 
 
