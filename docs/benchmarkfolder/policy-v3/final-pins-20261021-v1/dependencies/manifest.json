@@ -1,0 +1,42 @@
+{
+  "schema": "madloop-final-upstream-dependencies-v1",
+  "claim": "Source provenance and static compatibility review only",
+  "numerical_validation": false,
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 4539,
+      "sha256": "3f6d37088bc881dd88b2f230be09b4891e511e1642349119e10e8896ed9dbe79"
+    },
+    {
+      "path": "pins.json",
+      "bytes": 1761,
+      "sha256": "a330299c567e9d2956f77537f19a875dce2bceac26df683012feb2d2c0a7d930"
+    },
+    {
+      "path": "pull-and-ref-log.json",
+      "bytes": 5814,
+      "sha256": "a546e97a34e78e5b4fb147178eef8eb5b3b1e4110d2133f9532712cca2221f87"
+    },
+    {
+      "path": "source-excerpts.json",
+      "bytes": 16271,
+      "sha256": "512b6523276e180d1fecdeaa7d01fec5b68b0dfb04c1712861187ea2a2d2b645"
+    },
+    {
+      "path": "upstream-cargo/ninjars/Cargo.toml",
+      "bytes": 3669,
+      "sha256": "c61b637a18467d302984f850a775044ecfa02c71f641206e3c5384a55f070208"
+    },
+    {
+      "path": "upstream-cargo/oneloopmaster/Cargo.toml",
+      "bytes": 1531,
+      "sha256": "b4b7c8198f595b17f922a3b4bafdb24b9d71a019be109ab1c38f2bde345401e4"
+    },
+    {
+      "path": "verify.py",
+      "bytes": 1036,
+      "sha256": "2ee75a33a31bd6bae3bff67be0adf705ace94d6ad4c793675e6712b797ae1a7c"
+    }
+  ]
+}

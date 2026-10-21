@@ -76,6 +76,67 @@ class NinjaRSFortranTest(unittest.TestCase):
 ''')
         self.compile_run(['card.f', str(PARAMS / 'MadLoopParamReader.f')])
 
+    def test_unavailable_ninjars_only_is_actionable_and_fallback_is_preserved(self):
+        source = (TEMPLATE / 'loop_matrix_standalone.inc').read_text()
+        block = source[source.index('IF (LOCAL_ML_INIT) THEN'):source.index(
+            'C Setup the file paths')]
+        with FortranWriter(str(self.work / 'selection.f')) as writer:
+            writer.writelines('''
+      PROGRAM TEST_SELECTION
+      IMPLICIT NONE
+      INTEGER NLOOPLIB,QP_NLOOPLIB,I,J,MODE,MLReductionLib(9)
+      PARAMETER (NLOOPLIB=8,QP_NLOOPLIB=3)
+      INTEGER INDEX_QP_TOOLS(QP_NLOOPLIB+1)
+      LOGICAL LOCAL_ML_INIT,QP_TOOLS_AVAILABLE
+      LOGICAL LOOPLIBS_AVAILABLE(NLOOPLIB)
+      LOGICAL LOOPLIBS_QPAVAILABLE(0:NLOOPLIB)
+      CHARACTER*1 ARG
+      CALL GET_COMMAND_ARGUMENT(1,ARG)
+      READ(ARG,*) MODE
+      LOCAL_ML_INIT=.TRUE.
+      LOOPLIBS_AVAILABLE=.FALSE.
+      LOOPLIBS_AVAILABLE(1)=.TRUE.
+      LOOPLIBS_AVAILABLE(6)=.TRUE.
+      LOOPLIBS_QPAVAILABLE=.FALSE.
+      LOOPLIBS_QPAVAILABLE(1)=.TRUE.
+      LOOPLIBS_QPAVAILABLE(6)=.TRUE.
+      MLReductionLib=0
+      MLReductionLib(1)=8
+      IF(MODE.EQ.2) MLReductionLib(2)=6
+      IF(MODE.EQ.3) MLReductionLib(1:3)=(/6,7,1/)
+      IF(MODE.EQ.4) THEN
+        LOOPLIBS_AVAILABLE(8)=.TRUE.
+        LOOPLIBS_QPAVAILABLE(8)=.TRUE.
+      ENDIF
+''' + block + '''
+      ENDIF
+      IF(MODE.EQ.1) STOP 71
+      IF(MODE.EQ.2) THEN
+        IF(ANY(MLReductionLib(1:2).NE.(/6,0/))) STOP 72
+        IF(INDEX_QP_TOOLS(1).NE.1) STOP 73
+      ELSEIF(MODE.EQ.3) THEN
+        IF(ANY(MLReductionLib(1:3).NE.(/6,1,0/))) STOP 74
+        IF(ANY(INDEX_QP_TOOLS(1:2).NE.(/1,2/))) STOP 75
+      ELSEIF(MODE.EQ.4) THEN
+        IF(ANY(MLReductionLib(1:2).NE.(/8,0/))) STOP 76
+        IF(INDEX_QP_TOOLS(1).NE.1) STOP 77
+      ENDIF
+      IF(.NOT.QP_TOOLS_AVAILABLE) STOP 78
+      WRITE(*,*) 'SELECTION ACCEPTED'
+      END
+''')
+        self.run_command('gfortran', '-ffixed-line-length-132', '-fcheck=all',
+                         'selection.f', '-o', 'selection')
+        output = self.run_command(str(self.work / 'selection'), '1')
+        self.assertIn("install ninjars", output)
+        self.assertIn('regenerate and rebuild', output)
+        self.assertNotIn('SELECTION ACCEPTED', output)
+        for mode in ('2', '3', '4'):
+            with self.subTest(mode=mode):
+                output = self.run_command(str(self.work / 'selection'), mode)
+                self.assertIn('SELECTION ACCEPTED', output)
+                self.assertNotIn('unavailable', output)
+
     def test_tensor_abi_normalization_precision_and_failures(self):
         for amplitude in (False, True):
             with self.subTest(amplitude_reduction=amplitude):

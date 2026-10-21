@@ -1,0 +1,37 @@
+[package]
+name = "oneloop"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Exact Symbolica expressions for one-loop integrals"
+publish = false # Development snapshot: licensing approval remains open.
+
+[features]
+default = ["prebuilt"]
+# Opt into ahead-of-time Rust evaluators instead of the smaller interpreted hooks.
+generated-evaluators = []
+prebuilt = []
+# Reuse the exact Symbolica instruction-to-Rust emitter and its numeric runtime.
+rust-codegen = []
+
+[[example]]
+name = "generate_native"
+required-features = ["rust-codegen"]
+
+[[example]]
+name = "rows_survey"
+required-features = ["generated-evaluators"]
+
+[dependencies]
+# Do not impose Symbolica's optional global mimalloc allocator on embedding hosts.
+symbolica = { version = "3.0.1", default-features = false, features = ["tracing_max_level_info", "integer-gmp", "float-mpfr", "native_code_generation", "bincode"] }
+bincode = "2.0"
+# Compatible backend updates are selected by the consuming Cargo.lock.
+symjit = "2.27.3"
+
+[patch.crates-io]
+# Temporary, tested integration of upstream Symbolica PRs #82, #83, #84, #87, #88, #89 and #97.
+# Keep all three packages on one source; embedding hosts supply their own patch.
+symbolica = { git = "https://github.com/alphal00p/symbolica", rev = "9cdc2949cdb153478c1eca0d40690dc0abfc616e" }
+numerica = { git = "https://github.com/alphal00p/symbolica", rev = "9cdc2949cdb153478c1eca0d40690dc0abfc616e" }
+graphica = { git = "https://github.com/alphal00p/symbolica", rev = "9cdc2949cdb153478c1eca0d40690dc0abfc616e" }

@@ -1,0 +1,48 @@
+{
+  "schema": "madloop-ninjars-final-upstream-pins-v1",
+  "captured_at_utc": "2026-10-21T16:19:06.677228+00:00",
+  "scope": "Primary-source static compatibility review; no builds, tests, installation, or numerical validation.",
+  "pins": {
+    "ninjars": {
+      "origin": "https://github.com/alphal00p/ninjars.git",
+      "branch": "main",
+      "head": "aa6a6307dd081dc3714f9accebc0df9e5561ae73",
+      "tree": "b0a6671ca67f026ba7c230e23328a64164d4f9d9",
+      "comparison_baseline": "0d0d7e7a8033431b60a8580731084742e0655cda",
+      "new_commits": 68,
+      "clean": true,
+      "pull": "--ff-only origin main",
+      "source_path": ".ninjars-build/upstream-final-20261021/ninjars",
+      "already_seen_before_pause": false,
+      "upstream_cargo_lock_tracked": true
+    },
+    "oneloopmaster": {
+      "origin": "https://github.com/alphal00p/oneloopmaster.git",
+      "branch": "main",
+      "head": "8ec256fc26cb361b20e10f59c19beb35717ef32c",
+      "tree": "f0f47b6c22c5d09c36e50e1fadf39cafb0b4ca12",
+      "comparison_baseline": "09b2c7497743db875ed446da95123175dd00b1c8",
+      "new_commits": 41,
+      "clean": true,
+      "pull": "--ff-only origin main",
+      "source_path": ".ninjars-build/upstream-final-20261021/oneloopmaster",
+      "already_seen_before_pause": true,
+      "upstream_cargo_lock_tracked": false
+    }
+  },
+  "symbolica": {
+    "git": "https://github.com/alphal00p/symbolica.git",
+    "rev": "9cdc2949cdb153478c1eca0d40690dc0abfc616e",
+    "packages": [
+      "symbolica",
+      "numerica",
+      "graphica"
+    ]
+  },
+  "gammaloop": {
+    "git": "https://github.com/alphal00p/gammaloop.git",
+    "rev": "d1904bf2bd5bf4f26969a73b415095e941a55610"
+  },
+  "reference_clones_modified": false,
+  "numerical_validation_claimed": false
+}

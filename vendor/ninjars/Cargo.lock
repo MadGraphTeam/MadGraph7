@@ -739,7 +739,7 @@ dependencies = [
 [[package]]
 name = "dot-parser"
 version = "0.5.1"
-source = "git+https://github.com/alphal00p/gammaloop.git?rev=1e8063a763d3aa515749c33616ee59aa827705be#1e8063a763d3aa515749c33616ee59aa827705be"
+source = "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
 dependencies = [
  "either",
  "pest",
@@ -865,7 +865,7 @@ dependencies = [
 [[package]]
 name = "feynkit-kinematics"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/gammaloop.git?rev=1e8063a763d3aa515749c33616ee59aa827705be#1e8063a763d3aa515749c33616ee59aa827705be"
+source = "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
 dependencies = [
  "linnet",
  "numerica",
@@ -938,7 +938,7 @@ dependencies = [
 [[package]]
 name = "gammaloop-workspace-hack"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/gammaloop.git?rev=1e8063a763d3aa515749c33616ee59aa827705be#1e8063a763d3aa515749c33616ee59aa827705be"
+source = "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
 dependencies = [
  "ahash",
  "arrayvec",
@@ -1044,7 +1044,7 @@ dependencies = [
 [[package]]
 name = "graphica"
 version = "3.0.1"
-source = "git+https://github.com/alphal00p/symbolica.git?rev=e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8#e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8"
+source = "git+https://github.com/alphal00p/symbolica.git?rev=9cdc2949cdb153478c1eca0d40690dc0abfc616e#9cdc2949cdb153478c1eca0d40690dc0abfc616e"
 dependencies = [
  "ahash",
  "dyn-clone",
@@ -1283,7 +1283,7 @@ dependencies = [
 [[package]]
 name = "linnet"
 version = "0.17.0"
-source = "git+https://github.com/alphal00p/gammaloop.git?rev=1e8063a763d3aa515749c33616ee59aa827705be#1e8063a763d3aa515749c33616ee59aa827705be"
+source = "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
 dependencies = [
  "ahash",
  "bincode",
@@ -1430,7 +1430,7 @@ dependencies = [
 [[package]]
 name = "ninjars"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars?rev=0d0d7e7a8033431b60a8580731084742e0655cda#0d0d7e7a8033431b60a8580731084742e0655cda"
+source = "git+https://github.com/alphal00p/ninjars?rev=aa6a6307dd081dc3714f9accebc0df9e5561ae73#aa6a6307dd081dc3714f9accebc0df9e5561ae73"
 dependencies = [
  "feynkit-kinematics",
  "symbolica",
@@ -1440,7 +1440,7 @@ dependencies = [
 [[package]]
 name = "ninjars-positional"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars?rev=0d0d7e7a8033431b60a8580731084742e0655cda#0d0d7e7a8033431b60a8580731084742e0655cda"
+source = "git+https://github.com/alphal00p/ninjars?rev=aa6a6307dd081dc3714f9accebc0df9e5561ae73#aa6a6307dd081dc3714f9accebc0df9e5561ae73"
 dependencies = [
  "symbolica",
  "thiserror",
@@ -1449,7 +1449,7 @@ dependencies = [
 [[package]]
 name = "ninjars-symbolica"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/ninjars?rev=0d0d7e7a8033431b60a8580731084742e0655cda#0d0d7e7a8033431b60a8580731084742e0655cda"
+source = "git+https://github.com/alphal00p/ninjars?rev=aa6a6307dd081dc3714f9accebc0df9e5561ae73#aa6a6307dd081dc3714f9accebc0df9e5561ae73"
 dependencies = [
  "ninjars",
  "ninjars-positional",
@@ -1552,7 +1552,7 @@ dependencies = [
 [[package]]
 name = "numerica"
 version = "3.0.1"
-source = "git+https://github.com/alphal00p/symbolica.git?rev=e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8#e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8"
+source = "git+https://github.com/alphal00p/symbolica.git?rev=9cdc2949cdb153478c1eca0d40690dc0abfc616e#9cdc2949cdb153478c1eca0d40690dc0abfc616e"
 dependencies = [
  "ahash",
  "astro-float",
@@ -1591,7 +1591,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 [[package]]
 name = "oneloop"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=09b2c7497743db875ed446da95123175dd00b1c8#09b2c7497743db875ed446da95123175dd00b1c8"
+source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=8ec256fc26cb361b20e10f59c19beb35717ef32c#8ec256fc26cb361b20e10f59c19beb35717ef32c"
 dependencies = [
  "bincode",
  "symbolica",
@@ -2240,7 +2240,7 @@ checksum = "02ef091d4e8b981dbaa4cc17789d00b53d5d2c001ae689f14e6093f30c529036"
 [[package]]
 name = "spenso"
 version = "0.6.0"
-source = "git+https://github.com/alphal00p/gammaloop.git?rev=1e8063a763d3aa515749c33616ee59aa827705be#1e8063a763d3aa515749c33616ee59aa827705be"
+source = "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
 dependencies = [
  "ahash",
  "append-only-vec",
@@ -2283,7 +2283,7 @@ dependencies = [
 [[package]]
 name = "spenso-macros"
 version = "0.3.2"
-source = "git+https://github.com/alphal00p/gammaloop.git?rev=1e8063a763d3aa515749c33616ee59aa827705be#1e8063a763d3aa515749c33616ee59aa827705be"
+source = "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2318,7 +2318,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 [[package]]
 name = "symbolica"
 version = "3.0.1"
-source = "git+https://github.com/alphal00p/symbolica.git?rev=e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8#e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8"
+source = "git+https://github.com/alphal00p/symbolica.git?rev=9cdc2949cdb153478c1eca0d40690dc0abfc616e#9cdc2949cdb153478c1eca0d40690dc0abfc616e"
 dependencies = [
  "ahash",
  "append-only-vec",
@@ -2363,7 +2363,7 @@ dependencies = [
 [[package]]
 name = "symbolica-utils"
 version = "0.1.0"
-source = "git+https://github.com/alphal00p/gammaloop.git?rev=1e8063a763d3aa515749c33616ee59aa827705be#1e8063a763d3aa515749c33616ee59aa827705be"
+source = "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
 dependencies = [
  "bincode",
  "bincode-trait-derive",

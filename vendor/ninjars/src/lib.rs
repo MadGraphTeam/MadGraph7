@@ -1421,3 +1421,6 @@ mod final_precision_tests;
 
 #[cfg(test)]
 mod panic_contract_tests;
+
+#[cfg(test)]
+mod upstream_master_tests;

@@ -1,0 +1,64 @@
+[workspace]
+resolver = "3"
+members = ["crates/ninjars", "crates/ninjars-positional", "crates/ninjars-symbolica", "crates/ninjars-graph", "crates/ninjars-cli"]
+exclude = ["references"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "GPL-3.0-or-later"
+
+[workspace.dependencies]
+ninjars = { path = "crates/ninjars" }
+ninjars-positional = { path = "crates/ninjars-positional" }
+ninjars-symbolica = { path = "crates/ninjars-symbolica" }
+ninjars-graph = { path = "crates/ninjars-graph" }
+symbolica = { version = "3.0.1", default-features = false, features = ["integer-gmp", "float-mpfr", "bincode", "serde", "tracing_max_level_info"] }
+numerica = { version = "3.0.1", default-features = false }
+feynkit-kinematics = { git = "https://github.com/alphal00p/gammaloop.git", rev = "d1904bf2bd5bf4f26969a73b415095e941a55610", default-features = false, features = ["native"] }
+feynkit-graph = { git = "https://github.com/alphal00p/gammaloop.git", rev = "d1904bf2bd5bf4f26969a73b415095e941a55610", default-features = false, features = ["native"] }
+feynkit-model = { git = "https://github.com/alphal00p/gammaloop.git", rev = "d1904bf2bd5bf4f26969a73b415095e941a55610", default-features = false, features = ["native"] }
+feynkit-generator = { git = "https://github.com/alphal00p/gammaloop.git", rev = "d1904bf2bd5bf4f26969a73b415095e941a55610", default-features = false, features = ["native"] }
+feynkit-amplitude = { git = "https://github.com/alphal00p/gammaloop.git", rev = "d1904bf2bd5bf4f26969a73b415095e941a55610", default-features = false, features = ["native"] }
+spenso = { git = "https://github.com/alphal00p/gammaloop.git", rev = "d1904bf2bd5bf4f26969a73b415095e941a55610", default-features = false, features = ["native", "shadowing"] }
+idenso = { git = "https://github.com/alphal00p/gammaloop.git", rev = "d1904bf2bd5bf4f26969a73b415095e941a55610", default-features = false, features = ["native"] }
+symbolica-utils = { git = "https://github.com/alphal00p/gammaloop.git", rev = "d1904bf2bd5bf4f26969a73b415095e941a55610", default-features = false, features = ["native"] }
+oneloop = { git = "https://github.com/alphal00p/oneloopmaster.git", rev = "8ec256fc26cb361b20e10f59c19beb35717ef32c", default-features = false }
+linnet = { git = "https://github.com/alphal00p/gammaloop.git", rev = "d1904bf2bd5bf4f26969a73b415095e941a55610", default-features = false, features = ["serde"] }
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+
+[patch.crates-io]
+symbolica = { git = "https://github.com/alphal00p/symbolica.git", rev = "9cdc2949cdb153478c1eca0d40690dc0abfc616e" }
+numerica = { git = "https://github.com/alphal00p/symbolica.git", rev = "9cdc2949cdb153478c1eca0d40690dc0abfc616e" }
+graphica = { git = "https://github.com/alphal00p/symbolica.git", rev = "9cdc2949cdb153478c1eca0d40690dc0abfc616e" }
+symbolica-typst-plugin = { git = "https://github.com/symbolica-dev/symbolica-typst-plugin", rev = "57b7455b37c30f4f87353c0073e49f5225e937ab" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+# Fast-turnaround optimized profile for development benchmarks. The hot
+# reduction, adapter and master crates keep a single codegen unit; the large
+# graph/model dependency tree is not link-time optimized.
+[profile.perf]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = false
+
+[profile.perf.package.ninjars]
+codegen-units = 1
+
+[profile.perf.package.ninjars-symbolica]
+codegen-units = 1
+
+[profile.perf.package.oneloop]
+codegen-units = 1

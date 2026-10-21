@@ -1,6 +1,7 @@
 """Installer lifecycle, source isolation, CLI dispatch and exported ABI checks."""
 
 import io
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -25,7 +26,16 @@ class TestNinjaRSInstaller(unittest.TestCase):
         self.prefix = self.root / 'HEPTools'
         self.bridge = self.root / 'vendor' / 'ninjars'
         self.bridge.mkdir(parents=True)
-        (self.bridge / 'Cargo.lock').write_text('# pinned test fixture\n')
+        (self.bridge / 'Cargo.lock').write_text('''version = 4
+[[package]]
+name = "ninjars"
+version = "0.1.0"
+source = "git+https://github.com/alphal00p/ninjars?rev=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+[[package]]
+name = "oneloop"
+version = "0.1.0"
+source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+''')
         (self.bridge / 'Cargo.toml').write_text('[package]\nname = "bridge"\n')
         (self.bridge / 'smoke.f90').write_text('end\n')
 
@@ -75,6 +85,15 @@ class TestNinjaRSInstaller(unittest.TestCase):
             self.assertTrue(config['quad_precision'])
             self.assertEqual(config['native_libs'], ['-lgmp', '-lmpfr', '-lpthread'])
             self.assertEqual(config['link_before'], ['-lgcc_s'])
+            provenance = config['build_provenance']
+            self.assertEqual(provenance['lock_sha256'], hashlib.sha256(
+                (self.bridge/'Cargo.lock').read_bytes()).hexdigest())
+            self.assertEqual(provenance['manifest_sha256'], hashlib.sha256(
+                (self.bridge/'Cargo.toml').read_bytes()).hexdigest())
+            self.assertEqual([item['name'] for item in provenance['git_dependencies']],
+                             ['ninjars', 'oneloop'])
+            self.assertIn('#' + 'b'*40,
+                          provenance['git_dependencies'][1]['source'])
             smoke_link = run.call_args_list[1].args[0]
             self.assertLess(smoke_link.index('-lgcc_s'), next(
                 i for i, arg in enumerate(smoke_link) if arg.endswith('/libninjars.a')))
@@ -85,6 +104,47 @@ class TestNinjaRSInstaller(unittest.TestCase):
             self.assertEqual(run.call_args_list[0].args[3]['CARGO_BUILD_JOBS'], '2')
             self.assertEqual(ninjars_install.install(self.root, self.prefix), libdir)
             self.assertEqual(len(run.call_args_list), 3)
+
+    def test_update_rebuilds_installed_backend_with_current_checkout_pins(self):
+        previous = self.previous_install()
+        # Simulate a git pull selecting a newer immutable dependency revision.
+        lock = self.bridge/'Cargo.lock'
+        lock.write_text(lock.read_text().replace('a'*40, 'c'*40))
+        with mock.patch.object(ninjars_install.shutil, 'which', return_value='/bin/tool'), \
+                mock.patch.object(ninjars_install, 'read_config',
+                                  side_effect=AssertionError('already-installed fast path')), \
+                mock.patch.object(ninjars_install, '_run', side_effect=self.fake_build) as run:
+            libdir = Path(ninjars_install.install(self.root, self.prefix, ['--update']))
+        self.assertEqual(libdir/'libninjars.a', previous/'lib/libninjars.a')
+        self.assertEqual((libdir/'libninjars.a').read_text(), 'new working archive')
+        self.assertEqual((previous/'Cargo.lock').read_bytes(), lock.read_bytes())
+        provenance = ninjars_install.read_config(libdir)['build_provenance']
+        self.assertEqual(provenance['lock_sha256'], hashlib.sha256(lock.read_bytes()).hexdigest())
+        self.assertIn('#'+'c'*40, provenance['git_dependencies'][0]['source'])
+        self.assertEqual(len(run.call_args_list), 3)
+        parser = ninjars_install.build_parser()
+        self.assertTrue(parser.parse_args(['--update']).force)
+        self.assertTrue(parser.parse_args(['--force']).force)
+
+    def test_failed_update_build_or_smoke_preserves_previous_installation(self):
+        previous = self.previous_install()
+        common = self.prefix/'lib'
+        common.mkdir()
+        (common/'libninjars.a').symlink_to('../ninjars/lib/libninjars.a')
+        before_tree, before_aliases = self.snapshot(previous), self.snapshot(common)
+        for failing_step in ('make', 'smoke'):
+            def fail_update(command, cwd, log, environment):
+                if (command[0] == 'make' and failing_step == 'make') or (
+                        command[0].endswith('/smoke') and failing_step == 'smoke'):
+                    raise MadGraph5Error('failed update '+failing_step)
+                self.fake_build(command, cwd, log, environment)
+            with self.subTest(failing_step=failing_step), \
+                    mock.patch.object(ninjars_install.shutil, 'which', return_value='/bin/tool'), \
+                    mock.patch.object(ninjars_install, '_run', side_effect=fail_update):
+                with self.assertRaisesRegex(MadGraph5Error, 'failed update '+failing_step):
+                    ninjars_install.install(self.root, self.prefix, ['--update'])
+            self.assertEqual(before_tree, self.snapshot(previous))
+            self.assertEqual(before_aliases, self.snapshot(common))
 
     def test_failed_rebuild_preserves_previous_installation(self):
         lib = self.prefix / 'ninjars' / 'lib'
@@ -264,6 +324,7 @@ class TestNinjaRSInstaller(unittest.TestCase):
             target.write_text('# original\n')
         (source / 'target').mkdir()
         (source / 'target' / 'cached.bin').write_text('do not copy')
+        (source / '.git').mkdir()
         stage = self.root / 'stage'
         stage.mkdir()
         bridge = stage / 'bridge'
@@ -280,6 +341,41 @@ class TestNinjaRSInstaller(unittest.TestCase):
         (copied / 'Cargo.toml').write_text('# changed in build\n')
         self.assertEqual((source / 'Cargo.toml').read_text(), '# original\n')
         self.assertEqual(provenance['ninjars']['revision'], '1234abcd')
+        self.assertEqual(provenance['ninjars']['source_files'], 3)
+        original_hash = provenance['ninjars']['source_tree_sha256']
+        other = self.root/'other-copy'
+        with mock.patch.object(ninjars_install.subprocess, 'check_output',
+                               return_value='1234abcd\n'):
+            copied_provenance = ninjars_install._copy_source(source, other, ['Cargo.toml'])
+        self.assertEqual(copied_provenance['source_tree_sha256'], original_hash)
+        (source/'Cargo.toml').write_text('# same revision, modified source\n')
+        with mock.patch.object(ninjars_install.subprocess, 'check_output',
+                               return_value='1234abcd\n'):
+            modified = ninjars_install._copy_source(source, self.root/'modified', ['Cargo.toml'])
+        self.assertNotEqual(modified['source_tree_sha256'], original_hash)
+
+    def test_source_tarball_never_inherits_enclosing_repository_revision(self):
+        source = self.root/'unpacked-dependency'
+        source.mkdir()
+        (source/'Cargo.toml').write_text('[package]\nname = "oneloop"\n')
+        with mock.patch.object(ninjars_install.subprocess, 'check_output',
+                               return_value='a'*40+'\n') as git:
+            provenance = ninjars_install._copy_source(
+                source, self.root/'copied-tarball', ['Cargo.toml'])
+        git.assert_not_called()
+        self.assertIsNone(provenance['revision'])
+        self.assertEqual(provenance['source_files'], 1)
+        self.assertEqual(len(provenance['source_tree_sha256']), 64)
+
+    def test_invalid_resolved_lock_never_replaces_previous_install(self):
+        previous = self.previous_install()
+        before = self.snapshot(previous)
+        (self.bridge/'Cargo.lock').write_text('invalid resolved lock\n')
+        with mock.patch.object(ninjars_install.shutil, 'which', return_value='/bin/tool'), \
+                mock.patch.object(ninjars_install, '_run', side_effect=self.fake_build):
+            with self.assertRaisesRegex(MadGraph5Error, 'Invalid resolved NinjaRS Cargo.lock'):
+                ninjars_install.install(self.root, self.prefix, ['--force'])
+        self.assertEqual(self.snapshot(previous), before)
 
     def test_missing_tool_and_bad_job_count_fail_before_build(self):
         with mock.patch.object(ninjars_install.shutil, 'which', return_value=None):
@@ -321,16 +417,16 @@ class TestNinjaRSInstaller(unittest.TestCase):
             exec_cmd=mock.Mock())
         with mock.patch.object(ninjars_install, 'install',
                                return_value='/installed/lib') as install:
-            MadGraphCmd.do_install(cmd, 'ninjars --jobs=3')
+            MadGraphCmd.do_install(cmd, 'ninjars --update --jobs=3')
         self.assertEqual(cmd.options['ninjars'], '/installed/lib')
-        self.assertEqual(install.call_args.kwargs['arguments'], ['--jobs=3'])
+        self.assertEqual(install.call_args.kwargs['arguments'], ['--update', '--jobs=3'])
         cmd.exec_cmd.assert_called_once_with('save options config.txt ninjars',
                                             printcmd=False, log=False)
         cmd.exec_cmd.reset_mock()
         with mock.patch.object(ninjars_install, 'install',
                                side_effect=MadGraph5Error('failed')):
             with self.assertRaises(MadGraph5Error):
-                MadGraphCmd.do_install(cmd, 'ninjars --force')
+                MadGraphCmd.do_install(cmd, 'ninjars --update')
         cmd.exec_cmd.assert_not_called()
 
     def test_exporter_rejects_library_without_module(self):

@@ -1,0 +1,209 @@
+{
+  "schema": "final-pins-primary-git-log-v1",
+  "commands": [
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/ninjars",
+        "remote",
+        "get-url",
+        "origin"
+      ],
+      "returncode": 0,
+      "stdout": "https://github.com/alphal00p/ninjars.git\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/ninjars",
+        "pull",
+        "--ff-only",
+        "origin",
+        "main"
+      ],
+      "returncode": 0,
+      "stdout": "Already up to date.\n",
+      "stderr": "From https://github.com/alphal00p/ninjars\n * branch            main       -> FETCH_HEAD\n"
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/ninjars",
+        "rev-parse",
+        "HEAD"
+      ],
+      "returncode": 0,
+      "stdout": "aa6a6307dd081dc3714f9accebc0df9e5561ae73\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/ninjars",
+        "rev-parse",
+        "origin/main"
+      ],
+      "returncode": 0,
+      "stdout": "aa6a6307dd081dc3714f9accebc0df9e5561ae73\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/ninjars",
+        "status",
+        "--porcelain"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/ninjars",
+        "merge-base",
+        "--is-ancestor",
+        "0d0d7e7a8033431b60a8580731084742e0655cda",
+        "aa6a6307dd081dc3714f9accebc0df9e5561ae73"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/ninjars",
+        "rev-parse",
+        "HEAD^{tree}"
+      ],
+      "returncode": 0,
+      "stdout": "b0a6671ca67f026ba7c230e23328a64164d4f9d9\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/ninjars",
+        "rev-list",
+        "--count",
+        "0d0d7e7a8033431b60a8580731084742e0655cda..aa6a6307dd081dc3714f9accebc0df9e5561ae73"
+      ],
+      "returncode": 0,
+      "stdout": "68\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/oneloopmaster",
+        "remote",
+        "get-url",
+        "origin"
+      ],
+      "returncode": 0,
+      "stdout": "https://github.com/alphal00p/oneloopmaster.git\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/oneloopmaster",
+        "pull",
+        "--ff-only",
+        "origin",
+        "main"
+      ],
+      "returncode": 0,
+      "stdout": "Already up to date.\n",
+      "stderr": "From https://github.com/alphal00p/oneloopmaster\n * branch            main       -> FETCH_HEAD\n"
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/oneloopmaster",
+        "rev-parse",
+        "HEAD"
+      ],
+      "returncode": 0,
+      "stdout": "8ec256fc26cb361b20e10f59c19beb35717ef32c\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/oneloopmaster",
+        "rev-parse",
+        "origin/main"
+      ],
+      "returncode": 0,
+      "stdout": "8ec256fc26cb361b20e10f59c19beb35717ef32c\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/oneloopmaster",
+        "status",
+        "--porcelain"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/oneloopmaster",
+        "merge-base",
+        "--is-ancestor",
+        "09b2c7497743db875ed446da95123175dd00b1c8",
+        "8ec256fc26cb361b20e10f59c19beb35717ef32c"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/oneloopmaster",
+        "rev-parse",
+        "HEAD^{tree}"
+      ],
+      "returncode": 0,
+      "stdout": "f0f47b6c22c5d09c36e50e1fadf39cafb0b4ca12\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/oneloopmaster",
+        "rev-list",
+        "--count",
+        "09b2c7497743db875ed446da95123175dd00b1c8..8ec256fc26cb361b20e10f59c19beb35717ef32c"
+      ],
+      "returncode": 0,
+      "stdout": "41\n",
+      "stderr": ""
+    }
+  ]
+}

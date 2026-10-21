@@ -87,6 +87,7 @@ class TestNinjaRSIntegrationBoundaries(unittest.TestCase):
         bridge.mkdir(parents=True)
         for name in ('Cargo.lock','Cargo.toml','smoke.f90'):
             (bridge/name).write_text('fixture\n')
+        (bridge/'Cargo.lock').write_text('version = 4\npackage = []\n')
         calls = []
         def build(command,cwd,log,environment):
             calls.append(command)
@@ -111,14 +112,14 @@ class TestNinjaRSIntegrationBoundaries(unittest.TestCase):
         self.assertEqual(before,{str(p.relative_to(previous)):p.read_bytes() for p in previous.rglob('*') if p.is_file()})
         self.assertFalse((prefix/'lib').exists())
 
-    def test_partial_existing_install_requires_force_without_starting_build(self):
+    def test_partial_existing_install_requires_update_without_starting_build(self):
         prefix = self.work/'HEPTools'
         directory = prefix/'ninjars/lib'
         directory.mkdir(parents=True)
         (directory/ninjars_install.CONFIG_NAME).write_text(json.dumps(self.config))
         (directory/'libninjars.a').write_bytes(b'existing archive without module')
         with mock.patch.object(ninjars_install,'_run') as run:
-            with self.assertRaisesRegex(MadGraph5Error,'Incomplete.*--force'):
+            with self.assertRaisesRegex(MadGraph5Error,'Incomplete.*--update'):
                 ninjars_install.install(self.work,prefix)
         run.assert_not_called()
         self.assertEqual((directory/'libninjars.a').read_bytes(),b'existing archive without module')
@@ -144,6 +145,7 @@ class TestNinjaRSIntegrationBoundaries(unittest.TestCase):
         bridge.mkdir(parents=True)
         for name in ('Cargo.lock','Cargo.toml','smoke.f90'):
             (bridge/name).write_text('fixture\n')
+        (bridge/'Cargo.lock').write_text('version = 4\npackage = []\n')
         smoke_attempts, build_directories = [], []
         def build(command,cwd,log,environment):
             log.write_text('retained installer attempt\n')
@@ -186,6 +188,7 @@ class TestNinjaRSIntegrationBoundaries(unittest.TestCase):
                 path.write_text('original '+name+'\n')
             (root/'target').mkdir()
             (root/'target/cached').write_text('never copy')
+            (root/'.git').mkdir()
         before = {str(path):path.read_bytes() for root in (ninja,masters)
                   for path in root.rglob('*') if path.is_file()}
         stage = self.work/'stage'

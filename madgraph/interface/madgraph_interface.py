@@ -624,7 +624,9 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("     --oneloop-source=DIR  Use a local oneloopmaster checkout.")
         logger.info("     --prefix=DIR          Override the HEPTools installation prefix.")
         logger.info("     -j N/--jobs=N         Parallel compilation jobs (default: nb_core).")
-        logger.info("     --force               Replace an installation after DP and QP smoke tests pass.")
+        logger.info("     --update              Rebuild with this checkout's committed dependency pins (after git pull).")
+        logger.info("                           Replace the installation after DP and QP smoke tests pass.")
+        logger.info("     --force               Equivalent backward-compatible alias for --update.")
 
     def help_display(self):
         logger.info("syntax: display " + "|".join(self._display_opts),'$MG:color:BLUE')

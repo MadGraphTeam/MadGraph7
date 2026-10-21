@@ -57,8 +57,13 @@ original MadLoop with Ninja, and produce the requested reproducible Typst report
   library discovery. Preserve default `6|7|1`; permit `8` and ordered mixtures.
 - Provide repository-owned `install ninjars`, pinned downloads and explicit
   local NinjaRS/oneloopmaster source overrides.
-- Pin NinjaRS `0d0d7e7a8033431b60a8580731084742e0655cda`, oneloopmaster
-  `09b2c7497743db875ed446da95123175dd00b1c8`, required Symbolica patches and lockfile.
+- Support `install ninjars --update` to rebuild the local installation from the
+  current checkout's pinned dependencies after `git pull`. Keep `--force`
+  compatible and preserve the old installation if build or validation fails.
+- Pin the final upstream versions confirmed on 2026-10-21: NinjaRS
+  `aa6a6307dd081dc3714f9accebc0df9e5561ae73`, oneloopmaster
+  `8ec256fc26cb361b20e10f59c19beb35717ef32c`, and Symbolica/numerica/graphica
+  `9cdc2949cdb153478c1eca0d40690dc0abfc616e`, with a committed lockfile.
 - Install the Rust library, Fortran module/interface and native link metadata.
   Honor prefix/compiler settings; run a compiled Fortran reduction smoke test.
 - Support standalone and FKS/NLO exports, including copied dependencies.
@@ -937,3 +942,32 @@ corresponding github”.
   controls, reproducible styled PDF and tested milestone pushes in scope. Report
   external-tool failures honestly and link their upstream issues. Continue to
   wait for the user's instruction before opening a PR.
+
+### Final upstream release and resume — 2026-10-21
+
+The user confirmed that both upstream `main` branches are ready, authorizing
+their update and the remaining implementation, validation and finalization.
+Repository-owned clones were fetched and fast-forwarded to the exact pinned
+revisions above; sibling reference clones remain unchanged. The existing goal
+and its correctness, performance and publication requirements remain in force.
+
+- Rebuild and validate the coupled NinjaRS/oneloopmaster/Symbolica update in an
+  isolated prefix before publishing it as the installed backend. Final NinjaRS
+  includes the MP soft-D0 relabelling, so inspect and use that implementation
+  before considering any repository-owned master-provider adaptation.
+- Preserve every old source/runtime-bound result and interrupted attempt.
+  The previous NinjaRS core collection was paused after QCD4 calibration and
+  one repetition; it is incomplete and must never be finalized as successful.
+  Completed accepted CutTools/Ninja references can be reused with their actual
+  scope and input bindings. Their parent statuses remain truthful.
+- Rerun precision transport, failure/retry, actual installation/export and
+  genuine QP controls against the new dependencies. Generate and bind a fresh
+  candidate for all eight processes, loop-induced checks and challenging
+  two-to-four processes. Old NinjaRS results do not certify the new backend.
+- Keep one numerical MP worker at a time, and separate correctness runs from
+  the quiet, pinned-CPU, alternating seven-or-more-pair timing campaign. Preserve
+  the existing thresholds, full contributions, rescue and 1.05 runtime gate.
+- Update the final report only from actual validated results; include failed
+  external-tool comparisons and unresolved requirements explicitly. Complete
+  the goal only after the required gates, reproducible PDF and milestone pushes
+  pass, then await the user's instruction to open a PR.

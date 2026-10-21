@@ -1,0 +1,121 @@
+{
+  "schema": "pinned-source-excerpts-v1",
+  "validation_scope": "Static review; not executed tests",
+  "sources": [
+    {
+      "repository": "ninjars",
+      "revision": "aa6a6307dd081dc3714f9accebc0df9e5561ae73",
+      "path": "crates/ninjars-symbolica/src/masters.rs",
+      "source_sha256": "cd378b459ac6162091b4bfa503316147352fd6505264f9b99d06fc03623672c3",
+      "source_bytes": 44749,
+      "source_url": "https://github.com/alphal00p/ninjars/blob/aa6a6307dd081dc3714f9accebc0df9e5561ae73/crates/ninjars-symbolica/src/masters.rs",
+      "attribution": "Upstream ninjars contributors; GPL-3.0-or-later",
+      "excerpts": [
+        {
+          "start_line": 90,
+          "end_line": 137,
+          "text": "/// Least tracked bits ([`tracked_bits`]) that every coefficient of an\n/// arbitrary-precision `Float` master result must keep at `working` bits of\n/// working precision: `max(53, working/4)`, and at most `working/2` (from 106\n/// bits on, `max(53, working/4)`: 53 at 128 bits, 64 at 256, 128 at 512, 256 at\n/// 1024). A result below it is reported as [`MasterFailure::ImpreciseResult`],\n/// so that a rescue loop escalates the lane instead of accepting a finite but\n/// possibly wrong value.\n///\n/// The rule comes from oneloopmaster 8ec256fc's C0/D0 on the adversarial\n/// sweeps (`fs`, `ns`, `ns2`: 100,680 rows; native and interpreted `Float` at\n/// 128, 256, 512 and 1024 bits, the last on a subset, against COLLIER's\n/// quadruple-precision values where its DD branch or the 256-bit values\n/// confirm them). A value is wrong above 1e-6 relative error and right at or\n/// below 1e-10. Wrong values report at most 28 tracked bits at 128 bits and 24 at 256\n/// bits, except on 6 rows, which report 81 to 1023 bits (vanishing-Gram and\n/// light-like planar boxes with no reliable precision estimate:\n/// `ns` 9210, 10378, 10965, 11620, `ns2` 5278, 11326). Right values report at\n/// least 35 tracked bits at 128 bits, 103 at 256, 159 at 512 and 1002 at 1024.\n/// Over both routes, as false negatives (wrong values passing) / false\n/// positives (right values flagged) at 128 / 256 / 512 / 1024 bits:\n///\n/// | rule | 128 | 256 | 512 | 1024 |\n/// |---|---|---|---|---|\n/// | 53 | 4 / 1059 | 2 / 0 | 2 / 0 | 2 / 0 |\n/// | `working/2` | 4 / 3505 | 2 / 72 | 1 / 52 | 1 / 0 |\n/// | `working/4` | 4 / 0 | 2 / 0 | 2 / 0 | 2 / 0 |\n/// | `max(53, working/4)` | 4 / 1059 | 2 / 0 | 2 / 0 | 2 / 0 |\n///\n/// Every false negative is one of the 6 rows. `working/4` alone flags no right\n/// value, but at 128 bits it lets 392 of the 581 values between 1e-10 and 1e-6\n/// relative error pass (errors up to 1e-7, with 32 to 43 tracked bits): a\n/// `Float` result less precise than binary64 would end the rescue there. The\n/// binary64 floor flags all 581, and the 1059 right values below it at 128\n/// bits (0.5 % of 197,000), at a cost of one escalation each: at 256 bits all\n/// but 2 of these 1640 values are right with at least 64 tracked bits, and the\n/// 2 (`ns` 11777 on both routes, 6e-9 with 32 bits) are flagged again and right\n/// at 512 bits. On every sweep of the oneloopmaster verifiers (14 sets, 333,000\n/// rows; 128 and 256 bits), the rule flags 0.26 % of the right values at 128\n/// bits and none at 256, lets no value between 1e-10 and 1e-6 pass, and passes\n/// wrong values only on the 6 rows and the relabellings of `ns` 9210. The\n/// 8,481 master calls with a reference among the 8,487 recorded from NinjaRS\n/// runs are right and pass at both precisions. Below 106 bits (no data) the\n/// rule keeps at most half the working precision.\n///\n/// Tracked precision is numerica's estimate, not a certified bound (it can\n/// overstate the accuracy, as on the 6 rows): a successful status is still not\n/// a guarantee.\npub fn required_tracked_bits(working: u32) -> u32 {\n"
+        },
+        {
+          "start_line": 238,
+          "end_line": 249,
+          "text": "/// the four-mass D0 wrong by orders of magnitude while it reports 8 bits.\n///\n/// D0 rows are relabelled with `oneloop::regular_d0_labelling` before\n/// evaluation. The box depends only on its set of propagators, but the D0\n/// expressions find a soft line's pole on the four external invariants only;\n/// a labelling that puts its on-shell pair, with a massive partner, on a\n/// channel (`s12` or `s23`) reaches the finite formulas and misses the pole.\n/// Such a point is evaluated in the labelling of the same box, of the two that\n/// exchange the channel pair, that keeps the pair off the channels; every\n/// other point keeps its labelling. oneloopmaster's native entry points (the\n/// fixed-precision carriers) do the same, so there it changes nothing; the\n/// interpreted `Float` route needs it (`tests/soft_box_labelling.rs`).\n"
+        },
+        {
+          "start_line": 591,
+          "end_line": 604,
+          "text": "                            request.integral.invariant_count(),\n                        );\n                    }\n                    // oneloopmaster's symbolic D0 expressions (the Float route\n                    // below) keep the labelling: relabel a soft box whose\n                    // on-shell pair sits on a channel, as its native entry\n                    // points do (idempotent there). After the on-shell\n                    // threshold, whose snapped values the exact tests see.\n                    if request.integral == MasterIntegral::D0 {\n                        oneloop::regular_d0_labelling(&mut self.arguments[start..]);\n                    }\n                }\n            }\n        }\n"
+        },
+        {
+          "start_line": 671,
+          "end_line": 687,
+          "text": "        // DoubleFloat do not (see `required_tracked_bits`).\n        let required = T::FIXED_BITS\n            .is_none()\n            .then(|| f64::from(required_tracked_bits(self.precision())));\n        for (&row, values) in self.active.iter().zip(self.results.as_chunks::<3>().0) {\n            if values\n                .iter()\n                .any(|value| !value.re.is_finite() || !value.im.is_finite())\n            {\n                self.statuses[row] = MasterStatus::Failed(MasterFailure::NonFiniteResult);\n            } else if let Some(required) = required\n                && values.iter().any(|value| imprecise(value, required))\n            {\n                self.statuses[row] = MasterStatus::Failed(MasterFailure::ImpreciseResult);\n            }\n        }\n        Ok(())\n"
+        }
+      ]
+    },
+    {
+      "repository": "ninjars",
+      "revision": "aa6a6307dd081dc3714f9accebc0df9e5561ae73",
+      "path": "crates/ninjars-symbolica/src/amplitude.rs",
+      "source_sha256": "8a31b89bc1934f6e0b611add844424ecf5c243eada7ddffc0b826293c61497a1",
+      "source_bytes": 36512,
+      "source_url": "https://github.com/alphal00p/ninjars/blob/aa6a6307dd081dc3714f9accebc0df9e5561ae73/crates/ninjars-symbolica/src/amplitude.rs",
+      "attribution": "Upstream ninjars contributors; GPL-3.0-or-later",
+      "excerpts": [
+        {
+          "start_line": 140,
+          "end_line": 151,
+          "text": "            #[cfg(feature = \"native-kernels\")]\n            native_bubble: None,\n            #[cfg(feature = \"native-kernels\")]\n            native_tadpole: None,\n            n: propagators,\n            rank,\n            rank_specialized_corrections: false,\n            pruned_swapped_arithmetic: false,\n            stability_test: false,\n            prototype,\n            box_options: BoxReductionOptions {\n                coefficients: BoxCoefficientMode::Integrated,\n"
+        },
+        {
+          "start_line": 175,
+          "end_line": 185,
+          "text": "    /// cut-constructible part cancelled by its rational part) is rounding noise\n    /// of the summed cut contributions and fails the test in every precision.\n    /// The test measures every term of each cut contribution (each master\n    /// integral times its weight, and each term of the rational part, whose\n    /// kernels it adds); without it nothing is measured or evaluated in\n    /// addition, and with it the results are the same.\n    pub fn with_stability_test(mut self) -> Self {\n        self.stability_test = true;\n        self\n    }\n\n"
+        }
+      ]
+    },
+    {
+      "repository": "ninjars",
+      "revision": "aa6a6307dd081dc3714f9accebc0df9e5561ae73",
+      "path": "crates/ninjars/src/fast/engine.rs",
+      "source_sha256": "7b98c98fdefa4ec54a03d6a6300f643f9e01d25b150dfc36340969b4241536cf",
+      "source_bytes": 87273,
+      "source_url": "https://github.com/alphal00p/ninjars/blob/aa6a6307dd081dc3714f9accebc0df9e5561ae73/crates/ninjars/src/fast/engine.rs",
+      "attribution": "Upstream ninjars contributors; GPL-3.0-or-later",
+      "excerpts": [
+        {
+          "start_line": 75,
+          "end_line": 97,
+          "text": "    /// engine instead of original Ninja's, per cut and lane: the bubble\n    /// reference and the tadpole basis that best condition the uncut lines\n    /// (`bases_x2.rs`) and the box normal, center and solutions of\n    /// `box_x2.rs`. This trades bitwise agreement with original Ninja (the\n    /// default, `false`) for accuracy on lanes where an uncut line is nearly\n    /// orthogonal to Ninja's fixed reference vectors, e.g. propagator pairs\n    /// whose shift difference has a zero time component. Rank n+2 always\n    /// uses the conditioned geometry. Read once, by [`FastAmplitude::new`],\n    /// which then chooses the separately compiled [`ConditionedEngine`]; the\n    /// default engine's code does not depend on it.\n    pub conditioned_cuts: bool,\n}\n\nimpl Default for FastOptions {\n    fn default() -> Self {\n        Self {\n            cut_stop: 1,\n            infrared_eps: 1.0e-9,\n            stability_threshold: 1.0e20 * f64::MIN_POSITIVE,\n            relative_tolerance: 1024. * f64::EPSILON,\n            conditioned_cuts: false,\n        }\n    }\n"
+        }
+      ]
+    },
+    {
+      "repository": "ninjars",
+      "revision": "aa6a6307dd081dc3714f9accebc0df9e5561ae73",
+      "path": "crates/ninjars-symbolica/tests/soft_box_labelling.rs",
+      "source_sha256": "bb27eefa54b7bcccc2078520dbd4953d65c620697ff25333d1b8bfd23061a2a0",
+      "source_bytes": 12873,
+      "source_url": "https://github.com/alphal00p/ninjars/blob/aa6a6307dd081dc3714f9accebc0df9e5561ae73/crates/ninjars-symbolica/tests/soft_box_labelling.rs",
+      "attribution": "Upstream ninjars contributors; GPL-3.0-or-later",
+      "excerpts": [
+        {
+          "start_line": 1,
+          "end_line": 27,
+          "text": "//! A soft box in all 24 labellings of its propagators, through every master\n//! provider and carrier.\n//!\n//! oneloopmaster's D0 expressions (OneLOop's `d0`) find a soft line's poles\n//! on the four external invariants only: a massless line with its two\n//! neighbours' invariants on their mass shells. A labelling that puts such an\n//! on-shell pair, with a massive partner, on a channel (`s12` or `s23`)\n//! reaches the finite formulas and misses the pole. oneloopmaster's numerical\n//! entry points (`NativeEvaluator`, behind `OneLoopNativeMasters` and the\n//! fixed-precision carriers of `SymbolicaMasters`) evaluate such a point in a\n//! labelling of the same box that keeps the pair off the channels\n//! (`oneloop::regular_d0_labelling`). `SymbolicaMasters` with `Float` carriers\n//! evaluates the symbolic expressions, so it relabels each D0 row itself\n//! (without that, at oneloopmaster 8ec256fc, `Float(128)` puts labelling 0132\n//! 73 times its largest coefficient away from labelling 0123).\n//!\n//! The box is pyAmpliCol's `e+ e- -> t t~ h` box with lines `(m, m, 0, m)`,\n//! `m\u00b2 = 29929` (`MT = 173`) and `mu\u00b2 = 1e6`, in exact rationals. The 8\n//! dihedral (\"cyclic\") labellings were right at oneloopmaster 09b2c74; the\n//! other 16 were finite without the soft pole in binary64 and NaN in\n//! DoubleFloat and `Float(128)`. References:\n//! - COLLIER 1.2.8 COLI in binary64 (`SetMuUV2_cll(1e6)`, `SetMuIR2_cll(1e6)`,\n//!   cache off): the finite part with `SetDeltaIR_cll(0,0)` and the pole\n//!   coefficients as differences with `DeltaIR1 = 1` and `DeltaIR2 = 1`, the\n//!   same for all 24 labellings;\n//! - oneloopmaster 09b2c74 in `Float(128)` on the cyclic labellings, 38\n//!   digits (it agrees with COLLIER to 2e-16 and with OneLOop in quadruple\n"
+        }
+      ]
+    },
+    {
+      "repository": "oneloopmaster",
+      "revision": "8ec256fc26cb361b20e10f59c19beb35717ef32c",
+      "path": "STATUS.md",
+      "source_sha256": "c046fa9fcb78b059e9656fe35aa8d6d8997f6069cdfcd853964321b8668c62fe",
+      "source_bytes": 142269,
+      "source_url": "https://github.com/alphal00p/oneloopmaster/blob/8ec256fc26cb361b20e10f59c19beb35717ef32c/STATUS.md",
+      "attribution": "Upstream oneloopmaster contributors; MIT",
+      "excerpts": [
+        {
+          "start_line": 7,
+          "end_line": 18,
+          "text": "## Adversarial sweeps and the remaining tail (landed 2026-10-21)\n\n`claude/olm-final-3` (3a322d0, the next section) lands on main as it\nstands, by the user's decision of 2026-10-21; the tail below is open work,\nnot a list of accepted exceptions. Its two verifiers (verify-olm-sweep2 and\nverify-olm-gates2) ran it on three adversarial sweeps, two of them generated\nafter the fixes, and on per-row comparisons of the oracle sweeps. Against\n09b2c74 each sweep has far fewer wrong and non-finite D0 values, but each\nalso has rows that 3a322d0 gets wrong where 09b2c74 was right or NaN. The\nguarantees of the sections below (NaN where binary64 cannot resolve a\nchart, every route taking the same chart, no silent entry outside J and J*,\nnothing else worse) were measured on the sets those sections name and hold\n"
+        },
+        {
+          "start_line": 140,
+          "end_line": 154,
+          "text": "### The remaining tail\n\n- **New silent binary64 boxes on ns and ns2.** 18 rows of ns (37 route\n  entries) and 3 of ns2 (11 entries) are finite and wrong by more than 1e-6\n  where 09b2c74 was within 1e-6 or NaN, outside classes J and J*. Each\n  reproduces in a fresh single-row process, and 13 of the 18 ns boxes are\n  silent in all 24 of their relabellings on at least one route. DoubleFloat\n  is within 3e-14 on all 21.\n  - 7 ns boxes (5313, 5856, 6303, 7507, 16250, 20047, 22586) and all 3 ns2\n    boxes were NaN at 09b2c74 on the silent route and are now finite and\n    wrong, by up to 0.358. This is the class of the 26 v1 boxes of the\n    2026-10-20 section: NinjaRS rescued them at 09b2c74 and cannot now.\n  - 8 ns boxes are more than ten times worse, by up to 5.1e-4.\n  - 5 ns boxes cross 1e-6 by less than ten times. Some boxes fall into two\n    of these groups on different routes.\n"
+        },
+        {
+          "start_line": 216,
+          "end_line": 225,
+          "text": "  - In all 24 relabellings of these boxes, 1,103, 1,707, 862 and 910\n    entries are silent (nat128, int128, nat256, int256).\n\n  Examples:\n  - **ns 9210** (CCC0: three equal complex masses, lightlike `p3`, exactly\n    planar) is wrong by 4.46 at 128 and 256 bits, native and interpreted,\n    at 125/126 and 253/254 tracked bits, so it is silent under numerica's\n    tracking too. 09b2c74 is NaN, f2adce4 gives the same as now, 512 and\n    1024 bits are right, and every binary64 route is right at both builds:\n    `4 1.0 -285.2138671875 13.123821258544922 0.0 -780.9905891418457\n"
+        },
+        {
+          "start_line": 397,
+          "end_line": 405,
+          "text": "   regressions: the four pin boxes passed at both revisions. Add a per-row\n   `Float` comparison against the previous main to the done-checklist, as\n   verify-olm-gates2's `osw/rowcmp.py` and `osw/flagclass.py` do.\n4. **Callers of the `Float` routes should check numerica's tracked\n   precision.** Most silent `Float` rows track 1 to 4 bits. NinjaRS's\n   `SymbolicaMasters` checks only finiteness, so a 128-bit D0 that tracks\n   20 bits passes as a success. Such a check would still miss rows like ns\n   9210, which tracks 253 of 256 bits and is wrong by 4.46.\n5. **Instruction headroom.** syn-n6-r7 is at +0.444% of the 0.5% gate with\n"
+        }
+      ]
+    }
+  ]
+}

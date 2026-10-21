@@ -587,6 +587,12 @@ IF (LOCAL_ML_INIT) THEN
   LOCAL_ML_INIT = .FALSE.
   QP_TOOLS_AVAILABLE=.FALSE.
   INDEX_QP_TOOLS(1:QP_NLOOPLIB+1)=0
+C Explain an explicit NinjaRS-only request before dropping unavailable tools.
+  IF(MLReductionLib(1).EQ.8.AND.MLReductionLib(2).EQ.0.AND..NOT.LOOPLIBS_AVAILABLE(8))THEN
+     WRITE(*,*) 'NinjaRS (MLReductionLib=8) is unavailable in this generated process.'
+     WRITE(*,*) 'Run install ninjars in MadGraph, then regenerate and rebuild this process.'
+     STOP 'Requested NinjaRS backend is unavailable.'
+  ENDIF
 C SKIP THE ONES THAT NOT AVAILABLE
   J=1
   DO I=1,NLOOPLIB

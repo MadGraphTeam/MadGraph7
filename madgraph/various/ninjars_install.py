@@ -6,6 +6,7 @@ so installing never modifies a developer's reference checkouts.
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -14,6 +15,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import tomllib
 
 from madgraph import MadGraph5Error
 
@@ -30,22 +32,23 @@ def read_config(libdir):
     except (OSError, TypeError, ValueError) as error:
         raise MadGraph5Error(
             "Cannot read NinjaRS installation metadata in %s: %s. "
-            "Run 'install ninjars'." % (libdir, error))
+            "Run 'install ninjars --update'." % (libdir, error))
     if not isinstance(config, dict) or config.get('abi_version') != ABI_VERSION:
         raise MadGraph5Error("Unsupported NinjaRS bridge ABI in %s; "
-                             "run 'install ninjars --force'." % libdir)
+                             "run 'install ninjars --update'." % libdir)
     flags = config.get('native_libs')
     if (not isinstance(flags, list) or
             any(not isinstance(flag, str) or '\n' in flag or '\r' in flag
                 for flag in flags)):
-        raise MadGraph5Error("Invalid NinjaRS native link metadata in %s" % libdir)
+        raise MadGraph5Error("Invalid NinjaRS native link metadata in %s; "
+                             "run 'install ninjars --update'." % libdir)
     before = config.get('link_before')
     if (config.get('link_order_version') != 1 or
             not isinstance(before, list) or not before or
             any(not isinstance(flag, str) or '\n' in flag or '\r' in flag
                 for flag in before)):
         raise MadGraph5Error("Missing or invalid NinjaRS compiler-runtime link metadata "
-                             "in %s; run 'install ninjars --force'." % libdir)
+                             "in %s; run 'install ninjars --update'." % libdir)
     return config
 
 
@@ -75,8 +78,9 @@ def build_parser():
     parser.add_argument('--prefix', metavar='DIRECTORY',
                         help='override the configured HEPTools installation prefix')
     parser.add_argument('--jobs', '-j', type=int, default=None)
-    parser.add_argument('--force', action='store_true',
-                        help='replace an existing NinjaRS installation after validation')
+    parser.add_argument('--update', '--force', dest='force', action='store_true',
+                        help='rebuild using this MadGraph checkout\'s pinned dependencies; '
+                             'replace an existing installation after validation')
     return parser
 
 
@@ -89,13 +93,44 @@ def _copy_source(source, destination, required):
     shutil.copytree(source, destination, ignore=shutil.ignore_patterns(
         '.git', 'target', 'references', '__pycache__', '.direnv'))
     revision = None
+    # Do not report an enclosing MadGraph checkout's HEAD for an extracted
+    # dependency tarball. Git worktrees have a .git file instead of a directory.
+    if (source / '.git').exists():
+        try:
+            revision = subprocess.check_output(
+                ['git', '-C', str(source), 'rev-parse', 'HEAD'],
+                stderr=subprocess.DEVNULL, text=True).strip()
+        except (OSError, subprocess.CalledProcessError):
+            pass
+    # A revision alone cannot identify a modified checkout, or a source tarball.
+    # Bind precisely the files copied for this build without relying on .git.
+    files = {path.relative_to(destination).as_posix():
+             hashlib.sha256(path.read_bytes()).hexdigest()
+             for path in sorted(destination.rglob('*')) if path.is_file()}
+    content = json.dumps(files, sort_keys=True, separators=(',', ':')).encode()
+    return {'source': str(source), 'revision': revision,
+            'source_tree_sha256': hashlib.sha256(content).hexdigest(),
+            'source_files': len(files)}
+
+
+def _dependency_provenance(bridge):
+    """Identify the actual locked sources, including transitive Git patches."""
+    manifest = (bridge / 'Cargo.toml').read_bytes()
+    lock = (bridge / 'Cargo.lock').read_bytes()
     try:
-        revision = subprocess.check_output(
-            ['git', '-C', str(source), 'rev-parse', 'HEAD'],
-            stderr=subprocess.DEVNULL, text=True).strip()
-    except (OSError, subprocess.CalledProcessError):
-        pass
-    return {'source': str(source), 'revision': revision}
+        packages = tomllib.loads(lock.decode())['package']
+        git_dependencies = [
+            {'name': package['name'], 'version': package['version'],
+             'source': package['source']}
+            for package in packages
+            if package.get('source', '').startswith('git+')]
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError, KeyError,
+            TypeError, AttributeError) as error:
+        raise MadGraph5Error('Invalid resolved NinjaRS Cargo.lock: %s' % error) from error
+    return {'manifest_sha256': hashlib.sha256(manifest).hexdigest(),
+            'lock_sha256': hashlib.sha256(lock).hexdigest(),
+            'git_dependencies': sorted(git_dependencies,
+                                       key=lambda item: (item['name'], item['source']))}
 
 
 def _prepare_overrides(bridge, stage, options):
@@ -238,8 +273,9 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
         if not all((destination / 'lib' / name).is_file() for name in
                    ('libninjars.a', 'mninjars.mod')):
             raise MadGraph5Error("Incomplete NinjaRS installation: "
-                                 "run 'install ninjars --force'.")
-        logger.info("NinjaRS is already installed in %s; use --force to rebuild.",
+                                 "run 'install ninjars --update'.")
+        logger.info("NinjaRS is already installed in %s; use --update to rebuild "
+                    "with this checkout's pinned dependencies.",
                     destination)
         return str(destination / 'lib')
 
@@ -288,7 +324,8 @@ def install(mg_root, prefix, arguments=(), fortran_compiler=None, jobs=None):
               'native_libs': native_libs, 'local_sources': provenance,
               'fortran_compiler': compiler, 'link_before': link_before,
               'link_order_version': 1,
-              'compiler_runtime': 'gnu-linux-libgcc_s-before-rust'}
+              'compiler_runtime': 'gnu-linux-libgcc_s-before-rust',
+              'build_provenance': _dependency_provenance(bridge)}
     (libdir / CONFIG_NAME).write_text(json.dumps(config, indent=2) + '\n')
     # This exercises the installed Fortran module and both numerical domains.
     smoke = stage / 'smoke'
