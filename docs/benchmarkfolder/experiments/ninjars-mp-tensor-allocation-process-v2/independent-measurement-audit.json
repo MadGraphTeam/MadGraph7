@@ -1,0 +1,60 @@
+{
+  "actual_assets_equal_pre_sample_freeze": true,
+  "all_owned_children_exited": true,
+  "cases": {
+    "ew-2": {
+      "component_comparisons": 11200,
+      "confidence_interval_95": [
+        0.9947156585798971,
+        0.9993386991979275
+      ],
+      "pairs": 7,
+      "ratio": 0.9976395567626164,
+      "status_counts": {
+        "218": 100
+      }
+    },
+    "qcd-3": {
+      "component_comparisons": 33600,
+      "confidence_interval_95": [
+        0.9568779827192503,
+        0.993639704088713
+      ],
+      "pairs": 21,
+      "ratio": 0.968518392915057,
+      "status_counts": {
+        "218": 98,
+        "322": 2
+      }
+    }
+  },
+  "checked_utc": "2026-10-21T00:36:47.316843+00:00",
+  "cpu_affinity": [
+    3
+  ],
+  "frozen_bindings_sha256": "64766a546d751705993e4b074f830d9ff32260c89e4ecfd6f6e4aa9114e2871e",
+  "harness_ast_parse": {
+    "files": [
+      "docs/benchmarkfolder/policy-v2/install-export-abi3-final-v1/export.py",
+      "docs/benchmarkfolder/policy-v2/install-export-abi3-final-v1/focused_validator.py",
+      "docs/benchmarkfolder/policy-v2/install-export-abi3-final-v1/prepare.py",
+      "docs/benchmarkfolder/policy-v2/install-export-abi3-final-v1/python_checks.py",
+      "docs/benchmarkfolder/policy-v2/install-export-abi3-final-v1/runtime_validator.py",
+      "docs/benchmarkfolder/policy-v2/install-export-abi3-final-v1/rust_proof.py",
+      "docs/benchmarkfolder/policy-v2/install-export-abi3-final-v1/seal.py",
+      "docs/benchmarkfolder/policy-v2/install-export-abi3-final-v1/verify.py"
+    ],
+    "passed": true
+  },
+  "historical_samples_reused": false,
+  "limit": "Allocation promotion gates only; final full-process acceptance remains separate.",
+  "passed": true,
+  "physical_component_checks": 44800,
+  "raw_file_bindings": 280,
+  "reviewer_script_sha256": "c00af57d01d9ead03fa8cffe91e2464bc8a4440f52e2869e913d6504053b3a12",
+  "schema": "allocation-independent-measurement-audit-v2",
+  "source_analysis_sha256": "79e661e62a4ce253181bdff22fa1dd530269ccbe570b61e2e2b9c9712e3f1a4d",
+  "source_result_sha256": "3102c1a33dce5d26113dc9c098e1100920933d1507fd11aaed0ee91606411191",
+  "test_compiler_or_engine_executions": 0,
+  "workers": 56
+}

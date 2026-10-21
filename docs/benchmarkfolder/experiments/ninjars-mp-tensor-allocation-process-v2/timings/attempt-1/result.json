@@ -1,0 +1,424 @@
+{
+  "acceptance_eligible": false,
+  "affinity": [
+    234
+  ],
+  "authorized_run": "NEW root quiet and exclusive MP handoff 2026-10-21 00:05:46 UTC; fresh v2 freeze64766a546d751705993e4b074f830d9ff32260c89e4ecfd6f6e4aa9114e2871e; exactly21 QCD3 pairs and7 EW2 pairs. Independent recovery/readiness passed. Allowed original correctness worker1995662 CPU207 and collector1973783 plus read-only watcher2507588 CPU3 only; all other task-owned build/test/evaluation/hash jobs held. QualifyCPU234 before samples, retain every rejection/failure/sample, no historical or pause-spanning sample reuse and no optional extension.",
+  "controller": {
+    "bytes": 12363,
+    "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/run-processes.py",
+    "sha256": "76cba4bc7a4b5afd6e5508488a4825c81a350f3427cd68b2e56c7c764e772e2a"
+  },
+  "cpu": 234,
+  "finished_utc": "2026-10-21T00:35:03.284219+00:00",
+  "frozen_bindings": {
+    "bytes": 883638,
+    "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/frozen-bindings.json",
+    "sha256": "64766a546d751705993e4b074f830d9ff32260c89e4ecfd6f6e4aa9114e2871e"
+  },
+  "preflight": [
+    {
+      "after": {
+        "idle": 39250423,
+        "total": 57467217,
+        "values": [
+          16605434,
+          6809,
+          1355192,
+          39240589,
+          9834,
+          240267,
+          9092,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "idle": 39250123,
+        "total": 57466916,
+        "values": [
+          16605434,
+          6809,
+          1355191,
+          39240289,
+          9834,
+          240267,
+          9092,
+          0,
+          0,
+          0
+        ]
+      },
+      "busy_fraction": 0.0033222591362126463,
+      "index": 0,
+      "interval_seconds": 3
+    },
+    {
+      "after": {
+        "idle": 39250723,
+        "total": 57467517,
+        "values": [
+          16605434,
+          6809,
+          1355192,
+          39240889,
+          9834,
+          240267,
+          9092,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "idle": 39250423,
+        "total": 57467217,
+        "values": [
+          16605434,
+          6809,
+          1355192,
+          39240589,
+          9834,
+          240267,
+          9092,
+          0,
+          0,
+          0
+        ]
+      },
+      "busy_fraction": 0.0,
+      "index": 1,
+      "interval_seconds": 3
+    },
+    {
+      "after": {
+        "idle": 39251023,
+        "total": 57467817,
+        "values": [
+          16605434,
+          6809,
+          1355192,
+          39241189,
+          9834,
+          240267,
+          9092,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "idle": 39250723,
+        "total": 57467517,
+        "values": [
+          16605434,
+          6809,
+          1355192,
+          39240889,
+          9834,
+          240267,
+          9092,
+          0,
+          0,
+          0
+        ]
+      },
+      "busy_fraction": 0.0,
+      "index": 2,
+      "interval_seconds": 3
+    }
+  ],
+  "production_changed": false,
+  "reference_exception": "Existing corrected-original collector CPU207 only",
+  "repetitions": {
+    "ew-2": 7,
+    "qcd-3": 21
+  },
+  "samples": [
+    {
+      "bytes": 58024,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-00-original/result.json",
+      "sha256": "3fb27894d6c0056908cb781686641d5b281b3118e3e3b950c7a057a48866b4f0"
+    },
+    {
+      "bytes": 58036,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-00-allocation/result.json",
+      "sha256": "e9ad645055804b079ee5382fbcea6957393f5c419b37c16ed6af1572acfca2fb"
+    },
+    {
+      "bytes": 58036,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-01-allocation/result.json",
+      "sha256": "a3d1a155dbf4caf39bb2771b6d11ed156f5fc3f1d4c3ac084558d441db3953dd"
+    },
+    {
+      "bytes": 58024,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-01-original/result.json",
+      "sha256": "8929dd5f1aa4f78f158d6383aef818b645a26a0ffd0efe7355809ead97be4626"
+    },
+    {
+      "bytes": 58022,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-02-original/result.json",
+      "sha256": "f0ec4ae13652bfd715f213e796878ead738d8b0538b9f3b71ff45a43141fee16"
+    },
+    {
+      "bytes": 58034,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-02-allocation/result.json",
+      "sha256": "72626d3af025d31ffdc40f07a6f98f1173e8b3f88edff468d5f66705f9a6afde"
+    },
+    {
+      "bytes": 58035,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-03-allocation/result.json",
+      "sha256": "ca016fd5fbaed596bde411c99b118453e86a72e4ca7aa9f073502df916e01304"
+    },
+    {
+      "bytes": 58024,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-03-original/result.json",
+      "sha256": "b47b7b913d1710a20991f435a5c3721841ec6e9dccb822105350b7d1ab656ddb"
+    },
+    {
+      "bytes": 58024,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-04-original/result.json",
+      "sha256": "c07bca40718b830b7c33689dba8180bdceb06d969cbf076218a7bcddc0f452b0"
+    },
+    {
+      "bytes": 58036,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-04-allocation/result.json",
+      "sha256": "4c6e129cff1b70b2dd52c844c1ef96409caba65a4425d943e1e0aafa9234dc78"
+    },
+    {
+      "bytes": 58036,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-05-allocation/result.json",
+      "sha256": "ea24274b1cf3f8e29e63805af7053087647ca267c8c9995920db1e5e26baeea2"
+    },
+    {
+      "bytes": 58023,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-05-original/result.json",
+      "sha256": "7cae01a885b454415db4fe79aaca75e5d192258aabc28ddc8bf2be1bfdbb6bf8"
+    },
+    {
+      "bytes": 58023,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-06-original/result.json",
+      "sha256": "bbd334c8f21da273e48b9321a051c37f89d378fb8993cc39c790e8ab163482fc"
+    },
+    {
+      "bytes": 58035,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-06-allocation/result.json",
+      "sha256": "8f5ea91a368c71f3a6c7f16138bdde64f1b71f926dacb97637986b211a44534a"
+    },
+    {
+      "bytes": 58041,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-07-allocation/result.json",
+      "sha256": "077f37ab02e46edb1f6b3c9374422531b7317e6e7ffcc3a9e3135a6569c3ac38"
+    },
+    {
+      "bytes": 58023,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-07-original/result.json",
+      "sha256": "cc245327ad831ad7e34cea13f3f822f1d8829ce85fa36c4708f655a9262f6eb9"
+    },
+    {
+      "bytes": 58024,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-08-original/result.json",
+      "sha256": "a2aac47029d0b258ce502b0e13a2a9cad8a95bde323248a81716a272949a0596"
+    },
+    {
+      "bytes": 58035,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-08-allocation/result.json",
+      "sha256": "3a3e4a673a888dd2774f1812d554bcc22947c15c58282eeba770f5de4f871843"
+    },
+    {
+      "bytes": 58042,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-09-allocation/result.json",
+      "sha256": "be1e6c9251a8ba3294635aef1522fbb1af916eb976e5988b65ec5ef46735b7c2"
+    },
+    {
+      "bytes": 58020,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-09-original/result.json",
+      "sha256": "b0e59c65a2a82079776a54f198b15516d7013f44f6abddacaef7aaa6792ab873"
+    },
+    {
+      "bytes": 58025,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-10-original/result.json",
+      "sha256": "9f91c2ef57a514fe88a1980b17b03243107eab4f3f7258f9413b186eb998f0eb"
+    },
+    {
+      "bytes": 58041,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-10-allocation/result.json",
+      "sha256": "32eb040ba7007d72b6dc55e9f4e3b9e5e805ab6e863e0c31f03b9999f8b64bbd"
+    },
+    {
+      "bytes": 58032,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-11-allocation/result.json",
+      "sha256": "6fa731373a12894d52f822241714405cc2911511b055ff265b863fbe3062f9d6"
+    },
+    {
+      "bytes": 58023,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-11-original/result.json",
+      "sha256": "3ef89231432e4a523d0b6511204734c6ea912c3cd4ff10759f5179d047e6209e"
+    },
+    {
+      "bytes": 58024,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-12-original/result.json",
+      "sha256": "6de4ab439d0f74f6c04a9755433f89858f30139d15a1a7f48e611faf98f7a676"
+    },
+    {
+      "bytes": 58037,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-12-allocation/result.json",
+      "sha256": "16ada8c1c77bf12715b3005bcfaa2b58e087c24f44aad68aff45ead4ceeb712f"
+    },
+    {
+      "bytes": 58036,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-13-allocation/result.json",
+      "sha256": "432486ac5d8bbc412dbc7a9ff5f4a47dc11fa4e3651de176884276c15de0568d"
+    },
+    {
+      "bytes": 58031,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-13-original/result.json",
+      "sha256": "89d767ce8667b29a3833cdadcfbf293f8d800eb56efe04f89c4b0a8cf5ea3fe2"
+    },
+    {
+      "bytes": 58023,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-14-original/result.json",
+      "sha256": "c674f2f686a38ef79328b1c4389010c77aa8f066a2ad11e84273b24831c0d43a"
+    },
+    {
+      "bytes": 58043,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-14-allocation/result.json",
+      "sha256": "9ab13eda258fd02c627d3588953d49dc060558627de4d15e1fbc2c7b8bb91627"
+    },
+    {
+      "bytes": 58036,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-15-allocation/result.json",
+      "sha256": "4b6551cba1843f74c9723483155d50ca7178db4bea6a609e516992ee2ed6c93b"
+    },
+    {
+      "bytes": 58025,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-15-original/result.json",
+      "sha256": "632288c2ec7a59f77dbecaf3d12f9753d9ea74cf4e22a6c767b8a2636ca23606"
+    },
+    {
+      "bytes": 58029,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-16-original/result.json",
+      "sha256": "098161ad45df9f7d056014e82387d73bca08e87f061a6206ed29f7af27c80506"
+    },
+    {
+      "bytes": 58036,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-16-allocation/result.json",
+      "sha256": "2d2cc061a84c7879e67d320b9cf26acafcd5ce294afa2909aa621ba4bd4d3918"
+    },
+    {
+      "bytes": 58037,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-17-allocation/result.json",
+      "sha256": "92ef96eb7d575ff87bb29403693e4b0c45ca23c8416f7823c0bcdf28db4cd0de"
+    },
+    {
+      "bytes": 58025,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-17-original/result.json",
+      "sha256": "281812f2feed736718721345456753ed8a1d1d25a5788d6263c00e2c34531b29"
+    },
+    {
+      "bytes": 58022,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-18-original/result.json",
+      "sha256": "e37f8d5bf8f8eba171a2f86a75ae97a3f0ff2f8fd257702907d1c6ff952c712a"
+    },
+    {
+      "bytes": 58042,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-18-allocation/result.json",
+      "sha256": "e3d21ee35fbe8d6ef25a7e92aa90c8579ccd07b0a04734353a699341ed018b9d"
+    },
+    {
+      "bytes": 58035,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-19-allocation/result.json",
+      "sha256": "e309ae4ad76f53a109eec475b331ec20e15a39c7d0f17624099d0dfb2ba4e692"
+    },
+    {
+      "bytes": 58024,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-19-original/result.json",
+      "sha256": "e96398fa7ce093e482e1192449d4847e314c5aa3789e8fff9bea902ec143e4b9"
+    },
+    {
+      "bytes": 58030,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-20-original/result.json",
+      "sha256": "880a58bfbf6b3f8d688941c3de81a2f4ef9252849b0984217f5c7d6a93063379"
+    },
+    {
+      "bytes": 58032,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/qcd-3/pair-20-allocation/result.json",
+      "sha256": "93910f94487cbaae4346f0d06002df3f0249348aad837234463cc09981116ced"
+    },
+    {
+      "bytes": 57499,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/ew-2/pair-00-original/result.json",
+      "sha256": "a542615ad4b5f05f6f08f15155ec64174c6eaba52b3f4f9e6a793b98f3f108a3"
+    },
+    {
+      "bytes": 57512,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/ew-2/pair-00-allocation/result.json",
+      "sha256": "a61939abc08254a3a683f3f855182cf0da60c5c312a4ffb052399d70047e3591"
+    },
+    {
+      "bytes": 57510,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/ew-2/pair-01-allocation/result.json",
+      "sha256": "d9dd06e09efecc398067f00b79ae36a59ddd551b7d53e2ae362109e05bb86da7"
+    },
+    {
+      "bytes": 57499,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/ew-2/pair-01-original/result.json",
+      "sha256": "4fd1d1f91591ecafcab70f774fba537d746f7e10fe7bef7fe5c027177ad80f38"
+    },
+    {
+      "bytes": 57508,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/ew-2/pair-02-original/result.json",
+      "sha256": "ec44763323b55ec9354ce353e7b85176effa13a125b17bcf0db6002b3e107d58"
+    },
+    {
+      "bytes": 57511,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/ew-2/pair-02-allocation/result.json",
+      "sha256": "976c09b77539efb3f2f4bf4c037e8513671f04098769e579129e28a3ff722166"
+    },
+    {
+      "bytes": 57511,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/ew-2/pair-03-allocation/result.json",
+      "sha256": "93f305e974a662fed17f097895544f19b4a538a3b4efd93a61de9faa88fa4876"
+    },
+    {
+      "bytes": 57505,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/ew-2/pair-03-original/result.json",
+      "sha256": "5e0a7fe118797087b075fea43fab75f390b50c27825dcab925f9e88c458f7ebe"
+    },
+    {
+      "bytes": 57499,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/ew-2/pair-04-original/result.json",
+      "sha256": "e8740b085fdf1950fea0aafeda08579475f644af46f41efa9a60784fc023a228"
+    },
+    {
+      "bytes": 57511,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/ew-2/pair-04-allocation/result.json",
+      "sha256": "6de6370de41f45c5af8c845a185531e14874bfd24b33d00554384a443d376421"
+    },
+    {
+      "bytes": 57512,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/ew-2/pair-05-allocation/result.json",
+      "sha256": "e8b953331ce94a498fb4b304dc8fe38adf3180e0a06a83aea17fb9d831a3d321"
+    },
+    {
+      "bytes": 57508,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/ew-2/pair-05-original/result.json",
+      "sha256": "bd5e26252c877678c27fe5ecf60b17ed2ca218fee8966d9a93b7fc373eadf234"
+    },
+    {
+      "bytes": 57498,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/ew-2/pair-06-original/result.json",
+      "sha256": "2c639eb3d50c78616681a75961b005a919dc7d778de24bca7780bd7b5accb2e4"
+    },
+    {
+      "bytes": 57512,
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/ew-2/pair-06-allocation/result.json",
+      "sha256": "1fab338c767a5f8cf210ec9b09fad1f1692fdb9803b081413651ec70c051f7c3"
+    }
+  ],
+  "schema": "allocation-process-execution-v1",
+  "started_utc": "2026-10-21T00:06:04.878680+00:00",
+  "status": "complete-unanalysed",
+  "topology": "CPU NODE SOCKET CORE ONLINE\n  0    0      0    0    yes\n  1    0      0    1    yes\n  2    0      0    2    yes\n  3    0      0    3    yes\n  4    0      0    4    yes\n  5    0      0    5    yes\n  6    0      0    6    yes\n  7    0      0    7    yes\n  8    0      0    8    yes\n  9    0      0    9    yes\n 10    0      0   10    yes\n 11    0      0   11    yes\n 12    0      0   12    yes\n 13    0      0   13    yes\n 14    0      0   14    yes\n 15    0      0   15    yes\n 16    0      0   16    yes\n 17    0      0   17    yes\n 18    0      0   18    yes\n 19    0      0   19    yes\n 20    0      0   20    yes\n 21    0      0   21    yes\n 22    0      0   22    yes\n 23    0      0   23    yes\n 24    0      0   24    yes\n 25    0      0   25    yes\n 26    0      0   26    yes\n 27    0      0   27    yes\n 28    0      0   28    yes\n 29    0      0   29    yes\n 30    0      0   30    yes\n 31    0      0   31    yes\n 32    1      0   32    yes\n 33    1      0   33    yes\n 34    1      0   34    yes\n 35    1      0   35    yes\n 36    1      0   36    yes\n 37    1      0   37    yes\n 38    1      0   38    yes\n 39    1      0   39    yes\n 40    1      0   40    yes\n 41    1      0   41    yes\n 42    1      0   42    yes\n 43    1      0   43    yes\n 44    1      0   44    yes\n 45    1      0   45    yes\n 46    1      0   46    yes\n 47    1      0   47    yes\n 48    1      0   48    yes\n 49    1      0   49    yes\n 50    1      0   50    yes\n 51    1      0   51    yes\n 52    1      0   52    yes\n 53    1      0   53    yes\n 54    1      0   54    yes\n 55    1      0   55    yes\n 56    1      0   56    yes\n 57    1      0   57    yes\n 58    1      0   58    yes\n 59    1      0   59    yes\n 60    1      0   60    yes\n 61    1      0   61    yes\n 62    1      0   62    yes\n 63    1      0   63    yes\n 64    2      0   64    yes\n 65    2      0   65    yes\n 66    2      0   66    yes\n 67    2      0   67    yes\n 68    2      0   68    yes\n 69    2      0   69    yes\n 70    2      0   70    yes\n 71    2      0   71    yes\n 72    2      0   72    yes\n 73    2      0   73    yes\n 74    2      0   74    yes\n 75    2      0   75    yes\n 76    2      0   76    yes\n 77    2      0   77    yes\n 78    2      0   78    yes\n 79    2      0   79    yes\n 80    2      0   80    yes\n 81    2      0   81    yes\n 82    2      0   82    yes\n 83    2      0   83    yes\n 84    2      0   84    yes\n 85    2      0   85    yes\n 86    2      0   86    yes\n 87    2      0   87    yes\n 88    2      0   88    yes\n 89    2      0   89    yes\n 90    2      0   90    yes\n 91    2      0   91    yes\n 92    2      0   92    yes\n 93    2      0   93    yes\n 94    2      0   94    yes\n 95    2      0   95    yes\n 96    3      0   96    yes\n 97    3      0   97    yes\n 98    3      0   98    yes\n 99    3      0   99    yes\n100    3      0  100    yes\n101    3      0  101    yes\n102    3      0  102    yes\n103    3      0  103    yes\n104    3      0  104    yes\n105    3      0  105    yes\n106    3      0  106    yes\n107    3      0  107    yes\n108    3      0  108    yes\n109    3      0  109    yes\n110    3      0  110    yes\n111    3      0  111    yes\n112    3      0  112    yes\n113    3      0  113    yes\n114    3      0  114    yes\n115    3      0  115    yes\n116    3      0  116    yes\n117    3      0  117    yes\n118    3      0  118    yes\n119    3      0  119    yes\n120    3      0  120    yes\n121    3      0  121    yes\n122    3      0  122    yes\n123    3      0  123    yes\n124    3      0  124    yes\n125    3      0  125    yes\n126    3      0  126    yes\n127    3      0  127    yes\n128    4      1  128    yes\n129    4      1  129    yes\n130    4      1  130    yes\n131    4      1  131    yes\n132    4      1  132    yes\n133    4      1  133    yes\n134    4      1  134    yes\n135    4      1  135    yes\n136    4      1  136    yes\n137    4      1  137    yes\n138    4      1  138    yes\n139    4      1  139    yes\n140    4      1  140    yes\n141    4      1  141    yes\n142    4      1  142    yes\n143    4      1  143    yes\n144    4      1  144    yes\n145    4      1  145    yes\n146    4      1  146    yes\n147    4      1  147    yes\n148    4      1  148    yes\n149    4      1  149    yes\n150    4      1  150    yes\n151    4      1  151    yes\n152    4      1  152    yes\n153    4      1  153    yes\n154    4      1  154    yes\n155    4      1  155    yes\n156    4      1  156    yes\n157    4      1  157    yes\n158    4      1  158    yes\n159    4      1  159    yes\n160    5      1  160    yes\n161    5      1  161    yes\n162    5      1  162    yes\n163    5      1  163    yes\n164    5      1  164    yes\n165    5      1  165    yes\n166    5      1  166    yes\n167    5      1  167    yes\n168    5      1  168    yes\n169    5      1  169    yes\n170    5      1  170    yes\n171    5      1  171    yes\n172    5      1  172    yes\n173    5      1  173    yes\n174    5      1  174    yes\n175    5      1  175    yes\n176    5      1  176    yes\n177    5      1  177    yes\n178    5      1  178    yes\n179    5      1  179    yes\n180    5      1  180    yes\n181    5      1  181    yes\n182    5      1  182    yes\n183    5      1  183    yes\n184    5      1  184    yes\n185    5      1  185    yes\n186    5      1  186    yes\n187    5      1  187    yes\n188    5      1  188    yes\n189    5      1  189    yes\n190    5      1  190    yes\n191    5      1  191    yes\n192    6      1  192    yes\n193    6      1  193    yes\n194    6      1  194    yes\n195    6      1  195    yes\n196    6      1  196    yes\n197    6      1  197    yes\n198    6      1  198    yes\n199    6      1  199    yes\n200    6      1  200    yes\n201    6      1  201    yes\n202    6      1  202    yes\n203    6      1  203    yes\n204    6      1  204    yes\n205    6      1  205    yes\n206    6      1  206    yes\n207    6      1  207    yes\n208    6      1  208    yes\n209    6      1  209    yes\n210    6      1  210    yes\n211    6      1  211    yes\n212    6      1  212    yes\n213    6      1  213    yes\n214    6      1  214    yes\n215    6      1  215    yes\n216    6      1  216    yes\n217    6      1  217    yes\n218    6      1  218    yes\n219    6      1  219    yes\n220    6      1  220    yes\n221    6      1  221    yes\n222    6      1  222    yes\n223    6      1  223    yes\n224    7      1  224    yes\n225    7      1  225    yes\n226    7      1  226    yes\n227    7      1  227    yes\n228    7      1  228    yes\n229    7      1  229    yes\n230    7      1  230    yes\n231    7      1  231    yes\n232    7      1  232    yes\n233    7      1  233    yes\n234    7      1  234    yes\n235    7      1  235    yes\n236    7      1  236    yes\n237    7      1  237    yes\n238    7      1  238    yes\n239    7      1  239    yes\n240    7      1  240    yes\n241    7      1  241    yes\n242    7      1  242    yes\n243    7      1  243    yes\n244    7      1  244    yes\n245    7      1  245    yes\n246    7      1  246    yes\n247    7      1  247    yes\n248    7      1  248    yes\n249    7      1  249    yes\n250    7      1  250    yes\n251    7      1  251    yes\n252    7      1  252    yes\n253    7      1  253    yes\n254    7      1  254    yes\n255    7      1  255    yes\n256    0      0    0    yes\n257    0      0    1    yes\n258    0      0    2    yes\n259    0      0    3    yes\n260    0      0    4    yes\n261    0      0    5    yes\n262    0      0    6    yes\n263    0      0    7    yes\n264    0      0    8    yes\n265    0      0    9    yes\n266    0      0   10    yes\n267    0      0   11    yes\n268    0      0   12    yes\n269    0      0   13    yes\n270    0      0   14    yes\n271    0      0   15    yes\n272    0      0   16    yes\n273    0      0   17    yes\n274    0      0   18    yes\n275    0      0   19    yes\n276    0      0   20    yes\n277    0      0   21    yes\n278    0      0   22    yes\n279    0      0   23    yes\n280    0      0   24    yes\n281    0      0   25    yes\n282    0      0   26    yes\n283    0      0   27    yes\n284    0      0   28    yes\n285    0      0   29    yes\n286    0      0   30    yes\n287    0      0   31    yes\n288    1      0   32    yes\n289    1      0   33    yes\n290    1      0   34    yes\n291    1      0   35    yes\n292    1      0   36    yes\n293    1      0   37    yes\n294    1      0   38    yes\n295    1      0   39    yes\n296    1      0   40    yes\n297    1      0   41    yes\n298    1      0   42    yes\n299    1      0   43    yes\n300    1      0   44    yes\n301    1      0   45    yes\n302    1      0   46    yes\n303    1      0   47    yes\n304    1      0   48    yes\n305    1      0   49    yes\n306    1      0   50    yes\n307    1      0   51    yes\n308    1      0   52    yes\n309    1      0   53    yes\n310    1      0   54    yes\n311    1      0   55    yes\n312    1      0   56    yes\n313    1      0   57    yes\n314    1      0   58    yes\n315    1      0   59    yes\n316    1      0   60    yes\n317    1      0   61    yes\n318    1      0   62    yes\n319    1      0   63    yes\n320    2      0   64    yes\n321    2      0   65    yes\n322    2      0   66    yes\n323    2      0   67    yes\n324    2      0   68    yes\n325    2      0   69    yes\n326    2      0   70    yes\n327    2      0   71    yes\n328    2      0   72    yes\n329    2      0   73    yes\n330    2      0   74    yes\n331    2      0   75    yes\n332    2      0   76    yes\n333    2      0   77    yes\n334    2      0   78    yes\n335    2      0   79    yes\n336    2      0   80    yes\n337    2      0   81    yes\n338    2      0   82    yes\n339    2      0   83    yes\n340    2      0   84    yes\n341    2      0   85    yes\n342    2      0   86    yes\n343    2      0   87    yes\n344    2      0   88    yes\n345    2      0   89    yes\n346    2      0   90    yes\n347    2      0   91    yes\n348    2      0   92    yes\n349    2      0   93    yes\n350    2      0   94    yes\n351    2      0   95    yes\n352    3      0   96    yes\n353    3      0   97    yes\n354    3      0   98    yes\n355    3      0   99    yes\n356    3      0  100    yes\n357    3      0  101    yes\n358    3      0  102    yes\n359    3      0  103    yes\n360    3      0  104    yes\n361    3      0  105    yes\n362    3      0  106    yes\n363    3      0  107    yes\n364    3      0  108    yes\n365    3      0  109    yes\n366    3      0  110    yes\n367    3      0  111    yes\n368    3      0  112    yes\n369    3      0  113    yes\n370    3      0  114    yes\n371    3      0  115    yes\n372    3      0  116    yes\n373    3      0  117    yes\n374    3      0  118    yes\n375    3      0  119    yes\n376    3      0  120    yes\n377    3      0  121    yes\n378    3      0  122    yes\n379    3      0  123    yes\n380    3      0  124    yes\n381    3      0  125    yes\n382    3      0  126    yes\n383    3      0  127    yes\n"
+}

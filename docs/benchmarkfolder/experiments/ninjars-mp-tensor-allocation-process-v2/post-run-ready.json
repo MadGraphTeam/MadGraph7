@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "frozen_bindings": {
+    "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/frozen-bindings.json",
+    "sha256": "64766a546d751705993e4b074f830d9ff32260c89e4ecfd6f6e4aa9114e2871e",
+    "bytes": 883638
+  },
+  "copied_workers": 4,
+  "executable_bytes_identical": true,
+  "compiler_fingerprints_identical": true,
+  "controller_and_analyzer_bytes_identical": true,
+  "old_historical_samples_reused": false,
+  "numerical_execution": false
+}

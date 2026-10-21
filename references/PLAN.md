@@ -758,3 +758,12 @@ resume metadata. The earlier pause note is a historical checkpoint.
   separate. The interrupted allocation jobs were retired without SIGCONT.
   A fresh byte-identical fixed twenty-one-plus-seven-pair study received its
   quiet/MP handoff on 2026-10-21 at 00:05:46 UTC. No historical sample is reused.
+- The fresh allocation study completed all twenty-one QCD3 and seven EW2
+  pairs with fifty-six successful fresh workers and exact coefficients,
+  accuracy estimates, statuses and raw rows. Independent 100,000-resample
+  analysis reproduces QCD3 ratio 0.9685183929 with 95% interval
+  [0.9568779827, 0.9936397041], and EW2 ratio 0.9976395568 with interval
+  [0.9947156586, 0.9993386992]. Both local promotion gates pass. Root reverified
+  the 751-file evidence seal; these results do not pass the separate final
+  original-Ninja runtime gates. The allocation patch remains held until the
+  final combined source freeze and numerical tests.
