@@ -87,7 +87,7 @@ from pyamplicol.loops.v2.families import (
     add_orders,
 )
 from pyamplicol.models.base import CouplingOrders, Model, QuantumNumberFlow
-from pyamplicol.models.contracts import TreeKernelVariant
+from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND, TreeKernelVariant
 from pyamplicol.models.prepared_catalog_builder import _tree_kernel_variant
 from pyamplicol.processes.ir import CanonicalProcessIR
 
@@ -635,7 +635,7 @@ def _connection_parities(
     def octet(index: CurrentIndex) -> bool:
         return (
             model.color_rep(index.particle_id) == 8
-            or index.auxiliary_kind == "u1-subtraction-color-flow-vector"
+            or index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
         )
 
     def has_endpoints(index: CurrentIndex) -> bool:

@@ -40,14 +40,9 @@ from dataclasses import replace
 
 from ..color.plan_types import LCColorSector
 from ..models.base import Model
+from ..models.contracts import U1_SUBTRACTION_AUXILIARY_KIND
 from ..processes.ir import CanonicalProcessIR, ProcessLegIR
 from .dag_types import AmplitudeRoot, CurrentIndex, GenericDAG, InteractionNode
-
-# Auxiliary kind of the U(1) subtraction current, as the colour-flow compiler
-# (``models/compiler_color_flow.py``) writes it. Generation must not import the
-# model compilers (``test_injected_license_plan_avoids_model_compilers``), and
-# exporting it from ``models/`` would change the compiled-model fingerprint.
-_U1_SUBTRACTION_AUXILIARY = "u1-subtraction-color-flow-vector"
 
 
 def _external_fermion_requires_exterior_sign(
@@ -380,7 +375,8 @@ def apply_fermion_ordering_signs(
     def creation_sign(result_id: int) -> int:
         if (
             coloured_lines
-            and currents[result_id].index.auxiliary_kind == _U1_SUBTRACTION_AUXILIARY
+            and currents[result_id].index.auxiliary_kind
+            == U1_SUBTRACTION_AUXILIARY_KIND
         ):
             return -1
         return 1

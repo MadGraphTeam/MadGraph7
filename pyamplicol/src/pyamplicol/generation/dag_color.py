@@ -8,6 +8,7 @@ from itertools import pairwise
 
 from ..color.plan import GenericColorPlan
 from ..models.base import Model, Vertex
+from ..models.contracts import U1_SUBTRACTION_AUXILIARY_KIND
 from ..processes.ir import ProcessLegIR
 from .dag_ordering import (
     _closure_combination_matches_word,
@@ -416,7 +417,7 @@ class ColorEngine:
             auxiliary_kind = self.model.auxiliary_kind(particle_id)
         except (KeyError, NotImplementedError, TypeError, ValueError):
             return False
-        return auxiliary_kind == "u1-subtraction-color-flow-vector"
+        return auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
 
     def _find_fundamental_line_auxiliary_ids(self) -> frozenset[int]:
         """Identify proven unphysical singlet currents attached to fundamental lines."""
