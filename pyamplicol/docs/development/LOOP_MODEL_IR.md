@@ -1518,9 +1518,11 @@ corrections of quark Yukawa/Goldstone vertices) use the same exact FFS bases and
 physical frame as the tree vertices; `e+ e- > t t~ h` matches MadLoop for
 every component. Family denominators reach the reducer in loop-cycle order
 (`kinematics.py`), the conventional D0 argument order: oneloopmaster 09b2c74
-misevaluates a soft-divergent box with massive emitters, such as the
-(m, m, 0, m) boxes of these processes, when its propagators are labelled
-non-adjacently (finite without the soft pole in binary64, NaN in DoubleFloat). Other two-point chiral, reversed-endpoint or momentum-leg tensors
+misevaluated a soft-divergent box with massive emitters, such as the
+(m, m, 0, m) boxes of these processes, when its propagators were labelled
+non-adjacently (finite without the soft pole in binary64, NaN in DoubleFloat).
+The pinned 8ec256fc relabels such boxes inside its numerical entry points; the
+order is kept. Other two-point chiral, reversed-endpoint or momentum-leg tensors
 remain outside this admission. Scalar source coefficients,
 loop groups, matching and all process-level cancellations are independent gates.
 
