@@ -3,8 +3,12 @@
 This is a new source/test checkpoint. It preserves the previously pushed
 `final-report-pipeline-v1` software evidence and its original 36-test snapshot;
 that old source verifier must not be relabelled as checking this extension.
-At preparation time no new test, Typst compilation or numerical evaluation has
-run. Root must release the benchmark quiet window before validation.
+At the paused preparation checkpoint no new test or Typst compilation had run.
+After the user's resume and root's explicit compute handoff, the first retained
+forty-test report attempt passes, including Typst layout and reproducibility
+controls. It performs no numerical evaluation and certifies no physics or timing
+gate. Source hashes are unchanged across the run; logs and identities are in
+`attempt-1/`.
 
 The report's optional CLI argument `--stress FILE` reads the separate raw-bound
 `madloop-final-stress-v1` dataset. Although the argument is optional for rendering
@@ -43,7 +47,6 @@ also exercises both new process tables, optional unavailable references and
 diagnostic/stability columns. These are software/layout fixtures, not physical
 benchmark observations.
 
-After root's compute handoff, run the focused report and stress suites, retain
-their logs in this new namespace, obtain an independent review/rerun, and seal
-the evidence. Keep the historical top-level `benchmark.typ`/`benchmark.pdf`
+The independent combined report/stress review is recorded separately. Keep the
+historical top-level `benchmark.typ`/`benchmark.pdf`
 unchanged until the complete final dataset is validated and visually inspected.

@@ -41,7 +41,19 @@ python -B docs/benchmarkfolder/experiments/ninjars-installer-transaction-v1/coll
 ```
 
 The collector uses exclusive-create evidence files, records exact source hashes,
-and retains the red and green logs plus source snapshots. Its outputs and the
-independent review must pass before this milestone is sealed or committed.
+and retains the red and green logs plus source snapshots. On 2026-10-21, with
+root's explicit CPU 3 handoff, it recorded the three expected original failures
+(two assertions and one cleanup error), then passed all 37 focused tests with
+no failures, errors or skips. All seven new regression tests are included.
+No compiler, actual installation or reduction engine was started.
+
+The earlier independent source audit bound draft `17cc6f8c` and tests
+`06bbfd3b`. The tested final source is `e2b83749` and tests `0c0a2913`; the
+source audit addendum reviews that actual difference. The final refinement
+journals alias candidates before their atomic rename and detects a committed
+destination move from disappearance of the staged source, so cancellation
+immediately after either rename can restore the old state. The interruption
+test raises after the real rename for both publication points.
+
 Actual CLI installation and relocated numerical exports remain a separate
 final-source gate; this engine-free proof does not replace them.

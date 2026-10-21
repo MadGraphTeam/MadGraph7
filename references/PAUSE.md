@@ -1,7 +1,13 @@
-# Paused at the user’s request
+# Historical pause checkpoint — user resumed
+
+The user explicitly resumed on 2026-10-21. The records below describe the saved
+pause, not current process state. Consult `.benchmark-work/resume-20261021T000104Z.json`
+and each agent's new identity ledger before using any PID or sending signals.
+The interrupted allocation timing must remain unaccepted; its verified stopped
+processes are retired and a fresh declared series is required.
 
 User requested a pause on 2026-10-20 at approximately 23:55 UTC.
-Do not resume work or jobs until the user explicitly resumes this task.
+The explicit resume supersedes this historical hold.
 
 The exact checkpoint is `references/pauses/20261020T235607Z/checkpoint.json`.
 All five recorded jobs are verified stopped: allocation controller 2896495,

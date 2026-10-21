@@ -1,0 +1,82 @@
+{
+  "files": {
+    "FINAL_FREEZE.md": {
+      "bytes": 11641,
+      "sha256": "ab9b378f4bac8bf633196a66f9ca7e9ba950cc524819572c3c1340cb0b959d39"
+    },
+    "README.md": {
+      "bytes": 3501,
+      "sha256": "7d4ec603e7c89ff55e7636c1abd3c545179b839bb6d2b9fbabbfc3b8e1674614"
+    },
+    "checkpoint.json": {
+      "bytes": 2058,
+      "sha256": "490ceffc8124b17a5998e3a7270ca00428040cd9bb15eacd3b03ede6858d134d"
+    },
+    "collect.py": {
+      "bytes": 4812,
+      "sha256": "f65ab16fb16b15c9d81c13ceb79c2f0b6012436b25104a9f32cb913f8e5297cf"
+    },
+    "final/ninjars_install.py": {
+      "bytes": 14638,
+      "sha256": "e2b83749c222077e309db3ebe99ee5847b7d66db6fb29d1cfce246344de36646"
+    },
+    "final/test_ninjars_install.py": {
+      "bytes": 21643,
+      "sha256": "0c0a2913f7a338336e379ab85732d8252c41f6ef1f0395c8b8cc56346658a11b"
+    },
+    "focused-tests.log": {
+      "bytes": 7370,
+      "sha256": "1883796d9ecae9d1fcb90f736ccfd9c691fcca6e7b84fe3ac2894c24ffad92b2"
+    },
+    "independent-review-manifest.json": {
+      "bytes": 336,
+      "sha256": "355fa6e84fc5d6236f11efdee472034a1017d97aca72ff19cb65f2004ec66f0b"
+    },
+    "independent-review.json": {
+      "bytes": 1414,
+      "sha256": "c55879cabe890f1e3ad6e88efe3d6c22b4f0b883465fa427f2a7e58d64e22dc5"
+    },
+    "independent-review.md": {
+      "bytes": 2108,
+      "sha256": "6f422c07653f01bd1a5f2de2936461bd50264742bd09797db7215606301c2181"
+    },
+    "installer.patch": {
+      "bytes": 6275,
+      "sha256": "5d1b7c90afff47a3aa4398d1a92bdac703f66b3cdae9ddbf5f0177f876a5c46a"
+    },
+    "original-failure-tests.log": {
+      "bytes": 4110,
+      "sha256": "1c49bc4126e0acae06461bd27b3ee3bc322887b9e01eadfeacc15a1c5073db16"
+    },
+    "original/ninjars_install.py": {
+      "bytes": 11130,
+      "sha256": "aabedacfb872d3d3527dab19f162fc2733efc9fe05b52aec42d4b2d4145c06de"
+    },
+    "symbolica-resume.refs": {
+      "bytes": 193,
+      "sha256": "cfdea6c3893964d9cd71cfb1a221aca0177f0afb54264c1b1e320f9e4ad7e5dc"
+    },
+    "upstream-resume-checkpoint.json": {
+      "bytes": 2718,
+      "sha256": "453af4e21ef4d5c5280cae1bba08520be2c1377c0bc1e9f590e5492c617d4379"
+    },
+    "validation.json": {
+      "bytes": 2316,
+      "sha256": "6cb61a8c1c01010ab69b3ad364b187fd6e10fc93a1ed01e30f4b6d5f54cbcba6"
+    },
+    "verify.py": {
+      "bytes": 3393,
+      "sha256": "e7d36b164966be30a45223077fe2b2805da5d3f411adf19946aea294e6035897"
+    },
+    "watch-pause.json": {
+      "bytes": 2453,
+      "sha256": "68880f041e1db58a57e50a561a4dd8bece1805b67bce28c5662b06ec35123e9c"
+    },
+    "watch-resume.json": {
+      "bytes": 1648,
+      "sha256": "df891d8f68c59dbd1b163d98a24580315e2e33de1fb7991f8c2eba66e8c6eaf4"
+    }
+  },
+  "schema": "ninjars-installer-transaction-manifest-v1",
+  "sealed_utc": "2026-10-21T00:03:57.185545+00:00"
+}

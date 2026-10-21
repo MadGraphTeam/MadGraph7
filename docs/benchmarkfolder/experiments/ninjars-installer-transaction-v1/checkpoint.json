@@ -1,0 +1,43 @@
+{
+  "branch": "madloop_ninjars",
+  "collector_command": [
+    "python",
+    "-B",
+    "docs/benchmarkfolder/experiments/ninjars-installer-transaction-v1/collect.py",
+    "--cpu",
+    "3",
+    "--quiet-released",
+    "root-resume-956b4e105-installer-engine-free-cpu3"
+  ],
+  "commit_policy": "Root owns validated milestone commit and push; no commit by integration subagent.",
+  "historical_source_audit": "docs/benchmarkfolder/final-installer-audit-v1",
+  "historical_source_audit_applies_to": {
+    "installer": "17cc6f8cc6117ff872cd7ea02ed953bd134606f8c7f92022f85f95cb9ec6f9ef",
+    "tests": "06bbfd3b9e925e14efbceaa3ba5041030e05f2d6edc26bdfab6878c910a332ed"
+  },
+  "historical_source_limit": "The historical audit remains unchanged. It does not by itself validate the final source hashes; the final source audit addendum and retained red/green execution bind those separately.",
+  "observed_revision_after_tests": "5fc2e4f97daf6b0b586af763824b97f89017ba17",
+  "platform": "Linux-6.18.45-x86_64-with-glibc2.42",
+  "python_executable": "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+  "python_version": "3.14.7 (main, Aug  5 2026, 10:29:49) [GCC 15.3.0]",
+  "ready_checklist": {
+    "path": "references/FINAL_FREEZE.md",
+    "sha256": "ab9b378f4bac8bf633196a66f9ca7e9ba950cc524819572c3c1340cb0b959d39"
+  },
+  "recorded_utc": "2026-10-21T00:03:24.395596+00:00",
+  "remaining_gates": [
+    "final numerical production source decisions",
+    "one final source-bound Rust test executable",
+    "actual repository CLI installation",
+    "fresh standalone and NLO relocated export checks",
+    "final correctness stability runtime campaign and report"
+  ],
+  "resume_handoff_revision_prefix": "956b4e105",
+  "schema": "ninjars-installer-transaction-checkpoint-v1",
+  "source_review_addendum": {
+    "final_whole_source_reviewed": true,
+    "manifest_sha256": "355fa6e84fc5d6236f11efdee472034a1017d97aca72ff19cb65f2004ec66f0b",
+    "old_draft_bytes_recovered": false,
+    "path": "docs/benchmarkfolder/final-installer-audit-v2"
+  }
+}

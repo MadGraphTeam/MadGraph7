@@ -1,0 +1,26 @@
+{
+  "schema": "madloop-report-stress-extension-evidence-v1",
+  "files": {
+    "README.md": {
+      "bytes": 3158,
+      "sha256": "23958ffdf81fda8d71001d9889da1d60463b7444ea664a719533a14c2a1b2cb0"
+    },
+    "attempt-1/result.json": {
+      "bytes": 2063,
+      "sha256": "f5e923908b26769104c9ef28c36eafcd49735c137d8ff86a13c6717a11295ccb"
+    },
+    "attempt-1/stderr.log": {
+      "bytes": 139,
+      "sha256": "5433957527f5b02d313f937c73e18b9a0b166445d0be7eaa3fed855cc7218579"
+    },
+    "attempt-1/stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "verify.py": {
+      "bytes": 2735,
+      "sha256": "2f976e89cf6d401d57504d7388709c38d873a2ab6077d2ef40d7c1b69b9b3c14"
+    }
+  },
+  "identity_sha256": "9e39cad803fd724d250072984592dd070e45a172e0e5f13a634798f51390e9c3"
+}

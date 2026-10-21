@@ -39,6 +39,17 @@ def main():
     assert (HERE/'focused-tests.log').read_text().rstrip().endswith('OK')
     assert sha(HERE/'original/ninjars_install.py') == result['original_source_sha256'] == 'aabedacfb872d3d3527dab19f162fc2733efc9fe05b52aec42d4b2d4145c06de'
     assert sha(HERE/'collect.py') == result['collector_sha256']
+    review = json.loads((HERE/'independent-review.json').read_text())
+    assert review['status'] == 'source-reviewed-no-blocker'
+    assert not review['remaining_source_blockers']
+    for name, expected in review['source_sha256'].items():
+        local = HERE/Path(name).name if name.startswith(str(HERE.relative_to(ROOT))) else HERE/'final'/Path(name).name
+        assert sha(local) == expected, name
+    checkpoint = json.loads((HERE/'checkpoint.json').read_text())
+    assert sha(HERE/'independent-review-manifest.json') == checkpoint['source_review_addendum']['manifest_sha256']
+    assert sha(HERE/'FINAL_FREEZE.md') == checkpoint['ready_checklist']['sha256']
+    upstream = json.loads((HERE/'upstream-resume-checkpoint.json').read_text())
+    assert upstream['complete'] and not upstream['update_pending']
     for name, expected in result['source_files'].items():
         assert sha(HERE/'final'/Path(name).name) == expected
         if args.sources:

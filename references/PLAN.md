@@ -743,3 +743,10 @@ resume metadata. The earlier pause note is a historical checkpoint.
   completed exactly; the current timed arm is interrupted and unaccepted.
   Installer/stress/report extensions remain explicitly untested drafts.
   No final optimization or performance gate is promoted; await user resume.
+- The user explicitly resumed on 2026-10-21, retaining the final-round wind-down,
+  full validation/report/cleanup requirements and the hold on opening a PR.
+  Verify exact preserved identities before any process action. Retire the
+  interrupted allocation timing worker without resuming its timed interval and
+  collect a fresh fixed series. Resume the original correctness collector only
+  after confirming its live controller/pipes, sources and deadline. Complete
+  the already drafted software regressions before the next quiet timing window.

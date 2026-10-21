@@ -1,0 +1,41 @@
+{
+  "checker_sha256": "291b8be48a37ab241bced84c5e687537b6303ba6532431958c4288d2b744b0cf",
+  "command": [
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+    "-B",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/upstream-watch-final/watch.py"
+  ],
+  "controller_sha256": "22deb5b607ca40e5315155fe39684c121330b30e962ca6287e936448dafaa2ce",
+  "last_paused_status": {
+    "checks": 6,
+    "interval_seconds": 300,
+    "last_check": {
+      "checked_utc": "2026-10-20T23:54:57.315097+00:00",
+      "checker_exit": 0,
+      "checkpoint": ".benchmark-work/upstream-watch-final/checkpoint-000006.json",
+      "complete": true,
+      "index": 6,
+      "symbolica_exit": 0,
+      "symbolica_ninjars_pin_changed": false,
+      "update_pending": false
+    },
+    "lifecycle": "Root must stop on task pause or finish; no after-task monitoring guarantee.",
+    "pid": 2507588,
+    "schema": "ninjars-task-upstream-watch-v1",
+    "source_or_pin_mutations": false,
+    "started_utc": "2026-10-20T23:29:56.070468+00:00",
+    "status": "watching",
+    "tool_sha256": "291b8be48a37ab241bced84c5e687537b6303ba6532431958c4288d2b744b0cf"
+  },
+  "no_after_task_guarantee": true,
+  "pause_record_sha256": "68880f041e1db58a57e50a561a4dd8bece1805b67bce28c5662b06ec35123e9c",
+  "pgid": 2507588,
+  "pid": 2507588,
+  "prior_state": "T",
+  "reason": "Explicit user resume relayed by root; read-only task-local watch only.",
+  "recorded_utc": "2026-10-21T00:01:49.573017+00:00",
+  "schema": "ninjars-upstream-watch-resume-v1",
+  "signal": "SIGCONT",
+  "source_or_pin_mutations": false,
+  "start_ticks": 57269712
+}

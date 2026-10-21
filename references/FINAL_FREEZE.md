@@ -15,8 +15,12 @@ opening a PR awaits the user's later instruction.
    oneloopmaster still explicitly require `e679e8c1` at this checkpoint.
 2. Include the engine-free panic regression, the unavailable-backend diagnostic
    guard, and the independently reviewed installer publication transaction fix.
-   The installer mock tests are held during quiet measurements and must pass
-   before this candidate is committed.
+   The installer transaction passed its engine-free red/green proof on
+   2026-10-21: three regressions reproduce the old failures, and all 37 focused
+   tests pass for source `e2b83749` and tests `0c0a2913`. Evidence is retained
+   under `docs/benchmarkfolder/experiments/ninjars-installer-transaction-v1`.
+   The actual final-source CLI installation and relocated export gates below
+   remain required.
 3. Commit all production and durable test inputs on `madloop_ninjars`. Keep
    the original `27147b3300f556a75661a886e92bdbe00558ee25` archive unchanged.
    Record the full final commit, tree, Cargo manifest/lock, toolchain versions,

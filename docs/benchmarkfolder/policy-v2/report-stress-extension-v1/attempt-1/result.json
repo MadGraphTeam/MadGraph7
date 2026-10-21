@@ -1,0 +1,37 @@
+{
+  "schema": "madloop-report-stress-software-check-v1",
+  "attempt": 1,
+  "command": [
+    "taskset",
+    "-c",
+    "4",
+    "python",
+    "-B",
+    "-m",
+    "unittest",
+    "tests.unit_tests.loop.test_ninjars_report_v2"
+  ],
+  "exit_code": 0,
+  "wall_seconds": 7.439181259949692,
+  "source_before_sha256": {
+    "tools/ninjars_report_v2.py": "d9c50cbf0de7c848a95839ff1a7e2ee656933c36d21dbfab2d32a5a35504b9a2",
+    "tests/unit_tests/loop/test_ninjars_report_v2.py": "a0c20369af6f0d582c60313c84b9ec29372a7db9d916c7209a3471a591633349",
+    "docs/benchmarkfolder/policy-v2/template/benchmark.typ": "d0a9f96e2090eb58b1855846df00c73899315a20a8124dea72d1aa4be9738efa",
+    "docs/benchmarkfolder/style.typ": "6ceb2b7181fec52a9e97ef2a6a88a010abe1a297039759882a97aad32df479c0",
+    "tools/ninjars_stress_v2.py": "32fa2c42a8616282e549a78142535aeafd03147f8daf5b5e67aa2ce07858c1b4",
+    "tools/ninjars_supplement_v2.py": "8775d50b657d6dff7d44ee2e27c83917283137e5b4fdcc5ff4f7a165c6816585",
+    "tools/ninjars_precision_v2.py": "6f7a4ec0a0744ef816e38d6f6a5bb45844d3e9bc264c617bbc22da01a1bb9cb5"
+  },
+  "source_after_sha256": {
+    "tools/ninjars_report_v2.py": "d9c50cbf0de7c848a95839ff1a7e2ee656933c36d21dbfab2d32a5a35504b9a2",
+    "tests/unit_tests/loop/test_ninjars_report_v2.py": "a0c20369af6f0d582c60313c84b9ec29372a7db9d916c7209a3471a591633349",
+    "docs/benchmarkfolder/policy-v2/template/benchmark.typ": "d0a9f96e2090eb58b1855846df00c73899315a20a8124dea72d1aa4be9738efa",
+    "docs/benchmarkfolder/style.typ": "6ceb2b7181fec52a9e97ef2a6a88a010abe1a297039759882a97aad32df479c0",
+    "tools/ninjars_stress_v2.py": "32fa2c42a8616282e549a78142535aeafd03147f8daf5b5e67aa2ce07858c1b4",
+    "tools/ninjars_supplement_v2.py": "8775d50b657d6dff7d44ee2e27c83917283137e5b4fdcc5ff4f7a165c6816585",
+    "tools/ninjars_precision_v2.py": "6f7a4ec0a0744ef816e38d6f6a5bb45844d3e9bc264c617bbc22da01a1bb9cb5"
+  },
+  "scope": "Report software and synthetic PDF layouts only; no physics or timing gate certified",
+  "historical_evidence_changed": false,
+  "top_pdf_overwritten": false
+}
