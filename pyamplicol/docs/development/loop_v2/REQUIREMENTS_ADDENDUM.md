@@ -3,16 +3,24 @@
 These requirements come directly from the user after reviewing the v2 design.
 They override the design document (`loop-engine-v2-design.md`) where they differ.
 
-## A. Freedom to deviate for performance
+## A. Freedom in structure and algorithms; performance gates unchanged
 
-Any deviation from MASTER_PLAN rules or from the design is allowed for the sake
-of performance, provided the public API below is honoured:
+The structure and algorithms anticipated in MASTER_PLAN and in the design may be
+changed freely (data structures, schedules, reduction strategies, rescue tiers,
+anything internal), provided the public API below is honoured:
 
 - colour correlations and spin correlations;
 - per-coupling-order partial evaluations (every squared coupling order separately
   accessible) — this must ALSO be provided at tree level (extend the tree API);
 - leading colour (LC), next-to-leading colour (NLC) and full colour;
 - stability tests (section C).
+
+This freedom concerns HOW the results are computed. It does NOT relax any
+acceptance requirement. In particular the performance acceptance gates of
+MASTER_PLAN §5.8 still hold in full, for a normal evaluation that can be compared
+with other tools (MadLoop, Recola, OpenLoops2, ...): faster than MadLoop, and at
+most 1.30x each available matched Recola/OpenLoops reference (section D gives
+the comparison protocol). Correctness requirements are likewise unchanged.
 
 Consequences: lifting/integrand-sum reduction, hybrid rescue tiers, schedule
 choices, etc. may be adopted whenever measured faster at equal correctness.
@@ -49,7 +57,8 @@ choices, etc. may be adopted whenever measured faster at equal correctness.
 ## D. Speed-gate protocol
 
 - The performance gate (faster than MadLoop; <= 1.30x each available Recola /
-  OpenLoops) compares the FINITE PART ONLY.
+  OpenLoops) is mandatory and is evaluated on the FINITE PART ONLY, for a normal
+  evaluation comparable across tools.
 - Reference codes run in their production mode with pole computation disabled
   whenever they allow it (OpenLoops truepoles 0; Recola without IR-pole
   evaluation; MadLoop at its production setting), Collier caches as in production.
