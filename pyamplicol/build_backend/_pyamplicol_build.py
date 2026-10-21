@@ -1336,7 +1336,8 @@ def _rewrite_candidate_dependency_requirements(overlay: Path) -> None:
         overlay / "Cargo.lock",
         "symbolica",
     )
-    manifest = overlay / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
+    # rusticol-core inherits Symbolica from the workspace dependency table.
+    manifest = overlay / "Cargo.toml"
     text = manifest.read_text(encoding="utf-8")
     pattern = r'(?m)^(symbolica\s*=\s*\{\s*version\s*=\s*)"=[^"]+"'
     text, count = re.subn(
@@ -1347,7 +1348,7 @@ def _rewrite_candidate_dependency_requirements(overlay: Path) -> None:
     )
     if count != 1:
         raise RuntimeError(
-            "could not project rusticol-core Symbolica requirement from the "
+            "could not project the workspace Symbolica requirement from the "
             "candidate Cargo lock"
         )
     manifest.write_text(text, encoding="utf-8")
