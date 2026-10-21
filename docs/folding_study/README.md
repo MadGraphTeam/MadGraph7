@@ -31,7 +31,7 @@ The other facts that matter are:
 
 | switch | meaning |
 |---|---|
-| `FoldCubic` | When ξ_i or y_ij is folded (run_card `folding` > 1), its images t = (U+k−1)/n are moved to s = t²(3−2t), with weights 6t(1−t): a randomly shifted rule of Simpson order. It is applied in `get_random_x_next_fold`, only to the folded ξ_i and y_ij, so a 1,1,1 run is unchanged by it. |
+| `FoldCubic` | When ξ_i or y_ij is folded (run_card `folding` > 1), its images t = (U+k−1)/n are moved to s = t²(3−2t), with weights 6t(1−t): a randomly shifted rule whose error falls like n⁻² instead of n⁻¹ for a smooth integrand (second order, like the trapezoid rule, not fourth order like Simpson's; an earlier version of this report said "Simpson order", which was wrong). It is applied in `get_random_x_next_fold`, only to the folded ξ_i and y_ij, so a 1,1,1 run is unchanged by it. |
 | `FoldSumSets` | The S terms of **all** sets of FKS configurations are summed at every image. The H terms (and the real-emission ME) still come from the set picked by MC, divided by its probability. |
 
 Both are exact:
@@ -82,7 +82,7 @@ From `fixedset_*.txt`: the median relative error of the S weight of one set, aga
 
 Two independent 256-node cubic estimates of the same set and point differ by a median of 18–21% in e+e- j, i.e. about 14% per estimate.
 
-The convergence is Monte-Carlo-like (≈ N^-1/2): the rules of Simpson order buy only a constant factor, because the integrand is not smooth.
+The convergence is Monte-Carlo-like (≈ N^-1/2): the higher-order rules buy only a constant factor, because the integrand is not smooth.
 
 Extrapolating, **1% per Born point needs about 2000 nodes for t t̄ and more than 10⁴ for e+e- j**. Both are far beyond any sensible budget. As the question anticipated, per-point precision is not the right target: only the sign of each S event matters.
 

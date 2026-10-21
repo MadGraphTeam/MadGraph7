@@ -850,10 +850,11 @@ contains
        if (FoldCubic .and. ifold(kdim).gt.1 .and. &
             (kdim.eq.ifold_energy .or. kdim.eq.ifold_yij)) then
 ! Folded xi_i or y_ij with FoldCubic: the images t=(U+k-1)/n of the flat
-! coordinate are moved to s=t^2(3-2t), with weight ds/dt=6t(1-t). This is
-! a randomly shifted rule of Simpson order (exact on average, since each
-! image is uniformly distributed), that also keeps the images away from
-! the endpoints of the integration range.
+! coordinate are moved to s=t^2(3-2t), with weight ds/dt=6t(1-t). The
+! rule stays exact on average (each image is uniformly distributed), and
+! for a smooth integrand its error falls like 1/n^2 instead of 1/n: the
+! weight vanishes at both ends, so the transformed integrand is periodic.
+! It also keeps the images away from the endpoints of the range.
           t=(icell(kdim)-1+rand(kdim))/dble(nint_used)
           s=min(max(t**2*(3d0-2d0*t),1d-10),1d0-1d-10)
           icell(kdim)=min(int(s*nint_used)+1,nint_used)
