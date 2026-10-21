@@ -1,0 +1,208 @@
+{
+ "description": "Exact operation counts of the v2 schedules F, B and M for gate G1 (WP1.5).\n\nThe Python reference executor (``pyamplicol.loops.v2.reference_executor``)\nwalks every schedule without numerics and counts the complex multiply-adds a\nnumeric run performs per point and observable column, for both kernel forms\nof every dressing step (DESIGN.md \u00a75.2): ``fused`` (X(J) per block row) and\n``split`` (``split-accumulate`` T = sum O x J, then ``split-vertex`` once per\nvertex group); ``best`` takes the cheaper form per step. ``seed`` steps start\nfrom a Born seed (rank 0, diagonal in the cut index), ``step`` from an open-\nloop object. ``closure`` traces the cut index (F also contracts the seeds\nthere) and ``frame-map`` re-expands F/M closures in the family frame; G1\nmultiplies these counts by G0's measured kernel throughput (DESIGN.md \u00a72.2).\n\nConfiguration (the providers', ``loop_sm-no_b_mass``): loop_sm with MB = 0,\nQCD corrections, kernels of the WP1.1 catalogue (their structural entries),\ncolour-ordered contents (``PlanarWords``; the colour-singlet legs form one\nletter), helicity rows two per leg except one for a massless fermion whose\nincoming field is a particle (helicity conservation, as Appendix B), B frames\ncost-optimal per family by the default cost model. Every ghost and quark-loop\norientation is its own skeleton (no C-parity folding). LC keeps the skeletons\nwithout a closed quark loop (the all-gluon face rule, DESIGN.md \u00a77.5).",
+ "units": "complex multiply-adds per point and observable column",
+ "processes": [
+  {
+   "process": "g g > g g g g",
+   "born_orders": {
+    "QCD": 4
+   },
+   "counts": {
+    "LC": {
+     "families": 550,
+     "skeletons": 9180,
+     "trie_nodes": 6940,
+     "B": {
+      "best/seed": 9675840,
+      "best/step": 50578520,
+      "closure": 314490,
+      "dress-steps": 8024,
+      "edges": 15570,
+      "fused/seed": 12142080,
+      "fused/step": 50580360,
+      "split-accumulate/seed": 8186880,
+      "split-accumulate/step": 26766240,
+      "split-vertex/seed": 1550880,
+      "split-vertex/step": 31595200
+     },
+     "M": {
+      "best/seed": 4426240,
+      "best/step": 70467320,
+      "closure": 314355,
+      "dress-steps": 5460,
+      "edges": 10663,
+      "fused/seed": 5142528,
+      "fused/step": 70604880,
+      "split-accumulate/seed": 3637248,
+      "split-accumulate/step": 97693760,
+      "split-vertex/seed": 864736,
+      "split-vertex/step": 28600920
+     },
+     "F": {
+      "best/seed": 270444,
+      "best/step": 1410747760,
+      "closure": 65687040,
+      "dress-steps": 17244,
+      "edges": 17244,
+      "fused/seed": 270444,
+      "fused/step": 1410747760,
+      "split-accumulate/seed": 252664,
+      "split-accumulate/step": 975334080,
+      "split-vertex/seed": 834576,
+      "split-vertex/step": 2253818240
+     }
+    },
+    "FC": {
+     "families": 1100,
+     "skeletons": 21420,
+     "trie_nodes": 16010,
+     "B": {
+      "best/seed": 17947200,
+      "best/step": 217613400,
+      "closure": 1151850,
+      "dress-steps": 18712,
+      "edges": 36330,
+      "fused/seed": 49743360,
+      "fused/step": 228771720,
+      "split-accumulate/seed": 11320320,
+      "split-accumulate/step": 86163360,
+      "split-vertex/seed": 6873120,
+      "split-vertex/step": 213698240
+     },
+     "M": {
+      "best/seed": 8196608,
+      "best/step": 250374520,
+      "closure": 1150635,
+      "dress-steps": 12590,
+      "edges": 24747,
+      "fused/seed": 21067776,
+      "fused/step": 314798160,
+      "split-accumulate/seed": 4964352,
+      "split-accumulate/step": 179091520,
+      "split-vertex/seed": 3602912,
+      "split-vertex/step": 184034520
+     },
+     "F": {
+      "best/seed": 1107948,
+      "best/step": 6380721520,
+      "closure": 240852480,
+      "dress-steps": 40236,
+      "edges": 40236,
+      "fused/seed": 1107948,
+      "fused/step": 6380721520,
+      "split-accumulate/seed": 322456,
+      "split-accumulate/step": 2631992000,
+      "split-vertex/seed": 2788752,
+      "split-vertex/step": 13850423680
+     }
+    }
+   }
+  },
+  {
+   "process": "u u~ > e- e+ d d~ g",
+   "born_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "counts": {
+    "FC": {
+     "families": 242,
+     "skeletons": 4380,
+     "trie_nodes": 1804,
+     "B": {
+      "best/seed": 450272,
+      "best/step": 4707280,
+      "closure": 56655,
+      "dress-steps": 1969,
+      "edges": 5942,
+      "fused/seed": 2268544,
+      "fused/step": 5070832,
+      "split-accumulate/seed": 248576,
+      "split-accumulate/step": 2382784,
+      "split-vertex/seed": 201952,
+      "split-vertex/step": 5775880
+     },
+     "M": {
+      "best/seed": 588088,
+      "best/step": 8053700,
+      "closure": 54680,
+      "dress-steps": 1916,
+      "edges": 5460,
+      "fused/seed": 2013056,
+      "fused/step": 10645308,
+      "split-accumulate/seed": 194816,
+      "split-accumulate/step": 5126480,
+      "split-vertex/seed": 405688,
+      "split-vertex/step": 7058528
+     },
+     "F": {
+      "best/seed": 177424,
+      "best/step": 117784992,
+      "closure": 6147200,
+      "dress-steps": 7626,
+      "edges": 7626,
+      "fused/seed": 177424,
+      "fused/step": 117784992,
+      "split-accumulate/seed": 18388,
+      "split-accumulate/step": 51274656,
+      "split-vertex/seed": 365720,
+      "split-vertex/step": 265084672
+     }
+    }
+   }
+  },
+  {
+   "process": "u u~ > e- e+ g g g",
+   "born_orders": {
+    "QCD": 3,
+    "QED": 2
+   },
+   "counts": {
+    "FC": {
+     "families": 463,
+     "skeletons": 8022,
+     "trie_nodes": 4077,
+     "B": {
+      "best/seed": 1724816,
+      "best/step": 30212532,
+      "closure": 245815,
+      "dress-steps": 4616,
+      "edges": 11636,
+      "fused/seed": 8683776,
+      "fused/step": 31038140,
+      "split-accumulate/seed": 953088,
+      "split-accumulate/step": 14631504,
+      "split-vertex/seed": 771728,
+      "split-vertex/step": 40874808
+     },
+     "M": {
+      "best/seed": 1279856,
+      "best/step": 36319760,
+      "closure": 243840,
+      "dress-steps": 3589,
+      "edges": 9139,
+      "fused/seed": 6393216,
+      "fused/step": 41048536,
+      "split-accumulate/seed": 633088,
+      "split-accumulate/step": 20595424,
+      "split-vertex/seed": 675952,
+      "split-vertex/step": 39345856
+     },
+     "F": {
+      "best/seed": 622656,
+      "best/step": 849464064,
+      "closure": 36497280,
+      "dress-steps": 16588,
+      "edges": 16588,
+      "fused/seed": 622656,
+      "fused/step": 849464064,
+      "split-accumulate/seed": 65604,
+      "split-accumulate/step": 360432064,
+      "split-vertex/seed": 1397240,
+      "split-vertex/step": 2018770176
+     }
+    }
+   }
+  }
+ ]
+}
