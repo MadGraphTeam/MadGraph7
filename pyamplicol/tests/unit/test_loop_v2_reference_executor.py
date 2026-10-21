@@ -490,13 +490,18 @@ def test_generic_colour_schedules_agree_exactly(
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("lc", [True, False], ids=["lc", "fc"])
+@pytest.mark.parametrize(
+    ("process", "lc"),
+    [(GLUONS, True), (GLUONS, False), (QUARKS, False)],
+    ids=["gg_gg-lc", "gg_gg-fc", "uux_ddxg-fc"],
+)
 def test_colour_word_schedules_agree_exactly(
-    compiled, kernels, layout, loop_native, lc
+    compiled, kernels, layout, loop_native, process, lc
 ):
-    """O4 with colour-ordered contents (seeds per cut word): F = B = M."""
+    """O4 with colour-ordered contents (seeds per cut word): F = B = M, also
+    on a quark line."""
 
-    case = _Case(compiled, kernels, layout, GLUONS, "planar", lc=lc, forward=True)
+    case = _Case(compiled, kernels, layout, process, "planar", lc=lc, forward=True)
     executor = case.executor()
     skeletons = rx.plan_skeletons(case.plan)
     b = executor.run_b(case.plan)
