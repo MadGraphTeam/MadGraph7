@@ -1,0 +1,30 @@
+{
+  "command": [
+    "cargo",
+    "test",
+    "--release",
+    "--locked",
+    "--lib",
+    "--no-run",
+    "--features",
+    "fenv-test-support",
+    "--message-format=json"
+  ],
+  "cwd": ".benchmark-work/policy-v2/final-rust-abi3-v1/source/vendor/ninjars",
+  "exit_code": 101,
+  "started_utc": "2026-10-21T00:49:34.463965+00:00",
+  "wall_seconds": 643.2960990529973,
+  "stdout": {
+    "path": "docs/benchmarkfolder/policy-v2/final-rust-abi3-v1/proof-v1/build.stdout",
+    "sha256": "25036816fb045717c6dcee6cfb481431944958b1b5d97cf58fa2fa3f26c5929e",
+    "bytes": 479810
+  },
+  "stderr": {
+    "path": "docs/benchmarkfolder/policy-v2/final-rust-abi3-v1/proof-v1/build.stderr",
+    "sha256": "094379faf77446dc14e4373b1fee6b9fa6cf3896ada702bf7aff53fafdb1fbc2",
+    "bytes": 9285
+  },
+  "process_id": 188838,
+  "remaining_process_group_members": [],
+  "all_children_exited": true
+}

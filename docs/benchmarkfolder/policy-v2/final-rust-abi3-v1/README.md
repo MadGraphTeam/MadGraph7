@@ -1,10 +1,12 @@
-# Final ABI 3 Rust proof: prepared, not executed
+# Final ABI 3 Rust proof: retry prepared
 
-This is a source-only controller for the final selected production policy. Its
-Python AST parse and `--help` readiness checks passed on CPU 6 after explicit
-quiet releases; no build, test, archive collection or numerical call ran. Root must first
-promote the chosen patches and the panic regression,
-commit the complete sources on `madloop_ninjars`, provide that exact revision and
+This controller collects the final selected production policy. Its first attempt
+at `c2b48e988fe6e3c6ba9403b67ec4d26fa5fa9ccb` is preserved in `proof-v1`:
+compilation found four test-only borrowed-operand errors and no tests or numerical
+calls ran. Root applied the owned-left fixes. The retry controller's Python AST
+and `--help` readiness checks passed on CPU 6; its new cache option remains
+unexecuted. Root must first commit the corrected source and controller on
+`madloop_ninjars`, provide that exact revision and
 the immutable original replay-input SHA256, and release compilation plus the MP
 slot. The current preparation is not acceptance evidence.
 
@@ -55,8 +57,9 @@ taskset -c 190 python -B \
   --replay-input docs/benchmarkfolder/experiments/generic-tensor-plan/capture/actual-mp-requests.jsonl.gz \
   --replay-input-sha256 5e6fd2c0bad620460af7742e19d4f34b1f2ce281af22e3623001c7ba74411312 \
   --replay-uncompressed-sha256 1fafb19d4b534c3e222e5b265dfd8b139f262d3353f847a5c39955c468fa9f4d \
-  --work .benchmark-work/policy-v2/final-rust-abi3-v1/attempt-1 \
-  --report docs/benchmarkfolder/policy-v2/final-rust-abi3-v1/attempt-1 \
+  --work .benchmark-work/policy-v2/final-rust-abi3-v1-work-v2 \
+  --report docs/benchmarkfolder/policy-v2/final-rust-abi3-v1/proof-v2 \
+  --cargo-target-dir .benchmark-work/policy-v2/final-rust-abi3-v1/target \
   --resources-released
 ```
 
@@ -69,6 +72,16 @@ The input hashes above are the existing native preparation's capture record.
 Only an authorized collection decodes the retained gzip into private working
 storage, checking both compressed and exact original uncompressed bytes before
 any engine runs. This does not generate or change phase-space/numerator inputs.
+
+`--cargo-target-dir` optionally reuses only a disposable dependency/build cache
+under repository `.benchmark-work`; otherwise it defaults to `WORK/target`.
+`request.json` records its actual resolved target/build directories and whether
+the directory already existed. Every retry still creates a fresh committed
+source archive, working directory and report and records the actual resulting
+executable. Cargo validates fingerprints for the final changed test crate and
+locked dependencies. Reusing the failed first attempt's cache does not modify
+its source snapshot, logs or sealed failure manifest. This is a cached build,
+not a measurement of clean compilation time.
 
 ## Proof contract shared with install/export and precision readers
 

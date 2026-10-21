@@ -1,0 +1,31 @@
+{
+  "schema": "final-rust-abi3-proof-manifest-v1",
+  "revision": "c2b48e988fe6e3c6ba9403b67ec4d26fa5fa9ccb",
+  "files": {
+    "build-process.json": {
+      "sha256": "f1afc76c06bbce4435eae91e51922dcf1e707f10604bd2e609b12737d3f5f458",
+      "bytes": 880
+    },
+    "build.stderr": {
+      "sha256": "094379faf77446dc14e4373b1fee6b9fa6cf3896ada702bf7aff53fafdb1fbc2",
+      "bytes": 9285
+    },
+    "build.stdout": {
+      "sha256": "25036816fb045717c6dcee6cfb481431944958b1b5d97cf58fa2fa3f26c5929e",
+      "bytes": 479810
+    },
+    "collect.py": {
+      "sha256": "75afca1a0e9a8803bde827daeec085513793e97e50a1d81f6b319357c10883d1",
+      "bytes": 24902
+    },
+    "failure.json": {
+      "sha256": "5d51457b6ad707a448a3d5af78cc90e498a21d0db3a08cffac54a665ed226635",
+      "bytes": 246
+    },
+    "request.json": {
+      "sha256": "95cbd0083670715176fc3f3f289fb25b17af11e47cb4ea16e997fcc06f41c4e3",
+      "bytes": 6244
+    }
+  },
+  "count": 6
+}

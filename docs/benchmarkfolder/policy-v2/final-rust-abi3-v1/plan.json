@@ -1,6 +1,6 @@
 {
   "schema": "final-rust-abi3-preparation-v1",
-  "status": "source-only-AST-parsed-numerically-unexecuted",
+  "status": "retry-source-only-AST-parsed-numerically-unexecuted",
   "python_ast_parse_passed": true,
   "python_ast_parse_cpu": 6,
   "python_help_passed": true,
@@ -24,7 +24,9 @@
   "proof_schema": "final-rust-abi3-v1",
   "proof_manifest_schema": "final-rust-abi3-proof-manifest-v1",
   "acceptance_evidence": false,
-  "builds_executed": 0,
+  "builds_executed": 1,
+  "first_attempt": "proof-v1 compile failure; no tests executed",
+  "optional_cargo_target_cache": ".benchmark-work/policy-v2/final-rust-abi3-v1/target",
   "tests_executed": 0,
   "reduction_engine_calls": 0
 }

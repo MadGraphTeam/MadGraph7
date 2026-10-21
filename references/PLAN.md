@@ -779,3 +779,10 @@ resume metadata. The earlier pause note is a historical checkpoint.
   test binary, actual installer/copied standalone/NLO proof, and fresh core,
   loop-induced, threshold, stability and extra two-to-four campaigns. The new
   final test modules are not counted as passed until compiled and executed.
+- The first final Rust attempt stopped at four test-only owned-left Float
+  operator errors before producing a test executable. Preserve its failed
+  six-file proof unchanged. Correct the three expressions without changing
+  arithmetic order, thresholds or production code, then retry from a new
+  committed revision and fresh proof/work namespace. An explicit repository-
+  local Cargo cache option reuses compiled dependencies; source/executable
+  proof remains bound to the corrected revision and no failed run is passed.

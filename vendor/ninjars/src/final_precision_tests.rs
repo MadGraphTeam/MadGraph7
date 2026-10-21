@@ -135,10 +135,10 @@ fn compare_precisions(low: &Observation, high: &Observation) -> Value {
     let norm = b[..6].iter().map(|value| value.norm())
         .fold(Float::new(comparison_bits), |largest, value| if value > largest { value } else { largest });
     let bound = Float::parse("1e-31", Some(comparison_bits)).unwrap() * &norm;
-    let differences: Vec<_> = a.iter().zip(&b).map(|(x,y)| (x-y).norm()).collect();
+    let differences: Vec<_> = a.iter().zip(&b).map(|(x,y)| (x.clone()-y).norm()).collect();
     let split_bound = Float::parse("1e-60", Some(comparison_bits)).unwrap() * &norm;
     let splits: Vec<_> = [&a, &b].iter().map(|values|
-        (0..2).map(|index| (&values[index] - &values[6+index] - &values[8+index]).norm())
+        (0..2).map(|index| (values[index].clone() - &values[6+index] - &values[8+index]).norm())
             .collect::<Vec<_>>()).collect();
     let laurent_passed = differences[..6].iter().all(|value| value <= &bound);
     let rational_passed = differences[8..].iter().all(|value| value <= &bound);
@@ -265,7 +265,7 @@ fn analytic_poles_reuse_and_returned_shape_errors() {
                 let raw = fresh.raw.as_ref().unwrap();
                 let coefficient = parse_records(&pack(&input["coefficients"]),bits).unwrap();
                 let masses = parse_records(&pack(&input["masses"]),bits).unwrap();
-                let expected = if r.n == 1 { [&coefficient[0]*&masses[0],&coefficient[0]*&masses[1]] }
+                let expected = if r.n == 1 { [coefficient[0].clone()*&masses[0],coefficient[0].clone()*&masses[1]] }
                     else { [coefficient[0].clone(),Float::new(bits)] };
                 let norm = expected[0].norm()+expected[1].norm();
                 let bound = Float::parse("1e-31",Some(bits)).unwrap()*norm;

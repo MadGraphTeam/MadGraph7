@@ -306,12 +306,18 @@ def collect(args, report, work):
     original = [json.loads(line) for line in payload.decode('utf-8').splitlines()]
     require(len(original) == 1392, 'Original retained input history must contain1392 requests')
     bridge, sources = snapshot(args.revision, work)
+    target = (args.cargo_target_dir or work / 'target').resolve()
+    require(target.is_relative_to(ROOT / '.benchmark-work'),
+            'Cargo target cache must remain inside the repository .benchmark-work')
+    require(not target.exists() or target.is_dir(), 'Cargo target cache is not a directory')
+    target_reused = target.exists()
+    build_dir = target / 'build'
     env = os.environ.copy()
     for name in tuple(env):
         if name.startswith(('NINJARS_CONVERGENCE_', 'NINJARS_TRANSPORT_REPLAY')):
             del env[name]
-    env.update(CARGO_BUILD_JOBS='1', CARGO_TARGET_DIR=str(work / 'target'),
-               CARGO_BUILD_BUILD_DIR=str(work / 'target/build'),
+    env.update(CARGO_BUILD_JOBS='1', CARGO_TARGET_DIR=str(target),
+               CARGO_BUILD_BUILD_DIR=str(build_dir),
                OMP_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1', RAYON_NUM_THREADS='1',
                SYMBOLICA_LOCK_DIR=str(work / 'symbolica-locks'), TMPDIR=str(work / 'tmp'))
     (work / 'symbolica-locks').mkdir(mode=0o700)
@@ -320,6 +326,9 @@ def collect(args, report, work):
         'schema': 'final-rust-abi3-request-v1', 'revision': args.revision,
         'cpu': 190, 'resources_released': True, 'replay_input': bound(retained_input),
         'decoded_replay_input': bound(replay_input),
+        'cargo_target_dir': str(target.relative_to(ROOT)),
+        'cargo_build_dir': str(build_dir.relative_to(ROOT)),
+        'cargo_target_reused': target_reused,
         'bridge_source_sha256': sources, 'source_archive': bound(work / 'source.tar'),
         'controller': bound(Path(__file__)), 'numerical_threads': 1,
         'cargo_build_jobs': 1, 'policy_selector': False,
@@ -417,6 +426,8 @@ def main():
                         help='Exact original uncompressed SHA256; required for a gzip capture')
     parser.add_argument('--work', type=Path, required=True)
     parser.add_argument('--report', type=Path, required=True)
+    parser.add_argument('--cargo-target-dir', type=Path,
+                        help='Optional reusable Cargo cache under .benchmark-work; default WORK/target')
     parser.add_argument('--resources-released', action='store_true', required=True)
     parser.add_argument('--timeout', type=float, default=86400.)
     args = parser.parse_args()

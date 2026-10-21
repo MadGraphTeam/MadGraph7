@@ -1,0 +1,8 @@
+{
+  "schema": "final-rust-abi3-failure-v1",
+  "revision": "c2b48e988fe6e3c6ba9403b67ec4d26fa5fa9ccb",
+  "error_type": "RuntimeError",
+  "error": "build failed; retain this attempt and its logs",
+  "passed": false,
+  "final_goal_claimed": false
+}
