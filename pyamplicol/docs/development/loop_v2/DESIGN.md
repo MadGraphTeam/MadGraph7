@@ -511,7 +511,7 @@ These are new prepared-kernel kinds in `models/prepared_catalog.py` (`PreparedKe
 | `loop-segment` (split) | Vertex tensor Y_g, Z_g (and higher q-degree terms if a model has them) for (vertex template, loop-in leg, loop-out leg, attached legs, orientation), including the outgoing loop-propagator numerator; independent of the block current | P_in, block momenta, couplings, masses |
 | `loop-segment` (fused) | X(J) = Y(J) + Z(J)·q for one block current | Same, plus J |
 | `loop-propagator-numerator` | Numerator only, per species and orientation (denominators belong to NinjaRS) | Momentum |
-| `loop-closure` | Trace over the cut index, sign | — |
+| `loop-closure` | Trace over the cut index; no sign (the closed fermion- and ghost-loop −1 enters only through ε_s, §3.3) | — |
 | `ct-vertex` (wave 2) | CT vertex as a tree vertex with (kind, ε) slots | As tree vertices |
 | `ct-site` (slice, oracle) | CT vertex applied to m block currents at the root | Currents, momenta |
 
@@ -1376,7 +1376,7 @@ Also deleted: the 18 `RETAINED_*` injection tests and the per-process timing fac
 | # | Oracle | What it isolates | When |
 |---|---|---|---|
 | O1 | **Frozen legacy outputs** (double, AP ≥ 200 bits) for DY, uudd, mixed uudd, tt, qq→gg, gg→gg, uu~→ggg, uu~→dd~g, uu~→e⁻e⁺gg, uu~→dd~ss~, ee→μμ, sgluon, **uu~→uu~, uu~→uu~g**. Covers Born, 6 components × sectors × poles, 19 totals, LC/NLC degrees, directed, spin, resolved, flavour, CT insertion multisets | Everything, end to end | Wave 0 freeze; every gate |
-| O2 | **Strong per-family oracle.** Legacy Born-weighted coefficient vectors (capture hooks `physical_process.py:1030, 1362` [V-s]) against v2 polynomials, after the exact affine map from FeynKit `IntegralFamily.find_mappings`, modulo certified-zero families | Numerator, colour, helicity, fermion signs; isolates reduction | S1 and wave 2 |
+| O2 | **Strong per-family oracle.** Legacy Born-weighted coefficient vectors (capture hooks `physical_process.py:1030, 1362` [V-s]) against v2 polynomials, after the exact affine map from FeynKit `IntegralFamily.find_mappings`, modulo certified-zero families. Error norm: the coefficient max-norm with the coefficients of rank r weighted by √s^r (the raw max-norm mixes mass dimensions) | Numerator, colour, helicity, fermion signs; isolates reduction | S1 and wave 2 |
 | O3 | **Weak per-family oracle.** Reduced Ω_f per family | Frame-independent check | When frames differ |
 | O4 | **Schedule equality.** F = B = M per family, exact in rational arithmetic (M on LC and certified classes) | Merging and sharing logic | Every change to schedules |
 | O5 | **Random-q family oracle** (Design 3 A′). Evaluate the family numerator at random exact q by direct per-skeleton evaluation (kernels with numeric q) and compare with the polynomial | Polynomial algebra, raise tables, layout | Unit level |
