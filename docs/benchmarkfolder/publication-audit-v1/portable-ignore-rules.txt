@@ -1,0 +1,8 @@
+/docs/benchmarkfolder/experiments/**/fallback
+/docs/benchmarkfolder/experiments/**/traps
+/docs/benchmarkfolder/experiments/**/timing
+/docs/benchmarkfolder/experiments/**/oracle-check
+/docs/benchmarkfolder/experiments/**/guards
+/docs/benchmarkfolder/experiments/**/sticky
+/docs/benchmarkfolder/experiments/**/zero-work
+/docs/benchmarkfolder/experiments/**/kernel

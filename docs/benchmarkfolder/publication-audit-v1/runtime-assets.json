@@ -1,0 +1,3250 @@
+{
+  "asset_bytes": 832246,
+  "asset_files": 136,
+  "asset_groups": [
+    {
+      "assets": [
+        {
+          "bytes": 6746,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/master.mod",
+            "collier_lib/COLLIER-1.2.9/modules/master.mod",
+            "collier_lib/include/master.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721",
+          "sha256": "015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721"
+        },
+        {
+          "bytes": 7465,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/inittensors.mod",
+            "collier_lib/COLLIER-1.2.9/modules/inittensors.mod",
+            "collier_lib/include/inittensors.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975",
+          "sha256": "0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975"
+        },
+        {
+          "bytes": 4064,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf",
+          "sha256": "261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf"
+        },
+        {
+          "bytes": 354,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": false,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "ninjars_include/ninjars-config.json",
+            "ninjars_lib/ninjars-config.json"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7",
+          "sha256": "2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7"
+        },
+        {
+          "bytes": 1986,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "ninjars_include/mninjars.mod",
+            "ninjars_lib/mninjars.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+          "sha256": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec"
+        },
+        {
+          "bytes": 275,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/dd_2pt.mod",
+            "collier_lib/COLLIER-1.2.9/modules/dd_2pt.mod",
+            "collier_lib/include/dd_2pt.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d",
+          "sha256": "36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d"
+        },
+        {
+          "bytes": 13987,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/reductionc.mod",
+            "collier_lib/COLLIER-1.2.9/modules/reductionc.mod",
+            "collier_lib/include/reductionc.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7",
+          "sha256": "3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7"
+        },
+        {
+          "bytes": 7334,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097",
+          "sha256": "480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097"
+        },
+        {
+          "bytes": 1310,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_auxfun.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a",
+          "sha256": "4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a"
+        },
+        {
+          "bytes": 685,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_olog.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321",
+          "sha256": "4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321"
+        },
+        {
+          "bytes": 18934,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/collier_init.mod",
+            "collier_lib/COLLIER-1.2.9/modules/collier_init.mod",
+            "collier_lib/include/collier_init.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83",
+          "sha256": "56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83"
+        },
+        {
+          "bytes": 364,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/dd_statistics.mod",
+            "collier_lib/COLLIER-1.2.9/modules/dd_statistics.mod",
+            "collier_lib/include/dd_statistics.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492",
+          "sha256": "5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492"
+        },
+        {
+          "bytes": 541,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_dilog.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34",
+          "sha256": "59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34"
+        },
+        {
+          "bytes": 3955,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/ninjago_module.mod",
+            "ninja_include/ninjago_module.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9",
+          "sha256": "5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9"
+        },
+        {
+          "bytes": 329,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_kinds.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4",
+          "sha256": "616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4"
+        },
+        {
+          "bytes": 373,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/dd_4pt.mod",
+            "collier_lib/COLLIER-1.2.9/modules/dd_4pt.mod",
+            "collier_lib/include/dd_4pt.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e",
+          "sha256": "67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e"
+        },
+        {
+          "bytes": 2088,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/ninjavholo.mod",
+            "ninja_include/ninjavholo.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8",
+          "sha256": "6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8"
+        },
+        {
+          "bytes": 427,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_bnlog.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6",
+          "sha256": "81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6"
+        },
+        {
+          "bytes": 909,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_boxc.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc",
+          "sha256": "8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc"
+        },
+        {
+          "bytes": 3856,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/mninja.mod",
+            "ninja_include/mninja.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830",
+          "sha256": "8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830"
+        },
+        {
+          "bytes": 2845,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_box.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f",
+          "sha256": "8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f"
+        },
+        {
+          "bytes": 1150,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_prec.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2",
+          "sha256": "8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2"
+        },
+        {
+          "bytes": 1785,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_tri.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6",
+          "sha256": "9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6"
+        },
+        {
+          "bytes": 11178,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/collier_aux.mod",
+            "collier_lib/COLLIER-1.2.9/modules/collier_aux.mod",
+            "collier_lib/include/collier_aux.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66",
+          "sha256": "966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66"
+        },
+        {
+          "bytes": 739,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_arrays.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7",
+          "sha256": "97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7"
+        },
+        {
+          "bytes": 19044,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/reductionefg.mod",
+            "collier_lib/COLLIER-1.2.9/modules/reductionefg.mod",
+            "collier_lib/include/reductionefg.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9",
+          "sha256": "98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9"
+        },
+        {
+          "bytes": 10301,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/reductionab.mod",
+            "collier_lib/COLLIER-1.2.9/modules/reductionab.mod",
+            "collier_lib/include/reductionab.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5",
+          "sha256": "9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5"
+        },
+        {
+          "bytes": 373,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_units.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d",
+          "sha256": "9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d"
+        },
+        {
+          "bytes": 20564,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/reductiontn.mod",
+            "collier_lib/COLLIER-1.2.9/modules/reductiontn.mod",
+            "collier_lib/include/reductiontn.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383",
+          "sha256": "a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383"
+        },
+        {
+          "bytes": 4095,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/collier_global.mod",
+            "collier_lib/COLLIER-1.2.9/modules/collier_global.mod",
+            "collier_lib/include/collier_global.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d",
+          "sha256": "acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d"
+        },
+        {
+          "bytes": 272,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/dd_5pt.mod",
+            "collier_lib/COLLIER-1.2.9/modules/dd_5pt.mod",
+            "collier_lib/include/dd_5pt.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d",
+          "sha256": "ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d"
+        },
+        {
+          "bytes": 1158,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_prec.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d",
+          "sha256": "ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d"
+        },
+        {
+          "bytes": 1377,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/globalc.mod",
+            "collier_lib/COLLIER-1.2.9/modules/globalc.mod",
+            "collier_lib/include/globalc.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc",
+          "sha256": "ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc"
+        },
+        {
+          "bytes": 48,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": false,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "ninjars_include/ninjars-native-libs.txt",
+            "ninjars_lib/ninjars-native-libs.txt"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+          "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871"
+        },
+        {
+          "bytes": 2841,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_box.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68",
+          "sha256": "b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68"
+        },
+        {
+          "bytes": 24356,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "mpmodule.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+          "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f"
+        },
+        {
+          "bytes": 560,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/dd_3pt.mod",
+            "collier_lib/COLLIER-1.2.9/modules/dd_3pt.mod",
+            "collier_lib/include/dd_3pt.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83",
+          "sha256": "ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83"
+        },
+        {
+          "bytes": 1719,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_bub.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7",
+          "sha256": "bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7"
+        },
+        {
+          "bytes": 429,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_bnlog.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe",
+          "sha256": "bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe"
+        },
+        {
+          "bytes": 7915,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/coli_aux2.mod",
+            "collier_lib/COLLIER-1.2.9/modules/coli_aux2.mod",
+            "collier_lib/include/coli_aux2.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7",
+          "sha256": "bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7"
+        },
+        {
+          "bytes": 774,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_print.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4",
+          "sha256": "bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4"
+        },
+        {
+          "bytes": 1572,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/dd_global.mod",
+            "collier_lib/COLLIER-1.2.9/modules/dd_global.mod",
+            "collier_lib/include/dd_global.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6",
+          "sha256": "c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6"
+        },
+        {
+          "bytes": 4053,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30",
+          "sha256": "c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30"
+        },
+        {
+          "bytes": 1717,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_bub.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9",
+          "sha256": "c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9"
+        },
+        {
+          "bytes": 684,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_olog.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354",
+          "sha256": "c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354"
+        },
+        {
+          "bytes": 776,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_print.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5",
+          "sha256": "c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5"
+        },
+        {
+          "bytes": 191,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_version.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7",
+          "sha256": "cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7"
+        },
+        {
+          "bytes": 1254,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/globald.mod",
+            "collier_lib/COLLIER-1.2.9/modules/globald.mod",
+            "collier_lib/include/globald.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c",
+          "sha256": "cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c"
+        },
+        {
+          "bytes": 17051,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/reductiond.mod",
+            "collier_lib/COLLIER-1.2.9/modules/reductiond.mod",
+            "collier_lib/include/reductiond.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80",
+          "sha256": "cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80"
+        },
+        {
+          "bytes": 51043,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/collier_tensors.mod",
+            "collier_lib/COLLIER-1.2.9/modules/collier_tensors.mod",
+            "collier_lib/include/collier_tensors.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63",
+          "sha256": "d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63"
+        },
+        {
+          "bytes": 1582,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_qmplx.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744",
+          "sha256": "d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744"
+        },
+        {
+          "bytes": 42641,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/tensorreduction.mod",
+            "collier_lib/COLLIER-1.2.9/modules/tensorreduction.mod",
+            "collier_lib/include/tensorreduction.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad",
+          "sha256": "df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad"
+        },
+        {
+          "bytes": 24715,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/buildtensors.mod",
+            "collier_lib/COLLIER-1.2.9/modules/buildtensors.mod",
+            "collier_lib/include/buildtensors.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193",
+          "sha256": "e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193"
+        },
+        {
+          "bytes": 539,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_dilog.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec",
+          "sha256": "e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec"
+        },
+        {
+          "bytes": 6208,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/combinatorics.mod",
+            "collier_lib/COLLIER-1.2.9/modules/combinatorics.mod",
+            "collier_lib/include/combinatorics.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1",
+          "sha256": "e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1"
+        },
+        {
+          "bytes": 37872,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/collier_coefs.mod",
+            "collier_lib/COLLIER-1.2.9/modules/collier_coefs.mod",
+            "collier_lib/include/collier_coefs.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41",
+          "sha256": "e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41"
+        },
+        {
+          "bytes": 7942,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/cache.mod",
+            "collier_lib/COLLIER-1.2.9/modules/cache.mod",
+            "collier_lib/include/cache.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2",
+          "sha256": "ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2"
+        },
+        {
+          "bytes": 15355,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/collier.mod",
+            "collier_lib/COLLIER-1.2.9/modules/collier.mod",
+            "collier_lib/include/collier.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4",
+          "sha256": "f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4"
+        },
+        {
+          "bytes": 1782,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_tri.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f",
+          "sha256": "f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f"
+        },
+        {
+          "bytes": 272,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/dd_6pt.mod",
+            "collier_lib/COLLIER-1.2.9/modules/dd_6pt.mod",
+            "collier_lib/include/dd_6pt.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb",
+          "sha256": "f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb"
+        },
+        {
+          "bytes": 3945,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/quadninjago_module.mod",
+            "ninja_include/quadninjago_module.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316",
+          "sha256": "f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316"
+        },
+        {
+          "bytes": 737,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_arrays.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e",
+          "sha256": "f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e"
+        },
+        {
+          "bytes": 1307,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_auxfun.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e",
+          "sha256": "f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e"
+        },
+        {
+          "bytes": 249,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_kinds.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd",
+          "sha256": "f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd"
+        },
+        {
+          "bytes": 8,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": false,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "ninjars_include/ninjars-link-before.txt",
+            "ninjars_lib/ninjars-link-before.txt"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+          "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab"
+        },
+        {
+          "bytes": 911,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_boxc.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558",
+          "sha256": "fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558"
+        },
+        {
+          "bytes": 627,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/coli_stat.mod",
+            "collier_lib/COLLIER-1.2.9/modules/coli_stat.mod",
+            "collier_lib/include/coli_stat.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397",
+          "sha256": "fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397"
+        },
+        {
+          "bytes": 1585,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_qmplx.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/runtime-assets/ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c",
+          "sha256": "ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c"
+        }
+      ],
+      "binding_records": [
+        {
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/representative-candidate-abi3-tensor-factor-v1-forced-qp-20261020.json",
+          "sha256": "0e2ccc6b1e9d5b3d052b95aaacc1664722f5d7b21d867ac694f04909a4e71d74"
+        },
+        {
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/representative-candidate-abi3-tensor-factor-v1-ggh-20261020.json",
+          "sha256": "1b68a4739107026383130a6f9b7306dd36dd284d328e38f1e884aa1d28304ace"
+        },
+        {
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/representative-candidate-abi3-tensor-factor-v1-mixed-20261020.json",
+          "sha256": "e29f7a78ba22dd9bde18840aceb6750b8e47d79e2d61ff7baa168a079990554c"
+        },
+        {
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-abi3-tensor-factor-v1/representative-candidate-abi3-tensor-factor-v1-ninja-near-singular-20261020.json",
+          "sha256": "365f31fc911980357b41b01eb0c9d073a63794f175af5dc4ddfe2706c1f52c6d"
+        }
+      ],
+      "bytes": 416123,
+      "files": 68,
+      "module_records": 65,
+      "namespace": "runtime-bindings-abi3-tensor-factor-v1"
+    },
+    {
+      "assets": [
+        {
+          "bytes": 6746,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/master.mod",
+            "collier_lib/COLLIER-1.2.9/modules/master.mod",
+            "collier_lib/include/master.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721",
+          "sha256": "015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721"
+        },
+        {
+          "bytes": 7465,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/inittensors.mod",
+            "collier_lib/COLLIER-1.2.9/modules/inittensors.mod",
+            "collier_lib/include/inittensors.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975",
+          "sha256": "0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975"
+        },
+        {
+          "bytes": 4064,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf",
+          "sha256": "261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf"
+        },
+        {
+          "bytes": 354,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": false,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "ninjars_include/ninjars-config.json",
+            "ninjars_lib/ninjars-config.json"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7",
+          "sha256": "2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7"
+        },
+        {
+          "bytes": 1986,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "ninjars_include/mninjars.mod",
+            "ninjars_lib/mninjars.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+          "sha256": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec"
+        },
+        {
+          "bytes": 275,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/dd_2pt.mod",
+            "collier_lib/COLLIER-1.2.9/modules/dd_2pt.mod",
+            "collier_lib/include/dd_2pt.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d",
+          "sha256": "36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d"
+        },
+        {
+          "bytes": 13987,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/reductionc.mod",
+            "collier_lib/COLLIER-1.2.9/modules/reductionc.mod",
+            "collier_lib/include/reductionc.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7",
+          "sha256": "3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7"
+        },
+        {
+          "bytes": 7334,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097",
+          "sha256": "480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097"
+        },
+        {
+          "bytes": 1310,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_auxfun.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a",
+          "sha256": "4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a"
+        },
+        {
+          "bytes": 685,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_olog.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321",
+          "sha256": "4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321"
+        },
+        {
+          "bytes": 18934,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/collier_init.mod",
+            "collier_lib/COLLIER-1.2.9/modules/collier_init.mod",
+            "collier_lib/include/collier_init.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83",
+          "sha256": "56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83"
+        },
+        {
+          "bytes": 364,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/dd_statistics.mod",
+            "collier_lib/COLLIER-1.2.9/modules/dd_statistics.mod",
+            "collier_lib/include/dd_statistics.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492",
+          "sha256": "5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492"
+        },
+        {
+          "bytes": 541,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_dilog.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34",
+          "sha256": "59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34"
+        },
+        {
+          "bytes": 3955,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/ninjago_module.mod",
+            "ninja_include/ninjago_module.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9",
+          "sha256": "5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9"
+        },
+        {
+          "bytes": 329,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_kinds.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4",
+          "sha256": "616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4"
+        },
+        {
+          "bytes": 373,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/dd_4pt.mod",
+            "collier_lib/COLLIER-1.2.9/modules/dd_4pt.mod",
+            "collier_lib/include/dd_4pt.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e",
+          "sha256": "67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e"
+        },
+        {
+          "bytes": 2088,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/ninjavholo.mod",
+            "ninja_include/ninjavholo.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8",
+          "sha256": "6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8"
+        },
+        {
+          "bytes": 427,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_bnlog.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6",
+          "sha256": "81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6"
+        },
+        {
+          "bytes": 909,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_boxc.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc",
+          "sha256": "8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc"
+        },
+        {
+          "bytes": 3856,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/mninja.mod",
+            "ninja_include/mninja.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830",
+          "sha256": "8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830"
+        },
+        {
+          "bytes": 2845,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_box.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f",
+          "sha256": "8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f"
+        },
+        {
+          "bytes": 1150,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_prec.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2",
+          "sha256": "8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2"
+        },
+        {
+          "bytes": 1785,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_tri.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6",
+          "sha256": "9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6"
+        },
+        {
+          "bytes": 11178,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/collier_aux.mod",
+            "collier_lib/COLLIER-1.2.9/modules/collier_aux.mod",
+            "collier_lib/include/collier_aux.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66",
+          "sha256": "966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66"
+        },
+        {
+          "bytes": 739,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_arrays.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7",
+          "sha256": "97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7"
+        },
+        {
+          "bytes": 19044,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/reductionefg.mod",
+            "collier_lib/COLLIER-1.2.9/modules/reductionefg.mod",
+            "collier_lib/include/reductionefg.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9",
+          "sha256": "98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9"
+        },
+        {
+          "bytes": 10301,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/reductionab.mod",
+            "collier_lib/COLLIER-1.2.9/modules/reductionab.mod",
+            "collier_lib/include/reductionab.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5",
+          "sha256": "9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5"
+        },
+        {
+          "bytes": 373,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_units.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d",
+          "sha256": "9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d"
+        },
+        {
+          "bytes": 20564,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/reductiontn.mod",
+            "collier_lib/COLLIER-1.2.9/modules/reductiontn.mod",
+            "collier_lib/include/reductiontn.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383",
+          "sha256": "a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383"
+        },
+        {
+          "bytes": 4095,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/collier_global.mod",
+            "collier_lib/COLLIER-1.2.9/modules/collier_global.mod",
+            "collier_lib/include/collier_global.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d",
+          "sha256": "acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d"
+        },
+        {
+          "bytes": 272,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/dd_5pt.mod",
+            "collier_lib/COLLIER-1.2.9/modules/dd_5pt.mod",
+            "collier_lib/include/dd_5pt.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d",
+          "sha256": "ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d"
+        },
+        {
+          "bytes": 1158,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_prec.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d",
+          "sha256": "ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d"
+        },
+        {
+          "bytes": 1377,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/globalc.mod",
+            "collier_lib/COLLIER-1.2.9/modules/globalc.mod",
+            "collier_lib/include/globalc.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc",
+          "sha256": "ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc"
+        },
+        {
+          "bytes": 48,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": false,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "ninjars_include/ninjars-native-libs.txt",
+            "ninjars_lib/ninjars-native-libs.txt"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+          "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871"
+        },
+        {
+          "bytes": 2841,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_box.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68",
+          "sha256": "b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68"
+        },
+        {
+          "bytes": 24356,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "mpmodule.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+          "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f"
+        },
+        {
+          "bytes": 560,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/dd_3pt.mod",
+            "collier_lib/COLLIER-1.2.9/modules/dd_3pt.mod",
+            "collier_lib/include/dd_3pt.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83",
+          "sha256": "ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83"
+        },
+        {
+          "bytes": 1719,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_bub.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7",
+          "sha256": "bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7"
+        },
+        {
+          "bytes": 429,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_bnlog.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe",
+          "sha256": "bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe"
+        },
+        {
+          "bytes": 7915,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/coli_aux2.mod",
+            "collier_lib/COLLIER-1.2.9/modules/coli_aux2.mod",
+            "collier_lib/include/coli_aux2.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7",
+          "sha256": "bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7"
+        },
+        {
+          "bytes": 774,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_print.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4",
+          "sha256": "bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4"
+        },
+        {
+          "bytes": 1572,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/dd_global.mod",
+            "collier_lib/COLLIER-1.2.9/modules/dd_global.mod",
+            "collier_lib/include/dd_global.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6",
+          "sha256": "c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6"
+        },
+        {
+          "bytes": 4053,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30",
+          "sha256": "c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30"
+        },
+        {
+          "bytes": 1717,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_bub.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9",
+          "sha256": "c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9"
+        },
+        {
+          "bytes": 684,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_olog.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354",
+          "sha256": "c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354"
+        },
+        {
+          "bytes": 776,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_print.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5",
+          "sha256": "c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5"
+        },
+        {
+          "bytes": 191,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_version.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7",
+          "sha256": "cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7"
+        },
+        {
+          "bytes": 1254,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/globald.mod",
+            "collier_lib/COLLIER-1.2.9/modules/globald.mod",
+            "collier_lib/include/globald.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c",
+          "sha256": "cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c"
+        },
+        {
+          "bytes": 17051,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/reductiond.mod",
+            "collier_lib/COLLIER-1.2.9/modules/reductiond.mod",
+            "collier_lib/include/reductiond.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80",
+          "sha256": "cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80"
+        },
+        {
+          "bytes": 51043,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/collier_tensors.mod",
+            "collier_lib/COLLIER-1.2.9/modules/collier_tensors.mod",
+            "collier_lib/include/collier_tensors.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63",
+          "sha256": "d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63"
+        },
+        {
+          "bytes": 1582,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_qmplx.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744",
+          "sha256": "d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744"
+        },
+        {
+          "bytes": 42641,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/tensorreduction.mod",
+            "collier_lib/COLLIER-1.2.9/modules/tensorreduction.mod",
+            "collier_lib/include/tensorreduction.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad",
+          "sha256": "df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad"
+        },
+        {
+          "bytes": 24715,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/buildtensors.mod",
+            "collier_lib/COLLIER-1.2.9/modules/buildtensors.mod",
+            "collier_lib/include/buildtensors.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193",
+          "sha256": "e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193"
+        },
+        {
+          "bytes": 539,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_dilog.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec",
+          "sha256": "e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec"
+        },
+        {
+          "bytes": 6208,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/combinatorics.mod",
+            "collier_lib/COLLIER-1.2.9/modules/combinatorics.mod",
+            "collier_lib/include/combinatorics.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1",
+          "sha256": "e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1"
+        },
+        {
+          "bytes": 37872,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/collier_coefs.mod",
+            "collier_lib/COLLIER-1.2.9/modules/collier_coefs.mod",
+            "collier_lib/include/collier_coefs.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41",
+          "sha256": "e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41"
+        },
+        {
+          "bytes": 7942,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/cache.mod",
+            "collier_lib/COLLIER-1.2.9/modules/cache.mod",
+            "collier_lib/include/cache.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2",
+          "sha256": "ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2"
+        },
+        {
+          "bytes": 15355,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/collier.mod",
+            "collier_lib/COLLIER-1.2.9/modules/collier.mod",
+            "collier_lib/include/collier.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4",
+          "sha256": "f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4"
+        },
+        {
+          "bytes": 1782,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_tri.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f",
+          "sha256": "f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f"
+        },
+        {
+          "bytes": 272,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/dd_6pt.mod",
+            "collier_lib/COLLIER-1.2.9/modules/dd_6pt.mod",
+            "collier_lib/include/dd_6pt.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb",
+          "sha256": "f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb"
+        },
+        {
+          "bytes": 3945,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/quadninjago_module.mod",
+            "ninja_include/quadninjago_module.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316",
+          "sha256": "f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316"
+        },
+        {
+          "bytes": 737,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_dp_arrays.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e",
+          "sha256": "f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e"
+        },
+        {
+          "bytes": 1307,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_auxfun.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e",
+          "sha256": "f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e"
+        },
+        {
+          "bytes": 249,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_kinds.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd",
+          "sha256": "f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd"
+        },
+        {
+          "bytes": 8,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": false,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "ninjars_include/ninjars-link-before.txt",
+            "ninjars_lib/ninjars-link-before.txt"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+          "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab"
+        },
+        {
+          "bytes": 911,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_boxc.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558",
+          "sha256": "fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558"
+        },
+        {
+          "bytes": 627,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/coli_stat.mod",
+            "collier_lib/COLLIER-1.2.9/modules/coli_stat.mod",
+            "collier_lib/include/coli_stat.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397",
+          "sha256": "fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397"
+        },
+        {
+          "bytes": 1585,
+          "committed_at_snapshot": false,
+          "fortran_module_metadata": true,
+          "indexed_at_snapshot": false,
+          "metadata_names": [
+            "collier_include/avh_olo_qp_qmplx.mod"
+          ],
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/runtime-assets/ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c",
+          "sha256": "ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c"
+        }
+      ],
+      "binding_records": [
+        {
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/controls-candidate-abi3-tensor-factor-v1-hh-complex-20261020.json",
+          "sha256": "7f8d5e8d7acf5e0b9b685f0a05e3fc70499b52d732564e06336d86f20e15b5b4"
+        },
+        {
+          "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-controls-abi3-tensor-factor-v1/controls-candidate-abi3-tensor-factor-v1-mixed-legacy-20261020.json",
+          "sha256": "881552ca43ac777415eb1f041c2a642b99f8f1cfadba558e302ff5e21de26b7a"
+        }
+      ],
+      "bytes": 416123,
+      "files": 68,
+      "module_records": 65,
+      "namespace": "runtime-bindings-controls-abi3-tensor-factor-v1"
+    }
+  ],
+  "local_executable_exclusions": [
+    {
+      "basename": "fallback",
+      "bytes": 85120,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v1/standalone-rank2-full/fallback",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/fallback"
+    },
+    {
+      "basename": "traps",
+      "bytes": 72352,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v1/standalone-rank2-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "fallback",
+      "bytes": 66224,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/nlo-rank2-full/fallback",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/fallback"
+    },
+    {
+      "basename": "traps",
+      "bytes": 52944,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/nlo-rank2-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "fallback",
+      "bytes": 75096,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/nlo-rank2-terminal/fallback",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/fallback"
+    },
+    {
+      "basename": "traps",
+      "bytes": 61800,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/nlo-rank2-terminal/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "fallback",
+      "bytes": 62128,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/nlo-rank4-full/fallback",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/fallback"
+    },
+    {
+      "basename": "traps",
+      "bytes": 48848,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/nlo-rank4-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "fallback",
+      "bytes": 66904,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/nlo-rank4-terminal/fallback",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/fallback"
+    },
+    {
+      "basename": "traps",
+      "bytes": 53608,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/nlo-rank4-terminal/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "fallback",
+      "bytes": 85120,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/standalone-rank2-full/fallback",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/fallback"
+    },
+    {
+      "basename": "traps",
+      "bytes": 72352,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/standalone-rank2-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "fallback",
+      "bytes": 93392,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/standalone-rank2-terminal/fallback",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/fallback"
+    },
+    {
+      "basename": "traps",
+      "bytes": 80624,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/standalone-rank2-terminal/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "fallback",
+      "bytes": 60544,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/standalone-rank4-full/fallback",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/fallback"
+    },
+    {
+      "basename": "traps",
+      "bytes": 47776,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/standalone-rank4-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "fallback",
+      "bytes": 64720,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/standalone-rank4-terminal/fallback",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/fallback"
+    },
+    {
+      "basename": "traps",
+      "bytes": 51952,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/fallback-safety-v2/standalone-rank4-terminal/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "timing",
+      "bytes": 65968,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/kernel-timing-v1/nlo-MP_FFV1L2_1-rank2-full/timing",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/timing"
+    },
+    {
+      "basename": "timing",
+      "bytes": 70720,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/kernel-timing-v1/nlo-MP_FFV1L2_1-rank2-terminal/timing",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/timing"
+    },
+    {
+      "basename": "timing",
+      "bytes": 61872,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/kernel-timing-v1/nlo-MP_FFV1L2_1-rank4-full/timing",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/timing"
+    },
+    {
+      "basename": "timing",
+      "bytes": 66624,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/kernel-timing-v1/nlo-MP_FFV1L2_1-rank4-terminal/timing",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/timing"
+    },
+    {
+      "basename": "timing",
+      "bytes": 66400,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/kernel-timing-v2/nlo-MP_FFV1L2_1-rank2-full/timing",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/timing"
+    },
+    {
+      "basename": "timing",
+      "bytes": 75256,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/kernel-timing-v2/nlo-MP_FFV1L2_1-rank2-terminal/timing",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/timing"
+    },
+    {
+      "basename": "timing",
+      "bytes": 62304,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/kernel-timing-v2/nlo-MP_FFV1L2_1-rank4-full/timing",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/timing"
+    },
+    {
+      "basename": "timing",
+      "bytes": 67064,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/kernel-timing-v2/nlo-MP_FFV1L2_1-rank4-terminal/timing",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/timing"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 78488,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-ffs-v1/nlo-MP_FFS1L1_2-rank2-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 87336,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-ffs-v1/nlo-MP_FFS1L1_2-rank2-terminal/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 78488,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-ffs-v1/nlo-MP_FFS1L2_1-rank2-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 87336,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-ffs-v1/nlo-MP_FFS1L2_1-rank2-terminal/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 86680,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L1_2-rank2-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 91432,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L1_2-rank2-terminal/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 78488,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L1_2-rank4-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 83240,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L1_2-rank4-terminal/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 82584,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L2_1-rank2-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 91432,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L2_1-rank2-terminal/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 78488,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L2_1-rank4-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 83240,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-nlo-v1/nlo-MP_FFV1L2_1-rank4-terminal/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 78488,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-rank3-v1/nlo-MP_FFV1L1_2-rank3-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 83240,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-rank3-v1/nlo-MP_FFV1L1_2-rank3-terminal/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 78488,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-rank3-v1/nlo-MP_FFV1L2_1-rank3-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 83240,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-rank3-v1/nlo-MP_FFV1L2_1-rank3-terminal/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 101496,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L1_2-rank2-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 109768,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L1_2-rank2-terminal/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 76920,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L1_2-rank4-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 77000,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L1_2-rank4-terminal/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 101496,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L2_1-rank2-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 109768,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L2_1-rank2-terminal/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 76920,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L2_1-rank4-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 77000,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/oracle-dumps-sa-v1/standalone-MP_FFV1L2_1-rank4-terminal/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "guards",
+      "bytes": 78536,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/true-entry-guards-v1/nlo-rank2-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "guards",
+      "bytes": 87392,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/true-entry-guards-v1/nlo-rank2-terminal/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "guards",
+      "bytes": 74440,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/true-entry-guards-v1/nlo-rank4-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "guards",
+      "bytes": 79200,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/true-entry-guards-v1/nlo-rank4-terminal/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "guards",
+      "bytes": 85096,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/true-entry-guards-v1/standalone-rank2-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "guards",
+      "bytes": 89272,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/true-entry-guards-v1/standalone-rank2-terminal/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "guards",
+      "bytes": 60520,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/true-entry-guards-v1/standalone-rank4-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "guards",
+      "bytes": 60600,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/true-entry-guards-v1/standalone-rank4-terminal/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "traps",
+      "bytes": 60184,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/combined-sticky-diagnosis-v1/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 57040,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-endpoints-all-v1/nlo-FFV1L1_2-rank2-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 57040,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-endpoints-all-v1/nlo-FFV1L1_2-rank3-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 57040,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-endpoints-all-v1/nlo-FFV1L1_2-rank4-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 57040,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-endpoints-all-v1/nlo-FFV1L2_1-rank2-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 57040,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-endpoints-all-v1/nlo-FFV1L2_1-rank3-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 57040,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-endpoints-all-v1/nlo-FFV1L2_1-rank4-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 68184,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-endpoints-all-v1/standalone-FFV1L1_2-rank2-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 55896,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-endpoints-all-v1/standalone-FFV1L1_2-rank3-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 55896,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-endpoints-all-v1/standalone-FFV1L1_2-rank4-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 68184,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-endpoints-all-v1/standalone-FFV1L2_1-rank2-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 55896,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-endpoints-all-v1/standalone-FFV1L2_1-rank3-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 55896,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-endpoints-all-v1/standalone-FFV1L2_1-rank4-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 73424,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-nlo-rank2-v1/nlo-FFV1L1_2-rank2-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 73424,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-nlo-rank2-v1/nlo-FFV1L2_1-rank2-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 65232,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-nlo-rank34-v1/nlo-FFV1L1_2-rank3-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 65232,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-nlo-rank34-v1/nlo-FFV1L1_2-rank4-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 65232,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-nlo-rank34-v1/nlo-FFV1L2_1-rank3-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 65232,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-nlo-rank34-v1/nlo-FFV1L2_1-rank4-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 84568,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-sa-rank234-v1/standalone-FFV1L1_2-rank2-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 64088,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-sa-rank234-v1/standalone-FFV1L1_2-rank3-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 68184,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-sa-rank234-v1/standalone-FFV1L1_2-rank4-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 84568,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-sa-rank234-v1/standalone-FFV1L2_1-rank2-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 64088,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-sa-rank234-v1/standalone-FFV1L2_1-rank3-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "oracle-check",
+      "bytes": 68184,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle-sa-rank234-v1/standalone-FFV1L2_1-rank4-full/oracle-check",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/oracle-check"
+    },
+    {
+      "basename": "guards",
+      "bytes": 65440,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "sticky",
+      "bytes": 44832,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/sticky",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/sticky"
+    },
+    {
+      "basename": "traps",
+      "bytes": 40400,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank2-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "guards",
+      "bytes": 57248,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "sticky",
+      "bytes": 44832,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/sticky",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/sticky"
+    },
+    {
+      "basename": "traps",
+      "bytes": 40400,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank3-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "guards",
+      "bytes": 57248,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "sticky",
+      "bytes": 44832,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/sticky",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/sticky"
+    },
+    {
+      "basename": "traps",
+      "bytes": 40400,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L1_2-rank4-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "guards",
+      "bytes": 65440,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "sticky",
+      "bytes": 44832,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/sticky",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/sticky"
+    },
+    {
+      "basename": "traps",
+      "bytes": 40400,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank2-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "guards",
+      "bytes": 57248,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "sticky",
+      "bytes": 44832,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/sticky",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/sticky"
+    },
+    {
+      "basename": "traps",
+      "bytes": 40400,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank3-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "guards",
+      "bytes": 57248,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "sticky",
+      "bytes": 44832,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/sticky",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/sticky"
+    },
+    {
+      "basename": "traps",
+      "bytes": 40400,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/nlo-FFV1L2_1-rank4-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "guards",
+      "bytes": 55920,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "sticky",
+      "bytes": 55920,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/sticky",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/sticky"
+    },
+    {
+      "basename": "traps",
+      "bytes": 51920,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank2-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "guards",
+      "bytes": 43632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "sticky",
+      "bytes": 43632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/sticky",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/sticky"
+    },
+    {
+      "basename": "traps",
+      "bytes": 39632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank3-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "guards",
+      "bytes": 43632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "sticky",
+      "bytes": 43632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/sticky",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/sticky"
+    },
+    {
+      "basename": "traps",
+      "bytes": 39632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L1_2-rank4-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "guards",
+      "bytes": 55920,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "sticky",
+      "bytes": 55920,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/sticky",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/sticky"
+    },
+    {
+      "basename": "traps",
+      "bytes": 51920,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank2-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "guards",
+      "bytes": 43632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "sticky",
+      "bytes": 43632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/sticky",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/sticky"
+    },
+    {
+      "basename": "traps",
+      "bytes": 39632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank3-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "guards",
+      "bytes": 43632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "sticky",
+      "bytes": 43632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/sticky",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/sticky"
+    },
+    {
+      "basename": "traps",
+      "bytes": 39632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-all-ranks-flags-v1/standalone-FFV1L2_1-rank4-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "traps",
+      "bytes": 51920,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-combined-sticky-traps-v1/standalone-FFV1L1_2-rank2-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "traps",
+      "bytes": 48744,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-combined-sticky-traps-v2/nlo-FFV1L1_2-rank2-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "traps",
+      "bytes": 44648,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-combined-sticky-traps-v2/nlo-FFV1L1_2-rank3-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "traps",
+      "bytes": 44648,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-combined-sticky-traps-v2/nlo-FFV1L1_2-rank4-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "traps",
+      "bytes": 48744,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-combined-sticky-traps-v2/nlo-FFV1L2_1-rank2-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "traps",
+      "bytes": 44648,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-combined-sticky-traps-v2/nlo-FFV1L2_1-rank3-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "traps",
+      "bytes": 44648,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-combined-sticky-traps-v2/nlo-FFV1L2_1-rank4-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "traps",
+      "bytes": 56088,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-combined-sticky-traps-v2/standalone-FFV1L1_2-rank2-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "traps",
+      "bytes": 47896,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-combined-sticky-traps-v2/standalone-FFV1L1_2-rank3-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "traps",
+      "bytes": 47896,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-combined-sticky-traps-v2/standalone-FFV1L1_2-rank4-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "traps",
+      "bytes": 60184,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-combined-sticky-traps-v2/standalone-FFV1L2_1-rank2-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "traps",
+      "bytes": 47896,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-combined-sticky-traps-v2/standalone-FFV1L2_1-rank3-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "traps",
+      "bytes": 47896,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-combined-sticky-traps-v2/standalone-FFV1L2_1-rank4-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "guards",
+      "bytes": 65440,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-initial-v2/nlo-FFV1L2_1-rank2-full/guards",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/guards"
+    },
+    {
+      "basename": "sticky",
+      "bytes": 44832,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-initial-v2/nlo-FFV1L2_1-rank2-full/sticky",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/sticky"
+    },
+    {
+      "basename": "traps",
+      "bytes": 40400,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-initial-v2/nlo-FFV1L2_1-rank2-full/traps",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/traps"
+    },
+    {
+      "basename": "zero-work",
+      "bytes": 44768,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-zero-work-snan-v1/nlo-FFV1L1_2-rank2/zero-work",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/zero-work"
+    },
+    {
+      "basename": "zero-work",
+      "bytes": 44768,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-zero-work-snan-v1/nlo-FFV1L1_2-rank3/zero-work",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/zero-work"
+    },
+    {
+      "basename": "zero-work",
+      "bytes": 44768,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-zero-work-snan-v1/nlo-FFV1L1_2-rank4/zero-work",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/zero-work"
+    },
+    {
+      "basename": "zero-work",
+      "bytes": 44768,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-zero-work-snan-v1/nlo-FFV1L2_1-rank2/zero-work",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/zero-work"
+    },
+    {
+      "basename": "zero-work",
+      "bytes": 44768,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-zero-work-snan-v1/nlo-FFV1L2_1-rank3/zero-work",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/zero-work"
+    },
+    {
+      "basename": "zero-work",
+      "bytes": 44768,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-zero-work-snan-v1/nlo-FFV1L2_1-rank4/zero-work",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/zero-work"
+    },
+    {
+      "basename": "zero-work",
+      "bytes": 55920,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-zero-work-snan-v1/standalone-FFV1L1_2-rank2/zero-work",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/zero-work"
+    },
+    {
+      "basename": "zero-work",
+      "bytes": 43632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-zero-work-snan-v1/standalone-FFV1L1_2-rank3/zero-work",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/zero-work"
+    },
+    {
+      "basename": "zero-work",
+      "bytes": 43632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-zero-work-snan-v1/standalone-FFV1L1_2-rank4/zero-work",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/zero-work"
+    },
+    {
+      "basename": "zero-work",
+      "bytes": 55920,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-zero-work-snan-v1/standalone-FFV1L2_1-rank2/zero-work",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/zero-work"
+    },
+    {
+      "basename": "zero-work",
+      "bytes": 43632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-zero-work-snan-v1/standalone-FFV1L2_1-rank3/zero-work",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/zero-work"
+    },
+    {
+      "basename": "zero-work",
+      "bytes": 43632,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/safety-zero-work-snan-v1/standalone-FFV1L2_1-rank4/zero-work",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/zero-work"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 62856,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu209-v1/nlo-FFV1L1_2-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 62856,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu209-v1/nlo-FFV1L2_1-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 73304,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu209-v1/standalone-FFV1L1_2-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 73304,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu209-v1/standalone-FFV1L2_1-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 62856,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu212-v1/nlo-FFV1L1_2-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 62856,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu212-v1/nlo-FFV1L2_1-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 73304,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu212-v1/standalone-FFV1L1_2-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 73304,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu212-v1/standalone-FFV1L2_1-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 62856,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu6-v1/nlo-FFV1L1_2-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 62856,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu6-v1/nlo-FFV1L2_1-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 73304,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu6-v1/standalone-FFV1L1_2-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 73304,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-cpu6-v1/standalone-FFV1L2_1-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 62856,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-v1/nlo-FFV1L1_2-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-v1/nlo-FFV1L1_2-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-v1/nlo-FFV1L1_2-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 62856,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-v1/nlo-FFV1L2_1-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-v1/nlo-FFV1L2_1-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 58760,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-v1/nlo-FFV1L2_1-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 73304,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-v1/standalone-FFV1L1_2-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-v1/standalone-FFV1L1_2-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-v1/standalone-FFV1L1_2-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 73304,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-v1/standalone-FFV1L2_1-rank2/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-v1/standalone-FFV1L2_1-rank3/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    },
+    {
+      "basename": "kernel",
+      "bytes": 61016,
+      "committed": false,
+      "kind": "ELF",
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization-dp/kernel-source-fixtures-v1/standalone-FFV1L2_1-rank4/kernel",
+      "portable_rule": "/docs/benchmarkfolder/experiments/**/kernel"
+    }
+  ],
+  "observed_utc": "2026-10-21T00:01:42.345462+00:00",
+  "portable_ignore_proposal": [
+    "/docs/benchmarkfolder/experiments/**/fallback",
+    "/docs/benchmarkfolder/experiments/**/traps",
+    "/docs/benchmarkfolder/experiments/**/timing",
+    "/docs/benchmarkfolder/experiments/**/oracle-check",
+    "/docs/benchmarkfolder/experiments/**/guards",
+    "/docs/benchmarkfolder/experiments/**/sticky",
+    "/docs/benchmarkfolder/experiments/**/zero-work",
+    "/docs/benchmarkfolder/experiments/**/kernel"
+  ],
+  "revision": "956b4e10584e0d18d34547558f2c38808d4b2703",
+  "schema": "publication-runtime-assets-audit-v1",
+  "scope": "Only already committed runtime binding metadata and explicit local executable exclusions; no cleanup or numerical evaluation"
+}

@@ -87,6 +87,16 @@ tests/input_files/IOTestsComparison/**/*.BackUp
 # output of ./tests/test_manager.py
 UNITTEST_proc/
 
+# Executables produced by the retained MadLoop benchmark experiments.
+/docs/benchmarkfolder/experiments/**/fallback
+/docs/benchmarkfolder/experiments/**/traps
+/docs/benchmarkfolder/experiments/**/timing
+/docs/benchmarkfolder/experiments/**/oracle-check
+/docs/benchmarkfolder/experiments/**/guards
+/docs/benchmarkfolder/experiments/**/sticky
+/docs/benchmarkfolder/experiments/**/zero-work
+/docs/benchmarkfolder/experiments/**/kernel
+
 # models/ only holds UFO models: downloaded ones are ignored, shipped ones kept
 models/*
 !models/sm/

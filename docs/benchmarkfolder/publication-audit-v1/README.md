@@ -41,11 +41,15 @@ bindings. Root approved explicitly staging these 136 exact assets with this
 inventory while retaining the existing bindings unchanged. Do not sweep them
 away as untracked build products.
 
-After the quiet window, run `inventory_runtime_assets.py` to retain the exact
-136-path inventory from the already committed bindings. This helper checks only
-those bindings/assets and the explicit local executable exclusions. Its result
-records whether each asset is already tracked at that later checkpoint, so a
-root fix made before the final audit seal remains visible.
+On explicit resume, `inventory_runtime_assets.py` completed on CPU 4 at
+revision `956b4e10584e0d18d34547558f2c38808d4b2703`. The exact inventory is
+`runtime-assets.json`; the 136 paths approved for explicit publication are also
+listed in `runtime-asset-paths.txt`. All 136 were still untracked and unindexed,
+all hashes matched their already committed binding records, and their combined
+size is 832,246 bytes. The helper checked only those bindings/assets and the 195
+explicit local executable exclusions. It did not rescan the full source tree.
+`local-executable-paths.txt` retains those exact ELF paths;
+`portable-ignore-rules.txt` retains the eight proposed anchored rules.
 
 ## Bounded disposition of current untracked work
 
@@ -126,5 +130,9 @@ inventory before adding them to the repository `.gitignore`:
 ```
 
 No ignore file, production source, existing evidence package or user file was
-changed by this audit. The final exact inventory and audit seal are deferred until
-the global timing quiet window ends.
+changed by this audit. The targeted exact inventory and this audit are now sealed. Root must review and
+apply the eight rules and exact asset list; this audit does not change ignore
+rules or stage any files. `verify.py` checks the audit file set, the existing
+committed binding snapshots, the 136 asset bytes, and that the proposed rules
+cover all 195 recorded executable paths. It does not require local disposable
+ELFs to survive later cleanup.

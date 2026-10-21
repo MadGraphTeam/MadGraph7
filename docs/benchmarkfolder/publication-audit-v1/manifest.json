@@ -1,0 +1,34 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 9575,
+      "sha256": "0c646587e66368854f9ed7ba7b3987c4207353ad157bdb9773606748008198b1"
+    },
+    "inventory_runtime_assets.py": {
+      "bytes": 6246,
+      "sha256": "51323dfd6b9e678b394f10e8a080e429351b1573c4389bdb6323b25626d15fc0"
+    },
+    "local-executable-paths.txt": {
+      "bytes": 23025,
+      "sha256": "b3247d18297ba13570052951cf599b58efc69d9be47887e670671dcd33530cff"
+    },
+    "portable-ignore-rules.txt": {
+      "bytes": 362,
+      "sha256": "a0ee3158fa73f21164eb56fbbffdedad8d5091c5926de9234991856f597f77bc"
+    },
+    "runtime-asset-paths.txt": {
+      "bytes": 21012,
+      "sha256": "2caf30d13de7e44e274548381fecaecc6bbe162afc2ab870fa9466314e36fee6"
+    },
+    "runtime-assets.json": {
+      "bytes": 143073,
+      "sha256": "11b21dbd3e431067724e26ef2a6bef53aa01b0b264a02e7862ec8b2badbbb5c3"
+    },
+    "verify.py": {
+      "bytes": 4973,
+      "sha256": "5d240358457eb195a0eb79a1b82085012e83ecd726469c3082e5120fbd31a37a"
+    }
+  },
+  "identity_sha256": "7f127124e16c86f116bd4f9611535d2ea3ae0a411452cc681c5cfb1fc36fcc57",
+  "schema": "publication-audit-seal-v1"
+}
