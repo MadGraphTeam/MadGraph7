@@ -555,7 +555,14 @@ class ColorEngine:
             )
         if left.sector_id != right.sector_id:
             return ()
-        groups = self._lc_combined_line_groups(left, right, vertex)
+        groups = self._lc_combined_line_groups(
+            left,
+            right,
+            vertex,
+            closed_groups=self._closed_line_groups(
+                left.sector_id, ordered_external_labels
+            ),
+        )
         if groups is None:
             return ()
         projections = self._lc_projected_basis_and_weights(
@@ -773,12 +780,40 @@ class ColorEngine:
             return False
         return bool(self._lc_fierz_sector_ids(colored))
 
+    def _closed_line_groups(
+        self,
+        sector_id: int | None,
+        ordered_external_labels: tuple[int, ...],
+    ) -> frozenset[int]:
+        """Line groups of ``sector_id`` whose labels all lie in a merge result."""
+
+        sector = self._sector_by_id.get(sector_id)
+        if sector is None:
+            return frozenset()
+        labels = set(ordered_external_labels)
+        return frozenset(
+            index
+            for index, group in enumerate(sector.line_label_groups)
+            if labels.issuperset(group)
+        )
+
     def _lc_combined_line_groups(
         self,
         left: ColorState,
         right: ColorState,
         vertex: Vertex,
+        *,
+        closed_groups: frozenset[int] = frozenset(),
     ) -> tuple[int, ...] | None:
+        """Line groups of a merge, or ``None`` if the colour flow forbids it.
+
+        A colour-singlet input joins a coloured one either inside the lines
+        that input already carries (a singlet emitted and reabsorbed along
+        one trace) or as complete lines of its own, ``closed_groups``: an
+        electroweak boson or U(1)-like exchange between open lines, whose
+        flow keeps both lines' ends in place.
+        """
+
         left_colored = self._particle_has_colour(vertex.particles[0])
         right_colored = self._particle_has_colour(vertex.particles[1])
         result_colored = self._particle_has_colour(vertex.particles[2])
@@ -796,10 +831,10 @@ class ColorEngine:
             if (
                 singlet_groups
                 and colored_groups
-                and not singlet_groups.issubset(colored_groups)
+                and not singlet_groups.issubset(colored_groups | closed_groups)
             ):
                 return None
-            return tuple(sorted(colored_groups or singlet_groups))
+            return tuple(sorted(colored_groups | singlet_groups))
 
         if (
             not result_colored
