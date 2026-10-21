@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: 0BSD
 """Generic colour seeds (design §3.4, §7.1-§7.5, WP1.4).
 
-The legacy engine is the oracle. Its Spenso colour tensors are lowered with
-the code that lowers the vertex colours, its Born x loop colour overlaps are
-compared cell by cell, every legacy loop colour term is decomposed into the
-seed classes of the v2 skeletons of its family, and the seed-weighted Born
-contractions, summed with the legacy loop coefficients, give the frozen O2
-family numerators. Arithmetic on the legacy numbers is exact (``Fraction``),
-so the seed-weighted contraction equals the legacy one identically.
+Oracles: the legacy engine and its FeynKit loop diagrams (tests only). Each
+diagram is read as v2 contents and, for every choice of vertex colour
+structures, its colour is predicted from the seed of the skeleton it forms;
+each legacy loop colour term is one such choice. The predicted Born x loop
+colour weights equal the legacy contractions exactly (``Fraction``
+arithmetic), and with the legacy loop coefficients they give the O2 family
+coefficients of the legacy capture.
 """
 
 from __future__ import annotations
@@ -40,11 +40,14 @@ from pyamplicol.loops.v2.colour import (
     SeedColour,
     _exact_number,
     block_colour_network,
+    born_basis,
     build_seed_table,
     certify_leading_colour,
     face_count,
+    multiply,
     project,
     reduce_network,
+    relabel,
     spenso_colour_network,
 )
 from pyamplicol.loops.v2.families import (
@@ -292,6 +295,7 @@ class V2Slice:
     born_order: tuple
     loop_order: tuple
     catalogue: Any
+    vertex_terms: tuple
 
     @property
     def pairs(self):
@@ -358,6 +362,7 @@ def v2_slice(loop_sm_compiled_model):
             born,
             loop,
             catalogue,
+            tuple(compiled.ir.vertex_terms),
         )
         return built[name]
 
@@ -380,7 +385,44 @@ def legacy_program(loop_sm_ufo):
     return build
 
 
-# ------------------------------------------------------------- legacy analysis
+# --------------------------------------------------------------- diagram oracle
+#
+# The legacy loop graphs are FeynKit one-loop diagrams (oracle only). Each is
+# read around its loop as v2 contents, and its closed colour, for every choice
+# of vertex colour structures, is predicted from the seeds of the skeletons
+# those contents form. Nothing is fitted to the seeds.
+
+OPEN = 1000  # colour label of a tree's open leg (process legs are 1..n)
+UFO_SLOT = re.compile(r"ufo_c_(\d+)$")
+ONE = ExactColorCoefficient(1)
+
+
+def _raw(tensor: ConnectedColorTensor, formal: bool) -> dict:
+    """Coordinates over (structure, N_c power), or over structures at N_c = 3.
+
+    The tensor is 2^(-normalization_power/2) times this vector.
+    """
+
+    out = {}
+    for term in tensor.terms:
+        key = (term.tensor, term.nc_power) if formal else term.tensor
+        value = term.coefficient.scaled(
+            Fraction(1) if formal else Fraction(3) ** term.nc_power
+        )
+        out[key] = out.get(key, ZERO) + value
+    return {key: value for key, value in out.items() if value}
+
+
+def _rescaled(vector: dict, power: int, target: int) -> dict:
+    """2^(-power/2) vector, written as 2^(-target/2) times the result."""
+
+    assert (target - power) % 2 == 0, (power, target)
+    factor = Fraction(2) ** ((target - power) // 2)
+    return {key: value.scaled(factor) for key, value in vector.items()}
+
+
+def _negated(vector: dict) -> dict:
+    return {key: value.scaled(-1) for key, value in vector.items()}
 
 
 def _complex_div(a: ExactColorCoefficient, b: ExactColorCoefficient):
@@ -389,18 +431,17 @@ def _complex_div(a: ExactColorCoefficient, b: ExactColorCoefficient):
 
 
 def _solve(columns, target):
-    """Exact r with sum_c r_c columns[c] == target, or None."""
+    """The unique exact r with sum_c r_c columns[c] == target, or None."""
 
     keys = sorted({key for column in columns for key in column} | set(target), key=repr)
     rows = [
         [column.get(key, ZERO) for column in columns] + [target.get(key, ZERO)]
         for key in keys
     ]
-    pivots, rank = [], 0
+    rank = 0
     for col in range(len(columns)):
         pivot = next((i for i in range(rank, len(rows)) if rows[i][col]), None)
-        if pivot is None:
-            continue
+        assert pivot is not None, "linearly dependent columns"
         rows[rank], rows[pivot] = rows[pivot], rows[rank]
         head = rows[rank][col]
         rows[rank] = [_complex_div(value, head) for value in rows[rank]]
@@ -411,27 +452,372 @@ def _solve(columns, target):
                     x + (factor * y).scaled(-1)
                     for x, y in zip(row, rows[rank], strict=True)
                 ]
-        pivots.append(col)
         rank += 1
     if any(row[-1] for row in rows[rank:]):
         return None
-    solution = [ZERO] * len(columns)
-    for i, col in enumerate(pivots):
-        solution[col] = rows[i][-1]
-    return solution
+    return [row[-1] for row in rows[:rank]]
 
 
-def _vector(tensor: ConnectedColorTensor, formal: bool):
-    """Coordinates over (structure, N_c power), or over structures at N_c = 3."""
+def _rotation(ring: tuple) -> tuple:
+    return min(ring[i:] + ring[:i] for i in range(len(ring)))
 
-    out = {}
-    for term in tensor.terms:
-        key = (term.tensor, term.nc_power) if formal else term.tensor
-        value = term.coefficient.scaled(
-            Fraction(1) if formal else Fraction(3) ** term.nc_power
+
+def _first_free(particles, wanted) -> tuple[int, ...]:
+    """The first free UFO leg of each wanted incoming particle, in order."""
+
+    free = list(range(1, len(particles) + 1))
+    legs = []
+    for name in wanted:
+        leg = next(leg for leg in free if particles[leg - 1] == name)
+        free.remove(leg)
+        legs.append(leg)
+    assert not free, (particles, wanted)
+    return tuple(legs)
+
+
+@dataclass(frozen=True)
+class Attachment:
+    """A tree (or external leg) entering a loop vertex as a block current."""
+
+    mask: int
+    field: str  # incoming field at the loop vertex
+    orders: tuple
+    edge: int
+    tree: tuple[int, ...]  # tree vertex ids, empty for an external leg
+
+
+@dataclass
+class DiagramPosition:
+    """A loop vertex read as a v2 content: rule, content legs and blocks."""
+
+    vertex: int
+    rule: str
+    legs: tuple[int, ...]  # UFO legs of loop in, loop out and attachments
+    labels: dict  # UFO leg -> colour label of its edge
+    loop_in: str
+    loop_out: str
+    orders: tuple
+    attachments: tuple[Attachment, ...]
+
+
+class Diagram:
+    """One FeynKit loop diagram: its edges, vertex legs and both readings."""
+
+    def __init__(self, graph, oracle: DiagramOracle):
+        self.graph = graph
+        self.oracle = oracle
+        self.edges = {edge.id: edge for edge in graph.edges}
+        self.vertices = {vertex.id: vertex for vertex in graph.vertices}
+        self.ends: dict[int, list[int]] = {}
+        for _half, vertex, edge, _flow in graph.half_edges:
+            self.ends.setdefault(vertex, []).append(edge)
+        self.loop = set(graph.loop_edges)
+        assert len(self.loop) >= 2
+        start = min(v for e in self.loop for v in self._sides(e))
+        walk, vertex = [], start
+        edge = min(e for e in self.ends[start] if e in self.loop)
+        while True:
+            walk.append((vertex, edge))
+            vertex = self._other(edge, vertex)
+            if vertex == start:
+                break
+            edge = next(e for e in self.ends[vertex] if e in self.loop and e != edge)
+        forward = [(v, walk[i - 1][1], e) for i, (v, e) in enumerate(walk)]
+        backward = [(v, out, into) for v, into, out in reversed(forward)]
+        self.readings = [self._positions(reading) for reading in (forward, backward)]
+        positions = self.readings[0]
+        masses = [
+            MassId(re.sub(r".*::", "", self.edges[edge].mass))
+            for _v, _into, edge in forward
+        ]
+        key = canonical_family_key(
+            [sum(a.mask for a in p.attachments) for p in positions], masses
         )
-        out[key] = out.get(key, ZERO) + value
-    return out
+        self.family = tuple((mask, mass.mass) for mask, mass in key)
+        self.tree_vertices = sorted(set(self.vertices) - {p.vertex for p in positions})
+        self.tree_labels = {}
+        for vertex in self.tree_vertices:
+            particles = oracle.rules[self.vertices[vertex].interaction]
+            ends = self.ends[vertex]
+            legs = _first_free(particles, [self.incoming(e, vertex) for e in ends])
+            self.tree_labels[vertex] = dict(
+                zip(legs, map(self.label, ends), strict=True)
+            )
+
+    def _sides(self, edge):
+        return (self.edges[edge].source, self.edges[edge].target)
+
+    def _other(self, edge, vertex):
+        source, target = self._sides(edge)
+        return target if source == vertex else source
+
+    def incoming(self, edge, vertex) -> str:
+        """The particle entering ``vertex`` along ``edge``."""
+
+        particle = self.edges[edge].particle
+        return (
+            particle
+            if self.edges[edge].target == vertex
+            else self.oracle.anti(particle)
+        )
+
+    def label(self, edge):
+        index = self.edges[edge].external_index
+        return ("edge", edge) if index is None else index + 1
+
+    def _attachment(self, vertex, edge) -> Attachment:
+        if self.edges[edge].external_index is not None:
+            return Attachment(
+                1 << self.edges[edge].external_index,
+                self.incoming(edge, vertex),
+                (),
+                edge,
+                (),
+            )
+        root = self._other(edge, vertex)
+        tree, stack, seen, mask = {root}, [root], {edge}, 0
+        while stack:
+            current = stack.pop()
+            for other in self.ends[current]:
+                if other in seen:
+                    continue
+                seen.add(other)
+                index = self.edges[other].external_index
+                if index is not None:
+                    mask |= 1 << index
+                elif (far := self._other(other, current)) not in tree:
+                    tree.add(far)
+                    stack.append(far)
+        orders = add_orders(*(self.vertices[v].order for v in tree))
+        return Attachment(
+            mask, self.incoming(edge, vertex), orders, edge, tuple(sorted(tree))
+        )
+
+    def _positions(self, reading) -> list[DiagramPosition]:
+        positions = []
+        for vertex, into, out in reading:
+            rule = self.vertices[vertex].interaction
+            attachments = tuple(
+                sorted(
+                    (
+                        self._attachment(vertex, edge)
+                        for edge in self.ends[vertex]
+                        if edge not in self.loop
+                    ),
+                    key=lambda attachment: attachment.mask,
+                )
+            )
+            loop_in = self.incoming(into, vertex)
+            loop_out = self.oracle.anti(self.incoming(out, vertex))
+            # Content legs (``colour`` module docstring): the first free UFO
+            # leg of loop in, loop out, then of each block by mask.
+            legs = _first_free(
+                self.oracle.rules[rule],
+                [
+                    loop_in,
+                    self.oracle.anti(loop_out),
+                    *(a.field for a in attachments),
+                ],
+            )
+            edges = [into, out, *(a.edge for a in attachments)]
+            positions.append(
+                DiagramPosition(
+                    vertex,
+                    rule,
+                    legs,
+                    dict(zip(legs, map(self.label, edges), strict=True)),
+                    loop_in,
+                    loop_out,
+                    add_orders(
+                        self.vertices[vertex].order, *(a.orders for a in attachments)
+                    ),
+                    attachments,
+                )
+            )
+        return positions
+
+    def choices(self):
+        """Every choice of colour structure at every vertex."""
+
+        vertices = sorted(self.vertices)
+        options = [
+            sorted(self.oracle.vertex[self.vertices[v].interaction]) for v in vertices
+        ]
+        for choice in itertools.product(*options):
+            yield tuple(zip(vertices, choice, strict=True))
+
+
+class DiagramOracle:
+    """Colour of FeynKit loop diagrams predicted from v2 seed classes.
+
+    A diagram's loop vertices take the content legs, its trees any legs, and
+    each choice of UFO colour structures closes into a colour tensor. Its trees
+    decompose exactly onto the words of their block (the block currents are
+    the FeynKit tree sums per word, ``test_loop_v2_blocks``), which turns the
+    diagram into v2 contents. The prediction is the seed of the skeleton those
+    contents form, times the tree coefficients and 2^(-p/2) per loop vertex
+    (``colour`` module docstring).
+    """
+
+    def __init__(self, v2: V2Slice):
+        self.v2 = v2
+        self.formal = v2.colour.formal_nc
+        self.particles = {p["name"]: p for p in v2.data["particles"]}
+        self.by_pdg = {int(p["pdg_code"]): p for p in v2.data["particles"]}
+        self.rules = {r["name"]: tuple(r["particles"]) for r in v2.data["vertex_rules"]}
+        # rule -> colour index -> (colour network, colour-flow normalisation p)
+        self.vertex: dict[str, dict[int, tuple]] = {}
+        for term in v2.vertex_terms:
+            if term.vertex in self.rules:
+                self.vertex.setdefault(term.vertex, {}).setdefault(
+                    term.color_index,
+                    (
+                        spenso_colour_network(term.color_expression),
+                        int(term.lc_color_normalization_power),
+                    ),
+                )
+        self.legs = v2.colour.legs
+        self.representations = {leg.label: leg.representation for leg in self.legs}
+        self.words: dict[tuple, dict] = {}
+        for block in v2.colour.blocks.blocks:
+            key = block.key
+            if key.auxiliary_kind is None:
+                field = self.anti(self.by_pdg[key.particle_id]["name"])
+                self.words.setdefault(
+                    (key.external_mask, field, key.coupling_orders), {}
+                ).setdefault(key.word, block)
+        self.rings: dict[tuple, list] = {}
+        for family, skeletons in v2.skeletons.items():
+            for skeleton in skeletons:
+                ring = tuple(map(self._content, skeleton.contents))
+                self.rings.setdefault((family, _rotation(ring)), []).append(skeleton)
+
+    def anti(self, name: str) -> str:
+        return self.particles[name]["antiname"]
+
+    def merged(self, name: str) -> str:
+        return self.v2.families.merged.get(name, name)
+
+    def _content(self, content) -> tuple:
+        state = content.colour
+        return (
+            tuple(map(self.merged, self.rules[state.rule])),
+            state.colour_index,
+            state.legs,
+            state.words,
+            content.loop_in,
+            content.loop_out,
+            content.mask,
+            content.orders,
+        )
+
+    def _vertex(self, diagram: Diagram, vertex: int, labels, index: int):
+        network, _power = self.vertex[diagram.vertices[vertex].interaction][index]
+
+        def rename(name):
+            match = UFO_SLOT.search(str(name))
+            return labels[int(match.group(1))] if match else ("dummy", vertex, name)
+
+        return relabel(network, rename)
+
+    def assemble(self, diagram: Diagram, positions, choice) -> ConnectedColorTensor:
+        """The diagram's closed colour for one choice of colour structures."""
+
+        choice = dict(choice)
+        labels = {p.vertex: p.labels for p in positions} | diagram.tree_labels
+        network = multiply(
+            *(self._vertex(diagram, v, labels[v], choice[v]) for v in sorted(labels))
+        )
+        return reduce_network(
+            network, self.legs, {leg.label: leg.label for leg in self.legs}
+        )
+
+    def tree_words(self, diagram: Diagram, attachment: Attachment, choice):
+        """([(word, c_w)], power): the tree is 2^(-power/2) sum_w c_w |word>."""
+
+        words = self.words[(attachment.mask, attachment.field, attachment.orders)]
+        if not attachment.tree:
+            (word,) = words
+            return [(word, ONE)], 0
+        block = next(iter(words.values()))
+        field = int(self.by_pdg[block.key.particle_id]["color"])
+        legs = [
+            leg
+            for leg in self.legs
+            if attachment.mask >> (leg.label - 1) & 1 and leg.representation != 1
+        ]
+        if field != 1:
+            legs.append(ColorLeg(OPEN, -field if abs(field) == 3 else 8))
+        external = {leg.label: leg.label for leg in legs}
+        tree = reduce_network(
+            multiply(
+                *(
+                    self._vertex(diagram, v, diagram.tree_labels[v], choice[v])
+                    for v in attachment.tree
+                )
+            ),
+            legs,
+            external | {("edge", attachment.edge): OPEN},
+        )
+        ordered = sorted(words)
+        columns = []
+        for word in ordered:
+            string = reduce_network(
+                block_colour_network(
+                    words[word].colour_flow, self.representations, field, OPEN
+                ),
+                legs,
+                external,
+            )
+            assert string.normalization_power == 0
+            columns.append(_raw(string, self.formal))
+        solution = _solve(columns, _raw(tree, self.formal))
+        assert solution is not None, attachment
+        pairs = [(word, x) for word, x in zip(ordered, solution, strict=True) if x]
+        return pairs, tree.normalization_power
+
+    def predict(self, diagram: Diagram, family, positions, choice):
+        """({seed class: coefficient}, power, skeletons): the diagram colour is
+        2^(-power/2) sum_c coefficient kappa_c; None if a content reading has
+        no skeleton."""
+
+        choice = dict(choice)
+        power, options = 0, []
+        for position in positions:
+            power += self.vertex[position.rule][choice[position.vertex]][1]
+            per_block = []
+            for attachment in position.attachments:
+                pairs, tree_power = self.tree_words(diagram, attachment, choice)
+                power += tree_power
+                per_block.append(pairs)
+            options.append(list(itertools.product(*per_block)))
+        coefficients, skeletons = {}, set()
+        for words in itertools.product(*options):
+            ring, coefficient = [], ONE
+            for position, chosen in zip(positions, words, strict=True):
+                for _word, x in chosen:
+                    coefficient = coefficient * x
+                ring.append(
+                    (
+                        tuple(map(self.merged, self.rules[position.rule])),
+                        choice[position.vertex],
+                        position.legs,
+                        tuple(word for word, _x in chosen),
+                        self.merged(position.loop_in),
+                        self.merged(position.loop_out),
+                        sum(a.mask for a in position.attachments),
+                        position.orders,
+                    )
+                )
+            found = self.rings.get((family, _rotation(tuple(ring))))
+            if not found:
+                return None
+            (skeleton,) = found
+            seed = self.v2.class_of[skeleton]
+            assert self.v2.table.classes[seed].normalization_power == 0
+            coefficients[seed] = coefficients.get(seed, ZERO) + coefficient
+            skeletons.add(skeleton)
+        return coefficients, power, skeletons
 
 
 def _legacy_tensor(expression, legs) -> ConnectedColorTensor:
@@ -452,49 +838,30 @@ def _legacy_tensor(expression, legs) -> ConnectedColorTensor:
     return reduce_network(network, legs, external)
 
 
-def _family_masks(shifts, incoming: int) -> list[int]:
-    """Position leg masks from the O2 frame shifts (incoming momenta as given)."""
-
-    legs = len(shifts[0])
-    full = (1 << legs) - 1
-    outgoing = [[-x if j < incoming else x for j, x in enumerate(s)] for s in shifts]
-    masks = []
-    for i, shift in enumerate(outgoing):
-        step = [a - b for a, b in zip(shift, outgoing[i - 1], strict=True)]
-        bits = [value - min(step) for value in step]
-        assert set(bits) <= {0, 1}, shifts
-        masks.append(sum(1 << j for j, bit in enumerate(bits) if bit))
-    if sum(masks) != full or any(a & b for a, b in itertools.combinations(masks, 2)):
-        masks = [full ^ mask for mask in masks]
-    assert sum(masks) == full
-    return masks
-
-
 def _number(pair) -> ExactColorCoefficient:
     return ExactColorCoefficient(Fraction(pair[0]), Fraction(pair[1]))
 
 
 @dataclass
 class LegacyAnalysis:
-    bare: Any
-    legs: tuple
     born: list  # literal legacy Born colour tensors
     loop: list  # literal legacy loop colour tensors
     families: dict  # legacy family index -> v2 family key (None: certified zero)
     transport: list  # R[legacy Born term][basis element]
     decomposition: dict  # loop term -> {seed class: exact coefficient}
-    root2: int  # 1/sqrt(2) power of every Born x loop product
+    root2: int  # 1/sqrt(2) power of the legacy Born colour tensors
+    skeletons: set  # skeletons predicted by some diagram
+    certified_terms: set  # loop terms of certified-zero families
 
 
 def _analyse(v2: V2Slice, bare) -> LegacyAnalysis:
-    """Map legacy colour terms onto the v2 Born basis and seed classes."""
+    """Predict every legacy loop colour term from the v2 seeds (no fitting)."""
 
-    from pyamplicol.color.correlator_matrices import process_color_legs
-
-    legs = process_color_legs(v2.process)
+    oracle = DiagramOracle(v2)
+    legs = oracle.legs
     born = [_legacy_tensor(tensor, legs) for tensor in bare.born_color_tensors]
     loop = [_legacy_tensor(tensor, legs) for tensor in bare.loop_color_tensors]
-    table, colour = v2.table, v2.colour
+    table = v2.table
     basis = table.basis
     # Exact colour overlaps: the legacy metrics are <born|ket> / average
     # (projected by the legacy LC program, so checked at full colour only).
@@ -529,8 +896,7 @@ def _analyse(v2: V2Slice, bare) -> LegacyAnalysis:
             )
         transport.append(row)
     (root2,) = {tensor.normalization_power for tensor in born}
-    # Legacy families and loop terms onto v2 families and seed classes.
-    by_key = {
+    known = {
         tuple((mask, mass.mass) for mask, mass in key): key
         for key in v2.families.families
     }
@@ -538,60 +904,92 @@ def _analyse(v2: V2Slice, bare) -> LegacyAnalysis:
         tuple((mask, mass.mass) for mask, mass in log.key)
         for log in v2.families.scaleless
     }
-    families = {}
-    for record in legacy_capture._family_layout(bare):
-        key = canonical_family_key(
-            _family_masks(record["shifts"], len(v2.control.incoming)),
-            [MassId(mass.split("^")[0]) for mass in record["masses_squared"]],
-        )
-        names = tuple((mask, mass.mass) for mask, mass in key)
-        assert names in by_key or names in scaleless, names
-        families[record["index"]] = by_key.get(names)
-    pdg = {entry["name"]: abs(entry["pdg_code"]) for entry in v2.data["particles"]}
-    name = {abs(entry["pdg_code"]): entry["name"] for entry in v2.data["particles"]}
-    merged = v2.families.merged
-
-    def species(names):
-        return frozenset(pdg[merged.get(n, n)] for n in names)
-
-    graph_of = [g for g, rec in enumerate(bare.recurrences) for _ in rec.terms]
-    decomposition = {}
-    for term, tensor in enumerate(loop):
-        graph = bare.loop_graphs[graph_of[term]]
-        key = families[graph.family.family_index]
+    families: dict[int, set] = {}
+    decomposition, predicted_skeletons, certified_terms = {}, set(), set()
+    for index, graph in enumerate(bare.loop_graphs):
+        diagram = Diagram(graph, oracle)
+        key = known.get(diagram.family)
+        families.setdefault(graph.family.family_index, set()).add(key)
+        offset = bare.loop_term_offsets[index]
+        terms = range(offset, offset + len(bare.recurrences[index].terms))
         if key is None:
+            assert diagram.family in scaleless, diagram.family
+            certified_terms.update(terms)
             continue
-        wanted = species(name[p] for p in graph.loop_species)
-        candidates = sorted(
-            {
-                v2.class_of[skeleton]
-                for skeleton in v2.skeletons[key]
-                if species(
-                    n for c in skeleton.contents for n in (c.loop_in, c.loop_out)
+        # The reading(s) that are v2 skeletons: one, or both for N <= 2.
+        readings = []
+        for positions in diagram.readings:
+            predictions = {}
+            for choice in diagram.choices():
+                prediction = oracle.predict(diagram, key, positions, choice)
+                if prediction is None:
+                    break
+                predictions[choice] = prediction
+            else:
+                readings.append((positions, predictions))
+        assert readings, (index, diagram.family)
+        assert len(readings) == 1 or len(diagram.readings[0]) <= 2, index
+        positions, predictions = readings[0]
+        assembled = {}
+        for choice, (coefficients, power, skeletons) in predictions.items():
+            tensor = oracle.assemble(diagram, positions, choice)
+            vector = _raw(tensor, oracle.formal)
+            seeded = {}
+            for seed, coefficient in coefficients.items():
+                for structure, value in _raw(
+                    table.classes[seed], oracle.formal
+                ).items():
+                    seeded[structure] = (
+                        seeded.get(structure, ZERO) + coefficient * value
+                    )
+            seeded = {key: value for key, value in seeded.items() if value}
+            assert vector == _rescaled(seeded, power, tensor.normalization_power), (
+                index,
+                choice,
+            )
+            assembled[choice] = (vector, tensor.normalization_power)
+            predicted_skeletons |= skeletons
+        # Every legacy colour term is (up to its vertex leg order) one choice.
+        for term in terms:
+            target = _raw(loop[term], oracle.formal)
+            power = loop[term].normalization_power
+            matches = [
+                (sign, choice)
+                for choice, (vector, own) in assembled.items()
+                for sign, candidate in (
+                    (1, _rescaled(vector, own, power)),
+                    (-1, _negated(_rescaled(vector, own, power))),
                 )
-                == wanted
+                if candidate == target
+            ]
+            assert matches, (index, term)
+            sign, choice = matches[0]
+            coefficients, own, _skeletons = predictions[choice]
+            decomposition[term] = {
+                seed: value.scaled(sign)
+                for seed, value in _rescaled(coefficients, own, power).items()
+                if value
             }
-        )
-        solution = _solve(
-            [_vector(table.classes[c], colour.formal_nc) for c in candidates],
-            _vector(tensor, colour.formal_nc),
-        )
-        assert solution is not None, (term, wanted)
-        assert (root2 + tensor.normalization_power) % 2 == 0
-        decomposition[term] = {
-            c: value for c, value in zip(candidates, solution, strict=True) if value
-        }
+    assert all(len(keys) == 1 for keys in families.values())
     return LegacyAnalysis(
-        bare, legs, born, loop, families, transport, decomposition, root2
+        born,
+        loop,
+        {index: next(iter(keys)) for index, keys in families.items()},
+        transport,
+        decomposition,
+        root2,
+        predicted_skeletons,
+        certified_terms,
     )
 
 
 def _seeded_family_numerators(
     v2: V2Slice, analysis: LegacyAnalysis, bare, point, scale, accuracy="full"
 ):
-    """Legacy loop coefficients weighted by v2 seeds, and the legacy contraction.
+    """Legacy loop coefficients weighted by v2 seeds, per legacy family index.
 
-    Returns (per family index: [sector][power] coefficients, weights checked).
+    At full colour each seeded Born x loop colour weight must equal the legacy
+    contraction exactly.
     """
 
     currents = bare.prepare_currents_native(
@@ -690,112 +1088,27 @@ def _assert_close(mine, reference, tolerance, context):
         assert error <= tolerance * scale, (context, index, error, scale)
 
 
-# Exact loop momenta at which two frames of a family numerator are compared.
-SAMPLE_MOMENTA = (
-    (Fraction(3, 7), Fraction(-5, 11), Fraction(2, 13), Fraction(7, 17)),
-    (Fraction(-9, 5), Fraction(1, 3), Fraction(4, 9), Fraction(-2, 7)),
-    (Fraction(1, 2), Fraction(6, 5), Fraction(-3, 4), Fraction(5, 3)),
-)
+def _legacy_numerators(virtual, control, point, scale) -> dict:
+    """The O2 capture: legacy Born-weighted family coefficients, same frames."""
 
-
-def _frame_maps(source, target, incoming):
-    """Every (sigma, offset) with q_target = sigma q_source + offset that maps
-    the denominators of one O2 frame onto the other's; ``offset`` holds
-    coefficients of the all-outgoing external momenta. A symmetric family
-    (e.g. a bubble) has several."""
-
-    def outgoing(shift):
-        return [-x if j < incoming else x for j, x in enumerate(shift)]
-
-    def equal(left, right):  # equal momenta up to momentum conservation
-        return len({x - y for x, y in zip(left, right, strict=True)}) == 1
-
-    a = [outgoing(shift) for shift in source["shifts"]]
-    b = [outgoing(shift) for shift in target["shifts"]]
-    maps = []
-    for sigma, first in itertools.product((1, -1), range(len(b))):
-        offset = [sigma * x - y for x, y in zip(a[0], b[first], strict=True)]
-        image = []
-        for i, shift in enumerate(a):
-            want = [sigma * x - o for x, o in zip(shift, offset, strict=True)]
-            image.extend(
-                k
-                for k, other in enumerate(b)
-                if equal(other, want)
-                and source["masses_squared"][i] == target["masses_squared"][k]
-            )
-        if sorted(image) == list(range(len(b))):
-            maps.append((sigma, offset))
-    assert maps, "O2 frames are not related by an affine map"
-    return maps
-
-
-def _evaluate(rows, powers, q):
-    """The family numerator rows at exact loop momentum ``q``."""
-
-    out = []
-    for row in rows:
-        total, scale = ZERO, 0.0
-        for coefficient, power in zip(row, powers, strict=True):
-            assert power[4:] == [0, 0]  # four-dimensional numerators
-            monomial = Fraction(1)
-            for component, exponent in zip(q, power[:4], strict=True):
-                monomial *= component**exponent
-            total = total + coefficient.scaled(monomial)
-            scale += _magnitude(coefficient) * abs(float(monomial))
-        out.append((total, scale))
-    return out
-
-
-def _assert_same_numerators(mine, layout, o2, carrier, incoming):
-    """Seeded numerators equal the frozen O2 ones under each family's frame map."""
-
-    tolerance = O2_TOLERANCE[carrier]
-    frozen = {
-        canonical: (record, rows)
-        for record, rows in zip(
-            o2["families"], o2["coefficients"][carrier], strict=True
-        )
-        for canonical in [_canonical_record(record, incoming)]
+    rows = legacy_capture._family_coefficients(virtual, control, point, scale)
+    return {
+        family.index: row
+        for family, row in zip(virtual.bare.families, rows, strict=True)
     }
-    momenta = [[Fraction(component) for component in leg] for leg in o2["points"][0]]
-    outgoing = [
-        [-x for x in leg] if j < incoming else leg for j, leg in enumerate(momenta)
-    ]
-    for record in layout:
-        if record["index"] not in mine:
-            continue
-        target, rows = frozen[_canonical_record(record, incoming)]
-        assert target["powers"] == record["powers"]
-        assert target["sectors"] == record["sectors"]
-        reference = [[_number(pair) for pair in row] for row in rows]
-        errors = []
-        for sigma, offset in _frame_maps(record, target, incoming):
-            shift = [
-                sum(c * leg[mu] for c, leg in zip(offset, outgoing, strict=True))
-                for mu in range(4)
-            ]
-            worst = 0.0
-            for q in SAMPLE_MOMENTA:
-                moved = [
-                    sigma * component + s for component, s in zip(q, shift, strict=True)
-                ]
-                left = _evaluate(mine[record["index"]], record["powers"], q)
-                right = _evaluate(reference, target["powers"], moved)
-                for (value, own), (expected, scale) in zip(left, right, strict=True):
-                    # Each side is rounded relative to its own monomials.
-                    error = _magnitude(value + expected.scaled(-1))
-                    worst = max(worst, error / max(scale, own))
-            errors.append(worst)
-        assert min(errors) <= tolerance, (carrier, record["index"], errors)
 
 
-def _canonical_record(record, incoming):
-    key = canonical_family_key(
-        _family_masks(record["shifts"], incoming),
-        [MassId(mass.split("^")[0]) for mass in record["masses_squared"]],
-    )
-    return tuple((mask, mass.mass) for mask, mass in key)
+@pytest.fixture(scope="module")
+def legacy_analysis(v2_slice, legacy_program):
+    built = {}
+
+    def build(name: str, accuracy: str = "full"):
+        if (name, accuracy) not in built:
+            bare = legacy_capture._virtual(legacy_program(name, accuracy)).bare
+            built[(name, accuracy)] = _analyse(v2_slice(name), bare)
+        return built[(name, accuracy)]
+
+    return build
 
 
 # ------------------------------------------------------------------- O2 oracle
@@ -803,32 +1116,117 @@ def _canonical_record(record, incoming):
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", ["gg_gg", "uux_ddxg"])
-def test_seed_sums_reproduce_legacy_contractions_via_o2(
-    v2_slice, legacy_program, loop_native, name
+def test_feynkit_diagram_colours_equal_seed_predictions(
+    v2_slice, legacy_analysis, loop_native, name
 ):
+    """Every legacy (FeynKit) loop diagram, under every choice of vertex colour
+    structures, has the colour its v2 skeletons' seeds predict (asserted in
+    ``_analyse``), and every skeleton is predicted by some diagram."""
+
+    v2 = v2_slice(name)
+    analysis = legacy_analysis(name)
+    assert analysis.skeletons == {s for rows in v2.skeletons.values() for s in rows}
+    assert set(analysis.decomposition) | analysis.certified_terms == set(
+        range(len(analysis.loop))
+    )
+    assert v2.colour.formal_nc == (name == "gg_gg")
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["gg_gg", "uux_ddxg"])
+def test_seed_sums_reproduce_legacy_contractions_via_o2(
+    v2_slice, legacy_program, legacy_analysis, loop_native, name
+):
+    """Seed-weighted Born x loop colour weights equal the legacy contractions
+    exactly; summed with the legacy loop coefficients they give the O2 family
+    coefficients of the legacy capture in its own frames (the frozen O2 files
+    against the live capture are WP0.1's check)."""
+
     v2 = v2_slice(name)
     o2 = json.loads(
         gzip.decompress((FIXTURES / f"{name}.families.json.gz").read_bytes())
     )
     program = legacy_program(name)
-    bare = legacy_capture._virtual(program).bare
-    # The legacy family order and frames depend on Symbolica's symbol order,
-    # so families are matched on their ring and compared under the frame map.
-    incoming = len(v2.control.incoming)
-    layout = legacy_capture._family_layout(bare)
-    assert sorted(_canonical_record(r, incoming) for r in layout) == sorted(
-        _canonical_record(r, incoming) for r in o2["families"]
-    )
-    analysis = _analyse(v2, bare)
+    analysis = legacy_analysis(name)
     certified = [index for index, key in analysis.families.items() if key is None]
+    assert len(analysis.families) == len(o2["families"])
+    assert sorted(
+        key for key in analysis.families.values() if key is not None
+    ) == sorted(v2.families.families)
     assert len(certified) == len(o2["families"]) - len(v2.families.families)
-    assert v2.colour.formal_nc == (name == "gg_gg")
+    point, scale = o2["points"][0], o2["scales_squared"][0]
     for carrier in legacy_capture.CARRIERS:
-        rebound = legacy_capture._virtual(legacy_capture._rebind(program, carrier)).bare
-        mine = _seeded_family_numerators(
-            v2, analysis, rebound, o2["points"][0], o2["scales_squared"][0]
+        virtual = legacy_capture._virtual(legacy_capture._rebind(program, carrier))
+        mine = _seeded_family_numerators(v2, analysis, virtual.bare, point, scale)
+        reference = _legacy_numerators(virtual, v2.control, point, scale)
+        _assert_close(mine, reference, O2_TOLERANCE[carrier], carrier)
+
+
+@pytest.mark.loop_fast
+@pytest.mark.parametrize(
+    ("process", "qcd"),
+    [("u u~ > g g", 2), ("u u~ > g g g", 3), ("u u~ > d d~ g", 3), ("g g > g g", 2)],
+)
+def test_born_sectors_close_block_words_in_their_orientation(
+    loop_sm_compiled_model, process, qcd
+):
+    """A0[b] multiplies the Born basis tensor b in the block-word orientation.
+
+    Every Born root contracts two tree currents; their block words closed with
+    each other (U(N) part) give the root's sector tensor, pairing phase
+    included. Gluons on one quark line (uu~ -> gg, ggg) fix the orientation.
+    """
+
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.processes.model import build_model_process_ir
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    model = CompiledUFOModel(compiled)
+    orders = {"QCD": qcd, "QED": 0}
+    blocks = build_tree_blocks(
+        build_model_process_ir(process, compiled.ir, color_accuracy="full"),
+        model,
+        born_coupling_orders=orders,
+        block_coupling_orders=orders,
+    )
+    basis = born_basis(blocks)
+    sectors = dict(zip(basis.sector_ids, basis.tensors, strict=True))
+    representations = {leg.label: leg.representation for leg in basis.legs}
+    dag = blocks.born_dag
+    checked = 0
+    for root in dag.amplitude_roots:
+        ends = [dag.currents[root.left_id].index, dag.currents[root.right_id].index]
+        if any(index.auxiliary_kind is not None for index in ends):
+            continue  # numeric U(1) subtraction
+        fields = [int(model.color_rep(index.particle_id)) for index in ends]
+        # Quark ends share their open label; gluon ends close with delta^XY.
+        opens = ("x", "y") if fields[0] == 8 else ("x", "x")
+        flows = [
+            block_colour_flow(index.ordered_external_labels, representations, field)
+            for index, field in zip(ends, fields, strict=True)
+        ]
+        networks = [
+            block_colour_network(flow, representations, field, label)
+            for flow, field, label in zip(flows, fields, opens, strict=True)
+        ]
+        if fields[0] == 8:
+            networks.append((ColourProduct(traces=(opens,)),))
+        closed = reduce_network(
+            multiply(*networks),
+            basis.legs,
+            {leg.label: leg.label for leg in basis.legs},
         )
-        _assert_same_numerators(mine, layout, o2, carrier, incoming)
+        (leading,) = [term for term in closed.terms if term.nc_power == 0]
+        (expected,) = sectors[root.color_sector_id].terms
+        sign = flows[0].sign * flows[1].sign
+        assert root.color_weight == (1.0, 0.0)
+        assert (leading.tensor, leading.coefficient.scaled(sign)) == (
+            expected.tensor,
+            expected.coefficient,
+        ), root.id
+        checked += 1
+    assert checked
 
 
 # --------------------------------------------------------------- leading colour
@@ -836,7 +1234,7 @@ def test_seed_sums_reproduce_legacy_contractions_via_o2(
 
 @pytest.mark.loop_physics
 def test_leading_colour_degrees_equal_legacy_projection(
-    v2_slice, legacy_program, loop_native, loop_reference
+    v2_slice, legacy_program, legacy_analysis, loop_native, loop_reference
 ):
     from symbolica import E, Expression, S
 
@@ -887,7 +1285,7 @@ def test_leading_colour_degrees_equal_legacy_projection(
         assert certificate.exact_degrees[c] == (degree - 1 if quark else degree)
 
     # LC seeds reproduce the legacy LC family numerators.
-    analysis = _analyse(v2, bare)
+    analysis = legacy_analysis("gg_gg", "lc")
     o2 = json.loads(gzip.decompress((FIXTURES / "gg_gg.families.json.gz").read_bytes()))
     point, scale = o2["points"][0], o2["scales_squared"][0]
     mine = _seeded_family_numerators(v2, analysis, bare, point, scale, "lc")
