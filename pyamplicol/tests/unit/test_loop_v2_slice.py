@@ -536,11 +536,9 @@ def _weights(layout, length, momenta):
     Coefficients of rank r carry mass dimension D - r, so a maximum over raw
     coefficients depends on the units and on the frame (a shift by p moves
     weight between ranks): binary64 numerators of every implementation then
-    "miss" 1e-13 on structurally cancelling low-rank coefficients. On the
-    slice's first points the raw metric gives v2 binary64 up to 2.1e-12 and
-    the legacy binary64 capture up to 8.5e-12 (5.4e-13 on uu~ -> uu~, whose
-    box frames v2 shifts by p1); weighted, v2 is within 5.7e-14 and legacy
-    within 8.5e-12 (a bubble of uu~ -> uu~g), in either frame.
+    "miss" 1e-13 on structurally cancelling low-rank coefficients. The
+    weighted metric is the same in every frame and leaves the binary64 v2
+    numerators within the O2 bound (DESIGN §14, O2).
     """
 
     total = [a + b for a, b in zip(momenta[0], momenta[1], strict=True)]
@@ -840,9 +838,16 @@ def test_rotations_are_exact():
     assert all(abs(x - y) < 1e-5 for x, y in zip(image[1:], axis, strict=True))
     with pytest.raises(ValueError, match="identity"):
         StabilityChecks((Rotation.from_axis_angle((1, 0, 0), 0.0),))
-    # Rotated momenta reach the reducer with the carrier's digits, uncapped.
-    third = _decimal_string(Fraction(1, 3), 130)
-    assert third == "0." + "3" * 130
+
+
+@pytest.mark.loop_fast
+def test_reducer_inputs_keep_the_carrier_digits():
+    """Rotated momenta reach the reducer with the carrier's digits, uncapped."""
+    assert _decimal_string(Fraction(1, 3), 130) == "0." + "3" * 130
     assert _decimal_string(Fraction(1, 8), 5) == "0.125"
+
+
+@pytest.mark.loop_fast
+def test_an_estimate_needs_a_check():
     with pytest.raises(ValueError, match="at least one check"):
         StabilityEstimate.from_checks({}, {}, scale={}, roundoff=2.0**-53)
