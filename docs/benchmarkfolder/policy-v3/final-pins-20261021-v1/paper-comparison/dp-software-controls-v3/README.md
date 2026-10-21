@@ -1,0 +1,7 @@
+# Forced-DP producer software and compile checks
+
+Twenty-two current source/reader tests pass. Instrumentation restores exact original bytes for 23 actual interfaces / 666 dispatch sites. The exact standalone recorder/caller source compiled in recorder-control-v3 remains byte-identical to current rendering and its forced controls pass. Failed v2 hardware observation is retained; hardware reads moved to caller scope.
+
+One private qcd1 full process was compiled and linked with the dedicated driver and observer. Existing v3.validate_cohort validated the explicit source/dependency cohort. The entire original source manifest matched its retained anchor; the private source delta contains only CT_interface.f and check_sa.f, and actual full runtime before/after equals a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008. The physical card and 100-point stream are bound. The first controller failed metadata serialization after compiling; its logs are preserved and no child exit code is invented. A bounded recompile records exit0 and reap.
+
+No MadLoop or reduction-engine executable was run, no physical stability data was collected, and no parity or final publication gate is qualified. Reader observations_complete is distinct from complete/physical_qualified, which remain false pending actual target/parity closure. Compiled binaries/build products remain private and are excluded.

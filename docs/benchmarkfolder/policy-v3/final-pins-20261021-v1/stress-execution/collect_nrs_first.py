@@ -6,10 +6,12 @@ raw run to the four-backend stress dataset or claims a completed core identity.
 The all-four extension remains available through collect_final.py.
 """
 import argparse
+import datetime
 import json
 import os
 from pathlib import Path
 import signal
+import subprocess
 
 import collect_final as adapter
 
@@ -39,8 +41,34 @@ def validate_selection(spec):
     return target_backends(spec["variant"])
 
 
+def stable_orchestration(spec, record=True):
+    """Retain numerical/imported bytes while recording unrelated HEAD advances."""
+    if (spec["numerical_revision"] != adapter.final.REVISION
+            or spec["generation_revision"] != adapter.final.REVISION
+            or spec["generator_identity_sha256"] != adapter.final.GENERATOR
+            or spec["installed_archive_sha256"] != adapter.final.ARCHIVE):
+        raise ValueError("NinjaRS stress numerical cohort differs from the final pinned source")
+    for source in spec["sources"].values():
+        supplement.checked(source)
+    adapter.numerical_sources(spec["numerical_revision"])
+    actual = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=adapter.ROOT,
+                                     text=True).strip()
+    if record:
+        path = Path(__file__).parent / "nrs-source-head-observations" / (spec["identity_sha256"] + ".jsonl")
+        path.parent.mkdir(exist_ok=True)
+        with path.open("a") as stream:
+            stream.write(json.dumps({"utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "specification_orchestration_head": spec["operational_source_state"]["actual_git_head"],
+                "observed_orchestration_head": actual,
+                "numerical_revision": adapter.final.REVISION,
+                "generator_identity_sha256": adapter.final.GENERATOR,
+                "exact_GEN_vendor_and_bound_helper_bytes_verified": True}) + "\n")
+    return actual
+
+
 def configure():
     adapter.configure_adapters()
+    raw.check_orchestration_head = stable_orchestration
     original = raw.frozen_sources
 
     def frozen_sources():

@@ -1,0 +1,168 @@
+{
+  "schema": "dp-stability-source-software-validation-v3",
+  "tests": 22,
+  "exit_code": 0,
+  "source_hashes_before": {
+    "tools/ninjars_dp_stability.py": "732715ee492c027e1a539241c04d895d0584b1ec2ff50cebe883b6df2a08aad3",
+    "tools/ninjars_dp_stability_driver.f": "3d8d06325dd955408771b94873ee34ad438c0ba4a459e48bbfbbf69ed33d7dc7",
+    "tests/unit_tests/loop/test_ninjars_dp_stability.py": "caaee1430e4a38dc333f0ef927ab18dcd2ce7e44da1cdc657fdad30528944236",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/paper-comparison/DP-PRODUCER.md": "8e50d2cbe0aec2be2b41bda925c2184fc2d5f259a594025f0f01cee2ef510e7b"
+  },
+  "source_hashes_after": {
+    "tools/ninjars_dp_stability.py": "732715ee492c027e1a539241c04d895d0584b1ec2ff50cebe883b6df2a08aad3",
+    "tools/ninjars_dp_stability_driver.f": "3d8d06325dd955408771b94873ee34ad438c0ba4a459e48bbfbbf69ed33d7dc7",
+    "tests/unit_tests/loop/test_ninjars_dp_stability.py": "caaee1430e4a38dc333f0ef927ab18dcd2ce7e44da1cdc657fdad30528944236",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/paper-comparison/DP-PRODUCER.md": "8e50d2cbe0aec2be2b41bda925c2184fc2d5f259a594025f0f01cee2ef510e7b"
+  },
+  "sources_unchanged": true,
+  "actual_generated_instrumentation": [
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-2/SubProcesses/P0_epem_mupmum/CT_interface.f",
+      "sha256": "2d20204f7306a535fcf9c8b898ddaecd4e42ab025ae093372155cab833e06f2c",
+      "dispatch_count": 24,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-3/SubProcesses/P0_uux_zgg/CT_interface.f",
+      "sha256": "84b44730f62861ecb880b7a10752a45e00aa3e1456c3fabb68407cbc4bd1b8c8",
+      "dispatch_count": 42,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-4/SubProcesses/P0_uux_zzgg/CT_interface.f",
+      "sha256": "855c12e8a4a56da609d441659bdb3c520733709a31388f75d5bea39db4a5e737",
+      "dispatch_count": 54,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-1/SubProcesses/P0_udx_wp/CT_interface.f",
+      "sha256": "6c61ad8af0e08cb500c6486d10a2c11d5f816e98614217c08e125339a9bec559",
+      "dispatch_count": 6,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-4/SubProcesses/P0_epem_mupmumaa/CT_interface.f",
+      "sha256": "a31c45cc67e9b2b820b8c4bf6df95656c46ea3fb943937eb52452b9a0a3e7bf2",
+      "dispatch_count": 66,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-2/SubProcesses/P0_gg_ttx/CT_interface.f",
+      "sha256": "2b2048aba226518e0cfeb570e0966ce88a89fcdc742ed979cb02b03aea4c715a",
+      "dispatch_count": 30,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-3/SubProcesses/P0_epem_ttxa/CT_interface.f",
+      "sha256": "13443462a3beece83514f8705524393794997936be15a23c174308781ce9ff61",
+      "dispatch_count": 42,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1/SubProcesses/P0_uux_z/CT_interface.f",
+      "sha256": "f93d65469090d89269e50b4540ccca34b70807d7fddea4f08e0134d851c132fa",
+      "dispatch_count": 6,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-h/SubProcesses/P0_gg_h/CT_interface.f",
+      "sha256": "6ca7604ca7e5192503bb8d301f45e9c2a16fbfb9c4af56ffd3c6a071cb0cd258",
+      "dispatch_count": 6,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-forced-qp/SubProcesses/P0_gg_ttx/CT_interface.f",
+      "sha256": "2b2048aba226518e0cfeb570e0966ce88a89fcdc742ed979cb02b03aea4c715a",
+      "dispatch_count": 30,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-complex/SubProcesses/P0_epem_mupmum/CT_interface.f",
+      "sha256": "2d20204f7306a535fcf9c8b898ddaecd4e42ab025ae093372155cab833e06f2c",
+      "dispatch_count": 24,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-hh/SubProcesses/P0_gg_hh/CT_interface.f",
+      "sha256": "db4b697c83d9cf50ec13cbf36322196d2f44efb180ba48fc483a09d327a2dc44",
+      "dispatch_count": 12,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-mixed/SubProcesses/P0_uux_ddx/CT_interface.f",
+      "sha256": "d3601a45cd2b9834b0fdae31edfa1e5935fc7959059a212fe18b6513ada81075",
+      "dispatch_count": 24,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/stress-generation/outputs/candidate/stress-ew-4-uu-4l/SubProcesses/P0_uux_epemmupmum/CT_interface.f",
+      "sha256": "29af8fe62cc079e360cf182ddd89e3d2b0e6bf0920f66835722d5e6c0253558e",
+      "dispatch_count": 48,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/stress-generation/outputs/candidate/stress-qcd-4-gg-ttgg/SubProcesses/P0_gg_ttxgg/CT_interface.f",
+      "sha256": "2d9d6e4fa0815c0cb6a8ccfaa6ef8c9718f9378b4502e5ab648a4551c270a6be",
+      "dispatch_count": 72,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/qcd-1-baseline-6/outputs/baseline/qcd-1/SubProcesses/P0_uux_z/CT_interface.f",
+      "sha256": "d2f00d13955ec202aca03e1a8f811275b672868cba6ab082182b32b647a53c61",
+      "dispatch_count": 4,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/ew-1-baseline-6/outputs/baseline/ew-1/SubProcesses/P0_udx_wp/CT_interface.f",
+      "sha256": "1d579095023bd4751ffaaa78ee08ec91b2574758a56ca727646b7fb56b13e9d3",
+      "dispatch_count": 4,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/qcd-2-baseline-6/outputs/baseline/qcd-2/SubProcesses/P0_gg_ttx/CT_interface.f",
+      "sha256": "f3ad94bab7e310c7f12c4c0391dc5edaccdea03a7689e50330b9254ac1d1bea3",
+      "dispatch_count": 20,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/ew-2-baseline-6/outputs/baseline/ew-2/SubProcesses/P0_epem_mupmum/CT_interface.f",
+      "sha256": "4003b82bd91fa538feeb251fbcc6c79b97058200efb61c4c1ba3e2c82e76404c",
+      "dispatch_count": 16,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/qcd-3-baseline-6/outputs/baseline/qcd-3/SubProcesses/P0_uux_zgg/CT_interface.f",
+      "sha256": "eb2149bb8bfce1a5aa6dfda01968a9009066430ad5dbea9efe3473f4476d1bbc",
+      "dispatch_count": 28,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/ew-3-baseline-6/outputs/baseline/ew-3/SubProcesses/P0_epem_ttxa/CT_interface.f",
+      "sha256": "d27c3870d8ae90ef44be6981acb2b9f30eb5efb5b8a3536f0e5a34c4bb84a58e",
+      "dispatch_count": 28,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-6/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/CT_interface.f",
+      "sha256": "0d252c36f886e6bc1858597d6a4b7cd43a176cdf6673620304d78fb00c5ffc12",
+      "dispatch_count": 36,
+      "source_restored_exactly": true
+    },
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-ew4-ct-ninja-v3-20261021/workers/ew-4-baseline-6/outputs/baseline/ew-4/SubProcesses/P0_epem_mupmumaa/CT_interface.f",
+      "sha256": "c1447c8d39539050899ce830881130d66d2bd243e25a91d28873b725fa4ab6c1",
+      "dispatch_count": 44,
+      "source_restored_exactly": true
+    }
+  ],
+  "all_source_checks_pass": true,
+  "compiled_recorder_source_equals_current_render": true,
+  "compiled_recorder_scope": "Exact standalone Fortran helper/caller control source unchanged; later Python reader guard/qualification fields do not modify Fortran. No redundant compilation claimed.",
+  "actual_madloop_engines_executed": false,
+  "actual_dp_sample_complete": false,
+  "semantic_cohort_runtime_binding": "Explicit v3 cohort validated for one actual compile-only qcd1 target with exact full runtime; actual observation/parity/physical promotion remain pending.",
+  "qcd1_compile_only_receipt": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/qcd1-build-v1/result.json",
+    "sha256": "c6478c039454b9e42382767b6c1bb2fecd67934bda7bf627d6e478c84ce1f2f7"
+  }
+}

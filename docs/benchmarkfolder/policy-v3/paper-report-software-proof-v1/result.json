@@ -1,0 +1,36 @@
+{
+  "children_exited": true,
+  "command": "taskset -c 5 python -B -m unittest tests.unit_tests.loop.test_ninjars_paper_report_v3",
+  "cpu": 5,
+  "elapsed_unittest_seconds": 1.238,
+  "errors": 0,
+  "exit_code": 0,
+  "failures": 0,
+  "main_pdf_unchanged": true,
+  "preserved_source_sha256": {
+    "docs/benchmarkfolder/benchmark.pdf": "4f721beef932e897c1de5649e5e49ad6ff74c57b5e85507a9b6a748fd481b588",
+    "docs/benchmarkfolder/benchmark.typ": "a2a51a2ec93b441eb20fc82899b8d041d80ba492acdf4973f7f0ac453e301be5",
+    "tests/unit_tests/loop/test_ninjars_report_qualifications_v3.py": "af79b155a0e4516e210c017542331569f70b7230cc9bc65b47bd9f55d731b51b",
+    "tests/unit_tests/loop/test_ninjars_report_v3.py": "c899a81d061a6c64b2acf2031ed334fd82fff9ba76ef269c572fab0e755bab8c",
+    "tools/ninjars_benchmark_report_v3.py": "b10bb51af37a23540a99df252343fa676bea331a78a35f6e4d2e0fbf372834b1",
+    "tools/ninjars_report_qualifications_v3.py": "5efdecc8ad94371cc8bbb5131dccbaa1799a1c2797609dc5a56ef08360d9888f"
+  },
+  "scope": "19 software/static-source/plot tests including physical-qualification render guard; no physics, engine, compiler, profiler or main PDF render",
+  "skipped": 0,
+  "source_sha256": {
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/paper-comparison/REPORT-DESIGN.md": "ebf84006c240ac6544fbbe23664f7c7f75e071f8629ed36d8811b31480098c74",
+    "tests/unit_tests/loop/test_ninjars_paper_report_v3.py": "eda9664b17ee56f322e9249893fecea3b3cf0c7526e1844eb4a0c9f97ab39673",
+    "tools/ninjars_paper_report_v3.py": "e6ad86d3b3e6cb39a4c61179c8f9d0b91327f668d194305f06f4f94b90d7a84f"
+  },
+  "stderr_sha256": "627f83f52f125c454b5ba74170efe5f4552967890f0664d9045d3d9e9cf3e321",
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "synthetic_visual": {
+    "inspection": "readable labels, no clipping/overlap; zero upper markers, missing tool and undefined ratios visible",
+    "inspection_checkpoint": "prior18-test layout, unchanged low-level plot function; final deterministic-SVG test reran",
+    "png_sha256": "b089dee33906678c96a70f760425642a69a6fbd9e750509839824e869686d08b",
+    "scope": "software fixture only, not physics",
+    "source_sha256": "fd140659d9e4867170987509ef838c1df53fd408af89857e2109abbf50b3d444",
+    "svg_sha256": "8f45593263a5e2ca9fadf894da5af051713705a29ad3518bb32b5922cee58c0a"
+  },
+  "tests_run": 19
+}

@@ -1,0 +1,27 @@
+test_binomial_resolution_no_pseudocount_and_strict_threshold (tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_binomial_resolution_no_pseudocount_and_strict_threshold) ... ok
+test_direction_and_rotation_use_distinct_values_and_failure_scope (tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_direction_and_rotation_use_distinct_values_and_failure_scope) ... ok
+test_failed_three_zero_results_never_stable_for_all_four_tools (tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_failed_three_zero_results_never_stable_for_all_four_tools) ... ok
+test_fpe_and_nonfinite_and_higher_precision_never_hidden (tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_fpe_and_nonfinite_and_higher_precision_never_hidden) ... ok
+test_hardware_flags_retained_separately_from_numerical_rejection (tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_hardware_flags_retained_separately_from_numerical_rejection) ... ok
+test_other_backend_and_initialization_rejected (tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_other_backend_and_initialization_rejected) ... ok
+test_true_zero_results_preserved_and_expected_untested_accuracy_accepted (tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_true_zero_results_preserved_and_expected_untested_accuracy_accepted) ... ok
+test_zero_mean_nonzero_and_large_finite_values (tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_zero_mean_nonzero_and_large_finite_values) ... ok
+test_born_and_loop_induced_restore_original_bytes (tests.unit_tests.loop.test_ninjars_dp_stability.ObserverSources.test_born_and_loop_induced_restore_original_bytes) ... ok
+test_compiled_control_shares_exact_observer_and_is_pending (tests.unit_tests.loop.test_ninjars_dp_stability.ObserverSources.test_compiled_control_shares_exact_observer_and_is_pending) ... ok
+test_driver_uses_explicit_dp_and_preserves_complete_coefficients (tests.unit_tests.loop.test_ninjars_dp_stability.ObserverSources.test_driver_uses_explicit_dp_and_preserves_complete_coefficients) ... ok
+test_idempotence_and_unknown_dispatch_fail_closed (tests.unit_tests.loop.test_ninjars_dp_stability.ObserverSources.test_idempotence_and_unknown_dispatch_fail_closed) ... ok
+test_mismatched_result_stable_indices_rejected (tests.unit_tests.loop.test_ninjars_dp_stability.ObserverSources.test_mismatched_result_stable_indices_rejected) ... ok
+test_observer_after_call_before_next_overwrite (tests.unit_tests.loop.test_ninjars_dp_stability.ObserverSources.test_observer_after_call_before_next_overwrite) ... ok
+test_signature_and_orphan_continuation_rejected (tests.unit_tests.loop.test_ninjars_dp_stability.ObserverSources.test_signature_and_orphan_continuation_rejected) ... ok
+test_complete_raw_retains_all_physical_orders_and_zeros (tests.unit_tests.loop.test_ninjars_dp_stability.RawReader.test_complete_raw_retains_all_physical_orders_and_zeros) ... ok
+test_duplicate_wrong_header_nonfinite_and_missing_row (tests.unit_tests.loop.test_ninjars_dp_stability.RawReader.test_duplicate_wrong_header_nonfinite_and_missing_row) ... ok
+test_empty_runs_cannot_be_reported_complete (tests.unit_tests.loop.test_ninjars_dp_stability.RawReader.test_empty_runs_cannot_be_reported_complete) ... ok
+test_report_revalidates_raw_sources_and_keeps_matching_four_tool_denominators (tests.unit_tests.loop.test_ninjars_dp_stability.RawReader.test_report_revalidates_raw_sources_and_keeps_matching_four_tool_denominators) ... ok
+test_rescued_manifest_cannot_be_relabelled_dp (tests.unit_tests.loop.test_ninjars_dp_stability.RawReader.test_rescued_manifest_cannot_be_relabelled_dp) ... ok
+test_truncation_retains_missing_slots_as_failures (tests.unit_tests.loop.test_ninjars_dp_stability.RawReader.test_truncation_retains_missing_slots_as_failures) ... ok
+test_unbound_or_boolean_manifest_never_promotes_a_summary (tests.unit_tests.loop.test_ninjars_dp_stability.RawReader.test_unbound_or_boolean_manifest_never_promotes_a_summary) ... ok
+
+----------------------------------------------------------------------
+Ran 22 tests in 0.038s
+
+OK

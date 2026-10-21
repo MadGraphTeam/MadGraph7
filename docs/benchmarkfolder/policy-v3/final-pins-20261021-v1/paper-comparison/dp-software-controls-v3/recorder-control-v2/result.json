@@ -1,0 +1,55 @@
+{
+  "schema": "dp-stability-recorder-compiled-control-v2",
+  "source_hashes_before": {
+    "tools/ninjars_dp_stability.py": "7a5477616c2559bacd9809c215a71e2bec02895fd8329a7846183d6dededcabf",
+    "tools/ninjars_dp_stability_driver.f": "5693ca7b2445fc2a95df5dc0f5bc73bd3dc862026015185960734441629f863b",
+    ".benchmark-work/paper-dp-stability-20261021-v1/recorder-control-v2/recorder-control.f": "e4aca6d6a8952a6ec7f30688ef3111d0684681bb917266d36c01179c8d8f11e7"
+  },
+  "source_hashes_after": {
+    "tools/ninjars_dp_stability.py": "7a5477616c2559bacd9809c215a71e2bec02895fd8329a7846183d6dededcabf",
+    "tools/ninjars_dp_stability_driver.f": "5693ca7b2445fc2a95df5dc0f5bc73bd3dc862026015185960734441629f863b",
+    ".benchmark-work/paper-dp-stability-20261021-v1/recorder-control-v2/recorder-control.f": "e4aca6d6a8952a6ec7f30688ef3111d0684681bb917266d36c01179c8d8f11e7"
+  },
+  "sources_unchanged": true,
+  "observations": [
+    {
+      "label": "compile",
+      "command": [
+        "gfortran",
+        "-O2",
+        "-ffixed-line-length-132",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/recorder-control-v2/recorder-control.f",
+        "-o",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/recorder-control-v2/recorder-control"
+      ],
+      "pid": 573433,
+      "start_ticks": "63954653",
+      "cpu_affinity": [
+        6
+      ],
+      "exit_code": 0,
+      "seconds": 1.0196653129532933,
+      "reaped": true
+    },
+    {
+      "label": "execute",
+      "command": [
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/recorder-control-v2/recorder-control"
+      ],
+      "pid": 573679,
+      "start_ticks": "63954755",
+      "cpu_affinity": [
+        6
+      ],
+      "exit_code": 11,
+      "seconds": 0.004402491031214595,
+      "reaped": true
+    }
+  ],
+  "compiler": "GNU Fortran (GCC) 15.3.0\nCopyright (C) 2025 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+  "only_standalone_recorder": true,
+  "numerical_engines_executed": false,
+  "physical_campaign_qualified": false,
+  "success": false,
+  "executable_sha256": "888ca7696f89b38bc31a579fb96dc51a52a86dd0392c708c12f73ccb06d540ef"
+}

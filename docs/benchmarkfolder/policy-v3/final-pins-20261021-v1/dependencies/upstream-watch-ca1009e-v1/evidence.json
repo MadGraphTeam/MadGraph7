@@ -1,0 +1,266 @@
+{
+  "all_582_non_report_tree_entries_equal": true,
+  "background_watchers": 0,
+  "canonical_non_report_inventory_sha256": "cb9de8b9c50e9c6c52387a37be5d6a6648af85ee53cf754f550c6349d2020e94",
+  "cargo_files": {
+    "new": {
+      "Cargo.lock": {
+        "bytes": 82045,
+        "sha256": "d208476ab3f22280922b1477249fbf9a1f59017dcd9e3ad2f591cefd5674815a"
+      },
+      "Cargo.toml": {
+        "bytes": 3669,
+        "sha256": "c61b637a18467d302984f850a775044ecfa02c71f641206e3c5384a55f070208"
+      },
+      "crates/ninjars-positional/Cargo.toml": {
+        "bytes": 307,
+        "sha256": "2f39c6a8f1de27e5fb91dab4bb85ab7e7318d8e88ad234331e8f9abdbd8bf238"
+      },
+      "crates/ninjars-symbolica/Cargo.toml": {
+        "bytes": 1716,
+        "sha256": "b5ee98e21631287890af3c0e91905972408f701ca73b39e734cf64df106b55ba"
+      },
+      "crates/ninjars/Cargo.toml": {
+        "bytes": 299,
+        "sha256": "6433d849efb8baaab44058fe5ada3944890bb492698baa09751dcc448f586bef"
+      }
+    },
+    "old": {
+      "Cargo.lock": {
+        "bytes": 82045,
+        "sha256": "d208476ab3f22280922b1477249fbf9a1f59017dcd9e3ad2f591cefd5674815a"
+      },
+      "Cargo.toml": {
+        "bytes": 3669,
+        "sha256": "c61b637a18467d302984f850a775044ecfa02c71f641206e3c5384a55f070208"
+      },
+      "crates/ninjars-positional/Cargo.toml": {
+        "bytes": 307,
+        "sha256": "2f39c6a8f1de27e5fb91dab4bb85ab7e7318d8e88ad234331e8f9abdbd8bf238"
+      },
+      "crates/ninjars-symbolica/Cargo.toml": {
+        "bytes": 1716,
+        "sha256": "b5ee98e21631287890af3c0e91905972408f701ca73b39e734cf64df106b55ba"
+      },
+      "crates/ninjars/Cargo.toml": {
+        "bytes": 299,
+        "sha256": "6433d849efb8baaab44058fe5ada3944890bb492698baa09751dcc448f586bef"
+      }
+    }
+  },
+  "changed_categories": {
+    "docs": 8,
+    "other": 0,
+    "plan": 1,
+    "validation": 56
+  },
+  "changed_paths": 65,
+  "compiler_calls": 0,
+  "decision": {
+    "future_production_changes": "Review and qualify a separately pinned candidate; preserve existing measured identities.",
+    "observed_main_revision": "ca1009e89ecb03d3ff477f57b170241f7a9f8669",
+    "production_update_required_by_this_delta": false,
+    "root_authorized": "Continue frozen aa6/b0d actual science; no rebuild/restart or pin relabelling for this documentation-only change.",
+    "tested_archive_sha256": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c",
+    "tested_ninjars_revision": "aa6a6307dd081dc3714f9accebc0df9e5561ae73"
+  },
+  "dependency_pins_unchanged": {
+    "gammaloop": "d1904bf2bd5bf4f26969a73b415095e941a55610",
+    "oneloopmaster": "8ec256fc26cb361b20e10f59c19beb35717ef32c",
+    "symbolica_numerica_graphica": "9cdc2949cdb153478c1eca0d40690dc0abfc616e",
+    "symbolica_typst_plugin": "57b7455b37c30f4f87353c0073e49f5225e937ab"
+  },
+  "equal_git_objects": {
+    "Cargo.lock": {
+      "after": "bf1f5d41b5cfaf6be7cb6d0151f1b581130d5262",
+      "before": "bf1f5d41b5cfaf6be7cb6d0151f1b581130d5262"
+    },
+    "Cargo.toml": {
+      "after": "50d6df0d327623ca278bb5a35a50bdfec3ec5ffd",
+      "before": "50d6df0d327623ca278bb5a35a50bdfec3ec5ffd"
+    },
+    "crates": {
+      "after": "b759ce391271889fb402c7dfaf96fd21d836ad44",
+      "before": "b759ce391271889fb402c7dfaf96fd21d836ad44"
+    },
+    "crates/ninjars": {
+      "after": "07537633d987da7679c77efd209897ab346a345a",
+      "before": "07537633d987da7679c77efd209897ab346a345a"
+    },
+    "crates/ninjars-cli": {
+      "after": "cd6dfd39bc34553d05efa7163bd355bc9c0b6200",
+      "before": "cd6dfd39bc34553d05efa7163bd355bc9c0b6200"
+    },
+    "crates/ninjars-graph": {
+      "after": "2b38c6259fb511c1db0bbe50fc5a584f592aa297",
+      "before": "2b38c6259fb511c1db0bbe50fc5a584f592aa297"
+    },
+    "crates/ninjars-positional": {
+      "after": "b7fbf752e1bca2b9b5c1d5658cb8ff3e6648836a",
+      "before": "b7fbf752e1bca2b9b5c1d5658cb8ff3e6648836a"
+    },
+    "crates/ninjars-symbolica": {
+      "after": "29fbf07a45a22a81f07f24e2f7bb077877af5452",
+      "before": "29fbf07a45a22a81f07f24e2f7bb077877af5452"
+    },
+    "dependencies": {
+      "after": "18e941e7d925240f8767881d7422fdafc0a2b2b0",
+      "before": "18e941e7d925240f8767881d7422fdafc0a2b2b0"
+    },
+    "flake.lock": {
+      "after": "0e65db32a52d355c6a4c584837b2524cff041976",
+      "before": "0e65db32a52d355c6a4c584837b2524cff041976"
+    },
+    "flake.nix": {
+      "after": "d60cb782955c53b8af9cce3f251c5ab2ca390026",
+      "before": "d60cb782955c53b8af9cce3f251c5ab2ca390026"
+    }
+  },
+  "fetch": {
+    "command": [
+      "/nix/store/msr1v91ybfw6j12rs5mfl8ghb2rqsnsr-git-2.55.0/bin/git",
+      "-C",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/upstream-final-20261021/ninjars",
+      "fetch",
+      "--no-tags",
+      "origin",
+      "main"
+    ],
+    "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+    "exit_code": 0,
+    "fetched_head": "ca1009e89ecb03d3ff477f57b170241f7a9f8669",
+    "finished_utc": "2026-10-21T18:15:21.113029+00:00",
+    "head": "aa6a6307dd081dc3714f9accebc0df9e5561ae73",
+    "origin_main": "ca1009e89ecb03d3ff477f57b170241f7a9f8669",
+    "status_porcelain_v1": ""
+  },
+  "fresh_numerical_validation_claimed": false,
+  "from_revision": "aa6a6307dd081dc3714f9accebc0df9e5561ae73",
+  "key_source_sha256": {
+    "Cargo.lock": {
+      "bytes": 82045,
+      "exact_bytes_equal": true,
+      "sha256": "d208476ab3f22280922b1477249fbf9a1f59017dcd9e3ad2f591cefd5674815a"
+    },
+    "Cargo.toml": {
+      "bytes": 3669,
+      "exact_bytes_equal": true,
+      "sha256": "c61b637a18467d302984f850a775044ecfa02c71f641206e3c5384a55f070208"
+    },
+    "crates/ninjars-symbolica/src/amplitude.rs": {
+      "bytes": 36512,
+      "exact_bytes_equal": true,
+      "sha256": "8a31b89bc1934f6e0b611add844424ecf5c243eada7ddffc0b826293c61497a1"
+    },
+    "crates/ninjars-symbolica/src/masters.rs": {
+      "bytes": 44749,
+      "exact_bytes_equal": true,
+      "sha256": "cd378b459ac6162091b4bfa503316147352fd6505264f9b99d06fc03623672c3"
+    },
+    "crates/ninjars-symbolica/src/oneloop_native.rs": {
+      "bytes": 17564,
+      "exact_bytes_equal": true,
+      "sha256": "cba862419427d87b174de3993094aed4f7e6724d4abaa81d55927a1a235b5dbc"
+    },
+    "crates/ninjars/src/fast/engine.rs": {
+      "bytes": 87273,
+      "exact_bytes_equal": true,
+      "sha256": "7b98c98fdefa4ec54a03d6a6300f643f9e01d25b150dfc36340969b4241536cf"
+    },
+    "crates/ninjars/src/fast/tensor.rs": {
+      "bytes": 30728,
+      "exact_bytes_equal": true,
+      "sha256": "0f2ddc928fe4509d18f2dbb950e1b3b4ab2dfc7e98c10e61de531001f1a9313d"
+    },
+    "dependencies/manifest.json": {
+      "bytes": 1184,
+      "exact_bytes_equal": true,
+      "sha256": "4d121d31c99657025a907d68e03ccc1a12d536c510d5082bfe05b3eecd5393c8"
+    }
+  },
+  "known_caveats_unchanged": [
+    "Two synthetic binary64 cancellation lanes remain unflagged by upstream stability checks; new report data are measurements of aa6/8ec/9cdc, not an engine fix.",
+    "The oneloopmaster adversarial sweep and high-tracked-bit direct-provider tails remain open; tracked precision is not a certified error bound.",
+    "The generic within-cut cancellation check remains opt-in; upstream flag counts do not describe a newly enabled MadLoop bridge default.",
+    "Rank n+2 accuracy and component/pipeline timings in the upstream report do not substitute for full warmed MadLoop correctness, stability and per-process timing gates."
+  ],
+  "new_binary_identity_claimed": false,
+  "new_commits": 6,
+  "new_performance_claimed": false,
+  "non_report_source_entries": 582,
+  "numerical_engine_calls": 0,
+  "observed_utc": "2026-10-21T18:13:47.705179+00:00",
+  "official_ref_observations": {
+    "ninjars": {
+      "command": [
+        "/nix/store/msr1v91ybfw6j12rs5mfl8ghb2rqsnsr-git-2.55.0/bin/git",
+        "ls-remote",
+        "--symref",
+        "https://github.com/alphal00p/ninjars",
+        "HEAD",
+        "refs/heads/main"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+      "exit_code": 0,
+      "finished_utc": "2026-10-21T18:13:47.699828+00:00",
+      "frozen_revision": "aa6a6307dd081dc3714f9accebc0df9e5561ae73",
+      "refs": {
+        "HEAD": "ca1009e89ecb03d3ff477f57b170241f7a9f8669",
+        "refs/heads/main": "ca1009e89ecb03d3ff477f57b170241f7a9f8669"
+      },
+      "repository": "https://github.com/alphal00p/ninjars",
+      "started_utc": "2026-10-21T18:13:47.301849+00:00",
+      "stderr": "",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout": "ref: refs/heads/main\tHEAD\nca1009e89ecb03d3ff477f57b170241f7a9f8669\tHEAD\nca1009e89ecb03d3ff477f57b170241f7a9f8669\trefs/heads/main\n",
+      "stdout_sha256": "55038b0018ba10be055fb24b6501c1d1e07ed287d767d764e1b42a9fb643dab1",
+      "symbolic_head": "refs/heads/main",
+      "update_pending": true
+    },
+    "oneloopmaster": {
+      "command": [
+        "/nix/store/msr1v91ybfw6j12rs5mfl8ghb2rqsnsr-git-2.55.0/bin/git",
+        "ls-remote",
+        "--symref",
+        "https://github.com/alphal00p/oneloopmaster",
+        "HEAD",
+        "refs/heads/main"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+      "exit_code": 0,
+      "finished_utc": "2026-10-21T18:13:47.704380+00:00",
+      "frozen_revision": "8ec256fc26cb361b20e10f59c19beb35717ef32c",
+      "refs": {
+        "HEAD": "8ec256fc26cb361b20e10f59c19beb35717ef32c",
+        "refs/heads/main": "8ec256fc26cb361b20e10f59c19beb35717ef32c"
+      },
+      "repository": "https://github.com/alphal00p/oneloopmaster",
+      "started_utc": "2026-10-21T18:13:47.302048+00:00",
+      "stderr": "",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdout": "ref: refs/heads/main\tHEAD\n8ec256fc26cb361b20e10f59c19beb35717ef32c\tHEAD\n8ec256fc26cb361b20e10f59c19beb35717ef32c\trefs/heads/main\n",
+      "stdout_sha256": "547bea3deb96cea745e6c9d4fe9a6a9e3ab6b365c39d93eec6f5efb78cfb6455",
+      "symbolic_head": "refs/heads/main",
+      "update_pending": false
+    }
+  },
+  "pin_or_install_changes": 0,
+  "prior_dependency_capsule_manifest_sha256": "a3b22b435b40b63c24b5aacacbddaf70da1ea6ee927be279d26eaf4edac99fbb",
+  "private_review_bindings": {
+    "independent_manifest_sha256": "ff618908ee59d10045f9b0b68b2a0dd0f0c5c6174f735388eeff2a8da57e15ee",
+    "independent_numerical_review_sha256": "adbf7e0b81c16750871b3049600cfd93afb5017f02c097dab961aa9384e4366a",
+    "source_closure_proof_sha256": "6066b070f9daf9be7734131eb878c370623dbbaac51f46119b7ffb1e1c960683"
+  },
+  "reviewed_utc": "2026-10-21T18:17:29.653240+00:00",
+  "schema": "ninjars-upstream-documentation-watch-v1",
+  "scope_excluded_from_source_comparison": [
+    "TODO_NEXT_PLAN.md",
+    "docs/",
+    "validation/"
+  ],
+  "to_revision": "ca1009e89ecb03d3ff477f57b170241f7a9f8669",
+  "upstream_report_sources": [
+    "https://github.com/alphal00p/ninjars/blob/ca1009e89ecb03d3ff477f57b170241f7a9f8669/docs/benchmark/sections.typ",
+    "https://github.com/alphal00p/ninjars/blob/ca1009e89ecb03d3ff477f57b170241f7a9f8669/validation/benchmark/collier/README.md"
+  ]
+}

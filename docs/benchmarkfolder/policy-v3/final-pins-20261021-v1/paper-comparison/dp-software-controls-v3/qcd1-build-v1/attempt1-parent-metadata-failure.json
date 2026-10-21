@@ -1,0 +1,5 @@
+{
+  "event": "parent exited during JSON serialization of set-valued source delta after first compile; original compile logs/launch preserved",
+  "child_exit_code_claimed": false,
+  "numerical_execution": false
+}

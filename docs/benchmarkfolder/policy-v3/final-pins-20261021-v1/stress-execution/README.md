@@ -43,7 +43,7 @@ strict provenance and numerical audit, and keep their actual original source,
 runtime, parent status, and calibration-only classification. Missing independent
 ordinary references remain outstanding controls.
 
-Numerical collection remains held until the root controller supplies the
+Fresh NinjaRS numerical collection remains held until the root controller supplies the
 explicit resource handoff after the final core run. No numerical specifications
 were written at generation completion: their orchestration HEAD must be bound
 after the next reviewed milestone commit. Every evaluation requires CPU190,
@@ -57,6 +57,26 @@ of unexpected numerical inputs, unchanged numerical function objects, dispatch
 restoration, and target/base-specification integrity. They execute no compiler
 or numerical engine. The earlier six-check logs are retained separately; they
 are not an additional scientific sample.
+
+The root subsequently authorized separate legacy-only correctness controls on
+CPU12. `collect_legacy_cpu12.py` permits only EWordinary20 tools1/6/7 and both
+rotation4/scale8 Ninja6, with no NinjaRS numerical evaluation or Symbolica context.
+Normal `EXIT_MADLOOP` teardown may call `destroy_context(NULL)`; this allowed
+no-op creates no context and evaluates no integral. These controls completed
+with the preserved EWordinary Collier7 point19 stability rejection. Accepted
+CutTools/Ninja calibrations, all rotation/scale commands, independent audits,
+and exact scopes are curated in `../legacy-controls-capsule-v1`. All three
+controllers and their children were reaped; CPU12 was released. Their traversal
+times are excluded from final performance acceptance.
+
+Both new scoped collectors allow unrelated orchestration commits only while
+exact numerical source856e, generator77b, archiveb0d and every bound imported
+helper remain unchanged. They append the actual observed HEAD; retained/default
+collectors retain their original guards. `nrs-guard-v1-checks.json` records
+thirteen fresh software checks and independent source review of the held
+NinjaRS wrapper. Its exact pre-guard source is retained under
+`source-pre-nrs-guard` with the original552aee authority, preserving the earlier
+nine-check proof rather than rewriting it.
 
 All paths below are relative to the MadGraph repository. To repeat read-only
 validation in the pinned development environment:
