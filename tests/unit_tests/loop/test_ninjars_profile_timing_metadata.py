@@ -7,6 +7,7 @@ import logging
 import os
 import glob
 import shutil
+import sys
 from pathlib import Path
 import re
 from types import SimpleNamespace
@@ -26,6 +27,9 @@ class Process:
     def shell_string(self):
         return 'P0uux_z'
 
+    def nice_string(self):
+        return 'Process: u u~ > z'
+
 class Matrix(dict):
     def __init__(self):
         super().__init__(processes=[Process()])
@@ -38,7 +42,7 @@ def actual_functions(path):
     return methods
 
 def exercise(label, source, optimized=True, initialized=None, tool=8, failure=None, real_card=False,
-             mutate_runtime=None, base_root=None):
+             mutate_runtime=None, base_root=None, physical_layout=None):
     base = base_root/label
     base.mkdir(parents=True,exist_ok=False)
     calls = []
@@ -51,6 +55,8 @@ def exercise(label, source, optimized=True, initialized=None, tool=8, failure=No
     card = dict(MLReductionLib=str(tool),CTModeRun=-1,CTModeInit=1,
                 COLLIERComputeUVpoles=True,COLLIERComputeIRpoles=True,
                 MLStabThres=1e-9,COLLIERRequiredAccuracy=1e-12)
+    if physical_layout is not None:
+        card['CTModeRun'] = 1
     class Initializer:
         @staticmethod
         def fix_PSPoint_in_check(path,**settings):
@@ -97,6 +103,16 @@ def exercise(label, source, optimized=True, initialized=None, tool=8, failure=No
                 for key,value in card.items():
                     actual[key] = value
                 actual.write(str(export/'Cards/MadLoopParams.dat'))
+            if physical_layout is not None:
+                (resources/'param_card.dat').symlink_to('../../../Cards/param_card.dat')
+                (resources/'MadLoopParams.dat').symlink_to('../../../Cards/MadLoopParams.dat')
+            if physical_layout == 'flat-first':
+                (directory/'param_card.dat').write_text('mock param_card.dat')
+                (directory/'Cards').mkdir()
+                (directory/'Cards/param_card.dat').write_text('lower-priority decoy')
+            if physical_layout == 'ancestor-first':
+                (export/'SubProcesses/Cards').mkdir()
+                (export/'SubProcesses/Cards/param_card.dat').write_text('higher-priority native card')
             (directory/'proc_prefix.txt').write_text('ML5_0_')
             (resources/'ML5_0_HelFilter.dat').write_text('-10000 1 -10000\n' if optimized else 'F T F\n')
             (resources/'ML5_0_HelConfigs.dat').write_text('1 -1 -1\n1 -1 0\n1 -1 1\n')
@@ -126,7 +142,9 @@ def exercise(label, source, optimized=True, initialized=None, tool=8, failure=No
 
 class TimingMetadataTests(unittest.TestCase):
     def setUp(self):
-        temporary = tempfile.TemporaryDirectory(prefix='mg5-profile-metadata-')
+        parent = ROOT/'.ninjars-build/tmp'
+        parent.mkdir(parents=True,exist_ok=True)
+        temporary = tempfile.TemporaryDirectory(dir=parent,prefix='mg5-profile-metadata-')
         self.addCleanup(temporary.cleanup)
         self.work = Path(temporary.name)
 
@@ -243,6 +261,52 @@ class TimingMetadataTests(unittest.TestCase):
         self.assertEqual(metadata['profile_timing_result']['run_unpolarized_total'],seed['run_unpolarized_total'])
         self.assertEqual(metadata['profile_timing_result']['Diagrams_generation'],.123456789)
         self.assertEqual(returned['run_unpolarized_total'],999)
+
+    def consume(self, result, tool):
+        sys.path.insert(0,str(ROOT/'tools'))
+        import ninjars_profile_cli_v3 as cli
+        tree = ast.parse(NEW.read_text())
+        nodes = [n for n in tree.body if isinstance(n,ast.FunctionDef) and
+                 n.name in ('format_output','output_timings')]
+        namespace = {'bannermod':__import__('madgraph.various.banner',fromlist=['MadLoopParam'])}
+        exec(compile(ast.Module(body=nodes,type_ignores=[]),str(NEW),'exec'),namespace)
+        timing = dict(result)
+        timing.update(loop_optimized_output=True,reduction_tool=tool,
+            Diagrams_generation=.1,HelasDiagrams_generation=.1,n_contrib_hel=1,n_tot_hel=1,
+            n_loops=1,n_loop_groups=1,n_loop_wfs=1,loop_wfs_ranks=[1])
+        printed = cli.parse_profile(namespace['output_timings'](Process(),timing),tool)
+        metadata = json.loads(Path(result['timing_metadata']['path']).read_text())
+        return cli.metadata_timing(metadata,tool,printed),metadata
+
+    def test_modern_resource_only_card_passes_actual_whole_observer_and_consumer(self):
+        for tool in (6,8):
+            result,_,_ = exercise('consumer-modern-%d'%tool,NEW,tool=tool,real_card=True,
+                                 physical_layout='modern',base_root=self.work)
+            observed,metadata = self.consume(result,tool)
+            directory = Path(metadata['subprocess_dir'])
+            self.assertFalse((directory/'param_card.dat').exists())
+            self.assertTrue((directory/'MadLoop5_resources/param_card.dat').is_file())
+            self.assertTrue(observed['scope_complete'])
+            self.assertEqual(observed['metadata_stage_count'],6)
+
+    def test_native_flat_card_priority_beats_lower_cards_decoy(self):
+        result,_,_ = exercise('consumer-flat',NEW,real_card=True,
+                             physical_layout='flat-first',base_root=self.work)
+        observed,metadata = self.consume(result,8)
+        self.assertTrue(observed['scope_complete'])
+        expected = Path(metadata['subprocess_dir'])/'param_card.dat'
+        self.assertTrue(all(Path(stage['subprocess_parameter_card']['path']) == expected
+                            for stage in metadata['stages']))
+
+    def test_intervening_ancestor_card_is_captured_and_consumer_rejects_different_physics(self):
+        result,_,_ = exercise('consumer-ancestor',NEW,real_card=True,
+                             physical_layout='ancestor-first',base_root=self.work)
+        metadata = json.loads(Path(result['timing_metadata']['path']).read_text())
+        expected = (Path(metadata['export_dir'])/'SubProcesses/Cards/param_card.dat').resolve()
+        self.assertTrue(all(Path(stage['subprocess_parameter_card']['path']).resolve() == expected
+                            for stage in metadata['stages']))
+        with self.assertRaisesRegex(ValueError,'Different effective physical cards'):
+            self.consume(result,8)
 
 if __name__ == '__main__':
     unittest.main()

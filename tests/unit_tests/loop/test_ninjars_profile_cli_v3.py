@@ -40,6 +40,29 @@ class ProfileCLI(unittest.TestCase):
             "physical_card": self.put("param_card.dat"), "ninja_archive": self.put("ninja/libninja.a"),
             "ninjars_archive": self.put("ninjars/libninjars.a")}
 
+    def test_selected_archive_accepts_root_nested_and_equal_duplicates(self):
+        for archive in ('libninja.a', 'libninjars.a'):
+            for libraries in ({archive:'expected'}, {'reducer_lib/'+archive:'expected'},
+                              {archive:'expected','reducer_lib/'+archive:'expected'}):
+                with self.subTest(archive=archive,libraries=libraries):
+                    self.assertTrue(cli.selected_archive_matches(libraries,archive,'expected'))
+
+    def test_selected_archive_rejects_missing_exact_basename(self):
+        for libraries in ({}, {'libninja.a.bak':'expected'}, {'other/libninjars.a':'expected'}):
+            with self.subTest(libraries=libraries):
+                self.assertFalse(cli.selected_archive_matches(libraries,'libninja.a','expected'))
+
+    def test_selected_archive_rejects_wrong_root_or_nested_hash(self):
+        for name in ('libninja.a','ninja_lib/libninja.a'):
+            with self.subTest(name=name):
+                self.assertFalse(cli.selected_archive_matches({name:'wrong'},'libninja.a','expected'))
+
+    def test_selected_archive_rejects_any_conflicting_duplicate(self):
+        for libraries in ({'libninja.a':'expected','ninja_lib/libninja.a':'wrong'},
+                          {'libninja.a':'wrong','ninja_lib/libninja.a':'expected'}):
+            with self.subTest(libraries=libraries):
+                self.assertFalse(cli.selected_archive_matches(libraries,'libninja.a','expected'))
+
     def test_both_requested_backend_labels_and_units(self):
         for backend, label in cli.LABELS.items():
             result = cli.parse_profile(profile(label), backend)

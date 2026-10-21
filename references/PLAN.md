@@ -1182,3 +1182,21 @@ The affected live suite passed all 135 tests without skips or errors, including
 15 full stability I/O/cache/report tests and ten multi-Higgs control tests. A
 subsequent one-byte whitespace cleanup leaves its tested AST unchanged. Preserve
 the exact tested/final source identities in the software proof.
+
+### Actual timing-observer and collector contract
+
+The third pilot completed the native Ninja profile and stability command with
+exit zero, but its benchmark adapter rejected missing legacy flat-card metadata.
+Do not accept its timing comparison: NinjaRS was not launched. The generated
+Fortran reader resolves the physical card directly or through `Cards` in the
+working directory and up to five parents. Mirror that exact lookup in metadata
+capture. Keep the canonical physical-card identity checks strict.
+
+The complete retained native output also exposed a collector assumption about
+bare archive filenames. Accept relative library keys by exact basename, require
+at least one match, and require every matching hash to equal the pinned archive.
+Preserve the original library map. Before another native pilot, replay the entire
+actual-data collection and strict report reader offline, including cache,
+adaptive counts, runtime/source/card identities and transitive file inventories.
+The original failed result remains unchanged. These observer/collector changes
+do not alter the physics, RNG, timing formulas or numerical acceptance.

@@ -1,0 +1,36 @@
+{
+  "schema": "madloop-profile-physical-card-live-application-v1",
+  "utc": "2026-10-21T23:01:25.577267+00:00",
+  "head": "68417dc1a61f243aa453737c786b7e11982ab677",
+  "authorization": "Root conditional exact apply after source reviews and full actual offline postcollection/reader pass",
+  "updates": [
+    {
+      "path": "madgraph/various/process_checks.py",
+      "before": "1229ccfc599cd1ee3f733e3e4c28f2a12ec13ca2878da6b72df27b5e216df424",
+      "after": "59b2051d9ba17408046e9a7df188b70256e4081b71519b441623bc5e33358899",
+      "mode": "0o755",
+      "candidate": ".benchmark-work/profile-cli-physical-card-observer-fix-v1/process_checks.patched.py"
+    },
+    {
+      "path": "tools/ninjars_profile_cli_v3.py",
+      "before": "c8f2bd5dc63ec20b9dfa74ff7af1f84fbfcfdc04aa33d080f9078f82d611075c",
+      "after": "b0681842604b651eac164448f0ca5b19cc61ae02c16704ceb4e9e926516c8ff7",
+      "mode": "0o600",
+      "candidate": ".benchmark-work/profile-cli-physical-card-observer-fix-v1/ninjars_profile_cli_v3.py"
+    },
+    {
+      "path": "tests/unit_tests/loop/test_ninjars_profile_cli_v3.py",
+      "before": "95335b618b8bc384b049efb1cb462230064bf71f05d9ff376eb2ae16b8453fe1",
+      "after": "dbf31ac2af3b2096f0a4ec8bb6aaee6158e89d5212f20fcd87ad343a966686fc",
+      "mode": "0o600",
+      "candidate": ".benchmark-work/profile-cli-physical-card-observer-fix-v1/test_ninjars_profile_cli_v3.py"
+    },
+    {
+      "path": "tests/unit_tests/loop/test_ninjars_profile_timing_metadata.py",
+      "after": "be2bc38e66df7a96784543d12c30eaf880c8f26e4c8fd28ded8b57b07a4d687c",
+      "mode": "0o600",
+      "note": "Installer-owned live enhanced test; private12PASS before this application"
+    }
+  ],
+  "native_calls": 0
+}

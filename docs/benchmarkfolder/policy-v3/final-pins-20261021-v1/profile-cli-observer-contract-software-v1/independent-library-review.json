@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "source_sha256": "b0681842604b651eac164448f0ca5b19cc61ae02c16704ceb4e9e926516c8ff7",
+  "test_sha256": "dbf31ac2af3b2096f0a4ec8bb6aaee6158e89d5212f20fcd87ad343a966686fc",
+  "scope": "Bounded source/test-only review, no tests/native/archives/repeatedscience.",
+  "conclusion": "selected_archive_matches requires at least one exact basename and all selected hashes equal expected. Actual relative keys remain unchanged. Flat and nested samehash duplicates pass; missing/wrongbasename/hash/conflictingduplicate reject. Both execute_one and report_snapshot use the same check.",
+  "boundary": "Removing5-line new helper and restoring its two calls yields entire predecessor ASTexactly. Stage runtime/source/card/transitive inventory and actual numerical/timing checks unchanged.",
+  "tests": "Four added directmatch controls cover root/nested/samehash duplicate positives and missing/wrongname/wronghash/conflictingduplicate negatives. Owner fullpostcollection/reader actualdata offline replay remains separate gate.",
+  "no_numerical_acceptance_claim": true
+}

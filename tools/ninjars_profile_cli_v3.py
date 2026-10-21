@@ -260,6 +260,11 @@ def metadata_timing(metadata, backend, printed, snapshot_root=None):
         "selected_helicity_weight": int(selected["filter_tokens"][index-1])}
 
 
+def selected_archive_matches(libraries, archive, expected):
+    matches = [value for name,value in libraries.items() if Path(name).name == archive]
+    return bool(matches) and all(value == expected for value in matches)
+
+
 def execute_one(spec_path, index, handoff_path, execute=False):
     require(execute, "Numerical CLI execution is held without explicit launch flag")
     spec = read(spec_path); item = spec["schedule"][index]
@@ -336,7 +341,7 @@ def execute_one(spec_path, index, handoff_path, execute=False):
                 executable=bound(directory / "check"), thread_environment={k: environment[k] for k in pair.THREADS})
             selected_archive = "libninja.a" if item["backend"] == 6 else "libninjars.a"
             expected_archive = case["ninja_archive" if item["backend"] == 6 else "ninjars_archive"]["sha256"]
-            require(result["libraries"].get(selected_archive) == expected_archive, "Actual CLI selected reducer archive mismatch")
+            require(selected_archive_matches(result["libraries"], selected_archive, expected_archive), "Actual CLI selected reducer archive mismatch")
             require(all(any(Path(name).name == selected_archive and record.get("sha256") == expected_archive
                 for name, record in metadata_runtime(timing_metadata, stage).items()) for stage in timing_metadata["stages"]),
                 "Timing stage used an unbound reducer archive")
@@ -436,7 +441,7 @@ def report_snapshot(filename, expected=None, inputs=None):
         "CLI raw metadata/result disagrees")
     require(actual["stage_scope"]["physical_card_sha256"] == case["physical_card"]["sha256"], "Changed actual physical card")
     archive = "libninja.a" if backend == 6 else "libninjars.a"; archive_sha = declared["ninja_archive" if backend == 6 else "ninjars_archive"]
-    require(result["libraries"].get(archive) == archive_sha and all(any(Path(name).name == archive and record.get("sha256") == archive_sha
+    require(selected_archive_matches(result["libraries"], archive, archive_sha) and all(any(Path(name).name == archive and record.get("sha256") == archive_sha
         for name, record in metadata_runtime(metadata, stage).items()) for stage in metadata["stages"]), "Changed actual selected CLI runtime")
     # Snapshot files must belong to the complete transitive inventory, not only match a free-standing hash.
     for stage in metadata["stages"]:
