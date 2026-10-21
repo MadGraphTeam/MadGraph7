@@ -896,10 +896,74 @@ class Primitive:
         )
 
     def tensor(self, legs: Sequence[ColorLeg]) -> ConnectedColorTensor:
-        """The SU(N_c) literal tensor (single-letter traces vanish)."""
+        """The SU(N_c) literal tensor (single-letter traces vanish).
 
-        external = {leg.label: leg.label for leg in legs}
-        return reduce_network(self.network(), legs, external)
+        Quark rings are reduced once per relabelling class of their external
+        adjoint labels (``_ring_relabelling``) and relabelled back.
+        """
+
+        legs = tuple(legs)
+        if self.kind == "quark-ring":
+            adjoint = frozenset(leg.label for leg in legs if leg.representation == 8)
+            canonical, back = _ring_relabelling(self, adjoint)
+            return _relabelled(_reduced_primitive(canonical, legs), back)
+        return _reduced_primitive(self, legs)
+
+
+@lru_cache(maxsize=1 << 14)
+def _reduced_primitive(
+    primitive: Primitive, legs: tuple[ColorLeg, ...]
+) -> ConnectedColorTensor:
+    external = {leg.label: leg.label for leg in legs}
+    return reduce_network(primitive.network(), legs, external)
+
+
+def _ring_relabelling(
+    primitive: Primitive, adjoint: frozenset[int]
+) -> tuple[Primitive, dict[int, int]]:
+    """(canonical quark ring, map from its adjoint labels back to the ring's).
+
+    The ring's external adjoint labels, in order of first appearance, are
+    renamed onto their sorted set; the colour depends on labels only through
+    their names, so tensor(ring) = back(tensor(canonical)). A quark ring is a
+    cyclic word, so the canonical one is also rotated (``canonical_primitive``).
+    """
+
+    seen: dict[int, None] = {}
+
+    def visit(label: Label) -> None:
+        if isinstance(label, int) and label in adjoint:
+            seen.setdefault(label)
+
+    for descriptor in primitive.word:
+        if descriptor[0] == "exact":
+            for term in descriptor[1]:
+                for string in term.strings:
+                    for label in (string.row, *string.word, string.col):
+                        visit(label)
+                for trace in term.traces:
+                    for label in trace:
+                        visit(label)
+        else:
+            for label in descriptor[1]:
+                visit(label)
+    forward = dict(zip(seen, sorted(seen), strict=True))
+    if all(a == b for a, b in forward.items()):
+        canonical, _sign = canonical_primitive("quark-ring", primitive.word)
+        return canonical, {}
+
+    def rename(label: Label) -> Label:
+        return forward.get(label, label) if isinstance(label, int) else label
+
+    word = []
+    for descriptor in primitive.word:
+        if descriptor[0] == "exact":
+            word.append(("exact", relabel(descriptor[1], rename)))
+        else:
+            kind, letters, *rest = descriptor
+            word.append((kind, tuple(map(rename, letters)), *rest))
+    canonical, _sign = canonical_primitive("quark-ring", word)
+    return canonical, {b: a for a, b in forward.items()}
 
 
 def canonical_primitive(
@@ -1906,14 +1970,27 @@ class _PrimitiveCells:
     def __init__(self, basis: BornBasis):
         self.basis = basis
         self._cache: dict[Hashable, Laurent] = {}
+        self._adjoint = frozenset(
+            leg.label for leg in basis.legs if leg.representation == 8
+        )
 
     def __call__(self, primitive: Primitive) -> tuple[Laurent, ...]:
         if primitive.kind == "quark-ring":
-            ket = primitive.tensor(self.basis.legs)
-            return tuple(
-                contract_connected_tensor_nc_terms(bra, ket)
-                for bra in self.basis.tensors
-            )
+            # <b|back(P')> = <back^-1(b)|P'> on the canonical ring P'.
+            canonical, back = _ring_relabelling(primitive, self._adjoint)
+            forward = {b: a for a, b in back.items()}
+            ket = canonical.tensor(self.basis.legs)
+            out = []
+            for bra in self.basis.tensors:
+                bra = _relabelled(bra, forward) if forward else bra
+                key = ("quark-ring", canonical, bra)
+                found = self._cache.get(key)
+                if found is None:
+                    found = self._cache[key] = contract_connected_tensor_nc_terms(
+                        bra, ket
+                    )
+                out.append(found)
+            return tuple(out)
         rename = {label: i for i, label in enumerate(primitive.word, start=1)}
         return tuple(self._cell(primitive, b, rename) for b in self.basis.tensors)
 

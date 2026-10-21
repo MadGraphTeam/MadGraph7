@@ -629,6 +629,38 @@ def test_compressions_are_certified(v2_slice, name, kinds):
     assert all(class_of.values())
 
 
+@pytest.mark.loop_physics
+def test_quark_rings_reduce_once_per_relabelling(v2_slice):
+    """Quark-ring tensors and cells come from one reduction per relabelling
+    class of their external adjoint labels; every class of uu~ -> ggg equals
+    its direct SU(N_c) reduction and contraction, and the 93 rings need
+    fewer reductions than classes."""
+
+    from pyamplicol.loops.v2.colour import Primitive, _ring_relabelling
+
+    v2 = v2_slice("uux_ggg")
+    table, _class_of = build_seed_table(v2.colour, _skeleton_list(v2), compress=True)
+    legs = table.basis.legs
+    adjoint = frozenset(leg.label for leg in legs if leg.representation == 8)
+    external = {leg.label: leg.label for leg in legs}
+    rings = [
+        (c, seed)
+        for c, seed in enumerate(table.classes)
+        if isinstance(seed, Primitive) and seed.kind == "quark-ring"
+    ]
+    assert len(rings) == 93
+    canonical = set()
+    for c, seed in rings:
+        direct = reduce_network(seed.network(), legs, external)
+        assert seed.tensor(legs) == direct
+        assert table.cells[c] == tuple(
+            contract_connected_tensor_nc_terms(bra, direct)
+            for bra in table.basis.tensors
+        )
+        canonical.add(_ring_relabelling(seed, adjoint)[0])
+    assert len(canonical) < len(rings)
+
+
 def _born_rows(table, count: int, grades=(0,)) -> list[dict]:
     """Deterministic, irregular binary64 Born rows over the whole basis."""
 
