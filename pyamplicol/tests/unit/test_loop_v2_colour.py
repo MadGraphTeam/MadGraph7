@@ -1175,8 +1175,15 @@ def test_born_sectors_close_block_words_in_their_orientation(
     Every Born root contracts two tree currents; their block words closed with
     each other (U(N) part) give the root's sector tensor, pairing phase
     included. Gluons on one quark line (uu~ -> gg, ggg) fix the orientation.
+    The root's weight is its Wick ordering sign alone (the Born sign
+    convention of ``generation/fermion_ordering.py``).
     """
 
+    from pyamplicol.generation.fermion_ordering import (
+        FermionOrderingSign,
+        gluon_joined_phase,
+        open_line_closure_sign,
+    )
     from pyamplicol.models.external import CompiledUFOModel
     from pyamplicol.models.loading import load_compiled_model
     from pyamplicol.processes.model import build_model_process_ir
@@ -1194,6 +1201,8 @@ def test_born_sectors_close_block_words_in_their_orientation(
     sectors = dict(zip(basis.sector_ids, basis.tensors, strict=True))
     representations = {leg.label: leg.representation for leg in basis.legs}
     dag = blocks.born_dag
+    wick = FermionOrderingSign(dag.process, model, coloured_lines=True)
+    phase = gluon_joined_phase(dag.process, model)
     checked = 0
     for root in dag.amplitude_roots:
         ends = [dag.currents[root.left_id].index, dag.currents[root.right_id].index]
@@ -1220,7 +1229,12 @@ def test_born_sectors_close_block_words_in_their_orientation(
         (leading,) = [term for term in closed.terms if term.nc_power == 0]
         (expected,) = sectors[root.color_sector_id].terms
         sign = flows[0].sign * flows[1].sign
-        assert root.color_weight == (1.0, 0.0)
+        ordering = (
+            wick.merge_sign(*ends)
+            * phase
+            * open_line_closure_sign(dag.color_plan.sector(root.color_sector_id))
+        )
+        assert root.color_weight == (ordering, 0.0)
         assert (leading.tensor, leading.coefficient.scaled(sign)) == (
             expected.tensor,
             expected.coefficient,
