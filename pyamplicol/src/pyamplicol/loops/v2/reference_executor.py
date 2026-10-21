@@ -874,6 +874,9 @@ class CatalogueKinematics:
     ``vertex_terms`` are the compiled model's vertex terms and
     ``native_model`` the native model whose field and rule names the families
     use. ``momenta`` are the external momenta, all incoming (exact).
+    ``reading(rule, legs)`` maps the UFO legs of a routing term (loop in, loop
+    out, blocks; the colour seeds' incoming reading) to the legs its kernels
+    read; physical tree rows need ``conventions.TreeReading``.
     """
 
     def __init__(
@@ -884,11 +887,13 @@ class CatalogueKinematics:
         blocks: BlockRows,
         momenta: Sequence[Sequence[Any]],
         constants: KernelConstants,
+        reading: Callable[[str, tuple[int, ...]], tuple[int, ...]] | None = None,
     ):
         data = _model_data(native_model)
         self.catalogue = catalogue
         self.blocks = blocks
         self.constants = constants
+        self.reading = reading
         self.carrier = constants.carrier
         self._rules = {rule["name"]: rule for rule in data["vertex_rules"]}
         self._antiname = {p["name"]: p["antiname"] for p in data["particles"]}
@@ -958,6 +963,8 @@ class CatalogueKinematics:
             return found
         out = []
         for rule, indices, legs, orders, attachments in self._routing_terms(content):
+            if self.reading is not None:
+                legs = self.reading(rule, legs)
             vertex_terms = [
                 term
                 for index in indices

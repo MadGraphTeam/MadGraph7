@@ -132,3 +132,27 @@ def test_legacy_interaction_color_weight_keeps_rational_coefficients(monkeypatch
         model_parameter_symbols={},
     )
     assert (result[0] + E("x/3")).expand() == E("0")
+
+
+def test_exact_weights_override_binary64_weights_in_context_only():
+    from concurrent.futures import ThreadPoolExecutor
+
+    from symbolica import E
+
+    third, expression = complex(1 / 3), E("x")
+    rounded = stage_expressions._apply_amplitude_color_weight((1 / 3, 0.0), expression)
+    assert (rounded - expression / 3).expand() != E("0")
+    with stage_expressions.exact_weights({third: E("1/3")}):
+        exact = stage_expressions._apply_amplitude_color_weight(
+            (1 / 3, 0.0), expression
+        )
+        assert (exact - expression / 3).expand() == E("0")
+        with ThreadPoolExecutor(1) as pool:
+            other = pool.submit(
+                stage_expressions._apply_amplitude_color_weight,
+                (1 / 3, 0.0),
+                expression,
+            ).result()
+        assert (other - rounded).expand() == E("0")
+    after = stage_expressions._apply_amplitude_color_weight((1 / 3, 0.0), expression)
+    assert (after - rounded).expand() == E("0")

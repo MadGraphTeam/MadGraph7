@@ -257,6 +257,21 @@ def _factor_network(atom: Any) -> ColourNetwork:
                 strings=(ColourString(row, tuple(word), col),), root2_power=len(word)
             ),
         )
+    if head == "trace":
+        # Spenso's trace(cof(3), cyclic(t(coad(8, a), in, out), ...)) of
+        # generators: tr(t^a1 ... t^ak) = 2^(-k/2) tr(tau^a1 ... tau^ak).
+        representation, cyclic = arguments
+        if _head(representation) != "cof" or _head(cyclic) != "cyclic":
+            raise NotImplementedError(f"unsupported colour trace: {atom}")
+        word = []
+        for matrix in cyclic:
+            if _head(matrix) != "t":
+                raise NotImplementedError(f"unsupported trace matrix: {matrix}")
+            slot, a = _index(next(iter(matrix)))
+            if slot != "adjoint":
+                raise NotImplementedError(f"unsupported trace matrix: {matrix}")
+            word.append(a)
+        return (ColourProduct(traces=(tuple(word),), root2_power=len(word)),)
     if head in ("g", "id"):
         (left_kind, left), (right_kind, right) = map(_index, arguments)
         if left_kind == right_kind == "adjoint":
@@ -276,9 +291,10 @@ def _factor_network(atom: Any) -> ColourNetwork:
 def spenso_colour_network(expression: Any) -> ColourNetwork:
     """Lower a Spenso SU(3) colour expression to tau strings and traces.
 
-    Accepts sums of products of numbers, ``f``, ``t``, ``chain`` and colour
-    metrics, i.e. the ``color_expression`` of compiled vertex terms and the
-    legacy engine's colour tensors. Index labels are the slot names.
+    Accepts sums of products of numbers, ``f``, ``t``, ``chain``, ``trace``
+    and colour metrics, i.e. the ``color_expression`` of compiled vertex
+    terms, the legacy engine's colour tensors and the whole-rule continuation
+    tensors. Index labels are the slot names.
     """
 
     from symbolica import AtomType, E, Expression
@@ -897,11 +913,18 @@ class SeedTable:
 
 
 def build_seed_table(
-    colour: SeedColour, skeletons: Iterable[Skeleton]
+    colour: SeedColour,
+    skeletons: Iterable[Skeleton],
+    basis: BornBasis | None = None,
 ) -> tuple[SeedTable, dict[Skeleton, int]]:
-    """Seed classes of ``skeletons`` and their exact table K."""
+    """Seed classes of ``skeletons`` and their exact table K.
 
-    basis = born_basis(colour.blocks)
+    ``basis`` defaults to the tree engine's Born basis (``born_basis``); any
+    set of literal colour tensors whose amplitudes the caller provides works.
+    """
+
+    if basis is None:
+        basis = born_basis(colour.blocks)
     index: dict[ConnectedColorTensor, int] = {}
     orders: list[set[Orders]] = []
     class_of: dict[Skeleton, int] = {}
