@@ -36,7 +36,7 @@ from tools.performance_report.resources import (
     _linux_proc_snapshot,
     _parse_linux_process_identity,
     _parse_proc_stat,
-    _parse_proc_status_rss,
+    _parse_proc_stat_rss,
     _parse_ps_output,
     _ProcessIdentity,
     _signal_process_tree,
@@ -46,20 +46,24 @@ from tools.performance_report.resources import (
 
 
 def test_linux_proc_parsers_and_snapshot_include_cpu_time(tmp_path: Path) -> None:
-    stat = "42 (worker (phase 2)) S 7 42 42 0 -1 0 0 0 0 0 200 50"
-    status = "Name:\tworker\nVmPeak:\t9000 kB\nVmRSS:\t1536 kB\n"
+    stat = (
+        "42 (worker (phase 2)) S 7 42 42 0 -1 0 0 0 0 0 200 50 0 0 20 0 1 0 "
+        "12345 9216000 384"
+    )
 
     assert _parse_proc_stat(stat, clock_ticks_per_second=100) == (7, 2.5)
-    assert _parse_proc_status_rss(status) == 1536 * 1024
+    assert _parse_proc_stat_rss(stat, page_size=4096) == 1536 * 1024
+    with pytest.raises(ValueError, match="incomplete"):
+        _parse_proc_stat_rss(stat.rsplit(" ", 1)[0], page_size=4096)
 
     process_dir = tmp_path / "42"
     process_dir.mkdir()
     (process_dir / "stat").write_text(stat, encoding="ascii")
-    (process_dir / "status").write_text(status, encoding="ascii")
 
     assert _linux_proc_snapshot(
         tmp_path,
         clock_ticks_per_second=100,
+        page_size=4096,
     ) == {
         42: ProcessRecord(
             pid=42,
