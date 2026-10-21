@@ -1,0 +1,185 @@
+{
+  "actual_card": {
+    "bytes": 13241,
+    "path": ".benchmark-work/original-collier-failure-publication-overlay-v1/proposed/docs/benchmarkfolder/policy-v2/original-collier-failure-final-v1/historical/private-audit/raw/actual-output/Cards/MadLoopParams.dat",
+    "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94"
+  },
+  "all_273_historical_original_path_mappings_preserved": true,
+  "all_publication_file_hashes_verified": true,
+  "checked_utc": "2026-10-21T06:25:44.272826+00:00",
+  "compiled_products_found": [],
+  "compiler_calls": 0,
+  "existing_test_suite_runs": 0,
+  "historical_result_or_source_rewritten": false,
+  "independent_arithmetic": {
+    "backend_pairs": 3,
+    "coefficient_columns": [
+      "Born",
+      "finite",
+      "single-pole",
+      "double-pole"
+    ],
+    "coefficient_failure_physical_events": 1,
+    "coefficient_failure_physical_points": [
+      99
+    ],
+    "common_scale": "Largest absolute coefficient across all three backends, all total/split rows at the common physical point.",
+    "failure_rows": [
+      {
+        "absolute_error": 1.3218178918531039e-20,
+        "backends": [
+          1,
+          7
+        ],
+        "column": 1,
+        "fraction_of_tolerance": 1.15789685641515,
+        "order": 0,
+        "passed": false,
+        "point": 99,
+        "tolerance": 1.1415679078233735e-20,
+        "values": [
+          -4.76698056030988e-14,
+          -4.766981882127772e-14
+        ]
+      },
+      {
+        "absolute_error": 1.3218178918531039e-20,
+        "backends": [
+          1,
+          7
+        ],
+        "column": 1,
+        "fraction_of_tolerance": 1.15789685641515,
+        "order": 1,
+        "passed": false,
+        "point": 99,
+        "tolerance": 1.1415679078233735e-20,
+        "values": [
+          -4.76698056030988e-14,
+          -4.766981882127772e-14
+        ]
+      }
+    ],
+    "maximum_tolerance_fraction": 1.15789685641515,
+    "orders": [
+      0,
+      1
+    ],
+    "physical_points": 100,
+    "point_scale_tolerance": 1e-10,
+    "relative_tolerance": 1e-07,
+    "scalar_comparisons": 2400,
+    "scientific_agreement_passed": false,
+    "stability_acceptance_passed": false,
+    "stability_failure_event_count": 2,
+    "stability_failure_events": {
+      "17": 3.6714977813117075e-09,
+      "52": 8.116512431646654e-09
+    }
+  },
+  "independent_prior_source_review": {
+    "bytes": 15460,
+    "path": ".benchmark-work/original-collier-410-source-review-v1/receipt.json",
+    "sha256": "6d165661dc8b6e0d66e9f90c1b5ac0081ca7cef3475b27f335f125aaea5e14ca"
+  },
+  "input_index": {
+    "bytes": 180907,
+    "path": ".benchmark-work/original-collier-failure-publication-overlay-v1/proposed/docs/benchmarkfolder/policy-v2/original-collier-failure-final-v1/input-index.json",
+    "sha256": "826c8f54e2fed90909b3182ed0afe47d70e2dcd58b69f1a5054ae75a354bd764"
+  },
+  "interpretation": "Two duplicated coefficient rows at one finite-failure event are distinct from two physical status410 events. The actual Fortran/card threshold and no-selected-QP explanation match the independent source review. Neither finite completeness nor successful offline reproduction changes the failed calibration or current mandatory core policy.",
+  "limits": [
+    "This is a local postprocessing failure capsule, not a qualified final repetition, successful benchmark, analytic finite oracle or whole-campaign acceptance.",
+    "Historical binary/library hashes remain recorded provenance; binaries are excluded and were not rebuilt or independently revalidated by this portable reproducer."
+  ],
+  "model_imports": 0,
+  "no_compiled_binary_or_cache_payloads": true,
+  "no_invented_core_dataset_identity": true,
+  "original_281_payloads_byte_identical": true,
+  "original_evidence_seal_byte_identical": {
+    "bytes": 49233,
+    "path": ".benchmark-work/original-collier-failure-publication-overlay-v1/proposed/docs/benchmarkfolder/policy-v2/original-collier-failure-final-v1/historical/private-audit/evidence-seal.json",
+    "sha256": "7799c2ede890d84a4507172b58c1d7a0cd7b764b2104b6bb3f93fabd9af7a607"
+  },
+  "package_file_count": 287,
+  "physics_calls": 0,
+  "primary_actual_failure_audit": {
+    "bytes": 29068,
+    "path": ".benchmark-work/policy-v2/reference-collier-failure-audit-20261021T0605Z/result.json",
+    "sha256": "6394ee75ff9bc68e177733a5036f8ccbfc24a58d67a602fd34e05bc87dcff15d"
+  },
+  "publication_manifest": {
+    "bytes": 57104,
+    "path": ".benchmark-work/original-collier-failure-publication-overlay-v1/proposed/docs/benchmarkfolder/policy-v2/original-collier-failure-final-v1/publication-manifest.json",
+    "sha256": "1b6755839791615ec622411514c282979a528d28b2f311fb9674585a427e387d"
+  },
+  "reproducer": {
+    "bytes": 11533,
+    "path": ".benchmark-work/original-collier-failure-publication-overlay-v1/proposed/docs/benchmarkfolder/policy-v2/original-collier-failure-final-v1/reproduce.py",
+    "sha256": "85a961aeb0f0be0ff2b5d1d4ed3c64dfe20f966d55ff6e977b00199d0c6d679b"
+  },
+  "reproducer_run": {
+    "cpu": 4,
+    "exit_code": 0,
+    "meaning": "Exit0 means expected failures reproduced. Scientific agreement and stability acceptance remain false.",
+    "result": {
+      "coefficient_failure_physical_points": [
+        99
+      ],
+      "coefficient_failure_rows": 2,
+      "component_checks_recomputed": 2400,
+      "maximum_fraction_of_tolerance": 1.15789685641515,
+      "physical_points": 100,
+      "reproduction_status": "expected-failures-reproduced",
+      "scientific_agreement_passed": false,
+      "scope": "Original-helper CutTools/Ninja/Collier qcd4 calibration failure only; no campaign acceptance",
+      "stability_acceptance_passed": false,
+      "stability_rejected_physical_points": [
+        17,
+        52
+      ]
+    },
+    "stderr": {
+      "bytes": 0,
+      "path": ".benchmark-work/original-collier-failure-publication-independent-v1/reproduce.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stdout": {
+      "bytes": 515,
+      "path": ".benchmark-work/original-collier-failure-publication-independent-v1/reproduce.stdout",
+      "sha256": "ad4d7041df87dd0c602b7ca9b8612f811ea08ea2d65be709720f9c9b5d8d3f5c"
+    }
+  },
+  "reproducer_validates_all_bound_inputs_before_source_card_math": true,
+  "review_status": "publication-contract-verified; expected scientific and stability failures retained",
+  "root_independent_math_review": {
+    "bytes": 1660,
+    "path": ".benchmark-work/original-collier-failure-publication-overlay-v1/proposed/docs/benchmarkfolder/policy-v2/original-collier-failure-final-v1/historical/root-review.json",
+    "sha256": "4970ac330cb23b52bc3d04df181fcc23d0270b20513c935978fcbdea21d7aed8"
+  },
+  "schema": "private-original-collier-failure-publication-independent-review-v1",
+  "source_contract_crosschecks": {
+    "original_Collier": {
+      "bytes": 28266,
+      "path": ".benchmark-work/original-collier-failure-publication-overlay-v1/proposed/docs/benchmarkfolder/policy-v2/original-collier-failure-final-v1/historical/private-audit/source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/COLLIER_interface.f",
+      "sha256": "ace25789fe2133c8969e27fb2ce18b18c589e41f0165a40dd7089d2555637619"
+    },
+    "original_TIR": {
+      "bytes": 34997,
+      "path": ".benchmark-work/original-collier-failure-publication-overlay-v1/proposed/docs/benchmarkfolder/policy-v2/original-collier-failure-final-v1/historical/private-audit/source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/TIR_interface.f",
+      "sha256": "20a7ce462174c54d0f819cde8a928d5b62a50d949b1655eb44120128e25bcc28"
+    },
+    "original_common": {
+      "bytes": 22549,
+      "path": ".benchmark-work/original-collier-failure-publication-overlay-v1/proposed/docs/benchmarkfolder/policy-v2/original-collier-failure-final-v1/historical/private-audit/source/actual-compiled-tree/SubProcesses/MadLoopCommons.f",
+      "sha256": "4b127f888de7217d005bc6f30489a45552113414f2400efa65a1c424d0f3b0f5"
+    },
+    "original_loop": {
+      "bytes": 129093,
+      "path": ".benchmark-work/original-collier-failure-publication-overlay-v1/proposed/docs/benchmarkfolder/policy-v2/original-collier-failure-final-v1/historical/private-audit/source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/loop_matrix.f",
+      "sha256": "d9819ec368321e736896a4b2af4cd0121dec9bab1726b0da3a338a86ae9be5f8"
+    }
+  },
+  "tracked_or_overlay_edits": 0,
+  "worker_or_MP_calls": 0
+}

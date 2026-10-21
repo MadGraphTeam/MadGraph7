@@ -853,3 +853,87 @@ resume metadata. The earlier pause note is a historical checkpoint.
   and an independent source review pass. Keep this analysis-only change
   separate from the frozen numerical source and retain its exact patch for
   reproduction; final assembly still requires the actual core dataset.
+- Final publication software and evidence are ready for the remaining physical
+  campaign: all forty-three report tests pass, including loop-induced timing
+  ratios, confidence intervals, DP/QP usage and optimization attribution.
+  These synthetic rendering checks do not certify a final numerical report.
+  The six approved native plaintext ignore rules are applied; the actual
+  source guard still reproduces all 2,601 frozen production paths. The exact
+  EW-model source archive and self-contained analytic leading-pole capsule
+  have reproducible retained inputs and explicit provenance limitations.
+- Early challenging-QCD two-to-four calibrations agree across CutTools, Ninja
+  and Collier in all 480 comparisons at twenty physical points, counting total
+  and sole split rows separately. The corrected-original QCD4 CutTools/Ninja
+  calibrations agree in all 800 comparisons at one hundred points. Preserve
+  finite point 99 at 0.875 of the permitted tolerance, with its actual accepted
+  statuses and separate internal estimates; no rows or thresholds are changed.
+  Ninja also passes the source-derived leading-double-pole diagnostic. These
+  calibration checks do not replace the pending four-backend repeated streams,
+  rotation/scale controls or warmed runtime acceptance campaign.
+- Keep the numerical source, generated outputs, installed runtime, physical
+  cards and points frozen while those collections run. Hold orchestration HEAD
+  at `9d33d4650a2e6079d007c365f1c12bb74a2def3f` until the three declared stress
+  variants release it. Documentation and analysis-only edits remain unstaged;
+  original collection source snapshots and every failed attempt stay retained.
+- The final report still requires complete eight-process and ggH/ggHH timings,
+  both challenging stress processes, the actual core-linked runtime provenance,
+  nonempty validated final profiles, and two byte-identical actual renders plus
+  visual inspection. Profile presence is an explicit publication requirement
+  beyond the report's scientific campaign Boolean. Preserve all measured-worker
+  binding chains until profiling finishes. Commit and push reviewed final work
+  on `madloop_ninjars`; claim success only after every required gate passes,
+  then wait for the user's separate instruction before opening a PR.
+- The corrected-original QCD4 reference subsequently stopped with a real
+  pure-Collier failure: points 17 and 52 return 410 above the fixed stability
+  threshold, and point 99's finite CutTools/Collier difference is 1.158 times
+  the approved tolerance. The latter is one physical event duplicated in total
+  and sole split rows. All values are finite; independent source/card/model
+  audits and root's full 2,400-comparison recomputation confirm both failures.
+  Preserve the complete failed attempt and do not relax thresholds, drop points,
+  relabel failure statuses, add an undeclared fallback, or claim a passing core
+  cohort. The existing strict publisher cannot accept that failed reference.
+- Investigate with a separate frozen-candidate pure-Collier diagnostic on the
+  identical full stream and public direct-QP controls for the difficult points.
+  The candidate diagnostic is authorized once on CPU 207; its first launcher
+  affinity precheck failed before any build or physics, and the separately
+  authorized corrected attempt preserves that record. Native NinjaRS stress on
+  CPU 190 remains the sole Symbolica/MP worker. Higher-precision controls are
+  being prepared, without substituting them for normal acceptance or timings.
+
+### User priority amendment — 2026-10-21
+
+The user instructed: “Continue as planned, but focus first on getting a
+validated MadLoop+NinjaRS version. Then if you uncovered issues with other
+reduction tools (e.g. COLLIER), then just post an issue with an MRE to the
+corresponding github”.
+
+- Put the eight-process NinjaRS validation first. Keep every phase-space point,
+  Born/Laurent/split-order comparison, stability threshold, contribution and
+  genuine QP rescue requirement. Validate NinjaRS against accepted, source-bound
+  CutTools/Ninja references; reuse matching retained reference data with its
+  actual calibration/repetition scope before scheduling new reference work.
+- Retain the original/candidate Collier failures and all four-backend comparison
+  results as reported findings. Do not mark Collier successful, omit its bad
+  points, or require an external Collier fix before validating NinjaRS. Preserve
+  the historical strict v2 policy and its failed attempts; make this new
+  prioritization explicit in the next versioned validation/report policy.
+- Retire the long auxiliary ordinary-stress attempt at its complete calibration
+  checkpoint, preserving the 960 passing all-four comparisons and the interrupted
+  repetition as user-priority retirement, not a numerical failure. Release the
+  sole Symbolica worker for the eight-process NinjaRS correctness campaign;
+  defer the remaining challenging-process repetitions/rotation/scale work.
+- Use the already generated frozen exports for the NinjaRS-only correctness
+  phase, with 100 unchanged points per process and two retained commands.
+  Keep actual correctness CPU/runtime/source identities distinct from the later
+  warmed seven-pair performance gate against literal original Ninja. Its 1.05
+  limit and uncertainty requirement remain unchanged.
+- Once the NinjaRS version is validated, prepare and run minimal reproductions
+  for genuine issues found in other tools, identify the responsible component
+  and official upstream repository, check for duplicates, and post the issue
+  with its reproducer. The user authorizes these GitHub issue posts. Do not
+  assume a Collier library defect from a conservative stability rejection or
+  a full-amplitude discrepancy before isolating numerator/contraction effects.
+- Keep the final four-tool results, numerical stability discussion, loop-induced
+  controls, reproducible styled PDF and tested milestone pushes in scope. Report
+  external-tool failures honestly and link their upstream issues. Continue to
+  wait for the user's instruction before opening a PR.

@@ -1,0 +1,26 @@
+{
+  "schema": "actual-report-presentation-regression-v1",
+  "utc_start": "2026-10-21T05:35:06.543971+00:00",
+  "command": [
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+    "-B",
+    "-m",
+    "unittest",
+    "tests.unit_tests.loop.test_ninjars_report_v2",
+    "-v"
+  ],
+  "cpu_affinity": [
+    4
+  ],
+  "test_source_sha256": "d00210615d74fc23bd5376a6209e41447749f7e756066709574324a967011ef7",
+  "template_sha256": "46097459284e640c3bb8c6459591aba798c94198f4b369d9c2fad817185d8b29",
+  "scope": "Software/report presentation only; synthetic renders not scientific validation",
+  "physics_calls": 0,
+  "utc_end": "2026-10-21T05:35:15.285192+00:00",
+  "wall_seconds": 8.740816897945479,
+  "returncode": 0,
+  "tests_run": 43,
+  "passed": true,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "6d5a8e827eedf6144d8a716225165f273b87a190de2809cc86313f9fcde87478"
+}

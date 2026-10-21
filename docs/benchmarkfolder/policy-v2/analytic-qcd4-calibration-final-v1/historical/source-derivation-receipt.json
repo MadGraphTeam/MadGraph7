@@ -1,0 +1,243 @@
+{
+  "schema": "private-qcd4-analytic-double-pole-source-audit-v1",
+  "reviewer": "/root/allocation_final",
+  "created_utc": "2026-10-21T04:48:15.315063+00:00",
+  "scope": "Independent source/card derivation only; no generated or UFO model imports, compilation, amplitudes, numerical engine, network, tests, or tracked edits. No raw calibration rows read or accepted here.",
+  "process": "u u~ > z z g g [virt=QCD]",
+  "role": "original_helper_corrected",
+  "actual_helper_output": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4",
+  "compiled_generated_source_identity": "554e02c69bd89711f822f626fb2f5c65d9aae8a3c51c4977b7390cb2b3693959",
+  "build_record": {
+    "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/build.json",
+    "sha256": "467f70aa7f85f218de78069d2a635c79acbb1177c69c8d652a936740138767d2",
+    "bytes": 8464
+  },
+  "bound_executable_sha256": "5b9dd24e0cf0efb0efc768115c03c0c99006a0a6f756480603e8e47266da247b",
+  "formula": {
+    "double_pole_over_Born": "-(2*CF+2*CA)*g^2/(8*pi^2) = -(26/3)*alpha_s/(2*pi)",
+    "normalized_by_Born_times_alpha_s_over_2pi": "-26/3",
+    "CF": "4/3",
+    "CA": 3,
+    "massless_colored_legs": [
+      "u",
+      "u~",
+      "g",
+      "g"
+    ],
+    "colorless_legs": [
+      "z",
+      "z"
+    ],
+    "alpha_s_card": 0.118,
+    "coupling_G_expression": "G=2*DSQRT(AS*PI) on READLHA; later AS=G**2/4/PI",
+    "coupling_running": "No alpha_s evolution in this worker path. MU_R changes to incoming sqrt(s), UPDATE_AS_PARAM recomputes dependent parameters and COUP3 but does not call external ALPHAS or change G. UPDATE_AS_PARAM2(AS2) is a different unused entry.",
+    "numeric_expected_real_formula": -0.16276245513531162,
+    "numeric_expected_source_binary64_expression": -0.16276245513531162,
+    "coupling_G_binary64_expression": 1.2177157847767197
+  },
+  "normalization": {
+    "Born_answer": "ANS(0,I) copied from SMATRIXHEL_SPLITORDERS; summed order index0 contains same Born as sole physical split order",
+    "loop_answer": "ANS(1:3,I) finite/single/double; reduction interfaces multiply raw integral coefficient by2/(16*pi^2) for real Born interference",
+    "common_average": "IDEN=144 in both Born and loop; cancels in pole/Born ratio",
+    "worker_output": "Five ES26.17E3 columns: Born,finite,single,double,accuracy; actual final timed traversal copies values without further alpha_s or2pi normalization",
+    "scale": "MU_R=sqrt(abs((p1+p2)^2)); double pole unaffected by scale-log expansion; getpoles fksprefact changes only single via single+=double*log(xmu2/QES2)"
+  },
+  "universal_routine": {
+    "path": ".benchmark-work/original/Template/NLO/SubProcesses/fks_singular.f",
+    "sha256": "948a69bcbcdf56da822583b26fd315abf2961be97f79f65d679956cd8835aad3",
+    "bytes": 315151,
+    "line_references": [
+      [
+        7599,
+        7603
+      ],
+      [
+        7681,
+        7711
+      ],
+      [
+        7811,
+        7811
+      ],
+      [
+        7823,
+        7828
+      ],
+      [
+        7942,
+        7945
+      ]
+    ]
+  },
+  "actual_model_correction": {
+    "manifest": {
+      "path": "docs/benchmarkfolder/policy-v2/generation/model-deltas/qcd-4/manifest.json",
+      "sha256": "c367c231ae0dc1ebf21a2c13f964e61a49035e8e4b6af7c2f125e17afe088ea8",
+      "bytes": 9867
+    },
+    "model_functions_before_sha256": "a9678291451097495295fb6f894f3fd4c162addca0844f82393db59b69bc981e",
+    "model_functions_after_sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3",
+    "meaning": "Actual helper uses corrected model_functions.f postimage. MP_REC(M)S real projection and CMPLX preserve KIND=16; MP log constants replace wrong3.14169258478796109557151794433593750 with3.141592653589793238462643383279502884197. Coupling G, DP pi and alpha_s source files are unchanged by this correction."
+  },
+  "allocation_independent": true,
+  "limitations": [
+    "The standalone worker does not invoke FKS getpoles; this is a source-derived universal QCD normalization oracle, not evidence of executing that routine in standalone.",
+    "It constrains double pole only, not finite or single-pole accuracy, numerical stability, rescue or speed.",
+    "Root/numerical reviewer independently assesses retained100-point calibration; this audit neither reads those rows nor changes their gate.",
+    "Formula applies to these massless colored external legs and QCD virtual correction. Massive colored legs and mixed QED orders require their own structure."
+  ],
+  "physical_card": {
+    "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/Cards/param_card.dat",
+    "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "bytes": 2471,
+    "line_references": [
+      [
+        18,
+        21
+      ],
+      [
+        27,
+        27
+      ],
+      [
+        33,
+        36
+      ],
+      [
+        47,
+        63
+      ]
+    ]
+  },
+  "actual_source_bindings": [
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/Source/MODEL/couplings.f",
+      "sha256": "e732847aa93cdcae502cd37808eb68b45d7dc3c9665bdd5d4de443be19747936",
+      "bytes": 3242,
+      "line_references": [
+        [
+          5,
+          30
+        ],
+        [
+          62,
+          101
+        ]
+      ]
+    },
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/Source/MODEL/intparam_definition.inc",
+      "sha256": "4d14529f6c3cb833a2cb434d8bfca120d83d00f132ce414e37e1033cbcb83084",
+      "bytes": 5173,
+      "line_references": [
+        [
+          7,
+          9
+        ],
+        [
+          23,
+          27
+        ],
+        [
+          145,
+          159
+        ]
+      ]
+    },
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/Source/MODEL/model_functions.f",
+      "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3",
+      "bytes": 32184,
+      "line_references": [
+        [
+          544,
+          573
+        ]
+      ]
+    },
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/check_sa.f",
+      "sha256": "ac2dc40423ab197d29c4ef45881c899220e6310b687e3642f7a4ab52d5cc072f",
+      "bytes": 4672,
+      "line_references": [
+        [
+          24,
+          25
+        ],
+        [
+          47,
+          60
+        ],
+        [
+          89,
+          116
+        ]
+      ]
+    },
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/loop_matrix.f",
+      "sha256": "d9819ec368321e736896a4b2af4cd0121dec9bab1726b0da3a338a86ae9be5f8",
+      "bytes": 129093,
+      "line_references": [
+        [
+          183,
+          184
+        ],
+        [
+          720,
+          742
+        ],
+        [
+          1319,
+          1324
+        ]
+      ]
+    },
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/born_matrix.f",
+      "sha256": "005e9ab5552e4c72c82fa332c0ae20e144410e68350a49527182fc7c3cf26b2e",
+      "bytes": 54785,
+      "line_references": [
+        [
+          153,
+          153
+        ],
+        [
+          410,
+          415
+        ]
+      ]
+    },
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/CT_interface.f",
+      "sha256": "0d252c36f886e6bc1858597d6a4b7cd43a176cdf6673620304d78fb00c5ffc12",
+      "bytes": 65439,
+      "line_references": [
+        [
+          21,
+          23
+        ],
+        [
+          120,
+          124
+        ]
+      ]
+    },
+    {
+      "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/pmass.inc",
+      "sha256": "a74f50d22fc7fdb8a5334e000cb3a150fd687844258ac9e2457682e4b7cdff33",
+      "bytes": 134,
+      "line_references": [
+        [
+          1,
+          6
+        ]
+      ]
+    }
+  ],
+  "compiled_manifest": {
+    "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/compiled-sources.json",
+    "sha256": "421fce050690e5e79d7c27eb11da1770bc27bdf84547aa3f753aaac23c4aecba",
+    "bytes": 31145
+  }
+}

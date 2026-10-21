@@ -1,0 +1,1367 @@
+{
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/MadLoopParams.dat": {
+    "retained": "raw/report/builds/qcd-4-baseline-1/MadLoopParams.dat",
+    "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+    "bytes": 13241
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/MadLoop_makefile_definitions": {
+    "retained": "raw/report/builds/qcd-4-baseline-1/MadLoop_makefile_definitions",
+    "sha256": "c1ea1230fc6a0cc9c77706b6a627a26fd1f340b44ec6986c77e85aa39ab2a746",
+    "bytes": 1974
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/build.json": {
+    "retained": "raw/report/builds/qcd-4-baseline-1/build.json",
+    "sha256": "467f70aa7f85f218de78069d2a635c79acbb1177c69c8d652a936740138767d2",
+    "bytes": 8464
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/compiled-sources.json": {
+    "retained": "raw/report/builds/qcd-4-baseline-1/compiled-sources.json",
+    "sha256": "421fce050690e5e79d7c27eb11da1770bc27bdf84547aa3f753aaac23c4aecba",
+    "bytes": 31145
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/make_opts": {
+    "retained": "raw/report/builds/qcd-4-baseline-1/make_opts",
+    "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    "bytes": 2781
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/param_card.dat": {
+    "retained": "raw/report/builds/qcd-4-baseline-1/param_card.dat",
+    "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "bytes": 2471
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/worker.f": {
+    "retained": "raw/report/builds/qcd-4-baseline-1/worker.f",
+    "sha256": "ac2dc40423ab197d29c4ef45881c899220e6310b687e3642f7a4ab52d5cc072f",
+    "bytes": 4672
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-6/MadLoopParams.dat": {
+    "retained": "raw/report/builds/qcd-4-baseline-6/MadLoopParams.dat",
+    "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+    "bytes": 13241
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-6/MadLoop_makefile_definitions": {
+    "retained": "raw/report/builds/qcd-4-baseline-6/MadLoop_makefile_definitions",
+    "sha256": "c1ea1230fc6a0cc9c77706b6a627a26fd1f340b44ec6986c77e85aa39ab2a746",
+    "bytes": 1974
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-6/build.json": {
+    "retained": "raw/report/builds/qcd-4-baseline-6/build.json",
+    "sha256": "fcb14e08f9ea51fc91b78e88b89e98958ac0d6d69459f70d8ac4584e17bcc60b",
+    "bytes": 8464
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-6/compiled-sources.json": {
+    "retained": "raw/report/builds/qcd-4-baseline-6/compiled-sources.json",
+    "sha256": "421fce050690e5e79d7c27eb11da1770bc27bdf84547aa3f753aaac23c4aecba",
+    "bytes": 31145
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-6/make_opts": {
+    "retained": "raw/report/builds/qcd-4-baseline-6/make_opts",
+    "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    "bytes": 2781
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-6/param_card.dat": {
+    "retained": "raw/report/builds/qcd-4-baseline-6/param_card.dat",
+    "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "bytes": 2471
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-6/worker.f": {
+    "retained": "raw/report/builds/qcd-4-baseline-6/worker.f",
+    "sha256": "ac2dc40423ab197d29c4ef45881c899220e6310b687e3642f7a4ab52d5cc072f",
+    "bytes": 4672
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-7/MadLoopParams.dat": {
+    "retained": "raw/report/builds/qcd-4-baseline-7/MadLoopParams.dat",
+    "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+    "bytes": 13241
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-7/MadLoop_makefile_definitions": {
+    "retained": "raw/report/builds/qcd-4-baseline-7/MadLoop_makefile_definitions",
+    "sha256": "c1ea1230fc6a0cc9c77706b6a627a26fd1f340b44ec6986c77e85aa39ab2a746",
+    "bytes": 1974
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-7/build.json": {
+    "retained": "raw/report/builds/qcd-4-baseline-7/build.json",
+    "sha256": "e808e2597970a492b7afca5f35dd41769c5adcbf771dd013f2799e72038cc7e6",
+    "bytes": 8421
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-7/compiled-sources.json": {
+    "retained": "raw/report/builds/qcd-4-baseline-7/compiled-sources.json",
+    "sha256": "421fce050690e5e79d7c27eb11da1770bc27bdf84547aa3f753aaac23c4aecba",
+    "bytes": 31145
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-7/make_opts": {
+    "retained": "raw/report/builds/qcd-4-baseline-7/make_opts",
+    "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    "bytes": 2781
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-7/param_card.dat": {
+    "retained": "raw/report/builds/qcd-4-baseline-7/param_card.dat",
+    "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "bytes": 2471
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-7/worker.f": {
+    "retained": "raw/report/builds/qcd-4-baseline-7/worker.f",
+    "sha256": "ac2dc40423ab197d29c4ef45881c899220e6310b687e3642f7a4ab52d5cc072f",
+    "bytes": 4672
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/data/qcd-4-baseline-1-calibration.json": {
+    "retained": "raw/report/data/qcd-4-baseline-1-calibration.json",
+    "sha256": "7062006e8396a1cfb24fa8bd32a9e139e6f258acc7383321b3bcd25f60a29196",
+    "bytes": 60214
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/data/qcd-4-baseline-6-calibration.json": {
+    "retained": "raw/report/data/qcd-4-baseline-6-calibration.json",
+    "sha256": "f3d7c326a6156cfca826c8590b80fe4405e7a32e561c43e6cda730021add2ae0",
+    "bytes": 63124
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/MadLoopParams-1.dat": {
+    "retained": "raw/report/inputs/baseline/qcd-4/MadLoopParams-1.dat",
+    "sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+    "bytes": 13241
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/MadLoopParams-6.dat": {
+    "retained": "raw/report/inputs/baseline/qcd-4/MadLoopParams-6.dat",
+    "sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+    "bytes": 13241
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/MadLoopParams-7.dat": {
+    "retained": "raw/report/inputs/baseline/qcd-4/MadLoopParams-7.dat",
+    "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+    "bytes": 13241
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/compilation-history/80b7544cd69123e1.json": {
+    "retained": "raw/report/inputs/baseline/qcd-4/compilation-history/80b7544cd69123e1.json",
+    "sha256": "80b7544cd69123e16ca4a7a9ee3fc1590f53e9f0002d55fcaec383a76f4a9b47",
+    "bytes": 5272
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/compilation.json": {
+    "retained": "raw/report/inputs/baseline/qcd-4/compilation.json",
+    "sha256": "b3524e42436c3680f870da161d517a832f2267fc00bbaff20bb4a5bda88c543d",
+    "bytes": 5923
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/compiled-source-manifests/dae662b91c902973e99d371f6100c28db3984183dfa63866873f988c40028f68.json": {
+    "retained": "raw/report/inputs/baseline/qcd-4/compiled-source-manifests/dae662b91c902973e99d371f6100c28db3984183dfa63866873f988c40028f68.json",
+    "sha256": "3019339211c554231c24fc5f8e4cac49e5f79bbacd05be5ea117782ffbe7cb82",
+    "bytes": 31145
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/compiled-sources.json": {
+    "retained": "raw/report/inputs/baseline/qcd-4/compiled-sources.json",
+    "sha256": "3019339211c554231c24fc5f8e4cac49e5f79bbacd05be5ea117782ffbe7cb82",
+    "bytes": 31145
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/generated-sources-observed.json": {
+    "retained": "raw/report/inputs/baseline/qcd-4/generated-sources-observed.json",
+    "sha256": "b035cbf57bc92985b1b7caedf26d8cd94e8a30214ef6d07b29e91955b80f82e3",
+    "bytes": 31298
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/generation.json": {
+    "retained": "raw/report/inputs/baseline/qcd-4/generation.json",
+    "sha256": "2415c879c07b3db9316a7f38cd61529a59a315c478478c6b5d72cd1cfd0b2fb2",
+    "bytes": 534
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/inputs/baseline/qcd-4/param_card.dat": {
+    "retained": "raw/report/inputs/baseline/qcd-4/param_card.dat",
+    "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "bytes": 2471
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/logs/compile-qcd-4-baseline-1.log": {
+    "retained": "raw/report/logs/compile-qcd-4-baseline-1.log",
+    "sha256": "54f8b6cd9cb2a37ee0eeb6af3379b03c15496f93516355b913326fe2fabc72a1",
+    "bytes": 9585
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/logs/compile-qcd-4-baseline-6.log": {
+    "retained": "raw/report/logs/compile-qcd-4-baseline-6.log",
+    "sha256": "de4efc15c9ba64eb9e24e2bbd72e4ecfbb53b02716642dbcad9828f5bce3881c",
+    "bytes": 9585
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/logs/compile-qcd-4-baseline-7.log": {
+    "retained": "raw/report/logs/compile-qcd-4-baseline-7.log",
+    "sha256": "424b42f3b826e49ec9a142ab8e92a4acd30b9ecd1c7e5646c7d99b2253b49c8a",
+    "bytes": 9585
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/logs/fresh-link-qcd-4.log": {
+    "retained": "raw/report/logs/fresh-link-qcd-4.log",
+    "sha256": "bfdf6551c941b777c640d4d2034865b33d96a2fbc524982af570d0be36053df2",
+    "bytes": 9535
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/logs/model-rebuild-qcd-4.log": {
+    "retained": "raw/report/logs/model-rebuild-qcd-4.log",
+    "sha256": "4796e37749b818ded7b2b95cbba55200ce5f39553cd3d55f4aeaff55f7251ead",
+    "bytes": 1387
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/logs/worker-qcd-4-baseline-1.log": {
+    "retained": "raw/report/logs/worker-qcd-4-baseline-1.log",
+    "sha256": "c1fb887b69f29069b22062e2d25dd2a940660aa6fb5bec735f17bc6b0f47238f",
+    "bytes": 5636
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/logs/worker-qcd-4-baseline-6.log": {
+    "retained": "raw/report/logs/worker-qcd-4-baseline-6.log",
+    "sha256": "b540a16543d5d05a647f48f34c8db564ec8713c8c80827fdc2f317587e3f3a12",
+    "bytes": 8191
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/logs/worker-qcd-4-baseline-7.log": {
+    "retained": "raw/report/logs/worker-qcd-4-baseline-7.log",
+    "sha256": "b4ef87ee04ba01878256449c71d2ade88dc81dbfe6de372d26737ec0e43ce463",
+    "bytes": 9121
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/points/qcd-4.dat": {
+    "retained": "raw/report/points/qcd-4.dat",
+    "sha256": "d66b0c04ee3d8e6ed90ef1fbf97abb9cd444d9ea1f84a508850688bff317b52d",
+    "bytes": 58316
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/protocol.json": {
+    "retained": "raw/report/protocol.json",
+    "sha256": "801d233fdc4e7ee47a404ed3c68aada3699086a6f434bdbe6ab14463957b575b",
+    "bytes": 2876
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/rejected/qcd-4-failure.json": {
+    "retained": "raw/report/rejected/qcd-4-failure.json",
+    "sha256": "21694a7fbe8e4c5e66864fa057a8c908c94ae05c1216ee3a611c43f263fe0c33",
+    "bytes": 32018
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/run-status.json": {
+    "retained": "raw/report/run-status.json",
+    "sha256": "c20228089eec3a784081c82b2e0fca238a37ec61ba95fd5900f0ea1a223514f9",
+    "bytes": 399
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/sources/ninjars_benchmark.py": {
+    "retained": "raw/report/sources/ninjars_benchmark.py",
+    "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+    "bytes": 49893
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/sources/ninjars_benchmark_references_v2.py": {
+    "retained": "raw/report/sources/ninjars_benchmark_references_v2.py",
+    "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c",
+    "bytes": 18761
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/sources/ninjars_benchmark_worker.f": {
+    "retained": "raw/report/sources/ninjars_benchmark_worker.f",
+    "sha256": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79",
+    "bytes": 4704
+  },
+  "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/sources/ninjars_benchmark_workers.py": {
+    "retained": "raw/report/sources/ninjars_benchmark_workers.py",
+    "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+    "bytes": 44582
+  },
+  ".benchmark-work/logs/corrected-original-core-v2-fresh-20261021.log": {
+    "retained": "raw/collector-combined-stdout-stderr.log",
+    "sha256": "aa7a1b1d8064de89621c51e3b869b21fb532207c1317695e15eb5dd2a3f81fde",
+    "bytes": 2211
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/values.dat": {
+    "retained": "raw/worker/values.dat",
+    "sha256": "35b107c4e867880b8f52be4daedeae1061e04c0e1527292161319ced51c4cd69",
+    "bytes": 31000
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/timing.dat": {
+    "retained": "raw/worker/timing.dat",
+    "sha256": "96294985e22ef00eb6961b791ff029697a19d58d65199dc85c66874089dbc9c5",
+    "bytes": 53
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/timed_status.dat": {
+    "retained": "raw/worker/timed_status.dat",
+    "sha256": "9522c08aab7180933293da113ff4b9f7200ced4b2fc0a5c8de554d7ef506a434",
+    "bytes": 54
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/dimensions.dat": {
+    "retained": "raw/worker/dimensions.dat",
+    "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "bytes": 37
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/check_sa.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/check_sa.f",
+    "sha256": "ac2dc40423ab197d29c4ef45881c899220e6310b687e3642f7a4ab52d5cc072f",
+    "bytes": 4672
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Cards/param_card.dat": {
+    "retained": "raw/actual-output/Cards/param_card.dat",
+    "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "bytes": 2471
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Cards/MadLoopParams.dat": {
+    "retained": "raw/actual-output/Cards/MadLoopParams.dat",
+    "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+    "bytes": 13241
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/generation.json": {
+    "retained": "raw/actual-output/generation.json",
+    "sha256": "2415c879c07b3db9316a7f38cd61529a59a315c478478c6b5d72cd1cfd0b2fb2",
+    "bytes": 534
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/compilation.json": {
+    "retained": "raw/actual-output/compilation.json",
+    "sha256": "b3524e42436c3680f870da161d517a832f2267fc00bbaff20bb4a5bda88c543d",
+    "bytes": 5923
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/correction-build.json": {
+    "retained": "raw/actual-output/correction-build.json",
+    "sha256": "49dc02241e0f01bcb35010e3be33309cad216918c328122e5027bfa77417272b",
+    "bytes": 5413
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/correction-source.json": {
+    "retained": "raw/actual-output/correction-source.json",
+    "sha256": "4e5a1be1738b3b1087e9996df4a0d270deb8d553f4eb0af1034cfc0581f27fc5",
+    "bytes": 66545
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/MadLoop5_resources/MadLoopParams.dat": {
+    "retained": "raw/actual-resource-MadLoopParams.dat",
+    "sha256": "d57883f440ace87795ffa3a1d5c110c82548b38de22e5021bcf4c21190829f94",
+    "bytes": 13241
+  },
+  "tools/ninjars_benchmark.py": {
+    "retained": "source/frozen-tools/ninjars_benchmark.py",
+    "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+    "bytes": 49893
+  },
+  "tools/ninjars_benchmark_worker.f": {
+    "retained": "source/frozen-tools/ninjars_benchmark_worker.f",
+    "sha256": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79",
+    "bytes": 4704
+  },
+  "tools/ninjars_benchmark_workers.py": {
+    "retained": "source/frozen-tools/ninjars_benchmark_workers.py",
+    "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+    "bytes": 44582
+  },
+  "tools/ninjars_benchmark_references_v2.py": {
+    "retained": "source/frozen-tools/ninjars_benchmark_references_v2.py",
+    "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c",
+    "bytes": 18761
+  },
+  "tools/ninjars_benchmark_policy_v2.py": {
+    "retained": "source/frozen-tools/ninjars_benchmark_policy_v2.py",
+    "sha256": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a",
+    "bytes": 53416
+  },
+  "docs/benchmarkfolder/policy-v2/model-correction.json": {
+    "retained": "source/model-correction.json",
+    "sha256": "20d24a3f19c03b6f7c6c3eda4ef209e2e46cd69ab67990504602028ae3dfb526",
+    "bytes": 1630314
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFS1L1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFS1L1_2.f",
+    "sha256": "04fc882fe6ce53926aefb4b4cfc3fd5872182462cea1a9a670f25e75d07e5102",
+    "bytes": 3133
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFS1L2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFS1L2_1.f",
+    "sha256": "591535e9e99353eff4ba602ed287cefedec9dbbfa3829a950cabbdf65f99dc3d",
+    "bytes": 3127
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV1L1P0_3.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV1L1P0_3.f",
+    "sha256": "e38a45f0e17fbab20e004993ede016dffdad289a93690c78da34a26108c8e059",
+    "bytes": 1260
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV1L1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV1L1_2.f",
+    "sha256": "341391a8b2d8e501c2c2857941b7391f0390bbcce0c1987512d17b74f799e93e",
+    "bytes": 5117
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV1L2P0_3.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV1L2P0_3.f",
+    "sha256": "ab62d9e11bc584bc7eb51c76c51564420ea96aa4413bed97f9216b1dff604c9f",
+    "bytes": 1260
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV1L2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV1L2_1.f",
+    "sha256": "75b50c9704db3672827a6bb2756d99f24ed900245999b65506df2073018a557d",
+    "bytes": 5201
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV1L3_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV1L3_1.f",
+    "sha256": "507e67ba22726d4aca5528fe3ee8b4c75bcbdbd29aed039833a359b4c103e8a5",
+    "bytes": 5026
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV1L3_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV1L3_2.f",
+    "sha256": "697bc6ea008cad2dace6751f67dbc90d7b5ba3960178086c60f92ecdf683bb86",
+    "bytes": 4957
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV1P0_3.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV1P0_3.f",
+    "sha256": "cd1f57198dc6573ac4e914a87736118f0472b2cf74da18937ee84a2837eca244",
+    "bytes": 1298
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV1_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV1_0.f",
+    "sha256": "b142a0e477d010e6177a542dc0360b97979d356c25604a0a44812339d7f3bee8",
+    "bytes": 1057
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV1_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV1_1.f",
+    "sha256": "c5d397a99f812f0c6ee618363d46e58fa9f8cba2c02b7c132ea3c4585fb29ba4",
+    "bytes": 2470
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV1_2.f",
+    "sha256": "049b56435f003413c851707c119fcd98f24a35a5f9e83599d783bb550350b062",
+    "bytes": 2473
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV2L1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV2L1_2.f",
+    "sha256": "efc558450e182b96a928dd3fd6e843fd6ab8185290e9f32402779268d8d02058",
+    "bytes": 3848
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV2L2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV2L2_1.f",
+    "sha256": "dbd9e494d737f8273541db54a318a1377fe5368bd81ed6cda341c2dec63abb83",
+    "bytes": 3883
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV2_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV2_0.f",
+    "sha256": "57d446d32fd78a54a30bba04d35f54894c35697c08f11171d3147b41708d6522",
+    "bytes": 879
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV2_1.f",
+    "sha256": "0d323a475dd799e3fda52c54893855e3374e19b619d269bec23a3f3eb925d341",
+    "bytes": 1640
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV2_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV2_2.f",
+    "sha256": "cee03ecb3eeea9aea740403635ab516db23977a66b3be6198028ffeec2c5fd77",
+    "bytes": 1648
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV2_3L1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV2_3L1_2.f",
+    "sha256": "761f739291c8b66d4bba0e9c06edd17c6e3e5e555f1ae439b75b8d5a2fbd5d13",
+    "bytes": 7022
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV2_3L2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV2_3L2_1.f",
+    "sha256": "d7751854ef7c5c8aa563757245ef332f569e6a9cb90a087b2cbb86b601695bbe",
+    "bytes": 7046
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV2_3_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV2_3_0.f",
+    "sha256": "aa5618f59ab8acc0eb0941797b48908301b91866a313bbc51cdb50c2d6a7227a",
+    "bytes": 1255
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV2_3_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV2_3_1.f",
+    "sha256": "1e09411c9c336a21c7b464f5b3dcbaf7c4afd7c2288c58e5d3fd1daf4ef50bb1",
+    "bytes": 3625
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV2_3_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV2_3_2.f",
+    "sha256": "33ac86195c088eaa1416d9580c710907c62086b2d78304d099030b87893e6542",
+    "bytes": 3613
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV2_5L1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV2_5L1_2.f",
+    "sha256": "c5afb50e92a8ae6abd189ba4ff8fc6bb41677764163bd8559589b98f7b2ee9ea",
+    "bytes": 7024
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV2_5L2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV2_5L2_1.f",
+    "sha256": "7cf1ec9d1eda8fe8f3fc91b417b50bee1ba5a92095407b58d365a0e6eaefcf19",
+    "bytes": 7054
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV2_5_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV2_5_0.f",
+    "sha256": "75bf2a4a0593f7bf2da1a55297ae640419ecc9c86291956df61d540a1438840b",
+    "bytes": 1255
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV2_5_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV2_5_1.f",
+    "sha256": "c04676a86a9f2b1520a848f94b2ceccc79293252daf670ac79fc4ce34437e038",
+    "bytes": 3603
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV2_5_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV2_5_2.f",
+    "sha256": "a6e6fa905dd5005ed935441e7d1130278afa4cac57ac8ba6d0cf4a78dc25995b",
+    "bytes": 3634
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV3L1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV3L1_2.f",
+    "sha256": "e09c0951b3f1e6a1c42a53fbce4d4afb875c1de6a3c23b9aa80005da188a84ac",
+    "bytes": 5256
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV3L2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV3L2_1.f",
+    "sha256": "cb060243f31420de2d4e71570ac84a5afd151f056ea75351387409165f44cf3b",
+    "bytes": 5280
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV5L1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV5L1_2.f",
+    "sha256": "ddac3fdeb5b8d95bae644eb27e42f631227eea63627b620922fba12056fd5234",
+    "bytes": 5250
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV5L2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV5L2_1.f",
+    "sha256": "44116a56a6b6166b93635619da56d4410a8078f62053446ab6764c4a37767d26",
+    "bytes": 5296
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV5_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV5_0.f",
+    "sha256": "06f779043f28be4feff12568eb999790462ef0fc1ed63764541f798fd82e9570",
+    "bytes": 1148
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV5_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV5_1.f",
+    "sha256": "34669682775f091595e134d33995fd95854a2c19f6abc9c3cd3fe195d0fc6896",
+    "bytes": 2577
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/FFV5_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/FFV5_2.f",
+    "sha256": "c706fe4685be103bf17facb29773f7e32a4f9a6f2654bfab6f1d6b1278bc67fa",
+    "bytes": 2593
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/GHGHGL1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/GHGHGL1_2.f",
+    "sha256": "06aaea620bd98a3d86b8f2ff479e60fdb9b00c725d3b3280d1023dc1d721df85",
+    "bytes": 929
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/GHGHGL2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/GHGHGL2_1.f",
+    "sha256": "25c4931e99bcc3f900cad14058bef7ec3e34385c7f4c2fac05b7a920b8225a9f",
+    "bytes": 930
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFS1L1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFS1L1_2.f",
+    "sha256": "c02dbbfa0b5397cfb03c29575d676dbc31c339a204e8980162d0021fa51271bc",
+    "bytes": 3141
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFS1L2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFS1L2_1.f",
+    "sha256": "920ee98e1ac9ce202b01730fc7376aab9ee91f29fbd1cbc05620826926a7ad59",
+    "bytes": 3135
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV1L1P0_3.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV1L1P0_3.f",
+    "sha256": "01e54265d560e0942da3500440699b71f39e7d10c77aaef281eebf3864be1009",
+    "bytes": 1268
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV1L1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV1L1_2.f",
+    "sha256": "dd8fda276bf32f6b82460f58b62d631dd3af9c6e38e6dc03336acb657d068abc",
+    "bytes": 5125
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV1L2P0_3.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV1L2P0_3.f",
+    "sha256": "68f866cc0a94f16ceed68f2afd55a5f23177c45e1316c580e35a42288ace9a7b",
+    "bytes": 1268
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV1L2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV1L2_1.f",
+    "sha256": "3fa48c26de78eaea50c8f47c842cca07fa8af377f70278b55a2db558231abcc3",
+    "bytes": 5209
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV1L3_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV1L3_1.f",
+    "sha256": "e4ac0343fea168e27d3302a96c6661cf9e6f3f44a3abd143ed0c46234390d0b7",
+    "bytes": 5034
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV1L3_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV1L3_2.f",
+    "sha256": "0ebdab3b67905b28c3c1a6add7c464ab4f7362b4cafb90e900b9378cbdf260bf",
+    "bytes": 4965
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV1P0_3.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV1P0_3.f",
+    "sha256": "536329c2e18c50957bd03141af7cb61bc7cd884f8e1fa797e803d0465819c793",
+    "bytes": 1313
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV1_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV1_0.f",
+    "sha256": "94b52f01659a6dac5c294a5ce737d0387312f541c9371078098050a0276d3eb5",
+    "bytes": 1069
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV1_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV1_1.f",
+    "sha256": "481a7ff498a673be927545650d6f6ae3967019950f7d48c9ff352bf5df4ada2d",
+    "bytes": 2485
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV1_2.f",
+    "sha256": "a8fe4ea5ddba2317533ae8128c67505b981667bc2514b69f716a29ec6081c986",
+    "bytes": 2488
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV2L1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV2L1_2.f",
+    "sha256": "b2ac61f142d7118ba53cc73f67a0bab4deb8a9d6cd549f67a7bb4d10a84b3211",
+    "bytes": 3856
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV2L2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV2L2_1.f",
+    "sha256": "4aa6c25a2b10e679b08b3a4bc5e727c87c6aa9d54fe79d19250a716d0b6b8e6b",
+    "bytes": 3891
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV2_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV2_0.f",
+    "sha256": "f8b4dd33fbb1b8bf7b1a8055673b26e2d16ecb2162a10ec4a8f07a28d269b60c",
+    "bytes": 891
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV2_1.f",
+    "sha256": "a1bad72795988e5cff8f40799415d6345684fb4107952d3adb1533810963c5f9",
+    "bytes": 1655
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV2_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV2_2.f",
+    "sha256": "6c44a17d16ee7e68476f78b889aad8536b14534075133d25e65cfaf11c494007",
+    "bytes": 1663
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV2_3L1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV2_3L1_2.f",
+    "sha256": "852d3d844cf57107bc1c5b189f1ae0834ebc32be7e751d696a68d878fa2d9e2c",
+    "bytes": 7030
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV2_3L2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV2_3L2_1.f",
+    "sha256": "de78e4ab66263062807e714034d660033fd52cf59fd74d111a32d8efce55d97b",
+    "bytes": 7054
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV2_3_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV2_3_0.f",
+    "sha256": "778c85a411692e6d7315fece98cf0bd4fb55f9417f1f97ca5e37767ee93e32d2",
+    "bytes": 1267
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV2_3_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV2_3_1.f",
+    "sha256": "49148a8142d1c511d56aaf3f5e34a56b30b10add831e1507fe25dee2e2fd3fe1",
+    "bytes": 3640
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV2_3_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV2_3_2.f",
+    "sha256": "6271d6f0f380ec9d06ec05b0414aa4bfdc22a1ac895af01cda2173c6c4b4df65",
+    "bytes": 3628
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV2_5L1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV2_5L1_2.f",
+    "sha256": "ae7c65200dfedb77081be8285b265f761a9d377d314b065d59433fb12e16ca64",
+    "bytes": 7032
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV2_5L2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV2_5L2_1.f",
+    "sha256": "e174216eda6a1bfe284924773b4fe1aacf53283431cfb83bbbad335ef1ed1bac",
+    "bytes": 7062
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV2_5_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV2_5_0.f",
+    "sha256": "252337b294c5e08e4128fb766b5267cc2ecd7726d2316b6d5f56b3fa9ac9d3f2",
+    "bytes": 1267
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV2_5_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV2_5_1.f",
+    "sha256": "0e35828f1a9ae0ff1225a8182db97c60ceda09c7213638c5344ad6adf17531c6",
+    "bytes": 3618
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV2_5_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV2_5_2.f",
+    "sha256": "f3fc36c8c77a3cb4e91ad358df5f1eb3b6c043c6dbea98e2332315db2675f963",
+    "bytes": 3649
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV3L1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV3L1_2.f",
+    "sha256": "3b71ffec88bde72c49c0fd8766ad74e7a832731a1f91c66fe21415ff7f38d0c3",
+    "bytes": 5264
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV3L2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV3L2_1.f",
+    "sha256": "27d58e693412fbf614150004a2a2a465ff5385f3ec3d2f42c9f4d0a7f796f485",
+    "bytes": 5288
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV5L1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV5L1_2.f",
+    "sha256": "28c7e4ecfbf07c726edffd08fd8e3927e427bd277a5e7e37d2a4c7ecaea7cdf2",
+    "bytes": 5258
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV5L2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV5L2_1.f",
+    "sha256": "37f2b666f4fabcff2d889f60740ae26c283078aaf1d2292e5dcb3d0d522a0693",
+    "bytes": 5304
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV5_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV5_0.f",
+    "sha256": "e93bd2169fa0a0a1f7a8394e9ee78a5dd44d2f03cf1530e9e22e3f8fdca19e1b",
+    "bytes": 1160
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV5_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV5_1.f",
+    "sha256": "fa74f2203ca6e4f786df57d0f6591feb89cd9addd44a2660fc38722f5e814616",
+    "bytes": 2592
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_FFV5_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_FFV5_2.f",
+    "sha256": "0d3b27e5c6668bc3e4c21f0608b6958c8c8e7752886738c05ff194b1f40729bd",
+    "bytes": 2608
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_GHGHGL1_2.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_GHGHGL1_2.f",
+    "sha256": "42da297ac726358d468465fc6616003380dba357ac91607622d7ce1c65254084",
+    "bytes": 937
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_GHGHGL2_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_GHGHGL2_1.f",
+    "sha256": "a0e0da16a74eb23f01645fbcd905cfe9a0e57f5ad55d59c626690d7a762d9594",
+    "bytes": 938
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_R2_GGGVa_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_R2_GGGVa_0.f",
+    "sha256": "da8789f2ee9fffae4f01b53ec18bc49b98b7b8c36f67c25419c12755998cd471",
+    "bytes": 1296
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_R2_GGVV_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_R2_GGVV_0.f",
+    "sha256": "1c9d97344ca28444696d5d29d76d0f6577b480114e76fa9c35e5af581610fdb5",
+    "bytes": 1323
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_R2_GGZ_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_R2_GGZ_0.f",
+    "sha256": "fda5bb12777b5fb94e3897e1697cc1d8c7df0f9b9d33cdac8204b3352a45ca07",
+    "bytes": 2198
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_R2_GG_1_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_R2_GG_1_0.f",
+    "sha256": "d9788ab89a6d02848adda9c1412b22fb89c210b5056effaad2880a60523e40ae",
+    "bytes": 690
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_R2_GG_1_R2_GG_2_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_R2_GG_1_R2_GG_2_0.f",
+    "sha256": "2360480e65037066c55cac571ec74dac21bc8b5b07bbd22cfc20a9bc2a76fe73",
+    "bytes": 1009
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_R2_GG_1_R2_GG_3_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_R2_GG_1_R2_GG_3_0.f",
+    "sha256": "00fd9d936524576229c4e9b0ebb8c568c355812bd5bc74f18d04f1f375e310a3",
+    "bytes": 770
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_R2_GG_2_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_R2_GG_2_0.f",
+    "sha256": "9209f6088374d9049e54b78e6f5b7a0f913fe4cff27ed0e368e0087da4930376",
+    "bytes": 684
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_R2_GG_3_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_R2_GG_3_0.f",
+    "sha256": "75c939262be9b1d0d88ac3c25d6aee1d2d956464e1763ea3d6a29c1815b5ac3b",
+    "bytes": 534
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_R2_QQ_1_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_R2_QQ_1_0.f",
+    "sha256": "0278403e3fa815a17b95a955e3cc556953c358d18f7cec32003ead5a596af1c3",
+    "bytes": 1031
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_VVS1_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_VVS1_0.f",
+    "sha256": "f5b66d61f3a394e38a053738151c8cb89283e28e886bc629d12bf6e58c0de314",
+    "bytes": 569
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_VVS1_3.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_VVS1_3.f",
+    "sha256": "d67e9a8fd533a26651d3504d9027936c5a000f6e7be810ee0901189887ff5174",
+    "bytes": 756
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_VVV1L2P0_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_VVV1L2P0_1.f",
+    "sha256": "e9139c70db3e97c49e7039d03f0f76c1f5b2d7c6fadfe68f2c797f02ecd9d5eb",
+    "bytes": 4783
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_VVV1P0_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_VVV1P0_1.f",
+    "sha256": "97acea4bdf5bdaec7a6b0cd83d588d9abf0bc926d9c7727122e9af352596361d",
+    "bytes": 1904
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_VVV1_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_VVV1_0.f",
+    "sha256": "08e37c31c9296914eec1eee642a8cd980f992732546ef44af33279a3263561c1",
+    "bytes": 1818
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_VVVV1L2P0_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_VVVV1L2P0_1.f",
+    "sha256": "0e02a1b19a7dcc93a47367a422ca35b597a2a480829cf196d4816b16fbc9bf60",
+    "bytes": 1864
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_VVVV3L2P0_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_VVVV3L2P0_1.f",
+    "sha256": "a37f71815cadd32ec8b6ecefcec8a4049721954b33ec7c4ca59ff773893ba3e6",
+    "bytes": 1701
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/MP_VVVV4L2P0_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/MP_VVVV4L2P0_1.f",
+    "sha256": "1bbe272a84f6f3508e41a9f00d409c02b2a63c18178806d89de01634e2e42aa5",
+    "bytes": 1701
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/R2_GGGVa_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/R2_GGGVa_0.f",
+    "sha256": "35fbbd1c3eb6a3ffe5dafd015bd42bb065b2497e99024efd0ed8b43995584fc5",
+    "bytes": 1281
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/R2_GGVV_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/R2_GGVV_0.f",
+    "sha256": "0e56993fd420d9d478d041ede6c2b19a85e6cedd05bbdc60fb740554fb903322",
+    "bytes": 1308
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/R2_GGZ_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/R2_GGZ_0.f",
+    "sha256": "760fb179352f625a5fea2854a913b52f8b4648841fdf7162ee7695cc8db3fd32",
+    "bytes": 2184
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/R2_GG_1_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/R2_GG_1_0.f",
+    "sha256": "9c2c38421f3b229d02a43b9c792b527ee5fae69ebd45d4c5139a3201cd107fa1",
+    "bytes": 680
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/R2_GG_1_R2_GG_2_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/R2_GG_1_R2_GG_2_0.f",
+    "sha256": "ce81139e946f3a567eab85e66850e6bcb64f954df075f5e38cd86977035d56b5",
+    "bytes": 999
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/R2_GG_1_R2_GG_3_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/R2_GG_1_R2_GG_3_0.f",
+    "sha256": "1a9e75e366a26262e054babed3e50f285d8dc4465a5be8b7e6238dc17ba3da1d",
+    "bytes": 760
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/R2_GG_2_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/R2_GG_2_0.f",
+    "sha256": "e72b843a6ad97b38ccba00e45339c19848764e8299dbd83d7d8ff67f8cba6897",
+    "bytes": 674
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/R2_GG_3_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/R2_GG_3_0.f",
+    "sha256": "0824cf2a26fcca188c5d3d9e0a09158b3701e3a3b0a86afe4de398c45001cfd8",
+    "bytes": 525
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/R2_QQ_1_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/R2_QQ_1_0.f",
+    "sha256": "cbd24e9610364c1af449d16134b2312782b1964cbabeb64867b0bc9e968c31d3",
+    "bytes": 1021
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/VVS1_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/VVS1_0.f",
+    "sha256": "9407aa0da6e96be75243f01adfc1fd2e83b6307c778d79e7ed5dc0a2ac6ebb16",
+    "bytes": 557
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/VVS1_3.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/VVS1_3.f",
+    "sha256": "02910032a5f5712959d490cb6fa19d7b54f8f7c62ee8c566c2b7b8502c997814",
+    "bytes": 741
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/VVV1L2P0_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/VVV1L2P0_1.f",
+    "sha256": "e2c6407baf0bb96a32dc4a23539f5619d9a057bf86bf9b0d859e599bd8420162",
+    "bytes": 4775
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/VVV1P0_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/VVV1P0_1.f",
+    "sha256": "cf5506184046b62491abe108e8422f85461ebab0d389ec675cdc5b852bb9681d",
+    "bytes": 1887
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/VVV1_0.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/VVV1_0.f",
+    "sha256": "4256e3a66b573c37067fcbbf6bec827bbae6bc2486d9895de7615f97ad1b7c15",
+    "bytes": 1803
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/VVVV1L2P0_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/VVVV1L2P0_1.f",
+    "sha256": "e61879cf35e676467b0fc67b8294776dd0b2e84b8458c1181133bc2ba09fcd93",
+    "bytes": 1853
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/VVVV3L2P0_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/VVVV3L2P0_1.f",
+    "sha256": "a18732e22fb1138600d1b130a2b7e59fb3762b5deaed6c0395f292017528eb99",
+    "bytes": 1690
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/VVVV4L2P0_1.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/VVVV4L2P0_1.f",
+    "sha256": "c0fc1507513a088f923a5fe380ae5ca7dd29de00cc19e99fbf347f6c627e1fc7",
+    "bytes": 1690
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/aloha_file.inc": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/aloha_file.inc",
+    "sha256": "ed5b5e794bcc53671c3cc4f98e0db8ea89a31a5abf3fb10e58098db80b8d7137",
+    "bytes": 1392
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/aloha_functions.f": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/aloha_functions.f",
+    "sha256": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf",
+    "bytes": 87869
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/coef_specs.inc": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/coef_specs.inc",
+    "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+    "bytes": 120
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/DHELAS/makefile": {
+    "retained": "source/actual-compiled-tree/Source/DHELAS/makefile",
+    "sha256": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    "bytes": 1407
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/actualize_mp_ext_params.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/actualize_mp_ext_params.inc",
+    "sha256": "4108b4fb1f82d348413a9f7f777eb94537061f7ccf339d7d23f30f4f835676ac",
+    "bytes": 243
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/coupl.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/coupl.inc",
+    "sha256": "5dd65c4f5bf4f5e79343464366986fe455cbcf5a02d451cc06a25f97b76ee818",
+    "bytes": 1870
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/coupl_write.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/coupl_write.inc",
+    "sha256": "6d3e51546fb391026de3409776e0b47e6f772f52aa4f1747f79a746e855226f1",
+    "bytes": 2003
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/couplings.f": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/couplings.f",
+    "sha256": "e732847aa93cdcae502cd37808eb68b45d7dc3c9665bdd5d4de443be19747936",
+    "bytes": 3242
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/couplings1.f": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/couplings1.f",
+    "sha256": "1db33c97ff252c6840c78c24cbe66e64e572387940a646dabf49a98cd3d7d359",
+    "bytes": 997
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/couplings2.f": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/couplings2.f",
+    "sha256": "28b4eefe950545be8c834979488b7bc11ef89ca3c8799a3e0e59f08ae902b65e",
+    "bytes": 464
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/couplings3.f": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/couplings3.f",
+    "sha256": "d854fee4db8524b164e5f3f1563f6f318e8132d8824b73bd0d875ac51d905461",
+    "bytes": 4062
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/flavor_couplings.f": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/flavor_couplings.f",
+    "sha256": "863fa39462bb4b32dd09835ce5ca74624a4b08ee98be94fa756cd8a488ef6de7",
+    "bytes": 741
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/formats.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/formats.inc",
+    "sha256": "1d0c8b3a81b5c4ed3cc50e16edc2d7fa09fa2c2694b9eef3790bff2abc42c3a3",
+    "bytes": 958
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/get_color.f": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/get_color.f",
+    "sha256": "e1b3eb173aa5a721e4f1dfb518987b5581edf4ddc63ed98fa14eab1daca71bcf",
+    "bytes": 3048
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/input.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/input.inc",
+    "sha256": "e8887e3d6b201199bc48178615968bcc6dd0291b3af2bf21533d09d48537c569",
+    "bytes": 2375
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/intparam_definition.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/intparam_definition.inc",
+    "sha256": "4d14529f6c3cb833a2cb434d8bfca120d83d00f132ce414e37e1033cbcb83084",
+    "bytes": 5173
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/ldme.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/ldme.inc",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/lha_read.f": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/lha_read.f",
+    "sha256": "7cfd5b14731c599bab2be71fabf3fc5566e293117fb927a6dad495c61154aef2",
+    "bytes": 13600
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/makefile": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/makefile",
+    "sha256": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    "bytes": 1340
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/makeinc.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/makeinc.inc",
+    "sha256": "b4474380dce602789c4749045fc5e726d3431039ae354b8d17405dce2c223090",
+    "bytes": 380
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/model_functions.f": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/model_functions.f",
+    "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3",
+    "bytes": 32184
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/model_functions.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/model_functions.inc",
+    "sha256": "be48cc65d552043c1569e2144501aa3d1c16e69834f20090aceca8ea818bb58f",
+    "bytes": 883
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/mp_coupl.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/mp_coupl.inc",
+    "sha256": "8a3db914cea812b6429b11881bc0dd083e5bbf36e9fe19e525f00f3be797bdd4",
+    "bytes": 1969
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/mp_coupl_same_name.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/mp_coupl_same_name.inc",
+    "sha256": "7f31ff9ea2f63bf05e287293212ce097e8cd970688b924d8385c1f419312cb0f",
+    "bytes": 1465
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/mp_couplings1.f": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/mp_couplings1.f",
+    "sha256": "d1ff4f0b70228ee970b951cb4ef1bfeacd1ba86b31088043f617094243563a3b",
+    "bytes": 1228
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/mp_couplings2.f": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/mp_couplings2.f",
+    "sha256": "b4e39fa7fffc4d210b9cb075a9a96e6498c067a45ac97db19a852597d64896e6",
+    "bytes": 500
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/mp_couplings3.f": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/mp_couplings3.f",
+    "sha256": "4fdd963148f50d373d6f4476ad460f2cabe27f25b2ae383287008ca73b71aae2",
+    "bytes": 5219
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/mp_input.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/mp_input.inc",
+    "sha256": "aeee69196e81b8ad6f344990b346feda8fe665c355054bfa62b426f2f637b8bb",
+    "bytes": 3042
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/mp_intparam_definition.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/mp_intparam_definition.inc",
+    "sha256": "9df230be7b4ef3edd7588b985bb2850a04ef14d78d1b3eba5c4e554aa69d0cd4",
+    "bytes": 6445
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/onia_read.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/onia_read.inc",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/param_read.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/param_read.inc",
+    "sha256": "cf1ee670ea7e139344fdc4096cc81b88315a49f961314d04b43b544f40122f22",
+    "bytes": 2835
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/param_write.inc": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/param_write.inc",
+    "sha256": "ba207871dd4bf5698c7d34c13354df0d18f9a8d814e63471427418b76ec39057",
+    "bytes": 4527
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/printout.f": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/printout.f",
+    "sha256": "e4c1687b5b7938a0cf6119f897036208f945c4a8b8c71603f8d9d127c1ad7b40",
+    "bytes": 1841
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/rw_para.f": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/rw_para.f",
+    "sha256": "6f5b82b34634f8b50f489614bbdea0f92f1edb66d9f7a443a26a72cfe440491c",
+    "bytes": 2707
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/MODEL/testprog.f": {
+    "retained": "source/actual-compiled-tree/Source/MODEL/testprog.f",
+    "sha256": "7570c7961bd45365561047df5a3bd0c529204fb03f4e3562680d3b90e0042c89",
+    "bytes": 2394
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/coupl.inc": {
+    "retained": "source/actual-compiled-tree/Source/coupl.inc",
+    "sha256": "5dd65c4f5bf4f5e79343464366986fe455cbcf5a02d451cc06a25f97b76ee818",
+    "bytes": 1870
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/cuts.inc": {
+    "retained": "source/actual-compiled-tree/Source/cuts.inc",
+    "sha256": "0592f71fe875db3892c3c9f4179ba09627b3a241cc4090253eab42481a8618f2",
+    "bytes": 116
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/ldme.inc": {
+    "retained": "source/actual-compiled-tree/Source/ldme.inc",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/make_opts": {
+    "retained": "source/actual-compiled-tree/Source/make_opts",
+    "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    "bytes": 2781
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/makefile": {
+    "retained": "source/actual-compiled-tree/Source/makefile",
+    "sha256": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    "bytes": 5853
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/maxparticles.inc": {
+    "retained": "source/actual-compiled-tree/Source/maxparticles.inc",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/Source/run.inc": {
+    "retained": "source/actual-compiled-tree/Source/run.inc",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/MadLoopCommons.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/MadLoopCommons.f",
+    "sha256": "4b127f888de7217d005bc6f30489a45552113414f2400efa65a1c424d0f3b0f5",
+    "bytes": 22549
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/MadLoopParamReader.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/MadLoopParamReader.f",
+    "sha256": "bd71b67f62ea2d244c303095ba6c207acaed15f04fdcbc116b4d643741fcdcfc",
+    "bytes": 12490
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/MadLoopParams.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/MadLoopParams.inc",
+    "sha256": "8935257f9f7d6eb89ebcf783672f189bbaaa21f87006d7f8c3c3700909ed0bc0",
+    "bytes": 1513
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/MadLoop_makefile_definitions": {
+    "retained": "source/actual-compiled-tree/SubProcesses/MadLoop_makefile_definitions",
+    "sha256": "c1ea1230fc6a0cc9c77706b6a627a26fd1f340b44ec6986c77e85aa39ab2a746",
+    "bytes": 1974
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/COLLIER_interface.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/COLLIER_interface.f",
+    "sha256": "ace25789fe2133c8969e27fb2ce18b18c589e41f0165a40dd7089d2555637619",
+    "bytes": 28266
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/CT_interface.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/CT_interface.f",
+    "sha256": "0d252c36f886e6bc1858597d6a4b7cd43a176cdf6673620304d78fb00c5ffc12",
+    "bytes": 65439
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/MadLoopCommons.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/MadLoopCommons.f",
+    "sha256": "4b127f888de7217d005bc6f30489a45552113414f2400efa65a1c424d0f3b0f5",
+    "bytes": 22549
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/MadLoopParamReader.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/MadLoopParamReader.f",
+    "sha256": "bd71b67f62ea2d244c303095ba6c207acaed15f04fdcbc116b4d643741fcdcfc",
+    "bytes": 12490
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/MadLoopParams.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/MadLoopParams.inc",
+    "sha256": "8935257f9f7d6eb89ebcf783672f189bbaaa21f87006d7f8c3c3700909ed0bc0",
+    "bytes": 1513
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/TIR_interface.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/TIR_interface.f",
+    "sha256": "20a7ce462174c54d0f819cde8a928d5b62a50d949b1655eb44120128e25bcc28",
+    "bytes": 34997
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/born_matrix.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/born_matrix.f",
+    "sha256": "005e9ab5552e4c72c82fa332c0ae20e144410e68350a49527182fc7c3cf26b2e",
+    "bytes": 54785
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/check_sa_born_splitOrders.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/check_sa_born_splitOrders.f",
+    "sha256": "945e07deab02e0ba080a5fca4fbaa2b1c7abc5eb281d79942f4482f7f42957ed",
+    "bytes": 15070
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/coef_construction_1.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/coef_construction_1.f",
+    "sha256": "a96dcbad386fafe6067d3828e682950b3346f0d20ae9b01cc5b73a56b3f2ae38",
+    "bytes": 202974
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/coef_construction_2.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/coef_construction_2.f",
+    "sha256": "85aa415bc925757ebb4d9d600b9db17512261b34ce4ee5dd3f6a05e22a01e5a4",
+    "bytes": 210073
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/coef_construction_3.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/coef_construction_3.f",
+    "sha256": "33eb2317883939d51df697e5b0c15f88597b7bd68116d499876d1d730bb049d1",
+    "bytes": 93401
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/coef_specs.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/coef_specs.inc",
+    "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+    "bytes": 120
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/coupl.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/coupl.inc",
+    "sha256": "5dd65c4f5bf4f5e79343464366986fe455cbcf5a02d451cc06a25f97b76ee818",
+    "bytes": 1870
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/cts_mpc.h": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/cts_mpc.h",
+    "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+    "bytes": 24
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/cts_mprec.h": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/cts_mprec.h",
+    "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+    "bytes": 20
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/f2py_wrapper.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/f2py_wrapper.f",
+    "sha256": "4446bfff3ee103cd3b5b94f30ec0956d19eb9460b38aa83242bdf3fdc75abe3f",
+    "bytes": 3924
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/global_specs.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/global_specs.inc",
+    "sha256": "4c894694d34d389a11ee23f0ad3faef74cd1fc1d1c9cfbb009fecee948ed99fc",
+    "bytes": 168
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/helas_calls_ampb_1.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/helas_calls_ampb_1.f",
+    "sha256": "2e80c6fa816a7975e25090419f66f07031d24706718c70f261b1c59d33b568c4",
+    "bytes": 109425
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/helas_calls_uvct_1.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/helas_calls_uvct_1.f",
+    "sha256": "c2a98770be933251065a2c7c47409a3d2f1d27b77df3f076d2e3acb3d0256453",
+    "bytes": 13047
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/improve_ps.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/improve_ps.f",
+    "sha256": "412c23c057bb8fb5572003748eba4b04e00099fad16ce95743859dfcd0b8472b",
+    "bytes": 28616
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/loop_CT_calls_1.f",
+    "sha256": "ca5b3592db4d7ef079566c2e15f4359d9cdaa8f547066003f369506234ff4456",
+    "bytes": 111965
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/loop_matrix.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/loop_matrix.f",
+    "sha256": "d9819ec368321e736896a4b2af4cd0121dec9bab1726b0da3a338a86ae9be5f8",
+    "bytes": 129093
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/loop_max_coefs.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/loop_max_coefs.inc",
+    "sha256": "1949bace736cdf834cc4c1428a9f3fe8f7329c3f4be1d7bf8b5055d7f791b525",
+    "bytes": 62
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/loop_num.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/loop_num.f",
+    "sha256": "0caf76e28ec7df405a6e6c5dbad1692dffab4a90e1f2bf3216a90520977498df",
+    "bytes": 3064
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/makefile": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/makefile",
+    "sha256": "02ae617b1637f78b2bfaf132433213726c6b535203edffa436eb50e1ac890200",
+    "bytes": 9621
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/mg5_citation.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/mg5_citation.f",
+    "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+    "bytes": 2867
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/mp_coef_construction_1.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/mp_coef_construction_1.f",
+    "sha256": "227b5f1867ed5b82f0ea48758cf3d71a213b3c6341dadb8750bb054a1a04beb3",
+    "bytes": 218794
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/mp_coef_construction_2.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/mp_coef_construction_2.f",
+    "sha256": "b5df544de163e605dcfb398a5bd189c689c6b6ac2aa79a479dfdb11d9608f1f0",
+    "bytes": 225289
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/mp_coef_construction_3.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/mp_coef_construction_3.f",
+    "sha256": "ba3489c785c2b1163d11a506138217eafd78523eb872522da3b9ab4d052fb1d9",
+    "bytes": 98118
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/mp_compute_loop_coefs.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/mp_compute_loop_coefs.f",
+    "sha256": "c1a2421af619064407bea4793fb2091249569a537c0911c6bd3fcab6fd8b7df7",
+    "bytes": 13580
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/mp_coupl.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/mp_coupl.inc",
+    "sha256": "8a3db914cea812b6429b11881bc0dd083e5bbf36e9fe19e525f00f3be797bdd4",
+    "bytes": 1969
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/mp_coupl_same_name.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/mp_coupl_same_name.inc",
+    "sha256": "7f31ff9ea2f63bf05e287293212ce097e8cd970688b924d8385c1f419312cb0f",
+    "bytes": 1465
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/mp_helas_calls_ampb_1.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/mp_helas_calls_ampb_1.f",
+    "sha256": "d168149b7b98489c6c89fed40a3fa76e3205a3311e69cbd294e9ac958306b5f2",
+    "bytes": 113531
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/mp_helas_calls_uvct_1.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/mp_helas_calls_uvct_1.f",
+    "sha256": "8c341fe5dc4e44589326bb51e7b084ada4bcf2e3c08f46f415ee9db3a5f999f9",
+    "bytes": 12936
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/nexternal.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/nexternal.inc",
+    "sha256": "68d87bc41ce52297da1872cba38488f27ba25f451b333ba0c7514752948ca245",
+    "bytes": 114
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/ngraphs.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/ngraphs.inc",
+    "sha256": "cb12fd7b16c81385436e5735dadd18103303b3ac9b1c3d1da8775ec0e321926d",
+    "bytes": 58
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/nsqso_born.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/nsqso_born.inc",
+    "sha256": "3b38ec895740e951986695a1de84d502519179591cff87fd84460bd597fda484",
+    "bytes": 56
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/nsquaredSO.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/nsquaredSO.inc",
+    "sha256": "39a4a2d2392d3c4975b88951d0a3e4c86e3c626fe5b0846fb29350301a389bdf",
+    "bytes": 56
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/pmass.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/pmass.inc",
+    "sha256": "a74f50d22fc7fdb8a5334e000cb3a150fd687844258ac9e2457682e4b7cdff33",
+    "bytes": 134
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/polynomial.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/polynomial.f",
+    "sha256": "48c363674939c8d2c671824b65c8b898c4e85f1fff833fa02580a90df8baa281",
+    "bytes": 55058
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/process_info.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/process_info.inc",
+    "sha256": "a2163706175ae47c77e94b49ffd225a0335bed2f42f67185fd104f817719d920",
+    "bytes": 176
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/unique_id.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/P0_uux_zzgg/unique_id.inc",
+    "sha256": "d60a49c61df4c28973b15a4f965abf3b8fd524c9f59fa91b630abdae15124a2e",
+    "bytes": 52
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/coupl.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/coupl.inc",
+    "sha256": "5dd65c4f5bf4f5e79343464366986fe455cbcf5a02d451cc06a25f97b76ee818",
+    "bytes": 1870
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/cts_mpc.h": {
+    "retained": "source/actual-compiled-tree/SubProcesses/cts_mpc.h",
+    "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+    "bytes": 24
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/cts_mprec.h": {
+    "retained": "source/actual-compiled-tree/SubProcesses/cts_mprec.h",
+    "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+    "bytes": 20
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/global_specs.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/global_specs.inc",
+    "sha256": "4c894694d34d389a11ee23f0ad3faef74cd1fc1d1c9cfbb009fecee948ed99fc",
+    "bytes": 168
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/ldme.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/ldme.inc",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/makefile": {
+    "retained": "source/actual-compiled-tree/SubProcesses/makefile",
+    "sha256": "02ae617b1637f78b2bfaf132433213726c6b535203edffa436eb50e1ac890200",
+    "bytes": 9621
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/makefileP": {
+    "retained": "source/actual-compiled-tree/SubProcesses/makefileP",
+    "sha256": "35afefa36a49041f54034da719b5832622f6ad47da348ab4e3bb54130d4d1962",
+    "bytes": 2296
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/mg5_citation.f": {
+    "retained": "source/actual-compiled-tree/SubProcesses/mg5_citation.f",
+    "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+    "bytes": 2867
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/mp_coupl.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/mp_coupl.inc",
+    "sha256": "8a3db914cea812b6429b11881bc0dd083e5bbf36e9fe19e525f00f3be797bdd4",
+    "bytes": 1969
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/mp_coupl_same_name.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/mp_coupl_same_name.inc",
+    "sha256": "7f31ff9ea2f63bf05e287293212ce097e8cd970688b924d8385c1f419312cb0f",
+    "bytes": 1465
+  },
+  ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-7/outputs/baseline/qcd-4/SubProcesses/nsquaredSO.inc": {
+    "retained": "source/actual-compiled-tree/SubProcesses/nsquaredSO.inc",
+    "sha256": "39a4a2d2392d3c4975b88951d0a3e4c86e3c626fe5b0846fb29350301a389bdf",
+    "bytes": 56
+  }
+}

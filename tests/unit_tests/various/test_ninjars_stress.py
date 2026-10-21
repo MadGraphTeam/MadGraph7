@@ -217,7 +217,11 @@ class TestNinjaRSStress(unittest.TestCase):
                            "repetition": repetition, "rows": copy.deepcopy(rows), "cpu": 5,
                            "seconds_per_point": .001, "cold_seconds": 1., "loops": 1,
                            "points_sha256": cid, "parameter_card_sha256": "physical-card",
-                           "shared_numerical_settings": {"mlstabthres": 1e-9},
+                           "shared_numerical_settings": {
+                               "mlstabthres": 1e-9, "collierrequiredaccuracy": 1e-12,
+                               "colliercomputeuvpoles": True, "colliercomputeirpoles": True,
+                               "osthres": 1e-8,
+                               **({"selected_backend_qp_integrand": True} if backend != 7 else {})},
                            "answer_dimensions": {"allocated": 1, "loop_orders": 1, "born_orders": 1},
                            "status_counts": {str(rows[0]["status"]): count},
                            "timed_status_counts": {str(rows[0]["status"]): count},
@@ -275,6 +279,26 @@ class TestNinjaRSStress(unittest.TestCase):
         self.assertFalse(result["complete_campaign_passed"])
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["cases"][0]["scale"]["restoration"]["status"], "failed")
+
+    def test_cross_backend_qp_annotation_does_not_relax_stress_settings(self):
+        groups = {v: self.campaign_records(v) for v in stress.VARIANTS}
+        self.assertTrue(self.snapshot(groups)["complete_campaign_passed"])
+        for backend in (1, 6, 8):
+            for value in (False, None):
+                changed = copy.deepcopy(groups)
+                record = next(row for (_, _, b, _), (_, row) in changed["ordinary"].items() if b == backend)
+                if value is None:
+                    del record["shared_numerical_settings"]["selected_backend_qp_integrand"]
+                else:
+                    record["shared_numerical_settings"]["selected_backend_qp_integrand"] = value
+                with self.subTest(backend=backend, value=value), self.assertRaisesRegex(ValueError, "full precision"):
+                    self.snapshot(changed)
+        for variant in stress.VARIANTS:
+            changed = copy.deepcopy(groups)
+            record = next(row for (_, _, backend, _), (_, row) in changed[variant].items() if backend == 7)
+            record["shared_numerical_settings"]["osthres"] = 1e-7
+            with self.subTest(variant=variant), self.assertRaisesRegex(ValueError, "inputs/settings"):
+                self.snapshot(changed)
 
     def test_optional_helper_failure_is_visible_without_failing_candidate_gate(self):
         groups = {v: self.campaign_records(v) for v in stress.VARIANTS}

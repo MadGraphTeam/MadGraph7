@@ -489,6 +489,25 @@ def distribution(values):
             "zero_count": values.count(0.), "interpretation": "MadLoop internal estimate; not independently measured precision"}
 
 
+def comparable_numerical_settings(record):
+    """Apply the core policy's backend-specific QP annotation rule.
+
+    The selector is derived metadata: CutTools, Ninja and NinjaRS require their
+    own QP integrand; Collier has no corresponding option. Validate that
+    requirement before omitting only this annotation from cross-backend equality.
+    All physical/numerical card settings remain in the comparison unchanged.
+    """
+    numerical = record["shared_numerical_settings"]
+    if (numerical.get("collierrequiredaccuracy") != 1e-12 or
+            numerical.get("mlstabthres") != 1e-9 or
+            numerical.get("colliercomputeuvpoles") is not True or
+            numerical.get("colliercomputeirpoles") is not True or
+            (record["backend"] != 7 and numerical.get("selected_backend_qp_integrand") is not True)):
+        raise ValueError("Measurements do not use required full precision/pole/settings policy")
+    return {key: value for key, value in numerical.items()
+            if key != "selected_backend_qp_integrand"}
+
+
 def compare_rows(groups, pairs=None):
     keys = list(groups)
     if not keys:
@@ -866,7 +885,9 @@ def report_snapshot(filename, expected, inputs=None, runtime_signature=None):
         for case_id in {key[0] for key in table}:
             records = [record for (case, _, _), runs in table.items() if case == case_id for record in runs]
             for key in ("points_sha256", "parameter_card_sha256", "shared_numerical_settings", "answer_dimensions", "protocol_identity_sha256"):
-                if len({bench.content_digest(record[key]) for record in records}) != 1:
+                if len({bench.content_digest(comparable_numerical_settings(record)
+                                            if key == "shared_numerical_settings" else record[key])
+                        for record in records}) != 1:
                     raise ValueError("Supplement roles use different physical inputs/settings: "+key)
     cases = []
     config = loop_configuration()

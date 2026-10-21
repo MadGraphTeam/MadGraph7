@@ -1,0 +1,16 @@
+{
+  ".gitignore_sha256": "2dd8eaa701529c4f306a71d969b65c028f2cc3850e16ba4de92d4db9decf3e85",
+  "actual_retained_untracked_diagnostics": {
+    "vendor/StdHEP/fail": "7f421cf6d2a425cdc6002275bcf1039d01c8f17c715d42e6631df17c71315690"
+  },
+  "document_test_paths": 2390,
+  "head": "9d33d4650a2e6079d007c365f1c12bb74a2def3f",
+  "outside_check_semantics": "Only git diff numerical_revision HEAD; current unstaged .gitignore is excluded, and six exact rules match only docs paths.",
+  "passed": true,
+  "physics_model_compiler_calls": 0,
+  "production_map_equal_sealed_registration": true,
+  "production_paths": 2601,
+  "schema": "actual-stress-source-guard-check-v1",
+  "source_guard_sha256": "8e942ae716672c7c329e4dfb6fc68349822938a09b556040879c6aeed8513363",
+  "utc": "2026-10-21T05:45:27.795741+00:00"
+}

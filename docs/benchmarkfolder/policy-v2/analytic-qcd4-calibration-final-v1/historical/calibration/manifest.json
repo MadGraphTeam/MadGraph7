@@ -1,0 +1,26 @@
+{
+  "bytes": 121229,
+  "count": 4,
+  "files": {
+    "README.md": {
+      "bytes": 2264,
+      "sha256": "4476a439e5423fe0d1d72d5b85d2ab92c662ef68f4bfe71c1f8b78c6168d318f"
+    },
+    "checks.jsonl": {
+      "bytes": 97154,
+      "sha256": "c0bdffb5a766418a2ecee47fec124498d62cf35ca9c1bfaee49e73bc11af3796"
+    },
+    "receipt.json": {
+      "bytes": 18298,
+      "sha256": "bfc74b70abd717f88cfc585b8e043e727c93d8e3656d9d942699ccfb1478f25c"
+    },
+    "recipe.py": {
+      "bytes": 3513,
+      "sha256": "debe1a52b6a0e7b6b609d28d7fb447fd639eb0db7ca4e6ed5cd2fc3fbb691fa6"
+    }
+  },
+  "only_scope": "Retained original-helper CutTools qcd4 calibration,100points200double-pole rows; full campaign gates unchanged.",
+  "physics_or_compiler_calls": 0,
+  "recipe_execution": "Provided for root independent check; not run as an additional test by this audit.",
+  "schema": "private-analytic-pole-postprocessing-retention-v1"
+}

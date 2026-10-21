@@ -1,0 +1,95 @@
+{
+  "actual_member_count": 190,
+  "actual_source_archive": {
+    "bytes": 936778,
+    "path": ".benchmark-work/final-ew-model-retention-v1/loop_qcd_qed_sm_Gmu-actual-source.tar.gz",
+    "sha256": "495514a1f52f4d3b7445cbaac87dfe87d07d628a01680a3bf0457408b13fb7dc"
+  },
+  "actual_source_archive_is_not_relabelled_earlier_download": true,
+  "actual_top_level_python_aggregate": "5dd9a66ef0b501f643251a65d9fa21a8be744b04959e1fcecd13eea51476a0e1",
+  "all_member_checksums_modes_and_source_copies_verified": true,
+  "canonical_archive_independently_rebuilt_byte_identically_in_memory": true,
+  "checked_utc": "2026-10-21T04:35:28.539198+00:00",
+  "cli_calls": 0,
+  "compiler_calls": 0,
+  "directories": 14,
+  "earlier_download_candidate": {
+    "bytes": 959608,
+    "path": ".benchmark-work/final-ew-model-retention-v1/original-download-candidate.tgz",
+    "sha256": "7655cb636257b4c67db7e1e09f232e7c0358dd92b85373ee83bdb9e7686ff65f"
+  },
+  "earlier_download_differs_exactly_in": [
+    "__init__.py",
+    "object_library.py",
+    "write_param_card.py"
+  ],
+  "earlier_download_top_python_aggregate": "d80ca7d3c2df8c65e44d73ba2f0fdf10c95b7bd5299eb9df0389a825877e1ad5",
+  "excluded_live_runtime_files": 15,
+  "head_unchanged": "9d33d4650a2e6079d007c365f1c12bb74a2def3f",
+  "historical_text_backup_members": [
+    "__init__.py~"
+  ],
+  "intentional_nontext_historical_metadata": [
+    {
+      "bytes": 212,
+      "magic_hex": "00051607000200004d6163204f532058",
+      "name": "._object_library.py"
+    }
+  ],
+  "limits": [
+    "No model import, cache regeneration, CLI generation or numerical reproduction was run by this offline audit; source completeness and equality do not independently prove a clean-cache generated output matches an earlier cached import.",
+    "The recorded URL/HTTP retrieval authenticity and exact historical transformation command/time for the three changed Python files remain unestablished.",
+    "The 14-file aggregate covers top-level Python bytes, including the historical AppleDouble file. The gzip SHA covers the full 176-file retained source; neither hash is substituted for the earlier download checksum."
+  ],
+  "live_source_and_cache_hashes_modes_mtime_ctime_preserved": true,
+  "manifest": {
+    "bytes": 44057,
+    "path": ".benchmark-work/final-ew-model-retention-v1/manifest.json",
+    "sha256": "2e4a9238d301812db78136edd460db7eed84d1a099c6362c9cb8ac497f1aae4e"
+  },
+  "model_imports": 0,
+  "network_calls": 0,
+  "numerical_calls": 0,
+  "original_aggregate_algorithm_source": {
+    "bytes": 8513,
+    "path": "tools/ninjars_setup_references.py",
+    "sha256": "0ec39ed60724607a5bbd947d9c717a80528ad3160fe1b9117afef1a9eca1466a"
+  },
+  "original_hashed_top_level_python_files": [
+    "._object_library.py",
+    "CT_couplings.py",
+    "CT_parameters.py",
+    "CT_vertices.py",
+    "__init__.py",
+    "coupling_orders.py",
+    "couplings.py",
+    "function_library.py",
+    "lorentz.py",
+    "object_library.py",
+    "parameters.py",
+    "particles.py",
+    "vertices.py",
+    "write_param_card.py"
+  ],
+  "original_provenance": {
+    "bytes": 8031,
+    "path": "docs/benchmarkfolder/provenance.json",
+    "sha256": "342787cc8ade1962c26dbc545793653a94a346a5b878ef3474d25f4eeb2b5ed6"
+  },
+  "passed": true,
+  "prebuilt_code_or_cache_members": [],
+  "regular_files": 176,
+  "reproduction_sufficiency": {
+    "archive_top_level": "loop_qcd_qed_sm_Gmu",
+    "future_verification": "Use tools/ninjars_setup_references.py --verify-model-only after restoration; its original 14-file algorithm is preserved. No model import is needed for that checksum check.",
+    "no_build_product_alternative_required": "The actual archive already is a complete noncache source archive. Its 212-byte AppleDouble entry participates in the original historical aggregate; __init__.py~ is a historical text backup present in both archives, not generated object code.",
+    "offline_source_inventory_complete": true,
+    "shared_generation_model_location": "tools/ninjars_benchmark.py:generate directs both benchmark roles to BASELINE/models for this EW model",
+    "target_directory": ".benchmark-work/original/models"
+  },
+  "safe_members": true,
+  "schema": "independent-private-ew-source-retention-audit-v1",
+  "sealed_manifest_or_source_modified": false,
+  "source_bytes": 5807406,
+  "tracked_files_modified": false
+}

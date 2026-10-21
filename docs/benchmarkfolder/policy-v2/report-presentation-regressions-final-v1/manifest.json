@@ -1,0 +1,53 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 1304,
+      "sha256": "99d597142fcf87617694f092e1c08f08672ddb5b8af14b5485604521e6af98a7"
+    },
+    "application.json": {
+      "bytes": 1804,
+      "sha256": "394e8288e3512dd6f8bdda635615cb6fcd696a3a374e57e75eebdd801269211b"
+    },
+    "command.json": {
+      "bytes": 635,
+      "sha256": "27794642d3976bdec4461130885b259e3afc509d5f85108f1ea64353dd12063d"
+    },
+    "proposal.patch": {
+      "bytes": 14236,
+      "sha256": "8042bebd6f8a2d76a59816d3aa31faff1f739659851095068f8be29bb5d3fbcf"
+    },
+    "result.json": {
+      "bytes": 951,
+      "sha256": "bd46630f29e81abfe59c39d652bfb2b9da3db9a1b62913e9e0a8d813eb9bf236"
+    },
+    "unittest.stderr": {
+      "bytes": 8747,
+      "sha256": "6d5a8e827eedf6144d8a716225165f273b87a190de2809cc86313f9fcde87478"
+    },
+    "unittest.stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "validation.json": {
+      "bytes": 2045,
+      "sha256": "bbecc1ea5f63699971d87f03cb2ee15e765854e361c215dc9490515f6425ad19"
+    }
+  },
+  "identity_sha256": "3bbe4edc2f35c4eed642132b5d08588cbff232054adfda181aa47b402401acf3",
+  "passed": true,
+  "schema": "report-presentation-software-proof-v1",
+  "scientific_acceptance_claim": false,
+  "source_files": {
+    "template": {
+      "bytes": 42012,
+      "path": "docs/benchmarkfolder/policy-v2/template/benchmark.typ",
+      "sha256": "46097459284e640c3bb8c6459591aba798c94198f4b369d9c2fad817185d8b29"
+    },
+    "test": {
+      "bytes": 55160,
+      "path": "tests/unit_tests/loop/test_ninjars_report_v2.py",
+      "sha256": "d00210615d74fc23bd5376a6209e41447749f7e756066709574324a967011ef7"
+    }
+  },
+  "tests_run": 43
+}

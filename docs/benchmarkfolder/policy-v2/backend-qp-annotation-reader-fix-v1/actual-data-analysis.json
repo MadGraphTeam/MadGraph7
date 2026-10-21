@@ -1,0 +1,1758 @@
+{
+  "schema": "madloop-backend-qp-annotation-actual-analysis-v1",
+  "analysis_reader_sources_sha256": {
+    "tools/ninjars_supplement_v2.py": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8",
+    "tools/ninjars_stress_v2.py": "82a23b54720b48dd21a2373f389f55a7e8b98923637a88ddfd72045f69f4ca55",
+    "tools/ninjars_report_v2.py": "d9c50cbf0de7c848a95839ff1a7e2ee656933c36d21dbfab2d32a5a35504b9a2",
+    "tools/ninjars_benchmark_policy_v2.py": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a",
+    "tools/ninjars_benchmark_workers.py": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+    "tools/ninjars_benchmark_worker.f": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79"
+  },
+  "analysis_script_sha256": "2fe2f40514fb1bdf2d9ad78c78168cd1af7be7e365958e2a026335309cb41a0f",
+  "source_groups": [
+    {
+      "run": "loop-reference",
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-bindings.json",
+        "sha256": "2a9d29d8a2ed5eee01a86d763c99ad6a5a9da08ba950da6351410ffac6615a07",
+        "bytes": 500160
+      },
+      "records": 12,
+      "repetitions": 2
+    },
+    {
+      "run": "threshold-reference",
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-bindings.json",
+        "sha256": "42324eee2d079797aae7611e5ee634d3faef51139214ce94a4d281a2936a7171",
+        "bytes": 253598
+      },
+      "records": 6,
+      "repetitions": 2
+    },
+    {
+      "run": "loop-candidate-diagnostic-v1",
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-bindings.json",
+        "sha256": "4a000c5467c4c7bc889cb8872ab4060ca2eb1740ede885cf01b8631980695907",
+        "bytes": 2127019
+      },
+      "records": 16,
+      "repetitions": 2
+    },
+    {
+      "run": "threshold-candidate",
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-bindings.json",
+        "sha256": "fd80d7b114aa0aafa976446a2213fdcda16bf1637c37e86c709a62e8c50cf40d",
+        "bytes": 1060514
+      },
+      "records": 8,
+      "repetitions": 2
+    }
+  ],
+  "cases": {
+    "supplement-gg-h": {
+      "agreement": {
+        "passed": true,
+        "pairs": 21,
+        "failures": [],
+        "status": "passed",
+        "points": 100,
+        "orders": 2,
+        "comparisons": 16800,
+        "max_tolerance_fraction": 0.009390570588446731
+      },
+      "stability": {
+        "status": "measured",
+        "estimate_is_observed_error": false,
+        "comparison_scope": "all corrected-cohort targets, every point/order/coefficient",
+        "targets": {
+          "original_helper_corrected/1": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 200,
+                "minimum": 4.985647921837596e-31,
+                "median": 3.362816612322706e-10,
+                "p95_nearest_rank": 8.011886608218967e-10,
+                "maximum": 9.535455458950537e-10,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 100,
+                "minimum": 4.985647921837596e-31,
+                "median": 3.362816612322706e-10,
+                "p95_nearest_rank": 8.011886608218967e-10,
+                "maximum": 9.535455458950537e-10,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/6",
+                "original_helper_corrected/7",
+                "candidate_corrected/1",
+                "candidate_corrected/6",
+                "candidate_corrected/7",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 4800,
+              "failures": 0,
+              "max_tolerance_fraction": 0.009390570588446731,
+              "max_absolute_error": 1.1253394049948184e-12,
+              "max_point_scaled_error": 1.2009690725348457e-10,
+              "worst": {
+                "reference": "candidate_corrected/8",
+                "point": 50,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  7.689143737886857e-15,
+                  -1.1100663076670338e-15
+                ],
+                "absolute_error": 8.799210045553891e-15,
+                "tolerance": 9.370261330423953e-13,
+                "tolerance_fraction": 0.009390570588446731
+              }
+            },
+            "status_counts": {
+              "211": 96,
+              "329": 4
+            },
+            "points": 100,
+            "dp": 96,
+            "qp": 4
+          },
+          "original_helper_corrected/6": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 200,
+                "minimum": 6.816382326989622e-15,
+                "median": 9.722191012522079e-14,
+                "p95_nearest_rank": 3.6328862255989764e-13,
+                "maximum": 8.37747505369826e-13,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 100,
+                "minimum": 6.816382326989622e-15,
+                "median": 9.722191012522079e-14,
+                "p95_nearest_rank": 3.6328862255989764e-13,
+                "maximum": 8.37747505369826e-13,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/7",
+                "candidate_corrected/1",
+                "candidate_corrected/6",
+                "candidate_corrected/7",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 4800,
+              "failures": 0,
+              "max_tolerance_fraction": 0.008943583826134084,
+              "max_absolute_error": 1.1249872561291951e-12,
+              "max_point_scaled_error": 1.2005932571189233e-10,
+              "worst": {
+                "reference": "original_helper_corrected/1",
+                "point": 5,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  -1.5387459193053195e-16,
+                  -8.534246360661663e-15
+                ],
+                "absolute_error": 8.380371768731132e-15,
+                "tolerance": 9.370261331081632e-13,
+                "tolerance_fraction": 0.008943583826134084
+              }
+            },
+            "status_counts": {
+              "216": 100
+            },
+            "points": 100,
+            "dp": 100,
+            "qp": 0
+          },
+          "original_helper_corrected/7": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 200,
+                "minimum": 4.0766450230474533e-13,
+                "median": 4.5348049385766685e-13,
+                "p95_nearest_rank": 4.787462532469083e-13,
+                "maximum": 4.959662468179124e-13,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 100,
+                "minimum": 4.0766450230474533e-13,
+                "median": 4.5348049385766685e-13,
+                "p95_nearest_rank": 4.787462532469083e-13,
+                "maximum": 4.959662468179124e-13,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/6",
+                "candidate_corrected/1",
+                "candidate_corrected/6",
+                "candidate_corrected/7",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 4800,
+              "failures": 0,
+              "max_tolerance_fraction": 0.009033714212529069,
+              "max_absolute_error": 1.1225031321115964e-12,
+              "max_point_scaled_error": 1.1979421848253242e-10,
+              "worst": {
+                "reference": "original_helper_corrected/1",
+                "point": 5,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  -6.942006449129463e-17,
+                  -8.534246360661663e-15
+                ],
+                "absolute_error": 8.464826296170369e-15,
+                "tolerance": 9.370261331081632e-13,
+                "tolerance_fraction": 0.009033714212529069
+              }
+            },
+            "status_counts": {
+              "217": 100
+            },
+            "points": 100,
+            "dp": 100,
+            "qp": 0
+          },
+          "candidate_corrected/1": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 200,
+                "minimum": 4.985647921837596e-31,
+                "median": 3.362816612322706e-10,
+                "p95_nearest_rank": 8.011886608218967e-10,
+                "maximum": 9.535455458950537e-10,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 100,
+                "minimum": 4.985647921837596e-31,
+                "median": 3.362816612322706e-10,
+                "p95_nearest_rank": 8.011886608218967e-10,
+                "maximum": 9.535455458950537e-10,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/6",
+                "original_helper_corrected/7",
+                "candidate_corrected/6",
+                "candidate_corrected/7",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 4800,
+              "failures": 0,
+              "max_tolerance_fraction": 0.009390570588446731,
+              "max_absolute_error": 1.1253394049948184e-12,
+              "max_point_scaled_error": 1.2009690725348457e-10,
+              "worst": {
+                "reference": "candidate_corrected/8",
+                "point": 50,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  7.689143737886857e-15,
+                  -1.1100663076670338e-15
+                ],
+                "absolute_error": 8.799210045553891e-15,
+                "tolerance": 9.370261330423953e-13,
+                "tolerance_fraction": 0.009390570588446731
+              }
+            },
+            "status_counts": {
+              "211": 96,
+              "329": 4
+            },
+            "points": 100,
+            "dp": 96,
+            "qp": 4
+          },
+          "candidate_corrected/6": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 200,
+                "minimum": 6.816382326989622e-15,
+                "median": 9.722191012522079e-14,
+                "p95_nearest_rank": 3.6328862255989764e-13,
+                "maximum": 8.37747505369826e-13,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 100,
+                "minimum": 6.816382326989622e-15,
+                "median": 9.722191012522079e-14,
+                "p95_nearest_rank": 3.6328862255989764e-13,
+                "maximum": 8.37747505369826e-13,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/6",
+                "original_helper_corrected/7",
+                "candidate_corrected/1",
+                "candidate_corrected/7",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 4800,
+              "failures": 0,
+              "max_tolerance_fraction": 0.008943583826134084,
+              "max_absolute_error": 1.1249872561291951e-12,
+              "max_point_scaled_error": 1.2005932571189233e-10,
+              "worst": {
+                "reference": "original_helper_corrected/1",
+                "point": 5,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  -1.5387459193053195e-16,
+                  -8.534246360661663e-15
+                ],
+                "absolute_error": 8.380371768731132e-15,
+                "tolerance": 9.370261331081632e-13,
+                "tolerance_fraction": 0.008943583826134084
+              }
+            },
+            "status_counts": {
+              "216": 100
+            },
+            "points": 100,
+            "dp": 100,
+            "qp": 0
+          },
+          "candidate_corrected/7": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 200,
+                "minimum": 4.0766450230474533e-13,
+                "median": 4.5348049385766685e-13,
+                "p95_nearest_rank": 4.787462532469083e-13,
+                "maximum": 4.959662468179124e-13,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 100,
+                "minimum": 4.0766450230474533e-13,
+                "median": 4.5348049385766685e-13,
+                "p95_nearest_rank": 4.787462532469083e-13,
+                "maximum": 4.959662468179124e-13,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/6",
+                "original_helper_corrected/7",
+                "candidate_corrected/1",
+                "candidate_corrected/6",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 4800,
+              "failures": 0,
+              "max_tolerance_fraction": 0.009033714212529069,
+              "max_absolute_error": 1.1225031321115964e-12,
+              "max_point_scaled_error": 1.1979421848253242e-10,
+              "worst": {
+                "reference": "original_helper_corrected/1",
+                "point": 5,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  -6.942006449129463e-17,
+                  -8.534246360661663e-15
+                ],
+                "absolute_error": 8.464826296170369e-15,
+                "tolerance": 9.370261331081632e-13,
+                "tolerance_fraction": 0.009033714212529069
+              }
+            },
+            "status_counts": {
+              "217": 100
+            },
+            "points": 100,
+            "dp": 100,
+            "qp": 0
+          },
+          "candidate_corrected/8": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 200,
+                "minimum": 6.476154439723291e-15,
+                "median": 1.1965977995380053e-13,
+                "p95_nearest_rank": 4.467940978563709e-13,
+                "maximum": 9.020456297966496e-13,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 100,
+                "minimum": 6.476154439723291e-15,
+                "median": 1.1965977995380053e-13,
+                "p95_nearest_rank": 4.467940978563709e-13,
+                "maximum": 9.020456297966496e-13,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/6",
+                "original_helper_corrected/7",
+                "candidate_corrected/1",
+                "candidate_corrected/6",
+                "candidate_corrected/7"
+              ],
+              "comparisons": 4800,
+              "failures": 0,
+              "max_tolerance_fraction": 0.009390570588446731,
+              "max_absolute_error": 1.1253394049948184e-12,
+              "max_point_scaled_error": 1.2009690725348457e-10,
+              "worst": {
+                "reference": "original_helper_corrected/1",
+                "point": 50,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  -1.1100663076670338e-15,
+                  7.689143737886857e-15
+                ],
+                "absolute_error": 8.799210045553891e-15,
+                "tolerance": 9.370261330423953e-13,
+                "tolerance_fraction": 0.009390570588446731
+              }
+            },
+            "status_counts": {
+              "218": 100
+            },
+            "points": 100,
+            "dp": 100,
+            "qp": 0
+          }
+        }
+      }
+    },
+    "supplement-gg-hh": {
+      "agreement": {
+        "passed": true,
+        "pairs": 21,
+        "failures": [],
+        "status": "passed",
+        "points": 100,
+        "orders": 2,
+        "comparisons": 16800,
+        "max_tolerance_fraction": 0.013055022665343594
+      },
+      "stability": {
+        "status": "measured",
+        "estimate_is_observed_error": false,
+        "comparison_scope": "all corrected-cohort targets, every point/order/coefficient",
+        "targets": {
+          "original_helper_corrected/1": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 200,
+                "minimum": 5.252102171215418e-32,
+                "median": 1.2665837188800478e-10,
+                "p95_nearest_rank": 7.588787304928213e-10,
+                "maximum": 9.830086315194987e-10,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 100,
+                "minimum": 5.252102171215418e-32,
+                "median": 1.2665837188800478e-10,
+                "p95_nearest_rank": 7.588787304928213e-10,
+                "maximum": 9.830086315194987e-10,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/6",
+                "original_helper_corrected/7",
+                "candidate_corrected/1",
+                "candidate_corrected/6",
+                "candidate_corrected/7",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 4800,
+              "failures": 0,
+              "max_tolerance_fraction": 0.013055022665343594,
+              "max_absolute_error": 1.1227760529034653e-14,
+              "max_point_scaled_error": 3.4917128767022895e-10,
+              "worst": {
+                "reference": "original_helper_corrected/6",
+                "point": 96,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  -3.3985874187828787e-17,
+                  9.475183559493325e-18
+                ],
+                "absolute_error": 4.3461057747322114e-17,
+                "tolerance": 3.3290679657489716e-15,
+                "tolerance_fraction": 0.013055022665343594
+              }
+            },
+            "status_counts": {
+              "211": 87,
+              "329": 13
+            },
+            "points": 100,
+            "dp": 87,
+            "qp": 13
+          },
+          "original_helper_corrected/6": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 200,
+                "minimum": 7.546939916810055e-15,
+                "median": 1.1463896007790862e-13,
+                "p95_nearest_rank": 1.8392268540349226e-12,
+                "maximum": 6.3956347744218474e-12,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 100,
+                "minimum": 7.546939916810055e-15,
+                "median": 1.1463896007790862e-13,
+                "p95_nearest_rank": 1.8392268540349226e-12,
+                "maximum": 6.3956347744218474e-12,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/7",
+                "candidate_corrected/1",
+                "candidate_corrected/6",
+                "candidate_corrected/7",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 4800,
+              "failures": 0,
+              "max_tolerance_fraction": 0.013055022665343594,
+              "max_absolute_error": 1.1227760529034653e-14,
+              "max_point_scaled_error": 3.4917128767022895e-10,
+              "worst": {
+                "reference": "original_helper_corrected/1",
+                "point": 96,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  9.475183559493325e-18,
+                  -3.3985874187828787e-17
+                ],
+                "absolute_error": 4.3461057747322114e-17,
+                "tolerance": 3.3290679657489716e-15,
+                "tolerance_fraction": 0.013055022665343594
+              }
+            },
+            "status_counts": {
+              "216": 100
+            },
+            "points": 100,
+            "dp": 100,
+            "qp": 0
+          },
+          "original_helper_corrected/7": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 200,
+                "minimum": 4.395189656764237e-14,
+                "median": 3.3148272986279976e-13,
+                "p95_nearest_rank": 4.880912038491523e-12,
+                "maximum": 1.2409303244988498e-11,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 100,
+                "minimum": 4.395189656764237e-14,
+                "median": 3.3148272986279976e-13,
+                "p95_nearest_rank": 4.880912038491523e-12,
+                "maximum": 1.2409303244988498e-11,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/6",
+                "candidate_corrected/1",
+                "candidate_corrected/6",
+                "candidate_corrected/7",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 4800,
+              "failures": 0,
+              "max_tolerance_fraction": 0.010207499869320883,
+              "max_absolute_error": 1.1223830296159393e-14,
+              "max_point_scaled_error": 3.490490616510375e-10,
+              "worst": {
+                "reference": "original_helper_corrected/1",
+                "point": 96,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  -4.41336248582524e-21,
+                  -3.3985874187828787e-17
+                ],
+                "absolute_error": 3.398146082534296e-17,
+                "tolerance": 3.3290679657489716e-15,
+                "tolerance_fraction": 0.010207499869320883
+              }
+            },
+            "status_counts": {
+              "217": 100
+            },
+            "points": 100,
+            "dp": 100,
+            "qp": 0
+          },
+          "candidate_corrected/1": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 200,
+                "minimum": 5.252102171215418e-32,
+                "median": 1.2665837188800478e-10,
+                "p95_nearest_rank": 7.588787304928213e-10,
+                "maximum": 9.830086315194987e-10,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 100,
+                "minimum": 5.252102171215418e-32,
+                "median": 1.2665837188800478e-10,
+                "p95_nearest_rank": 7.588787304928213e-10,
+                "maximum": 9.830086315194987e-10,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/6",
+                "original_helper_corrected/7",
+                "candidate_corrected/6",
+                "candidate_corrected/7",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 4800,
+              "failures": 0,
+              "max_tolerance_fraction": 0.013055022665343594,
+              "max_absolute_error": 1.1227760529034653e-14,
+              "max_point_scaled_error": 3.4917128767022895e-10,
+              "worst": {
+                "reference": "original_helper_corrected/6",
+                "point": 96,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  -3.3985874187828787e-17,
+                  9.475183559493325e-18
+                ],
+                "absolute_error": 4.3461057747322114e-17,
+                "tolerance": 3.3290679657489716e-15,
+                "tolerance_fraction": 0.013055022665343594
+              }
+            },
+            "status_counts": {
+              "211": 87,
+              "329": 13
+            },
+            "points": 100,
+            "dp": 87,
+            "qp": 13
+          },
+          "candidate_corrected/6": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 200,
+                "minimum": 7.546939916810055e-15,
+                "median": 1.1463896007790862e-13,
+                "p95_nearest_rank": 1.8392268540349226e-12,
+                "maximum": 6.3956347744218474e-12,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 100,
+                "minimum": 7.546939916810055e-15,
+                "median": 1.1463896007790862e-13,
+                "p95_nearest_rank": 1.8392268540349226e-12,
+                "maximum": 6.3956347744218474e-12,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/6",
+                "original_helper_corrected/7",
+                "candidate_corrected/1",
+                "candidate_corrected/7",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 4800,
+              "failures": 0,
+              "max_tolerance_fraction": 0.013055022665343594,
+              "max_absolute_error": 1.1227760529034653e-14,
+              "max_point_scaled_error": 3.4917128767022895e-10,
+              "worst": {
+                "reference": "original_helper_corrected/1",
+                "point": 96,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  9.475183559493325e-18,
+                  -3.3985874187828787e-17
+                ],
+                "absolute_error": 4.3461057747322114e-17,
+                "tolerance": 3.3290679657489716e-15,
+                "tolerance_fraction": 0.013055022665343594
+              }
+            },
+            "status_counts": {
+              "216": 100
+            },
+            "points": 100,
+            "dp": 100,
+            "qp": 0
+          },
+          "candidate_corrected/7": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 200,
+                "minimum": 4.395189656764237e-14,
+                "median": 3.3148272986279976e-13,
+                "p95_nearest_rank": 4.880912038491523e-12,
+                "maximum": 1.2409303244988498e-11,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 100,
+                "minimum": 4.395189656764237e-14,
+                "median": 3.3148272986279976e-13,
+                "p95_nearest_rank": 4.880912038491523e-12,
+                "maximum": 1.2409303244988498e-11,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/6",
+                "original_helper_corrected/7",
+                "candidate_corrected/1",
+                "candidate_corrected/6",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 4800,
+              "failures": 0,
+              "max_tolerance_fraction": 0.010207499869320883,
+              "max_absolute_error": 1.1223830296159393e-14,
+              "max_point_scaled_error": 3.490490616510375e-10,
+              "worst": {
+                "reference": "original_helper_corrected/1",
+                "point": 96,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  -4.41336248582524e-21,
+                  -3.3985874187828787e-17
+                ],
+                "absolute_error": 3.398146082534296e-17,
+                "tolerance": 3.3290679657489716e-15,
+                "tolerance_fraction": 0.010207499869320883
+              }
+            },
+            "status_counts": {
+              "217": 100
+            },
+            "points": 100,
+            "dp": 100,
+            "qp": 0
+          },
+          "candidate_corrected/8": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 200,
+                "minimum": 4.6975725430995795e-15,
+                "median": 1.2254479474856123e-13,
+                "p95_nearest_rank": 2.1529616491378927e-12,
+                "maximum": 8.466514920069924e-12,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 100,
+                "minimum": 4.6975725430995795e-15,
+                "median": 1.2254479474856123e-13,
+                "p95_nearest_rank": 2.1529616491378927e-12,
+                "maximum": 8.466514920069924e-12,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/6",
+                "original_helper_corrected/7",
+                "candidate_corrected/1",
+                "candidate_corrected/6",
+                "candidate_corrected/7"
+              ],
+              "comparisons": 4800,
+              "failures": 0,
+              "max_tolerance_fraction": 0.008708843820430138,
+              "max_absolute_error": 1.1221228210945428e-14,
+              "max_point_scaled_error": 3.489681395969522e-10,
+              "worst": {
+                "reference": "original_helper_corrected/1",
+                "point": 96,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  -4.993541206523926e-18,
+                  -3.3985874187828787e-17
+                ],
+                "absolute_error": 2.899233298130486e-17,
+                "tolerance": 3.3290679657489716e-15,
+                "tolerance_fraction": 0.008708843820430138
+              }
+            },
+            "status_counts": {
+              "218": 100
+            },
+            "points": 100,
+            "dp": 100,
+            "qp": 0
+          }
+        }
+      }
+    },
+    "supplement-gg-hh-threshold": {
+      "agreement": {
+        "passed": true,
+        "pairs": 21,
+        "failures": [],
+        "status": "passed",
+        "points": 12,
+        "orders": 2,
+        "comparisons": 2016,
+        "max_tolerance_fraction": 0.020134523863296314
+      },
+      "stability": {
+        "status": "measured",
+        "estimate_is_observed_error": false,
+        "comparison_scope": "all corrected-cohort targets, every point/order/coefficient",
+        "targets": {
+          "original_helper_corrected/1": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 24,
+                "minimum": 1.488144422568775e-11,
+                "median": 4.487130447021096e-11,
+                "p95_nearest_rank": 1.9912113584537124e-10,
+                "maximum": 1.9912113584537124e-10,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 12,
+                "minimum": 1.488144422568775e-11,
+                "median": 4.487130447021096e-11,
+                "p95_nearest_rank": 1.9912113584537124e-10,
+                "maximum": 1.9912113584537124e-10,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/6",
+                "original_helper_corrected/7",
+                "candidate_corrected/1",
+                "candidate_corrected/6",
+                "candidate_corrected/7",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 576,
+              "failures": 0,
+              "max_tolerance_fraction": 0.020134523863296314,
+              "max_absolute_error": 2.46212148976091e-16,
+              "max_point_scaled_error": 4.375780199832165e-11,
+              "worst": {
+                "reference": "original_helper_corrected/7",
+                "point": 12,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  -1.0755885493318578e-19,
+                  1.1221539437228215e-17
+                ],
+                "absolute_error": 1.13290982921614e-17,
+                "tolerance": 5.626702855791625e-16,
+                "tolerance_fraction": 0.020134523863296314
+              }
+            },
+            "status_counts": {
+              "211": 12
+            },
+            "points": 12,
+            "dp": 12,
+            "qp": 0
+          },
+          "original_helper_corrected/6": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 24,
+                "minimum": 2.4606215550080742e-14,
+                "median": 9.380665669224005e-14,
+                "p95_nearest_rank": 1.672866387714938e-13,
+                "maximum": 1.672866387714938e-13,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 12,
+                "minimum": 2.4606215550080742e-14,
+                "median": 9.380665669224005e-14,
+                "p95_nearest_rank": 1.672866387714938e-13,
+                "maximum": 1.672866387714938e-13,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/7",
+                "candidate_corrected/1",
+                "candidate_corrected/6",
+                "candidate_corrected/7",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 576,
+              "failures": 0,
+              "max_tolerance_fraction": 0.01968019106846316,
+              "max_absolute_error": 2.3278244159737407e-16,
+              "max_point_scaled_error": 4.1371021009580267e-11,
+              "worst": {
+                "reference": "original_helper_corrected/7",
+                "point": 12,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  1.4808070848356656e-19,
+                  1.1221539437228215e-17
+                ],
+                "absolute_error": 1.1073458728744648e-17,
+                "tolerance": 5.626702855791625e-16,
+                "tolerance_fraction": 0.01968019106846316
+              }
+            },
+            "status_counts": {
+              "216": 12
+            },
+            "points": 12,
+            "dp": 12,
+            "qp": 0
+          },
+          "original_helper_corrected/7": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 24,
+                "minimum": 2.975896254491016e-12,
+                "median": 1.5022983856327966e-11,
+                "p95_nearest_rank": 1.9190995180191013e-10,
+                "maximum": 1.9190995180191013e-10,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 12,
+                "minimum": 2.975896254491016e-12,
+                "median": 1.5022983856327966e-11,
+                "p95_nearest_rank": 1.9190995180191013e-10,
+                "maximum": 1.9190995180191013e-10,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/6",
+                "candidate_corrected/1",
+                "candidate_corrected/6",
+                "candidate_corrected/7",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 576,
+              "failures": 0,
+              "max_tolerance_fraction": 0.020134523863296314,
+              "max_absolute_error": 2.46212148976091e-16,
+              "max_point_scaled_error": 4.375780199832165e-11,
+              "worst": {
+                "reference": "original_helper_corrected/1",
+                "point": 12,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  1.1221539437228215e-17,
+                  -1.0755885493318578e-19
+                ],
+                "absolute_error": 1.13290982921614e-17,
+                "tolerance": 5.626702855791625e-16,
+                "tolerance_fraction": 0.020134523863296314
+              }
+            },
+            "status_counts": {
+              "217": 12
+            },
+            "points": 12,
+            "dp": 12,
+            "qp": 0
+          },
+          "candidate_corrected/1": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 24,
+                "minimum": 1.488144422568775e-11,
+                "median": 4.487130447021096e-11,
+                "p95_nearest_rank": 1.9912113584537124e-10,
+                "maximum": 1.9912113584537124e-10,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 12,
+                "minimum": 1.488144422568775e-11,
+                "median": 4.487130447021096e-11,
+                "p95_nearest_rank": 1.9912113584537124e-10,
+                "maximum": 1.9912113584537124e-10,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/6",
+                "original_helper_corrected/7",
+                "candidate_corrected/6",
+                "candidate_corrected/7",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 576,
+              "failures": 0,
+              "max_tolerance_fraction": 0.020134523863296314,
+              "max_absolute_error": 2.46212148976091e-16,
+              "max_point_scaled_error": 4.375780199832165e-11,
+              "worst": {
+                "reference": "original_helper_corrected/7",
+                "point": 12,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  -1.0755885493318578e-19,
+                  1.1221539437228215e-17
+                ],
+                "absolute_error": 1.13290982921614e-17,
+                "tolerance": 5.626702855791625e-16,
+                "tolerance_fraction": 0.020134523863296314
+              }
+            },
+            "status_counts": {
+              "211": 12
+            },
+            "points": 12,
+            "dp": 12,
+            "qp": 0
+          },
+          "candidate_corrected/6": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 24,
+                "minimum": 2.4606215550080742e-14,
+                "median": 9.380665669224005e-14,
+                "p95_nearest_rank": 1.672866387714938e-13,
+                "maximum": 1.672866387714938e-13,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 12,
+                "minimum": 2.4606215550080742e-14,
+                "median": 9.380665669224005e-14,
+                "p95_nearest_rank": 1.672866387714938e-13,
+                "maximum": 1.672866387714938e-13,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/6",
+                "original_helper_corrected/7",
+                "candidate_corrected/1",
+                "candidate_corrected/7",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 576,
+              "failures": 0,
+              "max_tolerance_fraction": 0.01968019106846316,
+              "max_absolute_error": 2.3278244159737407e-16,
+              "max_point_scaled_error": 4.1371021009580267e-11,
+              "worst": {
+                "reference": "original_helper_corrected/7",
+                "point": 12,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  1.4808070848356656e-19,
+                  1.1221539437228215e-17
+                ],
+                "absolute_error": 1.1073458728744648e-17,
+                "tolerance": 5.626702855791625e-16,
+                "tolerance_fraction": 0.01968019106846316
+              }
+            },
+            "status_counts": {
+              "216": 12
+            },
+            "points": 12,
+            "dp": 12,
+            "qp": 0
+          },
+          "candidate_corrected/7": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 24,
+                "minimum": 2.975896254491016e-12,
+                "median": 1.5022983856327966e-11,
+                "p95_nearest_rank": 1.9190995180191013e-10,
+                "maximum": 1.9190995180191013e-10,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 12,
+                "minimum": 2.975896254491016e-12,
+                "median": 1.5022983856327966e-11,
+                "p95_nearest_rank": 1.9190995180191013e-10,
+                "maximum": 1.9190995180191013e-10,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/6",
+                "original_helper_corrected/7",
+                "candidate_corrected/1",
+                "candidate_corrected/6",
+                "candidate_corrected/8"
+              ],
+              "comparisons": 576,
+              "failures": 0,
+              "max_tolerance_fraction": 0.020134523863296314,
+              "max_absolute_error": 2.46212148976091e-16,
+              "max_point_scaled_error": 4.375780199832165e-11,
+              "worst": {
+                "reference": "original_helper_corrected/1",
+                "point": 12,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  1.1221539437228215e-17,
+                  -1.0755885493318578e-19
+                ],
+                "absolute_error": 1.13290982921614e-17,
+                "tolerance": 5.626702855791625e-16,
+                "tolerance_fraction": 0.020134523863296314
+              }
+            },
+            "status_counts": {
+              "217": 12
+            },
+            "points": 12,
+            "dp": 12,
+            "qp": 0
+          },
+          "candidate_corrected/8": {
+            "estimated_accuracy": {
+              "interpretation": "MadLoop estimate; not an observed error",
+              "all_orders": {
+                "count": 24,
+                "minimum": 1.0506562392526849e-14,
+                "median": 5.587170895702699e-14,
+                "p95_nearest_rank": 9.849836506430797e-14,
+                "maximum": 9.849836506430797e-14,
+                "zero_count": 0
+              },
+              "total_order": {
+                "count": 12,
+                "minimum": 1.0506562392526849e-14,
+                "median": 5.587170895702699e-14,
+                "p95_nearest_rank": 9.849836506430797e-14,
+                "maximum": 9.849836506430797e-14,
+                "zero_count": 0
+              }
+            },
+            "observed_discrepancy": {
+              "interpretation": "Pairwise corrected-cohort discrepancy; not an analytic error bound",
+              "reference_targets": [
+                "original_helper_corrected/1",
+                "original_helper_corrected/6",
+                "original_helper_corrected/7",
+                "candidate_corrected/1",
+                "candidate_corrected/6",
+                "candidate_corrected/7"
+              ],
+              "comparisons": 576,
+              "failures": 0,
+              "max_tolerance_fraction": 0.019752658183142237,
+              "max_absolute_error": 2.328967910452534e-16,
+              "max_point_scaled_error": 4.1391343648084215e-11,
+              "worst": {
+                "reference": "original_helper_corrected/7",
+                "point": 12,
+                "order": 0,
+                "coefficient": 2,
+                "values": [
+                  1.0730561637199115e-19,
+                  1.1221539437228215e-17
+                ],
+                "absolute_error": 1.1114233820856224e-17,
+                "tolerance": 5.626702855791625e-16,
+                "tolerance_fraction": 0.019752658183142237
+              }
+            },
+            "status_counts": {
+              "218": 12
+            },
+            "points": 12,
+            "dp": 12,
+            "qp": 0
+          }
+        }
+      }
+    }
+  },
+  "raw_qp_annotation_counts_by_backend_and_value": {
+    "1/True": 12,
+    "6/True": 12,
+    "7/absent": 12,
+    "8/True": 6
+  },
+  "common_settings_equal_after_required_qp_validation": true,
+  "all_21_pair_physical_comparisons_unchanged": true,
+  "inputs_sha256": {
+    "docs/benchmarkfolder/policy-v2/final-supplement-candidate-controls-launch-v1/postcollection-first-rejection.json": "be197b5ff6e8db75180166158c7e1d4e652246121e73591ff38b8ca8dc6fbbf7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/candidate-correctness-diagnostic-v1.json": "7c1056e7c9f84456dcc97148e9382cbe703562ec26ddf48e5a6fe391b470849a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/commands/candidate-supplement-gg-h.mg5": "5d3d2208b0fc9d5f8d7f8c92c1961ce8c36d24d143206a6eb4705426e6e01928",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/commands/candidate-supplement-gg-hh.mg5": "6f159524346488e6570ac18376ea3619f8c2bddbe8973d14a6963f1f69e2e684",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/logs/generate-candidate-supplement-gg-h.log": "6becdbd5dba2b84ac1e405eba2aefa79b70b17fee498718e8a97df955336b0ab",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/logs/generate-candidate-supplement-gg-hh.log": "b5d7a607466f79e51507632462e8485ec62cb1c6e8b056295c9aa6f807f64fe5",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/builds/supplement-gg-h-candidate-1/build.json": "94e5d065a1669db3544d7705bb0e6fd10f9977ffce3f5769d64871a1aa3bb485",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/builds/supplement-gg-h-candidate-6/build.json": "6e4ed52a7e218b69c5390420ec88f3e55fc241a95aa2e2327062381d09e47c49",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/builds/supplement-gg-h-candidate-7/build.json": "0e0116dc14b6ea053da067337c9029ca60d3cf5a3ccc740667d98c5db5e838dc",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/builds/supplement-gg-h-candidate-8/build.json": "df24370673e09a11607a0f199990e396527a21650fed672b716d76e4fb01b097",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/builds/supplement-gg-hh-candidate-1/build.json": "a0c39c16572c2dfea64cea18c4946e8c353710daa176a36c2fda902345220bbf",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/builds/supplement-gg-hh-candidate-6/build.json": "1abf8479119e5da76b9bbcca79b4061958d3fbd9314c5685916cc3a0a0bd81a7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/builds/supplement-gg-hh-candidate-7/build.json": "e42cf9dca0ddc8e8b5d164246f5080bd0a9da75e28b54e8b9cced6b14d6cb078",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/builds/supplement-gg-hh-candidate-8/build.json": "5c98ae909d172fc1df15ea1adbba36ac18c31dc03fe8f865006b3ff263c40a75",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-h-candidate-1-0.json": "30af5a21c6483c68e59aad68006f64bca9d715789069e143374f810ec932c484",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-h-candidate-1-1.json": "85d26c3bdcf9eb1a0d1af203c65d7ae88e2c08a6cfba615d8e99d3b92c62d185",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-h-candidate-6-0.json": "6b8c906871604cba2a9ceb9f31b12c0a46a86e5cf484dae8eba41dfa1f5a4f00",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-h-candidate-6-1.json": "13a706e746bda29c58c3fab9dc1cf4102879bfcf9f28c8d1f2a22817a2f688ce",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-h-candidate-7-0.json": "7e441ed0a1ca218689f14307f5d982658d27758775b762e75f324eb9afd0a38f",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-h-candidate-7-1.json": "6ad03abb319630a192e484dc6ea15b8986dfcb2032698b969e0e22ee21c53d65",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-h-candidate-8-0.json": "d6c0816df1b698b391c59290dad92fdd4b4e5b3ff228a7ca60eab79173c4bf6e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-h-candidate-8-1.json": "bb26baa270de1c9a3e3b92b47af2a5574e80093bbd156b07b7e1ba797869ab7a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-hh-candidate-1-0.json": "85816b175d9f65a683670bd9117442b08f33b5b6f193ecd18fc2cce22f471706",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-hh-candidate-1-1.json": "8a8833f5c9df3e11e880b45043733f80596b467378ffeb3ef3955f77033f0065",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-hh-candidate-6-0.json": "3610b17b5160477e3149cb2411ccf6eeba36453e196e99897f6f0736b57b3aea",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-hh-candidate-6-1.json": "7f06cbc4ae659173b0b344b049025add054936c2f16553c73db9fe454dc2d6ec",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-hh-candidate-7-0.json": "486e30d59b30fe98195df2354f75d6262225fa7b671a28c419fa1180d48ca644",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-hh-candidate-7-1.json": "09c6afb11c644beecc6dd1908c11e62a3ffb1b0e0517734bc4b48aef9741e9d2",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-hh-candidate-8-0.json": "b52a57d9e74f06eb0059f6b49263e9d5261a8dafd38a01a4674d7a9db41a55bc",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/data/supplement-gg-hh-candidate-8-1.json": "d3d005c91f5da4ed1d0b6c5b541a7061f995cd891c68230ecca62fbbc7a46001",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/points/supplement-gg-h.dat": "146ab1c08480c2687352d1800ba12c00633097d109c9f3b084bb69c9a41dfa5b",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/points/supplement-gg-hh.dat": "3f05e279caa8057906bce524597066c479454b89d455ca57a42691f5060004f6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721": "015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975": "0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf": "261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7": "2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d": "36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7": "3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097": "480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a": "4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321": "4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83": "56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492": "5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34": "59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9": "5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4": "616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e": "67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8": "6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6": "81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc": "8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830": "8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f": "8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2": "8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6": "9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66": "966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7": "97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9": "98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5": "9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d": "9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383": "a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d": "acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d": "ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d": "ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc": "ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68": "b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83": "ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7": "bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe": "bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7": "bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4": "bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6": "c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30": "c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9": "c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354": "c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5": "c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7": "cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c": "cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80": "cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63": "d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744": "d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad": "df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193": "e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec": "e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1": "e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41": "e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2": "ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4": "f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f": "f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb": "f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316": "f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e": "f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e": "f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd": "f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558": "fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397": "fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/runtime-assets/ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c": "ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-1/compilation.json": "05e892252de698c6adc4a746c2d18acdac6fe951828bb3064464079d072d761a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-1/compiled-sources.json": "a3483caabbceb8d44367cccd3470fa8882fcfb9ccf5b39b01813dc02e5622fad",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-1/generation.json": "bf59a051569b6bc13705812db91d5e926944ba56e171f8444a698cd0b7ecadbf",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-1/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-1/source-proof.json": "b17a8fe8773649354204ed3cfb63040760c348d20ab1486469673e3307241074",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-6/compilation.json": "05e892252de698c6adc4a746c2d18acdac6fe951828bb3064464079d072d761a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-6/compiled-sources.json": "a3483caabbceb8d44367cccd3470fa8882fcfb9ccf5b39b01813dc02e5622fad",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-6/generation.json": "bf59a051569b6bc13705812db91d5e926944ba56e171f8444a698cd0b7ecadbf",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-6/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-6/source-proof.json": "b17a8fe8773649354204ed3cfb63040760c348d20ab1486469673e3307241074",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-7/compilation.json": "05e892252de698c6adc4a746c2d18acdac6fe951828bb3064464079d072d761a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-7/compiled-sources.json": "a3483caabbceb8d44367cccd3470fa8882fcfb9ccf5b39b01813dc02e5622fad",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-7/generation.json": "bf59a051569b6bc13705812db91d5e926944ba56e171f8444a698cd0b7ecadbf",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-7/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-7/source-proof.json": "b17a8fe8773649354204ed3cfb63040760c348d20ab1486469673e3307241074",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-8/compilation.json": "05e892252de698c6adc4a746c2d18acdac6fe951828bb3064464079d072d761a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-8/compiled-sources.json": "a3483caabbceb8d44367cccd3470fa8882fcfb9ccf5b39b01813dc02e5622fad",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-8/generation.json": "bf59a051569b6bc13705812db91d5e926944ba56e171f8444a698cd0b7ecadbf",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-8/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-h-candidate-8/source-proof.json": "b17a8fe8773649354204ed3cfb63040760c348d20ab1486469673e3307241074",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-1/compilation.json": "adc86647b466ab86e56d106c7d5d3f399ac386917175ca0f52dbd5b9c7971584",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-1/compiled-sources.json": "add635d68cba05086b4c49eaaf40b9f60c28be96a4e797a48fbafc74529187a6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-1/generation.json": "4dcb16efa33d37a83dd200133d39db073b441ff3b72fdd3c5e01fc644a376b06",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-1/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-1/source-proof.json": "b53c9979beed5ec29c915060941b3a9c4ea612056a3c992918650132fc4471c1",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-6/compilation.json": "adc86647b466ab86e56d106c7d5d3f399ac386917175ca0f52dbd5b9c7971584",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-6/compiled-sources.json": "add635d68cba05086b4c49eaaf40b9f60c28be96a4e797a48fbafc74529187a6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-6/generation.json": "4dcb16efa33d37a83dd200133d39db073b441ff3b72fdd3c5e01fc644a376b06",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-6/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-6/source-proof.json": "b53c9979beed5ec29c915060941b3a9c4ea612056a3c992918650132fc4471c1",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-7/compilation.json": "adc86647b466ab86e56d106c7d5d3f399ac386917175ca0f52dbd5b9c7971584",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-7/compiled-sources.json": "add635d68cba05086b4c49eaaf40b9f60c28be96a4e797a48fbafc74529187a6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-7/generation.json": "4dcb16efa33d37a83dd200133d39db073b441ff3b72fdd3c5e01fc644a376b06",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-7/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-7/source-proof.json": "b53c9979beed5ec29c915060941b3a9c4ea612056a3c992918650132fc4471c1",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-8/compilation.json": "adc86647b466ab86e56d106c7d5d3f399ac386917175ca0f52dbd5b9c7971584",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-8/compiled-sources.json": "add635d68cba05086b4c49eaaf40b9f60c28be96a4e797a48fbafc74529187a6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-8/generation.json": "4dcb16efa33d37a83dd200133d39db073b441ff3b72fdd3c5e01fc644a376b06",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-8/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-anchors/supplement-gg-hh-candidate-8/source-proof.json": "b53c9979beed5ec29c915060941b3a9c4ea612056a3c992918650132fc4471c1",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-candidate-diagnostic-v1/source-bindings.json": "4a000c5467c4c7bc889cb8872ab4060ca2eb1740ede885cf01b8631980695907",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/builds/supplement-gg-h-baseline-1/build.json": "87940bebdf4002119933bcf279fca3249d79cd7e0b98baa9f28c8f09e17c399a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/builds/supplement-gg-h-baseline-6/build.json": "2929c4c436c7e0fe7e73e3926320dc85fe92b2d366974578cbf46059c152cae4",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/builds/supplement-gg-h-baseline-7/build.json": "4a26fc8b253b4ec52accc4094a25091a9cec87ec5c662c7858d0bac2d6439fea",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/builds/supplement-gg-hh-baseline-1/build.json": "f1b88c9940e5818fc5ce5ce974c374190f82a4a79e14d322d4e79f618d74a012",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/builds/supplement-gg-hh-baseline-6/build.json": "6a9bb817a71ba1747ffc619af82beb64f9a107f64d1b67d47756c4679b4171c6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/builds/supplement-gg-hh-baseline-7/build.json": "67f9aa82966dcfc8d96a30f76c6e45bde416f2e64a5fe6403dc7d09653bee8d9",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/data/supplement-gg-h-baseline-1-0.json": "edd475d1b09ecc3d89641dd5eea21d273d8eb21a527682cbc170c2602a89c69b",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/data/supplement-gg-h-baseline-1-1.json": "f2c71981fb75c83439920f47ba8e9211c99284ea872033fb83da9eb869f9022b",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/data/supplement-gg-h-baseline-6-0.json": "38beac0eb905754578f2b7d6cb5b881279133b4eddb9002b5d2651242e04d485",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/data/supplement-gg-h-baseline-6-1.json": "27dd9ec3aa826efdfb9f017e54b8cfca91c0c858607b502b856ca2891ff56630",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/data/supplement-gg-h-baseline-7-0.json": "1fac07cd596279a2e71e0bcddf749e5d409ea237dacf658dbf47225f9c0b8f9a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/data/supplement-gg-h-baseline-7-1.json": "0c72320e1f1213b413a6b787fefd8267746b7e7e7a4282b08d5dd83ede80018f",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/data/supplement-gg-hh-baseline-1-0.json": "a50aed8357dd0640ea26f0405d73f05cd271dd1c35bf2ddeb642c7c79c5f965e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/data/supplement-gg-hh-baseline-1-1.json": "b4754ae51f0deab6d96109fe6f302e5fc7a02ccd8b8bf722e0389907937547ee",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/data/supplement-gg-hh-baseline-6-0.json": "f1a535010b25e245537ec286d4834c003f46ec15a6c41f79833509562bc6b862",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/data/supplement-gg-hh-baseline-6-1.json": "0dd2aeef4fd40f5babfc2aca7026fbc955b4d98b78c1f12a764b4887e28d67f1",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/data/supplement-gg-hh-baseline-7-0.json": "b62bccd22fba214f4bc68d3dded8dabb50f34eb743c58c8ba28bdc009e1ed386",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/data/supplement-gg-hh-baseline-7-1.json": "9f633497e6c282f8ea11ecfe3917c265e775dcc3627e1f7d3f827a62a716c48a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/points/supplement-gg-h.dat": "146ab1c08480c2687352d1800ba12c00633097d109c9f3b084bb69c9a41dfa5b",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/points/supplement-gg-hh.dat": "3f05e279caa8057906bce524597066c479454b89d455ca57a42691f5060004f6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721": "015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975": "0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf": "261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d": "36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7": "3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097": "480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a": "4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321": "4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83": "56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492": "5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34": "59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9": "5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4": "616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e": "67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8": "6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6": "81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc": "8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830": "8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f": "8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2": "8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6": "9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66": "966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7": "97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9": "98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5": "9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d": "9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383": "a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d": "acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d": "ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d": "ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc": "ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68": "b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83": "ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7": "bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe": "bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7": "bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4": "bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6": "c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30": "c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9": "c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354": "c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5": "c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7": "cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c": "cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80": "cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63": "d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744": "d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad": "df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193": "e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec": "e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1": "e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41": "e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2": "ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4": "f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f": "f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb": "f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316": "f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e": "f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e": "f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd": "f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558": "fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397": "fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/runtime-assets/ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c": "ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-h-baseline-1/compilation.json": "8c4d5df59e199dc3d4a44eb71840b45e03675a3b7629ecf5343431dcbae26a70",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-h-baseline-1/compiled-sources.json": "c8ccb0293d70dc456044ab63debf6aaa2be663f8740db9f16b157d4676b4ea7d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-h-baseline-1/generation.json": "7aa5a353959450227bedf00ac7670c1b99fcad0d925e17c958439980a4a7e4cf",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-h-baseline-1/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-h-baseline-1/source-proof.json": "732fd0f1020f05cca3487e266c7a3d5caa3964f678495cdc7917332047a3e90c",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-h-baseline-6/compilation.json": "8c4d5df59e199dc3d4a44eb71840b45e03675a3b7629ecf5343431dcbae26a70",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-h-baseline-6/compiled-sources.json": "c8ccb0293d70dc456044ab63debf6aaa2be663f8740db9f16b157d4676b4ea7d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-h-baseline-6/generation.json": "7aa5a353959450227bedf00ac7670c1b99fcad0d925e17c958439980a4a7e4cf",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-h-baseline-6/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-h-baseline-6/source-proof.json": "732fd0f1020f05cca3487e266c7a3d5caa3964f678495cdc7917332047a3e90c",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-h-baseline-7/compilation.json": "8c4d5df59e199dc3d4a44eb71840b45e03675a3b7629ecf5343431dcbae26a70",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-h-baseline-7/compiled-sources.json": "c8ccb0293d70dc456044ab63debf6aaa2be663f8740db9f16b157d4676b4ea7d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-h-baseline-7/generation.json": "7aa5a353959450227bedf00ac7670c1b99fcad0d925e17c958439980a4a7e4cf",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-h-baseline-7/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-h-baseline-7/source-proof.json": "732fd0f1020f05cca3487e266c7a3d5caa3964f678495cdc7917332047a3e90c",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-hh-baseline-1/compilation.json": "181e83bca8f27301b04f92586a220b8083b517c0184e40c80dff91b9568ee0a3",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-hh-baseline-1/compiled-sources.json": "37ef1d93c2e692e7de073c44dfc03a535db64c2458229384df3f59ec0404161e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-hh-baseline-1/generation.json": "6d95414e3f4205071306c968dcaf709572b886159edad96e78c0c6a0afc14c6a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-hh-baseline-1/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-hh-baseline-1/source-proof.json": "dc178c75685dd7ddd259fe0dcacff36a242cc01eeed34f1855b22d7c9accd1ef",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-hh-baseline-6/compilation.json": "181e83bca8f27301b04f92586a220b8083b517c0184e40c80dff91b9568ee0a3",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-hh-baseline-6/compiled-sources.json": "37ef1d93c2e692e7de073c44dfc03a535db64c2458229384df3f59ec0404161e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-hh-baseline-6/generation.json": "6d95414e3f4205071306c968dcaf709572b886159edad96e78c0c6a0afc14c6a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-hh-baseline-6/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-hh-baseline-6/source-proof.json": "dc178c75685dd7ddd259fe0dcacff36a242cc01eeed34f1855b22d7c9accd1ef",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-hh-baseline-7/compilation.json": "181e83bca8f27301b04f92586a220b8083b517c0184e40c80dff91b9568ee0a3",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-hh-baseline-7/compiled-sources.json": "37ef1d93c2e692e7de073c44dfc03a535db64c2458229384df3f59ec0404161e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-hh-baseline-7/generation.json": "6d95414e3f4205071306c968dcaf709572b886159edad96e78c0c6a0afc14c6a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-hh-baseline-7/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-anchors/supplement-gg-hh-baseline-7/source-proof.json": "dc178c75685dd7ddd259fe0dcacff36a242cc01eeed34f1855b22d7c9accd1ef",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/loop-reference/source-bindings.json": "2a9d29d8a2ed5eee01a86d763c99ad6a5a9da08ba950da6351410ffac6615a07",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/builds/supplement-gg-hh-threshold-candidate-1/build.json": "daa978043c29dc93869a778f5ff3f11335bbec826850297c1bbd3b94eca42917",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/builds/supplement-gg-hh-threshold-candidate-6/build.json": "dbd805f86a86a0d66feb90fdca1e1eecb296ed6cf27d3d43065cafd1b8b13098",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/builds/supplement-gg-hh-threshold-candidate-7/build.json": "c839550650497e82ee234a0015cec8f853d850657974305e87c450abb2993cce",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/builds/supplement-gg-hh-threshold-candidate-8/build.json": "c6ee061ae1dbcbf150f56a7489673b6103d5356ec4140fecb5ce51cb9014fef2",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/data/supplement-gg-hh-threshold-candidate-1-0.json": "507f20136a14d0f012d48ef3dec985330196a1e9426bf817b9ba409687052153",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/data/supplement-gg-hh-threshold-candidate-1-1.json": "43dc2e6560673c7e805f05f4246285dc6aa60ed267982ab8b44ef550db7bc110",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/data/supplement-gg-hh-threshold-candidate-6-0.json": "7276f90051f93d3d5b6983c8b28dde28c056bb766a59bb1cff05be32a826a7fb",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/data/supplement-gg-hh-threshold-candidate-6-1.json": "3976db0e522b3387295b4e0e638039cdab4b0618ecf540e654a363b41048962c",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/data/supplement-gg-hh-threshold-candidate-7-0.json": "69803491b874a29b6da44e07d76b4a48b3c1afebc561dc5db9b0e4c77214c559",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/data/supplement-gg-hh-threshold-candidate-7-1.json": "559506aa250540056e6f1dc3353e8d4419531d6cdbe8924a797e619abc5d1af4",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/data/supplement-gg-hh-threshold-candidate-8-0.json": "49df6a5b8be639201119e0db2024c5407e37f5a9f4fabd3ddfe005265463c617",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/data/supplement-gg-hh-threshold-candidate-8-1.json": "2a93c22764ebef5b938866c5009eab313d09d61a06a654842c51f5bda872f241",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/points/supplement-gg-hh-threshold.dat": "14fa79666ef3448a3d90d7d0b001b45188e62acb2783fac64b17e8da8f6ec299",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721": "015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975": "0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf": "261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7": "2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d": "36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7": "3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097": "480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a": "4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321": "4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83": "56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492": "5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34": "59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9": "5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4": "616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e": "67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8": "6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6": "81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc": "8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830": "8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f": "8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2": "8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6": "9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66": "966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7": "97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9": "98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5": "9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d": "9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383": "a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d": "acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d": "ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d": "ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc": "ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68": "b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83": "ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7": "bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe": "bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7": "bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4": "bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6": "c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30": "c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9": "c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354": "c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5": "c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7": "cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c": "cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80": "cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63": "d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744": "d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad": "df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193": "e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec": "e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1": "e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41": "e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2": "ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4": "f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f": "f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb": "f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316": "f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e": "f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e": "f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd": "f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558": "fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397": "fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/runtime-assets/ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c": "ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-1/compilation.json": "adc86647b466ab86e56d106c7d5d3f399ac386917175ca0f52dbd5b9c7971584",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-1/compiled-sources.json": "add635d68cba05086b4c49eaaf40b9f60c28be96a4e797a48fbafc74529187a6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-1/generation.json": "4dcb16efa33d37a83dd200133d39db073b441ff3b72fdd3c5e01fc644a376b06",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-1/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-1/source-proof.json": "b53c9979beed5ec29c915060941b3a9c4ea612056a3c992918650132fc4471c1",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-6/compilation.json": "adc86647b466ab86e56d106c7d5d3f399ac386917175ca0f52dbd5b9c7971584",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-6/compiled-sources.json": "add635d68cba05086b4c49eaaf40b9f60c28be96a4e797a48fbafc74529187a6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-6/generation.json": "4dcb16efa33d37a83dd200133d39db073b441ff3b72fdd3c5e01fc644a376b06",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-6/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-6/source-proof.json": "b53c9979beed5ec29c915060941b3a9c4ea612056a3c992918650132fc4471c1",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-7/compilation.json": "adc86647b466ab86e56d106c7d5d3f399ac386917175ca0f52dbd5b9c7971584",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-7/compiled-sources.json": "add635d68cba05086b4c49eaaf40b9f60c28be96a4e797a48fbafc74529187a6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-7/generation.json": "4dcb16efa33d37a83dd200133d39db073b441ff3b72fdd3c5e01fc644a376b06",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-7/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-7/source-proof.json": "b53c9979beed5ec29c915060941b3a9c4ea612056a3c992918650132fc4471c1",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-8/compilation.json": "adc86647b466ab86e56d106c7d5d3f399ac386917175ca0f52dbd5b9c7971584",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-8/compiled-sources.json": "add635d68cba05086b4c49eaaf40b9f60c28be96a4e797a48fbafc74529187a6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-8/generation.json": "4dcb16efa33d37a83dd200133d39db073b441ff3b72fdd3c5e01fc644a376b06",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-8/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-anchors/supplement-gg-hh-threshold-candidate-8/source-proof.json": "b53c9979beed5ec29c915060941b3a9c4ea612056a3c992918650132fc4471c1",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-candidate/source-bindings.json": "fd80d7b114aa0aafa976446a2213fdcda16bf1637c37e86c709a62e8c50cf40d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/builds/supplement-gg-hh-threshold-baseline-1/build.json": "4066c3243b8ea767727f9149e5768932da401cd774a32be5b0e13b77ba72a2ba",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/builds/supplement-gg-hh-threshold-baseline-6/build.json": "1fbf8bfee611f30438a0de7914e5c94ad972119205ebd9f7e197cee0176d770e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/builds/supplement-gg-hh-threshold-baseline-7/build.json": "c063628a8d1db6fbfd0faf5dd67629c367b89a1185ca60c8226b47754f5f717e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/data/supplement-gg-hh-threshold-baseline-1-0.json": "bdd8042119a19c9c81c979d7867e0948a18cb17d77c4a64b1dc8731d1fb30f6c",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/data/supplement-gg-hh-threshold-baseline-1-1.json": "8f44925d16a7e0d9c6ffc33590dea39517ed278117a0ba18659b906518757538",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/data/supplement-gg-hh-threshold-baseline-6-0.json": "9523e4339c1e70a9f8fb77955be034944621be601d73dd440aaceaabf6957bd3",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/data/supplement-gg-hh-threshold-baseline-6-1.json": "375c7254db786e5b58f62e6238702e82310d470109ccc9b9c9a57dac49090c63",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/data/supplement-gg-hh-threshold-baseline-7-0.json": "f998e521889b1ca588e8efacf51147d2bf8abf610ec3ee6842139cb7f5b1b6e4",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/data/supplement-gg-hh-threshold-baseline-7-1.json": "5f9ff224f0fc201d7815b2cc766d97a39143d28d81600744cd7414f526d8d48b",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/points/supplement-gg-hh-threshold.dat": "14fa79666ef3448a3d90d7d0b001b45188e62acb2783fac64b17e8da8f6ec299",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721": "015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975": "0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf": "261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d": "36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7": "3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097": "480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a": "4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321": "4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83": "56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492": "5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34": "59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9": "5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4": "616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e": "67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8": "6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6": "81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc": "8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830": "8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f": "8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2": "8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6": "9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66": "966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7": "97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9": "98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5": "9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d": "9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383": "a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d": "acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d": "ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d": "ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc": "ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68": "b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83": "ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7": "bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe": "bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7": "bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4": "bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6": "c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30": "c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9": "c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354": "c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5": "c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7": "cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c": "cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80": "cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63": "d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744": "d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad": "df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193": "e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec": "e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1": "e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41": "e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2": "ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4": "f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f": "f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb": "f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316": "f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e": "f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e": "f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd": "f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558": "fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397": "fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/runtime-assets/ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c": "ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-anchors/supplement-gg-hh-threshold-baseline-1/compilation.json": "181e83bca8f27301b04f92586a220b8083b517c0184e40c80dff91b9568ee0a3",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-anchors/supplement-gg-hh-threshold-baseline-1/compiled-sources.json": "37ef1d93c2e692e7de073c44dfc03a535db64c2458229384df3f59ec0404161e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-anchors/supplement-gg-hh-threshold-baseline-1/generation.json": "6d95414e3f4205071306c968dcaf709572b886159edad96e78c0c6a0afc14c6a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-anchors/supplement-gg-hh-threshold-baseline-1/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-anchors/supplement-gg-hh-threshold-baseline-1/source-proof.json": "dc178c75685dd7ddd259fe0dcacff36a242cc01eeed34f1855b22d7c9accd1ef",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-anchors/supplement-gg-hh-threshold-baseline-6/compilation.json": "181e83bca8f27301b04f92586a220b8083b517c0184e40c80dff91b9568ee0a3",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-anchors/supplement-gg-hh-threshold-baseline-6/compiled-sources.json": "37ef1d93c2e692e7de073c44dfc03a535db64c2458229384df3f59ec0404161e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-anchors/supplement-gg-hh-threshold-baseline-6/generation.json": "6d95414e3f4205071306c968dcaf709572b886159edad96e78c0c6a0afc14c6a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-anchors/supplement-gg-hh-threshold-baseline-6/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-anchors/supplement-gg-hh-threshold-baseline-6/source-proof.json": "dc178c75685dd7ddd259fe0dcacff36a242cc01eeed34f1855b22d7c9accd1ef",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-anchors/supplement-gg-hh-threshold-baseline-7/compilation.json": "181e83bca8f27301b04f92586a220b8083b517c0184e40c80dff91b9568ee0a3",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-anchors/supplement-gg-hh-threshold-baseline-7/compiled-sources.json": "37ef1d93c2e692e7de073c44dfc03a535db64c2458229384df3f59ec0404161e",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-anchors/supplement-gg-hh-threshold-baseline-7/generation.json": "6d95414e3f4205071306c968dcaf709572b886159edad96e78c0c6a0afc14c6a",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-anchors/supplement-gg-hh-threshold-baseline-7/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-anchors/supplement-gg-hh-threshold-baseline-7/source-proof.json": "dc178c75685dd7ddd259fe0dcacff36a242cc01eeed34f1855b22d7c9accd1ef",
+    "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference/source-bindings.json": "42324eee2d079797aae7611e5ee634d3faef51139214ce94a4d281a2936a7171",
+    "docs/benchmarkfolder/policy-v2/model-correction.json": "20d24a3f19c03b6f7c6c3eda4ef209e2e46cd69ab67990504602028ae3dfb526"
+  },
+  "original_rejection_and_diagnostic_unchanged": true,
+  "core_dataset_identity_sha256": null,
+  "final_report_validation_passed": false,
+  "timing_acceptance_evaluated": false,
+  "physics_evaluations": 0,
+  "scope": "Read-only postprocessing of completed actual100/100/12-point seven-target cohorts; no invented core identity or final timing/report declaration"
+}

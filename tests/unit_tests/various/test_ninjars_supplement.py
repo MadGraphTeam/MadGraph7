@@ -14,6 +14,88 @@ import ninjars_supplement_v2 as supplement
 
 
 class TestNinjaRSSupplement(unittest.TestCase):
+    @staticmethod
+    def numerical_settings(backend):
+        settings = {"mlstabthres": 1e-9, "collierrequiredaccuracy": 1e-12,
+                    "colliercomputeuvpoles": True, "colliercomputeirpoles": True,
+                    "ctmodeinit": 0, "osthres": 1e-8}
+        if backend != 7:
+            settings["selected_backend_qp_integrand"] = True
+        return settings
+
+    def test_backend_qp_annotation_matches_core_policy_without_mutating_inputs(self):
+        normalized = []
+        for backend in (1, 6, 7, 8):
+            record = {"backend": backend, "shared_numerical_settings": self.numerical_settings(backend)}
+            before = copy.deepcopy(record)
+            normalized.append(supplement.comparable_numerical_settings(record))
+            self.assertEqual(record, before)
+        self.assertTrue(all(settings == normalized[0] for settings in normalized))
+        self.assertNotIn("selected_backend_qp_integrand", normalized[0])
+        self.assertEqual(normalized[0]["osthres"], 1e-8)
+
+    def test_noncollier_qp_integrand_cannot_be_false_missing_or_integer_true(self):
+        for backend in (1, 6, 8):
+            for value in (False, None, 1):
+                settings = self.numerical_settings(backend)
+                if value is None:
+                    del settings["selected_backend_qp_integrand"]
+                else:
+                    settings["selected_backend_qp_integrand"] = value
+                with self.subTest(backend=backend, value=value), self.assertRaisesRegex(ValueError, "full precision"):
+                    supplement.comparable_numerical_settings({"backend": backend,
+                                                              "shared_numerical_settings": settings})
+
+    def test_comparison_retains_physical_settings_and_enforces_common_core_policy(self):
+        reference = supplement.comparable_numerical_settings({
+            "backend": 7, "shared_numerical_settings": self.numerical_settings(7)})
+        changed = self.numerical_settings(8)
+        changed["osthres"] = 1e-7
+        self.assertNotEqual(reference, supplement.comparable_numerical_settings({
+            "backend": 8, "shared_numerical_settings": changed}))
+        for key, value in (("mlstabthres", 1e-8), ("collierrequiredaccuracy", 1e-10),
+                           ("colliercomputeuvpoles", False), ("colliercomputeirpoles", False)):
+            changed = self.numerical_settings(8)
+            changed[key] = value
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, "full precision"):
+                supplement.comparable_numerical_settings({"backend": 8,
+                                                         "shared_numerical_settings": changed})
+
+    def test_supplement_cross_backend_settings_accept_collier_and_reject_real_drift(self):
+        expected = {"core_dataset_identity_sha256": "a"*64,
+                    "literal_baseline_revision": supplement.bench.BASELINE_REVISION,
+                    "candidate_generator_identity_sha256": "b"*64,
+                    "candidate_runtime_identity_sha256": "c"*64}
+        data = {"source_groups": [], "failed_groups": [],
+                "precision_controls": {"status": "pending", "working_bits": 256,
+                                       "convergence_bits": 384, "checks": []},
+                "identity_sha256": "d"*64, **expected,
+                "point_metadata": {"supplement-gg-h": {}, "supplement-gg-hh": {}}}
+        records = {}
+        for case in supplement.loop_configuration()["cases"]:
+            for backend in (1, 6, 7):
+                code = {1: 211, 6: 216, 7: 217}[backend]
+                for repetition in (0, 1):
+                    rows = [self.row(status=code, point=point) for point in range(1, 101)]
+                    record = {"backend": backend, "repetition": repetition, "rows": rows,
+                              "shared_numerical_settings": self.numerical_settings(backend),
+                              "points_sha256": case["id"], "parameter_card_sha256": "physical-card",
+                              "answer_dimensions": {"loop_orders": 0}, "protocol_identity_sha256": "protocol",
+                              "cold_seconds": 1., "seconds_per_point": .001, "loops": 1, "cpu": 207,
+                              "status_counts": {str(code): 100}, "timed_status_counts": {str(code): 100},
+                              "executable_sha256": str(backend)}
+                    records[case["id"], "baseline", backend, repetition] = (Path("unused"), record)
+        collections = [({"kind": "loop-induced"},
+                        {"role_map": {"baseline": "original_helper_corrected"}}, {}, records)]
+        with mock.patch.object(supplement, "validate_supplement", return_value=(data, collections)), \
+                mock.patch.object(supplement, "checked", return_value=ROOT / "docs/benchmarkfolder/policy-v2/controls.json"):
+            result = supplement.report_snapshot("unused", expected)
+            self.assertFalse(result["complete_campaign_passed"])
+            first = next(record for (_, _, backend, _), (_, record) in records.items() if backend == 7)
+            first["shared_numerical_settings"]["osthres"] = 1e-7
+            with self.assertRaisesRegex(ValueError, "shared_numerical_settings"):
+                supplement.report_snapshot("unused", expected)
+
     def test_threshold_has_exact_declared_cartesian_product(self):
         points, grid = supplement.threshold_points(173., 125.)
         self.assertEqual(len(points), 12)

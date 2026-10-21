@@ -1,0 +1,479 @@
+{
+  "actual_model_postimages": {
+    "Source/MODEL/model_functions.f": {
+      "actual_source": {
+        "bytes": 32184,
+        "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/Source/MODEL/model_functions.f",
+        "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3"
+      },
+      "expected_postimage": {
+        "original_path": ".benchmark-work/policy-v2/generation/outputs/candidate/qcd-4/Source/MODEL/model_functions.f",
+        "path": "docs/benchmarkfolder/policy-v2/model-correction.files/56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3",
+        "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3"
+      }
+    },
+    "Source/MODEL/mp_intparam_definition.inc": {
+      "actual_source": {
+        "bytes": 6445,
+        "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/Source/MODEL/mp_intparam_definition.inc",
+        "sha256": "9df230be7b4ef3edd7588b985bb2850a04ef14d78d1b3eba5c4e554aa69d0cd4"
+      },
+      "expected_postimage": {
+        "original_path": ".benchmark-work/policy-v2/generation/outputs/candidate/qcd-4/Source/MODEL/mp_intparam_definition.inc",
+        "path": "docs/benchmarkfolder/policy-v2/model-correction.files/9df230be7b4ef3edd7588b985bb2850a04ef14d78d1b3eba5c4e554aa69d0cd4",
+        "sha256": "9df230be7b4ef3edd7588b985bb2850a04ef14d78d1b3eba5c4e554aa69d0cd4"
+      }
+    }
+  },
+  "actual_worker_source_excerpts": {
+    "born_matrix": {
+      "compiled_source_record": {
+        "bytes": 54785,
+        "sha256": "005e9ab5552e4c72c82fa332c0ae20e144410e68350a49527182fc7c3cf26b2e"
+      },
+      "file": {
+        "bytes": 54785,
+        "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/born_matrix.f",
+        "sha256": "005e9ab5552e4c72c82fa332c0ae20e144410e68350a49527182fc7c3cf26b2e"
+      },
+      "relevant_lines": [
+        {
+          "line": 153,
+          "text": "      DATA IDEN/144/"
+        },
+        {
+          "line": 412,
+          "text": "        ANS(I)=ANS(I)/DBLE(IDEN)*ML5_0_BROKEN_SYM(FLAVOR)"
+        },
+        {
+          "line": 675,
+          "text": "      DATA IDEN/144/"
+        },
+        {
+          "line": 943,
+          "text": "      DATA IDEN/144/"
+        }
+      ]
+    },
+    "corrected_model_functions": {
+      "compiled_source_record": {
+        "bytes": 32184,
+        "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3"
+      },
+      "file": {
+        "bytes": 32184,
+        "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/Source/MODEL/model_functions.f",
+        "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3"
+      },
+      "relevant_lines": []
+    },
+    "corrected_mp_initialization": {
+      "compiled_source_record": {
+        "bytes": 6445,
+        "sha256": "9df230be7b4ef3edd7588b985bb2850a04ef14d78d1b3eba5c4e554aa69d0cd4"
+      },
+      "file": {
+        "bytes": 6445,
+        "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/Source/MODEL/mp_intparam_definition.inc",
+        "sha256": "9df230be7b4ef3edd7588b985bb2850a04ef14d78d1b3eba5c4e554aa69d0cd4"
+      },
+      "relevant_lines": []
+    },
+    "cuttools_interface": {
+      "compiled_source_record": {
+        "bytes": 65439,
+        "sha256": "0d252c36f886e6bc1858597d6a4b7cd43a176cdf6673620304d78fb00c5ffc12"
+      },
+      "file": {
+        "bytes": 65439,
+        "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/CT_interface.f",
+        "sha256": "0d252c36f886e6bc1858597d6a4b7cd43a176cdf6673620304d78fb00c5ffc12"
+      },
+      "relevant_lines": [
+        {
+          "line": 22,
+          "text": "      PARAMETER (NORMALIZATION = 1.D0/(16.D0*3.14159265358979323846D0*"
+        },
+        {
+          "line": 124,
+          "text": "      RES(3)=NORMALIZATION*2.0D0*DBLE(RES(3))"
+        },
+        {
+          "line": 232,
+          "text": "              REF_NORMALIZATION = REF_NORMALIZATION + ABS(P_LOOP(I,K))"
+        },
+        {
+          "line": 235,
+          "text": "            REF_NORMALIZATION = (REF_NORMALIZATION/2.0D0)**2"
+        },
+        {
+          "line": 312,
+          "text": "              REF_NORMALIZATION = REF_NORMALIZATION + ABS(P_LOOP(I,K))"
+        },
+        {
+          "line": 315,
+          "text": "            REF_NORMALIZATION = (REF_NORMALIZATION/2.0E0_16)**2"
+        },
+        {
+          "line": 356,
+          "text": "      PARAMETER (NORMALIZATION = 1.D0/(16.D0*3.14159265358979323846D0*"
+        },
+        {
+          "line": 578,
+          "text": "      PARAMETER (NORMALIZATION = 1.D0/(16.D0*3.14159265358979323846D0*"
+        }
+      ]
+    },
+    "external_masses": {
+      "compiled_source_record": {
+        "bytes": 134,
+        "sha256": "a74f50d22fc7fdb8a5334e000cb3a150fd687844258ac9e2457682e4b7cdff33"
+      },
+      "file": {
+        "bytes": 134,
+        "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/pmass.inc",
+        "sha256": "a74f50d22fc7fdb8a5334e000cb3a150fd687844258ac9e2457682e4b7cdff33"
+      },
+      "relevant_lines": [
+        {
+          "line": 1,
+          "text": "      PMASS(1)=ZERO"
+        },
+        {
+          "line": 2,
+          "text": "      PMASS(2)=ZERO"
+        },
+        {
+          "line": 3,
+          "text": "      PMASS(3)=ABS(MDL_MZ)"
+        },
+        {
+          "line": 4,
+          "text": "      PMASS(4)=ABS(MDL_MZ)"
+        },
+        {
+          "line": 5,
+          "text": "      PMASS(5)=ZERO"
+        },
+        {
+          "line": 6,
+          "text": "      PMASS(6)=ZERO"
+        }
+      ]
+    },
+    "loop_matrix": {
+      "compiled_source_record": {
+        "bytes": 129093,
+        "sha256": "d9819ec368321e736896a4b2af4cd0121dec9bab1726b0da3a338a86ae9be5f8"
+      },
+      "file": {
+        "bytes": 129093,
+        "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/loop_matrix.f",
+        "sha256": "d9819ec368321e736896a4b2af4cd0121dec9bab1726b0da3a338a86ae9be5f8"
+      },
+      "relevant_lines": [
+        {
+          "line": 15,
+          "text": "C     Process: u u~ > z z g g [ virt = QCD ]"
+        },
+        {
+          "line": 184,
+          "text": "      DATA IDEN/144/"
+        },
+        {
+          "line": 1321,
+          "text": "          ANS(K,I)=ANS(K,I)/DBLE(IDEN)"
+        }
+      ]
+    },
+    "model_couplings": {
+      "compiled_source_record": {
+        "bytes": 3242,
+        "sha256": "e732847aa93cdcae502cd37808eb68b45d7dc3c9665bdd5d4de443be19747936"
+      },
+      "file": {
+        "bytes": 3242,
+        "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/Source/MODEL/couplings.f",
+        "sha256": "e732847aa93cdcae502cd37808eb68b45d7dc3c9665bdd5d4de443be19747936"
+      },
+      "relevant_lines": [
+        {
+          "line": 10,
+          "text": "      PARAMETER  (PI=3.141592653589793D0)"
+        },
+        {
+          "line": 43,
+          "text": "      CALL COUP3()"
+        },
+        {
+          "line": 62,
+          "text": "      SUBROUTINE UPDATE_AS_PARAM()"
+        },
+        {
+          "line": 70,
+          "text": "      PARAMETER  (PI=3.141592653589793D0)"
+        },
+        {
+          "line": 90,
+          "text": "      READLHA = .FALSE."
+        },
+        {
+          "line": 99,
+          "text": "      CALL COUP3()"
+        },
+        {
+          "line": 104,
+          "text": "      SUBROUTINE UPDATE_AS_PARAM2(MU_R2,AS2 )"
+        },
+        {
+          "line": 110,
+          "text": "      PARAMETER  (PI=3.141592653589793D0)"
+        },
+        {
+          "line": 146,
+          "text": "      READLHA = .FALSE."
+        }
+      ]
+    },
+    "model_initialization": {
+      "compiled_source_record": {
+        "bytes": 5173,
+        "sha256": "4d14529f6c3cb833a2cb434d8bfca120d83d00f132ce414e37e1033cbcb83084"
+      },
+      "file": {
+        "bytes": 5173,
+        "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/Source/MODEL/intparam_definition.inc",
+        "sha256": "4d14529f6c3cb833a2cb434d8bfca120d83d00f132ce414e37e1033cbcb83084"
+      },
+      "relevant_lines": [
+        {
+          "line": 7,
+          "text": "      IF(READLHA) THEN"
+        },
+        {
+          "line": 9,
+          "text": "        G = 2 * DSQRT(AS*PI)  ! for the first init"
+        },
+        {
+          "line": 149,
+          "text": "      AS = G**2/4/PI"
+        }
+      ]
+    },
+    "parameter_reader": {
+      "compiled_source_record": {
+        "bytes": 2835,
+        "sha256": "cf1ee670ea7e139344fdc4096cc81b88315a49f961314d04b43b544f40122f22"
+      },
+      "file": {
+        "bytes": 2835,
+        "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/Source/MODEL/param_read.inc",
+        "sha256": "cf1ee670ea7e139344fdc4096cc81b88315a49f961314d04b43b544f40122f22"
+      },
+      "relevant_lines": [
+        {
+          "line": 15,
+          "text": "      CALL LHA_GET_REAL(NPARA,PARAM,VALUE,'aS',AS,1.180000D-01)"
+        },
+        {
+          "line": 16,
+          "text": "      CALL MP_LHA_GET_REAL(NPARA,PARAM,VALUE,'aS',MP__AS,1.180000E"
+        }
+      ]
+    },
+    "setpara": {
+      "compiled_source_record": {
+        "bytes": 2707,
+        "sha256": "6f5b82b34634f8b50f489614bbdea0f92f1edb66d9f7a443a26a72cfe440491c"
+      },
+      "file": {
+        "bytes": 2707,
+        "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/Source/MODEL/rw_para.f",
+        "sha256": "6f5b82b34634f8b50f489614bbdea0f92f1edb66d9f7a443a26a72cfe440491c"
+      },
+      "relevant_lines": []
+    },
+    "worker": {
+      "compiled_source_record": {
+        "bytes": 4672,
+        "sha256": "ac2dc40423ab197d29c4ef45881c899220e6310b687e3642f7a4ab52d5cc072f"
+      },
+      "file": {
+        "bytes": 4672,
+        "path": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/check_sa.f",
+        "sha256": "ac2dc40423ab197d29c4ef45881c899220e6310b687e3642f7a4ab52d5cc072f"
+      },
+      "relevant_lines": [
+        {
+          "line": 24,
+          "text": "      CALL SETPARA('param_card.dat')"
+        },
+        {
+          "line": 50,
+          "text": "      MU_R=SQRT(ABS(TOTAL(0)**2-SUM(TOTAL(1:3)**2)))"
+        },
+        {
+          "line": 51,
+          "text": "      CALL UPDATE_AS_PARAM()"
+        },
+        {
+          "line": 58,
+          "text": "         MU_R=SQRT(ABS(TOTAL(0)**2-SUM(TOTAL(1:3)**2)))"
+        },
+        {
+          "line": 59,
+          "text": "         CALL UPDATE_AS_PARAM()"
+        },
+        {
+          "line": 93,
+          "text": "            MU_R=SQRT(ABS(TOTAL(0)**2-SUM(TOTAL(1:3)**2)))"
+        },
+        {
+          "line": 94,
+          "text": "            CALL UPDATE_AS_PARAM()"
+        },
+        {
+          "line": 101,
+          "text": "               VALUES(:,:,K)=ANS"
+        },
+        {
+          "line": 116,
+          "text": "     $           VALUES(:,J,K),ACCURACIES(J,K)"
+        }
+      ]
+    }
+  },
+  "amplitude_calls": 0,
+  "archived_Binoth_normalization_adapter": {
+    "bytes": 28276,
+    "path": ".benchmark-work/original/Template/NLO/SubProcesses/BinothLHA.f",
+    "sha256": "00ac427957125d37570f3f9062c4813aab66a688b9c0e8782a9967202165af7e"
+  },
+  "archived_analytic_formula_source": {
+    "bytes": 315151,
+    "path": ".benchmark-work/original/Template/NLO/SubProcesses/fks_singular.f",
+    "sha256": "948a69bcbcdf56da822583b26fd315abf2961be97f79f65d679956cd8835aad3"
+  },
+  "backend": 1,
+  "bound_executable_sha256": "5b9dd24e0cf0efb0efc768115c03c0c99006a0a6f756480603e8e47266da247b",
+  "build": {
+    "bytes": 8464,
+    "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/build.json",
+    "sha256": "467f70aa7f85f218de78069d2a635c79acbb1177c69c8d652a936740138767d2"
+  },
+  "calibration": {
+    "bytes": 60214,
+    "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/data/qcd-4-baseline-1-calibration.json",
+    "sha256": "7062006e8396a1cfb24fa8bd32a9e139e6f258acc7383321b3bcd25f60a29196"
+  },
+  "case": "qcd-4",
+  "checked_phase_space_points": 100,
+  "checked_split_order_rows": 100,
+  "checked_total_rows": 100,
+  "checks": {
+    "bytes": 97154,
+    "path": ".benchmark-work/final-analytic-pole-readiness-v1/checks.jsonl",
+    "sha256": "c0bdffb5a766418a2ecee47fec124498d62cf35ca9c1bfaee49e73bc11af3796"
+  },
+  "compiled_source_identity_sha256": "554e02c69bd89711f822f626fb2f5c65d9aae8a3c51c4977b7390cb2b3693959",
+  "compiled_source_manifest": {
+    "bytes": 31145,
+    "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/compiled-sources.json",
+    "sha256": "421fce050690e5e79d7c27eb11da1770bc27bdf84547aa3f753aaac23c4aecba"
+  },
+  "compiler_calls": 0,
+  "created_utc": "2026-10-21T04:50:33.757221+00:00",
+  "derivation_independent_before_crosslink": true,
+  "failures": [],
+  "formula": {
+    "CA": 3,
+    "CF": 1.3333333333333333,
+    "actual_DP_pi": 3.141592653589793,
+    "actual_DP_pi_literal": "3.141592653589793D0",
+    "alpha_s_from_G": 0.118,
+    "alpha_s_running": "None in the actual worker path: UPDATE_AS_PARAM uses READLHA=false, keeps G fixed and recomputes AS=G**2/4/PI; external ALPHAS is declared but not called. MU_R is updated from incoming invariant mass.",
+    "card_alpha_s": 0.118,
+    "casimir_sum": 8.666666666666666,
+    "colorless_legs": [
+      "z",
+      "z"
+    ],
+    "double_pole": "-(2*CF+2*CA)*G**2/(8*pi**2)*Born",
+    "massless_colored_legs": [
+      "u",
+      "u~",
+      "g",
+      "g"
+    ],
+    "normalization": "FKS getpoles directly matches MadLoop virt_wgts(3,i) through BinothLHA. CutTools interface includes 2/(16*pi^2) for interference; Born and loop share IDEN144. Worker copies raw Born/finite/single/double slots without extra normalization.",
+    "ratio": "-(26/3)*alpha_s/(2*pi)",
+    "reconstructed_G": 1.2177157847767197,
+    "scale_independence": "The leading double pole is unchanged by the analytic prefactor scale-log expansion, which affects only single pole.",
+    "source_binary64_ratio": -0.16276245513531162
+  },
+  "independent_source_derivation_crosscheck": {
+    "bytes": 8912,
+    "path": ".benchmark-work/qcd4-analytic-double-pole-source-audit-v1/receipt.json",
+    "sha256": "c9884649c5a55c18f85f5c2298140642cdda1ff2e4330cb3eac341acb36f471c"
+  },
+  "maximum_Born_scaled_residual": 7.562189136282864e-14,
+  "maximum_fraction_of_tolerance": 4.617779533184807e-06,
+  "maximum_relative_double_pole_error": 4.646150815304775e-13,
+  "measurement": "calibration only",
+  "model_correction": {
+    "bytes": 1630314,
+    "path": "docs/benchmarkfolder/policy-v2/model-correction.json",
+    "sha256": "20d24a3f19c03b6f7c6c3eda4ef209e2e46cd69ab67990504602028ae3dfb526"
+  },
+  "model_imports": 0,
+  "observed_ratio_range": [
+    -0.16276245513538723,
+    -0.16276245513530616
+  ],
+  "parameter_card": {
+    "bytes": 2471,
+    "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/param_card.dat",
+    "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+  },
+  "passed": true,
+  "physical_split_orders": 1,
+  "point_status_counts": {
+    "211": 7,
+    "329": 93
+  },
+  "points": {
+    "bytes": 58316,
+    "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/points/qcd-4.dat",
+    "sha256": "d66b0c04ee3d8e6ed90ef1fbf97abb9cd444d9ea1f84a508850688bff317b52d"
+  },
+  "process": "u u~ > z z g g [virt=QCD]",
+  "role": "original_helper_corrected",
+  "scalar_double_pole_checks": 200,
+  "schema": "private-qcd4-calibration-analytic-double-pole-check-v1",
+  "scope_limits": [
+    "Only the retained CutTools corrected-original qcd4 calibration is checked; this is not a final repetition, other backend or complete campaign result.",
+    "The Born is taken from the same retained amplitude evaluation; this independently tests the leading IR proportionality coefficient, not the Born amplitude itself.",
+    "Only the double pole is an analytic oracle here. Finite and single-pole values and runtime/stability acceptance are not established.",
+    "There is one physical split order: total and sole split rows coincide, so 200 checked rows represent100independent phase-space points, not200independent events.",
+    "The standalone process does not execute FKS getpoles; its archived formula provides the independently derived leading-pole oracle. No numerical amplitude or model import was rerun."
+  ],
+  "source_or_cache_modified": false,
+  "total_and_sole_split_rows_coincide": true,
+  "tracked_files_modified": false,
+  "worst_check": {
+    "Born_scaled_residual": 7.562189136282864e-14,
+    "born": 5.44696896935504e-10,
+    "fraction_of_tolerance": 4.617779533184807e-06,
+    "observed_double_pole": -8.865620424984962e-11,
+    "observed_ratio": -0.16276245513538723,
+    "order": 0,
+    "passed": true,
+    "point": 33,
+    "point_scale": 5.44696896935504e-10,
+    "predicted_double_pole": -8.865620424980843e-11,
+    "relative_double_pole_error": 4.646150815304775e-13,
+    "residual": -4.119100956572655e-23,
+    "status": 329,
+    "tolerance": 8.920090114678512e-18
+  }
+}

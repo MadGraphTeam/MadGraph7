@@ -1,0 +1,25 @@
+{
+  "source_groups": 4,
+  "cases": {
+    "supplement-gg-h": {
+      "points": 100,
+      "pairs": 21,
+      "comparisons": 16800,
+      "max_tolerance_fraction": 0.009390570588446731
+    },
+    "supplement-gg-hh": {
+      "points": 100,
+      "pairs": 21,
+      "comparisons": 16800,
+      "max_tolerance_fraction": 0.013055022665343594
+    },
+    "supplement-gg-hh-threshold": {
+      "points": 12,
+      "pairs": 21,
+      "comparisons": 2016,
+      "max_tolerance_fraction": 0.020134523863296314
+    }
+  },
+  "final_report_validation_passed": false,
+  "physics_evaluations": 0
+}

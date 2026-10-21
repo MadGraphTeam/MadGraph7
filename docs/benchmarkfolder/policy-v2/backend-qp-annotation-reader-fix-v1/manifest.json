@@ -1,0 +1,62 @@
+{
+  "schema": "madloop-backend-qp-annotation-reader-fix-evidence-v1",
+  "files": {
+    "README.md": {
+      "bytes": 2919,
+      "sha256": "fe5516798d158110153aef38e1a92f92e89522cafa7ae1e30c8928baa8c0fcd1"
+    },
+    "actual-analysis.stderr.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual-analysis.stdout.log": {
+      "bytes": 582,
+      "sha256": "5c9b7ee742ccd595a0d9ed1ce677e470d21e46dee6668c2420721a8c2c4b2e9a"
+    },
+    "actual-data-analysis.json": {
+      "bytes": 154484,
+      "sha256": "ed79248c7fecc36cfb14064dabaf92a8174586209cfb707911bfe5500502daa5"
+    },
+    "analyze_actual.py": {
+      "bytes": 4945,
+      "sha256": "2fe2f40514fb1bdf2d9ad78c78168cd1af7be7e365958e2a026335309cb41a0f"
+    },
+    "change-record.json": {
+      "bytes": 2642,
+      "sha256": "198c87ff30d373beb53d34acbe5e19f70fa987325c5686114ada6954e310293a"
+    },
+    "software-attempt-1/result.json": {
+      "bytes": 2520,
+      "sha256": "a1502eea1221e921c40d448ffbf155f5d3e1c5aa75a11498ce47d2eb6385df39"
+    },
+    "software-attempt-1/stderr.log": {
+      "bytes": 180,
+      "sha256": "8ac74fb53b19d4ca2d2b89fd6d3c1d98886f859b338ccfcb528d5a165cf72fbf"
+    },
+    "software-attempt-1/stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "source-after/tools/ninjars_stress_v2.py": {
+      "bytes": 41089,
+      "sha256": "82a23b54720b48dd21a2373f389f55a7e8b98923637a88ddfd72045f69f4ca55"
+    },
+    "source-after/tools/ninjars_supplement_v2.py": {
+      "bytes": 60858,
+      "sha256": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8"
+    },
+    "source-before/tools/ninjars_stress_v2.py": {
+      "bytes": 40567,
+      "sha256": "19177305fc3c937124d03a7e8f7ef6b2cec12517e8bebbaf8efbd7d7014b5567"
+    },
+    "source-before/tools/ninjars_supplement_v2.py": {
+      "bytes": 59665,
+      "sha256": "8775d50b657d6dff7d44ee2e27c83917283137e5b4fdcc5ff4f7a165c6816585"
+    },
+    "verify.py": {
+      "bytes": 3857,
+      "sha256": "d4ad381107e3093cbcf7db554eb9cfe96cde63c316624d35e27ff5ff6f6acb1d"
+    }
+  },
+  "identity_sha256": "89f86e905ef8b8c0073748ec6278c17b0339bc327693e2fb37b43f910a790d17"
+}

@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -350,6 +351,123 @@ class NinjaRSReportV2Test(unittest.TestCase):
             result = report.render(self.dataset_path, target, compile_pdf=True)
         self.assertFalse(result["complete_campaign_passed"])
         self.assertTrue((target / "benchmark.pdf").read_bytes().startswith(b"%PDF"))
+
+    def _presentation_snapshot(self):
+        """Explicit synthetic layout data; never a scientific campaign result."""
+        self.fixture()
+        snapshot = self.snapshot()
+        prototype = snapshot["cases"][0]
+        snapshot["supplement"]["cases"] = [
+            dict(copy.deepcopy(prototype), id=cid, process=process, points=100,
+                 nfinal=nfinal)
+            for cid, process, nfinal in (
+                ("supplement-gg-h", "g g > h [sqrvirt=QCD]", 1),
+                ("supplement-gg-hh", "g g > h h [sqrvirt=QCD]", 2))]
+        snapshot["generated_utc"] = "Explicit synthetic presentation test"
+        self.assertFalse(snapshot["complete_campaign_passed"])
+        return snapshot
+
+    def _presentation_pdf_text(self, snapshot, name):
+        target = self.root / name
+        with patch.object(report, "build_snapshot", return_value=snapshot):
+            result = report.render(self.dataset_path, target, compile_pdf=True)
+        self.assertFalse(result["complete_campaign_passed"])
+        template = report.REPORT / "policy-v2/template/benchmark.typ"
+        expected = hashlib.sha256(template.read_bytes()).hexdigest()
+        self.assertEqual(result["render_sources_sha256"][str(template.relative_to(report.ROOT))],
+                         expected)
+        self.assertEqual((target / "benchmark.typ").read_bytes(), template.read_bytes())
+        text = subprocess.check_output(["pdftotext", "-layout", str(target / "benchmark.pdf"), "-"],
+                                       text=True)
+        return " ".join(text.split())
+
+    @unittest.skipUnless(shutil.which("typst") and shutil.which("pdftotext"),
+                         "Typst and pdftotext are required for presentation assertions")
+    def test_loop_induced_pdf_displays_all_backend_dp_qp_counts(self):
+        snapshot = self._presentation_snapshot()
+        expected = []
+        for i, case in enumerate(snapshot["supplement"]["cases"]):
+            for j, backend in enumerate(("1", "6", "7", "8")):
+                dp, qp = 2101 + 100*i + j, 3101 + 100*i + j
+                case["timings"]["candidate"][backend].update(dp=dp, qp=qp,
+                                                            timed_calls=dp+qp)
+                expected.extend((f"{dp} DP", f"{qp} QP"))
+        text = self._presentation_pdf_text(snapshot, "synthetic-loop-usage")
+        usage = text.split("Timed double- and higher-precision evaluations", 1)[1].split(
+            "Backward-compatible status interpretation", 1)[0]
+        for pair in expected:
+            self.assertIn(pair, usage)
+
+    @unittest.skipUnless(shutil.which("typst") and shutil.which("pdftotext"),
+                         "Typst and pdftotext are required for presentation assertions")
+    def test_loop_induced_pdf_displays_ratio_interval_and_all_decisions(self):
+        snapshot = self._presentation_snapshot()
+        h, hh = snapshot["supplement"]["cases"]
+        for case, ratio, interval, status in (
+                (h, .923, [.901, .945], "passed"),
+                (hh, 1.234, [1.123, 1.345], "failed")):
+            case["performance"].update(runtime_ratio=ratio,
+                                      ratio_confidence_interval_95=interval, status=status)
+        text = self._presentation_pdf_text(snapshot, "synthetic-loop-decisions")
+        table = text.split("Performance acceptance", 1)[1].split("Acceptance threshold", 1)[0]
+        self.assertRegex(table, r"0\.923\s+0\.901\s+–\s+0\.945\s+passed")
+        self.assertRegex(table, r"1\.234\s+1\.123\s+–\s+1\.345\s+failed")
+        hh["performance"].update(runtime_ratio=1.051,
+                                 ratio_confidence_interval_95=[1.031, 1.071],
+                                 status="unresolved")
+        text = self._presentation_pdf_text(snapshot, "synthetic-loop-unresolved")
+        table = text.split("Performance acceptance", 1)[1].split("Acceptance threshold", 1)[0]
+        self.assertRegex(table, r"1\.051\s+1\.031\s+–\s+1\.071\s+unresolved")
+
+    @unittest.skipUnless(shutil.which("typst") and shutil.which("pdftotext"),
+                         "Typst and pdftotext are required for presentation assertions")
+    def test_pdf_optimization_attribution_matches_retained_source_and_scopes(self):
+        research = report.ROOT / "docs/benchmarkfolder/experiments"
+        bindings = {
+            "ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/analysis.json":
+                "79e661e62a4ce253181bdff22fa1dd530269ccbe570b61e2e2b9c9712e3f1a4d",
+            "ninjars-mp-tensor-allocation-process-v2/frozen-bindings.json":
+                "64766a546d751705993e4b074f830d9ff32260c89e4ecfd6f6e4aa9114e2871e",
+            "ninjars-mp-tensor-allocation-transport-v1/production-tensor.rs":
+                "240bbc1f9c8937393227c16a6ce4887ee68524a3f021a8a93656151159445d70",
+            "ninjars-native-float256-v1/selection-analysis.json":
+                "0581c1fe7ac1371197610c894a360a8ccd82798a3970a167b9d6fc3002d5044c"}
+        for relative, digest in bindings.items():
+            self.assertEqual(hashlib.sha256((research / relative).read_bytes()).hexdigest(), digest)
+        allocation = json.loads((research / next(iter(bindings))).read_text())
+        qcd = allocation["cases"]["qcd-3"]
+        self.assertEqual(qcd["pairs"], 21)
+        self.assertAlmostEqual(qcd["ratio"], .968518392915057)
+        self.assertEqual(qcd["confidence_interval_95"], [.9568779827192503, .993639704088713])
+        self.assertTrue(allocation["promotion_gates_passed"])
+        self.assertFalse(allocation["acceptance_eligible"])
+        native = json.loads((research / "ninjars-native-float256-v1/selection-analysis.json").read_text())
+        self.assertEqual(native["fixed_triplets"], 7)
+        self.assertEqual(native["provisional_request_screen_choice"], "Interpreted")
+        self.assertFalse(native["production_change_authorized_by_this_analysis"])
+        for arm in native["original_comparisons_vs_interpreted"].values():
+            self.assertFalse(arm["demonstrated_request_scope_gain"])
+            self.assertLess(arm["paired_bootstrap_95_interval"][0], 1.)
+            self.assertGreater(arm["paired_bootstrap_95_interval"][1], 1.)
+        text = self._presentation_pdf_text(self._presentation_snapshot(),
+                                           "synthetic-research-attribution")
+        section = text.split("Measured optimizations and retained negative results", 1)[1].split(
+            "Generator, Fortran and export regressions", 1)[0]
+        for phrase in ("3.19%", "Ninja (backend 6)", "3.15% full MadLoop QCD3",
+                       "0.968518", "0.956878", "0.993640", "9.24% callback-only",
+                       "DP implementation is not promoted", "request screen is rejected",
+                       "1.021698", "1.007070", "Interpreted execution is retained",
+                       "not a full MadLoop timing", "are not added together",
+                       "832fc0d11988", "366ae91da891", "historical timing identities",
+                       "final installation 800a941faf3c",
+                       "b44d20e725f1ec68589df20284e4ce9116e9e2ab",
+                       "f4bffc61ed67e5d083b80ff9901768d4d5779989",
+                       "public-manager IPC are excluded", "neither improvement nor slowdown"):
+            self.assertIn(phrase, section)
+        compact = "".join(section.split())
+        for relative, digest in bindings.items():
+            self.assertIn(relative, compact)
+            self.assertIn(digest, compact)
 
     def test_raw_coefficient_stream_and_status_corruption_rejected(self):
         rows = {"a": self.record("original", 6, 0)["rows"],

@@ -606,7 +606,9 @@ def report_snapshot(filename, expected, inputs=None, runtime_signature=None):
             complete = all(runs.values())
             if complete:
                 for key in ("points_sha256", "parameter_card_sha256", "shared_numerical_settings", "answer_dimensions", "cpu"):
-                    if len({bench.content_digest(r[key]) for values in runs.values() for r in values}) != 1:
+                    if len({bench.content_digest(supplement.comparable_numerical_settings(r)
+                                                if key == "shared_numerical_settings" else r[key])
+                            for values in runs.values() for r in values}) != 1:
                         raise ValueError("Stress candidate inputs/settings/CPU differ across backends")
                 row_tables[variant] = {b: values[0]["rows"] for b, values in runs.items()}
                 row_groups = {f"candidate_corrected/{b}": rows for b, rows in row_tables[variant].items()}
@@ -624,7 +626,8 @@ def report_snapshot(filename, expected, inputs=None, runtime_signature=None):
                     left = grouped["ordinary", cid, backend][0]
                     right = grouped[variant, cid+"-"+variant, backend][0]
                     for key in ("parameter_card_sha256", "shared_numerical_settings", "answer_dimensions", "cpu"):
-                        if left[key] != right[key]:
+                        if ((supplement.comparable_numerical_settings(left) != supplement.comparable_numerical_settings(right))
+                                if key == "shared_numerical_settings" else left[key] != right[key]):
                             raise ValueError("Stress invariant comparison changed physical inputs/settings: "+key)
             value = invariant_comparisons(row_tables["ordinary"], row_tables[variant], variant) if "ordinary" in row_tables and variant in row_tables else copy.deepcopy(pending)
             result[variant][label] = value
@@ -637,7 +640,8 @@ def report_snapshot(filename, expected, inputs=None, runtime_signature=None):
                 reference = runs[0]
                 candidate = grouped["ordinary", cid, 8][0]
                 for key in ("points_sha256", "parameter_card_sha256", "shared_numerical_settings", "answer_dimensions"):
-                    if reference[key] != candidate[key]:
+                    if ((supplement.comparable_numerical_settings(reference) != supplement.comparable_numerical_settings(candidate))
+                            if key == "shared_numerical_settings" else reference[key] != candidate[key]):
                         raise ValueError("Optional helper inputs differ from candidate")
                 all_rows[f"original_helper_corrected/{b}"] = reference["rows"]
             optional["agreement"] = report.compare(all_rows)

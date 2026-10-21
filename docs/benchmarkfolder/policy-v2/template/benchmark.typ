@@ -299,7 +299,7 @@ Full model names and MG5aMC process commands are listed with the reproducibility
 = Performance acceptance · NinjaRS / original Ninja
 #tab((1.4fr, 0.8fr, 0.9fr, 1.4fr, 1.05fr),
   table.header(th[Process], th[Repetitions], th[Median ratio], th[95% interval], th[Decision]),
-  ..data.cases.map(c => (
+  ..(data.cases + data.supplement.cases).map(c => (
     label(c.id), fmt(c.timings.candidate.at("8").repetitions, digits: 0),
     fmt(c.performance.runtime_ratio, digits: 3),
     if c.performance.ratio_confidence_interval_95 == none { [—] } else {
@@ -441,7 +441,7 @@ separate scalar-master or numerator-stage timing is inferred from total runtime.
 }
 #tab((1.2fr, 1fr, 1fr, 1fr, 1fr),
   table.header(th[Process], th[CutTools], th[Ninja], th[Collier], th[NinjaRS]),
-  ..data.cases.map(c => (label(c.id), ..("1", "6", "7", "8").map(b => count-cell(c, b)))).flatten(),
+  ..(data.cases + data.supplement.cases).map(c => (label(c.id), ..("1", "6", "7", "8").map(b => count-cell(c, b)))).flatten(),
 )
 #v(7pt)
 #small[
@@ -580,27 +580,56 @@ analytic pole controls have a separate scope from full-amplitude agreement.
 }
 #v(8pt)
 = Measured optimizations and retained negative results
-The guarded Fortran QP contraction-sharing study resolves a 3.19% full QCD3
-runtime reduction against its retained pre-factor candidate: ratio 0.968095,
-95% interval [0.958491, 0.982138]. Coefficients, stability estimates and rescue
-counts are unchanged. This process-specific comparison is distinct from the final
-original-Ninja denominator and its five-percent gate.
+The retained Fortran QP contraction-sharing prototype resolves a 3.19% full QCD3
+runtime reduction with Ninja (backend 6) against its pre-factor candidate generated at revision
+`b44d20e725f1ec68589df20284e4ce9116e9e2ab`: ratio 0.968095, 95% interval [0.958491, 0.982138]. Coefficients, stability
+estimates and rescue counts are unchanged. This earlier backend and revision
+scope is distinct from the final original-Ninja denominator and five-percent gate.
+
+The accepted allocation-only tensor change resolves a *3.15% full MadLoop QCD3
+runtime reduction*: ratio 0.968518, paired 95% interval [0.956878, 0.993640]
+over 21 pairs. The EW2 control uses seven pairs: ratio 0.997640, interval
+[0.994716, 0.999339]. Numerator construction, reduction, scalar integrals,
+stability checks and actual rescue are timed together. All 44,800 coefficient
+comparisons and raw accuracy/status rows match exactly. The retained measured
+release tensor body is the source of the accepted production change; this study
+uses generated Fortran from revision
+`f4bffc61ed67e5d083b80ff9901768d4d5779989` and compares two NinjaRS tensor
+implementations. Its original/allocation archives, `832fc0d11988` / `366ae91da891`,
+are historical timing identities, distinct from the final installation `800a941faf3c`. This
+study does not replace the final eight-process original-Ninja acceptance campaign.
 
 A separate DP factorization study finds no full-process gain: ratio 1.013546,
-95% interval [0.996598, 1.030949]. That DP implementation is not promoted. An
-allocation-only higher-precision tensor experiment finds a 9.24% callback gain,
-ratio 0.907561, interval [0.898288, 0.912750], with exact value, precision and sign
-matches. A callback-only timing does not establish a full-process speedup; the
-final source/runtime bindings and complete evaluation campaign determine any
-production claim. Rejected experiments remain retained and never replace the
-final physical input, precision or stability policy.
+95% interval [0.996598, 1.030949]. That DP implementation is not promoted.
+The earlier allocation-only higher-precision tensor experiment finds a 9.24%
+*callback-only* gain: ratio 0.907561, interval [0.898288, 0.912750], with exact
+value, precision and sign matches. Its timing boundary differs from full MadLoop.
+
+The native Float256 request screen is *rejected*: neither native arm demonstrates
+a gain over interpreted execution in seven fixed triplets of a 1,392-request
+stream. Denominator-only/interpreted gives 1.021698 [0.973592, 1.045666];
+full-native/interpreted gives 1.007070 [0.981060, 1.040110]. Both intervals cross
+one, establishing neither improvement nor slowdown. Parsing, state reset,
+reduction, masters and formatting are included; Fortran numerator/kinematics,
+the stability controller and public-manager IPC are excluded. These are
+request-stream measurements; “full-native” names an arithmetic
+policy, not a full MadLoop timing. Interpreted execution is retained and no
+native dispatch or Cargo feature is promoted.
 #v(7pt)
 #small[
-  Research records: `experiments/symmetric-factorization*`,
-  `experiments/symmetric-factorization-dp/process-timing21-v2` and
-  `experiments/ninjars-mp-tensor-allocation-performance-v1`.
-  The report does not infer an additive speedup from percentages measured over
-  different timing boundaries or source/runtime revisions.
+  Exact retained research bindings (SHA-256):\
+  Allocation analysis: `ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/analysis.json`\
+  `79e661e62a4ce253181bdff22fa1dd530269ccbe570b61e2e2b9c9712e3f1a4d`\
+  Historical source/archive bindings: `ninjars-mp-tensor-allocation-process-v2/frozen-bindings.json`\
+  `64766a546d751705993e4b074f830d9ff32260c89e4ecfd6f6e4aa9114e2871e`\
+  Measured release tensor body: `ninjars-mp-tensor-allocation-transport-v1/production-tensor.rs`\
+  `240bbc1f9c8937393227c16a6ce4887ee68524a3f021a8a93656151159445d70`\
+  Native selection analysis: `ninjars-native-float256-v1/selection-analysis.json`\
+  `0581c1fe7ac1371197610c894a360a8ccd82798a3970a167b9d6fc3002d5044c`\
+  Paths are relative to `docs/benchmarkfolder/experiments/`. Earlier scopes remain
+  in `symmetric-factorization*`, `symmetric-factorization-dp/process-timing21-v2`
+  and `ninjars-mp-tensor-allocation-performance-v1`. Percentages from different
+  timing boundaries or source/runtime revisions are not added together.
 ]
 
 #pagebreak()

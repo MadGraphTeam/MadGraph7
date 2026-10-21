@@ -1,0 +1,36 @@
+{
+  "blocking_findings": [],
+  "core_policy_reference": "tools/ninjars_benchmark_policy_v2.py existing full-precision/pole checks and derived-annotation exclusion",
+  "interpretation": "Corrects a derived metadata comparison false rejection while enforcing the unchanged core physical settings. No numerical stability threshold or physics comparison tolerance is relaxed.",
+  "owner_actual_analysis_evidence": "Existing owner evidence retains42actualrecords and35616unchangedphysicalcomponentcomparisons; reviewer did not duplicate numerical analysis.",
+  "owner_software_evidence": "Existing backend-qp-annotation-reader-fix-v1 records81passingsoftwaretests; reviewer did not rerun them.",
+  "passed": true,
+  "reader_commit_and_final_dataset_acceptance_authorized": false,
+  "remaining_authority": "Root controls deferred reader/test commit after raw collection and final dataset/report validation.",
+  "review_findings": {
+    "all_five_core_conditions_preserved": {
+      "colliercomputeirpoles": "is True",
+      "colliercomputeuvpoles": "is True",
+      "collierrequiredaccuracy": 1e-12,
+      "mlstabthres": 1e-09,
+      "noncollier_selected_backend_qp_integrand": "is True for backends1/6/8; integer1,False,missing rejected"
+    },
+    "all_other_dictionary_keys_and_values_retained": true,
+    "five_new_regressions_cover_actual_metadata_shape_strict_QP_physical_drift_and_nonmutation": true,
+    "no_changes_to_collection_workers_configuration_inputs_counts_numerical_math_or_acceptance_gates": true,
+    "old_stress_fixture_metadata_now_reflects_actual_policy": true,
+    "only_excluded_comparison_key": "selected_backend_qp_integrand",
+    "raw_input_dictionaries_unmodified": true,
+    "supplement_role_and_stress_ordinary_control_optionalhelper_sites_reuse_one_rule": true
+  },
+  "reviewed_file_sha256": {
+    "tests/unit_tests/various/test_ninjars_stress.py": "2da91ab75be6fdfd0f9f0d31f126154027ab5fe148d91e17a7eaa68fc9319277",
+    "tests/unit_tests/various/test_ninjars_supplement.py": "25bb77be04accf7c5f3c0b4ebe0abd43bc9c99e816932581714811d45206ec50",
+    "tools/ninjars_stress_v2.py": "82a23b54720b48dd21a2373f389f55a7e8b98923637a88ddfd72045f69f4ca55",
+    "tools/ninjars_supplement_v2.py": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8"
+  },
+  "reviewed_utc": "2026-10-21T02:14:55.060803+00:00",
+  "reviewer": "allocation_final",
+  "schema": "backend-qp-annotation-independent-static-review-v1",
+  "scope": "Static four-file diff/source review against existing core-policy checks; four exact file hashes only. No module imports, compiler, numerical engine, tests, physics reanalysis or extra source scans. Existing sealed owner evidence is unchanged."
+}

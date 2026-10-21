@@ -1,0 +1,22 @@
+{
+  "actual_raw9_sources_unchanged": true,
+  "live_worker_executable_matched": true,
+  "manifest_sha256": "5a87db1524b2093b2df8eeb3266771ecc0b9708710de1ffbc7163c4ffc7ea10d",
+  "new_physics_calls": 0,
+  "payload_files_verified": 4,
+  "recipe_exit": 0,
+  "recipe_result": {
+    "coefficient": -0.16276245513531162,
+    "maximum_fraction_of_tolerance": 4.617779533184807e-06,
+    "maximum_relative_double_pole_error": 4.646150815304775e-13,
+    "passed": true,
+    "points": 100,
+    "row_checks": 200,
+    "scope": "CutTools qcd4 calibration double pole only"
+  },
+  "schema": "root-analytic-calibration-reproduction-v1",
+  "scope": "Only actual corrected-original CutTools qcd4 calibration double-pole relation; fullcampaign and allother gates unchanged.",
+  "source_derivation_sha256": "c9884649c5a55c18f85f5c2298140642cdda1ff2e4330cb3eac341acb36f471c",
+  "unique_bound_path_hashes_verified": 25,
+  "utc": "2026-10-21T04:52:42.745399+00:00"
+}
