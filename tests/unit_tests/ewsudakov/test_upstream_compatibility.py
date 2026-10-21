@@ -371,6 +371,42 @@ class TestOptionalNumpy(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr[-2000:])
 
+    def test_discovery_without_numpy(self):
+        """Discovery imports every module, including unselected NumPy tests."""
+        import subprocess
+
+        script = self.blocker + (
+            "import unittest\n"
+            "from tests.test_manager import TestFinder\n"
+            "finder = TestFinder(package='tests/unit_tests/ewsudakov', expression=[\n"
+            "    'test_upper_triangle_is_not_conjugated',\n"
+            "    'test_pure_states_give_squared_amplitude',\n"
+            "    'test_complete_input_covers_all_channels_and_xis',\n"
+            "    'test_scalar_fxfx_central_factor_controls_all_variants',\n"
+            "    'test_launch_reset_allows_event_ids_to_restart',\n"
+            "    'test_source_scan_keeps_input_position',\n"
+            "    'test_processes_load_distinct_native_modules',\n"
+            "    'test_numeric_allocation_is_deterministic',\n"
+            "    'test_directory_name_does_not_override_metadata',\n"
+            "])\n"
+            "names = list(finder)\n"
+            "assert len(names) == 9, names\n"
+            "suite = unittest.defaultTestLoader.loadTestsFromNames(names)\n"
+            "result = unittest.TestResult()\n"
+            "suite.run(result)\n"
+            "assert result.wasSuccessful(), (result.errors, result.failures)\n"
+            "assert result.testsRun == 9, result.testsRun\n"
+            "assert len(result.skipped) == 7, result.skipped\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script, MG5DIR],
+            cwd=MG5DIR,
+            capture_output=True,
+            text=True,
+            env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr[-2000:])
+
 
 class TestSudakovF2pyBuild(unittest.TestCase):
     """The ewsudpy f2py module builds with the meson backend (Python >= 3.12).
@@ -406,6 +442,10 @@ class TestSudakovF2pyBuild(unittest.TestCase):
 
 class TestSudakovDispatcherImport(unittest.TestCase):
     def setUp(self):
+        try:
+            import numpy
+        except ImportError:
+            self.skipTest("NumPy is required for the generated Sudakov dispatcher")
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)

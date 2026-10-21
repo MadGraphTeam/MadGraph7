@@ -21,6 +21,8 @@ class TestSudakovWeightIds(unittest.TestCase):
         self.root = Path(self.temp.name)
 
     def event(self, sources):
+        if fx.np is None:
+            self.skipTest("NumPy is required for Sudakov weight event fixtures")
         event = ww_event([])
         event.wgt = 2.0
         event.parse_reweight()

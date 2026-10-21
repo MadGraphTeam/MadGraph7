@@ -7,7 +7,10 @@ import os
 import sys
 import unittest
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 _REPO_ROOT = os.path.normpath(
     os.path.join(
@@ -32,6 +35,7 @@ def _upper_triangle(matrix):
     ]
 
 
+@unittest.skipIf(np is None, "NumPy is required for density matrix checks")
 class TestFortranTriangleConvention(unittest.TestCase):
     def test_upper_triangle_is_not_conjugated(self):
         """GET_INTER stores B[i,j]=M_i*conj(M_j) for i<=j."""
@@ -135,6 +139,7 @@ def _density(amplitudes, pdgs):
     return fx.DensityMatrix.from_full_matrix(matrix, pdgs)
 
 
+@unittest.skipIf(np is None, "NumPy is required for density matrix checks")
 class TestDensityContraction(unittest.TestCase):
     """DensityMatrix.contract and the density weight against amplitude-level
     expressions: B[h,h'] = M_h M*_h', C[h,h'] = D_h D*_h' and the coherent

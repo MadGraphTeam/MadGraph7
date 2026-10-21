@@ -8,7 +8,10 @@ from types import SimpleNamespace
 import unittest
 from unittest import mock
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 from madgraph.various import fxfx_ewsudakov as fx, lhe_parser
 from tests.unit_tests.ewsudakov.test_fxfx_decay_transport import ww_event
@@ -30,6 +33,7 @@ class CatalogueDriver(fx.FxFxEWSudakovMixin):
         pass
 
 
+@unittest.skipIf(np is None, "NumPy is required for FxFx catalogue checks")
 class TestFxFxCatalogue(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

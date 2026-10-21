@@ -7,6 +7,7 @@ from madgraph.various import fxfx_ewsudakov as fx
 from tests.unit_tests.ewsudakov import test_sudakov_factor_limits as limits
 
 
+@unittest.skipIf(limits.np is None, "NumPy is required for FxFx accounting fixtures")
 class TestFxFxAccounting(unittest.TestCase):
     def setUp(self):
         fx.fks_reset_accounting()

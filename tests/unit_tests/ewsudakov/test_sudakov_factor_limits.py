@@ -4,7 +4,10 @@ from types import SimpleNamespace
 import unittest
 from unittest import mock
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 from madgraph.interface.reweight_interface import ReweightInterface
 from madgraph.various import fxfx_ewsudakov as fx
@@ -22,6 +25,7 @@ class FactorDriver(fx.FxFxEWSudakovMixin):
         pass
 
 
+@unittest.skipIf(np is None, "NumPy is required for Sudakov factor checks")
 class TestSudakovFactorLimits(unittest.TestCase):
     cases = [
         ([1001., 41., 31.], [1., 1., 1.]),

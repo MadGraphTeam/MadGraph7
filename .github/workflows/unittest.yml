@@ -324,7 +324,7 @@ jobs:
 
   unittest_bundle_3:
     # former jobs, run one after the other: unittest_10 unittest_density_29
-    #   unittest_madspin_sequential
+    #   unittest_ewsudakov unittest_madspin_sequential
     # Each keeps its own steps, run even when an earlier one failed.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
@@ -350,6 +350,13 @@ jobs:
             cd $GITHUB_WORKSPACE
             sudo pip install scipy
             ./tests/test_manager.py test_DensityMatrixObservables test_DensityMatrixObservables22 test_DensityMatrixObservables23 test_DensityMatrixObservables33 test_utilities -t0
+
+      # ---- unittest_ewsudakov ----
+      - name: "unittest_ewsudakov: run the EW Sudakov unit tests"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py tests.unit_tests.ewsudakov -t0
 
       # ---- unittest_madspin_sequential ----
       # MadSpin density primitives and decay/mass drawing (sequential accept/reject),
