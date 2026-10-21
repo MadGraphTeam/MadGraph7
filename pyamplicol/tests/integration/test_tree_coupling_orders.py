@@ -184,9 +184,9 @@ def test_leading_colour_partials_match_madgraph(
 
 
 # QCD x electroweak interference between quark lines (s/t channels, identical
-# quarks, a gluon, a lepton pair with triple-gauge vertices): the eager lane
-# keeps the electroweak roots of every line pairing and signs coloured
-# fermions by their Wick order.
+# quarks, a gluon, a lepton pair with triple-gauge vertices, three lines that
+# exchange electroweak bosons in turn): the eager lane keeps the electroweak
+# roots of every line pairing and signs coloured fermions by their Wick order.
 @pytest.mark.parametrize(
     ("process", "accuracy"),
     [
@@ -198,6 +198,8 @@ def test_leading_colour_partials_match_madgraph(
         ("u u~ > d d~ g", "full"),
         ("u u~ > d d~ e+ e-", "full"),
         ("u u~ > d d~ e+ e-", "lc"),
+        ("u u~ > u u~ u u~", "full"),
+        ("u u~ > u u~ u u~", "lc"),
     ],
 )
 def test_eager_lane_matches_madgraph(

@@ -809,9 +809,12 @@ class ColorEngine:
 
         A colour-singlet input joins a coloured one either inside the lines
         that input already carries (a singlet emitted and reabsorbed along
-        one trace) or as complete lines of its own, ``closed_groups``: an
-        electroweak boson or U(1)-like exchange between open lines, whose
-        flow keeps both lines' ends in place.
+        one trace) or as complete lines of its own. Two inputs with different
+        lines make a colour-singlet result only if those lines are complete
+        in it. ``closed_groups`` are the lines of the sector whose labels all
+        lie in the result: an electroweak boson or U(1)-like exchange between
+        open lines keeps both lines' ends in place, and a singlet result of
+        a line that absorbed such an exchange closes both lines.
         """
 
         left_colored = self._particle_has_colour(vertex.particles[0])
@@ -819,11 +822,7 @@ class ColorEngine:
         result_colored = self._particle_has_colour(vertex.particles[2])
         left_groups = set(left.line_groups)
         right_groups = set(right.line_groups)
-
-        if not left_colored and not right_colored:
-            if left_groups and right_groups and left_groups != right_groups:
-                return None
-            return tuple(sorted(left_groups | right_groups))
+        groups = left_groups | right_groups
 
         if left_colored != right_colored:
             colored_groups = left_groups if left_colored else right_groups
@@ -834,16 +833,17 @@ class ColorEngine:
                 and not singlet_groups.issubset(colored_groups | closed_groups)
             ):
                 return None
-            return tuple(sorted(colored_groups | singlet_groups))
+            return tuple(sorted(groups))
 
         if (
-            not result_colored
+            not (left_colored and result_colored)
             and left_groups
             and right_groups
             and left_groups != right_groups
+            and not groups.issubset(closed_groups)
         ):
             return None
-        return tuple(sorted(left_groups | right_groups))
+        return tuple(sorted(groups))
 
     def _particle_has_colour(self, pdg: int) -> bool:
         representation = _known_color_representation(self.model, pdg)
