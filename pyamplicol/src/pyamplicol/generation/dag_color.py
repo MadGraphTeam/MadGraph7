@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from itertools import pairwise
 
 from ..color.plan import GenericColorPlan
 from ..models.base import Model, Vertex
@@ -65,6 +66,44 @@ def _without_lc_sector_support(basis_keys: Iterable[str]) -> set[str]:
     return {key for key in basis_keys if not key.startswith(_LC_SECTOR_SUPPORT_PREFIX)}
 
 
+# Open colour-flow ends (incoming, outgoing) of a block by the colour
+# representation of its current: an adjoint current has both, a fundamental one
+# only the outgoing end, an antifundamental one only the incoming end.
+_LOOP_BLOCK_OPEN_ENDS = {
+    1: (False, False),
+    3: (False, True),
+    -3: (True, False),
+    8: (True, True),
+}
+
+
+def loop_block_word_open_ends(
+    word: Iterable[int],
+    *,
+    fundamental: frozenset[int],
+    antifundamental: frozenset[int],
+) -> tuple[bool, bool] | None:
+    """Return the open colour-flow ends of a block word, or ``None``.
+
+    A block word lists the coloured legs of a tree current along its U(N)
+    colour-flow strings. A string runs from a fundamental leg (or the incoming
+    open end) through adjoint legs to an antifundamental leg (or the outgoing
+    open end); consecutive strings are concatenated, so an antifundamental leg
+    is followed by a fundamental one exactly at a string boundary. Only the
+    first string may start open and only the last may end open; inner strings
+    are closed lines. Unlike Born segments, block words are not restricted to
+    the Born colour words: a loop line closes the open ends.
+    """
+
+    labels = tuple(word)
+    for left, right in pairwise(labels):
+        if (left in antifundamental) != (right in fundamental):
+            return None
+    if not labels:
+        return (False, False)
+    return (labels[0] not in fundamental, labels[-1] not in antifundamental)
+
+
 class ColorEngine:
     """Local colour-flow engine used by the process-generic recursion."""
 
@@ -75,9 +114,21 @@ class ColorEngine:
         *,
         shared_lc_all_ordering_symmetry: bool = False,
         cache_shared_lc_orderings: bool = False,
+        loop_blocks: bool = False,
     ) -> None:
+        """``loop_blocks`` selects loop-request block currents.
+
+        Loop blocks are sector-independent U(N) colour-flow currents: their
+        words are every valid string concatenation over the leg subset
+        (``loop_block_word_open_ends``), not only segments of Born words, and
+        the U(1)-subtraction auxiliary is admitted for any number of external
+        quark lines because loop lines can absorb it. No reflection folding
+        or Born-sector bookkeeping applies.
+        """
+
         self.color_plan = color_plan
         self.model = model
+        self._loop_blocks = bool(loop_blocks)
         self._sector_by_id = {sector.id: sector for sector in color_plan.sectors}
         self._leg_by_label = {leg.label: leg for leg in color_plan.process.legs}
         self._color_rep_by_label: dict[int, int | None] = {}
@@ -167,6 +218,8 @@ class ColorEngine:
             and bool(self._shared_lc_coloured_labels)
             and color_plan_matches_model
         )
+        if self._loop_blocks:
+            self._init_loop_blocks(shared_lc_all_ordering_symmetry)
         self._shared_lc_all_ordering_symmetry = bool(
             shared_lc_all_ordering_symmetry
             and self._shared_lc_orderings
@@ -202,7 +255,7 @@ class ColorEngine:
         self._shared_lc_sector_ids_by_segment: dict[
             tuple[int, ...], tuple[int, ...]
         ] = {}
-        if self._shared_lc_orderings:
+        if self._shared_lc_orderings and not self._loop_blocks:
             sector_ids_by_word: dict[tuple[int, ...], list[int]] = {}
             sector_ids_by_segment: dict[tuple[int, ...], set[int]] = {}
             segments: set[tuple[int, ...]] = set()
@@ -243,6 +296,79 @@ class ColorEngine:
             self._shared_lc_segments = frozenset(segments)
         else:
             self._shared_lc_segments = frozenset()
+
+    def _init_loop_blocks(self, shared_lc_all_ordering_symmetry: bool) -> None:
+        if shared_lc_all_ordering_symmetry:
+            raise ValueError("loop-request blocks are never reflection folded")
+        unsupported = sorted(
+            label
+            for label, representation in self._color_rep_by_label.items()
+            if representation not in _LOOP_BLOCK_OPEN_ENDS
+        )
+        if unsupported:
+            raise ValueError(
+                "loop-request blocks need singlet, (anti)fundamental or adjoint "
+                f"external colour; legs {unsupported} are not colour-flow lowerable"
+            )
+        self._loop_fundamental_labels = frozenset(
+            label
+            for label, representation in self._color_rep_by_label.items()
+            if representation == 3
+        )
+        self._loop_antifundamental_labels = frozenset(
+            label
+            for label, representation in self._color_rep_by_label.items()
+            if representation == -3
+        )
+        self._shared_single_trace = False
+        self._shared_lc_orderings = bool(self._shared_lc_coloured_labels)
+
+    def _loop_block_word_open_ends(
+        self,
+        coloured_labels: tuple[int, ...],
+    ) -> tuple[bool, bool] | None:
+        return loop_block_word_open_ends(
+            coloured_labels,
+            fundamental=self._loop_fundamental_labels,
+            antifundamental=self._loop_antifundamental_labels,
+        )
+
+    def _loop_block_flows(
+        self,
+        left: ColorState,
+        right: ColorState,
+        vertex: Vertex,
+        ordered_external_labels: tuple[int, ...],
+    ) -> tuple[ColorFlow, ...]:
+        groups = self._lc_combined_line_groups(left, right, vertex)
+        if groups is None:
+            return ()
+        result = vertex.particles[2]
+        representation = (
+            1
+            if result in self._fundamental_line_auxiliary_ids
+            else _known_color_representation(self.model, result)
+        )
+        open_ends = self._loop_block_word_open_ends(
+            tuple(
+                label
+                for label in ordered_external_labels
+                if label in self._shared_lc_coloured_labels
+            )
+        )
+        if open_ends is None or open_ends != _LOOP_BLOCK_OPEN_ENDS.get(
+            representation  # type: ignore[arg-type]
+        ):
+            return ()
+        return (
+            ColorFlow(
+                state=ColorState(
+                    accuracy=left.accuracy,
+                    sector_id=0,
+                    line_groups=groups,
+                )
+            ),
+        )
 
     def _color_plan_matches_model_roles(self) -> bool:
         if any(
@@ -373,6 +499,13 @@ class ColorEngine:
     ) -> tuple[ColorFlow, ...]:
         if left.accuracy != right.accuracy:
             return ()
+        if self._loop_blocks:
+            return self._loop_block_flows(
+                left,
+                right,
+                vertex,
+                ordered_external_labels,
+            )
         if not self.color_plan.sectors:
             return (
                 ColorFlow(
@@ -754,7 +887,7 @@ class ColorEngine:
             for particle_id in vertex.particles
         )
         if contains_fundamental_auxiliary:
-            return self._fundamental_fermion_pair_count >= 2
+            return self._loop_blocks or self._fundamental_fermion_pair_count >= 2
         if (
             self._fundamental_line_auxiliary_ids
             and self._fundamental_fermion_pair_count >= 2
@@ -1063,6 +1196,12 @@ class ColorEngine:
             result = None
         elif not coloured_segment:
             result = extras
+        elif self._loop_blocks:
+            result = (
+                (*coloured_segment, *extras)
+                if self._loop_block_word_open_ends(coloured_segment) is not None
+                else None
+            )
         elif coloured_segment not in self._shared_lc_segments:
             reversed_segment = tuple(reversed(coloured_segment))
             if not (allow_reversed and reversed_segment in self._shared_lc_segments):

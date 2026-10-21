@@ -1079,11 +1079,25 @@ def prune_dag_to_amplitude_roots(dag: GenericDAG) -> GenericDAG:
 
     if not dag.amplitude_roots:
         return dag
+    return prune_dag_to_required_currents(
+        dag,
+        (
+            current_id
+            for root in dag.amplitude_roots
+            for current_id in (root.left_id, root.right_id)
+        ),
+    )
+
+
+def prune_dag_to_required_currents(
+    dag: GenericDAG,
+    required_current_ids: Iterable[int],
+) -> GenericDAG:
+    """Keep the required currents and the sub-DAG feeding them."""
 
     required_currents = bytearray(len(dag.currents))
-    for root in dag.amplitude_roots:
-        for current_id in (root.left_id, root.right_id):
-            required_currents[current_id] = 1
+    for current_id in required_current_ids:
+        required_currents[current_id] = 1
 
     required_interactions = bytearray(len(dag.interactions))
     # Interactions are emitted in increasing result-subset order. Walking that
