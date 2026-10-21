@@ -43,11 +43,14 @@ Inputs are protocols, so physics and algebra oracles share the walk:
 
 Exact arithmetic: kernels are exact polynomials in their kinematic inputs.
 Their coefficients carry model factors; rational ones (parameters with
-rational values, integer powers) stay exact, while pi and fractional powers
-are fixed once per model to rational stand-ins (``KernelConstants``) shared by
-every kernel. Every identity between schedules, frames, orientations and forms
-therefore holds exactly; values agree with the true numbers to the stand-in
-precision.
+rational values, integer powers) stay exact, while pi, fractional powers and
+parameter-only sums under roots (e.g. the weak mixing angle) are evaluated by
+Symbolica and fixed once per model to rational stand-ins (``KernelConstants``)
+shared by every kernel. Every identity between schedules, frames,
+orientations and forms therefore holds exactly; values agree with the true
+numbers to the stand-in precision. The binary64 and arbitrary-precision
+carriers read the same polynomials with the same factors in their own
+arithmetic.
 
 Leaf weights default to the automorphism weight times the merged-flavour
 multiplicity. The skeleton's fermion sign epsilon_s and the i-factors belong
@@ -371,25 +374,10 @@ class Carrier:
 
 # ------------------------------------------------------------- exact kernels
 
-Factor = tuple[str, Hashable]  # ("pi", None) | ("param", name) | ("prime", p)
-
-
-def _pi(digits: int) -> Decimal:
-    """pi to ``digits`` significant digits (the ``decimal`` module recipe)."""
-
-    with localcontext() as context:
-        context.prec = digits + 5
-        three = Decimal(3)
-        last, t, s, n, na, d, da = 0, three, 3, 1, 0, 0, 24
-        while s != last:
-            last = s
-            n, na = n + na, na + 8
-            d, da = d + da, da + 32
-            t = (t * n) / d
-            s += t
-    with localcontext() as context:
-        context.prec = digits
-        return +s
+# ("pi", None) | ("param", name) | ("prime", p) | ("expr", (text, symbols)):
+# "expr" is a parameter-only factor with no product form (a sum, a function),
+# its text and the (symbol, parameter name) pairs it contains.
+Factor = tuple[str, Hashable]
 
 
 def _primes(value: int) -> dict[int, int]:
@@ -410,9 +398,12 @@ class KernelConstants:
 
     ``parameters`` maps model parameter names to exact values. A coefficient
     is a complex rational times integer powers of parameters and primes
-    (exact) times pi^k and base^(p/q) with 0 < p/q < 1 (irrational). In the
-    exact carrier each irrational factor is replaced by one rational stand-in
-    (its value rounded to ``carrier.digits``), shared by every kernel.
+    (exact) times irrational factors: pi^k, base^(p/q) with 0 < p/q < 1 and
+    parameter-only sums or functions (``Factor``). Symbolica evaluates every
+    irrational factor (principal branch) at ``carrier.digits`` plus guard
+    digits; the exact carrier replaces each by one rational stand-in, its
+    value rounded to ``carrier.digits``, shared by every kernel. Bases a
+    fractional power was distributed over must be positive.
     """
 
     def __init__(self, parameters: Mapping[str, Any], carrier: Carrier):
@@ -429,38 +420,41 @@ class KernelConstants:
             return self.parameters[value]
         if kind == "prime":
             return exact(value)
-        raise ValueError(f"no exact value for {base}")
+        return exact(self._irrational(base, Fraction(1)))
+
+    def _expression(self, base: Factor) -> Any:
+        from symbolica import E, Expression, Replacement
+
+        kind, value = base
+        if kind == "pi":
+            return Expression.PI
+        if kind == "expr":
+            text, symbols = value
+            return E(text).replace_multiple(
+                [
+                    Replacement(
+                        E(symbol), _number_expression(self._base(("param", name)))
+                    )
+                    for symbol, name in symbols
+                ]
+            )
+        return _number_expression(self._base(base))
 
     def _irrational(self, base: Factor, exponent: Fraction) -> Any:
         key = (base, exponent)
         found = self._factors.get(key)
         if found is None:
-            digits = self.carrier.digits + 10
-            with localcontext() as context:
-                context.prec = digits
-                if base[0] == "pi":
-                    root = _pi(digits)
-                else:
-                    value = self._base(base)
-                    if value.imag or value.real <= 0:
-                        raise ValueError(
-                            f"fractional power of non-positive {base}: {value!r}"
-                        )
-                    root = Decimal(value.real.numerator) / Decimal(
-                        value.real.denominator
-                    )
-                if exponent == Fraction(1, 2):
-                    result = root.sqrt()
-                else:
-                    result = root ** (
-                        Decimal(exponent.numerator) / Decimal(exponent.denominator)
-                    )
+            from symbolica import E
+
+            power = E(f"{exponent.numerator}/{exponent.denominator}")
+            value = (self._expression(base) ** power).evaluate(
+                {}, self.carrier.digits + 10
+            )
+            real, imag = value.real.to_decimal(), value.imag.to_decimal()
             if self.carrier.kind == "exact":
-                with localcontext() as context:
-                    context.prec = self.carrier.digits
-                    found = self.carrier.number(Fraction(+result))
-            else:
-                found = self.carrier.number(Complex(Fraction(result), Fraction(0)))
+                with localcontext(prec=self.carrier.digits):
+                    real, imag = +real, +imag
+            found = self.carrier.number(Complex(Fraction(real), Fraction(imag)))
             self._factors[key] = found
         return found
 
@@ -469,7 +463,14 @@ class KernelConstants:
 
         found = self._constants.get(key)
         if found is None:
-            coefficient, exact_factors, irrational = key
+            coefficient, exact_factors, irrational, positive = key
+            for base in positive:
+                value = self._base(base)
+                if value.imag or value.real <= 0:
+                    raise ValueError(
+                        f"a fractional power was distributed over {base}, "
+                        f"which is not positive: {value!r}"
+                    )
             value = exact(coefficient)
             for base, power in exact_factors:
                 factor = self._base(base)
@@ -486,6 +487,12 @@ class KernelConstants:
                         value = value * (unit if whole > 0 else _inverse(unit))
             found = self._constants[key] = value
         return found
+
+
+def _number_expression(value: Complex) -> Any:
+    from symbolica import E, Expression
+
+    return E(str(value.real)) + E(str(value.imag)) * Expression.I
 
 
 def _inverse(value: Any) -> Any:
@@ -541,74 +548,150 @@ class ExactKernel:
 
 
 def _kernel_terms(expression: Any, positions, parameters):
+    """(constant key, monomial) per term of a kernel output.
+
+    A key is (complex rational, exact factors, irrational factors, positive
+    bases): integer powers of parameters and primes stay exact; pi, the
+    fractional parts of powers and parameter-only sums or functions (kept
+    whole) are irrational. Powers of products and nested powers are
+    distributed, ``(1/p)^(1/2) -> p^(-1/2)``; that needs every base they pass
+    through to be positive, which ``KernelConstants`` checks against the
+    values (``positive bases``).
+    """
+
     from symbolica import AtomType
 
     expanded = expression.expand()
     terms = list(expanded) if expanded.get_type() == AtomType.Add else [expanded]
     for term in terms:
-        factors = list(term) if term.get_type() == AtomType.Mul else [term]
-        coefficient = (Fraction(1), Fraction(0))
-        exact_factors: dict[Factor, int] = defaultdict(int)
-        irrational: dict[Factor, Fraction] = defaultdict(Fraction)
-        monomial: dict[int, int] = defaultdict(int)
-        for factor in factors:
-            kind = factor.get_type()
-            if kind == AtomType.Num:
-                number = _exact_number(factor)
-                coefficient = _complex_product(coefficient, number)
+        reading = _TermReading(positions, parameters)
+        reading.read(term, Fraction(1), distributed=False)
+        exact_factors, irrational = [], []
+        for base, exponent in sorted(reading.powers.items()):
+            if not exponent:
                 continue
-            base, exponent = factor, Fraction(1)
-            if kind == AtomType.Pow:
-                base, power = list(factor)
-                if power.get_type() != AtomType.Num:
-                    raise NotImplementedError(f"symbolic exponent in {factor}")
-                exponent = _exact_number(power).real
-            name = base.to_canonical_string()
-            base_kind = base.get_type()
-            if base_kind == AtomType.Var and name in positions:
-                if exponent.denominator != 1 or exponent < 1:
-                    raise NotImplementedError(f"kernel not polynomial in {name}")
-                monomial[positions[name]] += int(exponent)
-            elif base_kind == AtomType.Var and name in parameters:
-                _add_power(
-                    ("param", parameters[name]), exponent, exact_factors, irrational
-                )
-            elif base_kind == AtomType.Var and base.get_name() == "symbolica::𝜋":
-                irrational[("pi", None)] += exponent
-            elif base_kind == AtomType.Num:
-                number = _exact_number(base)
-                if number.imag:
-                    raise NotImplementedError(f"complex base in {factor}")
-                ratio = number.real
-                for prime, count in _primes(ratio.numerator).items():
-                    _add_power(
-                        ("prime", prime), exponent * count, exact_factors, irrational
-                    )
-                for prime, count in _primes(ratio.denominator).items():
-                    _add_power(
-                        ("prime", prime), -exponent * count, exact_factors, irrational
-                    )
-            else:
-                raise NotImplementedError(f"unsupported kernel factor {factor}")
+            if base[0] in ("pi", "expr"):
+                irrational.append((base, exponent))
+                continue
+            whole, fraction = divmod(exponent, 1)
+            if whole:
+                exact_factors.append((base, int(whole)))
+            if fraction:
+                irrational.append((base, fraction))
         key = (
-            coefficient,
-            tuple(sorted((b, p) for b, p in exact_factors.items() if p)),
-            tuple(sorted((b, e) for b, e in irrational.items() if e)),
+            reading.coefficient,
+            tuple(exact_factors),
+            tuple(irrational),
+            tuple(sorted(reading.positive)),
         )
-        yield key, tuple(sorted(monomial.items()))
+        yield key, tuple(sorted(reading.monomial.items()))
+
+
+class _TermReading:
+    """One product term of a kernel output, read factor by factor."""
+
+    def __init__(self, positions, parameters):
+        self.positions = positions
+        self.parameters = parameters
+        self.coefficient = (Fraction(1), Fraction(0))
+        self.powers: dict[Factor, Fraction] = defaultdict(Fraction)
+        self.positive: set[Factor] = set()
+        self.monomial: dict[int, int] = defaultdict(int)
+
+    def read(self, atom: Any, exponent: Fraction, distributed: bool) -> None:
+        """Add ``atom^exponent``; ``distributed`` marks a fractional power
+        already pushed through a product or a power on the way here."""
+
+        from symbolica import AtomType
+
+        kind = atom.get_type()
+        if kind == AtomType.Mul:
+            fractional = exponent.denominator != 1
+            for factor in atom:
+                self.read(factor, exponent, distributed or fractional)
+            return
+        if kind == AtomType.Pow:
+            base, power = list(atom)
+            if power.get_type() != AtomType.Num:
+                raise NotImplementedError(f"symbolic exponent in {atom}")
+            power = _exact_number(power)
+            if power.imag:
+                raise NotImplementedError(f"complex exponent in {atom}")
+            fractional = exponent.denominator != 1
+            self.read(base, exponent * power.real, distributed or fractional)
+            return
+        if kind == AtomType.Num:
+            self._number(_exact_number(atom), exponent, atom)
+            return
+        name = atom.to_canonical_string()
+        if kind == AtomType.Var and name in self.positions:
+            if distributed or exponent.denominator != 1 or exponent < 1:
+                raise NotImplementedError(f"kernel not polynomial in {name}")
+            self.monomial[self.positions[name]] += int(exponent)
+        elif kind == AtomType.Var and name in self.parameters:
+            base = ("param", self.parameters[name])
+            self.powers[base] += exponent
+            if distributed:
+                self.positive.add(base)
+        elif kind == AtomType.Var and atom.get_name() == "symbolica::𝜋":
+            self.powers[("pi", None)] += exponent
+        elif kind == AtomType.Var:
+            raise NotImplementedError(f"unknown symbol {name} in a kernel")
+        else:
+            self._opaque(atom, exponent, distributed)
+
+    def _opaque(self, atom: Any, exponent: Fraction, distributed: bool) -> None:
+        """A parameter-only sum or function, kept whole (a ``Factor``)."""
+
+        from symbolica import E
+
+        symbols = sorted(
+            symbol.to_canonical_string()
+            for symbol in atom.get_all_symbols(False)
+            if symbol.get_name() != "symbolica::𝜋"
+        )
+        if any(symbol in self.positions for symbol in symbols):
+            raise NotImplementedError(f"kernel not polynomial in {atom}")
+        unknown = [symbol for symbol in symbols if symbol not in self.parameters]
+        if unknown:
+            raise NotImplementedError(f"unknown symbols {unknown} in a kernel")
+        if distributed:
+            self.positive.add(self._factor(atom, symbols))
+        if exponent.denominator != 1:
+            atom = atom ** E(f"{exponent.numerator}/{exponent.denominator}")
+            exponent = Fraction(1)
+        self.powers[self._factor(atom, symbols)] += exponent
+
+    def _factor(self, atom: Any, symbols: Sequence[str]) -> Factor:
+        pairs = tuple(
+            (symbol, self.parameters[symbol])
+            for symbol in symbols
+            if symbol in self.parameters
+        )
+        return ("expr", (atom.to_canonical_string(), pairs))
+
+    def _number(self, number: Any, exponent: Fraction, atom: Any) -> None:
+        if exponent.denominator == 1:
+            factor = (number.real, number.imag)
+            if exponent < 0:
+                norm = number.real**2 + number.imag**2
+                factor = (number.real / norm, -number.imag / norm)
+            for _ in range(abs(int(exponent))):
+                self.coefficient = _complex_product(self.coefficient, factor)
+            return
+        if number.imag or number.real <= 0:
+            raise NotImplementedError(f"fractional power of {atom}")
+        ratio = number.real
+        for prime, count in _primes(ratio.numerator).items():
+            self.powers[("prime", prime)] += exponent * count
+        for prime, count in _primes(ratio.denominator).items():
+            self.powers[("prime", prime)] -= exponent * count
 
 
 def _complex_product(left, right) -> tuple[Fraction, Fraction]:
     a, b = left
-    return (a * right.real - b * right.imag, a * right.imag + b * right.real)
-
-
-def _add_power(base: Factor, exponent: Fraction, exact_factors, irrational) -> None:
-    whole, fraction = divmod(exponent, 1)
-    if whole:
-        exact_factors[base] += int(whole)
-    if fraction:
-        irrational[base] += fraction
+    c, d = right
+    return (a * c - b * d, a * d + b * c)
 
 
 # --------------------------------------------------------------- block rows
@@ -991,8 +1074,10 @@ class CatalogueKinematics:
                 values.append(currents[item.component])
             elif item.role == "block-momentum":
                 values.append(momenta[item.component])
+            elif item.role == "model-parameter":
+                values.append(None)  # a kernel constant
             else:
-                values.append(None)
+                raise ValueError(f"segment kernel input of role {item.role!r}")
         return values
 
     def _momentum(self, mask: int) -> list[Any]:

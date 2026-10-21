@@ -186,35 +186,62 @@ def _parameters(compiled) -> dict[str, Fraction]:
 
 @pytest.mark.loop_fast
 def test_exact_kernels_equal_the_symbolica_evaluators(compiled, kernels):
-    """The exact polynomial reading of a kernel against its SymJIT evaluator."""
+    """The exact polynomial reading of every catalogue kernel against its
+    Symbolica evaluator: binary64 (SymJIT) and 60 digits (exact stand-ins)."""
+
+    from decimal import Decimal
 
     from pyamplicol.loops.v2.catalogue import compile_loop_kernel
 
     parameters = _parameters(compiled)
-    constants = rx.KernelConstants(parameters, rx.Carrier.f64())
+    f64 = rx.KernelConstants(parameters, rx.Carrier.f64())
+    exact = rx.KernelConstants(parameters, rx.Carrier.exact(60))
     generator = random.Random(5)
-    picked = {}
-    for binding in kernels.segments:
-        picked.setdefault((binding.vertex, binding.key.form), binding)
-    for binding in list(picked.values())[:12]:
-        spec = kernels.kernels[binding.kernel_id]
+    assert len(kernels.kernels) > 200
+    for spec in kernels.kernels:
+        # Dyadic inputs are exact in the decimal rows of the 60-digit run.
         values = [
-            complex(float(_rational(generator)), float(_rational(generator)))
+            rx.Complex(*(Fraction(generator.randint(-99, 99), 8) for _ in "ri"))
             for _ in spec.inputs
         ]
-        row = [
-            complex(float(parameters[item.model_parameter_name]))
+        precise = [
+            parameters[item.model_parameter_name]
             if item.role == "model-parameter"
             else value
             for item, value in zip(spec.inputs, values, strict=True)
         ]
-        reference = compile_loop_kernel(spec).evaluate_complex([row])[0]
-        mine = rx.ExactKernel(spec).evaluate(values, constants)
-        scale = max(map(abs, reference)) or 1
-        assert (
-            max(abs(a - b) for a, b in zip(mine, reference, strict=True))
-            <= 1e-13 * scale
+        evaluator = compile_loop_kernel(spec)
+        kernel = rx.ExactKernel(spec)
+
+        reference = evaluator.evaluate_complex(
+            [[complex(rx.exact(x)) for x in precise]]
         )
+        mine = kernel.evaluate([complex(x) for x in values], f64)
+        scale = max(map(abs, reference[0])) or 1
+        assert (
+            max(abs(a - b) for a, b in zip(mine, reference[0], strict=True))
+            <= 1e-13 * scale
+        ), spec
+
+        # Symbolica derives the working precision from each input's digits.
+        rows = [
+            tuple(
+                format(Decimal(x.numerator) / x.denominator, ".70e")
+                for x in (z.real, z.imag)
+            )
+            for z in map(rx.exact, precise)
+        ]
+        reference = [
+            rx.exact(tuple(map(Fraction, value.to_decimal_tuple())))
+            for value in evaluator.evaluate_with_precision(rows, 60)
+        ]
+        inputs = [exact.carrier.number(x) for x in values]
+        mine = [rx.exact(x) for x in kernel.evaluate(inputs, exact)]
+        scale = max(map(_magnitude, reference)) or 1
+        assert (
+            max(_magnitude(a - b) for a, b in zip(mine, reference, strict=True))
+            <= 1e-55 * scale
+        ), spec
 
 
 # ------------------------------------------------------------------ schedules
