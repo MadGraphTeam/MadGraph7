@@ -1,0 +1,38 @@
+{
+  "actual_subprocesses": [
+    {
+      "allowed": true,
+      "command": [
+        "fc-list",
+        "--help"
+      ]
+    },
+    {
+      "allowed": true,
+      "command": [
+        "fc-list",
+        "--format=%{file}\\n"
+      ]
+    }
+  ],
+  "elapsed_seconds": 1.8398305830778554,
+  "errors": [],
+  "failures": [],
+  "ignored_parents_before": {
+    ".benchmark-work": false,
+    ".ninjars-build": false
+  },
+  "loaded_from": "tests/unit_tests/loop/test_ninjars_paper_report_v3.py",
+  "module": "tests.unit_tests.loop.test_ninjars_paper_report_v3",
+  "nonsoftware_commands_allowed": false,
+  "passed": true,
+  "skipped": [
+    {
+      "reason": "Actual final generated source is not retained in this checkout",
+      "test": "test_actual_generated_qcd2_count_definitions_agree (tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_actual_generated_qcd2_count_definitions_agree)"
+    }
+  ],
+  "source_sha256": "65efec48ce6f91a13d424d8bff3460bb8cafcaddafdaac1fbe0bfc4ffcf22e29",
+  "source_unchanged": true,
+  "tests_run": 40
+}

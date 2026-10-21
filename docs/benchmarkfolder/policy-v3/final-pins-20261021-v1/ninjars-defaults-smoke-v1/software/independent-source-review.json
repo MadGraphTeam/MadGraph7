@@ -1,0 +1,71 @@
+{
+  "changed_process_functions": [
+    "check_profile",
+    "check_timing"
+  ],
+  "compiler_invocations": 0,
+  "findings": [
+    "Availability checks relative prefixes against MG5DIR, nonempty archive magic/module, supported ABI and matching native/prelink metadata; broken optional prefixes are skipped before export link setup; explicitly selected8 remains actionable.",
+    "Only untouched ordinary SA/FKS card defaults become active8|6|7|1 when NinjaRS is available; explicit card settings and canonical loop-induced branch remain unchanged. Both FKS inheritance routes write consistent active runtime/default/SubProcesses cards.",
+    "Only absent/empty direct timing/profile Born selections choose sole8 when installed, otherwise6; CLI dispatcher applies only timing/profile with no explicit reduction option. Explicit lists, loop-induced selections and comparison checks are preserved.",
+    "All other privatev4 process functions/classes, including timing body, numerical paths, stability fixes and captured stage metadata, are AST-identical.",
+    "18 new coupled Python controls inspected; owner reports18PASS with no generation/build/native calls."
+  ],
+  "limitations": [
+    "This is a structural installed-prefix check, not a fresh link or numerical smoke test.",
+    "Actual CLI data must bind the final promoted process_checks source and declared backend; existing856e measured evidence retains its historical source identity."
+  ],
+  "numerical_calls": 0,
+  "owner_software_result": {
+    "bytes": 2361,
+    "path": ".benchmark-work/ninjars-default-candidate-v1/result.json",
+    "sha256": "e69715735c8dff1514e1074bf240b8d05269b50202166a225b8a40a908e05af2"
+  },
+  "patch": {
+    "bytes": 9972,
+    "path": ".benchmark-work/ninjars-default-candidate-v1/default-complete.patch",
+    "sha256": "989d4d35e21b859d59d7f8bf8626535c71b716a9f9c6041f3257c6d6da32c3fb"
+  },
+  "private_process_v4_reference": {
+    "bytes": 376160,
+    "path": ".benchmark-work/check-stability-nrs-correctness-20261021-v4/process_checks.patched.py",
+    "sha256": "a421341c68482f93a0aa16ce0d531e547afb16b07eac35358b36664eac11b665"
+  },
+  "reviewed_utc": "2026-10-21T21:40:34.726543+00:00",
+  "schema": "independent-installed-ninjars-default-source-review-v1",
+  "scope": "Private coupled default-only successor source review; no live apply or numerical execution",
+  "sources": {
+    "madgraph/interface/madgraph_interface.py": {
+      "bytes": 745274,
+      "path": ".benchmark-work/ninjars-default-candidate-v1/source/madgraph/interface/madgraph_interface.py",
+      "sha256": "6e401977d02f176cad6f35873bd181e9638dc3cb382e9bc0aa04cdaf276161dc"
+    },
+    "madgraph/iolibs/export_fks.py": {
+      "bytes": 265645,
+      "path": ".benchmark-work/ninjars-default-candidate-v1/source/madgraph/iolibs/export_fks.py",
+      "sha256": "a5131e5542127d094d3581999cedff6551848be6407174812ba0d55d75702e25"
+    },
+    "madgraph/loop/loop_exporters.py": {
+      "bytes": 207484,
+      "path": ".benchmark-work/ninjars-default-candidate-v1/source/madgraph/loop/loop_exporters.py",
+      "sha256": "365c9f80017a38479565fff9deda6ee7370e6b59a0e1f48d678333fa806a11e4"
+    },
+    "madgraph/various/ninjars_install.py": {
+      "bytes": 17818,
+      "path": ".benchmark-work/ninjars-default-candidate-v1/source/madgraph/various/ninjars_install.py",
+      "sha256": "0854be586e1ac871ac41b900cf6d1eff4992e46e495b577df4215b13e339aaf6"
+    },
+    "madgraph/various/process_checks.py": {
+      "bytes": 377061,
+      "path": ".benchmark-work/ninjars-default-candidate-v1/source/madgraph/various/process_checks.py",
+      "sha256": "01ffc8538b1e19ca2de800abebffb8f11637f5e8478927e809181e171fc6f78c"
+    },
+    "tests/unit_tests/loop/test_ninjars_defaults.py": {
+      "bytes": 16603,
+      "path": ".benchmark-work/ninjars-default-candidate-v1/source/tests/unit_tests/loop/test_ninjars_defaults.py",
+      "sha256": "096128486acb0d0caf7fdc4c591f8307063f5c99bee56c7566de5c82513f1215"
+    }
+  },
+  "status": "PASS",
+  "tests_run_by_auditor": 0
+}

@@ -1069,3 +1069,67 @@ figures and reproducible PDF outstanding until they have actually run and been
 audited. Do not claim goal completion or open a PR from these intermediate
 correctness results. The latest upstream NinjaRS main adds report/documentation
 changes only; the retained numerical pin has identical source/build inputs.
+
+### User scope reduction — 21 October 2026
+
+The user explicitly rejected the proposed thirteen-hour campaign and requested
+lighter testing setups, without matching the reference paper's multiplicities.
+This supersedes the exhaustive eight-process timing requirement. Preserve the
+completed eight-process numerical qualification and all truthful partial runs;
+do not launch the old long timing specification or expand expensive stress runs.
+
+The new timing study uses QCD and EW 2-to-1 and 2-to-2 processes, plus the
+loop-induced gg-to-H and gg-to-HH controls. Use the same first ten fixed points
+for each paired backend, full helicity/color sums, poles and normal rescue,
+seven paired repetitions and a half-second calibration target. The observed
+measured commands may be shorter after warmup; report their actual durations. Retain
+the literal original-Ninja baseline, exact source/runtime bindings, uncertainty
+and backend/rescue counts. Assess performance for this declared lighter scope;
+do not imply that the abandoned eight-process timing gate has passed.
+
+Use actual MG7 CLI profiles for the same lighter processes to report reduction
+and total time. Retain the matched 100-point native-DP random studies for the
+affordable processes; small 2-to-3 diagnostics may be included with their actual
+scope. No larger high-multiplicity random campaign is required. Keep the report
+reproducible, readable and explicit about sample sizes and unresolved results.
+The final source, tests, report and pushes still require review before goal
+completion. Continue to wait for instructions before opening a PR.
+
+### Installed-backend default — 21 October 2026
+
+The user now requests NinjaRS as the default when it is installed. For ordinary
+one-loop exports, prefer `8|6|7|1` when NinjaRS is available and retain `6|7|1`
+otherwise. Preserve explicit user selections. Leave the existing loop-induced
+reduction strategy and its `7|6|1` export default unchanged.
+
+Prepare and test this change privately during the remaining frozen numerical
+checks. Apply it together with the CLI correction after the lightweight timing
+and focused checks release their source hold, then verify installed/absent and
+loop-induced defaults before pushing the final production revision.
+
+### Final profile scope expansion — 21 October 2026
+
+The user subsequently requested the Standard Model 2-to-4 processes as well
+as the loop-induced `g g > h h h` and `g g > h h h h` processes. This expands
+the actual CLI profile study to the eight core QCD/EW processes and four
+loop-induced Higgs multiplicities (H, HH, HHH, HHHH). Compare explicit Ninja6
+and NinjaRS8, with three timing repetitions per backend and initially twenty
+stability points. Run the first QCD1 pair as a cost and metadata pilot before
+the remaining calls. Use the existing CLI timing method and report reduction
+time as the primary comparison, with numerator construction and total time per
+sample for context. State that the reduction estimate uses the CLI full-minus-
+SKIP construction and its initialization subtraction. Preserve raw signed
+estimates, actual adaptive sample counts, failures and uncertainty.
+
+This expansion does not reinstate the retired thirteen-hour seven-pair
+full-sum campaign. The completed six-process ten-point full-sum timing sample
+and eight-process fixed-point correctness and native-DP random stability
+studies retain their original scope. Do not relabel them as the expanded
+profile study. Leave loop-induced production defaults and its existing TIR
+strategy unchanged. No CutTools or COLLIER investigation is authorized.
+
+The six-process timing run completed in 250.157 seconds. All numerical
+comparisons pass, and all six observed paired 95% confidence intervals have
+upper limits below 1.05 relative to the original Ninja baseline. This result
+applies only to that declared sample. The numerical source hold is released
+for the independently reviewed installed-default and CLI diagnostic changes.

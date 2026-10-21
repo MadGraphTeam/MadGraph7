@@ -1,0 +1,31 @@
+{
+  "status": "passed",
+  "exit_code": 0,
+  "scope": "Actual live-v5 CLI helper45+consumer34+portable whole-method9 software controls; no native/compiler calls",
+  "command": [
+    "taskset",
+    "-c",
+    "180",
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+    "-B",
+    "-m",
+    "unittest",
+    "tests.unit_tests.loop.test_ninjars_profile_cli_v3",
+    "tests.unit_tests.loop.test_ninjars_cli_report_v3",
+    "tests.unit_tests.loop.test_ninjars_profile_timing_metadata",
+    "-v"
+  ],
+  "elapsed_seconds": 5.792921440908685,
+  "sources": {
+    "tools/ninjars_profile_cli_v3.py": "8aed579e7bb3130651cf4fb585c5b701d60b35e2de2c7d79960301396882b20d",
+    "tools/ninjars_cli_report_v3.py": "6095252a4a0e1570b2cf90213962c6bc34286fe5020933d7241bb8471747a4c0",
+    "tests/unit_tests/loop/test_ninjars_profile_cli_v3.py": "529c12e2a23e60731d02696dd70170948a89f1b34ff61a6c2f94aed2fcb086f4",
+    "tests/unit_tests/loop/test_ninjars_cli_report_v3.py": "300c5e73c00b5f750ba5ddd0a34d3fedbbffe4cfd9e24f34d368af0828975afb",
+    "tests/unit_tests/loop/test_ninjars_profile_timing_metadata.py": "96fb3bf4edac1029d305966c4b5c3534c783cdc458890e6f04faef2416f8f7c6",
+    "tests/input_files/ninjars_profile_timing_legacy.py": "e9400f8295b2418d5fb1f69fd871523f744d1aca93771ca06cfbd57103cdb419",
+    "madgraph/various/process_checks.py": "01ffc8538b1e19ca2de800abebffb8f11637f5e8478927e809181e171fc6f78c"
+  },
+  "post_source_hashes_equal": true,
+  "log_sha256": "17db742eff37be3414197a4f6f9f8a8e7e0ee9db276f7d69ebf2fccfaf46ad37",
+  "finished_utc": "2026-10-21T21:46:44.689254+00:00"
+}

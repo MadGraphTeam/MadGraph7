@@ -17,7 +17,7 @@ import subprocess
 import tempfile
 import tomllib
 
-from madgraph import MadGraph5Error
+from madgraph import MadGraph5Error, MG5DIR
 
 logger = logging.getLogger('madgraph.ninjars_install')
 CONFIG_NAME = 'ninjars-config.json'
@@ -50,6 +50,30 @@ def read_config(libdir):
         raise MadGraph5Error("Missing or invalid NinjaRS compiler-runtime link metadata "
                              "in %s; run 'install ninjars --update'." % libdir)
     return config
+
+
+def is_available(libdir):
+    """Check the installed archive, Fortran interface and native link metadata."""
+    if not isinstance(libdir, (str, os.PathLike)) or not libdir:
+        return False
+    directory = Path(libdir)
+    if not directory.is_absolute():
+        directory = Path(MG5DIR) / directory
+    try:
+        archive = directory / 'libninjars.a'
+        if archive.stat().st_size <= 8:
+            return False
+        with archive.open('rb') as stream:
+            if stream.read(8) != b'!<arch>\n':
+                return False
+        config = read_config(directory)
+        if not any(path.is_file() and path.stat().st_size for path in (
+                directory / 'mninjars.mod', directory.parent / 'include' / 'mninjars.mod')):
+            return False
+        return (shlex.split((directory / 'ninjars-native-libs.txt').read_text()) == config['native_libs'] and
+                shlex.split((directory / 'ninjars-link-before.txt').read_text()) == config['link_before'])
+    except (OSError, ValueError, MadGraph5Error):
+        return False
 
 
 def pre_link_flags(libdir):

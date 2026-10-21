@@ -1,0 +1,200 @@
+{
+  "schema": "loop-origin-policy-software-control-v1",
+  "status": "PASS",
+  "command": [
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+    "-m",
+    "unittest",
+    "tests.unit_tests.loop.test_ninjars_dp_stability",
+    "-v"
+  ],
+  "exit_code": 0,
+  "tests_run": 71,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "before": [
+    {
+      "path": "tools/ninjars_dp_stability.py",
+      "sha256": "1f4c715d7aae9e60f1fea8dddd0f591e7dc7632a59f49884392b50cb77d28b12",
+      "bytes": 88485
+    },
+    {
+      "path": "tests/unit_tests/loop/test_ninjars_dp_stability.py",
+      "sha256": "f11aa482054e15cbc61f36bd842417c695e6cea6e3ed4d5af5b979c27ed77f18",
+      "bytes": 68105
+    }
+  ],
+  "after": [
+    {
+      "path": "tools/ninjars_dp_stability.py",
+      "sha256": "1f4c715d7aae9e60f1fea8dddd0f591e7dc7632a59f49884392b50cb77d28b12",
+      "bytes": 88485
+    },
+    {
+      "path": "tests/unit_tests/loop/test_ninjars_dp_stability.py",
+      "sha256": "f11aa482054e15cbc61f36bd842417c695e6cea6e3ed4d5af5b979c27ed77f18",
+      "bytes": 68105
+    }
+  ],
+  "log": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/loop-origin-card-qualification-v1/unittest-frozen.log",
+    "sha256": "e122c2f8c00c47c948c40f4c1f2d3801b5d8dfe8f818d15697be0889f2f73738",
+    "bytes": 13592
+  },
+  "actual_origin_card_preflight": {
+    "qcd-1": {
+      "card": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1/Cards/MadLoopParams.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+        "bytes": 13357
+      },
+      "policy": {
+        "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+        "kind": "committed_template",
+        "template": {
+          "git_path": "Template/loop_material/StandAlone/Cards/MadLoopParams.dat",
+          "sha256": "b643cd5f0b8dd11533c02430daa906473f6183cb38b99a12244425ff0ff9ef25"
+        },
+        "exporter": null,
+        "overrides": {}
+      }
+    },
+    "ew-1": {
+      "card": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-1/Cards/MadLoopParams.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+        "bytes": 13357
+      },
+      "policy": {
+        "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+        "kind": "committed_template",
+        "template": {
+          "git_path": "Template/loop_material/StandAlone/Cards/MadLoopParams.dat",
+          "sha256": "b643cd5f0b8dd11533c02430daa906473f6183cb38b99a12244425ff0ff9ef25"
+        },
+        "exporter": null,
+        "overrides": {}
+      }
+    },
+    "qcd-2": {
+      "card": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-2/Cards/MadLoopParams.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+        "bytes": 13357
+      },
+      "policy": {
+        "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+        "kind": "committed_template",
+        "template": {
+          "git_path": "Template/loop_material/StandAlone/Cards/MadLoopParams.dat",
+          "sha256": "b643cd5f0b8dd11533c02430daa906473f6183cb38b99a12244425ff0ff9ef25"
+        },
+        "exporter": null,
+        "overrides": {}
+      }
+    },
+    "ew-2": {
+      "card": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-2/Cards/MadLoopParams.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+        "bytes": 13357
+      },
+      "policy": {
+        "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+        "kind": "committed_template",
+        "template": {
+          "git_path": "Template/loop_material/StandAlone/Cards/MadLoopParams.dat",
+          "sha256": "b643cd5f0b8dd11533c02430daa906473f6183cb38b99a12244425ff0ff9ef25"
+        },
+        "exporter": null,
+        "overrides": {}
+      }
+    },
+    "qcd-3": {
+      "card": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-3/Cards/MadLoopParams.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+        "bytes": 13357
+      },
+      "policy": {
+        "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+        "kind": "committed_template",
+        "template": {
+          "git_path": "Template/loop_material/StandAlone/Cards/MadLoopParams.dat",
+          "sha256": "b643cd5f0b8dd11533c02430daa906473f6183cb38b99a12244425ff0ff9ef25"
+        },
+        "exporter": null,
+        "overrides": {}
+      }
+    },
+    "ew-3": {
+      "card": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-3/Cards/MadLoopParams.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+        "bytes": 13357
+      },
+      "policy": {
+        "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+        "kind": "committed_template",
+        "template": {
+          "git_path": "Template/loop_material/StandAlone/Cards/MadLoopParams.dat",
+          "sha256": "b643cd5f0b8dd11533c02430daa906473f6183cb38b99a12244425ff0ff9ef25"
+        },
+        "exporter": null,
+        "overrides": {}
+      }
+    },
+    "supplement-gg-h": {
+      "card": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-h/Cards/MadLoopParams.dat",
+        "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a",
+        "bytes": 13359
+      },
+      "policy": {
+        "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+        "kind": "committed_loop_induced_exporter",
+        "template": {
+          "git_path": "Template/loop_material/StandAlone/Cards/MadLoopParams.dat",
+          "sha256": "b643cd5f0b8dd11533c02430daa906473f6183cb38b99a12244425ff0ff9ef25"
+        },
+        "exporter": {
+          "git_path": "madgraph/loop/loop_exporters.py",
+          "sha256": "4d69dd051947c41987f8af18e0e20e18ef177e681ff94320cd6ec0a6e03fe7bd"
+        },
+        "overrides": {
+          "MLReductionLib": "7|6|1",
+          "COLLIERComputeUVpoles": false,
+          "COLLIERComputeIRpoles": false
+        }
+      }
+    },
+    "supplement-gg-hh": {
+      "card": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-hh/Cards/MadLoopParams.dat",
+        "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a",
+        "bytes": 13359
+      },
+      "policy": {
+        "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+        "kind": "committed_loop_induced_exporter",
+        "template": {
+          "git_path": "Template/loop_material/StandAlone/Cards/MadLoopParams.dat",
+          "sha256": "b643cd5f0b8dd11533c02430daa906473f6183cb38b99a12244425ff0ff9ef25"
+        },
+        "exporter": {
+          "git_path": "madgraph/loop/loop_exporters.py",
+          "sha256": "4d69dd051947c41987f8af18e0e20e18ef177e681ff94320cd6ec0a6e03fe7bd"
+        },
+        "overrides": {
+          "MLReductionLib": "7|6|1",
+          "COLLIERComputeUVpoles": false,
+          "COLLIERComputeIRpoles": false
+        }
+      }
+    }
+  },
+  "new_numerical_calls": 0,
+  "compiler_invocations": 0,
+  "old_dp62_preserved": true
+}

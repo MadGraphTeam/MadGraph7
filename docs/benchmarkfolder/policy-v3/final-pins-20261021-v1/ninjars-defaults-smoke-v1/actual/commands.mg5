@@ -1,0 +1,14 @@
+set automatic_html_opening False
+set auto_update 0
+set nb_core 1
+set loop_optimized_output True
+set output_dependencies external
+set ninjars /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/HEPTools/ninjars/lib
+import model loop_sm
+generate u u~ > z [virt=QCD]
+output standalone /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/ninjars-default-smoke-v1/ordinary -f
+generate g g > h [sqrvirt=QCD]
+output standalone /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/ninjars-default-smoke-v1/loop-induced -f
+generate u u~ > z [QCD]
+output /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/ninjars-default-smoke-v1/nlo -f
+quit

@@ -1,0 +1,48 @@
+{
+  "command": [
+    "taskset",
+    "-c",
+    "180",
+    "python3",
+    "-B",
+    "-m",
+    "unittest",
+    "tests.unit_tests.loop.test_ninjars_defaults",
+    "tests.unit_tests.various.test_ninjars_install",
+    "-v"
+  ],
+  "scope": "Live exact promoted candidate focused software; no exports/compiler/reducer calls",
+  "cpu": 180,
+  "started_utc": "2026-10-21T21:43:42.334901+00:00",
+  "finished_utc": "2026-10-21T21:43:47.307294+00:00",
+  "elapsed_seconds": 4.972545781987719,
+  "returncode": 1,
+  "summary": "Ran 37 tests in 4.208s",
+  "source_sha256": {
+    "madgraph/interface/madgraph_interface.py": {
+      "sha256": "6e401977d02f176cad6f35873bd181e9638dc3cb382e9bc0aa04cdaf276161dc",
+      "bytes": 745274
+    },
+    "madgraph/iolibs/export_fks.py": {
+      "sha256": "a5131e5542127d094d3581999cedff6551848be6407174812ba0d55d75702e25",
+      "bytes": 265645
+    },
+    "madgraph/loop/loop_exporters.py": {
+      "sha256": "365c9f80017a38479565fff9deda6ee7370e6b59a0e1f48d678333fa806a11e4",
+      "bytes": 207484
+    },
+    "madgraph/various/ninjars_install.py": {
+      "sha256": "0854be586e1ac871ac41b900cf6d1eff4992e46e495b577df4215b13e339aaf6",
+      "bytes": 17818
+    },
+    "madgraph/various/process_checks.py": {
+      "sha256": "01ffc8538b1e19ca2de800abebffb8f11637f5e8478927e809181e171fc6f78c",
+      "bytes": 377061
+    },
+    "tests/unit_tests/loop/test_ninjars_defaults.py": {
+      "sha256": "096128486acb0d0caf7fdc4c591f8307063f5c99bee56c7566de5c82513f1215",
+      "bytes": 16603
+    }
+  },
+  "all_live_hashes_unchanged": true
+}

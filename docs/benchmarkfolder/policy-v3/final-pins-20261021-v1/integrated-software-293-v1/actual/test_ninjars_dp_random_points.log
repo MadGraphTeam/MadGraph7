@@ -1,0 +1,24 @@
+test_exact_release_identity_is_required (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointAuthority.test_exact_release_identity_is_required) ... ok
+test_execution_import_closure_cannot_be_labelled_reference_only (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointAuthority.test_execution_import_closure_cannot_be_labelled_reference_only) ... ok
+test_existing_streams_and_outside_repository_paths_are_rejected (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointAuthority.test_existing_streams_and_outside_repository_paths_are_rejected) ... ok
+test_readiness_input_closure_cannot_be_omitted (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointAuthority.test_readiness_input_closure_cannot_be_omitted) ... ok
+test_rebound_accounting_cannot_replace_deterministic_observations (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointAuthority.test_rebound_accounting_cannot_replace_deterministic_observations) ... ok
+test_rebound_case_fields_cannot_replace_actual_generation_authorities (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointAuthority.test_rebound_case_fields_cannot_replace_actual_generation_authorities) ... ok
+test_rebound_point_changes_cannot_replace_frozen_seed (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointAuthority.test_rebound_point_changes_cannot_replace_frozen_seed) ... ok
+test_round_trip_replays_exact_points_and_collects_input_bindings (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointAuthority.test_round_trip_replays_exact_points_and_collects_input_bindings) ... ok
+test_seed_count_cut_source_and_alias_configuration_changes_fail (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointAuthority.test_seed_count_cut_source_and_alias_configuration_changes_fail) ... ok
+test_ambient_random_state_is_unchanged (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointConstruction.test_ambient_random_state_is_unchanged) ... ok
+test_boosted_one_body_is_descriptive_with_one_invariant (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointConstruction.test_boosted_one_body_is_descriptive_with_one_invariant) ... ok
+test_changed_cut_policy_and_proposal_exhaustion_fail (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointConstruction.test_changed_cut_policy_and_proposal_exhaustion_fail) ... ok
+test_invalid_dimensions_masses_energy_and_counts_fail (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointConstruction.test_invalid_dimensions_masses_energy_and_counts_fail) ... ok
+test_loop_reference_omits_pt_cut_only (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointConstruction.test_loop_reference_omits_pt_cut_only) ... ok
+test_massive_rambo_points_pass_independent_physical_validator (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointConstruction.test_massive_rambo_points_pass_independent_physical_validator) ... ok
+test_nonphysical_proposals_are_errors_not_rejections (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointConstruction.test_nonphysical_proposals_are_errors_not_rejections) ... ok
+test_pseudorapidity_is_used_for_massive_particles (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointConstruction.test_pseudorapidity_is_used_for_massive_particles) ... ok
+test_reproducible_independent_seed_streams (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointConstruction.test_reproducible_independent_seed_streams) ... ok
+test_strict_cut_boundary_and_wrapped_azimuth (tests.unit_tests.loop.test_ninjars_dp_random_points.RandomPointConstruction.test_strict_cut_boundary_and_wrapped_azimuth) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 1.402s
+
+OK

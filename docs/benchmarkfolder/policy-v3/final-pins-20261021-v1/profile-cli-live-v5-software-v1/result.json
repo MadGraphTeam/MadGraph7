@@ -1,0 +1,25 @@
+{
+  "status": "passed",
+  "exit_code": 0,
+  "scope": "Actual live-v5 source45 software controls; no numerical/compiler calls",
+  "command": [
+    "taskset",
+    "-c",
+    "180",
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+    "-B",
+    "-m",
+    "unittest",
+    "tests.unit_tests.loop.test_ninjars_profile_cli_v3",
+    "-v"
+  ],
+  "elapsed_seconds": 2.355168588925153,
+  "sources": {
+    "tools/ninjars_profile_cli_v3.py": "8aed579e7bb3130651cf4fb585c5b701d60b35e2de2c7d79960301396882b20d",
+    "tests/unit_tests/loop/test_ninjars_profile_cli_v3.py": "529c12e2a23e60731d02696dd70170948a89f1b34ff61a6c2f94aed2fcb086f4",
+    "madgraph/various/process_checks.py": "01ffc8538b1e19ca2de800abebffb8f11637f5e8478927e809181e171fc6f78c"
+  },
+  "post_source_hashes_equal": true,
+  "log_sha256": "c1b56967418f9f28989000f144a4a0fc70e2ab8c2ce259eaf817461bccc72d77",
+  "finished_utc": "2026-10-21T21:45:05.754207+00:00"
+}

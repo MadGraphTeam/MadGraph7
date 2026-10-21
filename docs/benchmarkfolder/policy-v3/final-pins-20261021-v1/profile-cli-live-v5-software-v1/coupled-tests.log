@@ -1,0 +1,156 @@
+test_actual_cached_zero_branch_skips_stability_process_creation (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_actual_cached_zero_branch_skips_stability_process_creation) ... ok
+test_actual_profile_wrapper_retimes_reuse0_and_copies_distinct_metadata (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_actual_profile_wrapper_retimes_reuse0_and_copies_distinct_metadata) ... ok
+test_actual_source_split_order_target_default_all_or_minus_one_only (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_actual_source_split_order_target_default_all_or_minus_one_only) ... ok
+test_actual_two_tool_cards_first100_then_cached0 (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_actual_two_tool_cards_first100_then_cached0) ... ok
+test_actual_two_tool_scope_comparison_drops_only_selector (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_actual_two_tool_scope_comparison_drops_only_selector) ... ok
+test_both_requested_backend_labels_and_units (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_both_requested_backend_labels_and_units) ... ok
+test_cached_stability_is_exactly_first100_not_new_sample (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_cached_stability_is_exactly_first100_not_new_sample) ... ok
+test_captured_settings_must_equal_real_embedded_card_parser (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_captured_settings_must_equal_real_embedded_card_parser) ... ok
+test_copied_stage_sources_survive_later_cli_overwrite (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_copied_stage_sources_survive_later_cli_overwrite) ... ok
+test_declared_light_scope_and_historical_defaults_are_strict (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_declared_light_scope_and_historical_defaults_are_strict) ... ok
+test_declared_three_session_first20_then_reuse0_schedule (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_declared_three_session_first20_then_reuse0_schedule) ... ok
+test_embedded_table_card_filter_text_hashes_cannot_drift (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_embedded_table_card_filter_text_hashes_cannot_drift) ... ok
+test_exact_raw_metadata_and_printed_units_crosscheck (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_exact_raw_metadata_and_printed_units_crosscheck) ... ok
+test_failure_authority_rejects_success_wrong_cell_pins_producer_and_raw_drift (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_failure_authority_rejects_success_wrong_cell_pins_producer_and_raw_drift) ... ok
+test_failure_authority_retains_only_attempt_error_and_custody_without_live_inputs (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_failure_authority_retains_only_attempt_error_and_custody_without_live_inputs) ... ok
+test_first20_command_uses_same_real_profile_command (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_first20_command_uses_same_real_profile_command) ... ok
+test_held_spec_is_not_launched_even_with_matching_handoff (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_held_spec_is_not_launched_even_with_matching_handoff) ... ok
+test_invalid_light_schedule_is_rejected_before_process_or_report_creation (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_invalid_light_schedule_is_rejected_before_process_or_report_creation) ... ok
+test_light20_success_and_failure_readers_return_declared_scope (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_light20_success_and_failure_readers_return_declared_scope) ... ok
+test_light_readonly_authority_rejects_wrong_cache_count_even_with_refreshed_custody (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_light_readonly_authority_rejects_wrong_cache_count_even_with_refreshed_custody) ... ok
+test_metadata_missing_energy_or_compiler_scope_stays_incomparable (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_metadata_missing_energy_or_compiler_scope_stays_incomparable) ... ok
+test_metadata_raw_derived_partition_cannot_be_replaced_by_printed_or_calibration (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_metadata_raw_derived_partition_cannot_be_replaced_by_printed_or_calibration) ... ok
+test_metadata_rejects_missing_reordered_wrong_count_or_skip_stage (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_metadata_rejects_missing_reordered_wrong_count_or_skip_stage) ... ok
+test_metadata_rejects_physical_card_or_energy_drift_between_stages (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_metadata_rejects_physical_card_or_energy_drift_between_stages) ... ok
+test_metadata_requires_actual_backend_and_direct_dp_card (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_metadata_requires_actual_backend_and_direct_dp_card) ... ok
+test_missing_loopgroup_inventory_not_fabricated (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_missing_loopgroup_inventory_not_fabricated) ... ok
+test_missing_repeated_or_wrong_units_rejected (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_missing_repeated_or_wrong_units_rejected) ... ok
+test_mock_cli_failure_retains_raw_and_exits_owned_context (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_mock_cli_failure_retains_raw_and_exits_owned_context) ... ok
+test_mock_postguard_failures_cannot_retain_complete_true (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_mock_postguard_failures_cannot_retain_complete_true) ... ok
+test_negative_estimate_kept_without_clamping (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_negative_estimate_kept_without_clamping) ... ok
+test_no_launch_without_flag_or_exact_handoff (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_no_launch_without_flag_or_exact_handoff) ... ok
+test_no_normal_gate_or_timed_status_invented (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_no_normal_gate_or_timed_status_invented) ... ok
+test_nonfinite_and_nonpositive_totals_rejected (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_nonfinite_and_nonpositive_totals_rejected) ... ok
+test_other_backends_are_out_of_scope (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_other_backends_are_out_of_scope) ... ok
+test_partition_checked_at_actual_printed_rounding (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_partition_checked_at_actual_printed_rounding) ... ok
+test_physical_card_drift_rejected_before_cli (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_physical_card_drift_rejected_before_cli) ... ok
+test_readonly_authority_recomputes_raw_and_needs_no_original_build_products (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_readonly_authority_recomputes_raw_and_needs_no_original_build_products) ... ok
+test_readonly_authority_rejects_tampered_raw_summary_or_missing_inventory (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_readonly_authority_rejects_tampered_raw_summary_or_missing_inventory) ... ok
+test_retained_driver_bytes_are_authority_for_stage_count (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_retained_driver_bytes_are_authority_for_stage_count) ... ok
+test_short_cache_and_executable_pickle_rejected (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_short_cache_and_executable_pickle_rejected) ... ok
+test_source_drift_blocks_owned_cli_startup (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_source_drift_blocks_owned_cli_startup) ... ok
+test_static_runtime_snapshot_reference_matches_perstage_predecessor (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_static_runtime_snapshot_reference_matches_perstage_predecessor) ... ok
+test_twenty_point_cache_requires_explicit_exact_dp_and_qp_lengths (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_twenty_point_cache_requires_explicit_exact_dp_and_qp_lengths) ... ok
+test_unknown_or_mismatched_scope_is_not_pairable (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_unknown_or_mismatched_scope_is_not_pairable) ... ok
+test_wrong_or_duplicate_backend_label_is_rejected (tests.unit_tests.loop.test_ninjars_profile_cli_v3.ProfileCLI.test_wrong_or_duplicate_backend_label_is_rejected) ... ok
+test_adaptive_stage_counts_may_differ_but_remain_explicit (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_adaptive_stage_counts_may_differ_but_remain_explicit) ... ok
+test_all_failed_selection_still_has_declared_failed_and_unattempted_cells (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_all_failed_selection_still_has_declared_failed_and_unattempted_cells) ... ok
+test_changed_item_not_in_declared_schedule_rejects (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_changed_item_not_in_declared_schedule_rejects) ... ok
+test_changed_source_helicity_split_or_energy_makes_stage_incomparable (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_changed_source_helicity_split_or_energy_makes_stage_incomparable) ... ok
+test_complete_or_acceptance_labels_cannot_replace_raw_authority_schema (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_complete_or_acceptance_labels_cannot_replace_raw_authority_schema) ... ok
+test_complete_series_preserves_two_modes_and_ratio_boundary (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_complete_series_preserves_two_modes_and_ratio_boundary) ... ok
+test_concrete_authority_rechecks_every_result_and_binds_sources (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_concrete_authority_rechecks_every_result_and_binds_sources) ... ok
+test_declared_session_and_initial_cache_fields_are_strictly_typed (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_declared_session_and_initial_cache_fields_are_strictly_typed) ... ok
+test_declared_three_scope_rejects_extra_missing_or_wrong_cache_schedule (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_declared_three_scope_rejects_extra_missing_or_wrong_cache_schedule) ... ok
+test_duplicate_or_foreign_failed_descriptor_rejects (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_duplicate_or_foreign_failed_descriptor_rejects) ... ok
+test_duplicate_session_rejects (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_duplicate_session_rejects) ... ok
+test_explicit_expected_pins_required_before_import (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_explicit_expected_pins_required_before_import) ... ok
+test_explicit_session_counts_above_three_keep_the_exact_declared_count (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_explicit_session_counts_above_three_keep_the_exact_declared_count) ... ok
+test_explicit_three_sessions_use_six_observations_and_twenty_initial_points (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_explicit_three_sessions_use_six_observations_and_twenty_initial_points) ... ok
+test_failed_attempt_is_separate_from_unattempted_and_never_becomes_timing (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_failed_attempt_is_separate_from_unattempted_and_never_becomes_timing) ... ok
+test_failed_descriptor_cannot_smuggle_a_timer_or_empty_error (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_failed_descriptor_cannot_smuggle_a_timer_or_empty_error) ... ok
+test_failure_authority_rejection_is_not_relabelled_pending (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_failure_authority_rejection_is_not_relabelled_pending) ... ok
+test_later_valid_observation_does_not_hide_retained_failed_attempt (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_later_valid_observation_does_not_hide_retained_failed_attempt) ... ok
+test_missing_scope_metadata_never_receives_a_ratio (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_missing_scope_metadata_never_receives_a_ratio) ... ok
+test_missing_session_is_pending_without_a_paired_ratio (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_missing_session_is_pending_without_a_paired_ratio) ... ok
+test_mixed_specification_content_or_binding_rejects (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_mixed_specification_content_or_binding_rejects) ... ok
+test_observed_cell_type_coercion_cannot_match_the_declared_schedule (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_observed_cell_type_coercion_cannot_match_the_declared_schedule) ... ok
+test_printed_rounding_and_raw_float_timing_remain_separate (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_printed_rounding_and_raw_float_timing_remain_separate) ... ok
+test_reader_failure_cannot_be_promoted_to_a_summary (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_reader_failure_cannot_be_promoted_to_a_summary) ... ok
+test_runtime_pin_mismatch_rejects_even_validated_label (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_runtime_pin_mismatch_rejects_even_validated_label) ... ok
+test_schedule_rejects_other_tools_wrong_cache_or_missing_sessions (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_schedule_rejects_other_tools_wrong_cache_or_missing_sessions) ... ok
+test_scope_defaults_and_light_study_match_the_concrete_adapter (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_scope_defaults_and_light_study_match_the_concrete_adapter) ... ok
+test_signed_reduction_observations_are_not_clamped_or_colorable (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_signed_reduction_observations_are_not_clamped_or_colorable) ... ok
+test_statistics_are_deterministic_and_keep_mad_and_nonfinite_rejection (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_statistics_are_deterministic_and_keep_mad_and_nonfinite_rejection) ... ok
+test_three_results_cannot_infer_a_three_session_study (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_three_results_cannot_infer_a_three_session_study) ... ok
+test_three_session_all_failed_inventory_keeps_only_three_declared_slots (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_three_session_all_failed_inventory_keeps_only_three_declared_slots) ... ok
+test_three_session_missing_and_failed_cells_are_not_filled (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_three_session_missing_and_failed_cells_are_not_filled) ... ok
+test_three_session_uncertainty_uses_actual_samples_without_padding (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_three_session_uncertainty_uses_actual_samples_without_padding) ... ok
+test_unobserved_declared_case_keeps_exactly_two_pending_tools (tests.unit_tests.loop.test_ninjars_cli_report_v3.NinjaRSCliReportV3Test.test_unobserved_declared_case_keeps_exactly_two_pending_tools) ... ok
+test_compile_failure_return_and_partial_metadata_preserved (tests.unit_tests.loop.test_ninjars_profile_timing_metadata.TimingMetadataTests.test_compile_failure_return_and_partial_metadata_preserved) ... /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tests/input_files/ninjars_profile_timing_legacy.py:106: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-kyhgfimr/failure-old/TMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/ML5_0_HelFilter.dat' mode='r' encoding='UTF-8'>
+  '%sHelFilter.dat'%proc_prefix)).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/various/process_checks.py:1539: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-kyhgfimr/failure-new/TMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/ML5_0_HelFilter.dat' mode='r' encoding='UTF-8'>
+  '%sHelFilter.dat'%proc_prefix)).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_optimized_native8_all_stage_calls_and_raw_floats_unchanged (tests.unit_tests.loop.test_ninjars_profile_timing_metadata.TimingMetadataTests.test_optimized_native8_all_stage_calls_and_raw_floats_unchanged) ... /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tests/input_files/ninjars_profile_timing_legacy.py:106: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-vewc43d5/optimized8-old/TMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/ML5_0_HelFilter.dat' mode='r' encoding='UTF-8'>
+  '%sHelFilter.dat'%proc_prefix)).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/various/process_checks.py:1539: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-vewc43d5/optimized8-new/TMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/ML5_0_HelFilter.dat' mode='r' encoding='UTF-8'>
+  '%sHelFilter.dat'%proc_prefix)).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_optimized_ninja6_same_metadata_contract (tests.unit_tests.loop.test_ninjars_profile_timing_metadata.TimingMetadataTests.test_optimized_ninja6_same_metadata_contract) ... /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tests/input_files/ninjars_profile_timing_legacy.py:106: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-dglr0__d/optimized6-old/TMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/ML5_0_HelFilter.dat' mode='r' encoding='UTF-8'>
+  '%sHelFilter.dat'%proc_prefix)).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/various/process_checks.py:1539: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-dglr0__d/optimized6-new/TMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/ML5_0_HelFilter.dat' mode='r' encoding='UTF-8'>
+  '%sHelFilter.dat'%proc_prefix)).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_prior_initialization_omits_estimate_without_changing_calls (tests.unit_tests.loop.test_ninjars_profile_timing_metadata.TimingMetadataTests.test_prior_initialization_omits_estimate_without_changing_calls) ... /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tests/input_files/ninjars_profile_timing_legacy.py:106: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-yllwyo7u/initialized-old/TMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/ML5_0_HelFilter.dat' mode='r' encoding='UTF-8'>
+  '%sHelFilter.dat'%proc_prefix)).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/various/process_checks.py:1539: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-yllwyo7u/initialized-new/TMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/ML5_0_HelFilter.dat' mode='r' encoding='UTF-8'>
+  '%sHelFilter.dat'%proc_prefix)).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_profile_merged_raw_dictionary_captured_before_stability_mutation (tests.unit_tests.loop.test_ninjars_profile_timing_metadata.TimingMetadataTests.test_profile_merged_raw_dictionary_captured_before_stability_mutation) ... /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/various/process_checks.py:1539: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-pnr_ryce/profile-seed/TMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/ML5_0_HelFilter.dat' mode='r' encoding='UTF-8'>
+  '%sHelFilter.dat'%proc_prefix)).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_real_madloopparam_ordered_selector_normalized (tests.unit_tests.loop.test_ninjars_profile_timing_metadata.TimingMetadataTests.test_real_madloopparam_ordered_selector_normalized) ... /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tests/unit_tests/loop/test_ninjars_profile_timing_metadata.py:99: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-x32d9lxa/realcard86-old/TMP_CHECK_uux_z/Cards/MadLoopParams.dat' mode='w' encoding='UTF-8'>
+  actual.write(str(export/'Cards/MadLoopParams.dat'))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tests/input_files/ninjars_profile_timing_legacy.py:106: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-x32d9lxa/realcard86-old/TMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/ML5_0_HelFilter.dat' mode='r' encoding='UTF-8'>
+  '%sHelFilter.dat'%proc_prefix)).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tests/unit_tests/loop/test_ninjars_profile_timing_metadata.py:99: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-x32d9lxa/realcard86-new/TMP_CHECK_uux_z/Cards/MadLoopParams.dat' mode='w' encoding='UTF-8'>
+  actual.write(str(export/'Cards/MadLoopParams.dat'))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/various/banner.py:1057: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-x32d9lxa/realcard86-new/TMP_CHECK_uux_z/Cards/MadLoopParams.dat' mode='r' encoding='UTF-8'>
+  self.read(finput, **opt)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/various/process_checks.py:1539: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-x32d9lxa/realcard86-new/TMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/ML5_0_HelFilter.dat' mode='r' encoding='UTF-8'>
+  '%sHelFilter.dat'%proc_prefix)).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_real_madloopparam_string_selector_normalized_to_int_labels (tests.unit_tests.loop.test_ninjars_profile_timing_metadata.TimingMetadataTests.test_real_madloopparam_string_selector_normalized_to_int_labels) ... /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tests/unit_tests/loop/test_ninjars_profile_timing_metadata.py:99: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-map9l3vp/realcard8-old/TMP_CHECK_uux_z/Cards/MadLoopParams.dat' mode='w' encoding='UTF-8'>
+  actual.write(str(export/'Cards/MadLoopParams.dat'))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tests/input_files/ninjars_profile_timing_legacy.py:106: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-map9l3vp/realcard8-old/TMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/ML5_0_HelFilter.dat' mode='r' encoding='UTF-8'>
+  '%sHelFilter.dat'%proc_prefix)).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tests/unit_tests/loop/test_ninjars_profile_timing_metadata.py:99: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-map9l3vp/realcard8-new/TMP_CHECK_uux_z/Cards/MadLoopParams.dat' mode='w' encoding='UTF-8'>
+  actual.write(str(export/'Cards/MadLoopParams.dat'))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/various/banner.py:1057: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-map9l3vp/realcard8-new/TMP_CHECK_uux_z/Cards/MadLoopParams.dat' mode='r' encoding='UTF-8'>
+  self.read(finput, **opt)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/various/process_checks.py:1539: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-map9l3vp/realcard8-new/TMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/ML5_0_HelFilter.dat' mode='r' encoding='UTF-8'>
+  '%sHelFilter.dat'%proc_prefix)).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_runtime_mutation_rejected_after_existing_run_without_rehash (tests.unit_tests.loop.test_ninjars_profile_timing_metadata.TimingMetadataTests.test_runtime_mutation_rejected_after_existing_run_without_rehash) ... ok
+test_unoptimized_early_return_is_recorded (tests.unit_tests.loop.test_ninjars_profile_timing_metadata.TimingMetadataTests.test_unoptimized_early_return_is_recorded) ... /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tests/input_files/ninjars_profile_timing_legacy.py:106: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-k32ho20v/unoptimized-old/TMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/ML5_0_HelFilter.dat' mode='r' encoding='UTF-8'>
+  '%sHelFilter.dat'%proc_prefix)).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/madgraph/various/process_checks.py:1539: ResourceWarning: unclosed file <_io.TextIOWrapper name='/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/tmp/mg5-profile-metadata-k32ho20v/unoptimized-new/TMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/ML5_0_HelFilter.dat' mode='r' encoding='UTF-8'>
+  '%sHelFilter.dat'%proc_prefix)).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+
+----------------------------------------------------------------------
+Ran 88 tests in 5.525s
+
+OK

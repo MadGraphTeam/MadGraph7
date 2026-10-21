@@ -1,0 +1,756 @@
+{
+  "all_other_private_fields_match_strict_committed_expectation": true,
+  "cases": {
+    "ew-1": {
+      "differences_from_committed_template": {},
+      "origin": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-1",
+      "origin_card": {
+        "bytes": 13357,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-1/Cards/MadLoopParams.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+      },
+      "origin_card_equals_default": true,
+      "origin_default": {
+        "bytes": 13357,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-1/Cards/MadLoopParams_default.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+      },
+      "private_targets": {
+        "6": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        },
+        "8": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        }
+      }
+    },
+    "ew-2": {
+      "differences_from_committed_template": {},
+      "origin": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-2",
+      "origin_card": {
+        "bytes": 13357,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-2/Cards/MadLoopParams.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+      },
+      "origin_card_equals_default": true,
+      "origin_default": {
+        "bytes": 13357,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-2/Cards/MadLoopParams_default.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+      },
+      "private_targets": {
+        "6": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        },
+        "8": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        }
+      }
+    },
+    "ew-3": {
+      "differences_from_committed_template": {},
+      "origin": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-3",
+      "origin_card": {
+        "bytes": 13357,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-3/Cards/MadLoopParams.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+      },
+      "origin_card_equals_default": true,
+      "origin_default": {
+        "bytes": 13357,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-3/Cards/MadLoopParams_default.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+      },
+      "private_targets": {
+        "6": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        },
+        "8": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        }
+      }
+    },
+    "qcd-1": {
+      "differences_from_committed_template": {},
+      "origin": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1",
+      "origin_card": {
+        "bytes": 13357,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1/Cards/MadLoopParams.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+      },
+      "origin_card_equals_default": true,
+      "origin_default": {
+        "bytes": 13357,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1/Cards/MadLoopParams_default.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+      },
+      "private_targets": {
+        "6": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-1-6/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-1-6/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-1-6/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-1-6/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        },
+        "8": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-1-8/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-1-8/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-1-8/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-1-8/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        }
+      }
+    },
+    "qcd-2": {
+      "differences_from_committed_template": {},
+      "origin": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-2",
+      "origin_card": {
+        "bytes": 13357,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-2/Cards/MadLoopParams.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+      },
+      "origin_card_equals_default": true,
+      "origin_default": {
+        "bytes": 13357,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-2/Cards/MadLoopParams_default.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+      },
+      "private_targets": {
+        "6": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        },
+        "8": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        }
+      }
+    },
+    "qcd-3": {
+      "differences_from_committed_template": {},
+      "origin": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-3",
+      "origin_card": {
+        "bytes": 13357,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-3/Cards/MadLoopParams.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+      },
+      "origin_card_equals_default": true,
+      "origin_default": {
+        "bytes": 13357,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-3/Cards/MadLoopParams_default.dat",
+        "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+      },
+      "private_targets": {
+        "6": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        },
+        "8": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13357,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        }
+      }
+    },
+    "supplement-gg-h": {
+      "differences_from_committed_template": {
+        "COLLIERComputeIRpoles": {
+          "actual": false,
+          "committed_or_expected": true
+        },
+        "COLLIERComputeUVpoles": {
+          "actual": false,
+          "committed_or_expected": true
+        },
+        "MLReductionLib": {
+          "actual": "7|6|1",
+          "committed_or_expected": "6|7|1"
+        }
+      },
+      "origin": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-h",
+      "origin_card": {
+        "bytes": 13359,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-h/Cards/MadLoopParams.dat",
+        "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a"
+      },
+      "origin_card_equals_default": true,
+      "origin_default": {
+        "bytes": 13359,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-h/Cards/MadLoopParams_default.dat",
+        "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a"
+      },
+      "private_targets": {
+        "6": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13359,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13359,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        },
+        "8": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13359,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13359,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        }
+      },
+      "retained_generation_files": [
+        "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/controls-generation/inputs/candidate/control-gg-h/compilation.json",
+        "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/controls-generation/inputs/candidate/control-gg-h/compiled-sources.json",
+        "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/controls-generation/inputs/candidate/control-gg-h/generation.json",
+        "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/controls-generation/inputs/candidate/control-gg-h/param_card.dat"
+      ]
+    },
+    "supplement-gg-hh": {
+      "differences_from_committed_template": {
+        "COLLIERComputeIRpoles": {
+          "actual": false,
+          "committed_or_expected": true
+        },
+        "COLLIERComputeUVpoles": {
+          "actual": false,
+          "committed_or_expected": true
+        },
+        "MLReductionLib": {
+          "actual": "7|6|1",
+          "committed_or_expected": "6|7|1"
+        }
+      },
+      "origin": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-hh",
+      "origin_card": {
+        "bytes": 13359,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-hh/Cards/MadLoopParams.dat",
+        "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a"
+      },
+      "origin_card_equals_default": true,
+      "origin_default": {
+        "bytes": 13359,
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-hh/Cards/MadLoopParams_default.dat",
+        "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a"
+      },
+      "private_targets": {
+        "6": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13359,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+            },
+            "default_card": {
+              "bytes": 13359,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        },
+        "8": {
+          "observed": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/outputs/observed/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13359,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/outputs/observed/Cards/MadLoopParams_default.dat",
+              "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "matches_science_result_sha256": true,
+            "strict_expected_differences": {}
+          },
+          "plain": {
+            "card": {
+              "bytes": 13352,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/outputs/plain/Cards/MadLoopParams.dat",
+              "sha256": "2b625e12b202ad53c49584f4475afe488dc976b3e4b74262882ff9b9d17a7ed0"
+            },
+            "default_card": {
+              "bytes": 13359,
+              "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/outputs/plain/Cards/MadLoopParams_default.dat",
+              "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a"
+            },
+            "default_matches_origin_default": true,
+            "full_uv_and_ir_poles": true,
+            "matches_bound_build_sha256": true,
+            "strict_expected_differences": {}
+          }
+        }
+      },
+      "retained_generation_files": [
+        "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/controls-generation/inputs/candidate/control-gg-hh/compilation.json",
+        "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/controls-generation/inputs/candidate/control-gg-hh/compiled-sources.json",
+        "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/controls-generation/inputs/candidate/control-gg-hh/generation.json",
+        "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/controls-generation/inputs/candidate/control-gg-hh/param_card.dat"
+      ]
+    }
+  },
+  "cohort": {
+    "bytes": 1528,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/candidate-cohort.json",
+    "sha256": "77660cca5ea4814aa0351654b46b067bb1a147bd3863f83d5b3654c3cd6628c3"
+  },
+  "committed_exporter_sha256": "4d69dd051947c41987f8af18e0e20e18ef177e681ff94320cd6ec0a6e03fe7bd",
+  "committed_loop_induced_assignments": [
+    "MLCard['MLReductionLib'] = '7|6|1'",
+    "MLCard['COLLIERComputeUVpoles'] = False",
+    "MLCard['COLLIERComputeIRpoles'] = False"
+  ],
+  "committed_template_sha256": "b643cd5f0b8dd11533c02430daa906473f6183cb38b99a12244425ff0ff9ef25",
+  "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+  "new_evaluations": 0,
+  "retained_generation_MadLoop_card_available": false,
+  "schema": "loop-origin-card-investigation-v1",
+  "status": "metadata_investigation_only_no_parser_change"
+}

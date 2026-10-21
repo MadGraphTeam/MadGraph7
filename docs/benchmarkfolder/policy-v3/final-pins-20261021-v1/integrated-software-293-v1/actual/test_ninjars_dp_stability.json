@@ -1,0 +1,18 @@
+{
+  "actual_subprocesses": [],
+  "elapsed_seconds": 0.9101533229695633,
+  "errors": [],
+  "failures": [],
+  "ignored_parents_before": {
+    ".benchmark-work": false,
+    ".ninjars-build": false
+  },
+  "loaded_from": "tests/unit_tests/loop/test_ninjars_dp_stability.py",
+  "module": "tests.unit_tests.loop.test_ninjars_dp_stability",
+  "nonsoftware_commands_allowed": false,
+  "passed": true,
+  "skipped": [],
+  "source_sha256": "f11aa482054e15cbc61f36bd842417c695e6cea6e3ed4d5af5b979c27ed77f18",
+  "source_unchanged": true,
+  "tests_run": 71
+}

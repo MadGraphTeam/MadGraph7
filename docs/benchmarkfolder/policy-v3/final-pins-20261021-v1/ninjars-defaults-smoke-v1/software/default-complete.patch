@@ -1,0 +1,192 @@
+--- a/madgraph/interface/madgraph_interface.py
++++ b/madgraph/interface/madgraph_interface.py
+@@ -5255,6 +5255,8 @@
+         self.set_color_basis_mode()
+ 
+         args = self.split_arg(line)
++        automatic_reduction = (args and args[0] in ('timing', 'profile') and
++                               not any(arg.startswith('--reduction=') for arg in args))
+         # Check args validity
+         param_card = self.check_check(args)
+ 
+@@ -5666,6 +5668,11 @@
+         language_result = []
+         precision_result = []
+ 
++        if automatic_reduction and myprocdef and myprocdef.get('has_born'):
++            from madgraph.various import ninjars_install
++            MLoptions['MLReductionLib'] = [8 if ninjars_install.is_available(
++                self.options.get('ninjars')) else 6]
++
+         if "_cuttools_dir" in dir(self):
+             CT_dir = self._cuttools_dir
+         else:
+@@ -5722,11 +5729,12 @@
+                     MLoptions["MLReductionLib"].remove(6)
+ 
+         if isinstance(self.options.get('ninjars'), str):
++            from madgraph.various import ninjars_install
+             TIR_dir['ninjars_dir'] = self.options['ninjars']
+-            if 8 in MLoptions.get('MLReductionLib', []) and not os.path.isfile(
+-                    pjoin(MG5DIR, self.options['ninjars'], 'libninjars.a')):
+-                raise self.InvalidCmd("NinjaRS is not installed at %s. "
+-                                      "Run 'install ninjars'." %
++            if 8 in MLoptions.get('MLReductionLib', []) and not ninjars_install.is_available(
++                    self.options['ninjars']):
++                raise self.InvalidCmd("NinjaRS is unavailable or unusable at %s. "
++                                      "Run 'install ninjars --update'." %
+                                       self.options['ninjars'])
+         elif 8 in MLoptions.get('MLReductionLib', []):
+             raise self.InvalidCmd("NinjaRS is disabled. Run 'install ninjars' "
+--- a/madgraph/iolibs/export_fks.py
++++ b/madgraph/iolibs/export_fks.py
+@@ -206,6 +206,9 @@
+         if os.path.exists(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat')):          
+                 self.MadLoopparam = banner_mod.MadLoopParam(pjoin(self.dir_path, 
+                                                   'Cards', 'MadLoopParams.dat'))
++                if self.set_default_reduction_library(self.MadLoopparam):
++                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
++                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'))
+                 # write the output file
+                 self.MadLoopparam.write(pjoin(self.dir_path,"SubProcesses",
+                                                            "MadLoopParams.dat"))
+@@ -5081,6 +5084,9 @@
+         if os.path.exists(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat')):          
+                 self.MadLoopparam = banner_mod.MadLoopParam(pjoin(self.dir_path, 
+                                                   'Cards', 'MadLoopParams.dat'))
++                if self.set_default_reduction_library(self.MadLoopparam):
++                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
++                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'))
+                 # write the output file
+                 self.MadLoopparam.write(pjoin(self.dir_path,"SubProcesses",
+                                                            "MadLoopParams.dat"))
+--- a/madgraph/loop/loop_exporters.py
++++ b/madgraph/loop/loop_exporters.py
+@@ -272,6 +272,8 @@
+         
+ 
+         MLCard = banner_mod.MadLoopParam(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
++        if not self.has_loop_induced:
++            self.set_default_reduction_library(MLCard)
+         # For loop-induced processes and *only* when summing over all helicity configurations
+         # (which is the default for standalone usage), COLLIER is faster than Ninja.
+         if self.has_loop_induced:
+@@ -287,6 +289,17 @@
+         MLCard.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'))
+         MLCard.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
+             
++    def set_default_reduction_library(self, card):
++        """Prefer a usable NinjaRS installation for untouched ordinary defaults."""
++        if (getattr(self, 'has_loop_induced', False) or
++                not getattr(self, 'tir_available_dict', {}).get('ninjars', False) or
++                'mlreductionlib' in card.user_set or card['MLReductionLib'] != '6|7|1' or
++                not ninjars_install.is_available(getattr(self, 'ninjars_dir', None))):
++            return False
++        # An active value is required: Fortran ignores commented default lines.
++        card.set('MLReductionLib', '8|6|7|1', user=True)
++        return True
++
+     def write_f2py_makefile(self, model):
+         return
+     
+@@ -2105,12 +2118,11 @@
+                 self.tir_available_dict[tir_name]=False
+                 return ""
+             if tir_name == 'ninjars':
+-                ninjars_install.read_config(libpath)
+-                if not os.path.isfile(pjoin(libpath, 'mninjars.mod')) and not \
+-                        misc.find_includes_path(pjoin(libpath, os.pardir, 'include'),
+-                                                'mninjars.mod'):
+-                    raise MadGraph5Error("NinjaRS Fortran module mninjars.mod is "
+-                                         "missing; run 'install ninjars --force'.")
++                if not ninjars_install.is_available(libpath):
++                    logger.warning("NinjaRS installation at %s is unusable; "
++                                   "run 'install ninjars --update'. It will not be available.", libpath)
++                    self.tir_available_dict[tir_name] = False
++                    return ""
+             # Check the version of the tool, if the library was found
+             if tir_name in ['ninja','samurai'] and self.tir_available_dict[tir_name]:
+                 # Make sure the librry was indeed installed in the source directory
+--- a/madgraph/various/ninjars_install.py
++++ b/madgraph/various/ninjars_install.py
+@@ -17,7 +17,7 @@
+ import tempfile
+ import tomllib
+ 
+-from madgraph import MadGraph5Error
++from madgraph import MadGraph5Error, MG5DIR
+ 
+ logger = logging.getLogger('madgraph.ninjars_install')
+ CONFIG_NAME = 'ninjars-config.json'
+@@ -50,6 +50,30 @@
+         raise MadGraph5Error("Missing or invalid NinjaRS compiler-runtime link metadata "
+                              "in %s; run 'install ninjars --update'." % libdir)
+     return config
++
++
++def is_available(libdir):
++    """Check the installed archive, Fortran interface and native link metadata."""
++    if not isinstance(libdir, (str, os.PathLike)) or not libdir:
++        return False
++    directory = Path(libdir)
++    if not directory.is_absolute():
++        directory = Path(MG5DIR) / directory
++    try:
++        archive = directory / 'libninjars.a'
++        if archive.stat().st_size <= 8:
++            return False
++        with archive.open('rb') as stream:
++            if stream.read(8) != b'!<arch>\n':
++                return False
++        config = read_config(directory)
++        if not any(path.is_file() and path.stat().st_size for path in (
++                directory / 'mninjars.mod', directory.parent / 'include' / 'mninjars.mod')):
++            return False
++        return (shlex.split((directory / 'ninjars-native-libs.txt').read_text()) == config['native_libs'] and
++                shlex.split((directory / 'ninjars-link-before.txt').read_text()) == config['link_before'])
++    except (OSError, ValueError, MadGraph5Error):
++        return False
+ 
+ 
+ def pre_link_flags(libdir):
+--- a/madgraph/various/process_checks.py
++++ b/madgraph/various/process_checks.py
+@@ -60,6 +60,7 @@
+ import contextlib
+ import madgraph.various.rambo as rambo
+ import madgraph.various.misc as misc
++import madgraph.various.ninjars_install as ninjars_install
+ import madgraph.various.progressbar as pbar
+ import madgraph.various.banner as bannermod
+ import madgraph.various.progressbar as pbar
+@@ -2428,6 +2429,14 @@
+         MLoptions={}
+     else:
+         MLoptions=MLOptions
++        # Prefer an installed NinjaRS backend for Born-process profiles unless
++        # the caller explicitly selected a reduction list.
++        has_born = (matrix_element.get('has_born') if reusing else
++                        matrix_element.get('processes')[0].get('has_born'))
++        if has_born and ('MLReductionLib' not in MLoptions or
++                                      len(MLoptions['MLReductionLib']) == 0):
++            MLoptions['MLReductionLib'] = [8] if ninjars_install.is_available(
++                                              tir.get('ninjars_dir')) else [6]
+ 
+     timing2 = myProfiler.time_matrix_element(matrix_element, reusing, 
+                             param_card, keep_folder=keep_folder,options=options,
+@@ -2568,10 +2577,13 @@
+         # And the COLLIER global cache is active, if not specified
+         if 'COLLIERGlobalCache' not in MLoptions:
+             MLoptions['COLLIERGlobalCache']=-1
+-        # And time NINJA by default if not specified:
++        # Prefer installed NinjaRS for Born processes when not specified.
+         if 'MLReductionLib' not in MLoptions or \
+                                             len(MLoptions['MLReductionLib'])==0:
+-            MLoptions['MLReductionLib'] = [6]
++            has_born = (matrix_element.get('has_born') if reusing else
++                        matrix_element.get('processes')[0].get('has_born'))
++            MLoptions['MLReductionLib'] = [8] if (has_born and
++                ninjars_install.is_available(tir.get('ninjars_dir'))) else [6]
+             
+     timing2 = myTimer.time_matrix_element(matrix_element, reusing, param_card,
+                                      keep_folder = keep_folder, options=options,

@@ -1,0 +1,90 @@
+{
+  "compiler_invocations": 0,
+  "copies": {
+    "independent-source-review.json": {
+      "copy": {
+        "bytes": 2430,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/paper-comparison/dp-origin-card-policy-software-v1/independent-source-review.json",
+        "sha256": "d2014c1472ab6dd296afff6c4a6bb6572f278727143c8f87f31a8a089e63cf6b"
+      },
+      "original": {
+        "bytes": 2430,
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/loop-origin-card-qualification-v1/independent-source-review.json",
+        "sha256": "d2014c1472ab6dd296afff6c4a6bb6572f278727143c8f87f31a8a089e63cf6b"
+      }
+    },
+    "origin-card-investigation.json": {
+      "copy": {
+        "bytes": 38286,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/paper-comparison/dp-origin-card-policy-software-v1/origin-card-investigation.json",
+        "sha256": "cdf6157b3b67d6a4d748738bc4461bfce5d05de3fa2f419ffbe616765acd2cbe"
+      },
+      "original": {
+        "bytes": 38286,
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/loop-origin-card-investigation-v1/investigation.json",
+        "sha256": "cdf6157b3b67d6a4d748738bc4461bfce5d05de3fa2f419ffbe616765acd2cbe"
+      }
+    },
+    "software.json": {
+      "copy": {
+        "bytes": 7482,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/paper-comparison/dp-origin-card-policy-software-v1/software.json",
+        "sha256": "31f27e25fb742a03382f19f322d96e6efee01ca42af10932ce143849f569ed80"
+      },
+      "original": {
+        "bytes": 7482,
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/loop-origin-card-qualification-v1/software.json",
+        "sha256": "31f27e25fb742a03382f19f322d96e6efee01ca42af10932ce143849f569ed80"
+      }
+    },
+    "source.py": {
+      "copy": {
+        "bytes": 88485,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/paper-comparison/dp-origin-card-policy-software-v1/source.py",
+        "sha256": "1f4c715d7aae9e60f1fea8dddd0f591e7dc7632a59f49884392b50cb77d28b12"
+      },
+      "original": {
+        "bytes": 88485,
+        "path": "tools/ninjars_dp_stability.py",
+        "sha256": "1f4c715d7aae9e60f1fea8dddd0f591e7dc7632a59f49884392b50cb77d28b12"
+      }
+    },
+    "tests.py": {
+      "copy": {
+        "bytes": 68105,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/paper-comparison/dp-origin-card-policy-software-v1/tests.py",
+        "sha256": "f11aa482054e15cbc61f36bd842417c695e6cea6e3ed4d5af5b979c27ed77f18"
+      },
+      "original": {
+        "bytes": 68105,
+        "path": "tests/unit_tests/loop/test_ninjars_dp_stability.py",
+        "sha256": "f11aa482054e15cbc61f36bd842417c695e6cea6e3ed4d5af5b979c27ed77f18"
+      }
+    },
+    "unittest.log": {
+      "copy": {
+        "bytes": 13592,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/paper-comparison/dp-origin-card-policy-software-v1/unittest.log",
+        "sha256": "e122c2f8c00c47c948c40f4c1f2d3801b5d8dfe8f818d15697be0889f2f73738"
+      },
+      "original": {
+        "bytes": 13592,
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/loop-origin-card-qualification-v1/unittest-frozen.log",
+        "sha256": "e122c2f8c00c47c948c40f4c1f2d3801b5d8dfe8f818d15697be0889f2f73738"
+      }
+    }
+  },
+  "errors": 0,
+  "failures": 0,
+  "new_physical_evaluations": 0,
+  "physical_results_certified": false,
+  "readme": {
+    "bytes": 1416,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/paper-comparison/dp-origin-card-policy-software-v1/README.md",
+    "sha256": "be17d8e22e25a40aabddd1a7f9c47f6124c0f9825d31ae2072e1b7cc1fe63816"
+  },
+  "schema": "loop-origin-card-policy-software-capsule-v1",
+  "skips": 0,
+  "software_tests": 71,
+  "status": "PASS"
+}

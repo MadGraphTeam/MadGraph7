@@ -272,6 +272,8 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         
 
         MLCard = banner_mod.MadLoopParam(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
+        if not self.has_loop_induced:
+            self.set_default_reduction_library(MLCard)
         # For loop-induced processes and *only* when summing over all helicity configurations
         # (which is the default for standalone usage), COLLIER is faster than Ninja.
         if self.has_loop_induced:
@@ -287,6 +289,17 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         MLCard.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'))
         MLCard.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
             
+    def set_default_reduction_library(self, card):
+        """Prefer a usable NinjaRS installation for untouched ordinary defaults."""
+        if (getattr(self, 'has_loop_induced', False) or
+                not getattr(self, 'tir_available_dict', {}).get('ninjars', False) or
+                'mlreductionlib' in card.user_set or card['MLReductionLib'] != '6|7|1' or
+                not ninjars_install.is_available(getattr(self, 'ninjars_dir', None))):
+            return False
+        # An active value is required: Fortran ignores commented default lines.
+        card.set('MLReductionLib', '8|6|7|1', user=True)
+        return True
+
     def write_f2py_makefile(self, model):
         return
     
@@ -2105,12 +2118,11 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 self.tir_available_dict[tir_name]=False
                 return ""
             if tir_name == 'ninjars':
-                ninjars_install.read_config(libpath)
-                if not os.path.isfile(pjoin(libpath, 'mninjars.mod')) and not \
-                        misc.find_includes_path(pjoin(libpath, os.pardir, 'include'),
-                                                'mninjars.mod'):
-                    raise MadGraph5Error("NinjaRS Fortran module mninjars.mod is "
-                                         "missing; run 'install ninjars --force'.")
+                if not ninjars_install.is_available(libpath):
+                    logger.warning("NinjaRS installation at %s is unusable; "
+                                   "run 'install ninjars --update'. It will not be available.", libpath)
+                    self.tir_available_dict[tir_name] = False
+                    return ""
             # Check the version of the tool, if the library was found
             if tir_name in ['ninja','samurai'] and self.tir_available_dict[tir_name]:
                 # Make sure the librry was indeed installed in the source directory

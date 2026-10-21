@@ -1,5 +1,11 @@
 # Prospective native-DP stability runner: held protocol
 
+The latest user budget and final study scope are defined in
+[LIGHTWEIGHT-STUDY.md](LIGHTWEIGHT-STUDY.md): 100 configurations for eight
+inexpensive cases, with no sample extension required. The protocol below is
+retained as the historical preparation record; its broader roadmap does not
+define outstanding completion requirements.
+
 This protocol describes preparation for a new Ninja 6 versus NinjaRS 8 diagnostic. It authorizes no execution and reports no numerical outcome. The original fixed-point correctness campaign and historical four-tool controls retain their own scope.
 
 The measurement authority is `../dp-random-points-v2/manifest.json`, SHA-256 `b0164afb38d02ff1135155e676c09ffa3528fa27c45df1a48632018ae136768c`. It binds the preregistered 100 points for each of 12 retained Standard Model exports, distinct seeds, physical cards, cuts, generation origins and deterministic replay. Both tools consume identical point files. Boosted on-shell 2-to-1 samples are descriptive, with the physical invariant energy recorded separately from the 1 TeV argument for higher multiplicities. Samples cannot be selected according to a reduction result.

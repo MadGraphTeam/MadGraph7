@@ -1,0 +1,36 @@
+{
+  "compiler_or_reducer_commands_allowed": false,
+  "counts": {
+    "conditional_skip": 1,
+    "errors": 0,
+    "failures": 0,
+    "passed": 292,
+    "tests_run": 293
+  },
+  "environment": {
+    "packages": {
+      "matplotlib": "3.11.1",
+      "numpy": "2.5.2",
+      "sympy": "not installed / not required by selected suite"
+    },
+    "python": "3.14.7 (main, Aug  5 2026, 10:29:49) [GCC 15.3.0]",
+    "python_executable": "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python"
+  },
+  "excluded_native_fixture_module": "tests.unit_tests.loop.test_ninjars_fortran",
+  "native_evidence_repeated": false,
+  "old_attempts_retained": [
+    "attempt-1 missing vendor.ply + blocked read-only font lookup",
+    "attempt-2 missing mg5decay",
+    "attempt-3 runner scratch directory collision"
+  ],
+  "result": {
+    "bytes": 21145,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/integrated-software-293-v1/actual/result.json",
+    "sha256": "83c0e336cd2934af3e9ed44f7f55bcb1ecb3dd5b6ff22f2f054cdcc59ff30fab"
+  },
+  "schema": "integrated-final-software-portable-closure-v1",
+  "scope": "Twelve Python software modules only; original observations and all setup failures preserved; no product/test edits during execution.",
+  "source_archive_payloads_published": false,
+  "source_reconstruction": "Pinned tracked Git revision and54 exact repository-overlay hashes; no ignored parents required",
+  "symlinks_unchanged_after_tests": true
+}

@@ -1,0 +1,15 @@
+{
+  "command": [
+    "taskset",
+    "-c",
+    "6",
+    "make",
+    "-j1",
+    "check"
+  ],
+  "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/ninjars-default-smoke-v1/ordinary/SubProcesses/P0_uux_z",
+  "returncode": 0,
+  "elapsed_seconds": 9.53328973299358,
+  "driver_sha256": "c09e40862e89edc55c9280a5c157342c0277223d7f3735063668fd4362127515",
+  "utc": "2026-10-21T21:47:42.644374+00:00"
+}

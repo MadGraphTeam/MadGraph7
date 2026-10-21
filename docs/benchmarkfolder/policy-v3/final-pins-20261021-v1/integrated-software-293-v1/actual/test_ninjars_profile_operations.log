@@ -1,0 +1,10 @@
+test_all_thread_counts_are_pinned_without_losing_runtime_environment (tests.unit_tests.loop.test_ninjars_profile_operations.NinjaRSProfileOperationsTest.test_all_thread_counts_are_pinned_without_losing_runtime_environment) ... ok
+test_already_exited_perf_is_never_signalled (tests.unit_tests.loop.test_ninjars_profile_operations.NinjaRSProfileOperationsTest.test_already_exited_perf_is_never_signalled) ... ok
+test_exception_before_worker_assignment_reaps_registered_child (tests.unit_tests.loop.test_ninjars_profile_operations.NinjaRSProfileOperationsTest.test_exception_before_worker_assignment_reaps_registered_child) ... ok
+test_perf_flush_wait_is_bounded_for_the_owned_escalation_path (tests.unit_tests.loop.test_ninjars_profile_operations.NinjaRSProfileOperationsTest.test_perf_flush_wait_is_bounded_for_the_owned_escalation_path) ... ok
+test_term_and_hup_reap_sleeping_session_and_restore_handlers (tests.unit_tests.loop.test_ninjars_profile_operations.NinjaRSProfileOperationsTest.test_term_and_hup_reap_sleeping_session_and_restore_handlers) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.016s
+
+OK

@@ -29,6 +29,14 @@ the replacement before publishing it and preserves the previous installation
 if the build or numerical smoke test fails. `--force` remains an equivalent
 backward-compatible alias.
 
+When a usable NinjaRS installation is configured, ordinary optimized one-loop
+standalone and NLO exports start with `MLReductionLib=8|6|7|1`. Without it,
+the default remains `6|7|1`. Ordinary `check timing` and `check profile` select
+NinjaRS by default, or Ninja when NinjaRS is unavailable. Explicit reduction
+options such as `--reduction=6` and active parameter-card choices take
+precedence. Loop-induced exports retain their existing `7|6|1` selection and
+scalar-integral pole settings.
+
 `src/guarded.rs` adapts the tensor indexing and transposed recurrence traversal
 from NinjaRS commit `0d0d7e7a8033431b60a8580731084742e0655cda`,
 `crates/ninjars/src/fast/{tensor.rs,tensor_layout.rs,tensor_jets.rs}`. Its added

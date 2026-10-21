@@ -1,0 +1,42 @@
+{
+  "scope": "Private default-policy software tests in fresh selected tracked archive; no live GEN edit, real export, build, initializer or reducer invocation",
+  "archive": ".benchmark-work/profile-cli-publication-software-v1/tracked-source.tar",
+  "archive_base": "9b5abb345452becddd37ee603c9bed17aed7db04",
+  "selected_archive_members": 560,
+  "overlays": {
+    "madgraph/interface/madgraph_interface.py": {
+      "sha256": "6e401977d02f176cad6f35873bd181e9638dc3cb382e9bc0aa04cdaf276161dc",
+      "bytes": 745274
+    },
+    "madgraph/iolibs/export_fks.py": {
+      "sha256": "a5131e5542127d094d3581999cedff6551848be6407174812ba0d55d75702e25",
+      "bytes": 265645
+    },
+    "madgraph/loop/loop_exporters.py": {
+      "sha256": "365c9f80017a38479565fff9deda6ee7370e6b59a0e1f48d678333fa806a11e4",
+      "bytes": 207484
+    },
+    "madgraph/various/ninjars_install.py": {
+      "sha256": "0854be586e1ac871ac41b900cf6d1eff4992e46e495b577df4215b13e339aaf6",
+      "bytes": 17818
+    },
+    "madgraph/various/process_checks.py": {
+      "sha256": "01ffc8538b1e19ca2de800abebffb8f11637f5e8478927e809181e171fc6f78c",
+      "bytes": 377061
+    },
+    "tests/unit_tests/loop/test_ninjars_defaults.py": {
+      "sha256": "096128486acb0d0caf7fdc4c591f8307063f5c99bee56c7566de5c82513f1215",
+      "bytes": 16603
+    }
+  },
+  "live_source_sha256_before": {
+    "madgraph/interface/madgraph_interface.py": "5ae13768c15462ace63f7780cd4a0750c99479fadea3f1512175c2fc7393044d",
+    "madgraph/iolibs/export_fks.py": "d21470b6bdfbfae276c6fa7710765baf171a8f8f3868df90fc3edcf8b4367a2e",
+    "madgraph/loop/loop_exporters.py": "4d69dd051947c41987f8af18e0e20e18ef177e681ff94320cd6ec0a6e03fe7bd",
+    "madgraph/various/ninjars_install.py": "ea7536939563a038a52005e71e229120216b6cf6d03bd54e63122692552aadba",
+    "madgraph/various/process_checks.py": "a1b1fc34e9c0c8a5b0e8b9e7f4ad80808dfff0cecd9d1593473901cdbcfe2a56"
+  },
+  "ignored_parents_absent": true,
+  "cpu": 180,
+  "started_utc": "2026-10-21T21:38:35.376860+00:00"
+}

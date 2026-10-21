@@ -1,0 +1,14 @@
+test_absent_backend_does_not_read_stale_precision_metadata (tests.unit_tests.various.test_ninjars_integration_boundaries.TestNinjaRSIntegrationBoundaries.test_absent_backend_does_not_read_stale_precision_metadata) ... ok
+test_available_backend_rejects_incompatible_metadata_instead_of_claiming_qp (tests.unit_tests.various.test_ninjars_integration_boundaries.TestNinjaRSIntegrationBoundaries.test_available_backend_rejects_incompatible_metadata_instead_of_claiming_qp) ... ok
+test_combined_source_overrides_are_isolated_before_cargo_resolution (tests.unit_tests.various.test_ninjars_integration_boundaries.TestNinjaRSIntegrationBoundaries.test_combined_source_overrides_are_isolated_before_cargo_resolution) ... ok
+test_explicit_unavailable_backend_has_actionable_error_before_generation (tests.unit_tests.various.test_ninjars_integration_boundaries.TestNinjaRSIntegrationBoundaries.test_explicit_unavailable_backend_has_actionable_error_before_generation) ... ok
+test_export_requires_literal_quad_capability_and_archive (tests.unit_tests.various.test_ninjars_integration_boundaries.TestNinjaRSIntegrationBoundaries.test_export_requires_literal_quad_capability_and_archive) ... ok
+test_failed_smoke_then_retry_publishes_only_validated_install (tests.unit_tests.various.test_ninjars_integration_boundaries.TestNinjaRSIntegrationBoundaries.test_failed_smoke_then_retry_publishes_only_validated_install) ... ok
+test_mixed_legacy_and_contextual_status_aggregation_is_order_independent (tests.unit_tests.various.test_ninjars_integration_boundaries.TestNinjaRSIntegrationBoundaries.test_mixed_legacy_and_contextual_status_aggregation_is_order_independent) ... ok
+test_partial_existing_install_requires_update_without_starting_build (tests.unit_tests.various.test_ninjars_integration_boundaries.TestNinjaRSIntegrationBoundaries.test_partial_existing_install_requires_update_without_starting_build) ... ok
+test_publication_failure_restores_complete_previous_install (tests.unit_tests.various.test_ninjars_integration_boundaries.TestNinjaRSIntegrationBoundaries.test_publication_failure_restores_complete_previous_install) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.224s
+
+OK

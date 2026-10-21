@@ -5255,6 +5255,8 @@ This implies that with decay chains:
         self.set_color_basis_mode()
 
         args = self.split_arg(line)
+        automatic_reduction = (args and args[0] in ('timing', 'profile') and
+                               not any(arg.startswith('--reduction=') for arg in args))
         # Check args validity
         param_card = self.check_check(args)
 
@@ -5666,6 +5668,11 @@ This implies that with decay chains:
         language_result = []
         precision_result = []
 
+        if automatic_reduction and myprocdef and myprocdef.get('has_born'):
+            from madgraph.various import ninjars_install
+            MLoptions['MLReductionLib'] = [8 if ninjars_install.is_available(
+                self.options.get('ninjars')) else 6]
+
         if "_cuttools_dir" in dir(self):
             CT_dir = self._cuttools_dir
         else:
@@ -5722,11 +5729,12 @@ This implies that with decay chains:
                     MLoptions["MLReductionLib"].remove(6)
 
         if isinstance(self.options.get('ninjars'), str):
+            from madgraph.various import ninjars_install
             TIR_dir['ninjars_dir'] = self.options['ninjars']
-            if 8 in MLoptions.get('MLReductionLib', []) and not os.path.isfile(
-                    pjoin(MG5DIR, self.options['ninjars'], 'libninjars.a')):
-                raise self.InvalidCmd("NinjaRS is not installed at %s. "
-                                      "Run 'install ninjars'." %
+            if 8 in MLoptions.get('MLReductionLib', []) and not ninjars_install.is_available(
+                    self.options['ninjars']):
+                raise self.InvalidCmd("NinjaRS is unavailable or unusable at %s. "
+                                      "Run 'install ninjars --update'." %
                                       self.options['ninjars'])
         elif 8 in MLoptions.get('MLReductionLib', []):
             raise self.InvalidCmd("NinjaRS is disabled. Run 'install ninjars' "

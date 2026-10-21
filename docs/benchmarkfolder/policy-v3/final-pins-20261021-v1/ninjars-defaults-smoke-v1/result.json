@@ -1,0 +1,47 @@
+{
+  "actual_exports": {
+    "disabled_ninjars_ordinary": "6|7|1",
+    "loop_induced": "7|6|1",
+    "nlo": "8|6|7|1",
+    "ordinary": "8|6|7|1"
+  },
+  "actual_native_statuses": {
+    "default": 218,
+    "explicit6": 216
+  },
+  "artifact_prerequisite": {
+    "archive": "HEPTools/ninjars/lib/libninjars.a",
+    "basis": "Previously accepted publication afterimage retained here; no redundant whole-archive hash or rebuild in this capsule",
+    "sha256": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c"
+  },
+  "explicit_disabled8": "Expected actionable InvalidCmd before numerical evaluation; CLI process returns0",
+  "focused_controls": {
+    "default_tests": {
+      "passed": 18,
+      "run": 18,
+      "skipped": 0
+    },
+    "installer_tests_successor": {
+      "passed": 19,
+      "run": 19,
+      "skipped": 0
+    },
+    "recording_fortran_test": {
+      "passed": 1,
+      "run": 1,
+      "skipped": 0
+    }
+  },
+  "historical_attempt": {
+    "cause": "Existing installer fixture expected fatal error for incomplete optional installation; retained log precedes approved fixture correction",
+    "failed": 1,
+    "passed": 36,
+    "run": 37
+  },
+  "live_production_fortran_changes": 0,
+  "native_children_reaped": 2,
+  "native_children_spawned": 2,
+  "schema": "installed-ninjars-default-smoke-v1",
+  "scope": "Default-selection regression and tiny actual exporter/native smoke, not performance or full numerical qualification",
+  "sealed_utc": "2026-10-21T21:53:39.539286+00:00"
+}

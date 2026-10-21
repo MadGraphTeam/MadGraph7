@@ -1,0 +1,18 @@
+{
+  "actual_subprocesses": [],
+  "elapsed_seconds": 0.5127010711003095,
+  "errors": [],
+  "failures": [],
+  "ignored_parents_before": {
+    ".benchmark-work": false,
+    ".ninjars-build": false
+  },
+  "loaded_from": "tests/unit_tests/various/test_ninjars_statistics.py",
+  "module": "tests.unit_tests.various.test_ninjars_statistics",
+  "nonsoftware_commands_allowed": false,
+  "passed": true,
+  "skipped": [],
+  "source_sha256": "432d22b4d21b54709335520557a0b1533124dc1727724c468353f008e54ad2f9",
+  "source_unchanged": true,
+  "tests_run": 3
+}

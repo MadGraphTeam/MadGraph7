@@ -1,0 +1,83 @@
+--- private-v4/test_timing_metadata.py
++++ tests/unit_tests/loop/test_ninjars_profile_timing_metadata.py
+@@ -1,4 +1,4 @@
+-"""Execute actual private timing/profile methods with compiler/engine mocks."""
++"""Execute the live timing/profile methods with compiler and engine mocks."""
+ import ast
+ import copy
+ import hashlib
+@@ -11,14 +11,18 @@
+ import re
+ from types import SimpleNamespace
+ import unittest
+-
+-ROOT = Path.cwd()
+-HERE = ROOT/'.benchmark-work/check-stability-nrs-correctness-20261021-v4'
+-OLD = ROOT/'.benchmark-work/check-stability-nrs-correctness-20261021-v2/process_checks.patched.py'
+-NEW = HERE/'process_checks.patched.py'
+-RUN = os.environ.get('NINJARS_TIMING_METADATA_TEST_RUN','attempt-v1')
++import tempfile
++
++ROOT = Path(__file__).resolve().parents[3]
++OLD = ROOT/'tests/input_files/ninjars_profile_timing_legacy.py'
++NEW = ROOT/'madgraph/various/process_checks.py'
+ 
+ class Process:
++    def get(self, key):
++        if key == 'has_born':
++            return True
++        raise KeyError(key)
++
+     def shell_string(self):
+         return 'P0uux_z'
+ 
+@@ -34,8 +38,8 @@
+     return methods
+ 
+ def exercise(label, source, optimized=True, initialized=None, tool=8, failure=None, real_card=False,
+-             mutate_runtime=None):
+-    base = HERE/'mock-runs'/RUN/label
++             mutate_runtime=None, base_root=None):
++    base = base_root/label
+     base.mkdir(parents=True,exist_ok=False)
+     calls = []
+     count = [0]
+@@ -121,9 +125,14 @@
+     return result,calls,base
+ 
+ class TimingMetadataTests(unittest.TestCase):
++    def setUp(self):
++        temporary = tempfile.TemporaryDirectory(prefix='mg5-profile-metadata-')
++        self.addCleanup(temporary.cleanup)
++        self.work = Path(temporary.name)
++
+     def compare(self,name,**kwargs):
+-        old,old_calls,_ = exercise(name+'-old',OLD,**kwargs)
+-        new,new_calls,base = exercise(name+'-new',NEW,**kwargs)
++        old,old_calls,_ = exercise(name+'-old',OLD,base_root=self.work,**kwargs)
++        new,new_calls,base = exercise(name+'-new',NEW,base_root=self.work,**kwargs)
+         self.assertEqual(old_calls,new_calls)
+         if old is None:
+             self.assertIsNone(new)
+@@ -201,7 +210,7 @@
+ 
+     def test_compile_failure_return_and_partial_metadata_preserved(self):
+         self.compare('failure',failure=3)
+-        path = next((HERE/'mock-runs'/RUN/'failure-new').glob('*/SavedRunInfos/profile_timing_metadata.json'))
++        path = next((self.work/'failure-new').glob('*/SavedRunInfos/profile_timing_metadata.json'))
+         partial = json.loads(path.read_text())
+         self.assertEqual(len(partial['stages']),3)
+         self.assertEqual(partial['stages'][-1]['name'],'polarized_full')
+@@ -209,10 +218,10 @@
+ 
+     def test_runtime_mutation_rejected_after_existing_run_without_rehash(self):
+         with self.assertRaisesRegex(ValueError,'Timing runtime changed during measurement'):
+-            exercise('runtime-mutated',NEW,mutate_runtime=2)
++            exercise('runtime-mutated',NEW,mutate_runtime=2,base_root=self.work)
+ 
+     def test_profile_merged_raw_dictionary_captured_before_stability_mutation(self):
+-        _,_,base = exercise('profile-seed',NEW)
++        _,_,base = exercise('profile-seed',NEW,base_root=self.work)
+         path = next(base.glob('*/SavedRunInfos/profile_timing_metadata.json'))
+         seed = json.loads(path.read_text())['timing_result']
+         seed['timing_metadata'] = dict(path=str(path),schema='madloop-profile-timing-metadata-v1')

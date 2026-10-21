@@ -429,20 +429,25 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
                 MadGraphCmd.do_install(cmd, 'ninjars --update')
         cmd.exec_cmd.assert_not_called()
 
-    def test_exporter_rejects_library_without_module(self):
+    def test_exporter_skips_incomplete_optional_library_and_copies_valid_install(self):
         lib = self.root / 'lib'
         lib.mkdir()
-        (lib / 'libninjars.a').write_text('archive')
+        (lib / 'libninjars.a').write_bytes(b'!<arch>\nsynthetic archive metadata')
         (lib / ninjars_install.CONFIG_NAME).write_text(json.dumps(
-            {'abi_version': ninjars_install.ABI_VERSION, 'native_libs': [],
+            {'abi_version': ninjars_install.ABI_VERSION, 'native_libs': ['-lgmp'],
              'link_before': ['-lgcc_s'], 'link_order_version': 1,
              'quad_precision': True}))
         exporter = object.__new__(LoopProcessOptimizedExporterFortranSA)
         exporter.tir_available_dict = {'ninjars': True}
         exporter.dependencies = 'external'
-        with self.assertRaisesRegex(MadGraph5Error, 'Fortran module'):
-            exporter.link_TIR(str(self.root), str(lib), 'libninjars.a', 'ninjars')
+        (lib / 'ninjars-native-libs.txt').write_text('-lgmp\n')
+        (lib / 'ninjars-link-before.txt').write_text('-lgcc_s\n')
+        with self.assertLogs('madgraph.loop_exporter', level='WARNING') as logged:
+            self.assertEqual(exporter.link_TIR(str(self.root), str(lib), 'libninjars.a', 'ninjars'), '')
+        self.assertFalse(exporter.tir_available_dict['ninjars'])
+        self.assertIn('install ninjars --update', '\n'.join(logged.output))
         (lib / 'mninjars.mod').write_text('module')
+        exporter.tir_available_dict['ninjars'] = True
         self.assertEqual(exporter.link_TIR(
             str(self.root), str(lib), 'libninjars.a', 'ninjars'), str(lib))
         exporter.dependencies = 'internal'

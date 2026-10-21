@@ -6,6 +6,7 @@ private generated copies are instrumented; stripping markers restores every
 original source byte. This module imports no MadGraph or numerical engine.
 """
 import argparse
+import ast
 from collections import Counter
 import hashlib
 import json
@@ -530,6 +531,55 @@ def _successful_command(record, inputs):
         raise ValueError("Physical DP command failed or was not reaped")
     for name in ("stdout", "stderr"):
         _bound(ROOT, record[name], inputs)
+
+
+def committed_origin_settings(revision, process):
+    """Replay the three canonical loop-induced export defaults from pinned source."""
+    import ninjars_benchmark_policy_v2 as policy
+    from madgraph.various.banner import MadLoopParam
+    template_name="Template/loop_material/StandAlone/Cards/MadLoopParams.dat"
+    template=policy.git_bytes(revision,template_name)
+    expected=MadLoopParam(template.decode())
+    information={"generation_revision":revision,"kind":"committed_template",
+        "template":{"git_path":template_name,"sha256":hashlib.sha256(template).hexdigest()},
+        "exporter":None,"overrides":{}}
+    if not re.search(r"\[\s*sqrvirt\s*=",process,re.I):
+        return expected,information
+    exporter_name="madgraph/loop/loop_exporters.py"
+    exporter=policy.git_bytes(revision,exporter_name)
+    tree=ast.parse(exporter)
+    classes=[node for node in tree.body if isinstance(node,ast.ClassDef) and node.name=="LoopProcessExporterFortranSA"]
+    methods=[node for cls in classes for node in cls.body if isinstance(node,ast.FunctionDef) and node.name=="finalize"]
+    branches=[node for method in methods for node in method.body if isinstance(node,ast.If) and
+              ast.dump(node.test)==ast.dump(ast.Attribute(value=ast.Name(id="self",ctx=ast.Load()),attr="has_loop_induced",ctx=ast.Load()))]
+    if len(classes)!=1 or len(methods)!=1 or len(branches)!=1 or branches[0].orelse:
+        raise ValueError("Unrecognized committed loop-induced export policy")
+    overrides={}
+    for statement in branches[0].body:
+        if (not isinstance(statement,ast.Assign) or len(statement.targets)!=1 or
+                not isinstance(statement.targets[0],ast.Subscript) or
+                not isinstance(statement.targets[0].value,ast.Name) or statement.targets[0].value.id!="MLCard" or
+                not isinstance(statement.targets[0].slice,ast.Constant) or
+                type(statement.targets[0].slice.value) is not str or not isinstance(statement.value,ast.Constant)):
+            raise ValueError("Unrecognized committed loop-induced card assignment")
+        key,value=statement.targets[0].slice.value,statement.value.value
+        if key in overrides:
+            raise ValueError("Duplicate committed loop-induced card assignment")
+        overrides[key]=value
+    canonical={"MLReductionLib":"7|6|1","COLLIERComputeUVpoles":False,"COLLIERComputeIRpoles":False}
+    if (overrides!=canonical or any(type(overrides[key]) is not type(value) for key,value in canonical.items())):
+        raise ValueError("Unexpected committed loop-induced card overrides")
+    for key,value in overrides.items():expected[key]=value
+    information.update(kind="committed_loop_induced_exporter",exporter={"git_path":exporter_name,
+        "sha256":hashlib.sha256(exporter).hexdigest()},overrides=overrides)
+    return expected,information
+
+
+def validate_origin_settings(actual, revision, process):
+    expected,information=committed_origin_settings(revision,process)
+    if dict(actual)!=dict(expected):
+        raise ValueError("Actual CLI origin MadLoop settings differ from its committed export policy")
+    return information
 
 
 def _same_bits(left, right):
@@ -1060,11 +1110,8 @@ def validate_target_qualification(run, release, runpaths, inputs=None):
     if (digest(origin_physical) != records["generation.json"]["parameter_card_sha256"] or
             origin_physical.read_bytes() != (retained/"param_card.dat").read_bytes()):
         raise ValueError("Actual CLI physical parameter card changed")
-    template_name = "Template/loop_material/StandAlone/Cards/MadLoopParams.dat"
-    committed_settings = MadLoopParam(policy_v2.git_bytes(release["generation_revision"],template_name).decode())
     origin_settings = MadLoopParam(str(origin/"Cards/MadLoopParams.dat"))
-    if dict(origin_settings) != dict(committed_settings):
-        raise ValueError("Actual CLI origin MadLoop settings differ from its committed template")
+    origin_card_policy=validate_origin_settings(origin_settings,release["generation_revision"],run["process"])
     if resource_protocol:
         selection = declared["helicity"]
         table = _bound(ROOT,selection["table"],inputs)
@@ -1236,7 +1283,7 @@ def validate_target_qualification(run, release, runpaths, inputs=None):
             "seed":resolved.get("seed"),"cuts":resolved.get("cuts"),
             "center_of_mass_energy_gev":resolved.get("center_of_mass_energy_gev"),
             "helicity_selection":declared["helicity"] if resource_protocol else None,
-            "settings":settings,"runtime_identity_sha256":release["runtime_identity_sha256"],
+            "settings":settings,"origin_card_policy":origin_card_policy,"runtime_identity_sha256":release["runtime_identity_sha256"],
             "source_manifest_sha256":results["observed"]["compiled_manifest"]["files_sha256"],
             "executable_sha256":results["observed"]["executable_sha256"],
             "parity":parity,"parity_N":3 if resource_protocol else run["N"],

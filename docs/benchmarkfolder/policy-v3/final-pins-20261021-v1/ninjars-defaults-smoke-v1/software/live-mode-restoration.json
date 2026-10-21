@@ -1,0 +1,41 @@
+{
+  "utc": "2026-10-21T21:44:09.843068+00:00",
+  "scope": "Restore original tracked executable bits after exact-byte candidate application; no content changes or staging",
+  "files": [
+    {
+      "path": "madgraph/interface/madgraph_interface.py",
+      "git_mode": "100755",
+      "before_mode": "0o600",
+      "after_mode": "0o755",
+      "sha256_unchanged": "6e401977d02f176cad6f35873bd181e9638dc3cb382e9bc0aa04cdaf276161dc"
+    },
+    {
+      "path": "madgraph/iolibs/export_fks.py",
+      "git_mode": "100755",
+      "before_mode": "0o600",
+      "after_mode": "0o755",
+      "sha256_unchanged": "a5131e5542127d094d3581999cedff6551848be6407174812ba0d55d75702e25"
+    },
+    {
+      "path": "madgraph/loop/loop_exporters.py",
+      "git_mode": "100755",
+      "before_mode": "0o600",
+      "after_mode": "0o755",
+      "sha256_unchanged": "365c9f80017a38479565fff9deda6ee7370e6b59a0e1f48d678333fa806a11e4"
+    },
+    {
+      "path": "madgraph/various/ninjars_install.py",
+      "git_mode": "100644",
+      "before_mode": "0o600",
+      "after_mode": "0o644",
+      "sha256_unchanged": "0854be586e1ac871ac41b900cf6d1eff4992e46e495b577df4215b13e339aaf6"
+    },
+    {
+      "path": "madgraph/various/process_checks.py",
+      "git_mode": "100755",
+      "before_mode": "0o600",
+      "after_mode": "0o755",
+      "sha256_unchanged": "01ffc8538b1e19ca2de800abebffb8f11637f5e8478927e809181e171fc6f78c"
+    }
+  ]
+}

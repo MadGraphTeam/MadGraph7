@@ -1,0 +1,20 @@
+{
+  "command": [
+    "taskset",
+    "-c",
+    "6",
+    "python3",
+    "-B",
+    "-m",
+    "unittest",
+    "tests.unit_tests.various.test_ninjars_install",
+    "-v"
+  ],
+  "scope": "Live focused installer fixture successor after approved optional-skip behavior; original37-test failure retained",
+  "started_utc": "2026-10-21T21:45:08.707183+00:00",
+  "finished_utc": "2026-10-21T21:45:10.712252+00:00",
+  "returncode": 0,
+  "elapsed_seconds": 2.0050920950016007,
+  "test_sha256": "5c34e6cc61b7f0a9c8dfb9d6526ffe6bf719bc6f751379574303f926d4d292fe",
+  "summary": "Ran 19 tests in 1.408s"
+}

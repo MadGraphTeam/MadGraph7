@@ -952,4 +952,68 @@ class RandomMeasurementAuthority(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"denominator/seed"):self.resolve()
 
 
+class CommittedOriginCardPolicy(unittest.TestCase):
+    def setUp(self):
+        import sys
+        from madgraph.various.banner import MadLoopParam
+        self.Param=MadLoopParam
+        self.template=(ROOT/"Template/loop_material/StandAlone/Cards/MadLoopParams.dat").read_bytes()
+        self.exporter=("class LoopProcessExporterFortranSA:\n"
+            "    def finalize(self, matrix_element, cmdhistory, MG5options, outputflag):\n"
+            "        if self.has_loop_induced:\n"
+            "            MLCard['MLReductionLib'] = '7|6|1'\n"
+            "            MLCard['COLLIERComputeUVpoles'] = False\n"
+            "            MLCard['COLLIERComputeIRpoles'] = False\n").encode()
+        self.calls=[]
+        def committed(revision,name):
+            self.assertEqual(revision,"declared-generation")
+            self.calls.append(name)
+            return self.exporter if name=="madgraph/loop/loop_exporters.py" else self.template
+        self.patch=mock.patch.dict(sys.modules,{"ninjars_benchmark_policy_v2":SimpleNamespace(git_bytes=committed)})
+        self.patch.start();self.addCleanup(self.patch.stop)
+    def base(self):return self.Param(self.template.decode())
+    def loop(self):
+        value=self.base()
+        for key,setting in {"MLReductionLib":"7|6|1","COLLIERComputeUVpoles":False,"COLLIERComputeIRpoles":False}.items():
+            value[key]=setting
+        return value
+    def test_born_origin_unchanged_and_no_loop_policy_applied(self):
+        actual=self.base();result=dp.validate_origin_settings(actual,"declared-generation","u u~ > z [virt=QCD]")
+        self.assertEqual(dict(actual),dict(self.base()));self.assertEqual(result["kind"],"committed_template")
+        self.assertEqual(self.calls,["Template/loop_material/StandAlone/Cards/MadLoopParams.dat"])
+    def test_canonical_loop_origin_accepted_and_committed_source_bound(self):
+        import hashlib
+        result=dp.validate_origin_settings(self.loop(),"declared-generation","g g > h [sqrvirt=QCD]")
+        self.assertEqual(result["kind"],"committed_loop_induced_exporter")
+        self.assertEqual(result["exporter"]["sha256"],hashlib.sha256(self.exporter).hexdigest())
+        self.assertEqual(result["template"]["sha256"],hashlib.sha256(self.template).hexdigest())
+    def test_unexpected_origin_field_rejected(self):
+        actual=self.loop();actual["MLStabThres"]=actual["MLStabThres"]*2
+        with self.assertRaisesRegex(ValueError,"committed export policy"):
+            dp.validate_origin_settings(actual,"declared-generation","g g > h h [sqrvirt=QCD]")
+    def test_born_cannot_adopt_loop_defaults(self):
+        with self.assertRaisesRegex(ValueError,"committed export policy"):
+            dp.validate_origin_settings(self.loop(),"declared-generation","u u~ > z [virt=QCD]")
+    def test_loop_origin_backend_choice_is_not_arbitrary(self):
+        actual=self.loop();actual["MLReductionLib"]="8"
+        with self.assertRaisesRegex(ValueError,"committed export policy"):
+            dp.validate_origin_settings(actual,"declared-generation","g g > h [sqrvirt=QCD]")
+    def test_unexpected_committed_assignment_rejected(self):
+        self.exporter+=b"            MLCard['MLStabThres'] = 0.1\n"
+        with self.assertRaisesRegex(ValueError,"Unexpected committed"):
+            dp.committed_origin_settings("declared-generation","g g > h [sqrvirt=QCD]")
+    def test_nonliteral_committed_value_is_never_executed(self):
+        self.exporter=self.exporter.replace(b"= False",b"= undocumented_function()",1)
+        with self.assertRaisesRegex(ValueError,"assignment"):
+            dp.committed_origin_settings("declared-generation","g g > h [sqrvirt=QCD]")
+    def test_boolean_policy_values_require_boolean_type(self):
+        self.exporter=self.exporter.replace(b"= False",b"= 0",1)
+        with self.assertRaisesRegex(ValueError,"Unexpected committed"):
+            dp.committed_origin_settings("declared-generation","g g > h [sqrvirt=QCD]")
+    def test_missing_canonical_branch_rejected(self):
+        self.exporter=self.exporter.replace(b"self.has_loop_induced",b"self.other_option")
+        with self.assertRaisesRegex(ValueError,"Unrecognized committed"):
+            dp.committed_origin_settings("declared-generation","g g > h [sqrvirt=QCD]")
+
+
 if __name__=="__main__":unittest.main()

@@ -206,6 +206,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         if os.path.exists(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat')):          
                 self.MadLoopparam = banner_mod.MadLoopParam(pjoin(self.dir_path, 
                                                   'Cards', 'MadLoopParams.dat'))
+                if self.set_default_reduction_library(self.MadLoopparam):
+                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
+                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'))
                 # write the output file
                 self.MadLoopparam.write(pjoin(self.dir_path,"SubProcesses",
                                                            "MadLoopParams.dat"))
@@ -5081,6 +5084,9 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
         if os.path.exists(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat')):          
                 self.MadLoopparam = banner_mod.MadLoopParam(pjoin(self.dir_path, 
                                                   'Cards', 'MadLoopParams.dat'))
+                if self.set_default_reduction_library(self.MadLoopparam):
+                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
+                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'))
                 # write the output file
                 self.MadLoopparam.write(pjoin(self.dir_path,"SubProcesses",
                                                            "MadLoopParams.dat"))

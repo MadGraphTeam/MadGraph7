@@ -1,0 +1,11 @@
+set automatic_html_opening False
+set auto_update 0
+set nb_core 1
+set loop_optimized_output True
+set output_dependencies external
+set ninjars None
+import model loop_sm
+generate u u~ > z [virt=QCD]
+output standalone /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/ninjars-default-smoke-v1/absent -f
+check timing u u~ > z [virt=QCD] --reduction=8
+quit

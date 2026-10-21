@@ -1,0 +1,18 @@
+{
+  "actual_subprocesses": [],
+  "elapsed_seconds": 1.5962313159834594,
+  "errors": [],
+  "failures": [],
+  "ignored_parents_before": {
+    ".benchmark-work": false,
+    ".ninjars-build": false
+  },
+  "loaded_from": "tests/unit_tests/various/test_ninjars_integration_boundaries.py",
+  "module": "tests.unit_tests.various.test_ninjars_integration_boundaries",
+  "nonsoftware_commands_allowed": false,
+  "passed": true,
+  "skipped": [],
+  "source_sha256": "ce9300966ecdd85cc8fcdd9fb733a17c391db34b5c4bc20673e08c60c0e86299",
+  "source_unchanged": true,
+  "tests_run": 9
+}

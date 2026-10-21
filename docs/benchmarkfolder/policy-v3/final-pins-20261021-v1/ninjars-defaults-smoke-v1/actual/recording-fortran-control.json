@@ -1,0 +1,19 @@
+{
+  "TMPDIR": ".benchmark-work/ninjars-default-smoke-v1/tmp",
+  "command": [
+    "taskset",
+    "-c",
+    "6",
+    "python3",
+    "-B",
+    "-m",
+    "unittest",
+    "tests.unit_tests.loop.test_ninjars_fortran.NinjaRSFortranTest.test_unavailable_ninjars_only_is_actionable_and_fallback_is_preserved",
+    "-v"
+  ],
+  "elapsed_unittest_seconds": 0.809,
+  "passed": 1,
+  "scope": "Compiled recording-backend unavailable8/fallback test; no actual reduction engine",
+  "skipped": 0,
+  "tests_run": 1
+}
