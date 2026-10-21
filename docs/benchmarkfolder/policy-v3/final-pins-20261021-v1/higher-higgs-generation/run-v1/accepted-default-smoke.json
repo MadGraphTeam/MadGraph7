@@ -1,0 +1,118 @@
+{
+  "default": {
+    "backend": 8,
+    "command": [
+      "taskset",
+      "-c",
+      "190",
+      "./check",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/ninjars-default-smoke-v1/point-one.dat",
+      "1"
+    ],
+    "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/ninjars-default-smoke-v1/ordinary/SubProcesses/P0_uux_z",
+    "process_wall_seconds": 0.06650476402137429,
+    "utc": "2026-10-21T21:48:27.708676+00:00",
+    "raw": {
+      "cold_seconds": 0.021682664,
+      "seconds": 4.025e-05,
+      "seconds_per_point": 4.025e-05,
+      "rows": [
+        {
+          "point": 1,
+          "order": 0,
+          "status": 218,
+          "coefficients": [
+            110.81538588507334,
+            5.187888821262737,
+            -8.324577356963768,
+            -5.549718237975844
+          ],
+          "accuracy": 6.809798837798331e-14
+        },
+        {
+          "point": 1,
+          "order": 1,
+          "status": 218,
+          "coefficients": [
+            110.81538588507334,
+            5.187888821262737,
+            -8.324577356963768,
+            -5.549718237975844
+          ],
+          "accuracy": 6.809798837798331e-14
+        }
+      ],
+      "status_counts": {
+        "218": 1
+      },
+      "timed_status_counts": {
+        "218": 1
+      },
+      "answer_dimensions": {
+        "allocated": 1,
+        "loop_orders": 1,
+        "born_orders": 1
+      }
+    },
+    "active_card_sha256": "4b55d7e00e12358db9e2299b526df7089aa9a9e02e8dd7953c53a9043ee49b4c",
+    "active_card_selection": "8|6|7|1"
+  },
+  "explicit6": {
+    "backend": 6,
+    "command": [
+      "taskset",
+      "-c",
+      "190",
+      "./check",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/ninjars-default-smoke-v1/point-one.dat",
+      "1"
+    ],
+    "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/ninjars-default-smoke-v1/ordinary/SubProcesses/P0_uux_z",
+    "process_wall_seconds": 0.03404869500081986,
+    "utc": "2026-10-21T21:48:27.835779+00:00",
+    "raw": {
+      "cold_seconds": 0.019607746,
+      "seconds": 4.3831e-05,
+      "seconds_per_point": 4.3831e-05,
+      "rows": [
+        {
+          "point": 1,
+          "order": 0,
+          "status": 216,
+          "coefficients": [
+            110.81538588507334,
+            5.187888821262728,
+            -8.324577356963768,
+            -5.549718237975844
+          ],
+          "accuracy": 6.74844929871906e-14
+        },
+        {
+          "point": 1,
+          "order": 1,
+          "status": 216,
+          "coefficients": [
+            110.81538588507334,
+            5.187888821262728,
+            -8.324577356963768,
+            -5.549718237975844
+          ],
+          "accuracy": 6.74844929871906e-14
+        }
+      ],
+      "status_counts": {
+        "216": 1
+      },
+      "timed_status_counts": {
+        "216": 1
+      },
+      "answer_dimensions": {
+        "allocated": 1,
+        "loop_orders": 1,
+        "born_orders": 1
+      }
+    },
+    "active_card_sha256": "2603a46420d69d83d52ea393b7dbfdfb3c89a95cc0f14b58637515db1ebb220d",
+    "active_card_selection": "6"
+  }
+}

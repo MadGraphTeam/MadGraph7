@@ -1,0 +1,72 @@
+{
+  "schema": "whole-stability-filesystem-cache-guard-software-proof-v2",
+  "scope": "12existing actualfilesystem/checker-parser/card/pickle/profile-report tests plus3 historical-cache guard tests using real save/reuse0/report, no native compilation/evaluation",
+  "command": [
+    "taskset",
+    "-c",
+    "180",
+    "python3",
+    "-B",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/profile-cli-full-stability-io-tests-v2/run-tests.py",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tests/unit_tests/loop/test_ninjars_profile_stability_io.py",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/profile-cli-modern-layout-fix-v1/process_checks.cache-final.py"
+  ],
+  "started_utc": "2026-10-21T22:46:25.044587+00:00",
+  "finished_utc": "2026-10-21T22:46:34.137604+00:00",
+  "process_seconds": 9.0930320530897,
+  "returncode": 0,
+  "inputs_before": {
+    "tests/unit_tests/loop/test_ninjars_profile_stability_io.py": {
+      "sha256": "a2c13190361281a8c6dcffa1db9b377e35f23168e690671647cf39b0e105a798",
+      "bytes": 20710
+    },
+    ".benchmark-work/profile-cli-modern-layout-fix-v1/process_checks.cache-final.py": {
+      "sha256": "ae86c1386e4324c72aeafa3dfcf5baa43eb51cb440c7c187fc825c67f700afa3",
+      "bytes": 378693
+    },
+    "madgraph/various/process_checks.py": {
+      "sha256": "cd33bf00d8ef031efb1bd6eff498a4d88f68f4cf284c5aac52d4268c595df923",
+      "bytes": 377065
+    },
+    "madgraph/interface/madevent_interface.py": {
+      "sha256": "69a76843d347cca95c3e24b84759972e83e70407351d16d5c99db02b0782a5e6",
+      "bytes": 393808
+    },
+    "madgraph/various/banner.py": {
+      "sha256": "a9b248ffd66e40c45a1df12fe006f6d237241a9edbfa2c4937a1f9d4716c2beb",
+      "bytes": 428444
+    },
+    "madgraph/iolibs/save_load_object.py": {
+      "sha256": "7638f8a5830b52a46c2df5c2a331917854d2a04b23566aab4bdc404567653b9a",
+      "bytes": 3656
+    },
+    "madgraph/iolibs/files.py": {
+      "sha256": "7e681f4899f8c0286aee732954d2e5965af61dd0d851fe79eb1b006b047fdf0a",
+      "bytes": 9059
+    },
+    "Template/loop_material/StandAlone/Cards/MadLoopParams.dat": {
+      "sha256": "b643cd5f0b8dd11533c02430daa906473f6183cb38b99a12244425ff0ff9ef25",
+      "bytes": 13359
+    },
+    "Template/loop_material/Checks/StabilityCheckDriver.f": {
+      "sha256": "cf8e1bc6824823a40b0e2253e3540a7851df9c558e0b7cad345849b680156c0b",
+      "bytes": 4312
+    },
+    "Template/loop_material/Checks/StabilityCheckDriver_loop_induced.f": {
+      "sha256": "82bcbbd7a69c86012864444e28faaaed07731b2fe079da1361c6d75be4ab45f1",
+      "bytes": 4226
+    }
+  },
+  "all_input_bytes_unchanged_after": true,
+  "preserved_prior12proof": {
+    "path": ".benchmark-work/profile-cli-full-stability-io-tests-v1/result.json",
+    "sha256": "441f69e855e70e59dd3314e3564b05c33aa530dabf7e0b094c3e5f3ea3fc6247",
+    "bytes": 4926
+  },
+  "tests_run": 15,
+  "tests_passed": 15,
+  "tests_failed": 0,
+  "tests_errors": 0,
+  "tests_skipped": 0,
+  "unittest_seconds": 8.917
+}

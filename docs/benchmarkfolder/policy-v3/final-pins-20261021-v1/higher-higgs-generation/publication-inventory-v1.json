@@ -1,0 +1,635 @@
+{
+  "file_count": 104,
+  "gzip_gfortran_metadata_count": 65,
+  "native_archives_objects_executables_included": false,
+  "required_files": [
+    {
+      "bytes": 1768,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/independent-source-review-v1.json",
+      "sha256": "517e2a3eccdfa4f33def3de03aaeaf4186d463515c4f3df7af42025427ef816f"
+    },
+    {
+      "bytes": 9927,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/prepare.py",
+      "sha256": "f76ee5e76fc8269b8bf9a2d9a812dd5a6397b1fb8a96ecadaaa1a96614e0853a"
+    },
+    {
+      "bytes": 3189,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/accepted-default-smoke.json",
+      "sha256": "341e18ad62bd414600884adb3aa7a69f0d8026e215c4cf1a6ef10569a38f3cda"
+    },
+    {
+      "bytes": 728,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/commands/candidate-profile-gg-hhh.mg5",
+      "sha256": "7b932b9acad771f61b7b3c79265076a54ecc63b8cf0923928f02705cfa103526"
+    },
+    {
+      "bytes": 731,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/commands/candidate-profile-gg-hhhh.mg5",
+      "sha256": "847e8884d6f501b092a7e58349c8c179387ff703d2d0fe378f8b268dee10e544"
+    },
+    {
+      "bytes": 13359,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/candidate/profile-gg-hhh/MadLoopParams-origin.dat",
+      "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a"
+    },
+    {
+      "bytes": 177439,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/candidate/profile-gg-hhh/compilation.json",
+      "sha256": "bb1c23c3f5de0732261450831c9d3ec8a23cf7b6204fb3a19f4796fcb2d2616f"
+    },
+    {
+      "bytes": 16645,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/candidate/profile-gg-hhh/compiled-source-manifests/bcee333ec2a0a5b754e23fcac35275d195289da75755692846620d8548719786.json",
+      "sha256": "507e90c728172a4bc676223b3479f13af9548f70961f6d5cca92ec011e18e349"
+    },
+    {
+      "bytes": 16645,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/candidate/profile-gg-hhh/compiled-sources.json",
+      "sha256": "507e90c728172a4bc676223b3479f13af9548f70961f6d5cca92ec011e18e349"
+    },
+    {
+      "bytes": 171632,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/candidate/profile-gg-hhh/generation.json",
+      "sha256": "76aea8b35f4537eb76e1ed8ab7d4d770fcd106c259c1ce7629a057dd4397d578"
+    },
+    {
+      "bytes": 2471,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/candidate/profile-gg-hhh/param_card.dat",
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    {
+      "bytes": 13359,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/candidate/profile-gg-hhhh/MadLoopParams-origin.dat",
+      "sha256": "a4467df0dcac2aedfda66fd74a39779f283153e15bc1e7f7ac21ea22fdc7d27a"
+    },
+    {
+      "bytes": 177440,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/candidate/profile-gg-hhhh/compilation.json",
+      "sha256": "108aae7fbce7d8f09c6391d88d990c92a778b31167c62cabd6c7f86f55448988"
+    },
+    {
+      "bytes": 17025,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/candidate/profile-gg-hhhh/compiled-source-manifests/5fdbdf165b9c86cd594828f3aa2ee7220bc5ed93f415a45b192826bba2f491d3.json",
+      "sha256": "a5cac0a1dc94b0582e22ffd1589cfe6f86e1f33fa713df23ce8e7446ad1f2666"
+    },
+    {
+      "bytes": 17025,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/candidate/profile-gg-hhhh/compiled-sources.json",
+      "sha256": "a5cac0a1dc94b0582e22ffd1589cfe6f86e1f33fa713df23ce8e7446ad1f2666"
+    },
+    {
+      "bytes": 171632,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/candidate/profile-gg-hhhh/generation.json",
+      "sha256": "7075607343fec56a1e58cd2a5c7c0482d23e0f197893048aaf1ce88fe02d8c97"
+    },
+    {
+      "bytes": 2471,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/candidate/profile-gg-hhhh/param_card.dat",
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    {
+      "bytes": 168708,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/source-identities/2bb43af58e35c4691bc46e7ae61b283410b934c5ba066d6167f434ac715be4f9.json",
+      "sha256": "bd80f8399a215f99ef45797013762c805f21180b36fd93d5c6814eb3fdfcb32e"
+    },
+    {
+      "bytes": 168708,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/source-identities/384ddae59e45d803e0f895c63f50df009a6c5e180cb82a31b3c476c156e77feb.json",
+      "sha256": "e0bdda561d17be749914781a80ef92c308beae5c97c21b8479081cbe88e82e1f"
+    },
+    {
+      "bytes": 32309,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/source-identities/b181e8a4957a50e75b6f384f4b3a5fe2c6b564eb8a154c5fd82f8b7dee6c847d.patch",
+      "sha256": "b181e8a4957a50e75b6f384f4b3a5fe2c6b564eb8a154c5fd82f8b7dee6c847d"
+    },
+    {
+      "bytes": 9530,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/logs/compile-candidate-profile-gg-hhh.log",
+      "sha256": "f775d4124af57f870babe565c74bdcbee960fbacb8f1a693117e8ac8058e4afe"
+    },
+    {
+      "bytes": 10452,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/logs/compile-candidate-profile-gg-hhhh.log",
+      "sha256": "a0eaf1d8fe87991be3662f27930055574fba99299b872a0c33da371de912049e"
+    },
+    {
+      "bytes": 9981,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/logs/generate-candidate-profile-gg-hhh.log",
+      "sha256": "0879bb485de300a7cbbd0f3cb55893b768b84ff53a7802d56288a39c81441014"
+    },
+    {
+      "bytes": 10108,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/logs/generate-candidate-profile-gg-hhhh.log",
+      "sha256": "c03d91a96b4c2c6c9e9cc96ff83f847785d144fc9bd78d44d7c46719444b4f0c"
+    },
+    {
+      "bytes": 0,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/logs/masses-candidate-profile-gg-hhh.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 0,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/logs/masses-candidate-profile-gg-hhhh.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 2961,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/process-ledger.jsonl",
+      "sha256": "368d18f51d8300df1af0de8e01beac6c32f0da60b5e50201e193f192fe213e62"
+    },
+    {
+      "bytes": 16543,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime/profile-gg-hhh.json",
+      "sha256": "b3f5043b34e6ac43e0003f3bd3114988e1745c7e40d891d5ed3fb1ee67e25154"
+    },
+    {
+      "bytes": 16543,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime/profile-gg-hhhh.json",
+      "sha256": "b3f5043b34e6ac43e0003f3bd3114988e1745c7e40d891d5ed3fb1ee67e25154"
+    },
+    {
+      "bytes": 6746,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721",
+      "sha256": "015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721"
+    },
+    {
+      "bytes": 7465,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975",
+      "sha256": "0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975"
+    },
+    {
+      "bytes": 4064,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf",
+      "sha256": "261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf"
+    },
+    {
+      "bytes": 1986,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+      "sha256": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec"
+    },
+    {
+      "bytes": 275,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d",
+      "sha256": "36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d"
+    },
+    {
+      "bytes": 13987,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7",
+      "sha256": "3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7"
+    },
+    {
+      "bytes": 7334,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097",
+      "sha256": "480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097"
+    },
+    {
+      "bytes": 1310,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a",
+      "sha256": "4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a"
+    },
+    {
+      "bytes": 685,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321",
+      "sha256": "4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321"
+    },
+    {
+      "bytes": 18934,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83",
+      "sha256": "56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83"
+    },
+    {
+      "bytes": 364,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492",
+      "sha256": "5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492"
+    },
+    {
+      "bytes": 541,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34",
+      "sha256": "59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34"
+    },
+    {
+      "bytes": 3955,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9",
+      "sha256": "5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9"
+    },
+    {
+      "bytes": 329,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4",
+      "sha256": "616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4"
+    },
+    {
+      "bytes": 373,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e",
+      "sha256": "67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e"
+    },
+    {
+      "bytes": 2088,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8",
+      "sha256": "6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8"
+    },
+    {
+      "bytes": 427,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6",
+      "sha256": "81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6"
+    },
+    {
+      "bytes": 909,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc",
+      "sha256": "8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc"
+    },
+    {
+      "bytes": 3856,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830",
+      "sha256": "8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830"
+    },
+    {
+      "bytes": 2845,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f",
+      "sha256": "8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f"
+    },
+    {
+      "bytes": 1150,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2",
+      "sha256": "8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2"
+    },
+    {
+      "bytes": 1785,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6",
+      "sha256": "9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6"
+    },
+    {
+      "bytes": 11178,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66",
+      "sha256": "966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66"
+    },
+    {
+      "bytes": 739,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7",
+      "sha256": "97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7"
+    },
+    {
+      "bytes": 19044,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9",
+      "sha256": "98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9"
+    },
+    {
+      "bytes": 10301,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5",
+      "sha256": "9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5"
+    },
+    {
+      "bytes": 373,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d",
+      "sha256": "9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d"
+    },
+    {
+      "bytes": 4050,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/a2b427c4e1c766180cec068ca716e2ff3d035226b06864c50156202bcfa4617f",
+      "sha256": "a2b427c4e1c766180cec068ca716e2ff3d035226b06864c50156202bcfa4617f"
+    },
+    {
+      "bytes": 20564,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383",
+      "sha256": "a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383"
+    },
+    {
+      "bytes": 4095,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d",
+      "sha256": "acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d"
+    },
+    {
+      "bytes": 272,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d",
+      "sha256": "ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d"
+    },
+    {
+      "bytes": 1158,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d",
+      "sha256": "ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d"
+    },
+    {
+      "bytes": 1377,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc",
+      "sha256": "ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc"
+    },
+    {
+      "bytes": 48,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871"
+    },
+    {
+      "bytes": 2841,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68",
+      "sha256": "b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68"
+    },
+    {
+      "bytes": 24356,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+      "sha256": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f"
+    },
+    {
+      "bytes": 560,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83",
+      "sha256": "ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83"
+    },
+    {
+      "bytes": 1719,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7",
+      "sha256": "bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7"
+    },
+    {
+      "bytes": 429,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe",
+      "sha256": "bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe"
+    },
+    {
+      "bytes": 7915,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7",
+      "sha256": "bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7"
+    },
+    {
+      "bytes": 774,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4",
+      "sha256": "bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4"
+    },
+    {
+      "bytes": 1572,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6",
+      "sha256": "c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6"
+    },
+    {
+      "bytes": 4053,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30",
+      "sha256": "c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30"
+    },
+    {
+      "bytes": 1717,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9",
+      "sha256": "c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9"
+    },
+    {
+      "bytes": 684,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354",
+      "sha256": "c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354"
+    },
+    {
+      "bytes": 776,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5",
+      "sha256": "c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5"
+    },
+    {
+      "bytes": 191,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7",
+      "sha256": "cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7"
+    },
+    {
+      "bytes": 1254,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c",
+      "sha256": "cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c"
+    },
+    {
+      "bytes": 17051,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80",
+      "sha256": "cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80"
+    },
+    {
+      "bytes": 51043,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63",
+      "sha256": "d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63"
+    },
+    {
+      "bytes": 1582,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744",
+      "sha256": "d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744"
+    },
+    {
+      "bytes": 42641,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad",
+      "sha256": "df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad"
+    },
+    {
+      "bytes": 24715,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193",
+      "sha256": "e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193"
+    },
+    {
+      "bytes": 539,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec",
+      "sha256": "e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec"
+    },
+    {
+      "bytes": 6208,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1",
+      "sha256": "e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1"
+    },
+    {
+      "bytes": 37872,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41",
+      "sha256": "e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41"
+    },
+    {
+      "bytes": 7942,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2",
+      "sha256": "ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2"
+    },
+    {
+      "bytes": 15355,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4",
+      "sha256": "f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4"
+    },
+    {
+      "bytes": 1782,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f",
+      "sha256": "f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f"
+    },
+    {
+      "bytes": 272,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb",
+      "sha256": "f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb"
+    },
+    {
+      "bytes": 3945,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316",
+      "sha256": "f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316"
+    },
+    {
+      "bytes": 737,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e",
+      "sha256": "f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e"
+    },
+    {
+      "bytes": 1307,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e",
+      "sha256": "f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e"
+    },
+    {
+      "bytes": 249,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd",
+      "sha256": "f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd"
+    },
+    {
+      "bytes": 8,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab"
+    },
+    {
+      "bytes": 911,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558",
+      "sha256": "fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558"
+    },
+    {
+      "bytes": 627,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397",
+      "sha256": "fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397"
+    },
+    {
+      "bytes": 1585,
+      "kind": "gzip-gfortran-interface-audit-metadata",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/runtime-assets/ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c",
+      "sha256": "ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c"
+    },
+    {
+      "bytes": 1874,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/source-application.json",
+      "sha256": "a9bab76c4f1886d822737d9cb21b87efc371fb2067fdcf33a13c3d5870e7518a"
+    },
+    {
+      "bytes": 473059,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/source-inventory-after.json",
+      "sha256": "9f2e29119c03815fabcbc96b10afaf02ff044dd9f25354f5c8065855b4ee1cd0"
+    },
+    {
+      "bytes": 473059,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/source-inventory-before.json",
+      "sha256": "9f2e29119c03815fabcbc96b10afaf02ff044dd9f25354f5c8065855b4ee1cd0"
+    },
+    {
+      "bytes": 219890,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/source-proofs/profile-gg-hhh.json",
+      "sha256": "5b0a80dfe5ad3ef678fe4305aaa28cf9ceb5ace9805126a4cdd8f1c03ac8efed"
+    },
+    {
+      "bytes": 219912,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/source-proofs/profile-gg-hhhh.json",
+      "sha256": "00da9fa010d38a1f8356a480b9f2134880d0a030d013d14daecc2b9674a29199"
+    },
+    {
+      "bytes": 3181,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/status.json",
+      "sha256": "bc8859408517d8676fe99d4251ece792a36d37054de0dd49087fe642a92c63f0"
+    },
+    {
+      "bytes": 2798,
+      "kind": "utf8-text",
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/terminal-v1.json",
+      "sha256": "cc3fd331642c906e4f77dd0f842fd58695b90caaaf3998c4fa930a18117a7bf3"
+    }
+  ],
+  "schema": "higher-higgs-generation-publication-inventory-v1",
+  "scope": "Actual two generic loop_sm higher-Higgs CLI exports and serial compile/masses-only proofs, source snapshots, dirty patch, physical card and bounded ABI metadata; no native amplitude qualification.",
+  "stage_this_manifest_itself": true,
+  "total_bytes": 3072921
+}

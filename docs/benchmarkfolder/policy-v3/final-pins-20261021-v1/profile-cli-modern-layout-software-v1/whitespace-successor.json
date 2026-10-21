@@ -1,0 +1,18 @@
+{
+  "schema": "madloop-profile-modern-layout-whitespace-successor-v1",
+  "utc": "2026-10-21T22:47:43.676909+00:00",
+  "authorization": "Root requested removal only inherited trailing space after live135 tests complete; no repeated tests required for AST-identical whitespace delta",
+  "tested_source": {
+    "path": ".benchmark-work/profile-cli-modern-layout-fix-v1/process_checks.cache-final.py",
+    "sha256": "ae86c1386e4324c72aeafa3dfcf5baa43eb51cb440c7c187fc825c67f700afa3"
+  },
+  "promotion_source": {
+    "path": ".benchmark-work/profile-cli-modern-layout-fix-v1/process_checks.promotion.py",
+    "sha256": "1229ccfc599cd1ee3f733e3e4c28f2a12ec13ca2878da6b72df27b5e216df424"
+  },
+  "live_sha256": "1229ccfc599cd1ee3f733e3e4c28f2a12ec13ca2878da6b72df27b5e216df424",
+  "mode": "0755",
+  "ast_identical": true,
+  "delta": "Remove exactly one trailing space on the existing supported-QP DP-prefix line; all other bytes identical.",
+  "live135_result": ".benchmark-work/profile-cli-modern-layout-live-v1/result.json"
+}

@@ -1156,3 +1156,29 @@ driver-path handling; the coupled affected software suite passes 110 tests.
 Keep timing, RNG and numerical algorithms unchanged. Commit and push this
 source revision, then use a new source-bound twelve-case specification and
 new output namespace for the two-call pilot and subsequent profiles.
+
+### Final profile workflow qualification
+
+The successor pilot exposed a second pre-existing two-to-one stability issue:
+the existing card helper was given a subprocess directory instead of the export
+`Cards` directory. Preserve that failed Ninja-only attempt separately; no
+NinjaRS comparison or timing acceptance follows from either failed pilot.
+
+Use the established Cards interface and fix stability report handling for
+NinjaRS, exact-zero and extreme finite/infinite accuracy diagnostics. Preserve
+raw values and the existing ordinary nonzero formulas. Reject invalid historical
+cached records actionably, while allowing legitimate positive infinite accuracy
+and absent QP observations. These reporting changes do not alter the numerical
+engines, stability thresholds, timing stages, RNG or reduction calls.
+
+Before the next native pilot, exercise the whole stability method using real
+filesystem/card aliases, the actual checker-output parser, driver rendering,
+binary pickle/cache reuse, and complete profile reports for both backends with
+a mocked checker. Include genuine QP records and zero/cancellation/extreme and
+invalid-history controls. Push the tested source and use a fresh source-bound
+specification/output namespace for the twelve-process timing campaign.
+
+The affected live suite passed all 135 tests without skips or errors, including
+15 full stability I/O/cache/report tests and ten multi-Higgs control tests. A
+subsequent one-byte whitespace cleanup leaves its tested AST unchanged. Preserve
+the exact tested/final source identities in the software proof.

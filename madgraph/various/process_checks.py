@@ -1962,7 +1962,7 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             # identical PS points with vec(p_1)=-vec(p_2), it is best not to remove
             # the helicityFilter double check
             if len(process['legs'])==3:
-                self.fix_MadLoopParamCard(dir_path, mp=False,
+                self.fix_MadLoopParamCard(pjoin(export_dir,'Cards'), mp=False,
                               loop_filter=False, DoubleCheckHelicityFilter=True)
 
             StabChecker = subprocess.Popen([pjoin(dir_path,'StabilityCheckDriver')], 
@@ -2888,12 +2888,27 @@ def output_stability(stability, output_path, reusing=False):
     
     def accuracy(eval_list):
         """ Compute the accuracy from different evaluations."""
-        return (2.0*(max(eval_list)-min(eval_list))/
-                                             abs(max(eval_list)+min(eval_list)))
+        largest, smallest = max(eval_list), min(eval_list)
+        spread = largest-smallest
+        denominator = abs(largest+smallest)
+        if not (math.isfinite(2.0*spread) and math.isfinite(denominator)):
+            scale = max(abs(largest),abs(smallest))
+            largest, smallest = largest/scale, smallest/scale
+            spread = largest-smallest
+            denominator = abs(largest+smallest)
+        if denominator == 0.0:
+            return 0.0 if spread == 0.0 else float('inf')
+        return 2.0*spread/denominator
     
     def best_estimate(eval_list):
         """ Returns the best estimate from different evaluations."""
-        return (max(eval_list)+min(eval_list))/2.0
+        largest, smallest = max(eval_list), min(eval_list)
+        total = largest+smallest
+        return total/2.0 if math.isfinite(total) else largest/2.0+smallest/2.0
+
+    def log_accuracy(value):
+        # A zero diagnostic ratio has logarithm -inf; do not alter raw samples.
+        return float('-inf') if value == 0.0 else math.log(value)/math.log(10)
     
     def loop_direction_test_power(eval_list):
         """ Computes the loop direction test power P is computed as follow:
@@ -2911,18 +2926,20 @@ def output_stability(stability, output_path, reusing=False):
             other_evals = [eval[key] for key in eval.keys() if key not in \
                                                          ['CTModeB','Accuracy']]
             if accuracy(other_evals)!=0.0 and accuracy(loop_dir_evals)!=0.0:
-                powers.append(accuracy(loop_dir_evals)/accuracy(other_evals))
+                power=accuracy(loop_dir_evals)/accuracy(other_evals)
+                if not math.isnan(power):
+                    powers.append(power)
         
         n_fail=0
         for p in powers:
-            if (math.log(p)/math.log(10))<-3:
+            if log_accuracy(p)<-3:
                 n_fail+=1
                 
         if len(powers)==0:
             return (None,None,None)
 
-        return (math.log(median(powers))/math.log(10),
-                math.log(min(powers))/math.log(10),
+        return (log_accuracy(median(powers)),
+                log_accuracy(min(powers)),
                 n_fail/len(powers))
         
     def test_consistency(dp_eval_list, qp_eval_list):
@@ -2938,15 +2955,17 @@ def output_stability(stability, output_path, reusing=False):
                                                              if key!='Accuracy']
             if (abs(best_estimate(qp_evals)-best_estimate(dp_evals)))!=0.0 and \
                accuracy(dp_evals)!=0.0:
-                consistencies.append(accuracy(dp_evals)/(abs(\
-                              best_estimate(qp_evals)-best_estimate(dp_evals))))
+                consistency=accuracy(dp_evals)/(abs(\
+                              best_estimate(qp_evals)-best_estimate(dp_evals)))
+                if not math.isnan(consistency):
+                    consistencies.append(consistency)
 
         if len(consistencies)==0:
             return (None,None,None)
 
-        return (math.log(median(consistencies))/math.log(10),
-                math.log(min(consistencies))/math.log(10),
-                math.log(max(consistencies))/math.log(10))
+        return (log_accuracy(median(consistencies)),
+                log_accuracy(min(consistencies)),
+                log_accuracy(max(consistencies)))
     
     def median(orig_list):
         """ Find the median of a sorted float list. """
@@ -2960,6 +2979,22 @@ def output_stability(stability, output_path, reusing=False):
     # Define shortcut
     f = format_output   
     opt = stability['loop_optimized_output']
+    for toolname, tool_data in stability['Stability'].items():
+        for precision in ['DP_stability','QP_stability']:
+            for evaluation in tool_data[precision]:
+                if precision == 'QP_stability' and evaluation == {}:
+                    continue
+                try:
+                    invalid = (math.isnan(evaluation['Accuracy']) or
+                               evaluation['Accuracy'] < 0.0 or
+                               any(not math.isfinite(value) for key,value in
+                                   evaluation.items() if key != 'Accuracy'))
+                except (KeyError,TypeError,ValueError):
+                    invalid = True
+                if invalid:
+                    raise MadGraph5Error('Invalid stability data for %s (%s). '
+                        'Remove stale saved stability data and rerun without -reuse.'
+                        % (toolname,precision))
 
     mode = 'optimized' if opt else 'default'
     process = stability['Process']
@@ -3041,12 +3076,12 @@ The loop direction test power P is computed as follow:
         # Use nicer name for the XML tag in the log file
         xml_toolname = {'GOLEM95':'GOLEM','IREGI':'IREGI',
                         'CUTTOOLS':'CUTTOOLS','PJFRY++':'PJFRY',
-                        'NINJA':'NINJA','SAMURAI':'SAMURAI',
+                        'NINJA':'NINJA','NINJARS':'NINJARS','SAMURAI':'SAMURAI',
                         'COLLIER':'COLLIER'}[toolname.upper()]
         if len(UPS)>0:
             res_str_i = "\nDetails of the %d/%d UPS encountered by %s\n"\
                                                         %(len(UPS),nPS,toolname)
-            prefix = 'DP' if toolname=='CutTools' else '' 
+            prefix = 'DP' if toolname in ['CutTools','Ninja','NinjaRS'] else ''
             res_str_i += "|= %s Median inaccuracy.......... %s\n"\
                                     %(prefix,f(median(UPS_stability_DP),'%.2e'))
             res_str_i += "|= %s Max accuracy............... %s\n"\
@@ -3055,7 +3090,7 @@ The loop direction test power P is computed as follow:
                                        %(prefix,f(max(UPS_stability_DP),'%.2e'))
             (pmed,pmin,pfrac)=loop_direction_test_power(\
                                  [stab['DP_stability'][U[0]] for U in UPS])
-            if toolname=='CutTools':
+            if toolname in ['CutTools','Ninja','NinjaRS']:
                 res_str_i += "|= UPS DP loop_dir test power.... %s,%s\n"\
                                                 %(f(pmed,'%.1f'),f(pmin,'%.1f'))
                 res_str_i += "|= UPS DP fraction with power<-3. %s\n"\
@@ -3136,19 +3171,16 @@ The loop direction test power P is computed as follow:
         logFile.write('<plot_data reduction=%s>\n'%xml_toolname.upper())
     # Set the x-range so that it spans [10**-17,10**(min_digit_accuracy)]
         if max(DP_stability)>0.0:
-            min_digit_acc=int(math.log(max(DP_stability))/math.log(10))
+            largest_accuracy=max(DP_stability)
+            min_digit_acc=(int(math.log(largest_accuracy)/math.log(10))
+                           if math.isfinite(largest_accuracy) else 0)
             if min_digit_acc>=0:
                 min_digit_acc = min_digit_acc+1
+            min_digit_acc=max(-16,min(308,min_digit_acc))
             accuracies=[10**(-17+(i/5.0)) for i in range(5*(17+min_digit_acc)+1)]
         else:
-            logFile.writelines('%.4e  %.4e\n'%(accuracies[i], 0.0) for i in \
-                                                         range(len(accuracies)))      
-            logFile.write('</plot_data>\n')
-            res_str_i += '\nPerfect accuracy over all the trial PS points. No plot'+\
-                                                              ' is output then.'
-            logFile.write('Perfect accuracy over all the trial PS points.')
-            res_str +=res_str_i
-            continue
+            accuracies=[10**(-17+(i/5.0)) for i in range(5*17+1)]
+            res_str_i += '\nPerfect accuracy over all the trial PS points.'
 
         accuracy_dict[toolname]=accuracies
         if max(accuracies) > max_acc: max_acc=max(accuracies)

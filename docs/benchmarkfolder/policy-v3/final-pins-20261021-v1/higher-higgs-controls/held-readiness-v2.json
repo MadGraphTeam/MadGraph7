@@ -1,0 +1,76 @@
+{
+  "controller": {
+    "bytes": 16440,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/control.py",
+    "sha256": "d58bd237efa35b6dd400cbebe120f5cfc02c45a5383a7a96759dd885b6710f43"
+  },
+  "exact_command": [
+    "taskset",
+    "-c",
+    "190",
+    "python3",
+    "-B",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/control.py",
+    "collect",
+    "--handoff",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/root-handoff.json",
+    "--execute-numerical"
+  ],
+  "fixed_point_files": {
+    "profile-gg-hhh.dat": {
+      "bytes": 973,
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/points/profile-gg-hhh.dat",
+      "sha256": "016328aae048a6833213967d3794ed0affddee1e982060e43b16bf1d9b32b03b"
+    },
+    "profile-gg-hhh.json": {
+      "bytes": 207,
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/points/profile-gg-hhh.json",
+      "sha256": "2c37dbe6aa4d4e9f93fca548ab38abe80e364a9e8c1f5a0074cf3a5c7605ad8f"
+    },
+    "profile-gg-hhhh.dat": {
+      "bytes": 1169,
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/points/profile-gg-hhhh.dat",
+      "sha256": "60fbdb9dfb89e326e991b976430df670038b8eb820411844783b323a1e6547a4"
+    },
+    "profile-gg-hhhh.json": {
+      "bytes": 218,
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/points/profile-gg-hhhh.json",
+      "sha256": "013f1e68573037fad563a774dfb65b92362c8c13a91836804e2bbd7d737a6e42"
+    }
+  },
+  "handoff_template": {
+    "bytes": 450,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/root-handoff-template-v2.json",
+    "sha256": "605e1947f3f184d149f36e6c9dee5fb93c29ad3563cc13f06d703a6a6193cc29"
+  },
+  "schema": "higher-higgs-two-point-held-readiness-v2",
+  "scope": {
+    "automatic_retry": false,
+    "backends": [
+      6,
+      8
+    ],
+    "cpu": 190,
+    "evaluation_wall_budget_seconds": 300,
+    "fresh_process_invocations": 4,
+    "normal_rescue": true,
+    "per_process_timeout_seconds": 120,
+    "performance_measurement": false,
+    "points_per_case": 2,
+    "purpose": "higher-higgs-two-point-correctness",
+    "root_authorized": false,
+    "specification_sha256": "221750e50feadf9aac3e5dd834cb269eb18ad4e16bd5fddc42ef1e387c679528"
+  },
+  "software_regressions": "Pending bounded mocked tests; no native calls authorized by this record",
+  "source_review": "Pending peer review of retained-authority fix",
+  "specification": {
+    "bytes": 5495,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/held-specification-v2.json",
+    "sha256": "221750e50feadf9aac3e5dd834cb269eb18ad4e16bd5fddc42ef1e387c679528"
+  },
+  "superseded_unexecuted_specification": {
+    "bytes": 5495,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/held-specification-v1.json",
+    "sha256": "7dd80f3c4f25a2201ba8de1e3d51321206d59469c5d409b562e597b892c16be5"
+  }
+}

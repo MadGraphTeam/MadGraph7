@@ -1,0 +1,45 @@
+{
+  "actual_comparator_api_regression": true,
+  "errors": 0,
+  "failures": 0,
+  "files": [
+    {
+      "bytes": 3131,
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/software-proof-v2/result.json",
+      "sha256": "945b20e63426392434d84eb3ae78b51afb355f9bb6450914f60ee04ecc0aabf4"
+    },
+    {
+      "bytes": 12264,
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/software-proof-v2/test_source.py",
+      "sha256": "e5afa3e79a73bd19d4231234a50814db4a903c0514cc13d767c6051d7dfa8473"
+    },
+    {
+      "bytes": 2387,
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/software-proof-v2/tests.log",
+      "sha256": "51a6b904b3bcb7000d29364ebf3efa60844fdbd04ce75afd2f22c7071498b032"
+    }
+  ],
+  "historical_six_test_proof_preserved": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/software-proof-v1/manifest.json",
+  "native_or_build_calls": 0,
+  "passed": 10,
+  "schema": "higher-higgs-controls-real-finalizer-software-proof-v2",
+  "skips": 0,
+  "sources": [
+    {
+      "bytes": 12264,
+      "path": "tests/unit_tests/loop/test_ninjars_higher_higgs_controls.py",
+      "sha256": "e5afa3e79a73bd19d4231234a50814db4a903c0514cc13d767c6051d7dfa8473"
+    },
+    {
+      "bytes": 16440,
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/control.py",
+      "sha256": "d58bd237efa35b6dd400cbebe120f5cfc02c45a5383a7a96759dd885b6710f43"
+    },
+    {
+      "bytes": 3870,
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/finalize_v1.py",
+      "sha256": "dda8950d75369e3b187d2c7cb81f2490b5804d096d7684fdd43e66f093632a21"
+    }
+  ],
+  "tests": 10
+}

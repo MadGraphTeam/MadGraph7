@@ -1,0 +1,136 @@
+{
+  "schema": "higher-higgs-fixed-two-point-proposal-v1",
+  "configuration": {
+    "cases": [
+      {
+        "id": "profile-gg-hhh",
+        "model": "loop_sm",
+        "process": "g g > h h h [sqrvirt=QCD]",
+        "nfinal": 3,
+        "seed": 940086
+      },
+      {
+        "id": "profile-gg-hhhh",
+        "model": "loop_sm",
+        "process": "g g > h h h h [sqrvirt=QCD]",
+        "nfinal": 4,
+        "seed": 940087
+      }
+    ],
+    "points_per_case": 2,
+    "energy_gev": 1000,
+    "seed": 940086,
+    "relative_tolerance": 1e-07,
+    "scale_tolerance": 1e-10,
+    "madloop_parameters": {}
+  },
+  "generation_status": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/status.json",
+    "sha256": "bc8859408517d8676fe99d4251ece792a36d37054de0dd49087fe642a92c63f0",
+    "bytes": 3181
+  },
+  "origins": {
+    "profile-gg-hhh": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/source-proofs/profile-gg-hhh.json",
+      "sha256": "5b0a80dfe5ad3ef678fe4305aaa28cf9ceb5ace9805126a4cdd8f1c03ac8efed",
+      "bytes": 219890
+    },
+    "profile-gg-hhhh": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/source-proofs/profile-gg-hhhh.json",
+      "sha256": "00da9fa010d38a1f8356a480b9f2134880d0a030d013d14daecc2b9674a29199",
+      "bytes": 219912
+    }
+  },
+  "points": {
+    "profile-gg-hhh": {
+      "data": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/points/profile-gg-hhh.dat",
+        "sha256": "016328aae048a6833213967d3794ed0affddee1e982060e43b16bf1d9b32b03b",
+        "bytes": 973
+      },
+      "metadata": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/points/profile-gg-hhh.json",
+        "sha256": "2c37dbe6aa4d4e9f93fca548ab38abe80e364a9e8c1f5a0074cf3a5c7605ad8f",
+        "bytes": 207
+      }
+    },
+    "profile-gg-hhhh": {
+      "data": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/points/profile-gg-hhhh.dat",
+        "sha256": "60fbdb9dfb89e326e991b976430df670038b8eb820411844783b323a1e6547a4",
+        "bytes": 1169
+      },
+      "metadata": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/points/profile-gg-hhhh.json",
+        "sha256": "013f1e68573037fad563a774dfb65b92362c8c13a91836804e2bbd7d737a6e42",
+        "bytes": 218
+      }
+    }
+  },
+  "production_inventory": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/source-inventory-after.json",
+    "sha256": "9f2e29119c03815fabcbc96b10afaf02ff044dd9f25354f5c8065855b4ee1cd0",
+    "bytes": 473059
+  },
+  "sources": {
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/control.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/control.py",
+      "sha256": "d58bd237efa35b6dd400cbebe120f5cfc02c45a5383a7a96759dd885b6710f43",
+      "bytes": 16440
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/prepare.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/prepare.py",
+      "sha256": "f76ee5e76fc8269b8bf9a2d9a812dd5a6397b1fb8a96ecadaaa1a96614e0853a",
+      "bytes": 9927
+    },
+    "tools/ninjars_benchmark.py": {
+      "path": "tools/ninjars_benchmark.py",
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+      "bytes": 49893
+    },
+    "tools/ninjars_benchmark_driver.f": {
+      "path": "tools/ninjars_benchmark_driver.f",
+      "sha256": "7fde7bd50af7604424bdeab028616cb6c861251fbe748c0748dfe7be17a3fee4",
+      "bytes": 4205
+    },
+    "tools/ninjars_benchmark_workers.py": {
+      "path": "tools/ninjars_benchmark_workers.py",
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "bytes": 44582
+    },
+    "tools/ninjars_benchmark_pair_v3.py": {
+      "path": "tools/ninjars_benchmark_pair_v3.py",
+      "sha256": "1e5fb83daa6021fc7c74350df60d16f64204a93887c7e511ac3347a513e78484",
+      "bytes": 34216
+    },
+    "tools/ninjars_benchmark_policy_v2.py": {
+      "path": "tools/ninjars_benchmark_policy_v2.py",
+      "sha256": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a",
+      "bytes": 53416
+    },
+    "tools/ninjars_benchmark_policy_v3.py": {
+      "path": "tools/ninjars_benchmark_policy_v3.py",
+      "sha256": "2fdd45f6c5b2e485d04f7ba81a1a13b38ec70017f186c8d72e20b5d574a30b8e",
+      "bytes": 67380
+    },
+    "tools/ninjars_supplement_v2.py": {
+      "path": "tools/ninjars_supplement_v2.py",
+      "sha256": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8",
+      "bytes": 60858
+    }
+  },
+  "targets": [
+    6,
+    8
+  ],
+  "cpu": 190,
+  "loops": 1,
+  "fresh_process_invocations": 4,
+  "evaluation_wall_budget_seconds": 300,
+  "per_process_timeout_seconds": 120,
+  "driver_semantics": "Per invocation: one cold call, up to1002 warm calls until two consecutive stable points, one untimed two-point traversal, one retained two-point traversal.",
+  "normal_rescue": true,
+  "performance_measurement": false,
+  "automatic_retry": false,
+  "scope": "Exactly two shared physical points per process, full Born/Laurent and split orders, current generated Ninja6 versus NinjaRS8. No additional random or seven-pair campaign."
+}

@@ -1,0 +1,81 @@
+{
+  "schema": "higher-higgs-actual-cli-preparation-v1",
+  "started_utc": "2026-10-21T21:53:26.545943+00:00",
+  "status": "complete",
+  "cases": {
+    "profile-gg-hhh": {
+      "status": "complete",
+      "case": {
+        "id": "profile-gg-hhh",
+        "model": "loop_sm",
+        "process": "g g > h h h [sqrvirt=QCD]",
+        "nfinal": 3,
+        "seed": 940086
+      },
+      "proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/source-proofs/profile-gg-hhh.json",
+        "sha256": "5b0a80dfe5ad3ef678fe4305aaa28cf9ceb5ace9805126a4cdd8f1c03ac8efed",
+        "bytes": 219890
+      }
+    },
+    "profile-gg-hhhh": {
+      "status": "complete",
+      "case": {
+        "id": "profile-gg-hhhh",
+        "model": "loop_sm",
+        "process": "g g > h h h h [sqrvirt=QCD]",
+        "nfinal": 4,
+        "seed": 940087
+      },
+      "proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/source-proofs/profile-gg-hhhh.json",
+        "sha256": "00da9fa010d38a1f8356a480b9f2134880d0a030d013d14daecc2b9674a29199",
+        "bytes": 219912
+      }
+    }
+  },
+  "source_application": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/source-application.json",
+    "sha256": "a9bab76c4f1886d822737d9cb21b87efc371fb2067fdcf33a13c3d5870e7518a",
+    "bytes": 1874
+  },
+  "accepted_default_smoke": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/accepted-default-smoke.json",
+    "sha256": "341e18ad62bd414600884adb3aa7a69f0d8026e215c4cf1a6ef10569a38f3cda",
+    "bytes": 3189
+  },
+  "cpu": 8,
+  "make_jobs": 1,
+  "thread_environment": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "amplitude_evaluations": 0,
+  "reduction_calls": 0,
+  "timing_measurements": 0,
+  "scope": "Actual bin/madgraph standalone exports and clean Fortran compile/link plus external-masses query only.",
+  "source_inventory_before": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/source-inventory-before.json",
+    "sha256": "9f2e29119c03815fabcbc96b10afaf02ff044dd9f25354f5c8065855b4ee1cd0",
+    "bytes": 473059
+  },
+  "physical_card_anchor": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/controls-generation/inputs/candidate/control-gg-hh/param_card.dat",
+    "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "bytes": 2471
+  },
+  "script": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/prepare.py",
+    "sha256": "f76ee5e76fc8269b8bf9a2d9a812dd5a6397b1fb8a96ecadaaa1a96614e0853a",
+    "bytes": 9927
+  },
+  "source_bytes_unchanged": true,
+  "source_inventory_after": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/source-inventory-after.json",
+    "sha256": "9f2e29119c03815fabcbc96b10afaf02ff044dd9f25354f5c8065855b4ee1cd0",
+    "bytes": 473059
+  },
+  "finished_utc": "2026-10-21T21:54:53.798111+00:00"
+}

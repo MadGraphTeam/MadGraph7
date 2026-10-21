@@ -1,0 +1,27 @@
+{
+  "actual_native_calls_repeated": 0,
+  "additional_required_files": [
+    {
+      "bytes": 3000,
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/independent-publication-selection-review-v1.json",
+      "sha256": "03ac435a71d50be4377cf0b52fad386fd4a93f7598b79a26f381b5a48f408b20"
+    }
+  ],
+  "original_unique_stage_paths": 174,
+  "schema": "higher-higgs-finite-publication-addition-v1",
+  "source_science_and_observed_records_unchanged": true,
+  "stage_paths_including_this_addition_and_review": 176,
+  "stage_this_addition_itself": true,
+  "unchanged_inventories": [
+    {
+      "bytes": 35100,
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/publication-inventory-v1.json",
+      "sha256": "55016ec29fa5ed57920be5b49db27a6635a0804773134063b593e78afcdcba3f"
+    },
+    {
+      "bytes": 19431,
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/publication-inventory-v1.json",
+      "sha256": "a8a236f9adff8aa4e5ec4c47891c49fda0d3813407bfff0148dae350efdaff43"
+    }
+  ]
+}

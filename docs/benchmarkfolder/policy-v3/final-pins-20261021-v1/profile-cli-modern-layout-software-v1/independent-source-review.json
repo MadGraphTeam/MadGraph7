@@ -1,0 +1,27 @@
+{
+  "schema": "independent-profile-modern-layout-reporting-source-review-v1",
+  "source": {
+    "path": ".benchmark-work/profile-cli-modern-layout-fix-v1/process_checks.review.py",
+    "sha256": "163b34598c74dc2aa2f82039f347f3146714fc92dd0497661564e42e879907db"
+  },
+  "predecessor": {
+    "path": ".benchmark-work/profile-cli-modern-layout-fix-v1/process_checks.original.py",
+    "sha256": "cd33bf00d8ef031efb1bd6eff498a4d88f68f4cf284c5aac52d4268c595df923"
+  },
+  "scope": "Source and AST boundary only; no tests/compiler/native/model execution. Installer whole-method filesystem/mock-checker proof and numerical_final focused reporting review are separate.",
+  "passed": true,
+  "outside_two_declared_bodies_ast_identical": true,
+  "stability_evaluation_body_only_change": "The sole 2to1 fix_MadLoopParamCard call now passes export/Cards. All numerator, reduction, random point, transformation, retry, numerical acceptance, timing and native invocation expressions are unchanged.",
+  "layout_conclusion": "Canonical Cards route is the same as initialization/evaluation callers. Existing helper reads Cards and writes SubProcesses alias, updating the modern P0/MadLoop5_resources card transitively; helper backward compatibility is preserved. No new resolver needed.",
+  "reporting_changes_reviewed": [
+    "NINJARS XML tag registration preserves existing labels.",
+    "Ordinary finite/nonzero reporting accuracy and best_estimate arithmetic preserve original expressions; normalization is restricted to nonfinite intermediate overflow.",
+    "Explicit FIN0 triples and identical nonzero triples produce valid zero reporting diagnostics.",
+    "Zero ratios log as negative infinity; indeterminate infinity/infinity diagnostic ratios omitted only from derived log summary, raw measurements remain.",
+    "Ninja6/NinjaRS8 existing QP results receive same QP summary as other supported QP paths.",
+    "Finite plotting limits bounded to avoid underflowed/overflowed grid; raw Accuracy values including infinity and every accuracy row remain emitted.",
+    "Perfect agreement now emits the common raw accuracy table and counts, avoiding early loss of records."
+  ],
+  "remaining_validation": "Await independently owned installer full-method/card/checker/parser/pickle/cache/output tests and numerical_final exact reporting controls. This receipt claims no actual CLI success or numerical/performance acceptance.",
+  "no_source_edits_by_reviewer": true
+}

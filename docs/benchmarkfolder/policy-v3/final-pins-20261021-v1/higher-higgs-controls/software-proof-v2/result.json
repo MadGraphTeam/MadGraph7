@@ -1,0 +1,83 @@
+{
+  "scope": "Six retained input guard regressions plus four real finalizer/comparator API controls; no numerical calls/build/model imports",
+  "command": [
+    "taskset",
+    "-c",
+    "180",
+    "python3",
+    "-B",
+    "-m",
+    "unittest",
+    "tests.unit_tests.loop.test_ninjars_higher_higgs_controls",
+    "-v"
+  ],
+  "started_utc": "2026-10-21T22:17:20.466880+00:00",
+  "finished_utc": "2026-10-21T22:17:20.953770+00:00",
+  "elapsed_seconds": 0.4869065969251096,
+  "returncode": 0,
+  "inputs": {
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/control.py": {
+      "sha256": "d58bd237efa35b6dd400cbebe120f5cfc02c45a5383a7a96759dd885b6710f43",
+      "bytes": 16440
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/finalize_v1.py": {
+      "sha256": "dda8950d75369e3b187d2c7cb81f2490b5804d096d7684fdd43e66f093632a21",
+      "bytes": 3870
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/prepare.py": {
+      "sha256": "f76ee5e76fc8269b8bf9a2d9a812dd5a6397b1fb8a96ecadaaa1a96614e0853a",
+      "bytes": 9927
+    },
+    "tests/unit_tests/loop/test_ninjars_higher_higgs_controls.py": {
+      "sha256": "e5afa3e79a73bd19d4231234a50814db4a903c0514cc13d767c6051d7dfa8473",
+      "bytes": 12264
+    },
+    "tools/ninjars_benchmark.py": {
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+      "bytes": 49893
+    },
+    "tools/ninjars_benchmark_driver.f": {
+      "sha256": "7fde7bd50af7604424bdeab028616cb6c861251fbe748c0748dfe7be17a3fee4",
+      "bytes": 4205
+    },
+    "tools/ninjars_benchmark_workers.py": {
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "bytes": 44582
+    },
+    "tools/ninjars_benchmark_pair_v3.py": {
+      "sha256": "1e5fb83daa6021fc7c74350df60d16f64204a93887c7e511ac3347a513e78484",
+      "bytes": 34216
+    },
+    "tools/ninjars_benchmark_policy_v2.py": {
+      "sha256": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a",
+      "bytes": 53416
+    },
+    "tools/ninjars_benchmark_policy_v3.py": {
+      "sha256": "2fdd45f6c5b2e485d04f7ba81a1a13b38ec70017f186c8d72e20b5d574a30b8e",
+      "bytes": 67380
+    },
+    "tools/ninjars_supplement_v2.py": {
+      "sha256": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8",
+      "bytes": 60858
+    },
+    "tools/ninjars_benchmark_references_v2.py": {
+      "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c",
+      "bytes": 18761
+    }
+  },
+  "source_hashes_unchanged": true,
+  "historical_six_test_proof": {
+    "path": ".benchmark-work/higher-higgs-controls-software-v1/result.json",
+    "sha256": "519cd63b77f143f0f21f79ad62057612cc19726037fb79734ba20644bacec05d"
+  },
+  "original_six_test_source": {
+    "path": ".benchmark-work/higher-higgs-controls-software-v1/test-source-original6.py",
+    "sha256": "47698085ab347251839be8a927fc092709867c836a5c4e04593e3e903460c61b"
+  },
+  "tests_run": 10,
+  "tests_passed": 10,
+  "tests_skipped": 0,
+  "tests_failed": 0,
+  "tests_errors": 0,
+  "unittest_seconds": 0.3
+}

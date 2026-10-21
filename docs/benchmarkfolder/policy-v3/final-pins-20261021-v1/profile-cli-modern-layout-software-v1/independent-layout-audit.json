@@ -1,0 +1,135 @@
+{
+  "schema": "independent-profile-stability-layout-io-audit-v1",
+  "scope": "Source-only complete stability IO trace and exact retained failed-tree file/symlink checks; no native binary reads, engines, builds, tests, or source edits.",
+  "source": {
+    "path": "madgraph/various/process_checks.py",
+    "sha256": "cd33bf00d8ef031efb1bd6eff498a4d88f68f4cf284c5aac52d4268c595df923"
+  },
+  "failed_tree": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z",
+  "actual_layout": [
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/Cards/MadLoopParams.dat",
+      "exists": true,
+      "is_symlink": false,
+      "resolved": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/Cards/MadLoopParams.dat"
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/MadLoopParams.dat",
+      "exists": true,
+      "is_symlink": true,
+      "resolved": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/Cards/MadLoopParams.dat",
+      "link": "../Cards/MadLoopParams.dat"
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/MadLoop5_resources/MadLoopParams.dat",
+      "exists": true,
+      "is_symlink": true,
+      "resolved": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/Cards/MadLoopParams.dat",
+      "link": "../MadLoopParams.dat"
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources",
+      "exists": true,
+      "is_symlink": true,
+      "resolved": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/MadLoop5_resources",
+      "link": "../MadLoop5_resources"
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoop5_resources/MadLoopParams.dat",
+      "exists": true,
+      "is_symlink": true,
+      "resolved": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/Cards/MadLoopParams.dat",
+      "link": "../MadLoopParams.dat"
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoopParams.dat",
+      "exists": false,
+      "is_symlink": false,
+      "resolved": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/P0_uux_z/MadLoopParams.dat"
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/P0_uux_z/../SubProcesses/MadLoopParams.dat",
+      "exists": false,
+      "is_symlink": false,
+      "resolved": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/SubProcesses/MadLoopParams.dat"
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/P0_uux_z/check_sa.f",
+      "exists": true,
+      "is_symlink": false,
+      "resolved": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/P0_uux_z/check_sa.f"
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/P0_uux_z/proc_prefix.txt",
+      "exists": true,
+      "is_symlink": false,
+      "resolved": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/P0_uux_z/proc_prefix.txt"
+    },
+    {
+      "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/P0_uux_z/StabilityCheckDriver.f",
+      "exists": true,
+      "is_symlink": false,
+      "resolved": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/P0_uux_z/StabilityCheckDriver.f"
+    }
+  ],
+  "io_chain": [
+    {
+      "stage": "output root",
+      "source": "LoopMatrixElementTimer.check_matrix_element_stability",
+      "conclusion": "export_dir now derives self.output_path, consistent with timing/setup_process; install mg_root remains correct only for template source lookup."
+    },
+    {
+      "stage": "driver rewrite and compile",
+      "source": "fix_PSPoint_in_check, subprocess.call make check",
+      "conclusion": "Uses export/SubProcesses and infos.dir_path; check/check_sa.o removals and make cwd are subprocess-local. Actual failed pilot reached compiled StabilityCheckDriver before card fix."
+    },
+    {
+      "stage": "checker source",
+      "source": "StabilityCheckDriver.f generation",
+      "conclusion": "Installation-root Template/loop_material/Checks source and subprocess proc_prefix.txt correctly render subprocess-local checker; born_matrix.f selects Born vs loop-induced template."
+    },
+    {
+      "stage": "2to1 card",
+      "source": "fix_MadLoopParamCard(dir_path)",
+      "conclusion": "Current direct read is absent in modern P0 and current footer resolves to a nonexistent sibling SubProcesses. Fix must update actual active resource card or existing flat subprocess card; preserve standard Cards input\u2192export/SubProcesses write behavior."
+    },
+    {
+      "stage": "native resource lookup",
+      "source": "Template/loop_material/StandAlone/SubProcesses/MadLoopCommons.inc:setMadLoopPath",
+      "conclusion": "Auto lookup explicitly tries cwd direct card then cwd/MadLoop5_resources then parent/MadLoop5_resources; active Python card must match this. No Fortran/resource algorithm change needed."
+    },
+    {
+      "stage": "checker invocation",
+      "source": "subprocess.Popen StabilityCheckDriver",
+      "conclusion": "Executable path and cwd both infos.dir_path. stdin/out protocol carries explicit point/mode/hel/split values; no further Python resource-path assumptions before results."
+    },
+    {
+      "stage": "cache and repeated sessions",
+      "source": "SavedStabilityRun_tool_0.pkl",
+      "conclusion": "Pickles read/write within infos.dir_path. npoints0 reusing returns cached data before driver/card/compiler/Popen paths; full filesystem mock should establish saved pickle and reload."
+    },
+    {
+      "stage": "report output",
+      "source": "output_profile/output_stability",
+      "conclusion": "stability/profile logs and optional plot use CLI output_path, consistent private cwd. Before next real run reporting must register NINJARS and handle perfectzero accuracy; findings delegated to numerical_final/allocation."
+    }
+  ],
+  "findings": [
+    {
+      "id": "active-card-layout",
+      "state": "confirmed current failure plus latent write failure",
+      "minimum_scope": "Resolve existing direct/resource card and update its active location while preserving Cards caller destination; no timer/RNG/numerics change."
+    },
+    {
+      "id": "ninjars-report-map",
+      "state": "confirmed unconditional NINJARS KeyError in output_stability XML tool map",
+      "owner": "allocation_final and numerical_final"
+    },
+    {
+      "id": "perfect-report-accuracy",
+      "state": "confirmed uninitialized accuracies at first perfectagreement branch and0/0 in reporting accuracy for explicit FIN0 triples",
+      "owner": "allocation_final and numerical_final"
+    }
+  ],
+  "next_validation": "Installer-owned actual whole-method mock with real files/card parsing and driver/template/pickle/output creation, native calls mocked; both modern symlink resource and legacy direct flat card, 6/8, nonzero and explicitzero report controls."
+}
