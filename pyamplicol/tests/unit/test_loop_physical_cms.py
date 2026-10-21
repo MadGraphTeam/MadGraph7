@@ -214,8 +214,7 @@ def standard_source(loop_native, loop_gmu_ufo):
     [
         pytest.param(CASES[0], ("finite", "small", "zero"), id="double"),
         pytest.param(CASES[1], ("finite", "small", "zero"), id="double-double"),
-        # AP80 zero width is checked by test_source_semantic_cms_zero_width.
-        pytest.param(CASES[2], ("finite", "small"), id="arbitrary80"),
+        pytest.param(CASES[2], ("finite", "small", "zero"), id="arbitrary80"),
     ],
 )
 def test_standard_cms_complete_components_across_width_updates(
