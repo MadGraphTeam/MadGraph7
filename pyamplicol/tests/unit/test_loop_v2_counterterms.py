@@ -886,8 +886,10 @@ def test_components_equal_legacy(ct_slice, loop_native, name, label):
                     _real(components.get((component, order, power), 0j))
                     for power in LAURENT_POWERS
                 ]
-                scale = max(map(abs, reference)) or scale_born
                 for k in range(3):
+                    # Relative per coefficient; the Born scale only where the
+                    # reference coefficient vanishes.
+                    scale = abs(reference[k]) or scale_born
                     assert abs(mine[k] - reference[k]) <= tolerance * scale, (
                         component,
                         index,
