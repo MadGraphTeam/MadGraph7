@@ -39,6 +39,9 @@ with eps_s the product of
 * -1 per fermion propagator on the loop: the tree reading of a fermion line
   is its transposed chain, which carries this sign against the Feynman
   rules for pure vector couplings (gamma^mu is odd under charge conjugation).
+  The transposed propagator numerator is C (q-slash + m)^T C^-1 =
+  -(q-slash - m), so the tree reading also evaluates the line's propagator
+  with the opposite mass sign (``TreeReading.mass_signs``).
 
 The tree engine's ``merge_sign`` (``generation/fermion_ordering.py``) is +1
 for coloured lines, whose ordering the colour flow owns, so for coloured
@@ -73,7 +76,7 @@ from typing import Any
 from pyamplicol.generation.fermion_ordering import _fermion_rep_requires_exterior_sign
 
 from .blocks import _open_last, _parity, identity_pairing_sign
-from .families import _model_data
+from .families import ZERO, _mass_name, _model_data
 from .skeletons import Content, Skeleton
 
 GHOST_SPIN = -1
@@ -149,11 +152,21 @@ class TreeReading:
         }
         self._spins = {p["name"]: int(p["spin"]) for p in data["particles"]}
         self._antinames = {p["name"]: p["antiname"] for p in data["particles"]}
+        self._masses = {p["name"]: _mass_name(p["mass"]) for p in data["particles"]}
 
     def __call__(self, rule: str, legs: tuple[int, ...]) -> tuple[int, ...]:
         return tree_reading_legs(
             self._particles[rule], legs, self._spins, self._antinames
         )
+
+    def mass_signs(self, loop_out: str) -> Mapping[str, int]:
+        """Mass parameters whose sign the tree reading flips in a segment
+        whose loop line leaves as ``loop_out`` (module docstring)."""
+
+        mass = self._masses[loop_out]
+        if self._spins[loop_out] != FERMION_SPIN or mass == ZERO:
+            return {}
+        return {mass: -1}
 
 
 class LeafWeights:

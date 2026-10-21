@@ -895,6 +895,7 @@ class CatalogueKinematics:
         self.constants = constants
         self.reading = reading
         self.carrier = constants.carrier
+        self._signed: dict[tuple, KernelConstants] = {}
         self._rules = {rule["name"]: rule for rule in data["vertex_rules"]}
         self._antiname = {p["name"]: p["antiname"] for p in data["particles"]}
         self._terms: dict[tuple[str, int], list[Any]] = defaultdict(list)
@@ -1070,6 +1071,22 @@ class CatalogueKinematics:
 
     # -- evaluation ------------------------------------------------------------
 
+    def _constants(self, content: Content) -> KernelConstants:
+        """Kernel constants of a content's segments: the reading may flip the
+        sign of the outgoing loop line's mass (``TreeReading.mass_signs``)."""
+
+        signs = getattr(self.reading, "mass_signs", None)
+        flips = tuple(sorted(signs(content.loop_out).items())) if signs else ()
+        if not flips:
+            return self.constants
+        found = self._signed.get(flips)
+        if found is None:
+            parameters = dict(self.constants.parameters)
+            for name, sign in flips:
+                parameters[name] = sign * parameters[name]
+            found = self._signed[flips] = KernelConstants(parameters, self.carrier)
+        return found
+
     def _block_vectors(self, slot: _Slot, row: Row, dimension: int) -> list[Any]:
         values = self.blocks.value(
             slot.block, slot.word, slot.chirality, row, dimension
@@ -1121,7 +1138,7 @@ class CatalogueKinematics:
                     kernel = self._kernel(binding)
                     values = kernel.evaluate(
                         self._inputs(binding, kernel, loop, term.slots, parts),
-                        self.constants,
+                        self._constants(content),
                     )
                     for entry, value in zip(binding.entries, values, strict=True):
                         slot = index[(entry.loop_in, entry.out, entry.exponents)]
@@ -1144,7 +1161,7 @@ class CatalogueKinematics:
                 kernel = self._kernel(binding)
                 values = kernel.evaluate(
                     self._inputs(binding, kernel, loop, term.slots, no_blocks),
-                    self.constants,
+                    self._constants(content),
                 )
                 for entry, value in zip(binding.entries, values, strict=True):
                     nu = _flat(entry.blocks, binding.block_dimensions)
@@ -1181,7 +1198,7 @@ class CatalogueKinematics:
                     kernel = self._kernel(binding)
                     values = kernel.evaluate(
                         self._inputs(binding, kernel, momentum, term.slots, parts),
-                        self.constants,
+                        self._constants(content),
                     )
                     for entry, value in zip(binding.entries, values, strict=True):
                         if entry.exponents == zero:
