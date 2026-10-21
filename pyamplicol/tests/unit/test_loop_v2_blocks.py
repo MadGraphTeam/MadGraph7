@@ -742,7 +742,12 @@ def test_every_loop_position_content_is_a_block(models, text):
 @pytest.mark.loop_physics
 @pytest.mark.parametrize(
     ("text", "born"),
-    [("g g > g g", {"QCD": 2}), ("u u~ > d d~ g", {"QCD": 3})],
+    [
+        ("g g > g g", {"QCD": 2}),
+        ("u u~ > d d~ g", {"QCD": 3}),
+        ("g g > g g g", {"QCD": 3}),
+        ("u u~ > u u~ g", {"QCD": 3}),
+    ],
 )
 def test_family_recursion_runs_on_the_block_table(models, text, born):
     """WP1.3 consumes the blocks as its ``BlockTable`` and feeds back requests."""
