@@ -8,6 +8,7 @@ from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -537,34 +538,39 @@ def _candidate_runtime_snapshot() -> capture.RuntimeSnapshot:
     )
 
 
+def _compact_install_state() -> dict[str, object]:
+    """A valid contributor install state for the locked candidate sources."""
+
+    with provenance.CONTRIBUTOR_LOCK.open("rb") as stream:
+        contributor = tomllib.load(stream)
+    return {
+        "schema_version": 1,
+        "publishable": False,
+        "sources": {
+            "symbolica": {
+                "url": contributor["symbolica"]["source_url"],
+                "revision": contributor["symbolica"]["candidate_revision"],
+            },
+            "symjit": {
+                "url": contributor["symjit"]["repository"],
+                "revision": contributor["symjit"]["revision"],
+            },
+        },
+    }
+
+
 def test_dependency_snapshot_uses_compact_source_descriptors(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with provenance.CONTRIBUTOR_LOCK.open("rb") as stream:
         contributor = tomllib.load(stream)
-    symbolica_descriptor = {
-        "url": contributor["symbolica"]["source_url"],
-        "revision": contributor["symbolica"]["candidate_revision"],
-    }
-    symjit_descriptor = {
-        "url": contributor["symjit"]["repository"],
-        "revision": contributor["symjit"]["revision"],
-    }
+    state = _compact_install_state()
+    sources = cast(dict[str, dict[str, str]], state["sources"])
+    symbolica_descriptor = sources["symbolica"]
+    symjit_descriptor = sources["symjit"]
     state_path = tmp_path / "install-state.json"
-    state_path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "publishable": False,
-                "sources": {
-                    "symbolica": symbolica_descriptor,
-                    "symjit": symjit_descriptor,
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+    state_path.write_text(json.dumps(state), encoding="utf-8")
     monkeypatch.setattr(provenance, "INSTALL_STATE", state_path)
     snapshot = provenance.collect_dependency_snapshot(_candidate_runtime_snapshot())
     payloads = {str(payload["id"]): payload for payload in snapshot.payloads}
@@ -604,7 +610,7 @@ def test_dependency_snapshot_rejects_invalid_compact_install_state(
     value: object,
     message: str,
 ) -> None:
-    state = json.loads(provenance.INSTALL_STATE.read_text(encoding="utf-8"))
+    state = _compact_install_state()
     state[field] = value
     state_path = tmp_path / "install-state.json"
     state_path.write_text(json.dumps(state), encoding="utf-8")
@@ -626,8 +632,8 @@ def test_dependency_snapshot_rejects_mismatched_installed_source(
     field: str,
     value: str,
 ) -> None:
-    state = json.loads(provenance.INSTALL_STATE.read_text(encoding="utf-8"))
-    state["sources"][dependency][field] = value
+    state = _compact_install_state()
+    cast(dict[str, dict[str, str]], state["sources"])[dependency][field] = value
     state_path = tmp_path / "install-state.json"
     state_path.write_text(json.dumps(state), encoding="utf-8")
     monkeypatch.setattr(provenance, "INSTALL_STATE", state_path)
