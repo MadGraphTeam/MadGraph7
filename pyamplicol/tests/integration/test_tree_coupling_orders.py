@@ -162,6 +162,8 @@ _MADGRAPH_PROCESSES = (
     "u u~ > e- e+ g",
 )
 _THREE_LINE_TRIPLE_GAUGE = "u u~ > d d~ s s~"
+# Three lines where a W pairs the u and d lines in the initial state.
+_W_PAIRED_THREE_LINES = "u d > u d s s~"
 _DOUBLE_COUNTED_TRIPLE_GAUGE = pytest.mark.xfail(
     strict=True,
     reason=(
@@ -226,18 +228,17 @@ def test_leading_colour_partials_match_madgraph(
 
 
 @pytest.mark.parametrize("accuracy", ["full", "lc"])
+@pytest.mark.parametrize("process", [_THREE_LINE_TRIPLE_GAUGE, _W_PAIRED_THREE_LINES])
 def test_three_line_orders_without_triple_gauge_vertices_match_madgraph(
-    sm_model: ModelSource, tmp_path: Path, accuracy: str
+    sm_model: ModelSource, tmp_path: Path, process: str, accuracy: str
 ) -> None:
     """QCD x electroweak interference of three distinct quark lines, including
-    the W pairing (u d)(u~ d~)(s s~) against the neutral pairing."""
+    the W pairing (u d)(u~ d~)(s s~) against the neutral pairing. The
+    recurrence lane is independent of the eager lane's colour engine, so these
+    orders check MadGraph's colour-flow amplitudes by a second method."""
 
-    reference = _reference(
-        _THREE_LINE_TRIPLE_GAUGE, REFERENCE if accuracy == "full" else LC_REFERENCE
-    )
-    runtime = _runtime(
-        sm_model, _THREE_LINE_TRIPLE_GAUGE, tmp_path / "artifact", accuracy=accuracy
-    )
+    reference = _reference(process, REFERENCE if accuracy == "full" else LC_REFERENCE)
+    runtime = _runtime(sm_model, process, tmp_path / "artifact", accuracy=accuracy)
     result = runtime.evaluate_orders(reference["points"])
     checked = ((("QCD", 8),), (("QCD", 6), ("QED", 2)))
     for point, partials in enumerate(reference["partials"]):
@@ -272,6 +273,10 @@ def test_three_line_orders_without_triple_gauge_vertices_match_madgraph(
         ("u u~ > u u~ u u~", "lc"),
         (_THREE_LINE_TRIPLE_GAUGE, "full"),
         (_THREE_LINE_TRIPLE_GAUGE, "lc"),
+        (_W_PAIRED_THREE_LINES, "full"),
+        (_W_PAIRED_THREE_LINES, "lc"),
+        ("u d~ > u d~ s s~", "full"),
+        ("u d~ > u d~ s s~", "lc"),
     ],
 )
 def test_eager_lane_matches_madgraph(
@@ -315,29 +320,39 @@ def test_eager_lane_pairs_w_exchanges_among_four_quark_lines(
 
 
 @pytest.mark.parametrize("accuracy", ["full", "lc"])
+@pytest.mark.parametrize("process", [_THREE_LINE_TRIPLE_GAUGE, _W_PAIRED_THREE_LINES])
 def test_eager_lane_counts_a_three_line_triple_gauge_vertex_once(
-    sm_model: ModelSource, tmp_path: Path, accuracy: str
+    sm_model: ModelSource, tmp_path: Path, process: str, accuracy: str
 ) -> None:
-    """QED^8 of u u~ > d d~ s s~ is the pure-electroweak amplitude squared,
-    where WWA/WWZ vertices join the three quark lines (12x MadGraph when
-    both cyclic orders of the lines kept them). At leading colour the flows
-    pairing d with s~ have no pure-electroweak root and vanish."""
+    """QED^8 of three quark lines is the pure-electroweak amplitude squared,
+    where WWA/WWZ vertices join the three lines (12x MadGraph for
+    u u~ > d d~ s s~ when both cyclic orders of the lines kept them). At
+    leading colour the flows without a pure-electroweak root vanish.
 
-    reference = _reference(
-        _THREE_LINE_TRIPLE_GAUGE, REFERENCE if accuracy == "full" else LC_REFERENCE
-    )
-    runtime = _runtime(
-        sm_model,
-        _THREE_LINE_TRIPLE_GAUGE,
-        tmp_path / "artifact",
-        accuracy=accuracy,
-        execution_mode="eager",
-        limits={"QCD": 0, "QED": 4},
-    )
+    MadGraph's all-order export leaves the colour-flow amplitudes no diagram
+    feeds unassigned (the tool zeroes them). A second export generated at
+    QCD=0 builds the pure-electroweak amplitudes on their own, every one
+    assigned, and must reproduce that export's QED^8."""
+
+    path = REFERENCE if accuracy == "full" else LC_REFERENCE
+    reference = _reference(process, path)
+    alone = _reference(f"{process} QCD=0", path)
+    assert alone["points"] == reference["points"]
+    assert alone["squared_orders"] == [{"QCD": 0, "QED": 8}]
     (column,) = (
         index
         for index, order in enumerate(reference["squared_orders"])
         if order == {"QCD": 0, "QED": 8}
+    )
+    for total, partials in zip(alone["total"], reference["partials"], strict=True):
+        assert math.isclose(total, partials[column], rel_tol=1e-13)
+    runtime = _runtime(
+        sm_model,
+        process,
+        tmp_path / "artifact",
+        accuracy=accuracy,
+        execution_mode="eager",
+        limits={"QCD": 0, "QED": 4},
     )
     for point, (value, partials) in enumerate(
         zip(runtime.evaluate(reference["points"]), reference["partials"], strict=True)
