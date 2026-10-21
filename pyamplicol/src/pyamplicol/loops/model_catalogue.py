@@ -179,7 +179,9 @@ def certified_source_counterterm_bases(source):
         ):
             control = "local-fermion-mass-two-point-source-aloha-control"
         elif (
-            all(pdg == 21 for pdg in pdgs)
+            # One self-conjugate adjoint vector species on every port; the
+            # exact colour and Lorentz structures below fix the gluon rules.
+            len(set(pdgs)) == 1
             and spins == (3,) * len(pdgs)
             and colors == (8,) * len(pdgs)
         ):

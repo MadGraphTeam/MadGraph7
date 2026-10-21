@@ -62,6 +62,14 @@ LEGACY_PROCESS_SYMBOL_ALLOWLIST = {
     "generation/service.py": frozenset({"PDGS"}),
 }
 SM_PDG_VALUES = frozenset({*range(1, 7), *range(11, 17), 21, 22, 23, 24, 25, 26, 99})
+# Bounded legacy one-loop source certificates: the u/d QCD control basis and
+# the e/mu neutral-current electroweak certificates. They admit only these
+# tested species and are replaced by generic certification with the EW work
+# (WP3.2) and the legacy-loop deletion; no other loop module may classify PDGs.
+LEGACY_LOOP_CONTROL_PDG_ALLOWLIST = {
+    "loops/model_electroweak.py": frozenset({22, 23}),
+    "loops/model_qcd.py": frozenset({1, 2, 21}),
+}
 BUILTIN_IMPLEMENTATION_DEFINITIONS = frozenset(
     {
         "BuiltinModel",
@@ -282,7 +290,9 @@ def test_sm_catalog_and_pdg_classifiers_are_quarantined() -> None:
                         if not _pdg_expression(operand)
                     )
                 )
-                matched = literals.intersection(SM_PDG_VALUES)
+                matched = literals.intersection(SM_PDG_VALUES).difference(
+                    LEGACY_LOOP_CONTROL_PDG_ALLOWLIST.get(relative, frozenset())
+                )
                 if matched:
                     pdg_violations.append(
                         f"{relative}:{node.lineno}: {sorted(matched)}"
