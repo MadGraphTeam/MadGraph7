@@ -19,6 +19,7 @@ mod schedule;
 mod stability;
 mod states;
 mod v2_reduce;
+mod v2_seeds;
 pub use batch::{Batch, BatchCarrier, Data, shape};
 pub use coefficients::{CoefficientEvaluator, exact_state};
 pub use dual_weights::DualBornWeights;
@@ -34,6 +35,7 @@ pub use v2_reduce::{
     FamilyGroup, ReduceOptions, ReductionFrame, V2Output, V2Reducer, shift_coefficients,
     tensor_rank, true_rank,
 };
+pub use v2_seeds::V2SeedFourier;
 
 /// Install immutable source-scalar callbacks before decoding saved programs.
 pub fn register_scalar_primitives() {
