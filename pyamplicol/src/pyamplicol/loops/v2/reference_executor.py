@@ -1319,6 +1319,7 @@ class ColourSeeds:
         self.table = table
         self.class_of = class_of
         pairs = frozenset(pairs)
+        self._admitted = {(c, order) for c, order, _b, _o in table.admitted(pairs)}
         self._rows: dict[Row, dict[tuple[int, Orders], Complex]] = {}
         for row, amplitudes in born.items():
             seeds = table.seeds(
@@ -1348,6 +1349,9 @@ class ColourSeeds:
         if c is None:
             raise KeyError("reading without a seed class; build with every reading")
         key = (c, skeleton.orders)
+        if key not in self._admitted:
+            raise KeyError(f"no sector pair admits class {c} at {skeleton.orders}")
+        # An admitted key absent from a row is a zero colour weight or Born.
         return key, {row: (seeds.get(key, 0),) for row, seeds in self._rows.items()}
 
 
@@ -1570,7 +1574,7 @@ class ReferenceExecutor:
             parents[child].add((parent, label))
             children[parent].add(child)
         depth = _depths(graph, parents)
-        _certify_paths(graph, skeletons, depth, children)
+        _certify_paths(graph, skeletons, depth, parents)
         roots: dict[int, tuple[Hashable, Any, Skeleton]] = {}
         for skeleton in skeletons:
             key, _rows = self.seeds.seed(skeleton, skeleton.contents)
@@ -2152,18 +2156,20 @@ def _depths(graph: StateGraph, parents) -> dict[int, int]:
     return depth
 
 
-def _certify_paths(graph: StateGraph, skeletons, depth, children) -> None:
+def _certify_paths(graph: StateGraph, skeletons, depth, parents) -> None:
     """Every cut-to-closure path of the merged graph is exactly one skeleton.
 
     A merged state sums chains, so a path that is no skeleton (a prefix of
     one chain continued by the remainder of another) would be added
-    spuriously. Each skeleton is one path, so equal counts suffice.
+    spuriously. Each skeleton is one path, so equal counts suffice. Paths
+    are counted over the (parent, label) edges a state sums, parallel edges
+    included.
     """
 
     paths = Counter(dict.fromkeys(graph.entries, 1))
     for state in sorted(depth, key=depth.__getitem__):
-        for child in children[state]:
-            paths[child] += paths[state]
+        if state not in graph.entries:
+            paths[state] = sum(paths[parent] for parent, _label in parents[state])
     closing = sum(paths[state] for state in graph.closures)
     distinct = len(set(skeletons))
     if closing != distinct:
