@@ -464,14 +464,18 @@ def _exact_u1_subtraction_weights():
     interactions), which caps multi-line block rows at ~1e-17 in any carrier;
     graded U(1) currents replace it in WP2.4 (design §3.2 item 4). Until then
     the slice builds its stage expressions with the exact rational (binary64
-    values are unchanged: 1/N_c rounds to the same double).
+    values are unchanged: 1/N_c rounds to the same double). Tree programs
+    carry the U(1) sign in the weight (``generation/fermion_ordering.py``),
+    so -1/N_c is mapped as well.
     """
 
     from symbolica import E
 
     from pyamplicol.generation.stage_expressions import exact_weights
 
-    return exact_weights({complex(1 / NC): E(f"1/{NC}")})
+    return exact_weights(
+        {complex(1 / NC): E(f"1/{NC}"), complex(-1 / NC): E(f"-1/{NC}")}
+    )
 
 
 # --------------------------------------------------------------------- seeds
