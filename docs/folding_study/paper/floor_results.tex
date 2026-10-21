@@ -1,0 +1,49 @@
+To see whether more folding still lowers the S-event negative fraction, we ran
+$8\times4\times1$ with the cubic map and the sum over sets, which are the defaults, after PR~\#305.
+These runs were done on the cluster, with the same seed and number of events as the
+corresponding $2\times2\times1$ and $4\times4\times1$ runs. Table~\ref{tab:floor} compares
+$\rS$ for the three foldings. The CPU of these runs is not comparable with the desktop runs
+and is not quoted.
+
+For each run we also give, in parentheses, the expected contribution of the virt events,
+$N_{\mathrm{virt}}/(2N_{\mathrm S})$. It assumes that half of them are negative, as for a residual
+$V-A$ symmetric around zero; $N_{\mathrm{virt}}$ is taken from the generation log, since the
+events themselves do not record whether they are virt events.
+
+\begin{table}[h]
+\centering\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+ & \multicolumn{3}{c}{$\rS$ (virt-event part)} & & \multicolumn{3}{c}{$r$}\\
+process & $2\times2\times1$ & $4\times4\times1$ & $8\times4\times1$ & $\rH$ & 2,2,1 & 4,4,1 & 8,4,1\\
+\midrule
+\csname @@input\endcsname floor_rows.txt
+\bottomrule
+\end{tabular}}
+\caption{S-event negative fraction with the cubic map and the sum over FKS sets, for three
+foldings. In parentheses: expected contribution of the virt events. $\rH$ and the total
+$r$ are for the $8\times4\times1$ runs and for each folding respectively.}
+\label{tab:floor}
+\end{table}
+
+The floor is reached in every process, at the latest at $4\times4\times1$:
+\begin{itemize}
+\item \textbf{$pp\to t\bar t$.} $\rS$ equals the virt-event contribution at every folding
+($0.010$, $0.015$, $0.011$). All the negative S events are virt events, and the floor is
+reached already at $2\times2\times1$. Folding cannot do more here; a better virtual
+surrogate (the dipole fits of the virt-trick study) could.
+\item \textbf{$pp\to e^+e^-j$.} $\rS$ goes from $0.122$ ($2\times2\times1$) to $0.086$
+($4\times4\times1$) and $0.094\pm0.004$ ($8\times4\times1$). It stops at about $0.09$, of which
+$0.02$ comes from virt events. The remaining $0.07$ is consistent with the floor of
+about $0.03$--$0.07$ found at fixed Born points with 256 points (table~\ref{tab:dumpr}).
+\item \textbf{$e^+e^-\to b\bar b b\bar b$.} $0.183$, $0.142$, then $0.150\pm0.005$: the floor is
+at about $0.145$, of which about $0.06$ comes from the virt events, which here are 8\% of all
+events.
+\item \textbf{$pp\to Zjj$.} \input{floor_zjj.tex}
+\end{itemize}
+The part of the floor that is not due to virt events corresponds to Born points where the
+radiation integral of the S terms is negative, or so steep near the dead zones and cuts
+that no affordable number of points resolves its sign. In all four processes the total $r$
+no longer moves between $4\times4\times1$ and $8\times4\times1$: beyond
+$2\times2\times1$ or $4\times4\times1$, extra folding only costs CPU.
