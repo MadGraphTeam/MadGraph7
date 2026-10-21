@@ -26,6 +26,13 @@ Conventions a consumer relies on:
   ``(tau^{a_k} ... tau^{a_1})_{e s}`` and an adjoint field closes
   ``out -> in`` with ``tau^X_{in, out}``.
   U(1)-subtraction auxiliaries are separate colour-singlet blocks.
+* **N_c grade.** The tree engine weights every U(1)-subtraction auxiliary it
+  produces from a fundamental line pair with the numeric 1/N_c of the Fierz
+  identity at N_c = 3. A block whose trees produce k auxiliaries has grade
+  g = -k (``BlockColourFlow.nc_grade``; ``None`` if its trees disagree, e.g.
+  a U(1) piece and a photon giving the same flow) and rows carrying 3^g; the
+  formal-N_c current is the row times N_c^g 3^(-g), which the colour seeds
+  apply (design §3.2 item 4).
 * **Signs.** ``BlockColourFlow.sign`` extends the tree engine's Born colour
   metric (``color/correlator_matrices.py``) to blocks: the parity of the
   antifundamental string ends listed in the order of their fundamental
@@ -89,6 +96,7 @@ from pyamplicol.models.prepared_catalog_builder import _tree_kernel_variant
 from pyamplicol.processes.ir import CanonicalProcessIR
 
 BlockClass = Literal["plain", "ward", "spin-source", "counterterm"]
+_U1_SUBTRACTION = "u1-subtraction-color-flow-vector"
 
 # The transverse massless Yang-Mills kernel drops only terms proportional to
 # an input current's self-contraction p.J, so it is exact for blocks built
@@ -190,6 +198,7 @@ class BlockColourFlow:
     outgoing_open: bool
     singlet_labels: tuple[int, ...] = ()
     sign: int = 1
+    nc_grade: int | None = 0
 
 
 def block_colour_flow(
@@ -579,6 +588,7 @@ def _blocks(
         and model.is_fermion(int(leg.outgoing_pdg))
     }
     connections = _connection_parities(dag, model, endpoints)
+    grades = u1_grades(dag)
     rows_by_key: dict[BlockKey, list[BlockRow]] = {}
     for current in dag.currents:
         rows_by_key.setdefault(BlockKey.from_index(current.index), []).append(
@@ -599,12 +609,14 @@ def _blocks(
         parities = {connections[row.current_id] for row in rows}
         if len(parities) != 1:
             raise ValueError(f"block {key.word} mixes colour-connection signs")
+        nc_grades = {grades[row.current_id] for row in rows}
         blocks.append(
             Block(
                 id=len(blocks),
                 key=key,
-                colour_flow=block_colour_flow(
-                    key.word, representations, field_representation
+                colour_flow=replace(
+                    block_colour_flow(key.word, representations, field_representation),
+                    nc_grade=nc_grades.pop() if len(nc_grades) == 1 else None,
                 ),
                 block_class="plain",
                 kernel_variant=_checked_kernel_variant("plain", kernel_variant),
@@ -632,7 +644,7 @@ def _connection_parities(
     def octet(index: CurrentIndex) -> bool:
         return (
             model.color_rep(index.particle_id) == 8
-            or index.auxiliary_kind == "u1-subtraction-color-flow-vector"
+            or index.auxiliary_kind == _U1_SUBTRACTION
         )
 
     def has_endpoints(index: CurrentIndex) -> bool:
@@ -663,6 +675,34 @@ def _connection_parities(
                 "colour-connection signs"
             )
     return parity
+
+
+def u1_grades(dag: GenericDAG) -> list[int | None]:
+    """N_c grade of every current: minus the number of U(1)-subtraction
+    auxiliaries its trees produce (module docstring), ``None`` if its
+    derivations disagree."""
+
+    currents = dag.currents
+    grade: list[int | None] = [0 if current.is_source else None for current in currents]
+    mixed: set[int] = set()
+    for interaction in sorted(
+        dag.interactions,
+        key=lambda row: currents[row.result_id].index.external_mask.bit_count(),
+    ):
+        left, right = grade[interaction.left_id], grade[interaction.right_id]
+        result = interaction.result_id
+        if left is None or right is None:
+            mixed.add(result)
+            continue
+        value = (
+            left + right - (currents[result].index.auxiliary_kind == _U1_SUBTRACTION)
+        )
+        if grade[result] is None and result not in mixed:
+            grade[result] = value
+        elif grade[result] != value:
+            grade[result] = None
+            mixed.add(result)
+    return grade
 
 
 def _born_root_orders(dag: GenericDAG, model: Model, root: AmplitudeRoot):
@@ -712,4 +752,5 @@ __all__ = [
     "build_tree_blocks",
     "identity_pairing_sign",
     "requested_loop_blocks",
+    "u1_grades",
 ]
