@@ -27,9 +27,9 @@
 #include "MemoryAccessMomenta.h"
 #include "MemoryAccessNumerators.h"
 #include "MemoryAccessWavefunctions.h"
-#include "ColorData.h"       // for shouldUseBlas/mgOnGpu::nchannels/channel2iconfig/icolamp/nconfigSDE
+#include "ColorData.h"       // for shouldUseBlas/madmatrix::nchannels/channel2iconfig/icolamp/nconfigSDE
 #include "color_sum.h"       // for color_sum_cpu/color_sum_cpu_blas
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include <cassert>
 #include <cmath>
@@ -45,7 +45,7 @@ namespace madmatrix
   using Parameters_independentCouplings::nicoup; // #couplings that are fixed for all events (do not depend on running alphas QCD)
 
   // The number of SIMD vectors of events processed by calculate_jamps
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
   constexpr int nParity = 2;
 #else
   constexpr int nParity = 1;
@@ -120,21 +120,16 @@ namespace madmatrix
       // First - and/or only - neppV page of channels (iParity=0 => ievt0 = ievt00 + 0 * neppV)
       const unsigned int* channelIds = CID_ACCESS::ieventAccessRecordConst( allChannelIds, ievt00 ); // fix bug #899/#911
       uint_sv channelIds_sv = CID_ACCESS::kernelAccessConst( channelIds );                           // fix #895 (compute this only once for all diagrams)
-#ifndef MGONGPU_CPPSIMD
-      // NB: channelIds_sv is a scalar in no-SIMD C++
-      channelId = channelIds_sv;
-#else
       // NB: channelIds_sv is a vector in SIMD C++
       channelId = channelIds_sv[0];    // element[0]
       for( int i = 1; i < neppV; ++i ) // elements[1...neppV-1]
       {
         assert( channelId == channelIds_sv[i] ); // SANITY CHECK #898: check that all events in a SIMD vector have the same channelId
       }
-#endif
       assert( channelId > 0 ); // SANITY CHECK: scalar channelId must be > 0 if multichannel is enabled (allChannelIds != nullptr)
       if( sanityCheckMixedPrecision )
       {
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
         // Second neppV page of channels (iParity=1 => ievt0 = ievt00 + 1 * neppV)
         const unsigned int* channelIds2 = CID_ACCESS::ieventAccessRecordConst( allChannelIds, ievt00 + neppV ); // fix bug #899/#911
         uint_v channelIds2_v = CID_ACCESS::kernelAccessConst( channelIds2 );                                    // fix #895 (compute this only once for all diagrams)
@@ -272,7 +267,7 @@ namespace madmatrix
       // (= CD_ACCESS here) so get_coupling_def reads dpf_value with the right per-flavor stride.
       constexpr int ndpfbuf = ( nDPF > 0 ? nDPF * nMF * CDPF_ACCESS::flv_stride : 1 );
       // cppAlign is only defined for SIMD
-      alignas( mgOnGpu::cppAlign ) fptype dpf_value[ndpfbuf]{};
+      alignas( madmatrix::cppAlign ) fptype dpf_value[ndpfbuf]{};
       for( int idpf = 0; idpf < nDPF; idpf++ )
         for( int imf = 0; imf < nMF; imf++ )
         {
@@ -335,7 +330,7 @@ namespace madmatrix
     const int maxtry = std::min( maxtry0, nevt ); // 16, but at most nevt (avoid invalid memory access if nevt<maxtry0)
     // HELICITY LOOP: CALCULATE WAVEFUNCTIONS
     const int npagV = maxtry / neppV;
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT /* clang-format off */
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT /* clang-format off */
     // Mixed fptypes #537: float for color algebra and double elsewhere
     // Delay color algebra and ME updates (only on even pages)
     assert( npagV % 2 == 0 ); // SANITY CHECK for mixed fptypes: two neppV-pages are merged to one 2*neppV-page
@@ -357,7 +352,7 @@ namespace madmatrix
     for( int i = 0; i < maxtry0; ++i ) hgFlavorVec[i] = (unsigned int)iflav;
     for( int ipagV2 = 0; ipagV2 < npagV2; ++ipagV2 )
     {
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT /* clang-format off */
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT /* clang-format off */
       const int ievt00 = ipagV2 * neppV * 2; // loop on two SIMD pages (neppV events) at a time
 #else
       const int ievt00 = ipagV2 * neppV; // loop on one SIMD page (neppV events) at a time
@@ -369,13 +364,13 @@ namespace madmatrix
         {
           const int ievt = ievt00 + ieppV;
           allMEs[ievt] = 0;
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
           const int ievt2 = ievt00 + ieppV + neppV;
           allMEs[ievt2] = 0;
 #endif
         }
         constexpr fptype_amp_sv* jamp2_sv = nullptr; // no need for color selection during helicity filtering
-#if defined MGONGPU_CPPSIMD and !( defined MGONGPU_FPTYPE_AMP_FLOAT ) and defined MGONGPU_FPTYPE2_FLOAT
+#if !( defined MADMATRIX_FPTYPE_AMP_FLOAT ) and defined MADMATRIX_FPTYPE2_FLOAT
         cxtype_amp_sv jamp_sv[2 * njampso] = {}; // all zeros
 #else
         cxtype_amp_sv jamp_sv[njampso] = {}; // all zeros
@@ -389,7 +384,7 @@ namespace madmatrix
           {
             isGoodHel[ihel] = true;
           }
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
           const int ievt2 = ievt00 + ieppV + neppV;
           if( allMEs[ievt2] != 0 ) // NEW IMPLEMENTATION OF GETGOODHEL (#630): COMPARE EACH HELICITY CONTRIBUTION TO 0
           {
@@ -564,7 +559,7 @@ namespace madmatrix
 
     // === PART 1 - HELICITY LOOP: CALCULATE WAVEFUNCTIONS ===
     // (using precomputed good helicities)
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
     // Mixed fptypes #537: float for color algebra and double elsewhere
     // Delay color algebra and ME updates (only on even pages)
     assert( npagV % 2 == 0 );     // SANITY CHECK for mixed fptypes: two neppV-pages are merged to one 2*neppV-page
@@ -575,14 +570,14 @@ namespace madmatrix
 #ifdef _OPENMP
     // OMP multithreading #575 (NB: tested only with gcc11 so far)
 #define _OMPLIST0 allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, cGoodHel, cNGoodHel, npagV2, sampleSignedHelicity
-#define _OMPLIST1 , allDenominators, allNumerators, allChannelIds, mgOnGpu::icolamp, mgOnGpu::channel2iconfig
+#define _OMPLIST1 , allDenominators, allNumerators, allChannelIds, madmatrix::icolamp, madmatrix::channel2iconfig
 #pragma omp parallel for default( none ) shared( _OMPLIST0 _OMPLIST1 )
 #undef _OMPLIST0
 #undef _OMPLIST1
 #endif // _OPENMP
     for( int ipagV2 = 0; ipagV2 < npagV2; ++ipagV2 )
     {
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
       const int ievt00 = ipagV2 * neppV * 2; // loop on two SIMD pages (neppV events) at a time
 #else
       const int ievt00 = ipagV2 * neppV; // loop on one SIMD page (neppV events) at a time
@@ -590,14 +585,14 @@ namespace madmatrix
       // Running sum of partial amplitudes squared for event by event color selection (#402)
       fptype_amp_sv jamp2_sv[nParity * ncolor_flow] = {};
       fptype_sv MEs_ighel[ncomb] = {}; // sum of MEs for all good helicities up to ighel (first - and/or only - neppV page)
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
       fptype_sv MEs_ighel2[ncomb] = {}; // sum of MEs for all good helicities up to ighel (second neppV page)
 #endif
 
       // The color matrix does not depend on the helicity, so for a large-enough color matrix
       // (ColorMatrixData::shouldUseBlas) it pays to keep the jamps of every good helicity and
       // hand them all to BLAS in one call after the loop instead of the per-helicity color sum.
-#ifdef MGONGPU_CPP_HAS_BLAS
+#ifdef MADMATRIX_CPP_HAS_BLAS
       // The BLAS buffers below hold one ncolor jamp vector per helicity (cpp_blas_wanted is false once split)
       static_assert( !ColorMatrixData::shouldUseBlas || nampso == 1, "the BLAS color sum does not pair split amplitude orders" );
       if( ColorMatrixData::shouldUseBlas )
@@ -612,14 +607,14 @@ namespace madmatrix
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
           calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
         }
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
         color_sum_cpu_blas( allMEs, MEs_ighel, MEs_ighel2, ghelJamp_sv.data(), cNGoodHel, ievt00 );
 #else
         color_sum_cpu_blas( allMEs, MEs_ighel, nullptr, ghelJamp_sv.data(), cNGoodHel, ievt00 );
 #endif
       }
       else
-#endif // MGONGPU_CPP_HAS_BLAS
+#endif // MADMATRIX_CPP_HAS_BLAS
       {
         for( int ighel = 0; ighel < cNGoodHel; ighel++ )
         {
@@ -630,7 +625,7 @@ namespace madmatrix
           calculate_jamps( ihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
           color_sum_cpu( allMEs, jamp_sv, ievt00 );
           MEs_ighel[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
           MEs_ighel2[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );
 #endif
         }
@@ -646,13 +641,9 @@ namespace madmatrix
           {
             fptype ighelSum[ncomb];
             for( int ighel = 0; ighel < cNGoodHel; ighel++ )
-#if defined MGONGPU_CPPSIMD
               ighelSum[ighel] = MEs_ighel[ighel][ieppV];
-#else
-              ighelSum[ighel] = MEs_ighel[ighel];
-#endif
             *E_ACCESS::ieventAccessRecord( allMEs, ievt ) = select_helicity_signed( ighelSum, allrndhel[ievt], allselhel[ievt] );
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
             const int ievt2 = ievt00 + ieppV + neppV;
             for( int ighel = 0; ighel < cNGoodHel; ighel++ )
               ighelSum[ighel] = MEs_ighel2[ighel][ieppV];
@@ -663,11 +654,7 @@ namespace madmatrix
         }
         for( int ighel = 0; ighel < cNGoodHel; ighel++ )
         {
-#if defined MGONGPU_CPPSIMD
           const bool okhel = allrndhel[ievt] < ( MEs_ighel[ighel][ieppV] / MEs_ighel[cNGoodHel - 1][ieppV] );
-#else
-          const bool okhel = allrndhel[ievt] < ( MEs_ighel[ighel] / MEs_ighel[cNGoodHel - 1] );
-#endif
           if( okhel )
           {
             const int ihelF = cGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
@@ -675,7 +662,7 @@ namespace madmatrix
             break;
           }
         }
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
         const int ievt2 = ievt00 + ieppV + neppV;
         for( int ighel = 0; ighel < cNGoodHel; ighel++ )
         {
@@ -688,7 +675,7 @@ namespace madmatrix
         }
 #endif
       }
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
       const int vecsize = 2 * neppV;
 #else
       const int vecsize = neppV;
@@ -710,16 +697,16 @@ namespace madmatrix
         {
           const int ievt = ievt00 + ieppV;
           fptype numerator_sum = 0., normalization = 0.;
-          for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
+          for( unsigned int ichan = 0; ichan < madmatrix::nchannels; ichan++ )
           {
-            if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
+            if( madmatrix::channel2iconfig[ichan] == -1 ) continue;
             normalization += allNumerators[ievt / neppV * neppV * ndiagrams +
                                            ichan * neppV + ieppV % neppV];
           }
-          channelIdVec[ieppV] = mgOnGpu::nchannels;
-          for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
+          channelIdVec[ieppV] = madmatrix::nchannels;
+          for( unsigned int ichan = 0; ichan < madmatrix::nchannels; ichan++ )
           {
-            if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
+            if( madmatrix::channel2iconfig[ichan] == -1 ) continue;
             numerator_sum += allNumerators[ievt / neppV * neppV * ndiagrams +
                                            ichan * neppV + ieppV % neppV];
             if( allrnddiagram[ievt] < numerator_sum / normalization )
@@ -738,22 +725,22 @@ namespace madmatrix
         for( int ieppV = 0; ieppV < vecsize; ++ieppV )
         {
           unsigned int channelId = channelIdVec[ieppV];
-          if( channelId > mgOnGpu::nchannels )
+          if( channelId > madmatrix::nchannels )
           {
-            printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d which is greater than nchannels=%d\n", channelId, mgOnGpu::nchannels );
-            assert( channelId <= mgOnGpu::nchannels ); // SANITY CHECK #919 #910
+            printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d which is greater than nchannels=%d\n", channelId, madmatrix::nchannels );
+            assert( channelId <= madmatrix::nchannels ); // SANITY CHECK #919 #910
           }
           // NB (see #877): in the array channel2iconfig, the input index uses C indexing (channelId -1), the output index uses F indexing (iconfig)
-          const int iconfig = mgOnGpu::channel2iconfig[channelId - 1]; // map N_diagrams to N_config <= N_diagrams configs (fix LHE color mismatch #856: see also #826, #852, #853)
+          const int iconfig = madmatrix::channel2iconfig[channelId - 1]; // map N_diagrams to N_config <= N_diagrams configs (fix LHE color mismatch #856: see also #826, #852, #853)
           if( iconfig <= 0 )
           {
             printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d which has no associated SDE iconfig\n", channelId );
             assert( iconfig > 0 ); // SANITY CHECK #917
           }
-          else if( iconfig > (int)mgOnGpu::nconfigSDE )
+          else if( iconfig > (int)madmatrix::nconfigSDE )
           {
-            printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d (invalid SDE iconfig=%d\n > nconfig=%d)", channelId, iconfig, mgOnGpu::nconfigSDE );
-            assert( iconfig <= (int)mgOnGpu::nconfigSDE ); // SANITY CHECK #917
+            printf( "INTERNAL ERROR! Cannot choose an event-by-event random color for channelId=%d (invalid SDE iconfig=%d\n > nconfig=%d)", channelId, iconfig, madmatrix::nconfigSDE );
+            assert( iconfig <= (int)madmatrix::nconfigSDE ); // SANITY CHECK #917
           }
           fptype_amp targetamp[ncolor_flow] = { 0 };
           // NB (see #877): explicitly use 'icolC' rather than 'icol' to indicate that icolC uses C indexing in [0, N_colors-1]
@@ -763,13 +750,8 @@ namespace madmatrix
               targetamp[icolC] = 0;
             else
               targetamp[icolC] = targetamp[icolC - 1];
-#ifdef MGONGPU_CPPSIMD
-            if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] +=
+            if( madmatrix::icolamp[iconfig - 1][icolC] ) targetamp[icolC] +=
               jamp2_sv[icolC + ncolor_flow * ( ieppV / neppV )][ieppV % neppV];
-#else
-            if( mgOnGpu::icolamp[iconfig - 1][icolC] ) targetamp[icolC] +=
-              jamp2_sv[icolC + ncolor_flow * ( ieppV / neppV )];
-#endif
           }
           const int ievt = ievt00 + ieppV;
           for( int icolC = 0; icolC < ncolor_flow; icolC++ )
@@ -788,7 +770,7 @@ namespace madmatrix
         {
           const int ievt = ievt00 + ieppV;
           allselcol[ievt] = 0; // no color selected in Fortran range [1,ncolor] if channelId == 0 (see #931)
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
           const int ievt2 = ievt00 + ieppV + neppV;
           allselcol[ievt2] = 0; // no color selected in Fortran range [1,ncolor] if channelId == 0 (see #931)
 #endif

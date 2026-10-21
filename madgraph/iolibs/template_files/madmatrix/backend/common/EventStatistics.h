@@ -7,7 +7,7 @@
 #ifndef EventStatistics_H
 #define EventStatistics_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "ProcessData.h" // for npar (meGeVexponent)
 

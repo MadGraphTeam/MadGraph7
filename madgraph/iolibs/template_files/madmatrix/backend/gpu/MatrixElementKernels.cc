@@ -43,13 +43,13 @@ namespace madmatrix
     , m_matrixElements( matrixElements )
     , m_selhel( selhel )
     , m_selcol( selcol )
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
     , m_nevtProcessedByChannel()
     , m_tag()
 #endif
   {
     //std::cout << "DEBUG: MatrixElementKernelBase ctor " << this << std::endl;
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
     for( size_t channelId = 0; channelId < ProcessData::ndiagrams + 1; channelId++ ) // [0...ndiagrams] (TEMPORARY: 0=multichannel)
       m_nevtProcessedByChannel[channelId] = 0;
 #endif
@@ -60,17 +60,17 @@ namespace madmatrix
   MatrixElementKernelBase::~MatrixElementKernelBase()
   {
     //std::cout << "DEBUG: MatrixElementKernelBase dtor " << this << std::endl;
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
     MatrixElementKernelBase::dumpNevtProcessedByChannel();
 #endif
-#ifdef MGONGPUCPP_VERBOSE
+#ifdef MADMATRIX_VERBOSE
     MatrixElementKernelBase::dumpSignallingFPEs();
 #endif
   }
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
   void MatrixElementKernelBase::updateNevtProcessedByChannel( const unsigned int* pHstChannelIds, const size_t nevt )
   {
     if( pHstChannelIds != nullptr )
@@ -94,7 +94,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
   void MatrixElementKernelBase::dumpNevtProcessedByChannel()
   {
     size_t nevtProcessed = 0;
@@ -173,10 +173,10 @@ namespace madmatrix
     , m_pHelNumerators()
     , m_pHelDenominators()
     , m_colJamp2s( CPPProcess::ncolor_flow * this->nevt() )
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
     , m_hstChannelIds( this->nevt() )
 #endif
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
     , m_blasColorSum( false )
     , m_blasTf32Tensor( false )
     , m_pHelBlasTmp()
@@ -207,7 +207,7 @@ namespace madmatrix
       throw std::runtime_error( sstr.str() );
     }
     // Create the "one-helicity" jamp buffer that will be used for helicity filtering
-    m_pHelJamps.reset( new DeviceBufferAmp( ProcessData::njampso * mgOnGpu::nx2 * this->nevt() ) );
+    m_pHelJamps.reset( new DeviceBufferAmp( ProcessData::njampso * madmatrix::nx2 * this->nevt() ) );
     // Create the "one-helicity" numerator and denominator buffers that will be used for helicity filtering
     m_pHelNumerators.reset( new DeviceBufferSimple( this->nevt() * ProcessData::ndiagrams ) );
     m_pHelDenominators.reset( new DeviceBufferSimple( this->nevt() ) );
@@ -217,57 +217,57 @@ namespace madmatrix
     if( first )
     {
       first = false;
-      // Analyse environment variable CUDACPP_RUNTIME_BLASCOLORSUM
-      const char* blasEnv = getenv( "CUDACPP_RUNTIME_BLASCOLORSUM" );
+      // Analyse environment variable MADMATRIX_RUNTIME_BLASCOLORSUM
+      const char* blasEnv = getenv( "MADMATRIX_RUNTIME_BLASCOLORSUM" );
       if( blasEnv && std::string( blasEnv ) != "" )
       {
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
         if constexpr( ProcessData::nampso > 1 )
         {
           // the BLAS color sum contracts one ncolor jamp vector per helicity: it cannot pair
           // the jamps of several amplitude split orders, which color_sum_kernel does
-          std::cout << "WARNING! Env variable CUDACPP_RUNTIME_BLASCOLORSUM is set and non-empty, but the BLAS color sum does not pair split amplitude orders: disable BLAS" << std::endl;
+          std::cout << "WARNING! Env variable MADMATRIX_RUNTIME_BLASCOLORSUM is set and non-empty, but the BLAS color sum does not pair split amplitude orders: disable BLAS" << std::endl;
         }
         else
         {
           m_blasColorSum = true; // fixme? eventually set default=true and decode "Y" and "N" choices?
-          std::cout << "INFO: Env variable CUDACPP_RUNTIME_BLASCOLORSUM is set and non-empty: enable BLAS" << std::endl;
+          std::cout << "INFO: Env variable MADMATRIX_RUNTIME_BLASCOLORSUM is set and non-empty: enable BLAS" << std::endl;
         }
 #else
-        throw std::runtime_error( "Env variable CUDACPP_RUNTIME_BLASCOLORSUM is set and non-empty, but BLAS was disabled at build time" );
+        throw std::runtime_error( "Env variable MADMATRIX_RUNTIME_BLASCOLORSUM is set and non-empty, but BLAS was disabled at build time" );
 #endif
       }
       else
       {
-#ifndef MGONGPU_HAS_NO_BLAS
-        std::cout << "INFO: Env variable CUDACPP_RUNTIME_BLASCOLORSUM is empty or not set: disable BLAS" << std::endl;
+#ifndef MADMATRIX_HAS_NO_BLAS
+        std::cout << "INFO: Env variable MADMATRIX_RUNTIME_BLASCOLORSUM is empty or not set: disable BLAS" << std::endl;
 #else
         std::cout << "INFO: BLAS was disabled at build time" << std::endl;
 #endif
       }
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
 #ifdef __CUDACC__ // this must be __CUDACC__
-      // Analyse environment variable CUDACPP_RUNTIME_CUBLASTF32TENSOR
-      const char* blasEnv2 = getenv( "CUDACPP_RUNTIME_CUBLASTF32TENSOR" );
+      // Analyse environment variable MADMATRIX_RUNTIME_CUBLASTF32TENSOR
+      const char* blasEnv2 = getenv( "MADMATRIX_RUNTIME_CUBLASTF32TENSOR" );
       if( blasEnv2 && std::string( blasEnv2 ) != "" )
       {
         if( m_blasColorSum )
         {
-#ifdef MGONGPU_FPTYPE2_FLOAT
+#ifdef MADMATRIX_FPTYPE2_FLOAT
           m_blasTf32Tensor = true;
-          std::cout << "INFO: Env variable CUDACPP_RUNTIME_CUBLASTF32TENSOR is set and non-empty: enable CUBLAS_TF32_TENSOR_OP_MATH" << std::endl;
+          std::cout << "INFO: Env variable MADMATRIX_RUNTIME_CUBLASTF32TENSOR is set and non-empty: enable CUBLAS_TF32_TENSOR_OP_MATH" << std::endl;
 #else
-          std::cout << "WARNING! Env variable CUDACPP_RUNTIME_CUBLASTF32TENSOR is set and non-empty, but color sums use FP64" << std::endl;
+          std::cout << "WARNING! Env variable MADMATRIX_RUNTIME_CUBLASTF32TENSOR is set and non-empty, but color sums use FP64" << std::endl;
 #endif
         }
         else
-          std::cout << "WARNING! Env variable CUDACPP_RUNTIME_CUBLASTF32TENSOR is set and non-empty, but BLAS was disabled at runtime" << std::endl;
+          std::cout << "WARNING! Env variable MADMATRIX_RUNTIME_CUBLASTF32TENSOR is set and non-empty, but BLAS was disabled at runtime" << std::endl;
       }
-#ifdef MGONGPU_FPTYPE2_FLOAT
+#ifdef MADMATRIX_FPTYPE2_FLOAT
       else
       {
         if( m_blasColorSum )
-          std::cout << "INFO: Env variable CUDACPP_RUNTIME_CUBLASTF32TENSOR is empty or not set: keep cuBLAS math defaults" << std::endl;
+          std::cout << "INFO: Env variable MADMATRIX_RUNTIME_CUBLASTF32TENSOR is empty or not set: keep cuBLAS math defaults" << std::endl;
       }
 #endif
 #endif
@@ -280,7 +280,7 @@ namespace madmatrix
   MatrixElementKernelDevice::~MatrixElementKernelDevice()
   {
     //std::cout << "DEBUG: MatrixElementKernelDevice::dtor " << this << std::endl;
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
     if( m_blasHandle ) gpuBlasDestroy( m_blasHandle );
 #endif
     for( int ihel = 0; ihel < ProcessData::ncomb; ihel++ )
@@ -317,7 +317,7 @@ namespace madmatrix
     // Create one GPU stream for each good helicity
     for( int ighel = 0; ighel < nGoodHel; ighel++ )
       gpuStreamCreate( &m_helStreams[ighel] );
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
     // Create one cuBLAS/hipBLAS handle for each good helicity (attached to the default stream)
     if( m_blasColorSum )
     {
@@ -332,13 +332,15 @@ namespace madmatrix
     m_pHelMEs.reset( new DeviceBufferSimple( nGoodHelAlloc * nevt ) );
     // ... Create the "many-helicity" super-buffer of nGoodHel ME buffers (dynamically allocated because nGoodHel is determined at runtime)
     // ... (calling reset here deletes the previously created "one-helicity" buffers used for helicity filtering)
-    m_pHelJamps.reset( new DeviceBufferAmp( nGoodHelAlloc * ProcessData::njampso * mgOnGpu::nx2 * nevt ) );
+
+    m_pHelJamps.reset( new DeviceBufferAmp( nGoodHelAlloc * ProcessData::njampso * madmatrix::nx2 * nevt ) );
+    
     // ... Create the numerator and denominator buffers. These no longer carry a helicity dimension:
     // ... the numerators are accumulated in place over all good helicities via atomicAdd in calculate_jamps
     // ... ([nevt][ndiagrams]) and the denominators are derived from them ([nevt]).
     m_pHelNumerators.reset( new DeviceBufferSimple( ProcessData::ndiagrams * nevt ) );
     m_pHelDenominators.reset( new DeviceBufferSimple( nevt ) );
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
     // Create the "many-helicity" super-buffer of temporary buffers for the cuBLAS/hipBLAS intermediate
     // results in color_sum_blas, and in mixed precision mode for the converted jamps too
     // (see blasColorSumTmpSize in color_sum.h, which is where the size is defined)
@@ -353,7 +355,7 @@ namespace madmatrix
   void MatrixElementKernelDevice::computeMatrixElements( const bool useChannelIds )
   {
     gpuLaunchKernel( computeDependentCouplings, m_gpublocks, m_gputhreads, m_gs.data(), m_couplings.data() );
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
     fptype2* ghelAllBlasTmp = ( m_blasColorSum ? m_pHelBlasTmp->data() : nullptr );
     gpuBlasHandle_t* pBlasHandle = ( m_blasColorSum ? &m_blasHandle : nullptr );
 #else
@@ -362,7 +364,7 @@ namespace madmatrix
 #endif
     const unsigned int* pChannelIds = ( useChannelIds ? m_channelIds.data() : nullptr );
     sigmaKin( m_momenta.data(), m_couplings.data(), m_iflavorVec.data(), m_rndhel.data(), m_rndcol.data(), pChannelIds, nullptr, m_matrixElements.data(), m_selhel.data(), m_selcol.data(), m_colJamp2s.data(), m_pHelNumerators->data(), m_pHelDenominators->data(), nullptr, true, m_pHelMEs->data(), m_pHelJamps->data(), ghelAllBlasTmp, pBlasHandle, m_helStreams, false, m_gpublocks, m_gputhreads );
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
     //std::cout << "DEBUG: MatrixElementKernelDevice::computeMatrixElements " << this << " " << ( useChannelIds ? "T" : "F" ) << " " << nevt() << std::endl;
     copyHostFromDevice( m_hstChannelIds, m_channelIds ); // FIXME?!
     const unsigned int* pHstChannelIds = ( useChannelIds ? m_hstChannelIds.data() : nullptr );

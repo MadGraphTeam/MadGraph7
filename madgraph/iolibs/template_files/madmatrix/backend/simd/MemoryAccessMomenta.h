@@ -7,7 +7,7 @@
 #ifndef MemoryAccessMomenta_H
 #define MemoryAccessMomenta_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "ProcessData.h"
 #include "MemoryAccessHelpers.h"
@@ -33,11 +33,11 @@ namespace madmatrix
     // --- However, neppM is now decoupled from neppV (issue #176) and can be separately hardcoded
     // --- In practice, neppR, neppM and neppV could now (in principle) all be different
     // -----------------------------------------------------------------------------------------------
-    static constexpr int neppM = MGONGPU_CPPSIMD; // (DEFAULT) neppM=neppV for optimal performance
+    static constexpr int neppM = MADMATRIX_SIMD; // (DEFAULT) neppM=neppV for optimal performance
     //static constexpr int neppM = 64/sizeof(fptype_momenta); // maximum CPU vector width (512 bits): 8 (DOUBLE) or 16 (FLOAT)
     //static constexpr int neppM = 32/sizeof(fptype_momenta); // lower CPU vector width (256 bits): 4 (DOUBLE) or 8 (FLOAT)
     //static constexpr int neppM = 1; // *** NB: this is equivalent to AOS *** (slower: 4.66E6 instead of 5.09E9 in eemumu)
-    //static constexpr int neppM = MGONGPU_CPPSIMD*2; // FOR TESTS
+    //static constexpr int neppM = MADMATRIX_SIMD*2; // FOR TESTS
 
     // SANITY CHECK: check that neppM is a power of two
     static_assert( ispoweroftwo( neppM ), "neppM is not a power of 2" );
@@ -189,7 +189,7 @@ namespace madmatrix
                               const int ipar )
     {
       const fptype_momenta& out = kernelAccessIp4IparConst_s( buffer, ip4, ipar );
-#ifdef MGONGPU_SIMD_DENOM64
+#ifdef MADMATRIX_SIMD_DENOM64
       // assume load from one page return high and low
       static_assert( MemoryAccessMomentaBase::neppM == neppV, "SIMD denom64 (FPTYPE=v) assumes neppM == neppV" );
       return madmatrix::momvFromContiguousArray( out );
@@ -209,7 +209,7 @@ namespace madmatrix
           // This assumes alignment for momenta1d without checking - causes segmentation fault in reinterpret_cast if not aligned!
           return madmatrix::fptypevFromAlignedArray( out ); // use reinterpret_cast
         }
-        else if( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 )
+        else if( (size_t)( buffer ) % madmatrix::cppAlign == 0 )
         {
           //static bool first=true; if( first ){ std::cout << "WARNING! aligned AOSOA, reinterpret cast" << std::endl; first=false; } // SLOWER (5.00E6)
           // DEFAULT! A tiny bit (<1%) slower because of the alignment check (5.07E6 in eemumu 512y)

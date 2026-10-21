@@ -7,7 +7,7 @@
 #ifndef MATRIXELEMENTKERNELS_H
 #define MATRIXELEMENTKERNELS_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "ProcessData.h"
 #include "GpuAbstraction.h"
@@ -53,7 +53,7 @@ namespace madmatrix
     // Dump signalling FPEs (#831 and #837)
     static void dumpSignallingFPEs();
 
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
     // Add a MEK identifier for the channelId debug printout
     void setTagForNevtProcessedByChannel( const std::string& tag ) { m_tag = tag; }
 
@@ -94,7 +94,7 @@ namespace madmatrix
     // The buffer for the output color selection
     BufferSelectedColor& m_selcol;
 
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
     // The events-per-channel counter for debugging
     std::map<size_t, size_t> m_nevtProcessedByChannel;
 
@@ -161,13 +161,13 @@ namespace madmatrix
     // The super-buffer of ncolor_flow jamp2 buffers
     DeviceBufferAmp m_colJamp2s;
 
-#ifdef MGONGPU_CHANNELID_DEBUG
+#ifdef MADMATRIX_CHANNELID_DEBUG
     // The **host** buffer for the channelId array
     // FIXME? MEKD should accept a host buffer as an argument instead of a device buffer, so that a second copy can be avoided?
     PinnedHostBufferChannelIds m_hstChannelIds;
 #endif
 
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
     // Decide at runtime whether to use BLAS for color sums
     bool m_blasColorSum;
 

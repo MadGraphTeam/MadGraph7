@@ -30,7 +30,7 @@ namespace madmatrix
                           bool debug )
     : m_verbose( verbose )
     , m_debug( debug )
-#ifndef MGONGPU_HARDCODE_PARAM
+#ifndef MADMATRIX_HARDCODE_PARAM
     , m_pars( 0 )
 #endif
     , m_masses()
@@ -38,7 +38,7 @@ namespace madmatrix
     setHelicitiesAndFlavors( &tHel[0][0], &tFlavors[0][0] );
 
     // Enable SIGFPE traps for Floating Point Exceptions
-#ifdef MGONGPUCPP_DEBUG
+#ifdef MADMATRIX_DEBUG
     fpeEnable();
 #endif
   }
@@ -58,7 +58,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-#ifndef MGONGPU_HARDCODE_PARAM
+#ifndef MADMATRIX_HARDCODE_PARAM
   // Initialize process (with parameters read from user cards)
   void
   CPPProcess::initProc( const std::string& param_card_name )

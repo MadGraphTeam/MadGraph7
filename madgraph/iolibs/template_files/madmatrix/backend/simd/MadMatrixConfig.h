@@ -4,93 +4,90 @@
 // Further modified by: S. Hageboeck, O. Mattelaer, S. Roiser, J. Teig, A. Valassi (2020-2024).
 // Integrated with the MadGraph7 project in Feb 2026.
 
-#ifndef MGONGPUCONFIG_H
-#define MGONGPUCONFIG_H 1
+#ifndef MADMATRIXCONFIG_H
+#define MADMATRIXCONFIG_H 1
 
 #include <sstream>
 #include <string>
 
-// This build ships mgOnGpuVectors.h (the SIMD vector types). The headers every backend
+// This build ships MadMatrixVectors.h (the SIMD vector types). The headers every backend
 // shares (CPPProcess.h, Parameters.h, HelAmps_<model>.h) include it on this macro, not on
-// whether some mgOnGpuVectors.h happens to be reachable on the include path.
-#define MGONGPU_HAS_VECTORS_H 1
+// whether some MadMatrixVectors.h happens to be reachable on the include path.
+#define MADMATRIX_HAS_VECTORS_H 1
 
 // simd backend: always built with a plain host compiler, never nvcc/hipcc, so the
-// GPU-backend selection macro (see gpu/mgOnGpuConfig.h) is deliberately never
+// GPU-backend selection macro (see gpu/MadMatrixConfig.h) is deliberately never
 // defined here - single-file, all-backend headers rely on that to pick branches.
 
 // Choose floating point precision (for everything but color algebra #537)
-// If set from outside with e.g. -DMGONGPU_FPTYPE_FLOAT, nothing happens (#167)
-#if not defined MGONGPU_FPTYPE_DOUBLE and not defined MGONGPU_FPTYPE_FLOAT
-#define MGONGPU_FPTYPE_DOUBLE 1 // default
-//#define MGONGPU_FPTYPE_FLOAT 1 // 2x faster
+// If set from outside with e.g. -DMADMATRIX_FPTYPE_FLOAT, nothing happens (#167)
+#if not defined MADMATRIX_FPTYPE_DOUBLE and not defined MADMATRIX_FPTYPE_FLOAT
+#define MADMATRIX_FPTYPE_DOUBLE 1 // default
+//#define MADMATRIX_FPTYPE_FLOAT 1 // 2x faster
 #endif
 
 // Choose floating point precision (for color algebra alone #537)
-#if not defined MGONGPU_FPTYPE2_DOUBLE and not defined MGONGPU_FPTYPE2_FLOAT
-#define MGONGPU_FPTYPE2_DOUBLE 1 // default
-//#define MGONGPU_FPTYPE2_FLOAT 1 // 2x faster
+#if not defined MADMATRIX_FPTYPE2_DOUBLE and not defined MADMATRIX_FPTYPE2_FLOAT
+#define MADMATRIX_FPTYPE2_DOUBLE 1 // default
+//#define MADMATRIX_FPTYPE2_FLOAT 1 // 2x faster
 #endif
 
 // Choose whether to inline all HelAmps functions (can gain ~4x, issue #229)
-// By default off; set from outside with -DMGONGPU_INLINE_HELAMPS
-//#define MGONGPU_INLINE_HELAMPS 1
+// By default off; set from outside with -DMADMATRIX_INLINE_HELAMPS
+//#define MADMATRIX_INLINE_HELAMPS 1
 
 // Choose whether to hardcode cIPD physics parameters instead of reading user cards
-// By default off; set from outside with -DMGONGPU_HARDCODE_PARAM
-//#define MGONGPU_HARDCODE_PARAM 1
+// By default off; set from outside with -DMADMATRIX_HARDCODE_PARAM
+//#define MADMATRIX_HARDCODE_PARAM 1
 
 // Complex type in C++: cxsmpl by default, or std::complex (CHOOSE ONLY ONE)
-//#define MGONGPU_CPPCXTYPE_STDCOMPLEX 1 // ~8% slower on float, same on double
-#define MGONGPU_CPPCXTYPE_CXSMPL 1 // default
+//#define MADMATRIX_CPPCXTYPE_STDCOMPLEX 1 // ~8% slower on float, same on double
+#define MADMATRIX_CPPCXTYPE_CXSMPL 1 // default
 
 // No BLAS on the simd backend (cuBLAS/hipBLAS are GPU-only)
-#define MGONGPU_HAS_NO_BLAS 1
-
-// nsight compute (ncu) debugging is CUDA-only; always off here
-#undef MGONGPU_NSIGHT_DEBUG
+#define MADMATRIX_HAS_NO_BLAS 1
 
 // SANITY CHECKS
-#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE_FLOAT
-#error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_FPTYPE_DOUBLE or MGONGPU_FPTYPE_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE_FLOAT
+#error You must CHOOSE (ONE AND) ONLY ONE of MADMATRIX_FPTYPE_DOUBLE or MADMATRIX_FPTYPE_FLOAT
 #endif
-#if defined MGONGPU_FPTYPE2_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
-#error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_FPTYPE2_DOUBLE or MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE2_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
+#error You must CHOOSE (ONE AND) ONLY ONE of MADMATRIX_FPTYPE2_DOUBLE or MADMATRIX_FPTYPE2_FLOAT
 #endif
-#if defined MGONGPU_FPTYPE2_DOUBLE and defined MGONGPU_FPTYPE_FLOAT
+#if defined MADMATRIX_FPTYPE2_DOUBLE and defined MADMATRIX_FPTYPE_FLOAT
 #error You cannot use double precision for color algebra and single precision elsewhere
 #endif
-#if defined MGONGPU_CPPCXTYPE_STDCOMPLEX and defined MGONGPU_CPPCXTYPE_CXSMPL
-#error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_CPPCXTYPE_STDCOMPLEX or MGONGPU_CPPCXTYPE_CXSMPL for C++
+#if defined MADMATRIX_CPPCXTYPE_STDCOMPLEX and defined MADMATRIX_CPPCXTYPE_CXSMPL
+#error You must CHOOSE (ONE AND) ONLY ONE of MADMATRIX_CPPCXTYPE_STDCOMPLEX or MADMATRIX_CPPCXTYPE_CXSMPL for C++
 #endif
 
-// NB: namespace mgOnGpu includes types which are defined in exactly the same way for CPU and GPU builds (see #318 and #725)
-namespace mgOnGpu
+// NB: namespace madmatrix includes types which are defined in exactly the same way for CPU and GPU builds (see #318 and #725)
+namespace madmatrix
 {
   // Floating point type (for everything but color algebra #537): fptype
-#if defined MGONGPU_FPTYPE_DOUBLE
+#if defined MADMATRIX_FPTYPE_DOUBLE
   typedef double fptype; // double precision (8 bytes, fp64)
-#elif defined MGONGPU_FPTYPE_FLOAT
+#elif defined MADMATRIX_FPTYPE_FLOAT
   typedef float fptype;  // single precision (4 bytes, fp32)
 #endif
 
   // Floating point type (for color algebra alone #537): fptype2
-#if defined MGONGPU_FPTYPE2_DOUBLE
+#if defined MADMATRIX_FPTYPE2_DOUBLE
   typedef double fptype2; // double precision (8 bytes, fp64)
-#elif defined MGONGPU_FPTYPE2_FLOAT
+#elif defined MADMATRIX_FPTYPE2_FLOAT
   typedef float fptype2; // single precision (4 bytes, fp32)
 #endif
 
   // --- Mixed-precision stage types (3 independent precisions) ---
   // fptype       (== fptype_amp): wavefunctions, helicity amplitudes, ME, vertex
-  //                               and polarization computation (MGONGPU_FPTYPE_*)
+  //                               and polarization computation (MADMATRIX_FPTYPE_*)
   // fptype_momenta (== fptype_denom): momenta storage and in-vertex denominators
-  //                               (MGONGPU_FPTYPE_MOMENTA_*, default fptype)
-  // fptype2      (== fptype_colour): color algebra alone (MGONGPU_FPTYPE2_*)
+  //                               (MADMATRIX_FPTYPE_MOMENTA_*, default fptype)
+  // fptype2      (== fptype_colour): color algebra alone (MADMATRIX_FPTYPE2_*)
 
-#if defined MGONGPU_FPTYPE_MOMENTA_DOUBLE
+#if defined MADMATRIX_FPTYPE_MOMENTA_DOUBLE
   typedef double fptype_momenta;
-#elif defined MGONGPU_FPTYPE_MOMENTA_FLOAT
+#elif defined MADMATRIX_FPTYPE_MOMENTA_FLOAT
   typedef float fptype_momenta;
 #else
   typedef fptype fptype_momenta;
@@ -114,42 +111,14 @@ namespace mgOnGpu
   getCompiler()
   {
     std::stringstream out;
-    // HIP version (HIPCC)
-    // [Use __HIPCC__ instead of MGONGPUCPP_GPUIMPL here!]
-    // [This tests if 'hipcc' was used even to build a .cc file, even if not necessarily 'nvcc -x cu' for a .cu file]
-    // [Check 'hipcc -dM -E -x hip -I ../../src CPPProcess.cc | grep HIP']
-#ifdef __HIPCC__
-#if defined HIP_VERSION_MAJOR && defined HIP_VERSION_MINOR && defined HIP_VERSION_PATCH
-    out << "hipcc " << HIP_VERSION_MAJOR << "." << HIP_VERSION_MINOR << "." << HIP_VERSION_PATCH;
-#else
-    out << "hipcc UNKNOWN";
-#endif
-    out << " (";
-#endif
-    // CUDA version (NVCC)
-    // [Use __NVCC__ instead of MGONGPUCPP_GPUIMPL here!]
-    // [This tests if 'nvcc' was used even to build a .cc file, even if not necessarily 'nvcc -x cu' for a .cu file]
-    // [Check 'nvcc --compiler-options -dM -E dummy.c | grep CUDA': see https://stackoverflow.com/a/53713712]
-#ifdef __NVCC__
-#if defined __CUDACC_VER_MAJOR__ && defined __CUDACC_VER_MINOR__ && defined __CUDACC_VER_BUILD__
-    out << "nvcc " << __CUDACC_VER_MAJOR__ << "." << __CUDACC_VER_MINOR__ << "." << __CUDACC_VER_BUILD__;
-#else
-    out << "nvcc UNKNOWN";
-#endif
-    out << " (";
-#endif
-    // ICX version (either as CXX or as host compiler inside NVCC)
+    // ICX version
 #if defined __INTEL_COMPILER
 #error "icc is no longer supported: please use icx"
 #elif defined __INTEL_LLVM_COMPILER // alternative: __INTEL_CLANG_COMPILER
     out << "icx " << __INTEL_LLVM_COMPILER;
-#ifdef __NVCC__
-    out << ", ";
-#else
     out << " (";
 #endif
-#endif
-    // CLANG version (either as CXX or as host compiler inside NVCC or inside ICX)
+    // CLANG version (either as CXX or as host compiler inside ICX)
 #if defined __clang__
 #if defined __clang_major__ && defined __clang_minor__ && defined __clang_patchlevel__
 #ifdef __APPLE__
@@ -161,14 +130,14 @@ namespace mgOnGpu
     out << "clang UNKNOWKN";
 #endif
 #else
-    // GCC version (either as CXX or as host compiler inside NVCC)
+    // GCC version
 #if defined __GNUC__ && defined __GNUC_MINOR__ && defined __GNUC_PATCHLEVEL__
     out << "gcc " << __GNUC__ << "." << __GNUC_MINOR__ << "." << __GNUC_PATCHLEVEL__;
 #else
     out << "gcc UNKNOWKN";
 #endif
 #endif
-#if defined __HIPCC__ or defined __NVCC__ or defined __INTEL_LLVM_COMPILER
+#if defined __INTEL_LLVM_COMPILER
     out << ")";
 #endif
     return out.str();
@@ -176,56 +145,56 @@ namespace mgOnGpu
 }
 
 // Expose typedefs outside the namespace
-using mgOnGpu::fptype;
-using mgOnGpu::fptype2;
-using mgOnGpu::fptype_momenta;
-using mgOnGpu::fptype_denom;
-using mgOnGpu::fptype_amp;
-using mgOnGpu::fptype_colour;
+using madmatrix::fptype;
+using madmatrix::fptype2;
+using madmatrix::fptype_momenta;
+using madmatrix::fptype_denom;
+using madmatrix::fptype_amp;
+using madmatrix::fptype_colour;
 
 // Undefine ARM_NEON (hack for the 'scalar' backend on Apple silicon ARM)
-#ifdef MGONGPU_NOARMNEON
+#ifdef MADMATRIX_NOARMNEON
 #undef __ARM_NEON
 #endif
 
 // C++ SIMD vectorization width (this will be used to set neppV)
-#if defined __AVX512VL__ && defined MGONGPU_PVW512 // "512z" AVX512 512-bit: 8 (DOUBLE) or 16 (FLOAT)
-#ifdef MGONGPU_FPTYPE_DOUBLE
-#define MGONGPU_CPPSIMD 8
+#if defined __AVX512VL__ && defined MADMATRIX_PVW512 // "512z" AVX512 512-bit: 8 (DOUBLE) or 16 (FLOAT)
+#ifdef MADMATRIX_FPTYPE_DOUBLE
+#define MADMATRIX_SIMD 8
 #else
-#define MGONGPU_CPPSIMD 16
+#define MADMATRIX_SIMD 16
 #endif
 #elif defined __AVX512VL__ // "512y" AVX512 256-bit: 4 (DOUBLE) or 8 (FLOAT) [gcc default]
-#ifdef MGONGPU_FPTYPE_DOUBLE
-#define MGONGPU_CPPSIMD 4
+#ifdef MADMATRIX_FPTYPE_DOUBLE
+#define MADMATRIX_SIMD 4
 #else
-#define MGONGPU_CPPSIMD 8
+#define MADMATRIX_SIMD 8
 #endif
 #elif defined __AVX2__ // "avx2" 256-bit: 4 (DOUBLE) or 8 (FLOAT) [clang default]
-#ifdef MGONGPU_FPTYPE_DOUBLE
-#define MGONGPU_CPPSIMD 4
+#ifdef MADMATRIX_FPTYPE_DOUBLE
+#define MADMATRIX_SIMD 4
 #else
-#define MGONGPU_CPPSIMD 8
+#define MADMATRIX_SIMD 8
 #endif
 #elif defined __SSE4_2__ // "sse4" SSE4.2 128-bit: 2 (DOUBLE) or 4 (FLOAT) [Power9 default]
-#ifdef MGONGPU_FPTYPE_DOUBLE
-#define MGONGPU_CPPSIMD 2
+#ifdef MADMATRIX_FPTYPE_DOUBLE
+#define MADMATRIX_SIMD 2
 #else
-#define MGONGPU_CPPSIMD 4
+#define MADMATRIX_SIMD 4
 #endif
 #elif defined __ARM_NEON // ARM NEON 128-bit: 2 (DOUBLE) or 4 (FLOAT) [ARM default]
-#ifdef MGONGPU_FPTYPE_DOUBLE
-#define MGONGPU_CPPSIMD 2
+#ifdef MADMATRIX_FPTYPE_DOUBLE
+#define MADMATRIX_SIMD 2
 #else
-#define MGONGPU_CPPSIMD 4
+#define MADMATRIX_SIMD 4
 #endif
 #else // "none" i.e. no SIMD
-#undef MGONGPU_CPPSIMD
+#error The simd backend needs SSE4.2, AVX2, AVX512 or ARM NEON
 #endif
 
 // macro for computing denom twice to fill rest of SIMD lane for rest
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_FLOAT and defined MGONGPU_FPTYPE_MOMENTA_DOUBLE
-#define MGONGPU_SIMD_DENOM64 1
+#if defined MADMATRIX_FPTYPE_FLOAT and defined MADMATRIX_FPTYPE_MOMENTA_DOUBLE
+#define MADMATRIX_SIMD_DENOM64 1
 #endif
 
 // No-op debug macros (nsight-based debugging is CUDA-only, unused here)
@@ -257,4 +226,4 @@ ispoweroftwo( int n )
 #endif
 #endif
 
-#endif // MGONGPUCONFIG_H
+#endif // MADMATRIXCONFIG_H

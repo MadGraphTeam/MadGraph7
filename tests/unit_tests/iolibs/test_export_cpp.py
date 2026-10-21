@@ -325,7 +325,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
                           bool debug )
     : m_verbose( verbose )
     , m_debug( debug )
-#ifndef MGONGPU_HARDCODE_PARAM
+#ifndef MADMATRIX_HARDCODE_PARAM
     , m_pars( 0 )
 #endif
     , m_masses()
@@ -351,7 +351,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
       { 1, 1, 1, -1 } };
     static constexpr short tFlavors[nmaxflavor][npar] = {
       { 20, 20, 5, 5 } };
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     gpuMemcpyToSymbol( cHel, tHel, ncomb * npar * sizeof( short ) );
     gpuMemcpyToSymbol( cFlavors, tFlavors, nmaxflavor * npar * sizeof( short ) );
 #else
@@ -360,7 +360,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
 #endif
 
     // Enable SIGFPE traps for Floating Point Exceptions
-#ifdef MGONGPUCPP_DEBUG
+#ifdef MADMATRIX_DEBUG
     fpeEnable();
 #endif
   }
@@ -381,7 +381,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
         nGoodHel++;
       }
     }
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     gpuMemcpyToSymbol( dcNGoodHel, &nGoodHel, sizeof( int ) );
     gpuMemcpyToSymbol( dcGoodHel, goodHel, ncomb * sizeof( int ) );
 #endif
@@ -392,7 +392,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   __global__ void
   add_and_select_hel( int* allselhel,          // output: helicity selection[nevt]
                       const fptype* allrndhel, // input: random numbers[nevt] for helicity selection
@@ -435,7 +435,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
                           bool debug )
     : m_verbose( verbose )
     , m_debug( debug )
-#ifndef MGONGPU_HARDCODE_PARAM
+#ifndef MADMATRIX_HARDCODE_PARAM
     , m_pars( 0 )
 #endif
     , m_masses()
@@ -461,7 +461,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
       { 1, 1, 1, -1 } };
     static constexpr short tFlavors[nmaxflavor][npar] = {
       { 20, 20, 5, 5 } };
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     gpuMemcpyToSymbol( cHel, tHel, ncomb * npar * sizeof( short ) );
     gpuMemcpyToSymbol( cFlavors, tFlavors, nmaxflavor * npar * sizeof( short ) );
 #else
@@ -470,7 +470,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
 #endif
 
     // Enable SIGFPE traps for Floating Point Exceptions
-#ifdef MGONGPUCPP_DEBUG
+#ifdef MADMATRIX_DEBUG
     fpeEnable();
 #endif
   }
@@ -491,7 +491,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
         nGoodHel++;
       }
     }
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     gpuMemcpyToSymbol( dcNGoodHel, &nGoodHel, sizeof( int ) );
     gpuMemcpyToSymbol( dcGoodHel, goodHel, ncomb * sizeof( int ) );
 #endif
@@ -502,7 +502,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   __global__ void
   add_and_select_hel( int* allselhel,          // output: helicity selection[nevt]
                       const fptype* allrndhel, // input: random numbers[nevt] for helicity selection

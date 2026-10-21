@@ -376,9 +376,9 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 'The C++/CUDA backend can only read alphaS-independent parameters inside '
                 'a HelAmps routine, so this process can only be generated with '
                 '"output madevent" or "output standalone_fortran".' % (self.name, mdlname))
-        return ('#ifdef MGONGPU_HARDCODE_PARAM\n'
+        return ('#ifdef MADMATRIX_HARDCODE_PARAM\n'
                 '    constexpr auto %(var)s = Parameters::%(mdl)s;\n'
-                '#elif !defined MGONGPUCPP_GPUIMPL\n'
+                '#elif !defined MADMATRIX_GPUIMPL\n'
                 '    const auto %(var)s = Parameters::getInstance()->%(mdl)s;\n'
                 '#else\n'
                 '#error Model parameter %(mdl)s is used inside a HelAmps routine '
@@ -1678,7 +1678,7 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         # Require HRDCOD=1 in EFT and special handling in EFT for fptype=float using SIMD
         nbsmparam_indep_all_used = len( bsmparam_indep_real_used ) + 2 * len( bsmparam_indep_complex_used )
         replace_dict['max_flavor'] = max((len(ids) for ids in self.model['merged_particles'].values()), default=1)
-        replace_dict['bsmdefine'] = '#define MGONGPUCPP_NBSMINDEPPARAM_GT_0 1' if nbsmparam_indep_all_used > 0 else '#undef MGONGPUCPP_NBSMINDEPPARAM_GT_0'
+        replace_dict['bsmdefine'] = '#define MADMATRIX_NBSMINDEPPARAM_GT_0 1' if nbsmparam_indep_all_used > 0 else '#undef MADMATRIX_NBSMINDEPPARAM_GT_0'
         replace_dict['nbsmip'] = nbsmparam_indep_all_used # NB this is now done also for 'sm' processes (no check on model name, see PR #824)
         replace_dict['hasbsmip'] = '' if nbsmparam_indep_all_used > 0 else '//'
         replace_dict['bsmip'] = ', '.join( list(bsmparam_indep_real_used) + [ '%s.real(), %s.imag()'%(par,par) for par in bsmparam_indep_complex_used] ) if nbsmparam_indep_all_used > 0 else '(none)'
@@ -1820,8 +1820,8 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
         # Add Arithmetics include guarded by MADARITH_DOUBLEEXPANSION (only when that path is generated)
         if arith_doubleexpansion:
             file_h = file_h.replace(
-                '#include "mgOnGpuConfig.h"',
-                '#include "mgOnGpuConfig.h"\n#ifdef MADARITH_DOUBLEEXPANSION\n#include "Arithmetics/Double.h"\n#endif'
+                '#include "MadMatrixConfig.h"',
+                '#include "MadMatrixConfig.h"\n#ifdef MADARITH_DOUBLEEXPANSION\n#include "Arithmetics/Double.h"\n#endif'
             )
         writers.CPPWriter(model_h_file).writelines(file_h, formatting=False)
         logger.info('Created file %s in directory %s' \
@@ -2045,13 +2045,13 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             replace_dict['cipfhrdassign'] = ''
 
         # mdl_bsmIndepParam only exists as a symbol at all when the model has
-        # BSM params (see MGONGPUCPP_NBSMINDEPPARAM_GT_0, PR #625) - this is a
+        # BSM params (see MADMATRIX_NBSMINDEPPARAM_GT_0, PR #625) - this is a
         # pre-existing macro, not new, and must stay a #ifdef (not a runtime
         # check) since the symbol itself may not exist to name-lookup.
-        replace_dict['bsmassign'] = '''#ifdef MGONGPUCPP_NBSMINDEPPARAM_GT_0
+        replace_dict['bsmassign'] = '''#ifdef MADMATRIX_NBSMINDEPPARAM_GT_0
     if( Parameters::nBsmIndepParam > 0 ) setBsmIndepParam( m_pars->mdl_bsmIndepParam, Parameters::nBsmIndepParam );
 #endif'''
-        replace_dict['bsmhrdassign'] = '''#ifdef MGONGPUCPP_NBSMINDEPPARAM_GT_0
+        replace_dict['bsmhrdassign'] = '''#ifdef MADMATRIX_NBSMINDEPPARAM_GT_0
     if( Parameters::nBsmIndepParam > 0 ) setBsmIndepParam( Parameters::mdl_bsmIndepParam, Parameters::nBsmIndepParam );
 #endif'''
 
@@ -2118,7 +2118,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (invert .cc/.cu, add debug printouts)
     def generate_process_files(self):
-        """Generate mgOnGpuConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
+        """Generate MadMatrixConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.generate_process_files')
         self.edit_colordata() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
         self.edit_colorflows()
@@ -2256,10 +2256,10 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff.close()
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (add debug printouts and multichannel handling #473) 
-    def edit_mgonGPU(self):
-        """Generate mgOnGpuConfig.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_mgonGPU')
-        template = open(pjoin(self.template_path,'madmatrix','mgOnGpuConfig.h'),'r').read()
+    def edit_config(self):
+        """Generate the config header src/MadMatrixConfig.h"""
+        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_config')
+        template = open(pjoin(self.template_path,'madmatrix','MadMatrixConfig.h'),'r').read()
         replace_dict = {}
         nexternal, nincoming = self.matrix_elements[0].get_nexternal_ninitial()
         replace_dict['nincoming'] = nincoming
@@ -2267,7 +2267,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['nbhel'] = self.matrix_elements[0].get_helicity_combinations() # number of helicity combinations
         ###replace_dict['nwavefunc'] = self.matrix_elements[0].get_number_of_wavefunctions() # this is the correct P1-specific nwf, now in CPPProcess.h (#644)
         replace_dict['wavefuncsize'] = 6
-        ff = open(pjoin(self.path, '..','..','src','mgOnGpuConfig.h'),'w')
+        ff = open(pjoin(self.path, '..','..','src','MadMatrixConfig.h'),'w')
         ff.write(template % replace_dict)
         ff.close()
 
@@ -2376,7 +2376,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         lines.append('  // The squared order each pair of amplitude orders'
                      ' contributes to (symmetric)')
         # __device__: the GPU color sum reads them in a kernel (an empty macro
-        # on the CPU backends), as for mgOnGpu::icolamp
+        # on the CPU backends), as for madmatrix::icolamp
         lines.append('  __device__ constexpr int sqSoIndex[nampso][nampso] = {')
         lines.append(',\n'.join('    { %s }' % ', '.join(str(i) for i in row)
                                 for row in so['sqsoindex']))
@@ -2620,7 +2620,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 '    m_masses.assign( tMasses, tMasses + npar );')
 
     def get_hardcoded_initProc_lines(self, matrix_element):
-        """initProc_lines for CPPProcess::initProc, MGONGPU_HARDCODE_PARAM branch: Parameters has no instance here, so this stays imperative."""
+        """initProc_lines for CPPProcess::initProc, MADMATRIX_HARDCODE_PARAM branch: Parameters has no instance here, so this stays imperative."""
         initProc_lines = ['// Set external particle masses for this matrix element']
         for part in matrix_element.get_external_wavefunctions():
             initProc_lines.append('    m_masses.push_back( Parameters::%s );' % part.get('mass'))
@@ -3311,8 +3311,6 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
     # [GPUFOHelasCallWriter.get_external_line is called by GPUFOHelasCallWriter.get_external]
     # [=> GPUFOHelasCallWriter.get_external is called by GPUFOHelasCallWriter.generate_helas_call]
     # [GPUFOHelasCallWriter.generate_helas_call is called by UFOHelasCallWriter.get_wavefunction_call/get_amplitude_call]
-    # (cudacpp's MGONGPU_TEST_DIVERGENCE variant of the first ipzxxx/imzxxx/
-    # ixzxxx call is gone with them: get_external_line never emits those)
     def get_external(self, wf, argument):
         line = self.get_external_line(wf, argument)
         split_line = line.split(',')
