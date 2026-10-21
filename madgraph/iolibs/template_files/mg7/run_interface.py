@@ -16,7 +16,6 @@ each tool.
 """
 
 import contextlib
-import gzip
 import logging
 import os
 import shutil
@@ -25,6 +24,7 @@ import madgraph.interface.madevent_interface as madevent_interface
 import madgraph.madevent.gen_crossxhtml as gen_crossxhtml
 import madgraph.various.banner as banner_mod
 import madgraph.various.lhe_parser as lhe_parser
+from madgraph.various import misc
 
 pjoin = os.path.join
 logger = logging.getLogger('madevent')
@@ -105,8 +105,17 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
         merged.update(self.options_madgraph)
         merged.update(self.options_madevent)
         merged.update(options or {})
+        run_args = banner_mod.RunCardMG7(
+            pjoin(me_dir, 'Cards', 'run_card.toml'))['run']
+        use_pigz = run_args['use_pigz']
+        cpu_threads = run_args['cpu_thread_pool_size']
+        compression = {
+            'use_pigz': None if use_pigz == 'auto' else use_pigz,
+            'nb_core': cpu_threads if cpu_threads > 0 else None,
+        }
         # Make the run directory look enough like a madevent run for the
         # results-db scan (and the tools' event-file lookup) to be happy.
+        misc.configure_gzip(compression)
         self._prepare_run_dir()
         # MadEventCmd.__init__ announces itself with the MADEVENT welcome
         # banner and a run of "load configuration from ..." lines. That is
@@ -116,6 +125,8 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
         # quiet -- warnings and errors still come through.
         with _quiet_setup():
             super(MG7RunCmd, self).__init__(me_dir, merged, force_run=True)
+        # MadEventCmd reloads its own compression configuration during setup.
+        misc.configure_gzip(compression)
 
     # ------------------------------------------------------------------
     # directory / run-state adaptation
@@ -136,9 +147,7 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
             if self._mg7_lhe_path.endswith('.gz'):
                 shutil.copyfile(self._mg7_lhe_path, gz)
             else:
-                with open(self._mg7_lhe_path, 'rb') as fin, \
-                        gzip.open(gz, 'wb') as fout:
-                    shutil.copyfileobj(fin, fout)
+                misc.gzip(self._mg7_lhe_path, stdout=gz, keep=True)
 
     def load_results_db(self):
         """Fresh results database without recreating old runs from banners: the

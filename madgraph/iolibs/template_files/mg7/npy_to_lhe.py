@@ -157,6 +157,19 @@ def convert(path, output=None, seed=None, compress=True, me_dir=None) -> str:
     ms = _madspace()
     npy_path = resolve_event_file(path, me_dir)
     run_path = os.path.dirname(npy_path)
+    # A standalone conversion starts in a fresh process, so it has not seen
+    # the gzip configuration installed by the event-generation launcher.
+    card_root = me_dir or os.path.dirname(os.path.dirname(run_path))
+    card_path = os.path.join(card_root, "Cards", "run_card.toml")
+    if os.path.isfile(card_path):
+        from madgraph.various.banner import RunCardMG7
+        run_args = RunCardMG7(card_path)["run"]
+        use_pigz = run_args["use_pigz"]
+        cpu_threads = run_args["cpu_thread_pool_size"]
+        misc.configure_gzip({
+            "use_pigz": None if use_pigz == "auto" else use_pigz,
+            "nb_core": cpu_threads if cpu_threads > 0 else None,
+        })
     if not os.path.isfile(os.path.join(run_path, HEADER_FILE)):
         raise FileNotFoundError(
             "%s is missing: the run predates the npy->LHE conversion support "

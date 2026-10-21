@@ -1475,6 +1475,8 @@ def configure_gzip(configuration=None):
     configuration = {'use_pigz': None, 'nb_core': None} | configuration
 
     global _gzip_tool, _gzip_tool_supports_multithreading, _gzip_tool_max_cores
+    _gzip_tool_supports_multithreading = False
+    _gzip_tool_max_cores = None
 
     use_pigz = configuration['use_pigz']
     if use_pigz is None:
@@ -1482,15 +1484,16 @@ def configure_gzip(configuration=None):
         _gzip_tool = open_file.find_valid(['pigz', 'gzip'], 'gzip') 
     elif use_pigz:
         _gzip_tool = open_file.find_valid(['pigz'], 'pigz')
-        if not which(_gzip_tool):
-            logger.warning('Could not find valid `pigz` executable.')
+        if not _gzip_tool:
+            logger.warning('Could not find valid `pigz` executable; using gzip.')
+            _gzip_tool = open_file.find_valid(['gzip'], 'gzip')
     else:
         _gzip_tool = open_file.find_valid(['gzip'], 'gzip')
-        if not which(_gzip_tool):
+        if not _gzip_tool:
             logger.warning('Could not find valid `gzip` executable.')
 
     # If we use the pigz binary, enable multithreading support
-    if 'pigz' in _gzip_tool:
+    if _gzip_tool and 'pigz' in _gzip_tool:
         _gzip_tool_supports_multithreading = True
         if configuration['nb_core'] is not None:
             _gzip_tool_max_cores = configuration['nb_core']
@@ -1505,15 +1508,20 @@ GZIP_COMPRESSLEVEL = 6
 
 
 def gzip(path, stdout=None, error=True, forceexternal=False,
-         compresslevel=GZIP_COMPRESSLEVEL):
+         compresslevel=GZIP_COMPRESSLEVEL, keep=False):
     """ a standard replacement for os.system('gzip %s ' % path)"""
 
     # For large files (>256M), it is faster and safer to use a separate tool.
-    if os.path.getsize(path) > 256e6 or forceexternal:
+    if _gzip_tool and (os.path.getsize(path) > 256e6 or forceexternal):
+        command = [_gzip_tool]
         if _gzip_tool_supports_multithreading and _gzip_tool_max_cores is not None:
-            call([_gzip_tool, '-p', str(_gzip_tool_max_cores), '-f', path])
-        else:
-            call([_gzip_tool, '-f', path])
+            command += ['-p', str(_gzip_tool_max_cores)]
+        if keep:
+            command.append('-k')
+        if call(command + ['-f', path]) != 0:
+            if error:
+                raise RuntimeError('compressing %s with %s failed' % (path, _gzip_tool))
+            return
 
         if stdout:
             if not stdout.endswith(".gz"):
@@ -1533,14 +1541,18 @@ def gzip(path, stdout=None, error=True, forceexternal=False,
              ziplib.open(stdout, 'wb', compresslevel=compresslevel) as f:
             shutil.copyfileobj(fsock, f, 4 * 1024 * 1024)
     except OverflowError:
-        gzip(path, stdout, error=error, forceexternal=True)
+        if not _gzip_tool:
+            raise
+        return gzip(path, stdout, error=error, forceexternal=True,
+                    compresslevel=compresslevel, keep=keep)
     except Exception:
         if error:
             raise
         else:
             return
-    finally:
-        os.remove(path)
+    else:
+        if not keep:
+            os.remove(path)
     
 #
 # Global function to open supported file types

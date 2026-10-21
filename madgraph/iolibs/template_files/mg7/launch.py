@@ -299,6 +299,12 @@ class MadgraphProcess:
 
     def load_cards(self) -> None:
         self.run_card = RunCardMG7(os.path.join("Cards", "run_card.toml"))
+        use_pigz = self.run_card["run"]["use_pigz"]
+        cpu_threads = self.run_card["run"]["cpu_thread_pool_size"]
+        misc.configure_gzip({
+            "use_pigz": None if use_pigz == "auto" else use_pigz,
+            "nb_core": cpu_threads if cpu_threads > 0 else None,
+        })
         # Resolved once so every generator built during this run shares the same
         # seed; the concrete value (even if randomly drawn) is recorded in each
         # generator's info.json.
@@ -2202,7 +2208,8 @@ class MadgraphProcess:
                 json.dump(systematics_data, f)
         if self.run_card["gridpack"]["compress"]:
             archive_path = gridpack_path + ".tar.gz"
-            pigz = shutil.which("pigz")
+            use_pigz = self.run_card["run"]["use_pigz"]
+            pigz = (shutil.which("pigz") if use_pigz is not False else None)
             if pigz:
                 # multi-threaded gzip
                 with open(archive_path, "wb") as f:
@@ -2210,7 +2217,11 @@ class MadgraphProcess:
                         ["tar", "-cf", "-", "-C", self.run_path, "gridpack"],
                         stdout=subprocess.PIPE,
                     )
-                    gz = subprocess.run([pigz, "-c"], stdin=tar.stdout, stdout=f)
+                    gz_command = [pigz, "-c"]
+                    cpu_threads = self.run_card["run"]["cpu_thread_pool_size"]
+                    if cpu_threads > 0:
+                        gz_command += ["-p", str(cpu_threads)]
+                    gz = subprocess.run(gz_command, stdin=tar.stdout, stdout=f)
                     tar.stdout.close()
                     if tar.wait() != 0 or gz.returncode != 0:
                         raise RuntimeError("compressing the gridpack failed")

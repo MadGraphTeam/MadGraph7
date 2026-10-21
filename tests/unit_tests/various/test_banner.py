@@ -1544,6 +1544,21 @@ c
 class TestRunCardMG7(unittest.TestCase):
     """Test the TOML run_card (RunCardMG7) used by the mg7/madnis mode."""
 
+    def test_gridpack_pigz_setting(self):
+        import io
+        import tomllib
+        for value in ("auto", True, False):
+            card = bannermod.RunCardMG7()
+            card.set("run.use_pigz", value)
+            output = io.StringIO()
+            card.write_gridpack_card(output)
+            parsed = tomllib.loads(output.getvalue())
+            self.assertEqual(parsed["run"]["use_pigz"], value)
+            full_output = io.StringIO()
+            card.write(full_output)
+            self.assertEqual(
+                tomllib.loads(full_output.getvalue())["run"]["use_pigz"], value)
+
     template = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files',
                      'mg7', 'run_card.toml')
 

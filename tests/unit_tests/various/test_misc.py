@@ -16,11 +16,62 @@
 
 from __future__ import absolute_import
 import os
+import gzip
+import tempfile
 import unittest
 import subprocess
 from unittest import mock
 import madgraph.various.misc as misc
 class TEST_misc(unittest.TestCase):
+
+    def test_gzip_keep_preserves_plain_source(self):
+        data = b"<event>\n1 2 3\n</event>\n" * 100
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'events.lhe')
+            with open(path, 'wb') as out:
+                out.write(data)
+            misc.gzip(path, keep=True)
+            with open(path, 'rb') as inp:
+                self.assertEqual(inp.read(), data)
+            with gzip.open(path + '.gz', 'rb') as inp:
+                self.assertEqual(inp.read(), data)
+
+    def test_external_gzip_keep_passes_thread_limit(self):
+        original = (misc._gzip_tool, misc._gzip_tool_supports_multithreading,
+                    misc._gzip_tool_max_cores)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, 'events.lhe')
+                with open(path, 'wb') as out:
+                    out.write(b'<event>\n</event>\n')
+                with mock.patch.object(misc.open_file, 'find_valid',
+                                       return_value='pigz'), \
+                     mock.patch.object(misc, 'call', return_value=0) as call:
+                    misc.configure_gzip({'use_pigz': True, 'nb_core': 2})
+                    misc.gzip(path, forceexternal=True, keep=True)
+                    call.assert_called_once_with(
+                        ['pigz', '-p', '2', '-k', '-f', path])
+        finally:
+            (misc._gzip_tool, misc._gzip_tool_supports_multithreading,
+             misc._gzip_tool_max_cores) = original
+
+    def test_configure_gzip_resets_pigz_threads(self):
+        original = (misc._gzip_tool, misc._gzip_tool_supports_multithreading,
+                    misc._gzip_tool_max_cores)
+        try:
+            with mock.patch.object(misc.open_file, 'find_valid',
+                                   side_effect=lambda choices, _: choices[0]):
+                misc.configure_gzip({'use_pigz': True, 'nb_core': 3})
+                self.assertEqual(misc._gzip_tool, 'pigz')
+                self.assertTrue(misc._gzip_tool_supports_multithreading)
+                self.assertEqual(misc._gzip_tool_max_cores, 3)
+                misc.configure_gzip({'use_pigz': False})
+                self.assertEqual(misc._gzip_tool, 'gzip')
+                self.assertFalse(misc._gzip_tool_supports_multithreading)
+                self.assertIsNone(misc._gzip_tool_max_cores)
+        finally:
+            (misc._gzip_tool, misc._gzip_tool_supports_multithreading,
+             misc._gzip_tool_max_cores) = original
     
     def test_equal(self):
         
