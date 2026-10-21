@@ -236,6 +236,17 @@ impl<N: FastNumerator> FastNumerator for ProfiledNumerator<'_, N> {
         self.record(started, lanes.len());
         result
     }
+    // Per-lane rank: the engine lowers lanes declared at n+2 only through
+    // these; the trait defaults would silently keep the rank n+2 engine.
+    fn lane_rank(&mut self, lane: usize) -> Option<usize> {
+        self.inner.lane_rank(lane)
+    }
+    fn lower_rank(&mut self, lanes: &[usize], rank: usize) -> Result<()> {
+        self.inner.lower_rank(lanes, rank)
+    }
+    fn restore_rank(&mut self) {
+        self.inner.restore_rank()
+    }
 }
 
 struct ProfiledMasters<'a> {
