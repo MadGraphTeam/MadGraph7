@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -176,6 +177,120 @@ class PrivateFilesMixin:
 
 
 class PrivateFilesTest(PrivateFilesMixin, unittest.TestCase):
+
+    def release_fixture(self):
+        """A real tiny Git source tree and install, with no numerical engine."""
+        def git(*args):
+            return subprocess.check_output(["git", *args], cwd=self.root, stderr=subprocess.DEVNULL).decode().strip()
+        git("init", "--quiet")
+        self.put(self.root / "madgraph/source.py", "committed generator\n")
+        self.put(self.root / "LICENSE", "symlink target outside generator paths\n")
+        (self.root / "madgraph/LICENSE").symlink_to("../LICENSE")
+        pins = {"ninjars": "a" * 40, "oneloopmaster": "b" * 40, "symbolica": "c" * 40}
+        packages = [{"name": name, "version": "1.0.0", "source": "git+https://example.invalid/" + pin + "#" + pin}
+                    for name, pin in (("ninjars", pins["ninjars"]), ("ninjars-symbolica", pins["ninjars"]),
+                                      ("oneloop", pins["oneloopmaster"]), ("symbolica", pins["symbolica"]),
+                                      ("numerica", pins["symbolica"]), ("graphica", pins["symbolica"]))]
+        lock = "version = 4\n" + "\n".join("[[package]]\n" + "\n".join(f"{k} = {json.dumps(v)}" for k, v in package.items()) for package in packages)
+        self.put(self.root / "vendor/ninjars/Cargo.toml", '[package]\nname = "test-cohort"\nversion = "0.1.0"\n')
+        self.put(self.root / "vendor/ninjars/Cargo.lock", lock)
+        git("add", ".")
+        git("-c", "user.name=Audit test", "-c", "user.email=audit@example.invalid", "commit", "--quiet", "-m", "fixture")
+        revision = git("rev-parse", "HEAD")
+        install = self.root / "installed"
+        manifest = self.put(install / "Cargo.toml", (self.root / "vendor/ninjars/Cargo.toml").read_bytes())
+        lockfile = self.put(install / "Cargo.lock", lock)
+        archive = self.put(install / "libninjars.a", b"independent archive fixture\n")
+        config = self.dump(install / "config.json", {"abi_version": 3, "quad_precision": True,
+            "build_provenance": {"manifest_sha256": policy.workers.digest(manifest), "lock_sha256": policy.workers.digest(lockfile),
+                                 "git_dependencies": sorted(packages, key=lambda item: (item["name"], item["source"]))}})
+        state = policy._committed_generator_tree(revision)
+        self.dump(self.root / "generation/status.json", {"complete": True, "git_revision": revision,
+            "generator_tree_state": state, "generator_tree_state_sha256": policy.bench.content_digest(state)})
+        value = {"schema": policy.COHORT_SCHEMA, "numerical_revision": revision, "generation_revision": revision,
+            "generator_identity_sha256": policy.bench.content_digest(state), "runtime_identity_sha256": "d" * 64,
+            "archive_sha256": policy.workers.digest(archive), "generation_root": "generation", "dependency_pins": pins,
+            "installation": {name: policy.v2.bound_file(path) for name, path in
+                (("archive", archive), ("configuration", config), ("cargo_manifest", manifest), ("cargo_lock", lockfile))}}
+        return git, value
+
+    def release_environment(self):
+        stack = ExitStack()
+        stack.enter_context(mock.patch.object(policy, "ROOT", self.root))
+        stack.enter_context(mock.patch.object(policy.v2, "ROOT", self.root))
+        stack.enter_context(mock.patch.object(policy.bench, "GENERATOR_PATHS", ("madgraph",)))
+        return stack
+
+    def test_explicit_release_is_bound_to_real_committed_symlinks_install_and_pins(self):
+        with self.release_environment():
+            _, value = self.release_fixture()
+            path = self.dump(self.root / "cohort.json", policy.v2.seal(value))
+            self.assertEqual(policy.validate_cohort(path), policy.v2.seal(value))
+            actual = policy.candidate_cohort({"candidate_cohort": policy.v2.bound_file(path)})
+            self.assertEqual(actual["dependency_pins"], value["dependency_pins"])
+            state = policy._committed_generator_tree(value["generation_revision"])
+            self.assertEqual(state["tracked"]["madgraph/LICENSE"], policy.workers.digest(self.root / "LICENSE"))
+        self.assertEqual(policy.candidate_cohort()["archive_sha256"], policy.ARCHIVE_SHA256)
+
+    def test_release_self_consistent_forged_source_pins_and_install_are_rejected(self):
+        with self.release_environment():
+            _, good = self.release_fixture()
+            for mutation in ("short-revision", "tree", "pin", "archive", "missing-install", "configuration"):
+                value = copy.deepcopy(good)
+                if mutation == "short-revision": value["generation_revision"] = "a" * 8
+                elif mutation == "tree": value["generator_identity_sha256"] = "0" * 64
+                elif mutation == "pin": value["dependency_pins"]["oneloopmaster"] = "0" * 40
+                elif mutation == "archive": value["archive_sha256"] = "0" * 64
+                elif mutation == "missing-install": value["installation"].pop("cargo_lock")
+                else:
+                    config = policy.checked(value["installation"]["configuration"])
+                    data = json.loads(config.read_text()); data["build_provenance"]["git_dependencies"].pop()
+                    self.dump(config, data); value["installation"]["configuration"] = policy.v2.bound_file(config)
+                path = self.dump(self.root / "cohort.json", policy.v2.seal(value))
+                with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
+                    policy.validate_cohort(path)
+
+    def test_release_changed_lock_and_different_production_commit_are_rejected(self):
+        with self.release_environment():
+            git, good = self.release_fixture()
+            lock = policy.checked(good["installation"]["cargo_lock"])
+            original = lock.read_bytes()
+            lock.write_text(lock.read_text().replace('version = 4', 'version = 3'))
+            value = copy.deepcopy(good); value["installation"]["cargo_lock"] = policy.v2.bound_file(lock)
+            path = self.dump(self.root / "cohort.json", policy.v2.seal(value))
+            with self.assertRaisesRegex(RuntimeError, "Cargo source"):
+                policy.validate_cohort(path)
+            lock.write_bytes(original)
+            self.put(self.root / "vendor/new.rs", "changed numerical source\n")
+            git("add", "vendor/new.rs")
+            git("-c", "user.name=Audit test", "-c", "user.email=audit@example.invalid", "commit", "--quiet", "-m", "different source")
+            value = copy.deepcopy(good); value["numerical_revision"] = git("rev-parse", "HEAD")
+            path = self.dump(self.root / "cohort.json", policy.v2.seal(value))
+            with self.assertRaisesRegex(RuntimeError, "different production source"):
+                policy.validate_cohort(path)
+
+    def test_release_collector_cannot_inherit_old_or_mismatched_policy_cohort(self):
+        cohort = policy.candidate_cohort()
+        identities = {name: cohort[name] for name in ("numerical_revision", "generation_revision",
+            "generator_identity_sha256", "runtime_identity_sha256", "archive_sha256")}
+        report = self.root / "release-correctness"
+        binding = self.dump(report / "bindings.json", policy.v2.seal({"schema": "supplement-source-bindings-v1",
+            "role_map": {"candidate": "candidate_corrected"}, "report": policy.v2.relative(report), "targets": {}}))
+        for mutation in ("missing-policy-cohort", "wrong-spec-runtime", "wrong-protocol-archive"):
+            spec = {"schema": "final-pins-core-correctness-spec-v1", "candidate_cohort": dict(identities)}
+            protocol = {"candidate_cohort": dict(identities)}
+            rules = {"candidate_cohort": {"path": "not-read", "sha256": "0" * 64}}
+            if mutation == "missing-policy-cohort": rules.pop("candidate_cohort")
+            elif mutation == "wrong-spec-runtime": spec["candidate_cohort"]["runtime_identity_sha256"] = "f" * 64
+            else: protocol["candidate_cohort"]["archive_sha256"] = "f" * 64
+            self.dump(report / "input-spec.json", policy.v2.seal(spec))
+            protocol["input_spec"] = policy.v2.bound_file(report / "input-spec.json")
+            with self.subTest(mutation=mutation), ExitStack() as context:
+                context.enter_context(mock.patch.object(policy, "validate_policy", return_value=(rules, {}, {}, {})))
+                context.enter_context(mock.patch.object(policy, "candidate_cohort", return_value=cohort))
+                context.enter_context(mock.patch.object(policy, "_check_protocol", return_value=protocol))
+                with self.assertRaisesRegex(RuntimeError, "explicit cohort|differs from qualified"):
+                    policy.checked_correctness(binding, self.root / "unused-policy.json")
 
     def test_literal_card_parser_rejects_missing_values_and_wrong_or_false_selector(self):
         card = self.put(self.root / "card.dat", "#MLReductionLib\n8\n#UseQPIntegrandForNinjaRS\n.true.\n")

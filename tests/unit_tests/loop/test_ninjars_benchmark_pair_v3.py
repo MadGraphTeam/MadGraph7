@@ -214,6 +214,41 @@ class ExplicitPairCollectorTest(unittest.TestCase):
         self.assertIs(pair.bench.run, original_run)
         self.assertIs(pair.workers.subprocess, original_subprocess)
 
+    def test_fresh_representative_child_is_explicitly_owned_and_reaped_on_timeout(self):
+        process = mock.Mock(pid=os.getpid())
+        process.poll.return_value = None
+        process.wait.side_effect = [subprocess.TimeoutExpired("check_fresh", 7200), 0]
+        command = ["taskset", "-c", "190", "./check_fresh", "points.dat", "1"]
+        with mock.patch.object(pair.subprocess, "Popen", return_value=process), \
+                mock.patch.object(pair.os, "killpg", side_effect=self.signal_group) as killpg:
+            with self.assertRaises(subprocess.TimeoutExpired):
+                with pair.owned_preparation(self.report, fresh_cpu=190):
+                    pair.workers.subprocess.run(command, cwd=self.root,
+                        env={name: "1" for name in pair.THREADS}, stdout=mock.Mock(),
+                        stderr=subprocess.STDOUT, timeout=7200., check=True)
+        self.assertEqual(process.wait.call_count, 2)
+        self.assertEqual([call for call in killpg.call_args_list if call.args[1] != 0],
+                         [mock.call(process.pid, pair.signal.SIGTERM)])
+        events = [json.loads(line) for line in (self.report / "process-ledger.jsonl").read_text().splitlines()]
+        self.assertEqual(events[0]["command"], command)
+        self.assertTrue(events[-1]["reaped"])
+
+    def test_pair_default_cannot_launch_fresh_or_change_fresh_cpu_threads(self):
+        command = ["taskset", "-c", "190", "./check_fresh", "points.dat", "1"]
+        options = dict(cwd=self.root, env={name: "1" for name in pair.THREADS},
+                       stdout=mock.Mock(), stderr=subprocess.STDOUT, timeout=7200., check=True)
+        with mock.patch.object(pair.subprocess, "Popen") as popen:
+            with pair.owned_preparation(self.report):
+                with self.assertRaisesRegex(ValueError, "frozen prepare"):
+                    pair.workers.subprocess.run(command, **options)
+            with pair.owned_preparation(self.report, fresh_cpu=190):
+                changed = {**options, "env": {**options["env"], "RAYON_NUM_THREADS": "2"}}
+                with self.assertRaisesRegex(ValueError, "fresh-process override"):
+                    pair.workers.subprocess.run(command, **changed)
+                with self.assertRaisesRegex(ValueError, "frozen prepare"):
+                    pair.workers.subprocess.run([*command[:2], "207", *command[3:]], **options)
+        popen.assert_not_called()
+
     @staticmethod
     def signal_group(pid, sig):
         if sig == 0:
@@ -342,6 +377,66 @@ class ExplicitPairCollectorTest(unittest.TestCase):
                 changed = copy.deepcopy(spec); changed[field] = value
                 with self.subTest(field=field), self.assertRaises(ValueError):
                     pair.validate_spec(pair.policy.seal(changed))
+
+    def test_explicit_new_release_cannot_inherit_any_historical_identity(self):
+        cohort = {"numerical_revision": "1" * 40,
+                  "generation_revision": "2" * 40,
+                  "generator_identity_sha256": "3" * 64,
+                  "runtime_identity_sha256": "4" * 64,
+                  "archive_sha256": "5" * 64}
+        self.assertEqual(pair.candidate_cohort({"candidate_cohort": cohort}), cohort)
+        for name in cohort:
+            changed = dict(cohort); del changed[name]
+            with self.subTest(missing=name), self.assertRaisesRegex(ValueError, "complete"):
+                pair.candidate_cohort({"candidate_cohort": changed})
+        for value in (None, {}, {**cohort, "numerical_revision": "HEAD"},
+                      {**cohort, "archive_sha256": "5" * 40},
+                      {**cohort, "unexpected": "ignored"}):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                pair.candidate_cohort({"candidate_cohort": value})
+
+    def test_new_cohort_rejects_old_runtime_even_when_other_spec_fields_match(self):
+        archive = "5" * 64
+        runtime = pair.policy.seal({"schema": "reducer-runtime-signature-v2",
+                                   "libraries": {"libninjars.a": archive}})
+        cohort = {"numerical_revision": "1" * 40, "generation_revision": "2" * 40,
+                  "generator_identity_sha256": "3" * 64,
+                  "runtime_identity_sha256": runtime["identity_sha256"],
+                  "archive_sha256": archive}
+        spec = {"schema": pair.SCHEMA, "pair_targets": [list(t) for t in pair.TARGETS],
+                "role_map": pair.ROLES, "cpu": 207, "repetitions": 7,
+                "minimum_seconds": 1., "timeout": 86400.,
+                "literal_baseline_revision": pair.bench.BASELINE_REVISION,
+                "candidate_cohort": cohort,
+                "candidate_generator_identity_sha256": cohort["generator_identity_sha256"],
+                "candidate_runtime_signature": runtime, "production_sources": {"source": "hash"},
+                "sources": {name: {"sha256": pair.workers.digest(ROOT / "tools" / name)}
+                            for name in pair.workers.SOURCE_NAMES}}
+        spec["sources"]["collector"] = {"sha256": pair.workers.digest(Path(pair.__file__))}
+        pair.validate_spec(pair.policy.seal(spec))
+        for field, value in (("runtime_identity_sha256", pair.RUNTIME_ID),
+                             ("archive_sha256", pair.ARCHIVE_SHA256),
+                             ("generator_identity_sha256", pair.GENERATOR_ID)):
+            changed = copy.deepcopy(spec); changed["candidate_cohort"][field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "cohort"):
+                pair.validate_spec(pair.policy.seal(changed))
+
+    def test_new_cohort_production_check_uses_its_committed_numerical_revision(self):
+        name = "madgraph/__init__.py"
+        cohort = {"numerical_revision": "1" * 40, "generation_revision": "2" * 40,
+                  "generator_identity_sha256": "3" * 64,
+                  "runtime_identity_sha256": "4" * 64, "archive_sha256": "5" * 64}
+        spec = {"candidate_cohort": cohort,
+                "production_sources": {name: pair.workers.digest(ROOT / name)}, "sources": {}}
+        def git_run(command, **kwargs):
+            if cohort["numerical_revision"] in command:
+                raise subprocess.CalledProcessError(1, command)
+        with mock.patch.object(pair.subprocess, "check_output", return_value=(name+"\0").encode()), \
+                mock.patch.object(pair.subprocess, "run", side_effect=git_run) as run:
+            with self.assertRaises(subprocess.CalledProcessError):
+                pair.check_production(spec)
+        self.assertTrue(any(cohort["numerical_revision"] in call.args[0] for call in run.call_args_list))
+        self.assertFalse(any(pair.NUMERICAL_REVISION in call.args[0] for call in run.call_args_list))
 
     def old_origin(self):
         output = self.root / "old-origin"

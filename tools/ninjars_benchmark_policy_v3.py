@@ -10,11 +10,16 @@ from collections import Counter
 import copy
 from functools import lru_cache
 import hashlib
+import io
 import json
 import math
 from pathlib import Path
+import posixpath
 import re
 import shutil
+import subprocess
+import tarfile
+import tomllib
 
 import ninjars_benchmark as bench
 import ninjars_benchmark_workers as workers
@@ -36,6 +41,7 @@ GENERATOR_ID = "34aed45638a2e18b18135179e749317c3cf9a0fdd3bb404e43fe68d23837c6de
 RUNTIME_ID = "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff"
 ARCHIVE_SHA256 = "800a941faf3cdfdab764fdffe1d5ab73f84984a786aa194596b753af6b6f5d42"
 GENERATION_ROOT = ROOT / "docs/benchmarkfolder/policy-v2/final-core-generation-v1"
+COHORT_SCHEMA = "madloop-nrs-candidate-cohort-v1"
 USER_PRIORITY = ("Continue as planned, but focus first on getting a validated MadLoop+NinjaRS version. "
                  "Then if you uncovered issues with other reduction tools (e.g. COLLIER), then just "
                  "post an issue with an MRE to the corresponding github")
@@ -73,6 +79,98 @@ def _write(filename, value):
     return value
 
 
+def candidate_cohort(policy=None, inputs=None):
+    """Read an immutable release cohort; historical policies keep their defaults.
+
+    A dependency update must qualify its installed archive and actual CLI source
+    again. A new descriptor supplies evidence, never an exemption from those
+    checks. Old policies bind the old reader and remain reproducible at 0f8459714.
+    """
+    if policy and policy.get("candidate_cohort"):
+        return validate_cohort(checked(policy["candidate_cohort"], inputs), inputs)
+    return {"numerical_revision": NUMERICAL_REVISION,
+             "generation_revision": GENERATION_REVISION,
+             "generator_identity_sha256": GENERATOR_ID,
+             "runtime_identity_sha256": RUNTIME_ID,
+             "archive_sha256": ARCHIVE_SHA256,
+             "generation_root": v2.relative(GENERATION_ROOT)}
+
+
+@lru_cache(maxsize=4)
+def _committed_generator_tree(revision):
+    """Hash committed generator bytes, following in-tree symbolic links."""
+    archive = subprocess.check_output(["git", "archive", revision, "--", *bench.GENERATOR_PATHS], cwd=ROOT)
+    with tarfile.open(fileobj=io.BytesIO(archive)) as stream:
+        members = {member.name: member for member in stream if not member.isdir()}
+        def contents(name, visited=()):
+            require(name not in visited, "Cyclic committed generator symlink")
+            member = members.get(name)
+            if member is None:
+                entry = subprocess.check_output(["git", "ls-tree", revision, "--", name], cwd=ROOT).decode()
+                if not entry:
+                    return None
+                data = v2.git_bytes(revision, name)
+                symbolic = entry.startswith("120000 ")
+                linkname = data.decode() if symbolic else None
+            else:
+                symbolic, linkname = member.issym(), member.linkname
+                require(symbolic or member.isfile(), "Unsupported committed generator entry")
+                data = None if symbolic else stream.extractfile(member).read()
+            if symbolic:
+                target = posixpath.normpath(posixpath.join(posixpath.dirname(name), linkname))
+                require(not target.startswith("../") and not target.startswith("/"), "Generator symlink escapes repository")
+                return contents(target, (*visited, name))
+            return data
+        return {"tracked": {name: hashlib.sha256(data).hexdigest() if (data := contents(name)) is not None else None
+                             for name in members}, "untracked": {}}
+
+
+def validate_cohort(filename, inputs=None):
+    """Bind release IDs to committed source, resolved dependencies and install."""
+    value = v2.verified(read(filename, inputs), COHORT_SCHEMA)
+    lengths = {"numerical_revision": 40, "generation_revision": 40,
+               "generator_identity_sha256": 64, "runtime_identity_sha256": 64, "archive_sha256": 64}
+    require(all(isinstance(value.get(key), str) and re.fullmatch(r"[0-9a-f]{%d}" % length, value[key])
+                for key, length in lengths.items()), "Incomplete release cohort identities")
+    root = v2.path(value["generation_root"])
+    state = _committed_generator_tree(value["generation_revision"])
+    require(bench.content_digest(state) == value["generator_identity_sha256"], "Release generator differs from its committed source")
+    delta = subprocess.check_output(["git", "diff", "--name-only", value["numerical_revision"],
+        value["generation_revision"], "--", *bench.GENERATOR_PATHS, "vendor"], cwd=ROOT)
+    require(not delta.strip(), "Release numerical and generation revisions contain different production source")
+    pins = value["dependency_pins"]
+    require(set(pins) == {"ninjars", "oneloopmaster", "symbolica"} and all(
+        isinstance(pin, str) and re.fullmatch(r"[0-9a-f]{40}", pin) for pin in pins.values()), "Missing full release dependency pins")
+    install = value["installation"]
+    require(set(install) == {"archive", "configuration", "cargo_manifest", "cargo_lock"}, "Incomplete installed release provenance")
+    paths = {name: checked(record, inputs) for name, record in install.items()}
+    require(workers.digest(paths["archive"]) == value["archive_sha256"], "Installed release archive changed")
+    for name, source in (("cargo_manifest", "Cargo.toml"), ("cargo_lock", "Cargo.lock")):
+        require(paths[name].read_bytes() == v2.git_bytes(value["numerical_revision"], "vendor/ninjars/" + source),
+                "Installed release Cargo source differs from numerical commit")
+    lock = tomllib.loads(paths["cargo_lock"].read_text())
+    sources = {name: {package.get("source", "") for package in lock["package"] if package["name"] == name}
+               for name in ("ninjars", "ninjars-symbolica", "oneloop", "symbolica", "numerica", "graphica")}
+    for name, pin in (("ninjars", pins["ninjars"]), ("ninjars-symbolica", pins["ninjars"]),
+                      ("oneloop", pins["oneloopmaster"]), ("symbolica", pins["symbolica"]),
+                      ("numerica", pins["symbolica"]), ("graphica", pins["symbolica"])):
+        require(len(sources[name]) == 1 and next(iter(sources[name])).startswith("git+")
+                and next(iter(sources[name])).endswith("#" + pin), "Release lock has wrong dependency pin: " + name)
+    configuration = read(paths["configuration"], inputs)
+    provenance = configuration.get("build_provenance", {})
+    require(configuration.get("abi_version") == 3 and configuration.get("quad_precision") is True
+            and provenance.get("manifest_sha256") == workers.digest(paths["cargo_manifest"])
+            and provenance.get("lock_sha256") == workers.digest(paths["cargo_lock"]), "Installed release lacks exact Cargo provenance or QP ABI")
+    expected_dependencies = sorted([{"name": package["name"], "version": package["version"], "source": package["source"]}
+        for package in lock["package"] if package.get("source", "").startswith("git+")], key=lambda item: (item["name"], item["source"]))
+    require(provenance.get("git_dependencies") == expected_dependencies, "Installed release Git dependencies differ from locked sources")
+    status = read(root / "status.json", inputs)
+    require(status.get("complete") is True and status["git_revision"] == value["generation_revision"]
+            and status["generator_tree_state"] == state
+            and status["generator_tree_state_sha256"] == value["generator_identity_sha256"], "Release lacks complete actual CLI generation")
+    return value
+
+
 def validate_configuration(config, correctness=False):
     """Allow correctness ordering/two commands, without changing physical inputs."""
     definitions = config.get("cases", [])
@@ -96,12 +194,14 @@ def validate_configuration(config, correctness=False):
     return config
 
 
-def create_policy(v2_policy, proof, output, plan=None):
+def create_policy(v2_policy, proof, output, plan=None, cohort=None):
     old, correction, config = v2.validate_policy(v2_policy)
     validate_configuration(config)
     v2.validate_proof(proof, v2_policy)
     plan = v2.path(plan or ROOT / "references/PLAN.md")
     require(USER_PRIORITY in " ".join(plan.read_text().split()), "User priority amendment is absent from PLAN.md")
+    release = validate_cohort(cohort) if cohort else candidate_cohort()
+    generation_root = v2.path(release["generation_root"])
     value = v2.seal({"schema": SCHEMA, "v2_policy": v2.bound_file(v2_policy),
         "representative_proof": v2.bound_file(proof), "configuration": old["configuration"],
         "correction": old["correction"], "correction_identity_sha256": correction["identity_sha256"],
@@ -109,14 +209,17 @@ def create_policy(v2_policy, proof, output, plan=None):
         "amendment_source": "references/PLAN.md (quoted statement retained here)",
         "required_cases": sorted(CASE_IDS), "correctness_references": [1, 6],
         "pair_targets": PAIR_TARGETS, "performance_denominator": "original/6",
-        "numerical_revision": NUMERICAL_REVISION, "generation_revision": GENERATION_REVISION,
-        "candidate_generator_identity_sha256": GENERATOR_ID, "candidate_runtime_identity_sha256": RUNTIME_ID,
-        "candidate_archive_sha256": ARCHIVE_SHA256,
-        "candidate_generation_status": v2.bound_file(GENERATION_ROOT / "status.json"),
-        "candidate_generation_inputs": {cid: {name: v2.bound_file(GENERATION_ROOT / "inputs/candidate" / cid / name)
+        "numerical_revision": release["numerical_revision"], "generation_revision": release["generation_revision"],
+        "candidate_generator_identity_sha256": release["generator_identity_sha256"],
+        "candidate_runtime_identity_sha256": release["runtime_identity_sha256"],
+        "candidate_archive_sha256": release["archive_sha256"],
+        "candidate_generation_status": v2.bound_file(generation_root / "status.json"),
+        "candidate_generation_inputs": {cid: {name: v2.bound_file(generation_root / "inputs/candidate" / cid / name)
             for name in ("generation.json", "compilation.json", "compiled-sources.json")} for cid in sorted(CASE_IDS)},
-        "candidate_fixed_points": {cid: v2.bound_file(GENERATION_ROOT / "points" / (cid + ".dat")) for cid in sorted(CASE_IDS)},
+        "candidate_fixed_points": {cid: v2.bound_file(generation_root / "points" / (cid + ".dat")) for cid in sorted(CASE_IDS)},
         "implementation": v2.bound_file(Path(__file__))})
+    if cohort:
+        value = v2.seal({**value, "candidate_cohort": v2.bound_file(cohort)})
     return _write(output, value)
 
 
@@ -126,27 +229,36 @@ def validate_policy(filename, inputs=None):
     old, correction, config = v2.validate_policy(old_path)
     checked(policy["configuration"], inputs); checked(policy["correction"], inputs)
     proof = v2.validate_proof(checked(policy["representative_proof"], inputs), old_path)
+    release = candidate_cohort(policy, inputs)
+    generation_root = v2.path(release["generation_root"])
     validate_configuration(config)
     require(policy["configuration"] == old["configuration"] and policy["correction"] == old["correction"]
             and policy["correction_identity_sha256"] == correction["identity_sha256"], "Mixed v3 physical/model policy")
     fixed = {"user_priority": USER_PRIORITY, "required_cases": sorted(CASE_IDS),
         "correctness_references": [1, 6], "pair_targets": PAIR_TARGETS,
-        "performance_denominator": "original/6", "numerical_revision": NUMERICAL_REVISION,
-        "generation_revision": GENERATION_REVISION, "candidate_generator_identity_sha256": GENERATOR_ID,
-        "candidate_runtime_identity_sha256": RUNTIME_ID, "candidate_archive_sha256": ARCHIVE_SHA256,
+        "performance_denominator": "original/6", "numerical_revision": release["numerical_revision"],
+        "generation_revision": release["generation_revision"],
+        "candidate_generator_identity_sha256": release["generator_identity_sha256"],
+        "candidate_runtime_identity_sha256": release["runtime_identity_sha256"],
+        "candidate_archive_sha256": release["archive_sha256"],
         "worker_protocol": workers.protocol_descriptor()}
     require(all(policy.get(k) == value for k, value in fixed.items()), "Changed v3 roles, physics or runtime gate")
     generation = read(checked(policy["candidate_generation_status"], inputs), inputs)
-    require(generation.get("complete") is True and generation["git_revision"] == GENERATION_REVISION
-            and generation["generator_tree_state_sha256"] == GENERATOR_ID, "Wrong actual CLI generation cohort")
+    require(checked(policy["candidate_generation_status"], inputs) == generation_root / "status.json",
+            "Unrelated release generation status")
+    require(generation.get("complete") is True and generation["git_revision"] == release["generation_revision"]
+            and generation["generator_tree_state_sha256"] == release["generator_identity_sha256"], "Wrong actual CLI generation cohort")
     require(set(policy["candidate_generation_inputs"]) == CASE_IDS, "Missing actual CLI source anchors")
     require(set(policy["candidate_fixed_points"]) == CASE_IDS, "Missing frozen core point streams")
     for cid, record in policy["candidate_fixed_points"].items():
-        require(checked(record, inputs) == GENERATION_ROOT / "points" / (cid + ".dat"), "Wrong frozen point anchor")
+        require(checked(record, inputs) == generation_root / "points" / (cid + ".dat"), "Wrong frozen point anchor")
+        retain(GENERATION_ROOT / "points" / (cid + ".dat"), inputs, record["sha256"])
     for cid, files in policy["candidate_generation_inputs"].items():
         require(set(files) == {"generation.json", "compilation.json", "compiled-sources.json"}, "Incomplete CLI generation binding")
         for record in files.values():
             checked(record, inputs)
+        require(all(checked(record, inputs) == generation_root / "inputs/candidate" / cid / name
+                    for name, record in files.items()), "Unrelated release CLI source anchor")
         require(read(checked(files["generation.json"], inputs), inputs) == generation["cases"][cid]["generation"]
                 and read(checked(files["compilation.json"], inputs), inputs) == generation["cases"][cid]["compilation"],
                 "CLI source anchor differs from actual generation record")
@@ -272,9 +384,10 @@ def _check_points(filename, record, case, inputs):
         require(len(numbers) == 4 and all(math.isfinite(float(x)) for x in numbers), "Malformed fixed momentum stream")
 
 
-def _check_target(item, correction, proof, inputs, target_schema="source-role-bindings-v2"):
+def _check_target(item, correction, proof, inputs, target_schema="source-role-bindings-v2", cohort=None):
     """Validate retained v2 target fields, without requiring its parent run to pass."""
     role, case, backend = item["role"], item["case"], item["backend"]
+    cohort = cohort or candidate_cohort()
     build_path = checked(item["build"], inputs)
     build = read(build_path, inputs)
     compiled = read(build_path.parent / "compiled-sources.json", inputs)
@@ -302,7 +415,7 @@ def _check_target(item, correction, proof, inputs, target_schema="source-role-bi
                 "Actual supplement generation/source/physical anchor differs from build")
         source_proof = read(checked(item["source_proof"], inputs), inputs)
         require(v2.physical_definition(source_proof["case"]) == correction["cases"][case]["case_definition"]
-                and source_proof["full_runtime_identity_sha256"] == RUNTIME_ID
+                and source_proof["full_runtime_identity_sha256"] == cohort["runtime_identity_sha256"]
                 and read(checked(source_proof["generation"], inputs), inputs) == generation
                 and read(checked(source_proof["compilation"], inputs), inputs) == compilation
                 and read(checked(source_proof["compiled_manifest"], inputs), inputs) == origin
@@ -327,14 +440,18 @@ def _check_target(item, correction, proof, inputs, target_schema="source-role-bi
     require(group is not None and group["signature"] == runtime, "Unqualified source-role/runtime group")
     generation = item["generation_source_identity"]
     if role == "candidate_corrected":
-        require(backend == 8 and generation.get("revision") == GENERATION_REVISION
-                and generation.get("tree_state_sha256") == GENERATOR_ID
+        require(backend == 8 and generation.get("revision") == cohort["generation_revision"]
+                and generation.get("tree_state_sha256") == cohort["generator_identity_sha256"]
                 and generation.get("dirty_patch_sha256") is None and not generation["tree_state"]["untracked"]
-                and bench.content_digest(generation["tree_state"]) == GENERATOR_ID
-                and runtime["identity_sha256"] == RUNTIME_ID, "Candidate differs from frozen final generation/runtime")
-        require({value for name, value in item["libraries"].items() if Path(name).name == "libninjars.a"} == {ARCHIVE_SHA256},
+                and bench.content_digest(generation["tree_state"]) == cohort["generator_identity_sha256"]
+                and runtime["identity_sha256"] == cohort["runtime_identity_sha256"], "Candidate differs from frozen final generation/runtime")
+        require({value for name, value in item["libraries"].items() if Path(name).name == "libninjars.a"} == {cohort["archive_sha256"]},
                 "Candidate archive is not the validated final installation")
-        anchor = read(GENERATION_ROOT / "inputs/candidate" / case / "compiled-sources.json", inputs)
+        if "installation" in cohort:
+            require({value for name, value in runtime["metadata"].items() if Path(name).name == "ninjars-config.json"}
+                    == {cohort["installation"]["configuration"]["sha256"]},
+                    "Candidate metadata differs from the pinned installation provenance")
+        anchor = read(v2.path(cohort["generation_root"]) / "inputs/candidate" / case / "compiled-sources.json", inputs)
         differences = v2.delta(anchor["files"], compiled["files"])
         require(bench.content_digest(anchor["files"]) == anchor["files_sha256"] == build["original_generated_sources_sha256"]
                 and all(name.endswith("/check_sa.f") for name in differences) and len(differences) <= 1,
@@ -676,7 +793,8 @@ def _check_finalization(data, inputs):
 
 def checked_correctness(filename, policy_path, inputs=None):
     inputs = {} if inputs is None else inputs
-    _, correction, config, proof = validate_policy(policy_path, inputs)
+    active_policy, correction, config, proof = validate_policy(policy_path, inputs)
+    cohort = candidate_cohort(active_policy, inputs)
     supplied = read(filename, inputs)
     finalization = supplied.get("schema") == FINALIZATION
     view = None
@@ -688,7 +806,15 @@ def checked_correctness(filename, policy_path, inputs=None):
     report = v2.path(binding["report"])
     require(view is None or report == view, "Finalization view/binding mismatch")
     protocol = _check_protocol(report, inputs)
-    specification = v2.verified(read(checked(protocol["input_spec"], inputs), inputs), "nrs-first-core-correctness-spec-v1")
+    specification = read(checked(protocol["input_spec"], inputs), inputs)
+    release_collection = specification.get("schema") == "final-pins-core-correctness-spec-v1"
+    v2.verified(specification, "final-pins-core-correctness-spec-v1" if release_collection else "nrs-first-core-correctness-spec-v1")
+    if release_collection:
+        require(active_policy.get("candidate_cohort") and not finalization, "Release correctness needs its explicit cohort and actual completion")
+        identities = {name: cohort[name] for name in ("numerical_revision", "generation_revision",
+            "generator_identity_sha256", "runtime_identity_sha256", "archive_sha256")}
+        require(specification.get("candidate_cohort") == identities and protocol.get("candidate_cohort") == identities,
+                "Release correctness collector differs from qualified policy cohort")
     validate_configuration(protocol["configuration"], correctness=True)
     require(protocol["sources"] == "candidate" and protocol["backends"] == [8] and protocol["repetitions"] == 2
             and specification["configuration"] == protocol["configuration"]
@@ -700,15 +826,17 @@ def checked_correctness(filename, policy_path, inputs=None):
     for record in specification["sources"].values():
         checked(record, inputs)
     status = read(report / "run-status.json", inputs)
-    require(status["status"] == ("complete" if finalization else "complete-raw-correctness-only") and
+    require(status["status"] == ("complete" if finalization or release_collection else "complete-raw-correctness-only") and
             status["completed_cases"] == [c["id"] for c in protocol["configuration"]["cases"]], "NRS correctness collection is incomplete")
+    if release_collection:
+        require(status.get("requested_cases") == status["completed_cases"], "Release correctness omitted requested case accounting")
     require(not list((report / "rejected").glob("*.json")), "NRS correctness run has rejected observations")
     require(set(binding["targets"]) == {f"{cid}-candidate-8" for cid in CASE_IDS}, "Missing or extra NRS correctness target")
     records = {}
     expected_paths = set()
     for cid in CASE_IDS:
         item = binding["targets"][f"{cid}-candidate-8"]
-        build, build_path = _check_target(item, correction, proof, inputs, target_schema="supplement-source-bindings-v1")
+        build, build_path = _check_target(item, correction, proof, inputs, target_schema="supplement-source-bindings-v1", cohort=cohort)
         points = report / "points" / f"{cid}.dat"
         calibration = None
         for rep in ["calibration", *range(protocol["repetitions"])]:
@@ -751,6 +879,7 @@ def combine_gates(correctness_passed, performance_passed, qualifications=None, p
 def build_dataset(policy_path, references_path, correctness_path=None, pair_bindings_path=None, external_path=None):
     inputs = {}
     policy, correction, config, proof = validate_policy(policy_path, inputs)
+    cohort = candidate_cohort(policy, inputs)
     references, refs, _ = checked_references(references_path, policy_path, inputs)
     correct_binding, correct = (checked_correctness(correctness_path, policy_path, inputs) if correctness_path else (None, {}))
     pair_binding, timed = None, {}
@@ -759,7 +888,7 @@ def build_dataset(policy_path, references_path, correctness_path=None, pair_bind
         require(set(pair_binding["targets"]) == {f"{cid}-{s}-{b}" for cid in CASE_IDS for s, b in PAIR_TARGETS}, "Injected/missing pair binding target")
         _, timed = checked_pair_series(pair_binding["report"], inputs)
         for item in pair_binding["targets"].values():
-            build, bp = _check_target(item, correction, proof, inputs)
+            build, bp = _check_target(item, correction, proof, inputs, cohort=cohort)
             for (cid, source, backend, _), (_, record) in timed.items():
                 if (cid, source, backend) == (item["case"], "candidate" if item["role"] == "candidate_corrected" else "baseline", item["backend"]):
                     _check_record_target(record, item, build, bp, _case(config, correction, cid), v2.path(pair_binding["report"]) / "points" / f"{cid}.dat", inputs)
@@ -844,11 +973,11 @@ def validate_dataset(filename):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("policy", "references", "publish", "verify"))
-    for name in ("policy", "v2-policy", "proof", "spec", "references", "correctness", "timing", "external", "output", "dataset"):
+    for name in ("policy", "v2-policy", "proof", "cohort", "spec", "references", "correctness", "timing", "external", "output", "dataset"):
         parser.add_argument("--" + name, type=Path)
     args = parser.parse_args()
     if args.action == "policy":
-        result = create_policy(args.v2_policy, args.proof, args.output)
+        result = create_policy(args.v2_policy, args.proof, args.output, cohort=args.cohort)
     elif args.action == "references":
         result = create_references(args.policy, args.spec, args.output)
     elif args.action == "publish":

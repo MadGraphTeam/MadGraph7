@@ -14,6 +14,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -45,8 +46,35 @@ def read(path):
     return json.loads(Path(path).read_text())
 
 
+def candidate_cohort(spec):
+    """Use an explicit release freeze; keep historical specs bound to d05/800.
+
+    A new dependency release must name all five identities together.  Omitting
+    one cannot inherit an old archive or generator by accident.  The ordinary
+    preflight then checks these identities against committed source bytes,
+    actual CLI records, and the complete installed runtime descriptor.
+    """
+    if "candidate_cohort" not in spec:
+        return {"numerical_revision": NUMERICAL_REVISION,
+                "generation_revision": CANDIDATE_REVISION,
+                "generator_identity_sha256": GENERATOR_ID,
+                "runtime_identity_sha256": RUNTIME_ID,
+                "archive_sha256": ARCHIVE_SHA256}
+    value = spec["candidate_cohort"]
+    expected = {"numerical_revision": 40, "generation_revision": 40,
+                "generator_identity_sha256": 64,
+                "runtime_identity_sha256": 64, "archive_sha256": 64}
+    if (not isinstance(value, dict) or set(value) != set(expected) or
+            any(not isinstance(value[key], str) or
+                re.fullmatch("[0-9a-f]{%d}" % length, value[key]) is None
+                for key, length in expected.items())):
+        raise ValueError("Explicit candidate cohort requires complete commit/generator/runtime/archive identities")
+    return dict(value)
+
+
 def validate_spec(spec):
     policy.verified(spec, SCHEMA)
+    cohort = candidate_cohort(spec)
     if (spec["pair_targets"] != [list(t) for t in TARGETS] or
             spec["role_map"] != ROLES or spec["cpu"] != 207 or
             type(spec["repetitions"]) is not int or spec["repetitions"] < 7):
@@ -56,9 +84,9 @@ def validate_spec(spec):
         raise ValueError("Invalid full-traversal calibration or command timeout")
     signature = policy.verified(spec["candidate_runtime_signature"], "reducer-runtime-signature-v2")
     if (spec["literal_baseline_revision"] != bench.BASELINE_REVISION or
-            spec["candidate_generator_identity_sha256"] != GENERATOR_ID or
-            signature["identity_sha256"] != RUNTIME_ID or
-            ARCHIVE_SHA256 not in signature["libraries"].values()):
+            spec["candidate_generator_identity_sha256"] != cohort["generator_identity_sha256"] or
+            signature["identity_sha256"] != cohort["runtime_identity_sha256"] or
+            cohort["archive_sha256"] not in signature["libraries"].values()):
         raise ValueError("Timing spec differs from the final literal-original/NinjaRS cohort")
     expected_sources = {"collector", *workers.SOURCE_NAMES}
     if set(spec["sources"]) != expected_sources or not spec["production_sources"]:
@@ -80,7 +108,7 @@ def check_production(spec):
     if actual != spec["production_sources"]:
         raise ValueError("Tracked generator/vendor numerical source changed")
     subprocess.run(["git", "diff", "--exit-code", "HEAD", "--", *paths], cwd=ROOT, check=True)
-    subprocess.run(["git", "diff", "--exit-code", NUMERICAL_REVISION, "HEAD", "--", *paths], cwd=ROOT, check=True)
+    subprocess.run(["git", "diff", "--exit-code", candidate_cohort(spec)["numerical_revision"], "HEAD", "--", *paths], cwd=ROOT, check=True)
     additions = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "--", *paths], cwd=ROOT).decode().splitlines()
     if set(additions) - {"vendor/StdHEP/fail"}:
         raise ValueError("Untracked generator/numerical source is present")
@@ -124,6 +152,7 @@ def validate_origin_records(source, output, generation, compilation, manifest):
 
 def preflight(spec, config, correction):
     check_production(spec)
+    cohort = candidate_cohort(spec)
     if workers.digest(supplement.checked(spec["configuration"])) != CONFIG_SHA256:
         raise ValueError("The reviewed eight-case configuration changed")
     policy.validate_config(config)
@@ -151,9 +180,9 @@ def preflight(spec, config, correction):
             if (output / "Cards/param_card.dat").read_bytes() != card.read_bytes():
                 raise ValueError("Actual timing input differs from its source/card anchor")
             policy.validate_source_role(ROLES[source], cid, manifest, identity, correction)
-            if source == "candidate" and (identity["revision"] != CANDIDATE_REVISION or
-                    identity["tree_state_sha256"] != GENERATOR_ID or
-                    bench.content_digest(identity["tree_state"]) != GENERATOR_ID or
+            if source == "candidate" and (identity["revision"] != cohort["generation_revision"] or
+                    identity["tree_state_sha256"] != cohort["generator_identity_sha256"] or
+                    bench.content_digest(identity["tree_state"]) != cohort["generator_identity_sha256"] or
                     identity.get("dirty_patch_sha256") is not None or identity["tree_state"]["untracked"]):
                 raise ValueError("Candidate CLI source differs from final numerical cohort")
             runtime = actual_runtime(output, manifest, backend)
@@ -221,7 +250,7 @@ def process_event(report, value):
 
 
 @contextmanager
-def owned_preparation(report, label="pair"):
+def owned_preparation(report, label="pair", fresh_cpu=None):
     """Own prepare and Worker Popen children without changing either primitive.
 
     The separate registry closes both Popen->self.process and constructor->local
@@ -320,6 +349,26 @@ def owned_preparation(report, label="pair"):
         Popen = staticmethod(spawn)
 
         def run(self, command, **kwargs):
+            if fresh_cpu is not None and command[:4] == ["taskset", "-c", str(fresh_cpu), "./check_fresh"]:
+                required = {"cwd", "env", "stdout", "stderr", "timeout", "check"}
+                if (len(command) != 6 or command[-1] != "1" or set(kwargs) != required or
+                        kwargs["check"] is not True or kwargs["stderr"] != subprocess.STDOUT or
+                        not 0 < kwargs["timeout"] <= 86400. or
+                        not Path(kwargs["cwd"]).resolve().is_relative_to(ROOT / ".benchmark-work") or
+                        any(kwargs["env"].get(name) != "1" for name in THREADS)):
+                    raise ValueError("Unexpected representative fresh-process override")
+                options = dict(kwargs); timeout = options.pop("timeout"); options.pop("check")
+                process = None
+                try:
+                    process = spawn(command, **options, start_new_session=True)
+                    code = process.wait(timeout=timeout)
+                finally:
+                    if process is not None:
+                        with defer_interruptions():
+                            reap(process)
+                if code:
+                    raise subprocess.CalledProcessError(code, command)
+                return subprocess.CompletedProcess(command, code)
             if command[:3] != ["cp", "-a", "--reflink=auto"] or kwargs != {"check": True}:
                 raise ValueError("Unexpected frozen prepare subprocess")
             serial[0] += 1
@@ -531,7 +580,9 @@ def collect(specification, handoff, execute_numerical=False):
         "protocol_descriptor": descriptor, "protocol_identity_sha256": bench.content_digest(descriptor),
         "cpu": 207, "repetitions": spec["repetitions"], "sources": "both", "backends": [6, 8],
         "role_map": ROLES, "fresh_parity": False, "acceptance_eligible": False,
-        "thread_environment": thread_environment, "numerical_revision": NUMERICAL_REVISION,
+        "thread_environment": thread_environment,
+        "numerical_revision": candidate_cohort(spec)["numerical_revision"],
+        "candidate_cohort": candidate_cohort(spec),
         "input_adapter": supplement.bound(report / "sources" / Path(__file__).name),
         "input_spec": supplement.bound(report / "input-spec.json"),
         "orchestration_revision": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),

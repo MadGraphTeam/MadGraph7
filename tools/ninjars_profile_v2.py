@@ -2,6 +2,7 @@
 """Sample a cloned, bound MadLoop worker; profiling is never acceptance timing."""
 import argparse
 from collections import Counter
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -16,8 +17,39 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ninjars_benchmark as bench
 import ninjars_benchmark_workers as workers
 import ninjars_benchmark_policy_v2 as policy
+import ninjars_benchmark_pair_v3 as pair
 
 ROOT = bench.ROOT
+
+
+@contextmanager
+def owned_runtime(report):
+    """Unwind termination through the existing identity-bound child registry."""
+    def interrupted(signum, _frame):
+        raise SystemExit("Profiler interrupted by signal " + str(signum))
+    signals = (signal.SIGTERM, signal.SIGHUP)
+    previous = {sig: signal.getsignal(sig) for sig in signals}
+    try:
+        for sig in signals:
+            signal.signal(sig, interrupted)
+        with pair.owned_preparation(report, label="profile"):
+            yield
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+
+
+def profile_environment(work):
+    environment = workers.environment(work)
+    environment.update({name: "1" for name in pair.THREADS})
+    return environment
+
+
+def stop_profiler(process):
+    """Allow perf to flush; the owned registry handles bounded escalation."""
+    if process.poll() is None:
+        process.send_signal(signal.SIGINT)
+    return process.wait(timeout=10.)
 
 
 def category(lines):
@@ -111,6 +143,13 @@ def run(args):
     work.mkdir(parents=True)
     report.mkdir(parents=True)
     shutil.copy2(__file__, report / Path(__file__).name)
+    ownership_source = Path(pair.__file__).resolve()
+    protocol = json.loads((policy.path(binding["report"]) / "protocol.json").read_text())
+    if (protocol.get("pair_schema") == pair.PAIR_SCHEMA and
+            workers.digest(ownership_source) != protocol["input_adapter"]["sha256"]):
+        raise RuntimeError("Ownership helper differs from the measured pair collector")
+    ownership_copy = report / ownership_source.name
+    shutil.copy2(ownership_source, ownership_copy)
     subprocess.run(["cp", "-a", "--reflink=auto", str(original), str(output)], check=True)
     for link in output.rglob("*"):
         if link.is_symlink() and link.resolve().is_relative_to(original):
@@ -139,6 +178,7 @@ def run(args):
     libraries = policy.library_hashes(output)
     if before != target["compiled_manifest"] or libraries != target["libraries"]:
         raise RuntimeError("Copied generated sources or libraries changed")
+    env = profile_environment(work)
     command = ["taskset", "-c", str(args.cpu), "./check", str(points)]
     result = {
         "schema": "madloop-sampled-profile-v2", "complete": False,
@@ -153,6 +193,8 @@ def run(args):
         "reducer_runtime": target["reducer_runtime"],
         "compiled_sources_sha256": before["files_sha256"],
         "libraries": libraries, "cpu": args.cpu, "blocks": [],
+        "thread_environment": {name: env[name] for name in pair.THREADS},
+        "ownership_adapter": policy.bound_file(ownership_copy),
         "scope": "Full fixed stream after initialization and warming; sampled execution "
                  "contains profiler overhead and worker output serialization between commands. "
                  "This is diagnostic CPU sampling, not exclusive evaluation-stage timing, "
@@ -161,72 +203,74 @@ def run(args):
     }
     worker = profiler = None
     try:
-        env = workers.environment(work)
-        worker = workers.Worker(command, directory, report / "worker.log",
-                                env=env, timeout=args.timeout)
-        raw = work / "profile.perf"
-        perf_command = [args.perf, "record", "--no-buildid", "-e", "cpu-clock:u",
-                        "-F", "99", "--call-graph", "dwarf,65528",
-                        "-p", str(worker.process.pid), "-o", str(raw)]
-        result["perf_command"] = perf_command
-        result["perf_version"] = subprocess.check_output(
-            [args.perf, "--version"], text=True).strip()
-        with (report / "perf-record.log").open("w") as log:
-            profiler = subprocess.Popen(perf_command, cwd=ROOT, env=env,
-                                        stdout=log, stderr=subprocess.STDOUT)
-            time.sleep(.25)
-            if profiler.poll() is not None:
-                raise RuntimeError("Profiler failed to attach")
-            for index in range(args.blocks):
-                block = report / f"block-{index}"
-                block.mkdir()
-                for name in workers.OUTPUTS:
-                    (directory / name).unlink(missing_ok=True)
-                try:
-                    worker.run(args.loops)
-                finally:
-                    # A failed command or malformed result is retained before
-                    # validation. Absent files remain absent, never stale.
-                    for name in (*workers.OUTPUTS, "dimensions.dat"):
-                        if (directory / name).is_file():
-                            shutil.copy2(directory / name, block / name)
-                parsed = workers.parse_outputs(directory, target["backend"], point_count, args.loops)
-                if parsed["rows"] != reference["rows"]:
-                    raise RuntimeError("Profiled physical rows, accuracy or statuses changed")
-                result["blocks"].append(parsed)
-            profiler.send_signal(signal.SIGINT)
-            code = profiler.wait()
-            profiler = None
-            if code not in (0, -signal.SIGINT):
-                raise RuntimeError(f"Profiler exited {code}")
-        worker.close()
-        worker = None
-        result["partition"] = partition(args.perf, raw, report)
-        if (bench.generated_source_manifest(output) != before
-                or policy.library_hashes(output) != libraries):
-            raise RuntimeError("Profiled numerical sources or libraries changed")
-        if (workers.digest(output / "Cards/MadLoopParams.dat") != reference["madloop_card_sha256"]
-                or workers.digest(effective_card) != reference["madloop_card_sha256"]
-                or workers.digest(output / "Cards/param_card.dat") != reference["parameter_card_sha256"]):
-            raise RuntimeError("Profiled physical or numerical cards changed")
-        policy.checked_bindings(args.binding, correction, live=True)
-        result.update(complete=True, every_physical_row_exact=True,
-                      original_worker_unchanged=True)
+        with owned_runtime(report):
+            try:
+                worker = workers.Worker(command, directory, report / "worker.log",
+                                        env=env, timeout=args.timeout)
+                raw = work / "profile.perf"
+                perf_command = [args.perf, "record", "--no-buildid", "-e", "cpu-clock:u",
+                                "-F", "99", "--call-graph", "dwarf,65528",
+                                "-p", str(worker.process.pid), "-o", str(raw)]
+                result["perf_command"] = perf_command
+                result["perf_version"] = subprocess.check_output(
+                    [args.perf, "--version"], text=True).strip()
+                with (report / "perf-record.log").open("w") as log:
+                    profiler = workers.subprocess.Popen(perf_command, cwd=ROOT, env=env,
+                        stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                    time.sleep(.25)
+                    if profiler.poll() is not None:
+                        raise RuntimeError("Profiler failed to attach")
+                    for index in range(args.blocks):
+                        block = report / f"block-{index}"
+                        block.mkdir()
+                        for name in workers.OUTPUTS:
+                            (directory / name).unlink(missing_ok=True)
+                        try:
+                            worker.run(args.loops)
+                        finally:
+                            # A failed command or malformed result is retained before
+                            # validation. Absent files remain absent, never stale.
+                            for name in (*workers.OUTPUTS, "dimensions.dat"):
+                                if (directory / name).is_file():
+                                    shutil.copy2(directory / name, block / name)
+                        parsed = workers.parse_outputs(directory, target["backend"], point_count, args.loops)
+                        if parsed["rows"] != reference["rows"]:
+                            raise RuntimeError("Profiled physical rows, accuracy or statuses changed")
+                        result["blocks"].append(parsed)
+                    code = stop_profiler(profiler)
+                    profiler = None
+                    if code not in (0, -signal.SIGINT):
+                        raise RuntimeError(f"Profiler exited {code}")
+                worker.close()
+                worker = None
+                result["partition"] = partition(args.perf, raw, report)
+                if (bench.generated_source_manifest(output) != before
+                        or policy.library_hashes(output) != libraries):
+                    raise RuntimeError("Profiled numerical sources or libraries changed")
+                if (workers.digest(output / "Cards/MadLoopParams.dat") != reference["madloop_card_sha256"]
+                        or workers.digest(effective_card) != reference["madloop_card_sha256"]
+                        or workers.digest(output / "Cards/param_card.dat") != reference["parameter_card_sha256"]):
+                    raise RuntimeError("Profiled physical or numerical cards changed")
+                policy.checked_bindings(args.binding, correction, live=True)
+                result.update(complete=True, every_physical_row_exact=True,
+                              original_worker_unchanged=True)
+            finally:
+                with pair.defer_interruptions():
+                    try:
+                        if profiler is not None:
+                            stop_profiler(profiler)
+                    finally:
+                        if worker is not None:
+                            worker.close(graceful=False)
     except BaseException as error:
+        result["complete"] = False
         result["error"] = repr(error)
         raise
     finally:
-        try:
-            if profiler is not None:
-                if profiler.poll() is None:
-                    profiler.send_signal(signal.SIGINT)
-                profiler.wait()
-        finally:
-            try:
-                if worker is not None:
-                    worker.close(graceful=False)
-            finally:
-                bench.dump(report / "profile.json", result)
+        ledger = report / "process-ledger.jsonl"
+        if ledger.is_file():
+            result["owned_process_ledger"] = policy.bound_file(ledger)
+        bench.dump(report / "profile.json", result)
     print(json.dumps({"report": str(report.relative_to(ROOT)),
                       "samples": result["partition"]["samples"]}))
 
