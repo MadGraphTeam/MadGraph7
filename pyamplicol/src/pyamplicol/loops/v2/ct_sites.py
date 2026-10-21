@@ -383,6 +383,7 @@ def generate_counterterm_sites(
     *,
     forbidden: Iterable[int] = (),
     zeros: Iterable[CertifiedZero] = (),
+    whole_rules: bool = False,
 ) -> CountertermSites:
     """Admitted CT sites of a process, after the completeness check.
 
@@ -391,6 +392,9 @@ def generate_counterterm_sites(
     block table and ``native_model`` the native model (or its JSON mapping)
     whose names both use. ``forbidden`` are the |PDG| codes the process
     excludes; ``zeros`` are certified zeros of divergent witnesses.
+    ``whole_rules`` admits rules carrying a whole-rule colour continuation;
+    the caller then closes their replacement terms (``SiteClosure.close``)
+    instead of ``SiteClosure.terms``.
     """
 
     data = _model_data(native_model)
@@ -398,7 +402,7 @@ def generate_counterterm_sites(
     for name, rule in rules.items():
         if rule.kind not in COUNTERTERM_KINDS:
             raise ValueError(f"counterterm rule {name} has unknown kind {rule.kind!r}")
-        if rule.whole_rule_continuation is not None:
+        if rule.whole_rule_continuation is not None and not whole_rules:
             raise NotImplementedError(
                 f"counterterm rule {name} carries a whole-rule colour continuation; "
                 "site closure needs its UFO entries"
@@ -724,26 +728,58 @@ class SiteClosure:
             legs.append(index)
         return tuple(legs)
 
+    def close(
+        self, network: ColourNetwork, attachments: Sequence[BlockCurrent]
+    ) -> tuple[tuple[tuple[Block, ...], int, ConnectedColorTensor], ...]:
+        """A vertex colour ``network`` closed on every block choice.
+
+        ``network`` labels the vertex's UFO legs ``("leg", i)`` (1-based),
+        with ``attachments[i - 1]`` on leg i. Returns (blocks, sign, colour)
+        per choice, the sign being the root sign times the blocks' Wick
+        signs, as for ``terms``; whole-rule colour continuations use it.
+        """
+
+        options = []
+        for current in attachments:
+            rows = self._blocks.get(current)
+            if not rows:
+                raise ValueError(f"no tree block for {current}")
+            options.append(rows)
+        sign = self._root_sign(attachments)
+        out = []
+        for choice in product(*options):
+            wick = 1
+            for block in choice:
+                wick *= block.wick_sign
+            out.append((choice, sign * wick, self._closed(network, network, choice)))
+        return tuple(out)
+
     def _colour(
         self, entry: Any, attachments: Sequence[BlockCurrent], choice: Sequence[Block]
     ) -> ConnectedColorTensor:
-        key = (
-            entry.color,
-            tuple(a.field for a in attachments),
-            *(b.key.word for b in choice),
+        key = (entry.color, tuple(a.field for a in attachments))
+        colours = [int(self._by_name[a.field]["color"]) for a in attachments]
+        return self._closed(
+            key, lambda: ufo_colour_network(entry.color, colours), choice
         )
+
+    def _closed(
+        self, key: Any, network: Any, choice: Sequence[Block]
+    ) -> ConnectedColorTensor:
+        """The vertex colour (a network, or a factory of one) closed on blocks."""
+
+        key = (key, *(b.key.word for b in choice))
         cached = self._colours.get(key)
         if cached is not None:
             return cached
-        colours = [int(self._by_name[a.field]["color"]) for a in attachments]
+        if callable(network):
+            network = network()
 
         def rename(label):
             kind, value = label
             return ("block", value - 1) if kind == "leg" else label
 
-        factors = [
-            tuple(p.relabel(rename) for p in ufo_colour_network(entry.color, colours))
-        ]
+        factors = [tuple(p.relabel(rename) for p in network)]
         for index, block in enumerate(choice):
             factors.append(
                 block_colour_network(
