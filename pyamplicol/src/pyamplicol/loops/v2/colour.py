@@ -1912,8 +1912,9 @@ class _ClassKeys:
     their tensor up to a factor (``_proportional_key``)."""
 
     def __init__(self, legs: Sequence[ColorLeg], merge: bool):
-        self.legs = legs
+        self.legs = tuple(legs)
         self.merge = merge
+        self._adjoint = frozenset(leg.label for leg in legs if leg.representation == 8)
         self._cache: dict[Hashable, tuple[Hashable, ExactColorCoefficient]] = {}
 
     def __call__(self, seed) -> tuple[Hashable, ExactColorCoefficient]:
@@ -1923,28 +1924,42 @@ class _ClassKeys:
             return seed, _ONE
         found = self._cache.get(seed)
         if found is None:
-            tensor = seed.tensor(self.legs) if isinstance(seed, Primitive) else seed
-            found = self._cache[seed] = _proportional_key(canonical_seed(tensor))
+            if isinstance(seed, Primitive):
+                # The key of the relabelled canonical ring (``Primitive.tensor``).
+                canonical, back = _ring_relabelling(seed, self._adjoint)
+                tensor = canonical_seed(_reduced_primitive(canonical, self.legs))
+                found = _proportional_key(tensor, back)
+            else:
+                found = _proportional_key(canonical_seed(seed))
+            self._cache[seed] = found
         return found
 
 
 def _proportional_key(
-    tensor: ConnectedColorTensor,
+    tensor: ConnectedColorTensor, rename: Mapping[int, int] | None = None
 ) -> tuple[Hashable, ExactColorCoefficient]:
     """(key, s): tensor = s x T_key, equal keys for proportional tensors
-    (terms are canonically ordered, the first one is scaled to 1)."""
+    (terms are canonically ordered, the first one is scaled to 1).
+
+    ``rename`` gives the key of ``_relabelled(tensor, rename)`` without
+    building it: a bijective relabelling merges no terms, so re-sorting the
+    relabelled terms restores the canonical order.
+    """
 
     if not tensor.terms:
         return ("zero", tensor.legs), _ONE
-    first = tensor.terms[0].coefficient
+    terms = [(term.tensor, term.nc_power, term.coefficient) for term in tensor.terms]
+    if rename:
+        terms = sorted(
+            ((_relabelled_colour(t, rename), power, c) for t, power, c in terms),
+            key=lambda term: term[:2],
+        )
+    first = terms[0][2]
     inverse = _ratio(_ONE, first)
     return (
         tensor.legs,
         tensor.normalization_power,
-        tuple(
-            (term.tensor, term.nc_power, term.coefficient * inverse)
-            for term in tensor.terms
-        ),
+        tuple((t, power, c * inverse) for t, power, c in terms),
     ), first
 
 
@@ -1973,26 +1988,48 @@ class _PrimitiveCells:
         self._adjoint = frozenset(
             leg.label for leg in basis.legs if leg.representation == 8
         )
+        # Quark rings: relabelled Born tensors and canonical rings by integer id.
+        self._bras: list[ConnectedColorTensor] = []
+        self._bra_ids: dict[ConnectedColorTensor, int] = {}
+        self._relabellings: dict[tuple, tuple[int, ...]] = {}
+        self._rings: dict[Primitive, int] = {}
+        self._ring_cells: dict[tuple[int, int], Laurent] = {}
 
     def __call__(self, primitive: Primitive) -> tuple[Laurent, ...]:
         if primitive.kind == "quark-ring":
             # <b|back(P')> = <back^-1(b)|P'> on the canonical ring P'.
             canonical, back = _ring_relabelling(primitive, self._adjoint)
-            forward = {b: a for a, b in back.items()}
-            ket = canonical.tensor(self.basis.legs)
+            ring = self._rings.setdefault(canonical, len(self._rings))
+            ket = None
             out = []
-            for bra in self.basis.tensors:
-                bra = _relabelled(bra, forward) if forward else bra
-                key = ("quark-ring", canonical, bra)
-                found = self._cache.get(key)
+            for bra in self._relabelled_bras({b: a for a, b in back.items()}):
+                found = self._ring_cells.get((ring, bra))
                 if found is None:
-                    found = self._cache[key] = contract_connected_tensor_nc_terms(
-                        bra, ket
+                    if ket is None:
+                        ket = canonical.tensor(self.basis.legs)
+                    found = self._ring_cells[ring, bra] = (
+                        contract_connected_tensor_nc_terms(self._bras[bra], ket)
                     )
                 out.append(found)
             return tuple(out)
         rename = {label: i for i, label in enumerate(primitive.word, start=1)}
         return tuple(self._cell(primitive, b, rename) for b in self.basis.tensors)
+
+    def _relabelled_bras(self, forward: Mapping[int, int]) -> tuple[int, ...]:
+        """Ids of the Born tensors with their adjoint labels renamed."""
+
+        key = tuple(sorted(forward.items()))
+        found = self._relabellings.get(key)
+        if found is None:
+            ids = []
+            for bra in self.basis.tensors:
+                bra = _relabelled(bra, forward) if forward else bra
+                index = self._bra_ids.setdefault(bra, len(self._bras))
+                if index == len(self._bras):
+                    self._bras.append(bra)
+                ids.append(index)
+            found = self._relabellings[key] = tuple(ids)
+        return found
 
     def _cell(self, primitive: Primitive, bra: ConnectedColorTensor, rename) -> Laurent:
         key = _relabel_key(bra, rename)
@@ -2296,7 +2333,7 @@ def seed_fourier(table: SeedTable) -> SeedFourier | None:
         if c0 in seen:
             continue
         words = isinstance(seed, Primitive) and seed.kind != "quark-ring"
-        tensor = None if words else table.tensor(c0)
+        tensor = None if words else canonical_seed(table.tensor(c0))
         images = []
         for rename in renames:
             if words:
@@ -2305,9 +2342,7 @@ def seed_fourier(table: SeedTable) -> SeedFourier | None:
                 )
                 scale = ExactColorCoefficient(sign)
             else:
-                key, scale = _proportional_key(
-                    canonical_seed(_relabelled(tensor, rename))
-                )
+                key, scale = _proportional_key(tensor, rename)
             c = class_index.get(key)
             if c is None or table.orders[c] != table.orders[c0]:
                 break
@@ -2347,30 +2382,36 @@ def _signed(cell: Laurent, sign: int) -> Laurent:
     return {power: value.scaled(sign) for power, value in cell.items()}
 
 
+def _relabelled_colour(tensor: ColorTensor, rename: Mapping[int, int]) -> ColorTensor:
+    """A literal structure with its adjoint labels renamed."""
+
+    def label(a: int) -> int:
+        return rename.get(a, a)
+
+    return ColorTensor(
+        tuple(
+            OpenColorString(
+                string.fundamental_label,
+                tuple(map(label, string.adjoint_labels)),
+                string.antifundamental_label,
+            )
+            for string in tensor.open_strings
+        ),
+        tuple(tuple(map(label, trace)) for trace in tensor.traces),
+    )
+
+
 def _relabelled(
     tensor: ConnectedColorTensor, rename: Mapping[int, int]
 ) -> ConnectedColorTensor:
     """``tensor`` with its adjoint labels renamed (fundamental ones kept)."""
-
-    def label(a: int) -> int:
-        return rename.get(a, a)
 
     return ConnectedColorTensor(
         tensor.legs,
         tuple(
             TensorTerm(
                 term.coefficient,
-                ColorTensor(
-                    tuple(
-                        OpenColorString(
-                            string.fundamental_label,
-                            tuple(map(label, string.adjoint_labels)),
-                            string.antifundamental_label,
-                        )
-                        for string in term.tensor.open_strings
-                    ),
-                    tuple(tuple(map(label, trace)) for trace in term.tensor.traces),
-                ),
+                _relabelled_colour(term.tensor, rename),
                 term.nc_power,
             )
             for term in tensor.terms
