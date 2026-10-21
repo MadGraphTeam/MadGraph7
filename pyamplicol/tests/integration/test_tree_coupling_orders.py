@@ -1,12 +1,16 @@
 # SPDX-License-Identifier: 0BSD
 """Squared coupling-order partials of tree results against MadGraph split orders.
 
-The committed reference was produced by ``tools/developer/madgraph_split_orders.py``
+The committed references were produced by ``tools/developer/madgraph_split_orders.py``
 from MadGraph 3.7.0 standalone output of the UFO ``sm`` model (default
-restriction, t-channel widths kept) at the momenta it records. Processes with
-electroweak triple-gauge vertices are absent: the recurrence lane disagrees
-with MadGraph and with its own eager lane there, independently of coupling
-orders.
+restriction, t-channel widths kept) at the momenta they record: full colour,
+and leading colour (``--colour lc``, the diagonal of MadGraph's colour matrix)
+for processes without external gluons. The recurrence lane is checked per
+squared order; the eager lane (the Python tree compiler, also the loop
+engine's Born) has no partials and is checked on totals. Processes with
+electroweak triple-gauge vertices (u u~ > d d~ e+ e- beyond QCD^4 QED^4) are
+checked on the eager lane only: the recurrence lane disagrees with MadGraph
+and with its own eager lane there, independently of coupling orders.
 """
 
 from __future__ import annotations
@@ -42,11 +46,12 @@ from pyamplicol.generation.process_grouping import GroupingBasis, GroupMember
 REFERENCE = (
     Path(__file__).resolve().parents[1] / "fixtures/tree/madgraph-split-orders.json"
 )
+LC_REFERENCE = REFERENCE.with_name("madgraph-split-orders-lc.json")
 ORDER_LIMITS = {"QCD": 99, "QED": 99}
 
 
-def _reference(process: str) -> dict[str, object]:
-    payload = json.loads(REFERENCE.read_text(encoding="utf-8"))
+def _reference(process: str, path: Path = REFERENCE) -> dict[str, object]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
     (entry,) = (item for item in payload["processes"] if item["process"] == process)
     return entry
 
@@ -96,6 +101,16 @@ def _runtime(
     )
     Generator(config).generate(process, artifact, model=model)
     return Runtime.load(artifact)
+
+
+def _assert_total_matches_madgraph(totals, reference) -> None:
+    for point, (total, partials) in enumerate(
+        zip(totals, reference["partials"], strict=True)
+    ):
+        scale = math.fsum(abs(value) for value in partials)
+        total = complex(total)
+        assert total.imag == 0.0
+        assert abs(total.real - math.fsum(partials)) <= 1e-12 * scale, point
 
 
 def _assert_matches_madgraph(result: TreeOrderEvaluation, reference) -> None:
@@ -154,11 +169,57 @@ def test_partials_match_madgraph_and_keep_the_total(
     )
 
 
+# Quark-only processes, whose MadGraph colour basis is the colour-flow basis.
+_LEADING_COLOUR_PROCESSES = ("u u~ > d d~", "u u~ > u u~", "u d > u d", "u u > u u")
+
+
+@pytest.mark.parametrize("process", _LEADING_COLOUR_PROCESSES)
+def test_leading_colour_partials_match_madgraph(
+    sm_model: ModelSource, tmp_path: Path, process: str
+) -> None:
+    runtime = _runtime(sm_model, process, tmp_path / "artifact", accuracy="lc")
+    reference = _reference(process, LC_REFERENCE)
+
+    _assert_matches_madgraph(runtime.evaluate_orders(reference["points"]), reference)
+
+
+# QCD x electroweak interference between quark lines (s/t channels, identical
+# quarks, a gluon, a lepton pair with triple-gauge vertices): the eager lane
+# keeps the electroweak roots of every line pairing and signs coloured
+# fermions by their Wick order.
+@pytest.mark.parametrize(
+    ("process", "accuracy"),
+    [
+        ("u u~ > d d~", "full"),
+        ("u u~ > d d~", "lc"),
+        ("u u~ > u u~", "full"),
+        ("u u~ > u u~", "lc"),
+        ("u d > u d", "full"),
+        ("u u~ > d d~ g", "full"),
+        ("u u~ > d d~ e+ e-", "full"),
+        ("u u~ > d d~ e+ e-", "lc"),
+    ],
+)
+def test_eager_lane_matches_madgraph(
+    sm_model: ModelSource, tmp_path: Path, process: str, accuracy: str
+) -> None:
+    reference = _reference(process, REFERENCE if accuracy == "full" else LC_REFERENCE)
+    runtime = _runtime(
+        sm_model,
+        process,
+        tmp_path / "artifact",
+        accuracy=accuracy,
+        execution_mode="eager",
+    )
+
+    _assert_total_matches_madgraph(runtime.evaluate(reference["points"]), reference)
+
+
 def test_leading_colour_lanes_agree_on_mixed_order_totals(
     sm_model: ModelSource, tmp_path: Path
 ) -> None:
-    """Topology replay, all-flow union and on-the-fly construction sign
-    identical quarks joined by gluons and electroweak bosons alike."""
+    """Topology replay, all-flow union, on-the-fly construction and the eager
+    lane sign identical quarks joined by gluons and electroweak bosons alike."""
 
     process = "u u~ > u u~ g"
     replay = _runtime(sm_model, process, tmp_path / "replay", accuracy="lc")
@@ -167,6 +228,7 @@ def test_leading_colour_lanes_agree_on_mixed_order_totals(
     for name, execution_mode, layout in (
         ("union", "recurrence", "all-flow-union"),
         ("on-the-fly", "on-the-fly", "topology-replay"),
+        ("eager", "eager", "topology-replay"),
     ):
         runtime = _runtime(
             sm_model,
