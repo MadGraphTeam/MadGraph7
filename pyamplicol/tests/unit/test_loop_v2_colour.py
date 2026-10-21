@@ -962,6 +962,12 @@ def _analyse(v2: V2Slice, bare) -> LegacyAnalysis:
                 )
                 if candidate == target
             ]
+            # Up to a sign: the legacy term's vertex leg order may differ from
+            # the choice, and its capture has flipped the sign of some closed
+            # quark-loop T^a boxes between sessions. The seeds are matched
+            # sign-exactly to the diagram closure above, so this cannot hide a
+            # wrong kappa; the sign of seed x kinematics against legacy is O2's
+            # (test_loop_v2_slice.py::test_family_numerators_equal_o2).
             assert matches, (index, term)
             sign, choice = matches[0]
             coefficients, own, _skeletons = predictions[choice]
@@ -1295,7 +1301,7 @@ def test_leading_colour_degrees_equal_legacy_projection(
     reference = {
         family.index: rows for family, rows in zip(bare.families, legacy, strict=True)
     }
-    _assert_close(mine, reference, 1e-12, "lc")
+    _assert_close(mine, reference, O2_TOLERANCE["double"], "lc")
 
 
 @pytest.mark.loop_physics
