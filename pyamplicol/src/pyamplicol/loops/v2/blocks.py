@@ -82,13 +82,13 @@ from pyamplicol.loops.v2.families import (
     BlockCurrent,
     ExternalLeg,
     MassId,
-    _mass_name,
-    _model_data,
     add_orders,
+    mass_name,
+    model_data,
 )
 from pyamplicol.models.base import CouplingOrders, Model, QuantumNumberFlow
 from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND, TreeKernelVariant
-from pyamplicol.models.prepared_catalog_builder import _tree_kernel_variant
+from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
 from pyamplicol.processes.ir import CanonicalProcessIR
 
 BlockClass = Literal["plain", "ward", "spin-source", "counterterm"]
@@ -151,7 +151,7 @@ class _NativeFields:
 
     @classmethod
     def of(cls, model: Any) -> _NativeFields:
-        particles = _model_data(model)["particles"]
+        particles = model_data(model)["particles"]
         return cls(
             {entry["name"]: entry for entry in particles},
             {int(entry["pdg_code"]): entry for entry in particles},
@@ -455,7 +455,7 @@ class TreeBlockTable:
                 ExternalLeg(
                     index,
                     incoming["name"],
-                    MassId(_mass_name(incoming["mass"]), _mass_name(incoming["width"])),
+                    MassId(mass_name(incoming["mass"]), mass_name(incoming["width"])),
                     incoming["color"],
                 )
             )
@@ -520,7 +520,7 @@ def build_tree_blocks(
         loop_blocks=True,
         loop_block_reachability=reachability,
     ).compile(replace(process, color_accuracy="full"))
-    kernel_variant = _tree_kernel_variant(model)
+    kernel_variant = model_tree_kernel_variant(model)
     return TreeBlocks(
         process=process,
         blocks_dag=blocks_dag,

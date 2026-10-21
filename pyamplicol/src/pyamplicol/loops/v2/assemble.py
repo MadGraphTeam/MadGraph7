@@ -108,10 +108,10 @@ from .families import (
     LoopOrderSelection,
     ModelLoopCatalogue,
     Orders,
-    _mass_name,
     _set_partitions,
     add_orders,
     generate_families,
+    mass_name,
     shifts,
 )
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
@@ -2022,7 +2022,7 @@ def _light_flavours(data, values: Mapping[str, Fraction]) -> int:
         for p in data["particles"]
         if int(p["spin"]) == FERMION_SPIN
         and int(p["color"]) == 3
-        and (_mass_name(p["mass"]) == ZERO or values.get(p["mass"]) == 0)
+        and (mass_name(p["mass"]) == ZERO or values.get(p["mass"]) == 0)
     )
 
 
