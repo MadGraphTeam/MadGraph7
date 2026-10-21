@@ -38,12 +38,17 @@ with eps_s the product of
 * -1 per closed fermion or ghost loop (Wick sewing of the cut pair);
 * -1 per fermion propagator on the loop: the tree reading of a fermion line
   is its transposed chain, which carries this sign against the Feynman
-  rules for the vector-like couplings of the slice (re-verify for chiral and
-  Yukawa couplings with the electroweak sign oracles, O13 EW).
+  rules for pure vector couplings (gamma^mu is odd under charge conjugation).
 
-Colour-singlet fermion lines through the loop would need the tree engine's
-Koszul signs (``generation/fermion_ordering.py`` owns them for blocks) and are
-refused, like vertices with more than one fermion line.
+The tree engine's ``merge_sign`` (``generation/fermion_ordering.py``) is +1
+for coloured lines, whose ordering the colour flow owns, so for coloured
+fermions the rule above is the design §3.3 ring sign. It is refused
+(``FermionSignError``, at generation) wherever it is not established:
+colour-singlet fermion lines through the loop (they need the Koszul signs of
+``fermion_ordering.py``), vertices with more than one fermion line, and loop
+fermion vertices whose Lorentz structure is not a pure vector current
+(chiral, scalar and tensor couplings transpose with other signs or change
+chirality); the electroweak sign oracles (O13 EW, WP3.2) admit them.
 
 Normalisation. NinjaRS returns mu^(2 eps) / (i pi^(2-eps) r_Gamma) times the
 integral of N / prod D (design §11.1), so with Born-weighted family numerators
@@ -59,6 +64,7 @@ factor (design §6.4).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
@@ -72,6 +78,10 @@ from .skeletons import Content, Skeleton
 
 GHOST_SPIN = -1
 FERMION_SPIN = 2
+
+# The pure vector current Gamma(mu of the boson leg, spinor, spinor) in the
+# native model's Lorentz structure syntax.
+_VECTOR_CURRENT = re.compile(r"Gamma\(idx\(1,(\d+)\),idx\(1,(\d+)\),idx\(1,(\d+)\)\)")
 
 # Loop factor of the reducer's integrals: d^4q/(2 pi)^4 = i/(16 pi^2) x Omega.
 LOOP_FACTOR_DENOMINATOR = 16
@@ -156,8 +166,13 @@ class LeafWeights:
     def __init__(self, native_model: Any, ends: Mapping[int, int]):
         data = _model_data(native_model)
         self._particles = {p["name"]: p for p in data["particles"]}
+        self._rules = {rule["name"]: rule for rule in data["vertex_rules"]}
+        self._lorentz = {
+            entry["name"]: entry["structure"] for entry in data["lorentz_structures"]
+        }
         self._ends = dict(ends)
         self._signs: dict[tuple[Content, ...], int] = {}
+        self._vector: dict[str, bool] = {}
 
     def __call__(self, skeleton: Skeleton, contents: Sequence[Content]) -> Fraction:
         sign = self._signs.get(skeleton.contents)
@@ -168,6 +183,7 @@ class LeafWeights:
     def fermion_sign(self, skeleton: Skeleton) -> int:
         """eps_s of a skeleton (reading-independent)."""
 
+        self._require_vector_couplings(skeleton.contents)
         spins = [int(self._particles[name]["spin"]) for name in skeleton.species]
         sign = -1 if all(spin == GHOST_SPIN for spin in spins) else 1
         if spins.count(FERMION_SPIN) % 2:
@@ -176,6 +192,38 @@ class LeafWeights:
 
     def _fermion(self, name: str) -> bool:
         return int(self._particles[name]["spin"]) == FERMION_SPIN
+
+    def _require_vector_couplings(self, contents: Sequence[Content]) -> None:
+        for content in contents:
+            if not (self._fermion(content.loop_in) or self._fermion(content.loop_out)):
+                continue
+            for term in content.terms:
+                rule = term.vertex.rule
+                vector = self._vector.get(rule)
+                if vector is None:
+                    vector = self._vector[rule] = self._vector_rule(rule)
+                if not vector:
+                    raise FermionSignError(
+                        f"loop fermion vertex {rule} "
+                        f"{tuple(self._rules[rule]['particles'])} is not a pure "
+                        "vector coupling; its sign needs the electroweak oracles"
+                    )
+
+    def _vector_rule(self, rule: str) -> bool:
+        """Whether every Lorentz structure of ``rule`` is Gamma(boson, f, f)."""
+
+        particles = self._rules[rule]["particles"]
+        fermions = {
+            leg for leg, name in enumerate(particles, start=1) if self._fermion(name)
+        }
+        for name in self._rules[rule]["lorentz_structures"]:
+            match = _VECTOR_CURRENT.fullmatch("".join(self._lorentz[name].split()))
+            if match is None:
+                return False
+            boson, *spinors = (int(leg) for leg in match.groups())
+            if boson in fermions or set(spinors) != fermions:
+                return False
+        return True
 
     def _line_parity(self, contents: Sequence[Content]) -> int:
         """Pairing parity of the coloured lines and closed-loop sewing signs."""
