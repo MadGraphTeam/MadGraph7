@@ -1407,6 +1407,10 @@ Total ≈ 270 agent-days [I].
   - *Depends:* owner.
   - *Accept:* batched equals unbatched bitwise for unrelated-family lanes (upstream test); pyAmpliCol loop tests green on the new pins.
   - *Size:* S (2) on the pyAmpliCol side.
+  - *Status:* re-pin done on `work/v2-repin`.
+    - Pins: NinjaRS aa6a6307 and oneloopmaster 8ec256fc; Symbolica 9cdc2949 for both the native and the Python Community kernel; FeynKit d1904bf2 in the native only (the Community overlay keeps gammaloop 0cfb7dbb9).
+    - Build pair: native `loop-native-v2-repin-783aaf47` (digest b71edd24) with Community `community-release-python-9cdc2949` (`dependencies/README.md`).
+    - Loop tests are green on that pair. The upstream batched-vs-unbatched test is still requested (§11.5, request 1).
 - **WP0.3 Kernel gate G0 (new).**
   - *Goal:* Rust segment kernels generic over T with the generic raise over `ninjars::fast::tensor_layout`: split (dense and structured vertex), fused, and register-blocked fused.
     - Benchmark on the probe's synthetic shapes immediately (seed: `revision/kbench/`), then on real trie shapes exported by WP1.3 for gg→gggg and uu~→e⁻e⁺dd~g.
