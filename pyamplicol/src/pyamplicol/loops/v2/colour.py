@@ -1600,6 +1600,22 @@ class SeedTable:
     def class_degree(self, c: int) -> int | None:
         return _max_degree(self.cells[c])
 
+    def certified(self, combination: SeedCombination) -> bool:
+        """Whether a seed uses certified primitive classes only.
+
+        This is the colour admissibility of schedule M at NLC and full colour
+        (design §2.2, ``ReferenceExecutor.run(certified=...)``): every class
+        is a ``Primitive`` whose compression carries a loop-level certificate
+        in this table. A generic seed merged into such a class has exactly its
+        colour vector and counts as certified.
+        """
+
+        return bool(combination) and all(
+            isinstance(seed := self.classes[c], Primitive)
+            and seed.kind in self.certificates
+            for c, _x in combination
+        )
+
     def seeds(
         self,
         pairs: Iterable[SectorPair],

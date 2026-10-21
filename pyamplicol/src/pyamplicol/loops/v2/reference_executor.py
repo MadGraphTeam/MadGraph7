@@ -13,7 +13,8 @@ contents, kernels and seeds, so they are mutual oracles (O4):
   helicity-explicit rows of the attached legs and applies seeds at closure.
 * **M** walks the merged state graph (``schedules.merged_graph``) with seeds
   injected at the cut. It needs colour-ordered contents whose seed depends on
-  the cut word only (LC; certified FC classes later) and a state graph whose
+  the cut word only (LC, or certified classes at NLC/FC:
+  ``ColourSeeds.certified``) and a state graph whose
   every cut-to-closure path is one skeleton; both are checked, and
   ``ReferenceExecutor.run`` falls back to B otherwise (generic classes).
 
@@ -1380,9 +1381,21 @@ class ColourSeeds:
         born: Mapping[Row, Mapping[tuple[int, Orders], Any]],
         pairs: Iterable[SectorPair],
         accuracy: ColourAccuracy = "full",
+        *,
+        compress: bool = False,
     ) -> ColourSeeds:
-        table, class_of = build_seed_table(colour, list(dict.fromkeys(readings)))
+        table, class_of = build_seed_table(
+            colour, list(dict.fromkeys(readings)), compress=compress
+        )
         return cls(table, class_of, born, pairs, accuracy)
+
+    def certified(self, skeleton: Skeleton) -> bool:
+        """The colour certificate predicate of ``ReferenceExecutor.run``:
+        the skeleton's seed uses certified primitive classes only
+        (``SeedTable.certified``)."""
+
+        combination = self.class_of.get(skeleton)
+        return combination is not None and self.table.certified(combination)
 
     def seed(self, skeleton, contents):
         reading = _reading(skeleton, contents)
