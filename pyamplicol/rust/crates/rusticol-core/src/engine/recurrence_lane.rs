@@ -6084,14 +6084,15 @@ mod order_partial_tests {
                 &state.components_im[component_len..],
             );
             let total = contract(&summed_re, &summed_im);
-            // Squared orders ascend: QED^4 (component 0), QCD^2 QED^2, QCD^4.
+            // Canonical squared orders: QCD^2 QED^2, QCD^4 (component 1), QED^4
+            // (component 0).
             for point in 0..point_count {
                 let row = &partials[point * 3..point * 3 + 3];
                 let scale = row.iter().map(|value| value.abs()).sum::<f64>().max(1.0);
-                assert!((row[0] - first[point]).abs() <= 1e-13 * scale);
-                assert!((row[2] - second[point]).abs() <= 1e-13 * scale);
+                assert!((row[2] - first[point]).abs() <= 1e-13 * scale);
+                assert!((row[1] - second[point]).abs() <= 1e-13 * scale);
                 assert!((row.iter().sum::<f64>() - total[point]).abs() <= 1e-13 * scale);
-                assert!(row[1] != 0.0);
+                assert!(row[0] != 0.0);
             }
         }
     }
