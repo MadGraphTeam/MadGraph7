@@ -4,6 +4,7 @@ from __future__ import annotations
 import ast
 import json
 import math
+import re
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -32,6 +33,8 @@ def _schema_leaf_paths(
         path = f"{prefix}.{key}" if prefix else key
         if path in FIELD_REGISTRY:
             paths.add(path)
+            if FIELD_REGISTRY[path].kind == "section" and isinstance(value, Mapping):
+                paths.update(_schema_leaf_paths(value, prefix=path))
         elif isinstance(value, Mapping):
             paths.update(_schema_leaf_paths(value, prefix=path))
         else:
@@ -60,12 +63,27 @@ def test_run_cards_parse_and_resolve_without_domain_backends(card: Path) -> None
         assert config.evaluation.artifact is not None
 
 
+_COMMENTED_SETTING = re.compile(r"^# (\[[A-Za-z0-9_.]+\]|[A-Za-z0-9_\"-]+ = .*)$")
+
+
+def _documented_payload(text: str) -> dict[str, object]:
+    """Parse active settings together with commented example assignments."""
+
+    lines = (
+        match.group(1) if (match := _COMMENTED_SETTING.match(line)) else line
+        for line in text.splitlines()
+    )
+    return tomllib.loads("\n".join(lines))
+
+
 def test_all_options_is_an_exhaustive_commented_registry_snapshot() -> None:
     card = EXAMPLES / "all_options.toml"
     payload = _read_toml(card)
     text = card.read_text(encoding="utf-8")
 
-    assert _schema_leaf_paths(payload) == set(FIELD_REGISTRY)
+    # Virtual-only leaves that a tree card cannot combine stay commented.
+    assert _schema_leaf_paths(payload) <= set(FIELD_REGISTRY)
+    assert _schema_leaf_paths(_documented_payload(text)) == set(FIELD_REGISTRY)
     for path in FIELD_REGISTRY:
         assert f"# {path}:" in text, f"missing all-options comment for {path}"
 
