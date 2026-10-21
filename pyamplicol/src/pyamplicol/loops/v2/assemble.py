@@ -1706,8 +1706,13 @@ class _PointEvaluation:
                         zero,
                     )
                 )
-        # Catani's operator is the full-colour pole prediction of QCD corrections.
-        checked = slice_.request.accuracy == "full" and slice_.alpha_s_parameter
+        # Catani's operator is the full-colour pole prediction of QCD
+        # corrections with massless coloured legs.
+        checked = (
+            slice_.request.accuracy == "full"
+            and slice_.alpha_s_parameter
+            and self._massless_coloured_legs()
+        )
         ir_poles = self._ir_poles() if self.poles and checked else None
         self.result = PointResult(
             dict(self.born), components, tuple(totals), dict(self.families), ir_poles
@@ -1776,6 +1781,16 @@ class _PointEvaluation:
 
     # -- IR poles ----------------------------------------------------------------------
 
+    def _massless_coloured_legs(self) -> bool:
+        """Whether every coloured leg is massless (Catani's massless dipoles)."""
+
+        return not any(
+            any(self.incoming[leg.label - 1])
+            and _minkowski(self.incoming[leg.label - 1])
+            for leg in self.slice.basis.legs
+            if leg.representation != 1
+        )
+
     def _ir_poles(self) -> dict[Orders, tuple[Any, Any]]:
         """Catani's single and double poles of the renormalised virtual.
 
@@ -1789,11 +1804,6 @@ class _PointEvaluation:
         coloured = sorted(
             label for label, leg in legs.items() if leg.representation != 1
         )
-        for label in coloured:
-            if any(self.incoming[label - 1]) and _minkowski(self.incoming[label - 1]):
-                raise NotImplementedError(
-                    "massive coloured legs need the massive dipoles"
-                )
         dipoles = slice_.dipoles()
         three = Fraction(NC)
         physical = []
