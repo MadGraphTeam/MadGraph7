@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 feynkit-kinematics = { git = "https://github.com/alphal00p/gammaloop.git", rev = "1e8063a763d3aa515749c33616ee59aa827705be", default-features = false, features = ["native"] }
-rusticol-core = { path = "../crates/rusticol-core", features = ["symbolica-runtime", "python-generation-bridge"] }
+rusticol-core = { path = "../crates/rusticol-core", features = ["symbolica-runtime", "python-generation-bridge", "loop-v2"] }
 ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "0d0d7e7a8033431b60a8580731084742e0655cda" }
 ninjars-graph = { git = "https://github.com/alphal00p/ninjars.git", rev = "0d0d7e7a8033431b60a8580731084742e0655cda" }
 ninjars-symbolica = { git = "https://github.com/alphal00p/ninjars.git", rev = "0d0d7e7a8033431b60a8580731084742e0655cda", features = ["native-masters"] }

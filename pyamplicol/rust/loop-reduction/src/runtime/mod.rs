@@ -18,6 +18,7 @@ mod reduction;
 mod schedule;
 mod stability;
 mod states;
+mod v2_execution;
 mod v2_reduce;
 pub use batch::{Batch, BatchCarrier, Data, shape};
 pub use coefficients::{CoefficientEvaluator, exact_state};
@@ -30,6 +31,7 @@ pub use schedule::{CoefficientKernelCache, CoefficientPlan};
 pub use states::{
     PartialStates, on_shell_wavefunctions_batch, wavefunctions_batch, wavefunctions_partial_batch,
 };
+pub use v2_execution::{TypedBatch, V2ReductionBackend};
 pub use v2_reduce::{
     FamilyGroup, ReduceOptions, ReductionFrame, V2Output, V2Reducer, shift_coefficients,
     tensor_rank, true_rank,

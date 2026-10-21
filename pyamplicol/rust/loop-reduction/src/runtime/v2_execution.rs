@@ -1,0 +1,151 @@
+// SPDX-License-Identifier: 0BSD
+
+//! The reduction backend of the native v2 executor
+//! (`rusticol_core::loop_execution::v2`): the executor streams each bucket
+//! chunk's family lanes into the [`V2Reducer`] (true-rank buckets, cached
+//! masters, reduction-direction check) as typed batches, without any decimal
+//! round trip, and reads back each lane's status and Laurent integrals.
+
+use super::batch::{Batch, BatchCarrier, Data};
+use super::v2_reduce::{FamilyGroup, ReduceOptions, ReductionFrame, V2Reducer};
+use crate::Complex;
+use rusticol_core::loop_execution::v2::{FamilyLanes, LaneOutcome, Reduced, V2Backend};
+use rusticol_core::loop_v2::retest::ReductionCheck;
+use rusticol_core::{RusticolError, RusticolResult};
+use symbolica::domains::float::{DoubleFloat, Float};
+
+/// Typed access to the values of a [`Batch`].
+pub trait TypedBatch: BatchCarrier {
+    fn values(data: &Data) -> Option<&[Complex<Self>]>;
+}
+
+impl TypedBatch for f64 {
+    fn values(data: &Data) -> Option<&[Complex<Self>]> {
+        match data {
+            Data::Double(values) => Some(values),
+            _ => None,
+        }
+    }
+}
+
+impl TypedBatch for DoubleFloat {
+    fn values(data: &Data) -> Option<&[Complex<Self>]> {
+        match data {
+            Data::DoubleDouble(values) => Some(values),
+            _ => None,
+        }
+    }
+}
+
+impl TypedBatch for Float {
+    fn values(data: &Data) -> Option<&[Complex<Self>]> {
+        match data {
+            Data::Arbitrary(values) => Some(values),
+            _ => None,
+        }
+    }
+}
+
+/// A [`V2Reducer`] as the executor's reduction backend.
+pub struct V2ReductionBackend {
+    pub reducer: V2Reducer,
+}
+
+fn failure(error: impl std::fmt::Display) -> RusticolError {
+    RusticolError::evaluation(format!("v2 reduction: {error}"))
+}
+
+fn frame(check: ReductionCheck) -> ReductionFrame {
+    ReductionFrame {
+        reverse: check.reverse,
+        rotation: check.rotation,
+        shift: check.shift,
+    }
+}
+
+impl<T: TypedBatch> V2Backend<T> for V2ReductionBackend {
+    fn begin(&mut self) {
+        self.reducer.clear_masters();
+    }
+
+    fn reduce(
+        &mut self,
+        groups: &[FamilyLanes<T>],
+        poles: bool,
+        check: Option<ReductionCheck>,
+    ) -> RusticolResult<Reduced<T>> {
+        let bits = self.reducer.precision_bits();
+        let batches = groups
+            .iter()
+            .map(|g| {
+                let rows = g.keys.len();
+                let ids: Vec<u64> = (0..rows as u64).collect();
+                let n = g.propagators;
+                let typed = |values: &[Complex<T>], columns: usize| {
+                    Batch::typed(values.to_vec(), ids.clone(), columns, bits).map_err(failure)
+                };
+                Ok([
+                    typed(&g.shifts, 4 * n)?,
+                    typed(&g.masses, n)?,
+                    typed(&g.scales, 1)?,
+                    typed(&g.s_matrix, n * n)?,
+                    typed(&g.coefficients, g.coefficients.len() / rows.max(1))?,
+                ])
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let family_groups: Vec<FamilyGroup<'_>> = groups
+            .iter()
+            .zip(&batches)
+            .map(
+                |(g, [shifts, masses, scales, s_matrix, coefficients])| FamilyGroup {
+                    propagators: g.propagators,
+                    shifts,
+                    masses_squared: masses,
+                    scales_squared: scales,
+                    s_matrix,
+                    coefficients,
+                },
+            )
+            .collect();
+        let output = self
+            .reducer
+            .reduce(
+                &family_groups,
+                ReduceOptions {
+                    poles,
+                    check: check.map(frame),
+                },
+            )
+            .map_err(failure)?;
+        let read = |batches: Vec<super::reduction::ReductionBatch>| {
+            batches
+                .into_iter()
+                .map(|batch| {
+                    let values = T::values(batch.values.data())
+                        .ok_or_else(|| failure("reduction carrier differs"))?;
+                    let columns = batch.values.columns();
+                    let mut successes = batch.values.ids().iter().zip(values.chunks_exact(columns));
+                    let mut next = successes.next();
+                    batch
+                        .statuses
+                        .iter()
+                        .map(|(id, status)| {
+                            let value = match next {
+                                Some((&row, value)) if row == *id => {
+                                    next = successes.next();
+                                    Some(value.to_vec())
+                                }
+                                _ => None,
+                            };
+                            Ok(LaneOutcome {
+                                status: status.clone(),
+                                value,
+                            })
+                        })
+                        .collect::<RusticolResult<Vec<_>>>()
+                })
+                .collect::<RusticolResult<Vec<_>>>()
+        };
+        Ok((read(output.direct)?, output.check.map(read).transpose()?))
+    }
+}
