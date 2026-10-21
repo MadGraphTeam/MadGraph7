@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import math
 import string
+from collections import Counter
 from decimal import Decimal, localcontext
 
 import numpy as np
@@ -19,7 +20,6 @@ import pytest
 from pyamplicol.generation.dag_compiler import (
     AttachableLoopBlocks,
     GenericDAGCompiler,
-    compile_generic_dag,
 )
 from pyamplicol.loops.v2.blocks import (
     RequestedLoopBlocks,
@@ -742,7 +742,12 @@ def test_every_loop_position_content_is_a_block(models, text):
 @pytest.mark.loop_physics
 @pytest.mark.parametrize(
     ("text", "born"),
-    [("g g > g g", {"QCD": 2}), ("u u~ > d d~ g", {"QCD": 3})],
+    [
+        ("g g > g g", {"QCD": 2}),
+        ("u u~ > d d~ g", {"QCD": 3}),
+        ("g g > g g g", {"QCD": 3}),
+        ("u u~ > u u~ g", {"QCD": 3}),
+    ],
 )
 def test_family_recursion_runs_on_the_block_table(models, text, born):
     """WP1.3 consumes the blocks as its ``BlockTable`` and feeds back requests."""
@@ -809,9 +814,32 @@ def test_born_is_the_tree_program_bucketed_by_exact_order(models):
         born_coupling_orders=born_limits,
         block_coupling_orders={"QCD": 4, "QED": 2},
     )
-    assert blocks.born_dag == compile_generic_dag(
-        process, model=model, max_coupling_orders=born_limits
+    # Baseline of the plain tree program, recorded with compile_generic_dag on
+    # 2590dc2c, before loop-request mode (WP1.2) touched the DAG compiler:
+    # every root closes the (u u~ d) current with the d~ source.
+    dag = blocks.born_dag
+    assert len(dag.currents) == 30
+    roots = Counter(
+        (
+            add_orders(
+                dag.currents[root.left_id].index.coupling_orders,
+                dag.currents[root.right_id].index.coupling_orders,
+            ),
+            root.color_sector_id,
+            frozenset(
+                (current.index.external_mask, current.index.particle_id)
+                for current in (dag.currents[root.left_id], dag.currents[root.right_id])
+            ),
+        )
+        for root in dag.amplitude_roots
     )
+    closure = frozenset({(7, 1), (8, -1)})
+    assert roots == {
+        ((("QCD", 2),), 0, closure): 4,
+        ((("QCD", 2),), 1, closure): 4,
+        ((("QED", 2),), 0, closure): 4,
+        ((("QED", 2),), 1, closure): 1,
+    }
     assert blocks.born_orders == ((("QCD", 2),), (("QED", 2),))
     by_order = blocks.born_roots_by_order()
     assert sum(len(roots) for roots in by_order.values()) == len(
