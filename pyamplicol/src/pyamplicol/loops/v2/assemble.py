@@ -86,14 +86,18 @@ from . import reference_executor as rx
 from .blocks import TreeBlocks, build_tree_blocks
 from .catalogue import build_loop_kernel_catalogue
 from .colour import (
+    SYMMETRIC_GROUP_FFT,
     BornBasis,
     ColourAccuracy,
+    ContractionPolicy,
     SeedColour,
     SeedCombination,
+    SeedFourier,
     SeedTable,
     build_seed_table,
     extend_seed_table,
     kept,
+    seed_fourier,
 )
 from .conventions import (
     FERMION_SPIN,
@@ -497,7 +501,10 @@ class SectorSeeds:
     Column s of U0[c](h) sums K[c, b] conj(A0_b(h)) over the (Born order,
     loop order) pairs of sector s, so each family numerator splits by
     squared coupling order (REQUIREMENTS_ADDENDUM A). A skeleton's seed is
-    its combination of table classes (``colour.build_seed_table``).
+    its combination of table classes (``colour.build_seed_table``). With
+    ``fourier`` (binary64 only) the certified orbit pairs are contracted by
+    the native symmetric-group FFT (``colour.SeedFourier``, design §7.3);
+    ``algorithm`` reports the contraction used.
     """
 
     def __init__(
@@ -509,6 +516,9 @@ class SectorSeeds:
         numbers: _Numbers,
         accuracy: ColourAccuracy,
         degrees: Sequence[int | None] | None = None,
+        *,
+        fourier: SeedFourier | None = None,
+        native: Any = None,
     ):
         self.columns = len(sectors)
         self.class_of = class_of
@@ -525,6 +535,24 @@ class SectorSeeds:
 
         self._cast = cast
         degrees = degrees or [None] * len(sectors)
+        if fourier is not None and numbers.double:
+            self.algorithm = SYMMETRIC_GROUP_FFT
+            rows = list(born)
+            columns = [
+                fourier.seeds(
+                    table,
+                    pairs,
+                    [born[row] for row in rows],
+                    accuracy,
+                    native,
+                    degree=degree,
+                )
+                for pairs, degree in zip(sectors, degrees, strict=True)
+            ]
+            for r, row in enumerate(rows):
+                self._rows[row] = [column[r] for column in columns]
+            return
+        self.algorithm = "direct"
         for row, amplitudes in born.items():
             self._rows[row] = [
                 table.seeds(
@@ -740,6 +768,8 @@ class PointResult:
     prediction of the virtual's (single, double) poles per sector, ``None``
     in finite-only mode, at leading colour and for non-QCD corrections;
     ``stability`` is ``None`` unless checks were asked.
+    ``colour_contraction`` is the seed contraction used ("direct" or
+    "symmetric-group-fft").
     """
 
     born: Mapping[Orders, Any]
@@ -748,6 +778,7 @@ class PointResult:
     families: Mapping[tuple[FamilyKey, Orders, Orders], Laurent]
     ir_poles: Mapping[Orders, tuple[Any, Any]] | None
     stability: StabilityEstimate | None = None
+    colour_contraction: str = "direct"
 
     def virtual(self, sector: Orders) -> Laurent:
         return self.components["virtual"][sector]
@@ -779,6 +810,11 @@ class SliceRequest:
     # Certified colour compressions (design §7.2): adjoint rings and closed
     # fundamental loops seeded by primitives; False keeps every generic seed.
     compress_colour: bool = True
+    # Seed contraction (design §7.3): "auto" uses the native symmetric-group
+    # FFT on certified orbits in binary64 at NLC and full colour, "fft" also
+    # refuses a request without such orbits, "direct" never uses it. Other
+    # carriers and LC always contract directly.
+    colour_contraction: ContractionPolicy = "auto"
 
 
 @dataclass
@@ -814,6 +850,7 @@ class LoopSlice:
     scale_parameter: str
     alpha_s_parameter: str | None
     loop_catalogue: Any = None
+    fourier: SeedFourier | None = None
     _cache: dict = field(default_factory=dict, repr=False)
 
     # -- generation ------------------------------------------------------------
@@ -998,7 +1035,26 @@ class LoopSlice:
         )
         if request.accuracy != "full":
             slice_._prune_colour()
+        slice_._plan_contraction()
         return slice_
+
+    def _plan_contraction(self) -> None:
+        """Certify the seed FFT's orbits per ``colour_contraction``."""
+
+        policy = self.request.colour_contraction
+        if policy not in ("auto", "direct", "fft"):
+            raise ValueError(f"unknown colour contraction {policy!r}")
+        if policy == "direct":
+            return
+        if self.request.accuracy == "lc":
+            if policy == "fft":
+                raise ValueError("leading-colour seeds are contracted directly")
+            return
+        self.fourier = seed_fourier(self.table)
+        if self.fourier is None and policy == "fft":
+            raise ValueError(
+                "the seed table has no certified symmetric-group orbit pair"
+            )
 
     def _prune_colour(self) -> None:
         """LC and NLC: drop, before any numerics, every skeleton whose seed
@@ -1681,7 +1737,10 @@ class _PointEvaluation:
             numbers,
             slice_.request.accuracy,
             [degrees.get(sector) for sector, _pairs in slice_.sectors],
+            fourier=None if exact else slice_.fourier,
+            native=slice_.native,
         )
+        self.colour_contraction = seeds.algorithm
         kinematics = rx.CatalogueKinematics(
             slice_.catalogue,
             slice_.compiled.ir.vertex_terms,
@@ -1837,7 +1896,12 @@ class _PointEvaluation:
         )
         ir_poles = self._ir_poles() if self.poles and checked else None
         self.result = PointResult(
-            dict(self.born), components, tuple(totals), dict(self.families), ir_poles
+            dict(self.born),
+            components,
+            tuple(totals),
+            dict(self.families),
+            ir_poles,
+            colour_contraction=self.colour_contraction,
         )
         self.absolute = self._lane_budget(
             {lane: value.coefficients for lane, value in self.families.items()},

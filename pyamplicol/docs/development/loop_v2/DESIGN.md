@@ -963,6 +963,12 @@ U0 = A0† K. Leading colour is diagonal.
 - The `auto | direct | fft` policy and the reported algorithm are kept (MASTER_PLAN §2.16).
 - DoubleFloat and arbitrary precision use exact direct contraction.
 - Correlated FFT stays unsupported, as today.
+- **Implemented (WP2.4).** `loops/v2/colour.seed_fourier` finds the orbits of S_m on the external adjoint labels (all of them, or all but one when every coloured leg is adjoint) directly on the literal Born tensors and the seed classes: regular Born orbits, and complete loop orbits whose stabilisers carry signs (an adjoint ring is fixed up to (−1)ⁿ by its reflection). Each Born/loop orbit pair is certified on every exact cell, K[class(g), b(h)]·sign_g = k(h⁻¹∘g). Other pairs stay direct. The native `V2SeedFourier` (`rust/loop-reduction/src/runtime/v2_seeds.rs`, binding `_loop.V2SeedFourier`) contracts the certified pairs for a batch of helicity rows with `SymmetricGroupFftPlan`. Kernels are projected exactly per sector degree P and Born grade, then rounded once.
+  - The slice's `SliceRequest.colour_contraction` defaults to `auto`: binary64 at NLC/FC, with `PointResult.colour_contraction` reporting the algorithm. `fft` refuses a table without a certified pair, and LC is refused. Exact dressing, DoubleFloat and arbitrary precision stay direct.
+  - Orbits found:
+    - gg→gg and gg→ggg: one Born orbit and two loop orbits (adjoint rings and closed traces).
+    - uu~→ggg: 19 loop orbits cover every cell.
+    - gg→ggggg: S_6, with 1 080 classes in two orbits.
 
 ### 7.4 Projection
 
@@ -1047,6 +1053,12 @@ V_{αβ,k} = B†K^{αβ}_{BL}L_k + L_k†K^{αβ}_{LB}B, with K_{LB}^{αβ} = (
 ### 7.8 Caps
 
 The loop path never passes `max_sectors` (`color/plan_build.py:21` [V]) and does not inherit `MAX_ADJOINT_GLUONS = 12` (`color/adjoint_kernel.py:20` [V]). Direct contraction is always available when FFT eligibility (degree ≤ 10 today) fails.
+
+Verified for WP2.4 [V]:
+- `loops/v2` calls neither `color/plan_build.py` nor `color/adjoint_kernel.py`. Its Born plan is the tree engine's trace basis, and no caller in the repository passes `max_sectors`.
+- The seed FFT has no degree bound. It enumerates S_m only when |S_m| ≤ the Born basis size, the structural condition for a regular orbit, and contracts directly otherwise.
+- The native plan's own bound is its factorial and `u32` index storage.
+- `MAX_ADJOINT_GLUONS` remains the tree engine's DDM-basis resource bound (dense int64 kernels on S_{n−2}) and is outside the loop path.
 
 ---
 

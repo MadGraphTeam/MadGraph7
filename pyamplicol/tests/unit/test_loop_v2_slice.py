@@ -294,6 +294,57 @@ def test_declared_continuation_keeps_full_colour(declared):
         assert abs(virtual.double_pole - double) <= POLE_TOLERANCE * scale_
 
 
+@pytest.mark.loop_physics
+def test_seed_fft_equals_direct_on_the_slice(
+    slices, declared, loop_sm_compiled_model, loop_native
+):
+    """Seed contraction policy (design §7.3): "auto" contracts the certified
+    orbits of gg -> gg with the native symmetric-group FFT in binary64 and
+    reports it; "direct" and the 200-bit carrier contract directly, and
+    every component agrees with the direct contraction to binary64
+    rounding. LC seeds are always direct."""
+
+    import dataclasses
+
+    from pyamplicol.models.loading import load_compiled_model
+
+    fft = slices("gg_gg")
+    assert fft.fourier is not None
+    direct = LoopSlice.generate(
+        load_compiled_model(loop_sm_compiled_model),
+        _request("gg_gg", colour_contraction="direct"),
+        loop_native,
+    )
+    assert direct.fourier is None
+    fixture = _fixture("gg_gg")
+    for point, scale in zip(fixture["points"], fixture["scales_squared"], strict=True):
+        mine = fft.evaluate(point, scale, parameters=PARAMETERS)
+        reference = direct.evaluate(point, scale, parameters=PARAMETERS)
+        assert mine.colour_contraction == "symmetric-group-fft"
+        assert reference.colour_contraction == "direct"
+        for component in COMPONENTS:
+            a = _only(mine.components[component]).coefficients
+            b = _only(reference.components[component]).coefficients
+            size = max(map(abs, b)) or abs(_only(reference.born))
+            for x, y in zip(a, b, strict=True):
+                assert abs(x - y) <= O2_TOLERANCE["double"] * size, (component, x, y)
+    precise = fft.evaluate(
+        fixture["points"][0],
+        fixture["scales_squared"][0],
+        parameters=PARAMETERS,
+        precision=CARRIERS["arbitrary-200"],
+    )
+    assert precise.colour_contraction == "direct"
+    leading = declared("gg_gg", "lc")
+    assert leading.fourier is None
+    forced = dataclasses.replace(
+        leading,
+        request=dataclasses.replace(leading.request, colour_contraction="fft"),
+    )
+    with pytest.raises(ValueError, match="leading-colour"):
+        forced._plan_contraction()
+
+
 # ----------------------------------------------------------------- O8 providers
 
 

@@ -16,6 +16,7 @@ import dataclasses
 import gzip
 import itertools
 import json
+import math
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -56,6 +57,7 @@ from pyamplicol.loops.v2.colour import (
     project,
     reduce_network,
     relabel,
+    seed_fourier,
     spenso_colour_network,
 )
 from pyamplicol.loops.v2.families import (
@@ -627,11 +629,88 @@ def test_compressions_are_certified(v2_slice, name, kinds):
     assert all(class_of.values())
 
 
+def _born_rows(table, count: int, grades=(0,)) -> list[dict]:
+    """Deterministic, irregular binary64 Born rows over the whole basis."""
+
+    rows = []
+    for r in range(count):
+        row = {}
+        for b, orders in enumerate(table.basis.orders):
+            for order in orders:
+                row[b, order] = {
+                    grade: complex(
+                        math.sin(1.7 * b + 0.3 * r + grade + 0.1),
+                        math.cos(2.3 * b - 0.7 * r + 0.5 * grade),
+                    )
+                    for grade in grades
+                }
+        rows.append(row)
+    return rows
+
+
+def _assert_fft_equals_direct(table, fourier, rows, accuracy, native) -> None:
+    """The FFT seeds equal the direct contraction to binary64 rounding, per
+    (Born order, loop order) pair."""
+
+    born_orders = {a for orders in table.basis.orders for a in orders}
+    loop_orders = {o for orders in table.orders for o in orders}
+    for pairs in (frozenset({(a, o)}) for a in born_orders for o in loop_orders):
+        degree = None
+        if accuracy != "full":
+            grades = {key: tuple(value) for key, value in rows[0].items()}
+            degree = table.degree(pairs, grades)
+        fast = fourier.seeds(table, pairs, rows, accuracy, native, degree=degree)
+        for row, seeds in zip(rows, fast, strict=True):
+            direct = table.seeds(pairs, row, accuracy, cast=complex, degree=degree)
+            scale = max(map(abs, direct.values()))
+            assert scale > 0
+            for key in set(direct) | set(seeds):
+                error = abs(seeds.get(key, 0) - direct.get(key, 0))
+                assert error <= 1e-13 * scale, (key, accuracy, error / scale)
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("name", "orbits"),
+    [("gg_gg", (1, 2, 3)), ("uux_ggg", (1, 19, 3))],
+)
+def test_seed_fft_equals_direct_contraction(v2_slice, loop_native, name, orbits):
+    """Seed FFT (design §7.3, WP2.4 acceptance "FFT = direct"): the
+    certified symmetric-group orbits of the compressed seed table (adjoint
+    rings, closed fundamental traces, quark rings) contracted by the native
+    S_m FFT equal the direct contraction at full colour and NLC, Born
+    grades included. Each orbit pair is certified on every exact cell."""
+
+    v2 = v2_slice(name)
+    table, _class_of = build_seed_table(v2.colour, _skeleton_list(v2), compress=True)
+    fourier = seed_fourier(table)
+    assert fourier is not None
+    assert (
+        len(fourier.born_orbits),
+        len(fourier.loop_orbits),
+        fourier.degree,
+    ) == orbits
+    assert len(fourier.kernels) == len(fourier.born_orbits) * len(fourier.loop_orbits)
+    for a, j in fourier.kernels:
+        assert all(
+            fourier.covers(c, b)
+            for b in fourier.born_orbits[a]
+            for c, _sign in fourier.loop_orbits[j]
+        )
+    for accuracy in ("full", "nlc"):
+        _assert_fft_equals_direct(
+            table, fourier, _born_rows(table, 3, (0, -1)), accuracy, loop_native
+        )
+
+
 @pytest.mark.loop_nightly
-def test_seven_gluon_seed_tables_within_five_minutes(loop_sm_compiled_model):
+def test_seven_gluon_seed_tables_within_five_minutes(
+    loop_sm_compiled_model, loop_native
+):
     """WP2.4 acceptance: the full-colour seed table of gg -> ggggg (every
     skeleton, certified compressions, exact cells against the Born basis)
-    builds in under five minutes. Blocks, families and skeletons are
+    and its certified S_6 FFT orbits build in under five minutes, and the
+    FFT seeds equal the direct ones. Blocks, families and skeletons are
     generated beforehand and not timed."""
 
     import time
@@ -678,6 +757,7 @@ def test_seven_gluon_seed_tables_within_five_minutes(loop_sm_compiled_model):
     ]
     start = time.perf_counter()
     table, class_of = build_seed_table(colour, skeletons, compress=True)
+    fourier = seed_fourier(table)
     seconds = time.perf_counter() - start
     assert seconds < 300, seconds
     kinds = [seed.kind for seed in table.classes if isinstance(seed, Primitive)]
@@ -686,6 +766,10 @@ def test_seven_gluon_seed_tables_within_five_minutes(loop_sm_compiled_model):
         kinds.count("adjoint-ring") == 360 and kinds.count("fundamental-trace") == 720
     )
     assert len(class_of) == len(skeletons)
+    assert fourier is not None and fourier.degree == 6
+    assert (len(fourier.born_orbits), len(fourier.loop_orbits)) == (1, 2)
+    assert len(fourier.kernels) == 2
+    _assert_fft_equals_direct(table, fourier, _born_rows(table, 2), "full", loop_native)
 
 
 @pytest.fixture(scope="module")

@@ -44,6 +44,9 @@ Conventions a consumer relies on:
   numerators equal the generic ones because pure-gluon blocks are Lie
   elements (``COMPRESSION_THEOREMS``). With compression, classes whose
   colour vectors are proportional share one table row.
+* **Contraction** (design §7.3). ``seed_fourier`` certifies the regular
+  symmetric-group orbits of a table exactly; ``SeedFourier.seeds``
+  contracts them with the native S_m FFT in binary64, the rest directly.
 * **N_c grades.** Blocks with U(1)-subtraction pieces enter with their grade
   (``BlockColourFlow.nc_grade``) and the Born amplitude A0[b] is split into
   grades (``SeedTable.seeds``), so seeds are exact in N_c; a process whose
@@ -67,6 +70,7 @@ Conventions a consumer relies on:
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -1605,6 +1609,7 @@ class SeedTable:
         cast: Callable[[ExactColorCoefficient], Any] = complex,
         conjugate: Callable[[Any], Any] = lambda value: value.conjugate(),
         degree: int | None = None,
+        skip: Callable[[int, int], bool] | None = None,
     ) -> dict[tuple[int, Orders], Any]:
         """U0[c, loop order] = sum_b K[c, b] conj(A0[b, Born order]) (§7.3).
 
@@ -1615,7 +1620,8 @@ class SeedTable:
         (N_c real, so conjugation leaves the grades alone). No external
         average is applied. ``degree`` overrides P, e.g. when the sector's
         counterterm and field cells raise it; by default it is the degree of
-        the seed cells with the grades of ``born``.
+        the seed cells with the grades of ``born``. ``skip(c, b)`` leaves
+        out the cells another contraction covers (``SeedFourier``).
         """
 
         pairs = frozenset(pairs)
@@ -1634,6 +1640,8 @@ class SeedTable:
             born = {key: {0: _at_three(grades, cast)} for key, grades in born.items()}
         out: dict[tuple[int, Orders], Any] = {}
         for c, order, b, born_order in self.admitted(pairs):
+            if skip is not None and skip(c, b):
+                continue
             for grade, amplitude in born.get((b, born_order), {}).items():
                 weight = project(self.cells[c][b], degree, accuracy, grade)
                 if not weight:
@@ -1991,6 +1999,293 @@ def _relabel_tensor(
     )
 
 
+# ---------------------------------------------------------- seed FFT (§7.3)
+
+ContractionPolicy = Literal["auto", "direct", "fft"]
+SYMMETRIC_GROUP_FFT = "symmetric-group-fft"
+
+
+@dataclass(frozen=True)
+class SeedFourier:
+    """Certified symmetric-group orbits of a seed table (design §7.3).
+
+    S_m acts on the external adjoint labels ``labels`` by x: labels[i] ->
+    labels[x[i]]. Group elements are permutation tuples in lexicographic
+    order (``itertools.permutations``), composed as (p o q)[i] = p[q[i]];
+    element 0 is the identity.
+
+    * ``born_orbits[a][g]`` is the basis element g.b_a. Born orbits are
+      regular: every element of the orbit appears once.
+    * ``loop_orbits[j][g]`` is (class, sign) with g.kappa_j = sign
+      kappa_class. Stabilisers are allowed (an adjoint ring is fixed up to
+      (-1)^n by the reflection of its word).
+    * ``kernels[a, j][x]`` = sign_x K[class(x), b_a] for the certified pairs.
+
+    Each kernel is certified on every entry, K[class(g), b(h)] sign_g =
+    k(h^-1 o g). Hence sum_h K[c, b(h)] conj(A0_b(h)) over a pair is the group
+    convolution that ``V2SeedFourier`` evaluates with the native S_m FFT, and
+    it equals the direct contraction exactly before rounding. Every other
+    (class, basis element) pair stays direct (``covers``).
+    """
+
+    degree: int
+    labels: tuple[int, ...]
+    born_orbits: tuple[tuple[int, ...], ...]
+    loop_orbits: tuple[tuple[tuple[int, int], ...], ...]
+    kernels: Mapping[tuple[int, int], tuple[Laurent, ...]]
+
+    @cached_property
+    def _orbit_of(self) -> tuple[dict[int, int], dict[int, int]]:
+        born = {b: a for a, orbit in enumerate(self.born_orbits) for b in orbit}
+        loop = {c: j for j, orbit in enumerate(self.loop_orbits) for c, _s in orbit}
+        return born, loop
+
+    def covers(self, c: int, b: int) -> bool:
+        """Whether K[c, b] is contracted by a kernel, not directly."""
+
+        born, loop = self._orbit_of
+        a, j = born.get(b), loop.get(c)
+        return a is not None and j is not None and (a, j) in self.kernels
+
+    @cached_property
+    def representatives(self) -> tuple[tuple[tuple[int, int, int], ...], ...]:
+        """Per loop orbit: (class, first group element, sign) of each class."""
+
+        out = []
+        for orbit in self.loop_orbits:
+            first: dict[int, tuple[int, int, int]] = {}
+            for g, (c, sign) in enumerate(orbit):
+                first.setdefault(c, (c, g, sign))
+            out.append(tuple(first.values()))
+        return tuple(out)
+
+    def seeds(
+        self,
+        table: SeedTable,
+        pairs: Iterable[SectorPair],
+        rows: Sequence[Mapping[tuple[int, Orders], Mapping[int, complex]]],
+        accuracy: ColourAccuracy,
+        native: Any,
+        *,
+        degree: int | None = None,
+    ) -> list[dict[tuple[int, Orders], complex]]:
+        """``SeedTable.seeds`` in binary64 for a batch of Born rows (one per
+        helicity): the certified pairs through the native S_m FFT, the rest
+        directly. Kernels are the exact cells projected like the direct
+        ones (per sector degree P and Born grade), rounded once.
+        """
+
+        pairs = frozenset(pairs)
+        if accuracy != "full" and degree is None:
+            grades: dict[tuple[int, Orders], set[int]] = {}
+            for row in rows:
+                for key, value in row.items():
+                    grades.setdefault(key, set()).update(value)
+            degree = table.degree(pairs, grades)
+        if accuracy == "full":
+            # Every grade is kept: sum the Born at N_c = 3 first.
+            rows = [
+                {key: {0: _at_three(grades, complex)} for key, grades in row.items()}
+                for row in rows
+            ]
+        out = [
+            table.seeds(
+                pairs, row, accuracy, cast=complex, degree=degree, skip=self.covers
+            )
+            for row in rows
+        ]
+        if not rows:
+            return out
+        # One native transform per (Born order, loop order, Born grade).
+        jobs: dict[tuple[Orders, Orders, int], list] = {}
+        for (a, j), kernel in self.kernels.items():
+            born_orders = table.basis.orders[self.born_orbits[a][0]]
+            loop_orders = table.orders[self.loop_orbits[j][0][0]]
+            for born_order, loop_order in sorted(pairs):
+                if born_order not in born_orders or loop_order not in loop_orders:
+                    continue
+                present = {
+                    grade
+                    for row in rows
+                    for b in self.born_orbits[a]
+                    for grade in row.get((b, born_order), ())
+                }
+                for grade in sorted(present):
+                    values = [
+                        complex(project(cell, degree, accuracy, grade))
+                        for cell in kernel
+                    ]
+                    if any(values):
+                        jobs.setdefault((born_order, loop_order, grade), []).append(
+                            (a, j, values)
+                        )
+        group = len(self.born_orbits[0]) if self.born_orbits else 0
+        width = len(self.born_orbits) * group
+        for (born_order, loop_order, grade), items in sorted(jobs.items()):
+            fourier = native.V2SeedFourier(
+                self.degree,
+                [[(v.real, v.imag) for v in values] for _a, _l, values in items],
+                [(k, a, j) for k, (a, j, _v) in enumerate(items)],
+                len(self.born_orbits),
+                len(self.loop_orbits),
+            )
+            values = [
+                [repr(x.real), repr(x.imag)]
+                for row in rows
+                for orbit in self.born_orbits
+                for x in (
+                    complex(row.get((b, born_order), {}).get(grade, 0)) for b in orbit
+                )
+            ]
+            batch = native.NativeBatch.from_decimal(
+                values, len(rows), width, "double", None, list(range(len(rows)))
+            )
+            weights = fourier.weights(batch).to_decimal()
+            loop_width = len(self.loop_orbits) * group
+            for j in sorted({j for _a, j, _v in items}):
+                for c, g, sign in self.representatives[j]:
+                    key = (c, loop_order)
+                    for r, seeds in enumerate(out):
+                        real, imag = weights[r * loop_width + j * group + g]
+                        term = sign * complex(float(real), float(imag))
+                        seeds[key] = term if key not in seeds else seeds[key] + term
+        return out
+
+
+def seed_fourier(table: SeedTable) -> SeedFourier | None:
+    """The certified symmetric-group orbits of ``table`` (None if none).
+
+    The group permutes every external adjoint label, keeping the smallest
+    one fixed when every coloured leg is adjoint (cyclic traces then form
+    regular orbits). Born orbits must be regular and keep their Born orders;
+    loop orbits must be complete and keep their loop orders. A Born orbit
+    needs |S_m| distinct basis elements, so larger groups are never
+    enumerated and the contraction stays direct (design §7.8).
+    """
+
+    basis = table.basis
+    adjoint = sorted(leg.label for leg in basis.legs if leg.representation == 8)
+    if all(leg.representation in (1, 8) for leg in basis.legs):
+        adjoint = adjoint[1:]
+    labels, degree = tuple(adjoint), len(adjoint)
+    if degree < 2 or math.factorial(degree) > len(basis):
+        return None
+    group = list(permutations(range(degree)))
+    renames = [{label: labels[x[i]] for i, label in enumerate(labels)} for x in group]
+
+    born_index = {tensor: b for b, tensor in enumerate(basis.tensors)}
+    born_orbits: list[tuple[int, ...]] = []
+    seen: set[int] = set()
+    for b0, tensor in enumerate(basis.tensors):
+        if b0 in seen:
+            continue
+        images = [born_index.get(_relabelled(tensor, r)) for r in renames]
+        seen.update(i for i in images if i is not None)
+        if (
+            None not in images
+            and len(set(images)) == len(group)
+            and all(basis.orders[b] == basis.orders[b0] for b in images)
+        ):
+            born_orbits.append(tuple(images))
+    if not born_orbits:
+        return None
+
+    keys = _ClassKeys(basis.legs, merge=True)
+    class_index: dict[Hashable, int] = {}
+    scales = []
+    for c, seed in enumerate(table.classes):
+        key, scale = keys(seed)
+        class_index.setdefault(key, c)
+        scales.append(scale)
+    loop_orbits: list[tuple[tuple[int, int], ...]] = []
+    seen = set()
+    for c0, seed in enumerate(table.classes):
+        if c0 in seen:
+            continue
+        words = isinstance(seed, Primitive) and seed.kind != "quark-ring"
+        tensor = None if words else table.tensor(c0)
+        images = []
+        for rename in renames:
+            if words:
+                key, sign = canonical_primitive(
+                    seed.kind, (rename.get(a, a) for a in seed.word)
+                )
+                scale = ExactColorCoefficient(sign)
+            else:
+                key, scale = _proportional_key(
+                    canonical_seed(_relabelled(tensor, rename))
+                )
+            c = class_index.get(key)
+            if c is None or table.orders[c] != table.orders[c0]:
+                break
+            # rename(kappa_c0) = factor kappa_c; orbits keep factors +-1.
+            factor = _ratio(scale, scales[c])
+            if factor.imag or abs(factor.real) != 1:
+                break
+            images.append((c, int(factor.real)))
+        seen.update(c for c, _sign in images)
+        if len(images) == len(group):
+            loop_orbits.append(tuple(images))
+    if not loop_orbits:
+        return None
+
+    rank = {x: i for i, x in enumerate(group)}
+    inverse = [tuple(sorted(range(degree), key=x.__getitem__)) for x in group]
+    # relative[h][g] = rank of h^-1 o g
+    relative = [[rank[tuple(hinv[i] for i in g)] for g in group] for hinv in inverse]
+    kernels: dict[tuple[int, int], tuple[Laurent, ...]] = {}
+    for a, born in enumerate(born_orbits):
+        for j, loop in enumerate(loop_orbits):
+            kernel = tuple(_signed(table.cells[c][born[0]], sign) for c, sign in loop)
+            if all(
+                _signed(table.cells[c][b], sign) == kernel[relative[h][g]]
+                for h, b in enumerate(born)
+                for g, (c, sign) in enumerate(loop)
+            ):
+                kernels[a, j] = kernel
+    if not kernels:
+        return None
+    return SeedFourier(degree, labels, tuple(born_orbits), tuple(loop_orbits), kernels)
+
+
+def _signed(cell: Laurent, sign: int) -> Laurent:
+    if sign == 1:
+        return dict(cell)
+    return {power: value.scaled(sign) for power, value in cell.items()}
+
+
+def _relabelled(
+    tensor: ConnectedColorTensor, rename: Mapping[int, int]
+) -> ConnectedColorTensor:
+    """``tensor`` with its adjoint labels renamed (fundamental ones kept)."""
+
+    def label(a: int) -> int:
+        return rename.get(a, a)
+
+    return ConnectedColorTensor(
+        tensor.legs,
+        tuple(
+            TensorTerm(
+                term.coefficient,
+                ColorTensor(
+                    tuple(
+                        OpenColorString(
+                            string.fundamental_label,
+                            tuple(map(label, string.adjoint_labels)),
+                            string.antifundamental_label,
+                        )
+                        for string in term.tensor.open_strings
+                    ),
+                    tuple(tuple(map(label, trace)) for trace in term.tensor.traces),
+                ),
+                term.nc_power,
+            )
+            for term in tensor.terms
+        ),
+        tensor.normalization_power,
+    )
+
+
 # ------------------------------------------------------ planar leading colour
 
 # (strings q -> adjoints -> qbar, sorted; traces, canonical rotation, sorted)
@@ -2295,18 +2590,21 @@ def certify_leading_colour(
 
 __all__ = [
     "COMPRESSION_THEOREMS",
+    "SYMMETRIC_GROUP_FFT",
     "BornBasis",
     "ColourNetwork",
     "ColourProduct",
     "ColourString",
     "CompressedColour",
     "CompressionCertificate",
+    "ContractionPolicy",
     "LeadingColourCertificate",
     "PositionColour",
     "Primitive",
     "PrimitiveKind",
     "SeedColour",
     "SeedCombination",
+    "SeedFourier",
     "SeedTable",
     "VertexDecomposition",
     "block_colour_network",
@@ -2324,5 +2622,6 @@ __all__ = [
     "project",
     "reduce_network",
     "relabel",
+    "seed_fourier",
     "spenso_colour_network",
 ]
