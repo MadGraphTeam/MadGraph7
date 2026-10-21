@@ -767,3 +767,15 @@ resume metadata. The earlier pause note is a historical checkpoint.
   the 751-file evidence seal; these results do not pass the separate final
   original-Ninja runtime gates. The allocation patch remains held until the
   final combined source freeze and numerical tests.
+- The final native screen completed all seven triplets and three warmup
+  streams with exact own-arm controls and unchanged inputs. Independent paired
+  analysis found no demonstrated gain: denominator/interpreted ratio
+  1.02169807, interval [0.973591667, 1.045665774]; full/interpreted 1.007070304,
+  interval [0.981059834, 1.040109539]. The declared rule retains interpreted
+  kernels; neither native feature nor factory selection is promoted.
+  This closes optimization research for the requested final round.
+- Apply the measured tensor-allocation change and test-only panic/final
+  precision modules, then freeze the exact committed candidate for one Rust
+  test binary, actual installer/copied standalone/NLO proof, and fresh core,
+  loop-induced, threshold, stability and extra two-to-four campaigns. The new
+  final test modules are not counted as passed until compiled and executed.

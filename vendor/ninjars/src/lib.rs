@@ -1415,3 +1415,9 @@ mod guarded_tests;
 mod transport_contract_tests;
 #[cfg(test)]
 mod transport_replay_tests;
+
+#[cfg(test)]
+mod final_precision_tests;
+
+#[cfg(test)]
+mod panic_contract_tests;
