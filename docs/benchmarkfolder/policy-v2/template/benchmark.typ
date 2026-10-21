@@ -222,9 +222,10 @@ Full model names and MG5aMC process commands are listed with the reproducibility
       label(c.id), checked(c.ordinary.agreement),
       [#checked(c.rotation.agreement) / #checked(c.rotation.invariance)],
       [#checked(c.scale.agreement) / #checked(c.scale.restoration)],
-      if c.optional_reference.at("agreement", default: none) == none {
-        status(c.optional_reference.status)
-      } else { checked(c.optional_reference.agreement) },
+      [#status(c.optional_reference.status)\
+        #if c.optional_reference.at("agreement", default: none) != none {
+          [agreement #checked(c.optional_reference.agreement)]
+        }\ #c.optional_reference.at("failures", default: ()).len() retained failures],
     )).flatten(),
   )
   v(7pt)

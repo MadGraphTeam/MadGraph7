@@ -127,6 +127,27 @@ class TestNinjaRSStress(unittest.TestCase):
         with self.assertRaises(ValueError):
             stress.scale_worker_source(source.replace("MU_R=SQRT", "MU_R=2*SQRT", 1))
 
+    def test_driver_adapter_cannot_hide_numerical_source_changes(self):
+        frozen = (ROOT / "tools/ninjars_benchmark_worker.f").read_text()
+        worker = frozen.replace("@PREFIX@", "ML5_0_").replace("@NEXTERNAL@", "6").replace("@NBORN@", "1")
+        driver = "SubProcesses/P0_stress/check_sa.f"
+        code = "SubProcesses/P0_stress/loop_matrix.f"
+        origin = {"files": {driver: {"sha256": "original-driver"}, code: {"sha256": "numerics"}}}
+        checksum = stress.hashlib.sha256(worker.encode()).hexdigest()
+        compiled = {"files": {driver: {"sha256": checksum}, code: {"sha256": "numerics"}}}
+        stress.verify_worker_source(worker, frozen, origin, compiled, checksum)
+        altered = copy.deepcopy(compiled)
+        altered["files"][code]["sha256"] = "changed-numerics"
+        with self.assertRaises(ValueError):
+            stress.verify_worker_source(worker, frozen, origin, altered, checksum)
+        changed_worker = worker.replace("CALL UPDATE_AS_PARAM()", "CALL OMITTED_UPDATE()", 1)
+        with self.assertRaises(ValueError):
+            stress.verify_worker_source(changed_worker, frozen, origin, compiled, checksum)
+        scale_checksum = stress.hashlib.sha256(stress.scale_worker_source(worker).encode()).hexdigest()
+        scale_compiled = copy.deepcopy(compiled)
+        scale_compiled["files"][driver]["sha256"] = scale_checksum
+        stress.verify_worker_source(worker, frozen, origin, scale_compiled, scale_checksum, scale=True)
+
     def test_rotation_compares_matching_summed_physical_rows(self):
         ordinary = {b: self.rows(backend=b) for b in stress.BACKENDS}
         rotation = {b: [r.copy() for r in ordinary[b] if r["point"] <= 4] for b in stress.BACKENDS}
@@ -162,6 +183,146 @@ class TestNinjaRSStress(unittest.TestCase):
             stress.invariant_comparisons(ordinary, rotation, "rotation")
         with self.assertRaises(ValueError):
             stress.invariant_comparisons(ordinary, rotation, "not-a-control")
+
+    def test_optional_failure_labels_only_actual_attempt_not_unattempted_case(self):
+        ids = [c["id"] for c in stress.configuration("ordinary")["cases"]]
+        failed = {"variant": "ordinary", "rejected": [], "status": {
+            "status": "failed", "requested_cases": ids, "completed_cases": []}}
+        self.assertEqual(stress.failed_case_ids(failed), {ids[0]})
+        failed["status"]["completed_cases"] = [ids[0]]
+        self.assertEqual(stress.failed_case_ids(failed), {ids[1]})
+        failed["rejected"] = [{"case": ids[0]+"-rotation"}]
+        failed["variant"] = "rotation"
+        self.assertEqual(stress.failed_case_ids(failed), {ids[0]})
+
+    @classmethod
+    def campaign_records(cls, variant):
+        records = {}
+        for case in stress.configuration(variant)["cases"]:
+            cid = case["id"]
+            for backend in stress.BACKENDS:
+                rows = cls.rows(stress.VARIANTS[variant], backend=backend)
+                if variant == "scale":
+                    rows = []
+                    ordinary = cls.rows(backend=backend)
+                    for point, factor in enumerate(stress.scale_schedule(), 1):
+                        physical = 1 if point <= 4 else 2
+                        for source in ordinary:
+                            if source["point"] == physical:
+                                rows.append({**source, "point": point,
+                                    "coefficients": [x*factor for x in source["coefficients"]]})
+                count = stress.VARIANTS[variant]
+                for repetition in (0, 1):
+                    row = {"case": cid, "source": "candidate", "backend": backend,
+                           "repetition": repetition, "rows": copy.deepcopy(rows), "cpu": 5,
+                           "seconds_per_point": .001, "cold_seconds": 1., "loops": 1,
+                           "points_sha256": cid, "parameter_card_sha256": "physical-card",
+                           "shared_numerical_settings": {"mlstabthres": 1e-9},
+                           "answer_dimensions": {"allocated": 1, "loop_orders": 1, "born_orders": 1},
+                           "status_counts": {str(rows[0]["status"]): count},
+                           "timed_status_counts": {str(rows[0]["status"]): count},
+                           "executable_sha256": f"executable-{backend}-{variant}"}
+                    records[cid, "candidate", backend, repetition] = (Path("unused"), row)
+        return records
+
+    def snapshot(self, groups, failed=None):
+        signature = self.signature()
+        expected = self.expected(signature)
+        directory = tempfile.TemporaryDirectory(dir=ROOT / ".benchmark-work")
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name)
+        preparation = path / "preparation.json"
+        stress.bench.dump(preparation, {})
+        failures = []
+        if failed:
+            status = path / "failed-status.json"
+            stress.bench.dump(status, failed["status"])
+            failures = [{"variant": "ordinary", "optional_helper": failed["optional_helper"],
+                         "run_status": stress.supplement.bound(status), "rejected": []}]
+        dataset = stress.policy.seal({"schema": stress.SCHEMA, "expected": expected,
+            "runtime_signature": signature, "performance_acceptance_gate": False,
+            "preparation": stress.supplement.bound(preparation),
+            "groups": [{"variant": v} for v in groups], "failed_groups": failures})
+        filename = path / "dataset.json"
+        stress.bench.dump(filename, dataset)
+        def validate(entry, *args, **kwargs):
+            return {}, {}, groups[entry["variant"]]
+        with mock.patch.object(stress, "validate_preparation", return_value={}), \
+                mock.patch.object(stress, "validate_group", side_effect=validate):
+            return stress.report_snapshot(filename, expected, runtime_signature=signature)
+
+    def test_complete_raw_candidate_cohorts_and_controls_are_required(self):
+        groups = {v: self.campaign_records(v) for v in stress.VARIANTS}
+        result = self.snapshot(groups)
+        self.assertTrue(result["complete_campaign_passed"])
+        self.assertEqual(len(result["cases"]), 2)
+        self.assertTrue(all(c["ordinary"]["agreement"]["pairs"] == 6 for c in result["cases"]))
+        self.assertTrue(all(c["optional_reference"]["status"] == "pending" for c in result["cases"]))
+        incomplete = self.snapshot({"ordinary": groups["ordinary"], "rotation": groups["rotation"]})
+        self.assertFalse(incomplete["complete_campaign_passed"])
+        self.assertEqual(incomplete["cases"][0]["scale"]["agreement"]["status"], "pending")
+        missing_backend = copy.deepcopy(groups)
+        for key in [k for k in missing_backend["ordinary"] if k[2] == 8]:
+            del missing_backend["ordinary"][key]
+        self.assertFalse(self.snapshot(missing_backend)["complete_campaign_passed"])
+
+    def test_raw_mismatch_and_restore_failure_do_not_hide_behind_summary(self):
+        groups = {v: self.campaign_records(v) for v in stress.VARIANTS}
+        for key, (_, row) in groups["scale"].items():
+            if key[2] == 8:
+                row["rows"][-1]["coefficients"] = [999., 999., 0., 0.]
+        result = self.snapshot(groups)
+        self.assertFalse(result["complete_campaign_passed"])
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["cases"][0]["scale"]["restoration"]["status"], "failed")
+
+    def test_optional_helper_failure_is_visible_without_failing_candidate_gate(self):
+        groups = {v: self.campaign_records(v) for v in stress.VARIANTS}
+        ids = [c["id"] for c in stress.configuration("ordinary")["cases"]]
+        failure = {"optional_helper": True, "status": {"status": "failed", "requested_cases": ids,
+                   "completed_cases": [], "error": "Retained optional reference failure"}}
+        result = self.snapshot(groups, failure)
+        self.assertTrue(result["complete_campaign_passed"])
+        self.assertEqual(result["cases"][0]["optional_reference"]["status"], "failed")
+        self.assertEqual(len(result["cases"][0]["optional_reference"]["failures"]), 1)
+        self.assertEqual(result["cases"][1]["optional_reference"]["status"], "pending")
+        failure["optional_helper"] = False
+        self.assertFalse(self.snapshot(groups, failure)["complete_campaign_passed"])
+
+    def test_duplicate_repetitions_or_different_cards_are_rejected(self):
+        groups = {v: self.campaign_records(v) for v in stress.VARIANTS}
+        first = next(iter(groups["ordinary"]))
+        groups["ordinary"][first][1]["repetition"] = 1
+        with self.assertRaises(ValueError):
+            self.snapshot(groups)
+        groups = {v: self.campaign_records(v) for v in stress.VARIANTS}
+        for _, row in groups["rotation"].values():
+            row["parameter_card_sha256"] = "different-rotation-card"
+        with self.assertRaises(ValueError):
+            self.snapshot(groups)
+        groups = {v: self.campaign_records(v) for v in stress.VARIANTS}
+        groups["ordinary"][next(iter(groups["ordinary"]))][1]["parameter_card_sha256"] = "changed-card"
+        with self.assertRaises(ValueError):
+            self.snapshot(groups)
+
+    def test_group_reader_rejects_missing_process_or_backend_before_accepting_rows(self):
+        signature = self.signature()
+        expected = self.expected(signature)
+        config = stress.configuration("ordinary")
+        targets = {f"{c['id']}-candidate-{b}": {"case": c["id"], "backend": b}
+                   for c in config["cases"] for b in stress.BACKENDS}
+        targets.pop(next(iter(targets)))
+        binding = stress.policy.seal({"schema": "supplement-source-bindings-v1", "report": ".benchmark-work",
+            "role_map": {"candidate": "candidate_corrected"}, "targets": targets})
+        with tempfile.TemporaryDirectory(dir=ROOT / ".benchmark-work") as directory:
+            filename = Path(directory) / "binding.json"
+            stress.bench.dump(filename, binding)
+            protocol = {"configuration": config, "performance_acceptance_gate": False,
+                        "role_map": binding["role_map"], "repetitions": 2}
+            with mock.patch.object(stress.workers, "checked_series", return_value=(protocol, {})):
+                with self.assertRaises(ValueError):
+                    stress.validate_group({"variant": "ordinary", "bindings": stress.supplement.bound(filename)},
+                                          expected, signature, {})
 
 
 if __name__ == "__main__":

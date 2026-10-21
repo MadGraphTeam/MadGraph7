@@ -1,0 +1,67 @@
+{
+  "schema": "stress-reader-source-validation-v1",
+  "files": {
+    "README.md": {
+      "sha256": "7720feee3dd043cf6e3206dab79e190e779308c338f33b0f841d7a9776c1ac72",
+      "bytes": 2609
+    },
+    "attempt-1/parse.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "attempt-1/parse.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "attempt-1/unittest.stderr": {
+      "sha256": "d23fef644152bef2be983e0a14353f042961373414f87e2f2d9979185cbd6908",
+      "bytes": 1955
+    },
+    "attempt-1/unittest.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "attempt-2/parse.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "attempt-2/parse.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "attempt-2/unittest.stderr": {
+      "sha256": "765b4a4cbfaaedda632c4ed976d3b7c975741ee1a84e7eaa034858221dd7ca35",
+      "bytes": 3191
+    },
+    "attempt-2/unittest.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "attempt-3/parse.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "attempt-3/parse.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "attempt-3/unittest.stderr": {
+      "sha256": "cdcc5ebbecc7cf31996de60407ceeae54aebadbdb46263b0d79ef94a4bf5524e",
+      "bytes": 3377
+    },
+    "attempt-3/unittest.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "source/tests/unit_tests/various/test_ninjars_stress.py": {
+      "sha256": "9994137a4337cad4be5ecfb03eb641fb27456c1e02d83fc65e4a83a8d1460e7e",
+      "bytes": 18602
+    },
+    "source/tools/ninjars_stress_v2.py": {
+      "sha256": "19177305fc3c937124d03a7e8f7ef6b2cec12517e8bebbaf8efbd7d7014b5567",
+      "bytes": 40567
+    }
+  },
+  "identity_sha256": "092a6d0ac862b4ed341ff0c7610038dc760b1ee376a7827206153fa9cc3a9dd9",
+  "scope": "Python source/parse/17-unit-test evidence only; actual stress generation and numerical work held"
+}

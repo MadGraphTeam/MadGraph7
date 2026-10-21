@@ -1,0 +1,40 @@
+{
+  "schema": "madloop-report-stress-extension-evidence-v2",
+  "files": {
+    "README.md": {
+      "bytes": 1515,
+      "sha256": "43a7ea97b712a91caaeba51f7bcb8a87e8b9297db2eea14796316827d3c5134e"
+    },
+    "attempt-2/result.json": {
+      "bytes": 2349,
+      "sha256": "c11c6dcb2d171f4dad631489a0dcaf2e8306c7938ce96a48bc7b6c2c4d115843"
+    },
+    "attempt-2/stderr.log": {
+      "bytes": 139,
+      "sha256": "bdb6f540da8efbd7fde4be57b9f896b21d8f2e16798c41be2bbbe7c83b7f2321"
+    },
+    "attempt-2/stdout.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "verify.py": {
+      "bytes": 2630,
+      "sha256": "5db0fb63865e81f3444858c6fd782d1c167fd26b3a638969d9d895b8d10402ac"
+    }
+  },
+  "previous_evidence": {
+    "docs/benchmarkfolder/policy-v2/report-stress-extension-v1/manifest.json": {
+      "sha256": "371cc751c26ed2c89610368676c16c1b03b8c8f9dc37011a5767f6c3e5478b81"
+    },
+    "docs/benchmarkfolder/policy-v2/report-stress-extension-v1/attempt-1/result.json": {
+      "sha256": "f5e923908b26769104c9ef28c36eafcd49735c137d8ff86a13c6717a11295ccb"
+    },
+    "docs/benchmarkfolder/policy-v2/report-stress-extension-v1/attempt-1/stdout.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/report-stress-extension-v1/attempt-1/stderr.log": {
+      "sha256": "5433957527f5b02d313f937c73e18b9a0b166445d0be7eaa3fed855cc7218579"
+    }
+  },
+  "identity_sha256": "2e92c94abb0fdcb426d4d3203cf50444eacef6791a1ea883588bc543bb152ac2"
+}

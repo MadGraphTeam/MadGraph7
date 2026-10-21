@@ -164,6 +164,29 @@ C     Stress-driver input schedule only; production numerical code is unchanged.
     return result
 
 
+def verify_worker_source(text, frozen, origin, compiled, driver_sha256, scale=False):
+    """Reject numerical-source edits hidden behind a driver-only adapter."""
+    prefix = re.search(r"CALL\s+(\w*)GET_ANSWER_DIMENSION", text, re.I)
+    born = re.search(r"PARAMETER\(NSQSO_BORN=(\d+)\)", text, re.I)
+    if prefix is None or born is None:
+        raise ValueError("Stress worker dimensions/prefix are missing")
+    expected = frozen.replace("@PREFIX@", prefix.group(1)).replace("@NEXTERNAL@", "6").replace("@NBORN@", born.group(1))
+    if text != expected:
+        raise ValueError("Stress worker differs from the frozen generic worker")
+    final = scale_worker_source(text) if scale else text
+    checksum = hashlib.sha256(final.encode()).hexdigest()
+    if checksum != driver_sha256:
+        raise ValueError("Stress compiled driver differs from the reviewed source")
+    changed = {name for name in origin["files"].keys() | compiled["files"].keys()
+               if origin["files"].get(name) != compiled["files"].get(name)}
+    drivers = {name for name in compiled["files"] if name.startswith("SubProcesses/P") and name.endswith("/check_sa.f")}
+    if len(drivers) != 1 or changed != drivers:
+        raise ValueError("Stress worker changes numerical sources outside its single driver")
+    driver = next(iter(drivers))
+    if compiled["files"][driver]["sha256"] != checksum:
+        raise ValueError("Stress driver hash differs from its compiled source manifest")
+
+
 @contextmanager
 def bounded_generation(work, report):
     original = bench.run
@@ -442,6 +465,13 @@ def validate_group(entry, expected, signature, preparation, inputs=None):
                 read(checked(target["origin_compilation"], inputs)) != build["origin_compilation"] or
                 supplement.digest(checked(target["physical_card"], inputs)) != build["parameter_card_sha256"]):
             raise ValueError("Stress original generated input differs from worker build")
+        retained = report / "builds" / key
+        worker = retained / "worker.f"
+        checked(supplement.bound(worker), inputs)
+        frozen = report / "sources/ninjars_benchmark_worker.f"
+        checked(supplement.bound(frozen), inputs)
+        verify_worker_source(worker.read_text(), frozen.read_text(), origin, manifest,
+                             build["driver_sha256"], variant == "scale")
         if helper:
             policy.verified(source, "stress-helper-correction-v1")
             policy.original_identity(identity)
@@ -460,7 +490,7 @@ def validate_group(entry, expected, signature, preparation, inputs=None):
         if variant == "scale":
             files = build["stress_scale_adapter"]
             before, after = checked(files["stress-scale-before.f"], inputs).read_text(), checked(files["stress-scale-after.f"], inputs).read_text()
-            if scale_worker_source(before) != after or supplement.digest(checked(files["stress-scale-after.f"], inputs)) != build["driver_sha256"]:
+            if before != worker.read_text() or scale_worker_source(before) != after or supplement.digest(checked(files["stress-scale-after.f"], inputs)) != build["driver_sha256"]:
                 raise ValueError("Scale driver changes more than the fixed MU_R input schedule")
             if checked(files["stress_scales.dat"], inputs).read_bytes() != checked(preparation["scale_schedule"], inputs).read_bytes():
                 raise ValueError("Scale worker used a changed schedule")
@@ -528,6 +558,20 @@ def assemble(specification):
     return report_snapshot(destination, expected, runtime_signature=signature)
 
 
+def failed_case_ids(failure):
+    """Identify the actual failed case without labelling unattempted work."""
+    candidates = {item["case"] for item in failure["rejected"] if item.get("case")}
+    status = failure["status"]
+    if not candidates and status["status"] == "failed":
+        unfinished = [cid for cid in status.get("requested_cases", [])
+                      if cid not in status.get("completed_cases", [])]
+        if unfinished:
+            candidates.add(unfinished[0])
+    variant = failure["variant"]
+    return {cid[:-len("-"+variant)] if variant != "ordinary" and cid.endswith("-"+variant) else cid
+            for cid in candidates}
+
+
 def report_snapshot(filename, expected, inputs=None, runtime_signature=None):
     record = policy.verified(read(filename), SCHEMA)
     checked(supplement.bound(filename), inputs)
@@ -575,6 +619,13 @@ def report_snapshot(filename, expected, inputs=None, runtime_signature=None):
                 "performance_acceptance_gate": False}
             gates.append(agreement["status"])
         for variant, label in (("rotation", "invariance"), ("scale", "restoration")):
+            if "ordinary" in row_tables and variant in row_tables:
+                for backend in BACKENDS:
+                    left = grouped["ordinary", cid, backend][0]
+                    right = grouped[variant, cid+"-"+variant, backend][0]
+                    for key in ("parameter_card_sha256", "shared_numerical_settings", "answer_dimensions", "cpu"):
+                        if left[key] != right[key]:
+                            raise ValueError("Stress invariant comparison changed physical inputs/settings: "+key)
             value = invariant_comparisons(row_tables["ordinary"], row_tables[variant], variant) if "ordinary" in row_tables and variant in row_tables else copy.deepcopy(pending)
             result[variant][label] = value
             gates.append(value["status"])
@@ -600,8 +651,15 @@ def report_snapshot(filename, expected, inputs=None, runtime_signature=None):
             raise ValueError("Complete stress collection lacks source bindings")
         failure = {"variant": item["variant"], "optional_helper": bool(item.get("optional_helper", False)), "status": status,
                    "rejected": [read(checked(p, inputs)) for p in item["rejected"]]}
+        failure["case_ids"] = sorted(failed_case_ids(failure))
         failures.append(failure)
-        if not failure["optional_helper"]:
+        if failure["optional_helper"]:
+            for case in cases:
+                if case["id"] in failure["case_ids"]:
+                    optional = case["optional_reference"]
+                    optional["failures"].append(failure)
+                    optional["status"] = "failed" if status["status"] == "failed" else "pending"
+        else:
             gates.append("failed" if status["status"] == "failed" else "pending")
     status = "failed" if "failed" in gates else "passed" if all(g == "passed" for g in gates) else "pending"
     return {"schema": SCHEMA, **expected, "dataset_identity_sha256": record["identity_sha256"],

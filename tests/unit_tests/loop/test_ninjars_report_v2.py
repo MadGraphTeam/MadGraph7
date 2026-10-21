@@ -340,6 +340,11 @@ class NinjaRSReportV2Test(unittest.TestCase):
         snapshot["stress"] = {"status": "pending", "complete_campaign_passed": False,
                               "cases": [dict(copy.deepcopy(stress), id=cid) for cid in
                                         ("stress-qcd-4-gg-ttgg", "stress-ew-4-uu-4l")]}
+        # A later failed optional helper collection must remain visible even if
+        # an independently complete helper cohort had already agreed.
+        snapshot["stress"]["cases"][1]["optional_reference"] = {
+            "status": "failed", "agreement": prototype["agreement"],
+            "failures": ["Explicit synthetic retained helper failure"]}
         target = self.root / "supplement-layout-fixture"
         with patch.object(report, "build_snapshot", return_value=snapshot):
             result = report.render(self.dataset_path, target, compile_pdf=True)

@@ -750,3 +750,11 @@ resume metadata. The earlier pause note is a historical checkpoint.
   collect a fresh fixed series. Resume the original correctness collector only
   after confirming its live controller/pipes, sources and deadline. Complete
   the already drafted software regressions before the next quiet timing window.
+- The resumed installer transaction regression reproduces three original
+  failures and passes all thirty-seven focused tests, including seven new
+  failure/retry/interruption cases. Independent review binds the final sources.
+  The final report/stress/precision/supplement software suite passes all
+  seventy-six tests under independent rerun; physical measurements remain
+  separate. The interrupted allocation jobs were retired without SIGCONT.
+  A fresh byte-identical fixed twenty-one-plus-seven-pair study received its
+  quiet/MP handoff on 2026-10-21 at 00:05:46 UTC. No historical sample is reused.
