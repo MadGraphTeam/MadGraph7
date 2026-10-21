@@ -1,0 +1,18 @@
+{
+  "scope": "software synthetic/mocked data only; no compiler, engine, MP or perf",
+  "cpu": 180,
+  "started_utc": "2026-10-21T18:03:21.376256+00:00",
+  "finished_utc": "2026-10-21T18:03:30.130591+00:00",
+  "sources": {
+    "tools/ninjars_paper_timing_v3.py": {
+      "sha256": "7d443c6ffd744bf0763d1a64e4b5161f3ae2a61d6f3d795ed3260e52550c10f8",
+      "bytes": 39719
+    },
+    "tests/unit_tests/loop/test_ninjars_paper_timing_v3.py": {
+      "sha256": "0a31caa0c141db36a5d7d38bf33d38badd6659fdb573d5d74fdb111f5eb6beeb",
+      "bytes": 22141
+    }
+  },
+  "returncode": 0,
+  "delta": "Record ordinary compilation and separate private-helicity relink costs, no timer change"
+}

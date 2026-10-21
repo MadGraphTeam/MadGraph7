@@ -1,0 +1,314 @@
+{
+  "schema": "nrs-reference-selection-v3",
+  "entries": [
+    {
+      "case": "qcd-1",
+      "backend": 1,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/qcd-1-baseline-1/outputs/baseline/qcd-1",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-1/build.json",
+        "sha256": "b98e5d885a7bbfaa645d4727abd13a1274c5877e18649ba6cc02f687c936a48b"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-1-baseline-1-calibration.json",
+        "sha256": "fbe50604e22426e94afa3962b2f67d1d4ad9fe3cd381a9693f6697259712c9aa"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/qcd-1.dat",
+        "sha256": "bd8a00c863710123dd62cb5e079dcd11d2aebdcf49d8128313bbd6ecc6de1099"
+      }
+    },
+    {
+      "case": "qcd-1",
+      "backend": 6,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/qcd-1-baseline-6/outputs/baseline/qcd-1",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-1-baseline-6/build.json",
+        "sha256": "df3e39de1acda7833a43ccb20f4ff91913ebe1663112253fa89280170fa364b5"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-1-baseline-6-calibration.json",
+        "sha256": "112bb30d3795788901322954ae4b7373fb5e477f98cb1b24f33665a375c2d5cb"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/qcd-1.dat",
+        "sha256": "bd8a00c863710123dd62cb5e079dcd11d2aebdcf49d8128313bbd6ecc6de1099"
+      }
+    },
+    {
+      "case": "ew-1",
+      "backend": 1,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/ew-1-baseline-1/outputs/baseline/ew-1",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-1/build.json",
+        "sha256": "4d4a72d55f3b6242b45ed6f042d314be9ba378f6fe805e008c5ff80c90b903a3"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-1-baseline-1-calibration.json",
+        "sha256": "f544cf4499685a5d86dce24528db1c3d4e1add869a43d4efc35cf0d14db179a5"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/ew-1.dat",
+        "sha256": "5869f48fc0546031f7c50ee8f68a4b0104fa6da66bc3b434e47d1422edcbb576"
+      }
+    },
+    {
+      "case": "ew-1",
+      "backend": 6,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/ew-1-baseline-6/outputs/baseline/ew-1",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-1-baseline-6/build.json",
+        "sha256": "61c121dbde3718c83dc4846da55f5abc7d492a4862f3381a1ff5bc21d73a6b09"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-1-baseline-6-calibration.json",
+        "sha256": "870cf99f578d7c405e5e58451d918a60ed204a1a349dba9cb5f54397630257ef"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/ew-1.dat",
+        "sha256": "5869f48fc0546031f7c50ee8f68a4b0104fa6da66bc3b434e47d1422edcbb576"
+      }
+    },
+    {
+      "case": "qcd-2",
+      "backend": 1,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/qcd-2-baseline-1/outputs/baseline/qcd-2",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-1/build.json",
+        "sha256": "232913e7365be3b4419bb9d83a033c9da7afb0e0aee8b7320877f9ba0d32cd80"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-2-baseline-1-calibration.json",
+        "sha256": "9b5f90c99b868f2119365300ce8bdcb367bfba154ebf13f0c2ba5f3e10811a5e"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/qcd-2.dat",
+        "sha256": "6efb8cb1752f37badd187e17aff2103eb6814402dbaeaa598165a83d22bd0b63"
+      }
+    },
+    {
+      "case": "qcd-2",
+      "backend": 6,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/qcd-2-baseline-6/outputs/baseline/qcd-2",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-2-baseline-6/build.json",
+        "sha256": "7ea0a8d0e571c5422e05cacc764b15cdd6f6fc9309376d5ac0ec288f161d2725"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-2-baseline-6-calibration.json",
+        "sha256": "d1bc0f52218bacbe6317361b4fbe21624b56598485bcad9f3ef6b7c8130c66e5"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/qcd-2.dat",
+        "sha256": "6efb8cb1752f37badd187e17aff2103eb6814402dbaeaa598165a83d22bd0b63"
+      }
+    },
+    {
+      "case": "ew-2",
+      "backend": 1,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/ew-2-baseline-1/outputs/baseline/ew-2",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-1/build.json",
+        "sha256": "9f92e6673b820b0bda79b5fa443bc8b348245ef3ee7168da5455acd6d14820d8"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-2-baseline-1-calibration.json",
+        "sha256": "f57b27393eb833a987b6022190b597a932f8dbd3b5a3a1a4388cecc8bc05e37c"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/ew-2.dat",
+        "sha256": "ed6f3f83033372061ed6de45c05a366aeeb68a63ddd006998682f406174e7b53"
+      }
+    },
+    {
+      "case": "ew-2",
+      "backend": 6,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/ew-2-baseline-6/outputs/baseline/ew-2",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-2-baseline-6/build.json",
+        "sha256": "16f24132f74beaa8ab425561dc2c9672a059ac5cbe1ceee078d4094475929bd6"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-2-baseline-6-calibration.json",
+        "sha256": "addcbac45aaac6731510ecd6a85d0f969f652bfa612503e7eed5fae40924ec79"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/ew-2.dat",
+        "sha256": "ed6f3f83033372061ed6de45c05a366aeeb68a63ddd006998682f406174e7b53"
+      }
+    },
+    {
+      "case": "qcd-3",
+      "backend": 1,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/qcd-3-baseline-1/outputs/baseline/qcd-3",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-1/build.json",
+        "sha256": "894a9c84ffd28a31cf9a23b8e6764e220b9dfd1029d1f92c90848aa501b1a442"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-3-baseline-1-calibration.json",
+        "sha256": "805f1d90d90de567bed1994f1ced17319f0da5f9d5f77c567b385e350cb7eb54"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/qcd-3.dat",
+        "sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41"
+      }
+    },
+    {
+      "case": "qcd-3",
+      "backend": 6,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/qcd-3-baseline-6/outputs/baseline/qcd-3",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/qcd-3-baseline-6/build.json",
+        "sha256": "3217981813d064064d4441c7b511a2a05f02ce15ae1f0802b07181aa105103ea"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-3-baseline-6-calibration.json",
+        "sha256": "e748fd872586face9d3e5e5553689e0a9eb47c1e02bf1d193264726c6f05950b"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/qcd-3.dat",
+        "sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41"
+      }
+    },
+    {
+      "case": "ew-3",
+      "backend": 1,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/ew-3-baseline-1/outputs/baseline/ew-3",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-1/build.json",
+        "sha256": "31512d7daad41f83f2be736cc262828d664719bf8fd80828033046a7e7d20f17"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-3-baseline-1-calibration.json",
+        "sha256": "c4e92431b527ae0bbe9f331a93f7f5931cfc98556df2c5b2cc44055fd400553f"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/ew-3.dat",
+        "sha256": "c030e6c68d53e9ecc1e2ac5ee99e4f81d97a80268dcbe3a0dc76065655a492a1"
+      }
+    },
+    {
+      "case": "ew-3",
+      "backend": 6,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/workers/ew-3-baseline-6/outputs/baseline/ew-3",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/builds/ew-3-baseline-6/build.json",
+        "sha256": "ba472d425a80bac264ef205e7c89616420226d9b1befd7a4d45ffe2edf64adf0"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-3-baseline-6-calibration.json",
+        "sha256": "6460ea8d59427b31e6168d79acf620f71d820b07872897f5a5df374dcab24aac"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/points/ew-3.dat",
+        "sha256": "c030e6c68d53e9ecc1e2ac5ee99e4f81d97a80268dcbe3a0dc76065655a492a1"
+      }
+    },
+    {
+      "case": "qcd-4",
+      "backend": 1,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-1/outputs/baseline/qcd-4",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-1/build.json",
+        "sha256": "467f70aa7f85f218de78069d2a635c79acbb1177c69c8d652a936740138767d2"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/data/qcd-4-baseline-1-calibration.json",
+        "sha256": "7062006e8396a1cfb24fa8bd32a9e139e6f258acc7383321b3bcd25f60a29196"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/points/qcd-4.dat",
+        "sha256": "d66b0c04ee3d8e6ed90ef1fbf97abb9cd444d9ea1f84a508850688bff317b52d"
+      }
+    },
+    {
+      "case": "qcd-4",
+      "backend": 6,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/workers/qcd-4-baseline-6/outputs/baseline/qcd-4",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/builds/qcd-4-baseline-6/build.json",
+        "sha256": "fcb14e08f9ea51fc91b78e88b89e98958ac0d6d69459f70d8ac4584e17bcc60b"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/data/qcd-4-baseline-6-calibration.json",
+        "sha256": "f3d7c326a6156cfca826c8590b80fe4405e7a32e561c43e6cda730021add2ae0"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/points/qcd-4.dat",
+        "sha256": "d66b0c04ee3d8e6ed90ef1fbf97abb9cd444d9ea1f84a508850688bff317b52d"
+      }
+    },
+    {
+      "case": "ew-4",
+      "backend": 1,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-ew4-ct-ninja-v3-20261021",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-ew4-ct-ninja-v3-20261021/workers/ew-4-baseline-1/outputs/baseline/ew-4",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-ew4-ct-ninja-v3-20261021/builds/ew-4-baseline-1/build.json",
+        "sha256": "9ce8aca349642547159c5e5a91f5a4a92fef26f78e03f8c372a0896483570cb5"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-ew4-ct-ninja-v3-20261021/data/ew-4-baseline-1-calibration.json",
+        "sha256": "2f3240f7a1e43fc790bb4d56329b5aedc6ce560b31b2d659e66177de0a9eee26"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-ew4-ct-ninja-v3-20261021/points/ew-4.dat",
+        "sha256": "75a3765dca97afa14e5efb795cb1a9fa1ff9e0475ebcb79a883b6a2a4e84ba5a"
+      }
+    },
+    {
+      "case": "ew-4",
+      "backend": 6,
+      "report": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-ew4-ct-ninja-v3-20261021",
+      "output": ".benchmark-work/policy-v2/reference-runs/corrected-original-ew4-ct-ninja-v3-20261021/workers/ew-4-baseline-6/outputs/baseline/ew-4",
+      "build": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-ew4-ct-ninja-v3-20261021/builds/ew-4-baseline-6/build.json",
+        "sha256": "17b83e3de9cec6f590451c43d030049de32cfa5aa98a3793fc22b6626eb4e3cc"
+      },
+      "record": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-ew4-ct-ninja-v3-20261021/data/ew-4-baseline-6-calibration.json",
+        "sha256": "07cb3d1c46d29fb1c9600a70af38ab13e617a7a7acfa8cf1d1eb5bcc8691fd79"
+      },
+      "points": {
+        "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-ew4-ct-ninja-v3-20261021/points/ew-4.dat",
+        "sha256": "75a3765dca97afa14e5efb795cb1a9fa1ff9e0475ebcb79a883b6a2a4e84ba5a"
+      }
+    }
+  ],
+  "prior_selection": {
+    "path": ".benchmark-work/policy-v3/policy-schema-rehearsal-v1/attempt-2/selection.json",
+    "sha256": "fa2dadec44bb2b6fffd3badf043894cb61444ab25660aed5ff72f620fcd0ff3d"
+  },
+  "ew4_calibration_transition": {
+    "path": ".benchmark-work/policy-v3/ew4-ct-ninja-reference-held-v1/both-calibration-transition.json",
+    "sha256": "22239ec636e4f17bca8e6d83176b00a47a43b0b6ac6b20ee00b65e1e1bc37191"
+  },
+  "ew4_actual_build_readiness": {
+    "path": ".benchmark-work/policy-v3/ew4-ct-ninja-reference-held-v1/actual-worker-binding-readiness.json",
+    "sha256": "67a5e29e8457afbef565322aa6f0c3b894e84fd2c9b9d5073dfcb43e713ba034"
+  },
+  "scope": "Terminal accepted calibration-only inventory; failed/incomplete earlier parents retained; EW4 complete. Zero timing repetitions promoted; no new NRS authority.",
+  "prior_observed_incomplete_selection": {
+    "path": ".benchmark-work/policy-v3/eight-case-reference-rehearsal-v1/attempt-1/selection.json",
+    "sha256": "57428c5ea382145bbefbc89c3c512726af839edb79f45aa22a6284e90b143a9a"
+  },
+  "ew4_terminal_receipt": {
+    "path": ".benchmark-work/policy-v3/ew4-ct-ninja-reference-held-v1/terminal-audit-20261021T0933Z/receipt.json",
+    "sha256": "c71ee2aae9027cc919513ef4cc420c3224135f030fee645edd2450b310fb45e9"
+  }
+}

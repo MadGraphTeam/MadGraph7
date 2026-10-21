@@ -54,12 +54,17 @@ boosted on-shell 2-to-1 inputs and tolerances remain those in
 changed to obtain a speedup. The literal baseline is commit
 `27147b3300f556a75661a886e92bdbe00558ee25`.
 
-The accepted reference snapshot is
-`.benchmark-work/final-release-audit-20261021-v1/references/references.json`
-(SHA256 `b71ac8c0fdeba18624b388a48bd5dbd75066cd98f6761b1a341276b69e6e6315`).
-It contains 16 accepted 100-point calibrations. Its old policy will be rebound
-through an explicit new-cohort policy; parent incomplete/failed statuses are
+The accepted public reference snapshot is `references-public-v2.json`
+(SHA256 `590aed9f703925057cb7e1ae1f3cbd6d0527dba4cfe581ab7a4a653c42a14669`).
+It contains 16 accepted 100-point calibrations bound through the explicit
+new-cohort policy; parent incomplete/failed statuses are
 preserved. It certifies no new-release result or final timing repetition.
+The exact public selection and both historical/public metadata snapshots are
+retained. Reading the complete native provenance also requires the pinned
+installation's Cargo manifest, lockfile, configuration and library; native
+build products are not shipped with the text measurements. Historical
+calibration JSON preserves parsed numeric rows; accompanying worker logs are
+contextual records rather than separately retained raw calibration streams.
 
 Historical preparation suggests about ten minutes for the eight exports/builds
 with two concurrent jobs. The old QCD4 NinjaRS traversal took about 38 minutes;

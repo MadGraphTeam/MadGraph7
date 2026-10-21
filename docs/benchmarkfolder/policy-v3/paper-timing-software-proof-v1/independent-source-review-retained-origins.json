@@ -1,0 +1,39 @@
+{
+  "changes_reviewed": [
+    "Only the two loop-induced cases four origin metadata/card bindings move from private generated outputs to byte-identical retained public controls-generation/inputs/candidate anchors.",
+    "Private-build reader additionally requires retained physical-card hash to equal its bound origin physical-card hash; focused negative test exercises mismatch rejection."
+  ],
+  "held_specification": {
+    "bytes": 203322,
+    "path": "docs/benchmarkfolder/policy-v3/paper-timing-software-proof-v1/specification-held-v2.json",
+    "sha256": "f391bfb4437c68924c473cddbe1d2c66de0ab89537de202b1a863605aff531c4"
+  },
+  "pending": [
+    "No actual paper timing measurements are certified.",
+    "Numerator DP construction and remaining-work decomposition remain pending.",
+    "Selected-helicity diagnostic timings remain ineligible for the separate full-helicity<=1.05 performance gate."
+  ],
+  "performance_or_scientific_gate_passed": false,
+  "previous_independent_review": {
+    "bytes": 2329,
+    "path": "docs/benchmarkfolder/policy-v3/paper-timing-software-proof-v1/independent-source-review.json",
+    "sha256": "2c44307ca73e1b2b4b3416b18320b3520d38d930072a7cf0b4263b3235137e41"
+  },
+  "prior_review_invariants_preserved": true,
+  "reviewer": "audit_final",
+  "schema": "independent-paper-timing-retained-origin-delta-review-v1",
+  "scope": "Source-only delta review, with public origin artifact hashes checked. No software tests, compiler, reduction engine, process build/evaluation, profiler or timing executed by this reviewer.",
+  "sources": [
+    {
+      "bytes": 39931,
+      "path": "tools/ninjars_paper_timing_v3.py",
+      "sha256": "4e88dc116763a83410071698e06081bd15858452e76ab1788d18767f70d67682"
+    },
+    {
+      "bytes": 22458,
+      "path": "tests/unit_tests/loop/test_ninjars_paper_timing_v3.py",
+      "sha256": "ac1e960f67824d9bae4f990f4bf644f413655e78ca956170ff8adab61b109510"
+    }
+  ],
+  "status": "no-blocker-found-in-bounded-delta"
+}

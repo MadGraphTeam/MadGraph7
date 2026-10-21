@@ -1,0 +1,83 @@
+{
+  "schema": "forced-model-rebuild-v2",
+  "correction_identity_sha256": "16ae35077b8c1ae3c81cc31fb8d3291874555e345c8d8c115ca1ab0796f71a9a",
+  "scope": "All MODEL objects/archive and all subprocess objects/executable; original DHELAS/reduction libraries copied unchanged",
+  "prebuild_model_objects": [],
+  "prebuild_model_archive_exists": false,
+  "prelink_executable_exists": false,
+  "model_objects": {
+    "Source/MODEL/couplings.o": "1bf3d8907cd019471dc178db5b64f8a790eb4221046afa07a751ed32be92156a",
+    "Source/MODEL/couplings1.o": "78a931fa41eb6b8eefabb23cdae6235649efa95dad932bd8ac14dc65a8137979",
+    "Source/MODEL/couplings2.o": "b401028be0e55c06db6669d1311d1266fef90de311aa8ae3dd3eef309d93e7c6",
+    "Source/MODEL/couplings3.o": "e4fb4b43d9fe6fef9bbb3adaaadadf78197b3eb5a36b80ab7d0dcbd2eae5a1e1",
+    "Source/MODEL/couplings4.o": "da6125a0f49ea516f37e2195a3d793ee4b1d5d8414b383878e47e61d2dfa6b40",
+    "Source/MODEL/flavor_couplings.o": "9e10b25aeb8188e161a9ff121ad28b8f549ad2ecf769edf1ea2e426daf6dcfad",
+    "Source/MODEL/get_color.o": "8ff4de0192a331a9d254f664c0177a81c0147065bc9ae81d48f3fc60c23dc804",
+    "Source/MODEL/lha_read.o": "66b991359cf5354e6af4f8e1487b2e46cc3c35e3827b003a1048d7a9c0833848",
+    "Source/MODEL/model_functions.o": "0738494bd084eb0bd551f59ac992dd25524225d687488d17e5b9acb6d300ffcd",
+    "Source/MODEL/mp_couplings1.o": "cd42e75f8026b71296ce0ad2ac50a1fc2dd58b40936edf2ef5727129e9d4cf71",
+    "Source/MODEL/mp_couplings2.o": "01019d2b82e7a806bd949586c695f6da080cd869e2f6c78ae21716e9c87fcef9",
+    "Source/MODEL/mp_couplings3.o": "43d45d929c939619733a309ae892fdd61c6b72e9b20f700c65e1896e00203454",
+    "Source/MODEL/mp_couplings4.o": "e012a3d470a96f49c4e2f377f63dd046151458be21cd688c9d10a2e2ed0256a7",
+    "Source/MODEL/printout.o": "76115195a71f34a06277360d882872e139fd2d1a63ea666573c0936b5b98e4ec",
+    "Source/MODEL/rw_para.o": "fd011982c30321830f3a7ae8be4adbe5e844ee142a0ec824b5e8dbfcef912c58"
+  },
+  "model_archive_sha256": "9e98f0c79887bed71e3ce84da07109915ee837dab7006a0d7424c5c893c6c7c6",
+  "fresh_executable_sha256": "e3ddbdcfa7c274727892aba3a7fac98bc078f8d0c8c377e4287fc0c4b5e6b2a3",
+  "fresh_driver_sha256": "393f13bbd19f6d5fd35918136e7dbfd17778fec27832fe022f6b9db59b706420",
+  "sources_sha256": "815d7285a2d0981e3f62692186f1e155587fb59dbf3056896a5b589b75ab5d3f",
+  "libraries_before": {
+    "collier_lib/COLLIER-1.2.9/libcollier.a": "4f7d89154b89d771aef3533a078ee618a301442d0353f1b18d0a2365bb989949",
+    "collier_lib/COLLIER-1.2.9/libcollier.so": "1753ed686ab3021c149d6ecf80fe8c46cd4276bf8b5f891820c535603d39e127",
+    "collier_lib/libcollier.a": "4f7d89154b89d771aef3533a078ee618a301442d0353f1b18d0a2365bb989949",
+    "collier_lib/libcollier.so": "1753ed686ab3021c149d6ecf80fe8c46cd4276bf8b5f891820c535603d39e127",
+    "libcts.a": "802f2c821e381244df0bb7d6533de2c01f77bdce62c15a13569b0874cce1d216",
+    "libdhelas.a": "916d04e7111f9ac01cf888454af52d8f73223bb88727e4c312bce6cd9266b60b",
+    "libiregi.a": "50da3489a8b3c568308ff4ea35e193ddd6fd3b21c9706e5bad5090dbc203e3f0",
+    "libmodel.a": "51b872560196a9e1a5b5a272ed6050d695679449211565e4d6589a3e7a84ca0f",
+    "ninja_lib/libavh_olo.a": "8469cc93665ba24c2ca0b848d61fead56a517f78c4a1672a110d64177568aa8d",
+    "ninja_lib/libninja.a": "42866021f93004c143e0a49de8c420a6bebbcd4eb26242eef556ad71296e57c0",
+    "ninja_lib/libninja.so": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128",
+    "ninja_lib/libninja.so.0": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128",
+    "ninja_lib/libninja.so.0.0.0": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128"
+  },
+  "libraries_after": {
+    "collier_lib/COLLIER-1.2.9/libcollier.a": "4f7d89154b89d771aef3533a078ee618a301442d0353f1b18d0a2365bb989949",
+    "collier_lib/COLLIER-1.2.9/libcollier.so": "1753ed686ab3021c149d6ecf80fe8c46cd4276bf8b5f891820c535603d39e127",
+    "collier_lib/libcollier.a": "4f7d89154b89d771aef3533a078ee618a301442d0353f1b18d0a2365bb989949",
+    "collier_lib/libcollier.so": "1753ed686ab3021c149d6ecf80fe8c46cd4276bf8b5f891820c535603d39e127",
+    "libcts.a": "802f2c821e381244df0bb7d6533de2c01f77bdce62c15a13569b0874cce1d216",
+    "libdhelas.a": "916d04e7111f9ac01cf888454af52d8f73223bb88727e4c312bce6cd9266b60b",
+    "libiregi.a": "50da3489a8b3c568308ff4ea35e193ddd6fd3b21c9706e5bad5090dbc203e3f0",
+    "libmodel.a": "9e98f0c79887bed71e3ce84da07109915ee837dab7006a0d7424c5c893c6c7c6",
+    "ninja_lib/libavh_olo.a": "8469cc93665ba24c2ca0b848d61fead56a517f78c4a1672a110d64177568aa8d",
+    "ninja_lib/libninja.a": "42866021f93004c143e0a49de8c420a6bebbcd4eb26242eef556ad71296e57c0",
+    "ninja_lib/libninja.so": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128",
+    "ninja_lib/libninja.so.0": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128",
+    "ninja_lib/libninja.so.0.0.0": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128"
+  },
+  "seconds": 35.47893801704049,
+  "commands": [
+    [
+      "make",
+      "-j1",
+      "all"
+    ],
+    [
+      "make",
+      "-j4",
+      "check"
+    ]
+  ],
+  "logs": [
+    {
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-ew4-ct-ninja-v3-20261021/logs/model-rebuild-ew-4.log",
+      "sha256": "fda407be4dc470005d7bf8775845cf926fb7189e371bee1e6fbed1373c747d71"
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-ew4-ct-ninja-v3-20261021/logs/fresh-link-ew-4.log",
+      "sha256": "539a59bb44994d57dda67968c3cd57c2a7117d7b0b8a134fd2f1ceb4df5b547a"
+    }
+  ],
+  "identity_sha256": "bbce86bfd68922ddd73c57b7b1cccd2d43863258d56a17242ec13d5547223a43"
+}

@@ -1,0 +1,18 @@
+{
+  "status": "failed",
+  "requested_cases": [
+    "qcd-4",
+    "ew-4",
+    "qcd-1",
+    "ew-1",
+    "qcd-2",
+    "ew-2",
+    "qcd-3",
+    "ew-3"
+  ],
+  "completed_cases": [],
+  "source_role": "original_helper_corrected",
+  "acceptance_eligible": false,
+  "error_type": "RuntimeError",
+  "error": "Backend 7 returned unexpected status 410; initialization, failure or a different backend was used"
+}

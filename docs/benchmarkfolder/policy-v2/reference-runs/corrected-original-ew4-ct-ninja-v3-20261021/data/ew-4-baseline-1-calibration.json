@@ -1,0 +1,2510 @@
+{
+  "source": "baseline",
+  "case": "ew-4",
+  "backend": 1,
+  "worker_scheme": "persistent-worker-v1",
+  "acceptance_eligible": false,
+  "build_kind": "clean-subprocess",
+  "build_scope": "Generated subprocess Fortran; copied cached model/DHELAS/dependency libraries",
+  "compilation_seconds": 8.129197214031592,
+  "compiler": "GNU Fortran (GCC) 15.3.0",
+  "origin_compilation": {
+    "seconds": 8.443845075089484,
+    "settings": {
+      "Source/make_opts": "DEFAULT_CPP_COMPILER=g++\nMACFLAG=\nSTDLIB=-lstdc++\nSTDLIB_FLAG=\nDEFAULT_F2PY_COMPILER=f2py\nDEFAULT_F_COMPILER=gfortran\nMG5AMC_VERSION=SpecifiedByMG5aMCAtRunTime\nPYTHIA8_PATH=NotInstalled\n#end_of_make_opts_variables\n\nBIASLIBDIR=../../../lib/\nBIASLIBRARY=libbias.$(libext)\n\n# Rest of the makefile\nifeq ($(origin FFLAGS),undefined)\nFFLAGS= -w -fPIC\n#FFLAGS+= -g -fbounds-check -ffpe-trap=invalid,zero,overflow,underflow,denormal -Wall\nendif\n\nFFLAGS += $(GLOBAL_FLAG)\n\n# REMOVE MACFLAG IF NOT ON MAC OR FOR F2PY\nUNAME := $(shell uname -s)\nifdef f2pymode\nMACFLAG=\nelse\nifneq ($(UNAME), Darwin)\nMACFLAG=\nendif\nendif\n\n# set the flag for dynamical library\nifeq ($(UNAME), Darwin)\nDYNLIBFLAG=-dynamiclib\nRPATHFLAG=-install_name @rpath/\nelse\nDYNLIBFLAG=-shared -fPIC\nRPATHFLAG=-Wl,-soname,\nendif\n\nifeq ($(origin CXXFLAGS),undefined)\nCXXFLAGS= -O $(STDLIB_FLAG) $(MACFLAG)\nendif\n\nifeq ($(origin CFLAGS),undefined)\nCFLAGS= -O $(STDLIB_FLAG) $(MACFLAG)\nendif\n\n# Set FC unless it's defined by an environment variable\nifeq ($(origin FC),default)\nFC=$(DEFAULT_F_COMPILER)\nendif\nifeq ($(origin F2PY), undefined)\nF2PY=$(DEFAULT_F2PY_COMPILER)\nendif\n\n# Increase the number of allowed charcters in a Fortran line\nifeq ($(FC), ftn)\nFFLAGS+= -extend-source # for ifort type of compiler\nelse\nVERS=\"$(shell $(FC) --version | grep ifort -i)\"\nifeq ($(VERS), \"\")\nFFLAGS+= -ffixed-line-length-132\nelse\nFFLAGS+= -extend-source # for ifort type of compiler\nendif\nendif\n\n\nUNAME := $(shell uname -s)\nifeq ($(origin LDFLAGS), undefined)\nLDFLAGS=$(STDLIB) $(MACFLAG)\nendif\n\n# Options: dynamic, lhapdf\n# Option dynamic\n\nifeq ($(UNAME), Darwin)\ndylibext=dylib\nelse\ndylibext=so\nendif\n\nifdef dynamic\nifeq ($(UNAME), Darwin)\nlibext=dylib\nFFLAGS+= -fno-common\nLDFLAGS += -bundle\ndefine CREATELIB\n$(FC) -dynamiclib -undefined dynamic_lookup -o $(1) $(2)\nendef\nelse\nlibext=so\nFFLAGS+= -fPIC\nLDFLAGS += -shared\ndefine CREATELIB\n$(FC) $(FFLAGS) $(LDFLAGS) -o $(1) $(2)\nendef\nendif\nelse\nlibext=a\ndefine CREATELIB\n$(AR) cru $(1) $(2)\nranlib $(1)\nendef\nendif\n\n# Option lhapdf\n\nifneq ($(lhapdf),)\nCXXFLAGS += $(shell $(lhapdf) --cppflags)\nalfas_functions=alfas_functions_lhapdf\nalfas_to_clean=alfas_functions.o\nllhapdf+= $(shell $(lhapdf) --cflags --libs) -lLHAPDF\n# check if we need to activate c++11 (for lhapdf6.2)\nifeq ($(origin CXX),default)\nifeq ($lhapdfversion$lhapdfsubversion,62)\nCXX=$(DEFAULT_CPP_COMPILER) -std=c++11\nelse\nCXX=$(DEFAULT_CPP_COMPILER)\nendif\nendif\nelse\nalfas_functions=alfas_functions\nalfas_to_clean=alfas_functions_lhapdf.o\nllhapdf=\nendif\n\n\n# Helper function to check MG5 version\ndefine CHECK_MG5AMC_VERSION\npython -c 'import re; from distutils.version import StrictVersion; print StrictVersion(\"$(MG5AMC_VERSION)\") >= StrictVersion(\"$(1)\") if re.match(\"^[\\d\\.]+$$\",\"$(MG5AMC_VERSION)\") else True;'\nendef",
+      "SubProcesses/MadLoop_makefile_definitions": "LINK_LOOP_LIBS = -L$(LIBDIR) -lcts -liregi -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/ -lninja -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/ -lavh_olo -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier/ -lcollier\nLOOP_LIBS = $(LIBDIR)libcts.$(libext) $(LIBDIR)libiregi.$(libext) /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/libninja.$(libext) /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/libavh_olo.$(libext) /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier/libcollier.$(libext)\nDYLOOP_LIBS = /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/libninja.$(dylibext) /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/libavh_olo.$(libext) /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier/libcollier.$(dylibext)\nLOOP_INCLUDE = -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/include -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/include\nLOOP_PREFIX = P\nDOTO = %.o\nDOTF = %.f\nLINK_MADLOOP_LIB = -L$(LIBDIR) -lMadLoop\nMADLOOP_LIB = $(LIBDIR)libMadLoop.$(libext)\nRPATH_LIBS = -Wl,-rpath,/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib -Wl,-rpath,/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib -Wl,-rpath,/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier \n\n$(MADLOOP_LIB):\n\tcd ..; make -f makefile_MadLoop OLP_static\n"
+    },
+    "preexisting_subprocess_objects": 0,
+    "build_kind": "clean-subprocess",
+    "source_identity": {
+      "status": "reconstructed-from-verified-archive",
+      "revision": "27147b3300f556a75661a886e92bdbe00558ee25",
+      "reason": "The original archive was independently verified unchanged.",
+      "verification": "provenance.json:baseline_source_integrity",
+      "dirty_patch_sha256": null,
+      "identity_sha256": "fe26d772032ce87d96b3b1bdd00327a4b18f3148ee47254bbfc27082eb7862c7"
+    },
+    "generated_sources_sha256": "815d7285a2d0981e3f62692186f1e155587fb59dbf3056896a5b589b75ab5d3f",
+    "source_manifest_recording": "recorded-before-and-verified-after-build",
+    "compiler": "GNU Fortran (GCC) 15.3.0",
+    "driver_sha256": "393f13bbd19f6d5fd35918136e7dbfd17778fec27832fe022f6b9db59b706420",
+    "executable_sha256": "e3ddbdcfa7c274727892aba3a7fac98bc078f8d0c8c377e4287fc0c4b5e6b2a3"
+  },
+  "generation_source_identity": {
+    "status": "reconstructed-from-verified-archive",
+    "revision": "27147b3300f556a75661a886e92bdbe00558ee25",
+    "reason": "The original archive was independently verified unchanged.",
+    "verification": "provenance.json:baseline_source_integrity",
+    "dirty_patch_sha256": null,
+    "identity_sha256": "fe26d772032ce87d96b3b1bdd00327a4b18f3148ee47254bbfc27082eb7862c7"
+  },
+  "original_generated_sources_sha256": "815d7285a2d0981e3f62692186f1e155587fb59dbf3056896a5b589b75ab5d3f",
+  "generated_sources_sha256": "0e463d01c1239e1eaf6f6a95e35181c0dac9b1dfc7f8e701fb2a8556b5393eb9",
+  "driver_sha256": "ac2dc40423ab197d29c4ef45881c899220e6310b687e3642f7a4ab52d5cc072f",
+  "executable_sha256": "ecc19a67d121d5d3e73a4f0444012bd99bacd09924ddf50204336d8401227ca2",
+  "fresh_executable_sha256": "e3ddbdcfa7c274727892aba3a7fac98bc078f8d0c8c377e4287fc0c4b5e6b2a3",
+  "fresh_driver_sha256": "393f13bbd19f6d5fd35918136e7dbfd17778fec27832fe022f6b9db59b706420",
+  "parameter_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+  "madloop_card_sha256": "d0e66283029720607253f8e7a8a64e6f21ed96d2d3c202c86ddcb629863f9161",
+  "shared_numerical_settings": {
+    "iregimode": 2,
+    "iregirecy": true,
+    "ctmoderun": -1,
+    "mlstabthres": 1e-09,
+    "nrotations_dp": 0,
+    "nrotations_qp": 0,
+    "improvepspoint": 2,
+    "ctlooplibrary": 2,
+    "ctstabthres": 0.01,
+    "ctmodeinit": 1,
+    "checkcycle": 3,
+    "maxattempts": 10,
+    "zerothres": 1e-09,
+    "osthres": 1e-08,
+    "doublecheckhelicityfilter": true,
+    "writeoutfilters": true,
+    "useloopfilter": false,
+    "helicityfilterlevel": 2,
+    "loopinitstartover": false,
+    "helinitstartover": false,
+    "useqpintegrandforninja": true,
+    "useqpintegrandforcuttools": true,
+    "colliermode": 1,
+    "colliercomputeuvpoles": true,
+    "colliercomputeirpoles": true,
+    "collierrequiredaccuracy": 1e-12,
+    "colliercanoutput": false,
+    "collierglobalcache": -1,
+    "collierusecacheforpoles": false,
+    "collieruseinternalstabilitytest": true,
+    "selected_backend_qp_integrand": true
+  },
+  "cpu": 207,
+  "points_sha256": "75a3765dca97afa14e5efb795cb1a9fa1ff9e0475ebcb79a883b6a2a4e84ba5a",
+  "measurement_run_id": "corrected-original-ew4-ct-ninja-v3-20261021",
+  "paired_baseline_candidate": false,
+  "benchmark_protocol": "persistent-worker-v1",
+  "protocol_identity_sha256": "383c21122fc089ad9a90eea685d6f0406d43d497df3816b54288b111225431c9",
+  "captured_during_timed_final_traversal": true,
+  "cold_seconds": 2189.137968257,
+  "seconds": 1944.929618356,
+  "seconds_per_point": 19.44929618356,
+  "rows": [
+    {
+      "point": 1,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.6899017911983889e-10,
+        2.7255135983299936e-11,
+        3.851603149595041e-13,
+        -8.119005465354689e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 1,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.6899017911983889e-10,
+        2.7255135983299936e-11,
+        3.851603149595041e-13,
+        -8.119005465354689e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 2,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        2.531592416539738e-11,
+        5.830781862306317e-12,
+        3.4046294523831807e-13,
+        -1.2162844475925793e-13
+      ],
+      "accuracy": 3.585091094936766e-10
+    },
+    {
+      "point": 2,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        2.531592416539738e-11,
+        5.830781862306317e-12,
+        3.4046294523831807e-13,
+        -1.2162844475925793e-13
+      ],
+      "accuracy": 3.585091094936766e-10
+    },
+    {
+      "point": 3,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        4.2809624395442303e-14,
+        3.814924583560652e-15,
+        -7.566652330371779e-16,
+        -2.0567560567520316e-16
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 3,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        4.2809624395442303e-14,
+        3.814924583560652e-15,
+        -7.566652330371779e-16,
+        -2.0567560567520316e-16
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 4,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.3084605962340084e-11,
+        1.9176605370450204e-12,
+        -1.3559771462515783e-14,
+        -6.286400066178024e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 4,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.3084605962340084e-11,
+        1.9176605370450204e-12,
+        -1.3559771462515783e-14,
+        -6.286400066178024e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 5,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        3.64722826244938e-11,
+        6.872150121507085e-12,
+        2.2442896115481315e-13,
+        -1.7522832599177736e-13
+      ],
+      "accuracy": 6.931244962902934e-11
+    },
+    {
+      "point": 5,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        3.64722826244938e-11,
+        6.872150121507085e-12,
+        2.2442896115481315e-13,
+        -1.7522832599177736e-13
+      ],
+      "accuracy": 6.931244962902934e-11
+    },
+    {
+      "point": 6,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        1.552068700280314e-11,
+        2.79836673197435e-12,
+        7.405855094786022e-14,
+        -7.45679679482721e-14
+      ],
+      "accuracy": 1.4029885462535579e-11
+    },
+    {
+      "point": 6,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        1.552068700280314e-11,
+        2.79836673197435e-12,
+        7.405855094786022e-14,
+        -7.45679679482721e-14
+      ],
+      "accuracy": 1.4029885462535579e-11
+    },
+    {
+      "point": 7,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        5.975808314344821e-11,
+        9.415083118973304e-12,
+        3.0821542587195525e-13,
+        -2.871031950896228e-13
+      ],
+      "accuracy": 3.689303081461446e-11
+    },
+    {
+      "point": 7,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        5.975808314344821e-11,
+        9.415083118973304e-12,
+        3.0821542587195525e-13,
+        -2.871031950896228e-13
+      ],
+      "accuracy": 3.689303081461446e-11
+    },
+    {
+      "point": 8,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        8.786944522635865e-12,
+        1.2421864427450365e-12,
+        -3.4309834298250656e-14,
+        -4.221621100978255e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 8,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        8.786944522635865e-12,
+        1.2421864427450365e-12,
+        -3.4309834298250656e-14,
+        -4.221621100978255e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 9,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        6.417042587612284e-12,
+        9.220305832304356e-13,
+        4.821858952521458e-15,
+        -3.083019623482722e-14
+      ],
+      "accuracy": 4.278112740998494e-10
+    },
+    {
+      "point": 9,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        6.417042587612284e-12,
+        9.220305832304356e-13,
+        4.821858952521458e-15,
+        -3.083019623482722e-14
+      ],
+      "accuracy": 4.278112740998494e-10
+    },
+    {
+      "point": 10,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.1663169169818285e-11,
+        1.9793664664883138e-12,
+        -1.4226356568473773e-14,
+        -5.6034814997118745e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 10,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.1663169169818285e-11,
+        1.9793664664883138e-12,
+        -1.4226356568473773e-14,
+        -5.6034814997118745e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 11,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        7.520016389299679e-14,
+        6.121799176938494e-15,
+        -1.1837099811209738e-15,
+        -3.612935052336756e-16
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 11,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        7.520016389299679e-14,
+        6.121799176938494e-15,
+        -1.1837099811209738e-15,
+        -3.612935052336756e-16
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 12,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        5.072962588962805e-12,
+        1.4132235364641006e-12,
+        9.371039612608947e-14,
+        -2.437266544117711e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 12,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        5.072962588962805e-12,
+        1.4132235364641006e-12,
+        9.371039612608947e-14,
+        -2.437266544117711e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 13,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        2.846796483903139e-12,
+        5.033656511788245e-13,
+        1.3980342425085118e-14,
+        -1.3677218600477885e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 13,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        2.846796483903139e-12,
+        5.033656511788245e-13,
+        1.3980342425085118e-14,
+        -1.3677218600477885e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 14,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        8.316519289840398e-14,
+        1.3732555640468041e-14,
+        -4.2889567443806323e-16,
+        -3.995608852455971e-16
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 14,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        8.316519289840398e-14,
+        1.3732555640468041e-14,
+        -4.2889567443806323e-16,
+        -3.995608852455971e-16
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 15,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        4.5186426121542616e-13,
+        5.084629723736886e-14,
+        -3.1280427190789064e-15,
+        -2.1709476997502844e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 15,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        4.5186426121542616e-13,
+        5.084629723736886e-14,
+        -3.1280427190789064e-15,
+        -2.1709476997502844e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 16,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        4.908938092384799e-13,
+        4.818594211606637e-14,
+        -2.9368675822187344e-15,
+        -2.358462214120262e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 16,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        4.908938092384799e-13,
+        4.818594211606637e-14,
+        -2.9368675822187344e-15,
+        -2.358462214120262e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 17,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.4493472212055776e-12,
+        1.724872049274976e-13,
+        -2.1936532677424543e-15,
+        -6.963279210337191e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 17,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.4493472212055776e-12,
+        1.724872049274976e-13,
+        -2.1936532677424543e-15,
+        -6.963279210337191e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 18,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        2.1168925675312494e-13,
+        2.7258727927428694e-14,
+        -1.4248325580895856e-15,
+        -1.017045038644816e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 18,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        2.1168925675312494e-13,
+        2.7258727927428694e-14,
+        -1.4248325580895856e-15,
+        -1.017045038644816e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 19,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        2.0069243345589494e-12,
+        1.8848168933552755e-13,
+        -2.3394288137310757e-14,
+        -9.642116320428771e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 19,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        2.0069243345589494e-12,
+        1.8848168933552755e-13,
+        -2.3394288137310757e-14,
+        -9.642116320428771e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 20,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.1626181108022442e-11,
+        2.621313592115332e-12,
+        1.0912741241294568e-13,
+        -5.5857108649070775e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 20,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.1626181108022442e-11,
+        2.621313592115332e-12,
+        1.0912741241294568e-13,
+        -5.5857108649070775e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 21,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.0331039970866077e-12,
+        1.7356762213742245e-13,
+        1.7169251444619367e-15,
+        -4.963470091760093e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 21,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.0331039970866077e-12,
+        1.7356762213742245e-13,
+        1.7169251444619367e-15,
+        -4.963470091760093e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 22,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        2.3801404883794648e-11,
+        2.271364488148342e-12,
+        -1.3238601554689399e-13,
+        -1.1435205130920038e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 22,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        2.3801404883794648e-11,
+        2.271364488148342e-12,
+        -1.3238601554689399e-13,
+        -1.1435205130920038e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 23,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        3.070600838664379e-12,
+        3.6749936273202445e-13,
+        -4.038497568779826e-15,
+        -1.475246971207713e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 23,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        3.070600838664379e-12,
+        3.6749936273202445e-13,
+        -4.038497568779826e-15,
+        -1.475246971207713e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 24,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        2.8971018127498438e-12,
+        2.961833538945058e-13,
+        -9.132214592172616e-15,
+        -1.3918906751807468e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 24,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        2.8971018127498438e-12,
+        2.961833538945058e-13,
+        -9.132214592172616e-15,
+        -1.3918906751807468e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 25,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        1.057632031078413e-10,
+        1.5254426561862316e-11,
+        2.8720269933352e-13,
+        -5.08131317771041e-13
+      ],
+      "accuracy": 1.757373589117793e-10
+    },
+    {
+      "point": 25,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        1.057632031078413e-10,
+        1.5254426561862316e-11,
+        2.8720269933352e-13,
+        -5.08131317771041e-13
+      ],
+      "accuracy": 1.757373589117793e-10
+    },
+    {
+      "point": 26,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.5451169246847617e-09,
+        1.9576023052165483e-10,
+        -5.350580637697443e-12,
+        -7.423397514261016e-12
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 26,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.5451169246847617e-09,
+        1.9576023052165483e-10,
+        -5.350580637697443e-12,
+        -7.423397514261016e-12
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 27,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.415276926560446e-10,
+        2.3049606017564184e-11,
+        5.739224752639112e-13,
+        -6.799591054096014e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 27,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.415276926560446e-10,
+        2.3049606017564184e-11,
+        5.739224752639112e-13,
+        -6.799591054096014e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 28,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.2655526482820589e-12,
+        2.1647866606742439e-13,
+        5.0432651602817295e-15,
+        -6.0802520724050166e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 28,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.2655526482820589e-12,
+        2.1647866606742439e-13,
+        5.0432651602817295e-15,
+        -6.0802520724050166e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 29,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.981691048906079e-10,
+        2.6586277015175622e-11,
+        -2.1035232186872262e-13,
+        -9.520884906158932e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 29,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.981691048906079e-10,
+        2.6586277015175622e-11,
+        -2.1035232186872262e-13,
+        -9.520884906158932e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 30,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        1.28475592094397e-12,
+        2.3804647661490017e-13,
+        5.1259431049427706e-15,
+        -6.1725127448930605e-15
+      ],
+      "accuracy": 2.0110518835042915e-10
+    },
+    {
+      "point": 30,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        1.28475592094397e-12,
+        2.3804647661490017e-13,
+        5.1259431049427706e-15,
+        -6.1725127448930605e-15
+      ],
+      "accuracy": 2.0110518835042915e-10
+    },
+    {
+      "point": 31,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        1.6121438432614606e-12,
+        2.4436677013066537e-13,
+        -3.053156536491691e-15,
+        -7.745423279949427e-15
+      ],
+      "accuracy": 8.060729712740896e-10
+    },
+    {
+      "point": 31,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        1.6121438432614606e-12,
+        2.4436677013066537e-13,
+        -3.053156536491691e-15,
+        -7.745423279949427e-15
+      ],
+      "accuracy": 8.060729712740896e-10
+    },
+    {
+      "point": 32,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        3.697034465105414e-12,
+        5.40461357545884e-13,
+        -4.747117297854715e-15,
+        -1.77621227364378e-14
+      ],
+      "accuracy": 2.2600491536300657e-11
+    },
+    {
+      "point": 32,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        3.697034465105414e-12,
+        5.40461357545884e-13,
+        -4.747117297854715e-15,
+        -1.77621227364378e-14
+      ],
+      "accuracy": 2.2600491536300657e-11
+    },
+    {
+      "point": 33,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        9.269185569592381e-11,
+        1.5037551608836304e-11,
+        6.999635205356134e-14,
+        -4.4533101681329727e-13
+      ],
+      "accuracy": 1.2314794740341647e-10
+    },
+    {
+      "point": 33,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        9.269185569592381e-11,
+        1.5037551608836304e-11,
+        6.999635205356134e-14,
+        -4.4533101681329727e-13
+      ],
+      "accuracy": 1.2314794740341647e-10
+    },
+    {
+      "point": 34,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        4.352489688299605e-13,
+        2.2664395487296057e-14,
+        -5.537374981689047e-15,
+        -2.0911207829504023e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 34,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        4.352489688299605e-13,
+        2.2664395487296057e-14,
+        -5.537374981689047e-15,
+        -2.0911207829504023e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 35,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        1.6677235284963347e-11,
+        1.9212242472763978e-12,
+        -2.1367294294071305e-13,
+        -8.01245167801573e-14
+      ],
+      "accuracy": 9.242988767443547e-11
+    },
+    {
+      "point": 35,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        1.6677235284963347e-11,
+        1.9212242472763978e-12,
+        -2.1367294294071305e-13,
+        -8.01245167801573e-14
+      ],
+      "accuracy": 9.242988767443547e-11
+    },
+    {
+      "point": 36,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        8.799132134816849e-12,
+        2.2589405025630506e-12,
+        1.1778788059338014e-13,
+        -4.227476547159936e-14
+      ],
+      "accuracy": 3.139791501680036e-10
+    },
+    {
+      "point": 36,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        8.799132134816849e-12,
+        2.2589405025630506e-12,
+        1.1778788059338014e-13,
+        -4.227476547159936e-14
+      ],
+      "accuracy": 3.139791501680036e-10
+    },
+    {
+      "point": 37,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        7.592897969334964e-11,
+        1.1868330475139323e-11,
+        6.032295337704248e-14,
+        -3.6479504567652837e-13
+      ],
+      "accuracy": 4.790804245791575e-10
+    },
+    {
+      "point": 37,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        7.592897969334964e-11,
+        1.1868330475139323e-11,
+        6.032295337704248e-14,
+        -3.6479504567652837e-13
+      ],
+      "accuracy": 4.790804245791575e-10
+    },
+    {
+      "point": 38,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        3.402515167926301e-12,
+        3.077376059525166e-13,
+        -3.539167095011514e-14,
+        -1.6347127027276952e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 38,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        3.402515167926301e-12,
+        3.077376059525166e-13,
+        -3.539167095011514e-14,
+        -1.6347127027276952e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 39,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.026432745162345e-11,
+        1.828765919096771e-12,
+        5.1674675674987376e-14,
+        -4.931418565975596e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 39,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.026432745162345e-11,
+        1.828765919096771e-12,
+        5.1674675674987376e-14,
+        -4.931418565975596e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 40,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        7.180088005533802e-13,
+        1.062927868987288e-13,
+        -5.573890799148264e-15,
+        -3.4496190288850776e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 40,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        7.180088005533802e-13,
+        1.062927868987288e-13,
+        -5.573890799148264e-15,
+        -3.4496190288850776e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 41,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        5.821957620354772e-12,
+        9.143180805585097e-13,
+        -7.722983928393565e-15,
+        -2.7971155474779154e-14
+      ],
+      "accuracy": 3.4250206773133663e-10
+    },
+    {
+      "point": 41,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        5.821957620354772e-12,
+        9.143180805585097e-13,
+        -7.722983928393565e-15,
+        -2.7971155474779154e-14
+      ],
+      "accuracy": 3.4250206773133663e-10
+    },
+    {
+      "point": 42,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        7.902637782493515e-12,
+        1.1525718544509893e-12,
+        1.6328039313756158e-14,
+        -3.796762609576026e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 42,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        7.902637782493515e-12,
+        1.1525718544509893e-12,
+        1.6328039313756158e-14,
+        -3.796762609576026e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 43,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        5.478921308666727e-12,
+        3.1950322173522823e-13,
+        -6.02113929407467e-14,
+        -2.632306343539844e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 43,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        5.478921308666727e-12,
+        3.1950322173522823e-13,
+        -6.02113929407467e-14,
+        -2.632306343539844e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 44,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        5.878287068689497e-11,
+        1.0128592516551638e-11,
+        -3.091006855027873e-13,
+        -2.8241786053000737e-13
+      ],
+      "accuracy": 8.526748908899951e-11
+    },
+    {
+      "point": 44,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        5.878287068689497e-11,
+        1.0128592516551638e-11,
+        -3.091006855027873e-13,
+        -2.8241786053000737e-13
+      ],
+      "accuracy": 8.526748908899951e-11
+    },
+    {
+      "point": 45,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        3.1452234480988054e-11,
+        4.640416296370117e-12,
+        -1.0824337333045817e-13,
+        -1.5110988400553447e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 45,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        3.1452234480988054e-11,
+        4.640416296370117e-12,
+        -1.0824337333045817e-13,
+        -1.5110988400553447e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 46,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.6821574750802863e-09,
+        -4.5120757603846473e-11,
+        -1.3464462622811491e-11,
+        -8.081798483731639e-12
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 46,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.6821574750802863e-09,
+        -4.5120757603846473e-11,
+        -1.3464462622811491e-11,
+        -8.081798483731639e-12
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 47,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.3690586049574638e-11,
+        2.2323962681422207e-12,
+        -6.794593067197097e-14,
+        -6.577538620251277e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 47,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.3690586049574638e-11,
+        2.2323962681422207e-12,
+        -6.794593067197097e-14,
+        -6.577538620251277e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 48,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        4.256967950436148e-11,
+        6.4647267022449554e-12,
+        -3.988756714766911e-14,
+        -2.0452280857645196e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 48,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        4.256967950436148e-11,
+        6.4647267022449554e-12,
+        -3.988756714766911e-14,
+        -2.0452280857645196e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 49,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        3.4559998656563626e-12,
+        4.0201428517141364e-13,
+        -9.502293065876903e-15,
+        -1.6604090216170357e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 49,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        3.4559998656563626e-12,
+        4.0201428517141364e-13,
+        -9.502293065876903e-15,
+        -1.6604090216170357e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 50,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        1.3760880701097636e-09,
+        1.9854049121353396e-10,
+        4.381156038249809e-12,
+        -6.611311154429358e-12
+      ],
+      "accuracy": 2.70750205260046e-11
+    },
+    {
+      "point": 50,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        1.3760880701097636e-09,
+        1.9854049121353396e-10,
+        4.381156038249809e-12,
+        -6.611311154429358e-12
+      ],
+      "accuracy": 2.70750205260046e-11
+    },
+    {
+      "point": 51,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        2.948173326305842e-11,
+        1.0248677191826623e-12,
+        -3.3693459696519857e-13,
+        -1.416427597967868e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 51,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        2.948173326305842e-11,
+        1.0248677191826623e-12,
+        -3.3693459696519857e-13,
+        -1.416427597967868e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 52,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        2.40762609965628e-12,
+        3.930562175042394e-13,
+        1.2821047364593883e-14,
+        -1.1567257673462556e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 52,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        2.40762609965628e-12,
+        3.930562175042394e-13,
+        1.2821047364593883e-14,
+        -1.1567257673462556e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 53,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        7.85418902302608e-12,
+        3.908579151360353e-13,
+        -2.5837012460959973e-14,
+        -3.773485769173098e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 53,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        7.85418902302608e-12,
+        3.908579151360353e-13,
+        -2.5837012460959973e-14,
+        -3.773485769173098e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 54,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        1.0482760202855753e-09,
+        2.568007792721138e-10,
+        1.3589732356562315e-11,
+        -5.036362930809164e-12
+      ],
+      "accuracy": 1.737528120440577e-11
+    },
+    {
+      "point": 54,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        1.0482760202855753e-09,
+        2.568007792721138e-10,
+        1.3589732356562315e-11,
+        -5.036362930809164e-12
+      ],
+      "accuracy": 1.737528120440577e-11
+    },
+    {
+      "point": 55,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.0604470160232969e-11,
+        5.762093789325767e-13,
+        -1.1849634600673833e-13,
+        -5.0948375601791796e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 55,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.0604470160232969e-11,
+        5.762093789325767e-13,
+        -1.1849634600673833e-13,
+        -5.0948375601791796e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 56,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        2.825905021943913e-11,
+        5.263524749762293e-12,
+        1.864965346363256e-13,
+        -1.3576847150071921e-13
+      ],
+      "accuracy": 7.013437254977118e-11
+    },
+    {
+      "point": 56,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        2.825905021943913e-11,
+        5.263524749762293e-12,
+        1.864965346363256e-13,
+        -1.3576847150071921e-13
+      ],
+      "accuracy": 7.013437254977118e-11
+    },
+    {
+      "point": 57,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        6.9745482263238305e-12,
+        5.447665602806881e-13,
+        -3.5770954093471044e-14,
+        -3.3508689950402627e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 57,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        6.9745482263238305e-12,
+        5.447665602806881e-13,
+        -3.5770954093471044e-14,
+        -3.3508689950402627e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 58,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.656817349273744e-12,
+        4.0393177827123713e-13,
+        2.237439430800871e-14,
+        -7.960053764016323e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 58,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.656817349273744e-12,
+        4.0393177827123713e-13,
+        2.237439430800871e-14,
+        -7.960053764016323e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 59,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        9.227360843024412e-11,
+        -2.811025538276955e-12,
+        -8.430856921944359e-13,
+        -4.433215794283993e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 59,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        9.227360843024412e-11,
+        -2.811025538276955e-12,
+        -8.430856921944359e-13,
+        -4.433215794283993e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 60,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.50465587536754e-11,
+        2.396447990722453e-12,
+        -8.823817844897114e-15,
+        -7.229005460088082e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 60,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.50465587536754e-11,
+        2.396447990722453e-12,
+        -8.823817844897114e-15,
+        -7.229005460088082e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 61,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.9700463421229797e-11,
+        4.561850447348014e-12,
+        -2.971043106949988e-13,
+        -9.464938792303222e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 61,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.9700463421229797e-11,
+        4.561850447348014e-12,
+        -2.971043106949988e-13,
+        -9.464938792303222e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 62,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        5.765147284542439e-11,
+        1.1923895773298864e-11,
+        4.2609142156619053e-13,
+        -2.7698214509008194e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 62,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        5.765147284542439e-11,
+        1.1923895773298864e-11,
+        4.2609142156619053e-13,
+        -2.7698214509008194e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 63,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.0424360785893822e-12,
+        1.707246245440314e-13,
+        -2.695681226995553e-15,
+        -5.008305372199918e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 63,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.0424360785893822e-12,
+        1.707246245440314e-13,
+        -2.695681226995553e-15,
+        -5.008305372199918e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 64,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        3.711078651930404e-12,
+        6.729027443633426e-13,
+        7.632451726373936e-15,
+        -1.7829596970847587e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 64,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        3.711078651930404e-12,
+        6.729027443633426e-13,
+        7.632451726373936e-15,
+        -1.7829596970847587e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 65,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        2.1677113610805658e-11,
+        2.861014423318247e-12,
+        -1.2534417074315513e-13,
+        -1.0414605440143163e-13
+      ],
+      "accuracy": 9.31699868769192e-10
+    },
+    {
+      "point": 65,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        2.1677113610805658e-11,
+        2.861014423318247e-12,
+        -1.2534417074315513e-13,
+        -1.0414605440143163e-13
+      ],
+      "accuracy": 9.31699868769192e-10
+    },
+    {
+      "point": 66,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        2.363879475333085e-10,
+        3.426773855094838e-11,
+        -1.2275431881582924e-12,
+        -1.1357080322434161e-12
+      ],
+      "accuracy": 9.1321770597072e-11
+    },
+    {
+      "point": 66,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        2.363879475333085e-10,
+        3.426773855094838e-11,
+        -1.2275431881582924e-12,
+        -1.1357080322434161e-12
+      ],
+      "accuracy": 9.1321770597072e-11
+    },
+    {
+      "point": 67,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.8146004391216565e-12,
+        3.55412389207785e-13,
+        1.461079166661321e-14,
+        -8.7181106969621e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 67,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.8146004391216565e-12,
+        3.55412389207785e-13,
+        1.461079166661321e-14,
+        -8.7181106969621e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 68,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.674271430530092e-12,
+        3.484432422213415e-13,
+        1.5284123251260404e-14,
+        -8.043910578566653e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 68,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.674271430530092e-12,
+        3.484432422213415e-13,
+        1.5284123251260404e-14,
+        -8.043910578566653e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 69,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        4.819462064766206e-12,
+        6.003988270925728e-13,
+        -8.437520435914518e-15,
+        -2.315474132739634e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 69,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        4.819462064766206e-12,
+        6.003988270925728e-13,
+        -8.437520435914518e-15,
+        -2.315474132739634e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 70,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        2.820462992310775e-12,
+        5.201497173762315e-13,
+        1.494721377101599e-14,
+        -1.355070132990403e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 70,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        2.820462992310775e-12,
+        5.201497173762315e-13,
+        1.494721377101599e-14,
+        -1.355070132990403e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 71,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        2.8602339810903323e-13,
+        1.517592341723331e-14,
+        -3.640824944305762e-15,
+        -1.3741778040364655e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 71,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        2.8602339810903323e-13,
+        1.517592341723331e-14,
+        -3.640824944305762e-15,
+        -1.3741778040364655e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 72,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        2.0874376393016907e-12,
+        2.58868686067795e-13,
+        2.3140478724913282e-15,
+        -1.0028936409409351e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 72,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        2.0874376393016907e-12,
+        2.58868686067795e-13,
+        2.3140478724913282e-15,
+        -1.0028936409409351e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 73,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        1.2573210031025556e-10,
+        2.9019728557273102e-11,
+        1.3365634108084484e-12,
+        -6.04070375513004e-13
+      ],
+      "accuracy": 7.571348700057669e-11
+    },
+    {
+      "point": 73,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        1.2573210031025556e-10,
+        2.9019728557273102e-11,
+        1.3365634108084484e-12,
+        -6.04070375513004e-13
+      ],
+      "accuracy": 7.571348700057669e-11
+    },
+    {
+      "point": 74,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        5.639170489907133e-12,
+        1.4195424051573322e-12,
+        7.370026279372816e-14,
+        -2.7092968518099555e-14
+      ],
+      "accuracy": 5.02868960287516e-10
+    },
+    {
+      "point": 74,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        5.639170489907133e-12,
+        1.4195424051573322e-12,
+        7.370026279372816e-14,
+        -2.7092968518099555e-14
+      ],
+      "accuracy": 5.02868960287516e-10
+    },
+    {
+      "point": 75,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        3.5282353509867335e-10,
+        8.837688052189605e-11,
+        4.7151842856445064e-12,
+        -1.6951140147263297e-12
+      ],
+      "accuracy": 2.25597755431871e-11
+    },
+    {
+      "point": 75,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        3.5282353509867335e-10,
+        8.837688052189605e-11,
+        4.7151842856445064e-12,
+        -1.6951140147263297e-12
+      ],
+      "accuracy": 2.25597755431871e-11
+    },
+    {
+      "point": 76,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        3.4474478695429637e-12,
+        5.566094155442177e-13,
+        -1.720297505216436e-14,
+        -1.656300279703973e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 76,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        3.4474478695429637e-12,
+        5.566094155442177e-13,
+        -1.720297505216436e-14,
+        -1.656300279703973e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 77,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.3409692025468037e-12,
+        1.56030770633724e-13,
+        -8.332657297776036e-15,
+        -6.442585208829151e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 77,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.3409692025468037e-12,
+        1.56030770633724e-13,
+        -8.332657297776036e-15,
+        -6.442585208829151e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 78,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        7.447925618491205e-12,
+        1.5295700924805045e-12,
+        4.6466883883290745e-14,
+        -3.578299586226038e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 78,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        7.447925618491205e-12,
+        1.5295700924805045e-12,
+        4.6466883883290745e-14,
+        -3.578299586226038e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 79,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        3.641220932543709e-13,
+        6.336261091049295e-14,
+        -6.768425835535363e-16,
+        -1.7493970836570942e-15
+      ],
+      "accuracy": 4.0737565231406015e-10
+    },
+    {
+      "point": 79,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        3.641220932543709e-13,
+        6.336261091049295e-14,
+        -6.768425835535363e-16,
+        -1.7493970836570942e-15
+      ],
+      "accuracy": 4.0737565231406015e-10
+    },
+    {
+      "point": 80,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        9.893439892001135e-12,
+        1.6815198641536098e-12,
+        9.084724268482278e-15,
+        -4.753228440413895e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 80,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        9.893439892001135e-12,
+        1.6815198641536098e-12,
+        9.084724268482278e-15,
+        -4.753228440413895e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 81,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        4.454021534680632e-13,
+        4.473569277092376e-14,
+        -4.559880692314417e-15,
+        -2.1399009913606286e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 81,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        4.454021534680632e-13,
+        4.473569277092376e-14,
+        -4.559880692314417e-15,
+        -2.1399009913606286e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 82,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        8.933320762802538e-13,
+        1.0132149912808739e-13,
+        -8.216728295335458e-15,
+        -4.291946459534774e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 82,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        8.933320762802538e-13,
+        1.0132149912808739e-13,
+        -8.216728295335458e-15,
+        -4.291946459534774e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 83,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        2.7877288497015033e-12,
+        1.7927391584831755e-13,
+        -2.8263794670681157e-14,
+        -1.3393432615157838e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 83,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        2.7877288497015033e-12,
+        1.7927391584831755e-13,
+        -2.8263794670681157e-14,
+        -1.3393432615157838e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 84,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        5.518551205956326e-12,
+        9.344687696173312e-13,
+        -6.108624436148817e-14,
+        -2.6513462282460697e-14
+      ],
+      "accuracy": 2.275076697254362e-10
+    },
+    {
+      "point": 84,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        5.518551205956326e-12,
+        9.344687696173312e-13,
+        -6.108624436148817e-14,
+        -2.6513462282460697e-14
+      ],
+      "accuracy": 2.275076697254362e-10
+    },
+    {
+      "point": 85,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        4.624185871541777e-12,
+        3.9536822104113045e-13,
+        -5.808333137102134e-14,
+        -2.2216551612289123e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 85,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        4.624185871541777e-12,
+        3.9536822104113045e-13,
+        -5.808333137102134e-14,
+        -2.2216551612289123e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 86,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        2.1147046628151332e-11,
+        1.8607661311598364e-12,
+        -1.2368739177216724e-13,
+        -1.0159938763559579e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 86,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        2.1147046628151332e-11,
+        1.8607661311598364e-12,
+        -1.2368739177216724e-13,
+        -1.0159938763559579e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 87,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        3.239117581177984e-13,
+        5.290556051914905e-14,
+        -3.835034828141447e-15,
+        -1.556209566820812e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 87,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        3.239117581177984e-13,
+        5.290556051914905e-14,
+        -3.835034828141447e-15,
+        -1.556209566820812e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 88,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        8.928428537457162e-13,
+        1.3257343901625198e-13,
+        -5.835298407179311e-15,
+        -4.2895960268335566e-15
+      ],
+      "accuracy": 7.409278353563234e-10
+    },
+    {
+      "point": 88,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        8.928428537457162e-13,
+        1.3257343901625198e-13,
+        -5.835298407179311e-15,
+        -4.2895960268335566e-15
+      ],
+      "accuracy": 7.409278353563234e-10
+    },
+    {
+      "point": 89,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        3.047102451414713e-12,
+        5.382436049485739e-13,
+        1.227191164881572e-14,
+        -1.4639573486093044e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 89,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        3.047102451414713e-12,
+        5.382436049485739e-13,
+        1.227191164881572e-14,
+        -1.4639573486093044e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 90,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        1.0730245181947734e-12,
+        1.4424864142204695e-13,
+        -4.7035564716904154e-15,
+        -5.1552652189949714e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 90,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        1.0730245181947734e-12,
+        1.4424864142204695e-13,
+        -4.7035564716904154e-15,
+        -5.1552652189949714e-15
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 91,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        7.65554497437324e-12,
+        1.977770197218586e-12,
+        1.0773106406131077e-13,
+        -3.6780487369695476e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 91,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        7.65554497437324e-12,
+        1.977770197218586e-12,
+        1.0773106406131077e-13,
+        -3.6780487369695476e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 92,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        2.673046628652893e-11,
+        3.808310007079752e-12,
+        -1.0221770297555163e-13,
+        -1.284245054961946e-13
+      ],
+      "accuracy": 7.834455468353291e-10
+    },
+    {
+      "point": 92,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        2.673046628652893e-11,
+        3.808310007079752e-12,
+        -1.0221770297555163e-13,
+        -1.284245054961946e-13
+      ],
+      "accuracy": 7.834455468353291e-10
+    },
+    {
+      "point": 93,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        6.883607453403877e-12,
+        5.420794344443314e-13,
+        -3.0821659197017815e-14,
+        -3.307177187847302e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 93,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        6.883607453403877e-12,
+        5.420794344443314e-13,
+        -3.0821659197017815e-14,
+        -3.307177187847302e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 94,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        8.029076362477372e-12,
+        1.4521833636275523e-12,
+        4.141082313185087e-14,
+        -3.857509069948306e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 94,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        8.029076362477372e-12,
+        1.4521833636275523e-12,
+        4.141082313185087e-14,
+        -3.857509069948306e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 95,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        2.749143562547633e-11,
+        2.713831901026873e-12,
+        -1.4273472602636743e-13,
+        -1.3208052518565512e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 95,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        2.749143562547633e-11,
+        2.713831901026873e-12,
+        -1.4273472602636743e-13,
+        -1.3208052518565512e-13
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 96,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        2.2517384337985293e-10,
+        2.2365159882816037e-11,
+        -1.2104221248311086e-12,
+        -1.0818307161857747e-12
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 96,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        2.2517384337985293e-10,
+        2.2365159882816037e-11,
+        -1.2104221248311086e-12,
+        -1.0818307161857747e-12
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 97,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        1.5228848231623615e-12,
+        2.356360403358055e-13,
+        4.994790773557466e-15,
+        -7.31658506237309e-15
+      ],
+      "accuracy": 3.4997170547595696e-10
+    },
+    {
+      "point": 97,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        1.5228848231623615e-12,
+        2.356360403358055e-13,
+        4.994790773557466e-15,
+        -7.31658506237309e-15
+      ],
+      "accuracy": 3.4997170547595696e-10
+    },
+    {
+      "point": 98,
+      "order": 0,
+      "status": 329,
+      "coefficients": [
+        4.813391686112145e-12,
+        6.235827657930741e-13,
+        -1.5944374517829125e-14,
+        -2.3125576651836053e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 98,
+      "order": 1,
+      "status": 329,
+      "coefficients": [
+        4.813391686112145e-12,
+        6.235827657930741e-13,
+        -1.5944374517829125e-14,
+        -2.3125576651836053e-14
+      ],
+      "accuracy": 0.0
+    },
+    {
+      "point": 99,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        4.087891278816208e-12,
+        8.306638266856208e-13,
+        5.4344067331679475e-15,
+        -1.9639964764428465e-14
+      ],
+      "accuracy": 4.700327128488978e-11
+    },
+    {
+      "point": 99,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        4.087891278816208e-12,
+        8.306638266856208e-13,
+        5.4344067331679475e-15,
+        -1.9639964764428465e-14
+      ],
+      "accuracy": 4.700327128488978e-11
+    },
+    {
+      "point": 100,
+      "order": 0,
+      "status": 211,
+      "coefficients": [
+        5.868968857690264e-11,
+        1.268619281972217e-11,
+        4.466264703532731e-13,
+        -2.8197017412348123e-13
+      ],
+      "accuracy": 3.2185932294077815e-11
+    },
+    {
+      "point": 100,
+      "order": 1,
+      "status": 211,
+      "coefficients": [
+        5.868968857690264e-11,
+        1.268619281972217e-11,
+        4.466264703532731e-13,
+        -2.8197017412348123e-13
+      ],
+      "accuracy": 3.2185932294077815e-11
+    }
+  ],
+  "status_counts": {
+    "329": 70,
+    "211": 30
+  },
+  "timed_status_counts": {
+    "211": 30,
+    "329": 70
+  },
+  "answer_dimensions": {
+    "allocated": 1,
+    "loop_orders": 1,
+    "born_orders": 1
+  },
+  "repetition": "calibration",
+  "loops": 1,
+  "command_wall_seconds": 1944.9312099500094
+}
