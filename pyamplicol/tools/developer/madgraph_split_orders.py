@@ -13,11 +13,12 @@ Example::
 
     python tools/developer/madgraph_split_orders.py \\
         --madgraph "$WORKSPACE/reference/sources/MG5_aMC_v3_7_0" \\
-        --points points.json --work work --output references.json \\
+        --points points.json --work split-orders --output references.json \\
         --process "u u~ > d d~" --process "g g > t t~"
 
 ``points.json`` maps each process to a list of points, each a list of
-``[E, px, py, pz]`` momenta in MadGraph's leg order. T-channel widths are kept
+``[E, px, py, pz]`` momenta in MadGraph's leg order; ``--work`` receives one
+MadGraph standalone output per process. T-channel widths are kept
 (``zerowidth_tchannel False``) so propagators match a fixed-width recursion.
 
 ``--colour lc`` records pyAmpliCol's leading colour instead: the diagonal of

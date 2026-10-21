@@ -11,7 +11,8 @@ from __future__ import annotations
 import json
 import math
 import string
-from decimal import Decimal, localcontext
+from collections import Counter
+from decimal import Decimal
 
 import numpy as np
 import pytest
@@ -19,7 +20,6 @@ import pytest
 from pyamplicol.generation.dag_compiler import (
     AttachableLoopBlocks,
     GenericDAGCompiler,
-    compile_generic_dag,
 )
 from pyamplicol.loops.v2.blocks import (
     RequestedLoopBlocks,
@@ -34,6 +34,8 @@ from pyamplicol.loops.v2.families import (
     add_orders,
     generate_families,
 )
+
+from .loop_v2_stage_rows import stage_rows
 
 QCD = {"QCD": 99, "QED": 0}
 POINT_SEEDS = (7, 23)
@@ -79,92 +81,26 @@ def _point(dag, model, seed):
 def _current_values(dag, model, point, precision=64, parameters=None):
     """Every value slot of every current, by (current id, variant).
 
-    The interpreted Symbolica stage evaluators of the tree runtime, as in the
+    The shared interpreted stage evaluation of the tree runtime, as in the
     numerical-current warm-up; nothing is compiled. ``parameters`` overrides
-    runtime model parameters by name.
+    runtime model parameters (default: their binary64 defaults) by name.
     """
 
-    from pyamplicol.evaluators.symbolica_settings import SymbolicaEvaluatorSettings
-    from pyamplicol.generation.contracts import StageCompilationInput
-    from pyamplicol.generation.numerical_current_warmup import (
-        _build_interpreted_stage_evaluator,
-        _evaluate_interpreted_stage,
-        _runtime_model_parameter_values,
-    )
-    from pyamplicol.generation.runtime_schema import build_runtime_expression_schema
-    from pyamplicol.generation.stage_planning import (
-        build_generic_stage_compiler_blueprint,
-    )
-    from pyamplicol.runtime.symbolica_exact import _fill_momenta, _fill_sources
-
-    runtime_schema = build_runtime_expression_schema(dag, model, process_id="blocks")
-    schema = runtime_schema.to_mapping()
-    blueprint = build_generic_stage_compiler_blueprint(
-        StageCompilationInput(dag, model, runtime_schema)
-    )
-    assert blueprint.expression_ready, blueprint.blockers
-    settings = SymbolicaEvaluatorSettings(
-        iterations=1,
-        cpe_iterations=0,
-        n_cores=1,
-        direct_translation=False,
-        jit_direct_translation=False,
-        jit_optimization_level=0,
-        compiled_output_chunk_size=None,
-        output_chunk_strategy="uniform",
-        compiled_chunk_compile_workers=1,
-    )
-    layout = schema["parameter_layout"]
-    value_count = int(layout["value_component_count"])
-    momentum_count = int(layout["momentum_parameter_count"])
     overrides = parameters or {}
-    parameters = tuple(
-        Decimal(overrides[record["name"]]) if record["name"] in overrides else value
-        for record, value in zip(
-            schema["model_parameters"],
-            _runtime_model_parameter_values(schema),
-            strict=True,
-        )
-    )
-    with localcontext() as context:
-        context.prec = precision
-        momenta = tuple(
-            tuple(Decimal.from_float(float(x)) for x in momentum) for momentum in point
-        )
-        state = [(Decimal(0), Decimal(0))] * max(
-            int(layout["parameter_count_if_flattened"]),
-            value_count + momentum_count + len(parameters),
-        )
-        _fill_sources(state, momenta, schema, parameters)
-        _fill_momenta(state, momenta, schema)
-        for index, value in enumerate(parameters):
-            state[value_count + momentum_count + index] = (value, Decimal(0))
-        for stage in blueprint.stages:
-            evaluator = _build_interpreted_stage_evaluator(
-                stage,
-                settings=settings,
-                output_partitions=((0, stage.output_length),),
-            )
-            inputs = [None] * stage.parameter_count
-            for component in stage.input_components:
-                inputs[component.parameter_index] = state[component.global_component]
-            outputs = _evaluate_interpreted_stage(
-                evaluator, tuple(inputs), precision=precision
-            )
-            for slot in stage.output_slots:
-                state[slot.component_start : slot.component_stop] = outputs[
-                    slot.output_start : slot.output_stop
-                ]
+
+    def values(records):
+        return [
+            Decimal(overrides[record["name"]])
+            if record["name"] in overrides
+            else Decimal.from_float(float(record["default"]))
+            for record in records
+        ]
+
+    momenta = [[Decimal.from_float(float(x)) for x in vector] for vector in point]
+    rows = stage_rows(dag, model, momenta, values, precision)
     return {
-        (int(slot["current_id"]), str(slot["variant"])): np.array(
-            [
-                complex(float(real), float(imaginary))
-                for real, imaginary in state[
-                    slot["component_start"] : slot["component_stop"]
-                ]
-            ]
-        )
-        for slot in schema["value_storage"]["value_slots"]
+        key: np.array([complex(float(re), float(im)) for re, im in row])
+        for key, row in rows.items()
     }
 
 
@@ -815,9 +751,36 @@ def test_born_is_the_tree_program_bucketed_by_exact_order(models, accuracy):
         born_coupling_orders=born_limits,
         block_coupling_orders={"QCD": 4, "QED": 2},
     )
-    assert blocks.born_dag == compile_generic_dag(
-        process, model=model, max_coupling_orders=born_limits
+    # Baselines of the plain tree program: leading colour recorded with
+    # compile_generic_dag on 2590dc2c, before loop-request mode (WP1.2) touched
+    # the DAG compiler; full colour recorded once its electroweak merges were
+    # restored (it had the QCD roots only). Every root closes the (u u~ d)
+    # current with the d~ source; the two accuracies differ only in the
+    # current count and the id of the second colour sector.
+    current_count, second_sector = {"full": (76, 2), "lc": (30, 1)}[accuracy]
+    dag = blocks.born_dag
+    assert len(dag.currents) == current_count
+    roots = Counter(
+        (
+            add_orders(
+                dag.currents[root.left_id].index.coupling_orders,
+                dag.currents[root.right_id].index.coupling_orders,
+            ),
+            root.color_sector_id,
+            frozenset(
+                (current.index.external_mask, current.index.particle_id)
+                for current in (dag.currents[root.left_id], dag.currents[root.right_id])
+            ),
+        )
+        for root in dag.amplitude_roots
     )
+    closure = frozenset({(7, 1), (8, -1)})
+    assert roots == {
+        ((("QCD", 2),), 0, closure): 4,
+        ((("QCD", 2),), second_sector, closure): 4,
+        ((("QED", 2),), 0, closure): 4,
+        ((("QED", 2),), second_sector, closure): 1,
+    }
     assert blocks.born_orders == ((("QCD", 2),), (("QED", 2),))
     by_order = blocks.born_roots_by_order()
     assert sum(len(roots) for roots in by_order.values()) == len(

@@ -46,9 +46,6 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "loop" / "v2"
 
 @pytest.fixture(scope="module")
 def control():
-    symbolica = pytest.importorskip("symbolica")
-    if not symbolica.is_licensed():
-        pytest.skip("loop v2 generation requires a licensed Symbolica runtime")
     from pyamplicol.loops.control_models import qcd_qed_control_model
 
     model = qcd_qed_control_model()
@@ -455,9 +452,6 @@ def test_production_modules_never_generate_diagrams():
 
 @pytest.fixture(scope="module")
 def loop_sm_models(loop_sm_ufo):
-    symbolica = pytest.importorskip("symbolica")
-    if not symbolica.is_licensed():
-        pytest.skip("loop v2 generation requires a licensed Symbolica runtime")
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.model_compatibility import (
         prepare_loop_sm_scalar_declarations,

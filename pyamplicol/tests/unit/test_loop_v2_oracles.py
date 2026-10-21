@@ -39,6 +39,11 @@ COMPONENT_CONTROLS = {
     "tt": "top-pair-component-control",
     "uux_ggg": "quark-three-gluon-component-control",
 }
+# A control without the UV split has no external-field counterterm (massless
+# external quarks only), so its whole UV part is the vertex counterterm.
+UV_SPLIT = ("uv_vertex", "wf")
+# The slowest control (uux_ggg) regenerates in about 400 s on this host.
+REGENERATION_TIMEOUT = 1800
 
 
 def relative(a, b, floor=0.0):
@@ -126,13 +131,14 @@ def test_legacy_components_agree_with_madloop_controls(loop_reference, name, car
     for index, (legacy, row) in enumerate(
         zip(legacy_rows(oracle, carrier), reference["rows"], strict=True)
     ):
+        if not any(key in row for key in UV_SPLIT):
+            row = {**row, "uv_vertex": row["uv"], "wf": dict.fromkeys(LAURENT, 0.0)}
         for component, key in COMPONENT_KEYS.items():
-            if key in row:
-                assert_agrees(
-                    {"born": row["born"], **row[key]},
-                    {"born": legacy["born"], **legacy[component]},
-                    f"{name} point {index} {component}",
-                )
+            assert_agrees(
+                {"born": row["born"], **row[key]},
+                {"born": legacy["born"], **legacy[component]},
+                f"{name} point {index} {component}",
+            )
 
 
 @pytest.mark.loop_fast
@@ -165,9 +171,6 @@ _NIGHTLY = {"uux_ddxg", "uux_ggg", "uux_uuxg"}
     ],
 )
 def test_legacy_fixtures_regenerate_bitwise(loop_sm_ufo, loop_native, name):
-    symbolica = pytest.importorskip("symbolica")
-    if not symbolica.is_licensed():
-        pytest.skip("legacy generation requires a licensed Symbolica runtime")
     import pyamplicol
 
     # A fresh interpreter: Symbolica's term order depends on earlier symbols.
@@ -179,5 +182,6 @@ def test_legacy_fixtures_regenerate_bitwise(loop_sm_ufo, loop_native, name):
         env={**os.environ, "PYTHONPATH": path},
         capture_output=True,
         text=True,
+        timeout=REGENERATION_TIMEOUT,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr

@@ -511,7 +511,7 @@ These are new prepared-kernel kinds in `models/prepared_catalog.py` (`PreparedKe
 | `loop-segment` (split) | Vertex tensor Y_g, Z_g (and higher q-degree terms if a model has them) for (vertex template, loop-in leg, loop-out leg, attached legs, orientation), including the outgoing loop-propagator numerator; independent of the block current | P_in, block momenta, couplings, masses |
 | `loop-segment` (fused) | X(J) = Y(J) + Z(J)·q for one block current | Same, plus J |
 | `loop-propagator-numerator` | Numerator only, per species and orientation (denominators belong to NinjaRS) | Momentum |
-| `loop-closure` | Trace over the cut index; the closed fermion- and ghost-loop −1 enters only through ε_s (§3.3) | — |
+| `loop-closure` | Trace over the cut index; no sign (the closed fermion- and ghost-loop −1 enters only through ε_s, §3.3) | — |
 | `ct-vertex` (wave 2) | CT vertex as a tree vertex with (kind, ε) slots | As tree vertices |
 | `ct-site` (slice, oracle) | CT vertex applied to m block currents at the root | Currents, momenta |
 
@@ -1324,7 +1324,7 @@ Also deleted: the 18 `RETAINED_*` injection tests and the per-process timing fac
 | # | Oracle | What it isolates | When |
 |---|---|---|---|
 | O1 | **Frozen legacy outputs** (double, AP ≥ 200 bits) for DY, uudd, mixed uudd, tt, qq→gg, gg→gg, uu~→ggg, uu~→dd~g, uu~→e⁻e⁺gg, uu~→dd~ss~, ee→μμ, sgluon, **uu~→uu~, uu~→uu~g**. Covers Born, 6 components × sectors × poles, 19 totals, LC/NLC degrees, directed, spin, resolved, flavour, CT insertion multisets | Everything, end to end | Wave 0 freeze; every gate |
-| O2 | **Strong per-family oracle.** Legacy Born-weighted coefficient vectors (capture hooks `physical_process.py:1030, 1362` [V-s]) against v2 polynomials, after the exact affine map from FeynKit `IntegralFamily.find_mappings`, modulo certified-zero families. Error norm: the max-norm over coefficients with the rank-r coefficients weighted by sqrt(s)^r (the raw max-norm mixes mass dimensions); bounds as in §16.3 | Numerator, colour, helicity, fermion signs; isolates reduction | S1 and wave 2 |
+| O2 | **Strong per-family oracle.** Legacy Born-weighted coefficient vectors (capture hooks `physical_process.py:1030, 1362` [V-s]) against v2 polynomials, after the exact affine map from FeynKit `IntegralFamily.find_mappings`, modulo certified-zero families. Error norm: the coefficient max-norm with the coefficients of rank r weighted by √s^r (the raw max-norm mixes mass dimensions); bounds as in §16.3 | Numerator, colour, helicity, fermion signs; isolates reduction | S1 and wave 2 |
 | O3 | **Weak per-family oracle.** Reduced Ω_f per family | Frame-independent check | When frames differ |
 | O4 | **Schedule equality.** F = B = M per family, exact in rational arithmetic (M on LC and certified classes) | Merging and sharing logic | Every change to schedules |
 | O5 | **Random-q family oracle** (Design 3 A′). Evaluate the family numerator at random exact q by direct per-skeleton evaluation (kernels with numeric q) and compare with the polynomial | Polynomial algebra, raise tables, layout | Unit level |
@@ -1655,7 +1655,7 @@ Sizes: S–M each; WP4.3 and WP4.5 are L.
 | gg→gg full result × 3 poles | `tools/loop_reference/gluon_scattering_qcd.json` (MadLoop, Recola, OpenLoops; mb = 0) | Within the providers' mutual agreement (≤ 10⁻⁹ relative) |
 | gg→gg components (bare, UV, R2, UV_local = `uv_vertex`, fields = `wf`) × 3 poles | `workspace/reference/runs/gluon-scattering-component-control.json`: a single instrumented MadLoop run ("independent diagnostic component controls"), plus frozen legacy O1 | ≤ 10⁻⁹ relative to the instrumented run, and ≤ 10⁻¹² against legacy in f64 |
 | uu~→dd~g, uu~→uu~, uu~→uu~g, full and components | WP0.1 three-provider references (full results); frozen legacy engine (components) | ≤ 10⁻⁹ against providers; ≤ 10⁻¹² against legacy in f64, ≤ 10⁻⁴⁰ in AP |
-| Strong per-family oracle O2, all slice processes | Legacy Born-weighted family coefficients after `find_mappings`, modulo certified zeros; max-norm with rank-r coefficients weighted by sqrt(s)^r | ≤ 10⁻¹³ f64; ≤ 10⁻⁵⁰ at 200 bits |
+| Strong per-family oracle O2, all slice processes | Legacy Born-weighted family coefficients after `find_mappings`, modulo certified zeros; max-norm with rank-r coefficients weighted by √s^r | ≤ 10⁻¹³ f64; ≤ 10⁻⁵⁰ at 200 bits |
 | Schedules O4 | F = B = M (LC) per family | Exact (rational) |
 | Structure O7 | FeynKit families (modulo the logged certified zeros), signs, symmetry factors | Exact |
 | Fermion signs O13 (QCD) | uu~→uu~, uu~→uu~g against providers and FeynKit overall factors | Exact signs; values as above |

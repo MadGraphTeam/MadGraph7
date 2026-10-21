@@ -39,7 +39,15 @@ upper end of the band.
 ``--trie-shapes`` evaluates the same model on real trie node shapes (a JSON
 list of ``{"rows_out", "x", "rank_in", "count"}`` nodes, or the records of
 ``pyamplicol.loops.v2.schedules.trie_shapes``, whose ``x_rows`` is ``x``)
-instead of the design's counted work.
+instead of the design's counted work. It is not the real-trie half of G0: it
+multiplies the modelled ``node_work`` of each node by the throughput measured
+on the bench's synthetic shapes and runs no kernel on a real trie. Since
+``tests/unit/test_loop_v2_families.py`` already pins the generated tries to the
+Appendix B dressing counts (the D of ``PROCESSES``), it adds little beyond that.
+"Kernels on real tries" needs the bench to read the ``trie_shapes`` export
+(rows_out, x_rows, edges, rank_in, loop species) and time the kernels on those
+nodes, with their real dispatch and gathers; ``loop_v2_kernels.rs`` has no such
+input yet.
 
 The fastest kernel form is reported for every benchmarked node shape,
 including the ``small-x`` set (at most two attached block rows) that does not
@@ -528,7 +536,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--trie-shapes",
         type=Path,
-        help="JSON node shapes of a real trie: predicts its dressing time",
+        help=(
+            "JSON node shapes of a real trie: models its dressing time from the"
+            " synthetic-shape throughput (times no kernel on the trie)"
+        ),
     )
     args = parser.parse_args(argv)
     if not args.benchmarks:
