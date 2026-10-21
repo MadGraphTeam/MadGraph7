@@ -31,12 +31,13 @@ Dependencies use ordinary pinned Git revisions and Cargo's lockfile. No ignored
 reference directory or `upstream` symlink is needed. The standalone workspace
 aligns Symbolica with the application's shared core and uses:
 
-- NinjaRS `0d0d7e7a8033431b60a8580731084742e0655cda`.
-- Symbolica `e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8`, the owner's integration
-  revision published on `https://github.com/alphal00p/symbolica`.
-- FeynKit `1e8063a763d3aa515749c33616ee59aa827705be`, the owner's coherent
+- NinjaRS `aa6a6307dd081dc3714f9accebc0df9e5561ae73`.
+- Symbolica, Numerica and Graphica `9cdc2949cdb153478c1eca0d40690dc0abfc616e`,
+  the owner's integration revision published on
+  `https://github.com/alphal00p/symbolica`.
+- FeynKit `d1904bf2bd5bf4f26969a73b415095e941a55610`, the owner's coherent
   dependency revision recorded by NinjaRS.
-- oneloopmaster `09b2c7497743db875ed446da95123175dd00b1c8`.
+- oneloopmaster `8ec256fc26cb361b20e10f59c19beb35717ef32c`.
 
 From this crate's directory, using the shared workspace environment:
 
@@ -65,11 +66,14 @@ upstream computation completed, not that an accuracy target was established.
 Cross-precision agreement and independent physical controls remain necessary;
 removing a coordinator multiplicity limit is not universal master certification.
 
-The existing `tools/loop_reference/reproduce_cms_zero_box.py` still reproduces
-the AP80 zero-width box boundary on this pin: numerically equal sqrt-square and
-decimal-reparsed masses yield opposite finite imaginary signs, both with
-`success` status. The coherent packaging update does not resolve that separate
-CMS acceptance gate. No numerical snapping or local master replacement is used.
+`tools/loop_reference/reproduce_cms_zero_box.py` no longer reproduces the AP80
+zero-width box boundary on these pins: through Symbolica e679e8c1 numerically
+equal sqrt-square and decimal-reparsed masses yielded opposite finite imaginary
+signs, both with `success` status. Symbolica 9cdc2949 alone (with NinjaRS
+0d0d7e7 and oneloopmaster 09b2c74 unchanged) makes both take the reparsed
+branch: a `Float` product with an exact ±1 no longer rounds the one extra bit of
+a square root away. The AP80 zero-width physical test passes. No numerical
+snapping or local master replacement is used.
 
 Focused consumer adoption checks pass on these pins: the seven existing analytic
 and adapter anchors, profiling on/off for a screened rank-n+2 A0-cancellation
@@ -339,11 +343,10 @@ dependency, so its normal builds do not require the `upstream` symlink.
 - Broad B0/C0/D0 analytic continuation, threshold and complex-mass validation
   remain upstream readiness gates. Passing A0 and μ² C0 is insufficient.
   The AP80 real-mass box reproducer in
-  `tools/loop_reference/reproduce_cms_zero_box.py` still selects opposite
+  `tools/loop_reference/reproduce_cms_zero_box.py` selected opposite
   imaginary branches for numerically equal sqrt-square and reparsed masses
-  at b5b93be; e4c16a7 does not modify the scalar master provider. This consumer
-  does not normalize precision metadata or substitute
-  a scalar integral to hide that unresolved owner issue.
+  through Symbolica e679e8c1; 9cdc2949 resolves it (see above). This consumer
+  does not normalize precision metadata or substitute a scalar integral.
 - Native batching is established by the called interfaces, but end-to-end
   throughput, SIMD coverage and the MadLoop/Recola/OpenLoops performance
   targets require physical process benchmarks after integration.

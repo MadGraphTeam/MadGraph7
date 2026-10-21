@@ -13,9 +13,10 @@
 //!
 //! **Buckets.** Lanes are (family, point, sector, column) channels. Every lane
 //! is reduced at its true rank: the highest degree with any coefficient that is
-//! exactly non-zero (pinned NinjaRS 0d0d7e7 fixes the rank class per
-//! `FastAmplitude`, and over-declared ranks cost accuracy). Lanes of all
-//! families with equal (propagators, true rank) share one engine call.
+//! exactly non-zero (over-declared ranks cost accuracy; NinjaRS lowers a lane
+//! itself only when declared at rank n+2, via `FastNumerator::lane_rank`, so
+//! declaring the true rank is equivalent there). Lanes of all families with
+//! equal (propagators, true rank) share one engine call.
 //!
 //! **Engines.** `fast` is NinjaRS's binary64 engine with oneloopmaster's
 //! native masters behind a [`MasterCache`]. `generic` is NinjaRS's
@@ -27,8 +28,9 @@
 //! **Reduction-direction check.** [`ReductionFrame`] re-reduces the same
 //! numerators in a dihedrally relabelled frame of the propagator cycle, by
 //! default [`ReductionFrame::REVERSED`] (loop momentum reversed). Families
-//! must be given in loop-cycle order (oneloopmaster 09b2c74 misclassifies some
-//! soft boxes otherwise); a dihedral relabelling keeps that order, so every
+//! are given in loop-cycle order (oneloopmaster 09b2c74 misclassified some
+//! soft boxes otherwise; 8ec256fc relabels D0 inside its numerical entry
+//! points, the order is kept); a dihedral relabelling keeps that order, so every
 //! master request of either frame keeps consecutive propagators adjacent.
 //! Without `shift` the coefficients are reused exactly (odd-degree blocks
 //! change sign under `q -> -q`), and box, triangle and tadpole masters are
