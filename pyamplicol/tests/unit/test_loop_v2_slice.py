@@ -52,6 +52,7 @@ from pyamplicol.loops.v2.assemble import (
     _decimal_string,
 )
 from pyamplicol.loops.v2.conventions import FermionSignError
+from pyamplicol.loops.v2.ct_sites import CountertermCompletenessError
 from pyamplicol.loops.v2.families import shifts
 from pyamplicol.loops.v2.poly_affine import size, substitute
 from pyamplicol.loops.v2.stability import (
@@ -273,6 +274,40 @@ def test_colour_projections_equal_legacy(declared, name, accuracy, carrier):
         )
         assert result.ir_poles is None  # Catani's operator is full colour
         _assert_legacy(results, index, result, LEGACY_TOLERANCE[carrier])
+
+
+@pytest.mark.loop_physics
+@pytest.mark.xfail(
+    strict=True,
+    raises=CountertermCompletenessError,
+    reason="closed-quark A g g triangles (Furry) need CertifiedZero witnesses "
+    "(WP3.5); then add the legacy control and include it in PROJECTED",
+)
+@pytest.mark.parametrize("accuracy", ("lc", "nlc"))
+def test_uux_emepgg_colour_projections_are_generable(
+    loop_sm_compiled_model, loop_native, accuracy
+):
+    """WP2.4 acceptance control uu~ -> e-e+gg (photon and Z): its LC/NLC slice
+    must generate before its projections can be compared with legacy O1."""
+
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+
+    declaration = LoopColorDeclaration.from_dict(
+        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+    )
+    LoopSlice.generate(
+        load_compiled_model(loop_sm_compiled_model),
+        SliceRequest(
+            "u u~ > e- e+ g g",
+            {"QCD": 2, "QED": 2},
+            {"QCD": 4, "QED": 2},
+            fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+            accuracy=accuracy,
+            colour_declaration=declaration,
+        ),
+        loop_native,
+    )
 
 
 @pytest.mark.loop_physics
