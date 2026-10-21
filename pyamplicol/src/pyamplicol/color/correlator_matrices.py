@@ -232,7 +232,7 @@ class ColorCorrelatorMatrix:
         }
 
 
-def _selected_sectors(
+def selected_color_sectors(
     plan: GenericColorPlan, sector_ids: Sequence[int] | None
 ) -> tuple[LCColorSector, ...]:
     if not isinstance(plan, GenericColorPlan):
@@ -317,7 +317,7 @@ def build_color_correlator_matrices(
         raise TypeError("colour correlators must be ColorCorrelator requests")
     if len({request.id for request in requests}) != len(requests):
         raise ValueError("colour correlator IDs must be unique")
-    sectors = _selected_sectors(color_plan, sector_ids)
+    sectors = selected_color_sectors(color_plan, sector_ids)
     ids = tuple(sector.id for sector in sectors)
     legs = process_color_legs(color_plan.process)
     terms = tuple(_sector_color_tensor(sector, legs) for sector in sectors)
@@ -418,4 +418,5 @@ __all__ = [
     "build_color_correlator_matrix",
     "process_color_legs",
     "sector_color_tensor",
+    "selected_color_sectors",
 ]
