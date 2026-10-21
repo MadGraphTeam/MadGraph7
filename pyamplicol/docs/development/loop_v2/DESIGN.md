@@ -950,6 +950,7 @@ The plan keeps the (k_μ², ε) monomial labels and the `MuTensorNumerator` ingr
   | Several quark lines | Generic, or published decompositions when certified [L-s 1111.4193, 1310.0413, 1908.02695] |
 
   With compression the per-point seed cost for gg→ggggg FC is ≈1.2×10⁸ complex MAC for 4 loop classes × 360 orderings [V-s Design 1 §5.1], about 2 % of dressing.
+- **Proportional classes (WP2.4).** With compression, the seed table also merges classes whose colour vectors are proportional (`colour._ClassKeys`). These are quark rings of different arc words, and generic seeds equal to them. On uu~→ggg this cuts 315 classes to 99.
 - **Closed-fermion orientation folding** (Tr(σ) + (−1)ⁿ Tr(σᵀ) in one class) is used only when the attached vertices carry a C-parity certificate.
   - It is not used with Z or W attachments (judge finding 11). Those classes keep both orientations, and their dressing doubles.
   - The counts of Table 1a assume folding for the closed quark loops with QCD attachments (certified for loop_sm QCD vertices). Without folding, FC dressing of the gluon processes would be ≈1.75× (gluon loop plus three closed-quark classes doubled, with a massive b).

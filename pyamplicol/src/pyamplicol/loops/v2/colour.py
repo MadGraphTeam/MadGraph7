@@ -42,7 +42,8 @@ Conventions a consumer relies on:
   compression carries a loop-level certificate (``CompressionCertificate``).
   Compression changes only the seed table, never the dressing; the family
   numerators equal the generic ones because pure-gluon blocks are Lie
-  elements (``COMPRESSION_THEOREMS``).
+  elements (``COMPRESSION_THEOREMS``). With compression, classes whose
+  colour vectors are proportional share one table row.
 * **N_c grades.** Blocks with U(1)-subtraction pieces enter with their grade
   (``BlockColourFlow.nc_grade``) and the Born amplitude A0[b] is split into
   grades (``SeedTable.seeds``), so seeds are exact in N_c; a process whose
@@ -1733,16 +1734,32 @@ def _extended(
     combinations: Mapping[Skeleton, Combination],
 ) -> tuple[SeedTable, dict[Skeleton, SeedCombination]]:
     basis = table.basis
-    index: dict[Hashable, int] = {seed: c for c, seed in enumerate(table.classes)}
+    # With compression, classes are also merged by proportional tensors
+    # (quark rings of different arc words with one colour vector, and
+    # generic seeds equal to them), so each colour vector is seeded once.
+    keys = _ClassKeys(basis.legs, merge=compressed is not None)
+    index: dict[Hashable, int] = {}
+    scales: list[ExactColorCoefficient] = []
+    classes: list[ConnectedColorTensor | Primitive] = list(table.classes)
+    for c, seed in enumerate(classes):
+        key, scale = keys(seed)
+        index.setdefault(key, c)
+        scales.append(scale)
     orders: list[set[Orders]] = [set(row) for row in table.orders]
     class_of = dict(class_of)
 
-    def row(seed: Hashable, order: Orders) -> int:
-        c = index.setdefault(seed, len(index))
-        if c == len(orders):
+    def row(seed: Hashable, order: Orders) -> tuple[int, ExactColorCoefficient]:
+        """(class, x) with seed = x kappa_class."""
+
+        key, scale = keys(seed)
+        c = index.get(key)
+        if c is None:
+            c = index[key] = len(classes)
+            classes.append(seed)
+            scales.append(scale)
             orders.append(set())
         orders[c].add(order)
-        return c
+        return c, _ratio(scale, scales[c])
 
     for skeleton in skeletons:
         combination = combinations.get(skeleton)
@@ -1753,12 +1770,13 @@ def _extended(
         ):
             combination = compressed.combination(skeleton)
         if combination is None:
-            class_of[skeleton] = ((row(colour.seed(skeleton), skeleton.orders), _ONE),)
-        else:
-            class_of[skeleton] = tuple(
-                (row(primitive, skeleton.orders), c) for primitive, c in combination
-            )
-    classes = tuple(index)
+            combination = ((colour.seed(skeleton), _ONE),)
+        merged: dict[int, ExactColorCoefficient] = {}
+        for seed, x in combination:
+            c, factor = row(seed, skeleton.orders)
+            merged[c] = merged.get(c, ExactColorCoefficient()) + x * factor
+        class_of[skeleton] = tuple(merged.items())
+    classes = tuple(classes)
     cells = list(table.cells)
     # Term-factored (design §7.2): <b|t> once per distinct structure t.
     overlaps: dict[ColorTensor, tuple[Laurent, ...]] = {}
@@ -1797,6 +1815,56 @@ def _extended(
         ),
         class_of,
     )
+
+
+class _ClassKeys:
+    """Table keys of seed classes: (key, scale) with seed = scale x the
+    class of that key. Adjoint rings and fundamental traces are keyed by
+    their canonical word; with ``merge`` the other classes are keyed by
+    their tensor up to a factor (``_proportional_key``)."""
+
+    def __init__(self, legs: Sequence[ColorLeg], merge: bool):
+        self.legs = legs
+        self.merge = merge
+        self._cache: dict[Hashable, tuple[Hashable, ExactColorCoefficient]] = {}
+
+    def __call__(self, seed) -> tuple[Hashable, ExactColorCoefficient]:
+        if not self.merge or (
+            isinstance(seed, Primitive) and seed.kind != "quark-ring"
+        ):
+            return seed, _ONE
+        found = self._cache.get(seed)
+        if found is None:
+            tensor = seed.tensor(self.legs) if isinstance(seed, Primitive) else seed
+            found = self._cache[seed] = _proportional_key(canonical_seed(tensor))
+        return found
+
+
+def _proportional_key(
+    tensor: ConnectedColorTensor,
+) -> tuple[Hashable, ExactColorCoefficient]:
+    """(key, s): tensor = s x T_key, equal keys for proportional tensors
+    (terms are canonically ordered, the first one is scaled to 1)."""
+
+    if not tensor.terms:
+        return ("zero", tensor.legs), _ONE
+    first = tensor.terms[0].coefficient
+    inverse = _ratio(_ONE, first)
+    return (
+        tensor.legs,
+        tensor.normalization_power,
+        tuple(
+            (term.tensor, term.nc_power, term.coefficient * inverse)
+            for term in tensor.terms
+        ),
+    ), first
+
+
+def _ratio(
+    numerator: ExactColorCoefficient, denominator: ExactColorCoefficient
+) -> ExactColorCoefficient:
+    norm = (denominator * denominator.conjugate()).real
+    return (numerator * denominator.conjugate()).scaled(1 / norm)
 
 
 class _PrimitiveCells:
