@@ -1,0 +1,318 @@
+{
+  "schema": "held-eight-case-pair-preflight-v1",
+  "created_utc": "2026-10-21T07:43:46.208079+00:00",
+  "status": "HELD",
+  "cases": {
+    "qcd-1": {
+      "baseline": {
+        "runtime_identity_sha256": "89f360275eda554ee99199d031121d367e722445dc1f47b6d6880496accf2872",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "authentic-old-original",
+        "modern_fields_present": {
+          "source_identity": false,
+          "generated_sources_sha256": false
+        },
+        "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+        "actual_driver_sha256": "c09e40862e89edc55c9280a5c157342c0277223d7f3735063668fd4362127515",
+        "source_files_sha256": "e73ee66628b28564ea55525215401b4b0321007f9666167eae66c34e06832c11"
+      },
+      "candidate": {
+        "runtime_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "modern-finalcandidate",
+        "modern_fields_present": {
+          "source_identity": true,
+          "generated_sources_sha256": true
+        },
+        "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+        "actual_driver_sha256": "c09e40862e89edc55c9280a5c157342c0277223d7f3735063668fd4362127515",
+        "source_files_sha256": "8b65d1215499a7b58df58d27d14fa70648b83af50ce9a1a497448411d77f1a53"
+      }
+    },
+    "ew-1": {
+      "baseline": {
+        "runtime_identity_sha256": "89f360275eda554ee99199d031121d367e722445dc1f47b6d6880496accf2872",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "authentic-old-original",
+        "modern_fields_present": {
+          "source_identity": false,
+          "generated_sources_sha256": false
+        },
+        "physical_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+        "actual_driver_sha256": "c09e40862e89edc55c9280a5c157342c0277223d7f3735063668fd4362127515",
+        "source_files_sha256": "2ba5ee20004e8c9574ce0bd2305d0450da76d8b7a5c514b1b887a427045581cf"
+      },
+      "candidate": {
+        "runtime_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "modern-finalcandidate",
+        "modern_fields_present": {
+          "source_identity": true,
+          "generated_sources_sha256": true
+        },
+        "physical_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+        "actual_driver_sha256": "c09e40862e89edc55c9280a5c157342c0277223d7f3735063668fd4362127515",
+        "source_files_sha256": "1b6812f9869aeba23d0285fac148d31e1a06795472cdf2eaa6f984eb66f25be4"
+      }
+    },
+    "qcd-2": {
+      "baseline": {
+        "runtime_identity_sha256": "89f360275eda554ee99199d031121d367e722445dc1f47b6d6880496accf2872",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "authentic-old-original",
+        "modern_fields_present": {
+          "source_identity": false,
+          "generated_sources_sha256": false
+        },
+        "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+        "actual_driver_sha256": "22c54bc7368cf1fec68167078575b386c6b662e4ee1e83ae2d5c694b4cc8e90f",
+        "source_files_sha256": "5ffe7662d3756d880a6790255daed623fd342f42f36eba7575c01ccda79b8cdb"
+      },
+      "candidate": {
+        "runtime_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "modern-finalcandidate",
+        "modern_fields_present": {
+          "source_identity": true,
+          "generated_sources_sha256": true
+        },
+        "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+        "actual_driver_sha256": "22c54bc7368cf1fec68167078575b386c6b662e4ee1e83ae2d5c694b4cc8e90f",
+        "source_files_sha256": "556daaef892961505729fab571c05296193a135ec90da83057c2d87934f3e19f"
+      }
+    },
+    "ew-2": {
+      "baseline": {
+        "runtime_identity_sha256": "89f360275eda554ee99199d031121d367e722445dc1f47b6d6880496accf2872",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "authentic-old-original",
+        "modern_fields_present": {
+          "source_identity": false,
+          "generated_sources_sha256": false
+        },
+        "physical_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+        "actual_driver_sha256": "22c54bc7368cf1fec68167078575b386c6b662e4ee1e83ae2d5c694b4cc8e90f",
+        "source_files_sha256": "453ae5ecc36a754779aac05b844540dfc1c7ecb3d718e53918ac24b9ad95e855"
+      },
+      "candidate": {
+        "runtime_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "modern-finalcandidate",
+        "modern_fields_present": {
+          "source_identity": true,
+          "generated_sources_sha256": true
+        },
+        "physical_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+        "actual_driver_sha256": "22c54bc7368cf1fec68167078575b386c6b662e4ee1e83ae2d5c694b4cc8e90f",
+        "source_files_sha256": "32c23d138d3a223a99cafaa0a6a45f43aa45c523e1be94e1a84266163c123ba4"
+      }
+    },
+    "qcd-3": {
+      "baseline": {
+        "runtime_identity_sha256": "89f360275eda554ee99199d031121d367e722445dc1f47b6d6880496accf2872",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "authentic-old-original",
+        "modern_fields_present": {
+          "source_identity": false,
+          "generated_sources_sha256": false
+        },
+        "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+        "actual_driver_sha256": "224391bcc102970b6474341db9739553764f363261f3c7bdadd120e114f0c50a",
+        "source_files_sha256": "39441f545e5f4462455ee2d0be9b696519ab755840065795a09ced4d07ab69ad"
+      },
+      "candidate": {
+        "runtime_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "modern-finalcandidate",
+        "modern_fields_present": {
+          "source_identity": true,
+          "generated_sources_sha256": true
+        },
+        "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+        "actual_driver_sha256": "224391bcc102970b6474341db9739553764f363261f3c7bdadd120e114f0c50a",
+        "source_files_sha256": "64caed0ff2da60cf11de9b56eadf4f5f3a42fb9a6ae3a380ddb7949256603452"
+      }
+    },
+    "ew-3": {
+      "baseline": {
+        "runtime_identity_sha256": "89f360275eda554ee99199d031121d367e722445dc1f47b6d6880496accf2872",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "authentic-old-original",
+        "modern_fields_present": {
+          "source_identity": false,
+          "generated_sources_sha256": false
+        },
+        "physical_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+        "actual_driver_sha256": "224391bcc102970b6474341db9739553764f363261f3c7bdadd120e114f0c50a",
+        "source_files_sha256": "94d02538d9fc0e968b4fddc829b4640eed0880865e6730ac007bd4439c21c809"
+      },
+      "candidate": {
+        "runtime_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "modern-finalcandidate",
+        "modern_fields_present": {
+          "source_identity": true,
+          "generated_sources_sha256": true
+        },
+        "physical_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+        "actual_driver_sha256": "224391bcc102970b6474341db9739553764f363261f3c7bdadd120e114f0c50a",
+        "source_files_sha256": "340604a0a77a0aaa1e3e28cde3e7072a0540b419672a39958c68d9b856d95a97"
+      }
+    },
+    "qcd-4": {
+      "baseline": {
+        "runtime_identity_sha256": "aa999ad2e5021586a1e59219d67c24c6a8bde49a768926fd7bd320c3807f88cf",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "authentic-old-original",
+        "modern_fields_present": {
+          "source_identity": false,
+          "generated_sources_sha256": false
+        },
+        "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+        "actual_driver_sha256": "393f13bbd19f6d5fd35918136e7dbfd17778fec27832fe022f6b9db59b706420",
+        "source_files_sha256": "751d3a17bafec1e21fddb9ba9b46306e2f760a13aaf36a33c1dd275e8f66608b"
+      },
+      "candidate": {
+        "runtime_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "modern-finalcandidate",
+        "modern_fields_present": {
+          "source_identity": true,
+          "generated_sources_sha256": true
+        },
+        "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+        "actual_driver_sha256": "393f13bbd19f6d5fd35918136e7dbfd17778fec27832fe022f6b9db59b706420",
+        "source_files_sha256": "b4c523b1a544da13f8ab51f8010a01b1b24baa651a69c25cac4c3893be12a607"
+      }
+    },
+    "ew-4": {
+      "baseline": {
+        "runtime_identity_sha256": "aa999ad2e5021586a1e59219d67c24c6a8bde49a768926fd7bd320c3807f88cf",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "authentic-old-original",
+        "modern_fields_present": {
+          "source_identity": false,
+          "generated_sources_sha256": false
+        },
+        "physical_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+        "actual_driver_sha256": "393f13bbd19f6d5fd35918136e7dbfd17778fec27832fe022f6b9db59b706420",
+        "source_files_sha256": "827d2ac26380d2c48585d10b5f34786f98abc173c28fafd8517cb32c49b35c08"
+      },
+      "candidate": {
+        "runtime_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+        "qualified_precisions": [
+          "dp",
+          "qp"
+        ],
+        "compiler": "GNU Fortran (GCC) 15.3.0",
+        "make_opts_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+        "compilation_record_schema": "modern-finalcandidate",
+        "modern_fields_present": {
+          "source_identity": true,
+          "generated_sources_sha256": true
+        },
+        "physical_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+        "actual_driver_sha256": "393f13bbd19f6d5fd35918136e7dbfd17778fec27832fe022f6b9db59b706420",
+        "source_files_sha256": "463d3884c38a5f276385e911cb54a08bf66c459f8c796034303811682103549e"
+      }
+    }
+  },
+  "blockers": [],
+  "amplitude_evaluations": 0,
+  "compiler_or_generation_calls": 0,
+  "configure_calls": 0,
+  "model_import_commands": 0,
+  "handoff_created": false,
+  "launchers_created": false,
+  "qualification_identity_sha256": "e90be9b9464e22678df1a683afa71674d86a57ea41c8b12f32404b6b5a50352b",
+  "compiler_flag_audit": {
+    "path": ".benchmark-work/timing-pair-origin-comparability-v1/receipt.json",
+    "sha256": "d788a60d9268ee216cc12ebf142abea7cec9671cc88652720ebf9ec9b1981c4f",
+    "bytes": 69983
+  },
+  "preflight": "passed-read-only",
+  "specification": {
+    "path": "docs/benchmarkfolder/policy-v3/timing-pair-plan-v1/specification.json",
+    "sha256": "1eb02c9cbddf20a99e59f585aaf4fc1b140adb056574f6fab654482fedfaa649",
+    "bytes": 619130
+  },
+  "spec_identity_sha256": "bddd9f25af3c731eb539e5fcf90d3252d189ab6d2158fe4a103d41302b758e9b",
+  "wall_seconds": 26.07492464000825,
+  "historical_compiler_log_limitation": "Old literal-origin cached MODEL/DHELAS initial compiler-command history is not fully recoverable; exact recipes,compilers,source make_opts and observed commands agree; future actual private clean-subprocess records remain authoritative.",
+  "prior_preflight_compatibility_discovery": "Old literal compilation records and observed-manifest annotations required bounded newcollector compatibility; all old records retained unchanged."
+}

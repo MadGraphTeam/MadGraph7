@@ -1,0 +1,1301 @@
+{
+  "bound_files_sha256": {
+    ".benchmark-work/logs/compile-baseline-ew-1.log": "1b09745b8c0fd5d86ea8dc66e78cc6defea4139514bbdd4e715fe22dc797a762",
+    ".benchmark-work/logs/compile-baseline-ew-2.log": "dea837b63c586c9655aa4cb8b38a33bb1a91de3cf3f73efb514baa82bc253c87",
+    ".benchmark-work/logs/compile-baseline-ew-3.log": "db56bb23a52e65f1614894c11962b2f02690e2496a443cc28231b0b553b27ce3",
+    ".benchmark-work/logs/compile-baseline-ew-4.log": "f1b795a5816bf90e46175c52a9518d5364d1126f11b813b5ca452d4c221e3f63",
+    ".benchmark-work/logs/compile-baseline-qcd-1.log": "d3ff9b0a7f565c5f67ff7b50faaa2dbe1ac80c35b9a86817eefac9d8475e63f1",
+    ".benchmark-work/logs/compile-baseline-qcd-2.log": "adddfa1dcae09ad5d3bf4e765c42b3d033e05634f31648f4d849da888ea113d3",
+    ".benchmark-work/logs/compile-baseline-qcd-3.log": "7bd36083a5d0a56e8aac452f54550ec513b4d8322a1f1d7ac688f9660dab62c5",
+    ".benchmark-work/logs/compile-baseline-qcd-4.log": "6cfc3724cf4105c402619be75ae544fa7ab66aeefe77d9fe494f5ca08e294bce",
+    ".benchmark-work/outputs/baseline/ew-1/Cards/MadLoopParams.dat": "2b3b138846ef40c513af15b320db516ef48ebb8271b8d66e0303378b0070d804",
+    ".benchmark-work/outputs/baseline/ew-1/Cards/param_card.dat": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+    ".benchmark-work/outputs/baseline/ew-1/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/outputs/baseline/ew-1/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/outputs/baseline/ew-1/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/outputs/baseline/ew-1/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/outputs/baseline/ew-1/SubProcesses/P0_udx_wp/makefile": "bb9d41352754be7c745dc1fcb03a004da0cc67169ee15858019e9e1237b5024c",
+    ".benchmark-work/outputs/baseline/ew-1/compilation.json": "1f6f46063c8b10ba8a8330496599f3dc41d5c757e16399ea92f99765c74e72f9",
+    ".benchmark-work/outputs/baseline/ew-1/generation.json": "8743386524667720ff883ed6c815395242a3fdeef7f7be5c938cb184f2bab336",
+    ".benchmark-work/outputs/baseline/ew-2/Cards/MadLoopParams.dat": "2b3b138846ef40c513af15b320db516ef48ebb8271b8d66e0303378b0070d804",
+    ".benchmark-work/outputs/baseline/ew-2/Cards/param_card.dat": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+    ".benchmark-work/outputs/baseline/ew-2/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/outputs/baseline/ew-2/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/outputs/baseline/ew-2/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/outputs/baseline/ew-2/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/outputs/baseline/ew-2/SubProcesses/P0_epem_mupmum/makefile": "ff2b103d52e989f483d516b55ef23fe5bc487994a8cb5a63e2505116a06a75f2",
+    ".benchmark-work/outputs/baseline/ew-2/compilation.json": "917bd1ea3d7ce03fc7791c7a9bebec21972c5ee447d4fa8b622b79ae6a691b01",
+    ".benchmark-work/outputs/baseline/ew-2/generation.json": "fd9e6900d1f8e000c776c07e0c37544db71a53caddebbfbeef4509dedb56e600",
+    ".benchmark-work/outputs/baseline/ew-3/Cards/MadLoopParams.dat": "54a4711af4db890efb248e5e1eec6df0bbeeb8a8b5a09660944b10cb0cf3851b",
+    ".benchmark-work/outputs/baseline/ew-3/Cards/param_card.dat": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+    ".benchmark-work/outputs/baseline/ew-3/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/outputs/baseline/ew-3/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/outputs/baseline/ew-3/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/outputs/baseline/ew-3/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/outputs/baseline/ew-3/SubProcesses/P0_epem_ttxa/makefile": "d3d01ffeb6b9c3dd124cc1f5c33f81f308625be22deb2d98d99a597a191037c4",
+    ".benchmark-work/outputs/baseline/ew-3/compilation.json": "c1388d1c060fc9fe587646e4118ce86d11e80d4d4980974d5e96bf16683b57e5",
+    ".benchmark-work/outputs/baseline/ew-3/generation.json": "10b04a12a60bf9e4bc7a6c6b1b7523bfc2431227cf54a3c7f155275e697b4763",
+    ".benchmark-work/outputs/baseline/ew-4/Cards/MadLoopParams.dat": "1cfbb194622fdbaea243edd8094b251877d55d5e3c8a3c07e0c6cbc8b88a4538",
+    ".benchmark-work/outputs/baseline/ew-4/Cards/param_card.dat": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+    ".benchmark-work/outputs/baseline/ew-4/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/outputs/baseline/ew-4/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/outputs/baseline/ew-4/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/outputs/baseline/ew-4/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/outputs/baseline/ew-4/SubProcesses/P0_epem_mupmumaa/makefile": "5f749799c60cdce883ed3a7d17ab666cca9e780eded58c79c7f3b70d338d4cb9",
+    ".benchmark-work/outputs/baseline/ew-4/compilation.json": "aea623cbf97abc64be8e60f4b80691d6102cfc5dab477c31e9c535d08382e50d",
+    ".benchmark-work/outputs/baseline/ew-4/generation.json": "494e6f8061f81326cf2f292aa7fc9e36137e3d28916534ba3e83d9f02184bffe",
+    ".benchmark-work/outputs/baseline/qcd-1/Cards/MadLoopParams.dat": "2b3b138846ef40c513af15b320db516ef48ebb8271b8d66e0303378b0070d804",
+    ".benchmark-work/outputs/baseline/qcd-1/Cards/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    ".benchmark-work/outputs/baseline/qcd-1/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/outputs/baseline/qcd-1/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/outputs/baseline/qcd-1/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/outputs/baseline/qcd-1/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/outputs/baseline/qcd-1/SubProcesses/P0_uux_z/makefile": "16292eca02396bb3b7b542c12d62ae739bbab197ab6dc4a07a5fd5787916f717",
+    ".benchmark-work/outputs/baseline/qcd-1/compilation.json": "ce9c46124e4cf538fbacf6957b482c345d654b10cb70b6806dc57d021d1ec2d0",
+    ".benchmark-work/outputs/baseline/qcd-1/generation.json": "d6d19cd31d01328d689619f35c88d809b918e723250c13c1218fe4f4b61f290d",
+    ".benchmark-work/outputs/baseline/qcd-2/Cards/MadLoopParams.dat": "2b3b138846ef40c513af15b320db516ef48ebb8271b8d66e0303378b0070d804",
+    ".benchmark-work/outputs/baseline/qcd-2/Cards/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    ".benchmark-work/outputs/baseline/qcd-2/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/outputs/baseline/qcd-2/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/outputs/baseline/qcd-2/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/outputs/baseline/qcd-2/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/outputs/baseline/qcd-2/SubProcesses/P0_gg_ttx/makefile": "05cf8c45d69b3f6ebfe3e5de69cf2d4f14742700b9eb1526d55a5bf68dbb6572",
+    ".benchmark-work/outputs/baseline/qcd-2/compilation.json": "3ba54785a3403ed87a2646606062881de0a0a6bf4205900a93494e0629fddae6",
+    ".benchmark-work/outputs/baseline/qcd-2/generation.json": "7d0ca08e4eb68382f639ffb4814434f6d97254708becef02033b5cf373879b2a",
+    ".benchmark-work/outputs/baseline/qcd-3/Cards/MadLoopParams.dat": "8dc55fe7035bdd1a9c72cd2f67788b4d1aa226616c4481aae151d8514475001b",
+    ".benchmark-work/outputs/baseline/qcd-3/Cards/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    ".benchmark-work/outputs/baseline/qcd-3/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/outputs/baseline/qcd-3/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/outputs/baseline/qcd-3/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/outputs/baseline/qcd-3/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/outputs/baseline/qcd-3/SubProcesses/P0_uux_zgg/makefile": "a31ec183615b59e6367ef43a2fd01e051b2180eb19f4b76339ba70d34e3a06ab",
+    ".benchmark-work/outputs/baseline/qcd-3/compilation.json": "d872770b91cd1d7f8aebe88a0a5bf2871ae5ef4ccafd795eb16bbf72266e832b",
+    ".benchmark-work/outputs/baseline/qcd-3/generation.json": "bfd05be9cdf41d4164a439ab49b6db002a6955c31af5a0cee48505b30d89d7d2",
+    ".benchmark-work/outputs/baseline/qcd-4/Cards/MadLoopParams.dat": "1ae957e026d277609b6bcf34e79a9ab49f3269e6ab2fd0f30652d280f16b79d2",
+    ".benchmark-work/outputs/baseline/qcd-4/Cards/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    ".benchmark-work/outputs/baseline/qcd-4/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/outputs/baseline/qcd-4/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/outputs/baseline/qcd-4/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/outputs/baseline/qcd-4/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/outputs/baseline/qcd-4/SubProcesses/P0_uux_zzgg/makefile": "02ae617b1637f78b2bfaf132433213726c6b535203edffa436eb50e1ac890200",
+    ".benchmark-work/outputs/baseline/qcd-4/compilation.json": "80b7544cd69123e16ca4a7a9ee3fc1590f53e9f0002d55fcaec383a76f4a9b47",
+    ".benchmark-work/outputs/baseline/qcd-4/generation.json": "2415c879c07b3db9316a7f38cd61529a59a315c478478c6b5d72cd1cfd0b2fb2",
+    ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-1.log": "bed09b305e24bc3c45cc1d01a041f1f8ac4d52a51275b6d268c1d481d7ce070e",
+    ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-2.log": "ec91eb8c9b4d79dcd55c1b9fb685f7bcce7eae6e22a9d26ac9af273b6d6bf6fd",
+    ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-3.log": "fef676c05de790c00901c64dc810b08c7202969e76a6e7c759c2f1850caf3a19",
+    ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-4.log": "621ceaa347c337dda65ce286f42ec33280a7352347c6e0aec5897979c2348a07",
+    ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-1.log": "09226de93534c0bb7eb08316518f43102bb20e3fb1ae15eb907c7e618413f3cd",
+    ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-2.log": "5f694f58d151bbbcc09b716761513819c9221405e5297bde47231f92403a2c75",
+    ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-3.log": "65965c3f94c102bedd3556abe51b445e4d9ffbf9848d236bfd0b2064885fda77",
+    ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-4.log": "bbadd67c804800bc0503d17851c55bc481e6dc034475b76114907ae096453ebe",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-1/Cards/MadLoopParams.dat": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-1/Cards/param_card.dat": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-1/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-1/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-1/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-1/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-1/SubProcesses/P0_udx_wp/makefile": "bb9d41352754be7c745dc1fcb03a004da0cc67169ee15858019e9e1237b5024c",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-1/compilation.json": "1e68c2d203063f604582b7075561b52d9a1b6f473189a953efbd5e866ec43976",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-1/generation.json": "9f297cfa5d8c0837b7891b522b074117865adad75b5b44dccda236c030111eb4",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-2/Cards/MadLoopParams.dat": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-2/Cards/param_card.dat": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-2/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-2/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-2/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-2/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-2/SubProcesses/P0_epem_mupmum/makefile": "ff2b103d52e989f483d516b55ef23fe5bc487994a8cb5a63e2505116a06a75f2",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-2/compilation.json": "b2928cbc96669a2a270e2ad86ebd1f6e0b447c145f7301e4d9d689179d122adb",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-2/generation.json": "610c6cd4dcdf79f1078d97d66d61be7711b865b55996d84bbada03089381ea84",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-3/Cards/MadLoopParams.dat": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-3/Cards/param_card.dat": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-3/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-3/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-3/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-3/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-3/SubProcesses/P0_epem_ttxa/makefile": "d3d01ffeb6b9c3dd124cc1f5c33f81f308625be22deb2d98d99a597a191037c4",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-3/compilation.json": "8fd1acd792efebe1ca3ae222c7eb9b9bffd019088ff95d7cb9f28439ee5a8aed",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-3/generation.json": "b1d902c7b1dd0bb0153272878a443649baa2b26c7aef59481198ae33cbb39012",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-4/Cards/MadLoopParams.dat": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-4/Cards/param_card.dat": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-4/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-4/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-4/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-4/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-4/SubProcesses/P0_epem_mupmumaa/makefile": "1ad4b77f458392ea0fa2dd350f330a617ca25c26cfe3d8fa90c972ff02df7f01",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-4/compilation.json": "799f7143bdfc54788080a41c43f8695e9475d578d11deda7308f6b14b5e94bb0",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-4/generation.json": "a26b08be7e83a692eb958f477499b13af040c5b516b5dc131fbb94f42acae32b",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-1/Cards/MadLoopParams.dat": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-1/Cards/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-1/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-1/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-1/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-1/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-1/SubProcesses/P0_uux_z/makefile": "16292eca02396bb3b7b542c12d62ae739bbab197ab6dc4a07a5fd5787916f717",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-1/compilation.json": "880659ab878b8ca25c5003a70f2ad207a8ac0e1832151c4171750691d4d8be6a",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-1/generation.json": "7a43b17e8c00d66b0a150b56323827efc1f6b590141dd77a8a159e5f596d96b7",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-2/Cards/MadLoopParams.dat": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-2/Cards/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-2/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-2/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-2/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-2/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-2/SubProcesses/P0_gg_ttx/makefile": "0f7c3b034aed7fe0fa9d1526773aa5c95acc4f90b91b12b73dbc011045f2ef37",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-2/compilation.json": "bb1a1bccaa8725c783dac23e28151f1e9d5fa75f41345dffad86300ea3067593",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-2/generation.json": "a3fd2cb877ffe38134eb454ac3c9ff085f76091810c748b26d2510c41f4789c5",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-3/Cards/MadLoopParams.dat": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-3/Cards/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-3/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-3/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-3/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-3/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-3/SubProcesses/P0_uux_zgg/makefile": "a31ec183615b59e6367ef43a2fd01e051b2180eb19f4b76339ba70d34e3a06ab",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-3/compilation.json": "9c173edfa80168eacba808aac15665925613458559d241d3bdc2b949afe20edc",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-3/generation.json": "06835c0efb4063bb4d017db03065e301cf3793b4867c86a2d6858bca6cc9a027",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-4/Cards/MadLoopParams.dat": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-4/Cards/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-4/Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-4/Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-4/Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-4/Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-4/SubProcesses/P0_uux_zzgg/makefile": "419dd98686e98e8ef8246305647fc3aae73e9ff412842d0f1aed6bd8c5c72b2f",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-4/compilation.json": "84945bc02c03190ca6e6ba6b29c81d6f66880d850b908905cdb3718fd2b9497c",
+    ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-4/generation.json": "56ce86cca35930954e1158d4a68151f2b97236859e754541c2a08ac8180fbe26",
+    "docs/benchmarkfolder/policy-v2/cases.json": "f7fdf15ae6e0b20852144ce484a02ddc98ce13ff84bddb57154e77e1e7fbbbd3"
+  },
+  "conclusions": [
+    "All16 Source/make_opts bytes identical SHA908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1; compilation records report GNU Fortran15.3.0. Source, MODEL and DHELAS build recipes are byte-identical for each pair.",
+    "Observed ordinary compilation flags are -w -fPIC -ffixed-line-length-132; polynomial additionally-O3 with bounds-check override empty. No observed debug, fast-math or default-real/precision-promotion flag difference. Explicit Fortran REAL*16 paths do not rely on a default-real promotion flag.",
+    "Raw origin thresholds differ: original cards reflect earlier1e-9/1e-10, final candidate origin cards retain1e-3/1e-8 defaults. These are not future worker settings. Source-only application of the exact frozen configure override recipe plus strict configf7f predicts identical common settings across all8: MLStab1e-9,Collier1e-12, init1/run-1, full UV/IR poles, selected QP true, helicity level2/doublecheck true, loop filter false, rotations0,ImprovePSPoint2.",
+    "Frozen prepare(clean=True) will rebuild all generated subprocess objects in each private timing worker using the same recipe; configure deletes helicity/loop filter files before warm initialization. Actual future build metadata/cards/command logs must remain authoritative."
+  ],
+  "configuration": "docs/benchmarkfolder/policy-v2/cases.json",
+  "finding": "No material observed Fortran flag/compiler or predicted shared-numerical-setting mismatch across the eight declared timing origins.",
+  "limitations": [
+    "The retained literal-original latest compilation logs are driver/ParamReader/Commons relinks rather than original complete model/DHELAS compilation transcripts. Actual historical flags of every cached model/DHELAS object cannot be fully proven from those logs alone; matching recipes/compiler banners establish no observed mismatch, not a recovered full build history.",
+    "Ninja and NinjaRS native libraries use their own bound build toolchains; this audit compares MadLoop Fortran build settings, and does not assert identical native implementation flags across languages/backends.",
+    "Predicted common card equality was derived without calling configure; this is readiness evidence, not a completed worker-build/card validation or a performance/numerical acceptance."
+  ],
+  "origins": {
+    "ew-1": {
+      "arms": {
+        "baseline": {
+          "compilation_metadata_has_source_identity": false,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/logs/compile-baseline-ew-1.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "MadLoopParamReader.f",
+                "MadLoopCommons.f",
+                "LINK"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/outputs/baseline/ew-1",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-10",
+            "mlstabthres": "1.000000d-09"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_udx_wp/makefile": "bb9d41352754be7c745dc1fcb03a004da0cc67169ee15858019e9e1237b5024c"
+          },
+          "revision": "27147b3300f556a75661a886e92bdbe00558ee25"
+        },
+        "candidate": {
+          "compilation_metadata_has_source_identity": true,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-1.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "MadLoopParamReader.f",
+                "MadLoopCommons.f",
+                "loop_matrix.f",
+                "improve_ps.f",
+                "born_matrix.f",
+                "CT_interface.f",
+                "loop_num.f",
+                "helas_calls_ampb_1.f",
+                "mp_compute_loop_coefs.f",
+                "mp_helas_calls_ampb_1.f",
+                "coef_construction_1.f",
+                "loop_CT_calls_1.f",
+                "mp_coef_construction_1.f",
+                "TIR_interface.f",
+                "COLLIER_interface.f",
+                "mg5_citation.f",
+                "LINK"
+              ]
+            },
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132",
+                "-O3"
+              ],
+              "sources": [
+                "polynomial.f"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-1",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-08",
+            "mlstabthres": "1.000000d-03"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_udx_wp/makefile": "bb9d41352754be7c745dc1fcb03a004da0cc67169ee15858019e9e1237b5024c"
+          },
+          "revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        }
+      },
+      "predicted_shared_setting_differences": {},
+      "source_only_predicted_shared_settings": {
+        "checkcycle": "3",
+        "colliercanoutput": ".false.",
+        "colliercomputeirpoles": ".true.",
+        "colliercomputeuvpoles": ".true.",
+        "collierglobalcache": "-1",
+        "colliermode": "1",
+        "collierrequiredaccuracy": "1e-12",
+        "collierusecacheforpoles": ".false.",
+        "collieruseinternalstabilitytest": ".true.",
+        "ctlooplibrary": "2",
+        "ctmodeinit": "1",
+        "ctmoderun": "-1",
+        "ctstabthres": "1.000000d-02",
+        "doublecheckhelicityfilter": ".true.",
+        "helicityfilterlevel": "2",
+        "helinitstartover": ".false.",
+        "improvepspoint": "2",
+        "iregimode": "2",
+        "iregirecy": ".true.",
+        "loopinitstartover": ".false.",
+        "maxattempts": "10",
+        "mlstabthres": "1e-09",
+        "nrotations_dp": "0",
+        "nrotations_qp": "0",
+        "osthres": "1.000000d-08",
+        "useloopfilter": ".false.",
+        "useqpintegrandforcuttools": ".true.",
+        "useqpintegrandforninja": ".true.",
+        "writeoutfilters": ".true.",
+        "zerothres": "1.000000d-09"
+      }
+    },
+    "ew-2": {
+      "arms": {
+        "baseline": {
+          "compilation_metadata_has_source_identity": false,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/logs/compile-baseline-ew-2.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "MadLoopParamReader.f",
+                "MadLoopCommons.f",
+                "LINK"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/outputs/baseline/ew-2",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-10",
+            "mlstabthres": "1.000000d-09"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_epem_mupmum/makefile": "ff2b103d52e989f483d516b55ef23fe5bc487994a8cb5a63e2505116a06a75f2"
+          },
+          "revision": "27147b3300f556a75661a886e92bdbe00558ee25"
+        },
+        "candidate": {
+          "compilation_metadata_has_source_identity": true,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-2.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "MadLoopParamReader.f",
+                "MadLoopCommons.f",
+                "loop_matrix.f",
+                "improve_ps.f",
+                "born_matrix.f",
+                "CT_interface.f",
+                "loop_num.f",
+                "helas_calls_ampb_1.f",
+                "mp_compute_loop_coefs.f",
+                "mp_helas_calls_ampb_1.f",
+                "coef_construction_1.f",
+                "loop_CT_calls_1.f",
+                "mp_coef_construction_1.f",
+                "TIR_interface.f",
+                "COLLIER_interface.f",
+                "mg5_citation.f",
+                "LINK"
+              ]
+            },
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132",
+                "-O3"
+              ],
+              "sources": [
+                "polynomial.f"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-2",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-08",
+            "mlstabthres": "1.000000d-03"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_epem_mupmum/makefile": "ff2b103d52e989f483d516b55ef23fe5bc487994a8cb5a63e2505116a06a75f2"
+          },
+          "revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        }
+      },
+      "predicted_shared_setting_differences": {},
+      "source_only_predicted_shared_settings": {
+        "checkcycle": "3",
+        "colliercanoutput": ".false.",
+        "colliercomputeirpoles": ".true.",
+        "colliercomputeuvpoles": ".true.",
+        "collierglobalcache": "-1",
+        "colliermode": "1",
+        "collierrequiredaccuracy": "1e-12",
+        "collierusecacheforpoles": ".false.",
+        "collieruseinternalstabilitytest": ".true.",
+        "ctlooplibrary": "2",
+        "ctmodeinit": "1",
+        "ctmoderun": "-1",
+        "ctstabthres": "1.000000d-02",
+        "doublecheckhelicityfilter": ".true.",
+        "helicityfilterlevel": "2",
+        "helinitstartover": ".false.",
+        "improvepspoint": "2",
+        "iregimode": "2",
+        "iregirecy": ".true.",
+        "loopinitstartover": ".false.",
+        "maxattempts": "10",
+        "mlstabthres": "1e-09",
+        "nrotations_dp": "0",
+        "nrotations_qp": "0",
+        "osthres": "1.000000d-08",
+        "useloopfilter": ".false.",
+        "useqpintegrandforcuttools": ".true.",
+        "useqpintegrandforninja": ".true.",
+        "writeoutfilters": ".true.",
+        "zerothres": "1.000000d-09"
+      }
+    },
+    "ew-3": {
+      "arms": {
+        "baseline": {
+          "compilation_metadata_has_source_identity": false,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/logs/compile-baseline-ew-3.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "MadLoopParamReader.f",
+                "MadLoopCommons.f",
+                "LINK"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/outputs/baseline/ew-3",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-08",
+            "mlstabthres": "1.000000d-03"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_epem_ttxa/makefile": "d3d01ffeb6b9c3dd124cc1f5c33f81f308625be22deb2d98d99a597a191037c4"
+          },
+          "revision": "27147b3300f556a75661a886e92bdbe00558ee25"
+        },
+        "candidate": {
+          "compilation_metadata_has_source_identity": true,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-3.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "MadLoopParamReader.f",
+                "MadLoopCommons.f",
+                "loop_matrix.f",
+                "improve_ps.f",
+                "born_matrix.f",
+                "CT_interface.f",
+                "loop_num.f",
+                "helas_calls_ampb_1.f",
+                "mp_compute_loop_coefs.f",
+                "mp_helas_calls_ampb_1.f",
+                "coef_construction_1.f",
+                "coef_construction_2.f",
+                "loop_CT_calls_1.f",
+                "mp_coef_construction_1.f",
+                "mp_coef_construction_2.f",
+                "TIR_interface.f",
+                "COLLIER_interface.f",
+                "mg5_citation.f",
+                "LINK"
+              ]
+            },
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132",
+                "-O3"
+              ],
+              "sources": [
+                "polynomial.f"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-3",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-08",
+            "mlstabthres": "1.000000d-03"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_epem_ttxa/makefile": "d3d01ffeb6b9c3dd124cc1f5c33f81f308625be22deb2d98d99a597a191037c4"
+          },
+          "revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        }
+      },
+      "predicted_shared_setting_differences": {},
+      "source_only_predicted_shared_settings": {
+        "checkcycle": "3",
+        "colliercanoutput": ".false.",
+        "colliercomputeirpoles": ".true.",
+        "colliercomputeuvpoles": ".true.",
+        "collierglobalcache": "-1",
+        "colliermode": "1",
+        "collierrequiredaccuracy": "1e-12",
+        "collierusecacheforpoles": ".false.",
+        "collieruseinternalstabilitytest": ".true.",
+        "ctlooplibrary": "2",
+        "ctmodeinit": "1",
+        "ctmoderun": "-1",
+        "ctstabthres": "1.000000d-02",
+        "doublecheckhelicityfilter": ".true.",
+        "helicityfilterlevel": "2",
+        "helinitstartover": ".false.",
+        "improvepspoint": "2",
+        "iregimode": "2",
+        "iregirecy": ".true.",
+        "loopinitstartover": ".false.",
+        "maxattempts": "10",
+        "mlstabthres": "1e-09",
+        "nrotations_dp": "0",
+        "nrotations_qp": "0",
+        "osthres": "1.000000d-08",
+        "useloopfilter": ".false.",
+        "useqpintegrandforcuttools": ".true.",
+        "useqpintegrandforninja": ".true.",
+        "writeoutfilters": ".true.",
+        "zerothres": "1.000000d-09"
+      }
+    },
+    "ew-4": {
+      "arms": {
+        "baseline": {
+          "compilation_metadata_has_source_identity": false,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/logs/compile-baseline-ew-4.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "MadLoopParamReader.f",
+                "MadLoopCommons.f",
+                "LINK"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/outputs/baseline/ew-4",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-08",
+            "mlstabthres": "1.000000d-03"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_epem_mupmumaa/makefile": "5f749799c60cdce883ed3a7d17ab666cca9e780eded58c79c7f3b70d338d4cb9"
+          },
+          "revision": "27147b3300f556a75661a886e92bdbe00558ee25"
+        },
+        "candidate": {
+          "compilation_metadata_has_source_identity": true,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-4.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "MadLoopParamReader.f",
+                "MadLoopCommons.f",
+                "loop_matrix.f",
+                "improve_ps.f",
+                "born_matrix.f",
+                "CT_interface.f",
+                "loop_num.f",
+                "helas_calls_ampb_1.f",
+                "helas_calls_ampb_2.f",
+                "mp_compute_loop_coefs.f",
+                "mp_helas_calls_ampb_1.f",
+                "mp_helas_calls_ampb_2.f",
+                "coef_construction_1.f",
+                "coef_construction_2.f",
+                "coef_construction_3.f",
+                "coef_construction_4.f",
+                "coef_construction_5.f",
+                "coef_construction_6.f",
+                "coef_construction_7.f",
+                "coef_construction_8.f",
+                "coef_construction_9.f",
+                "loop_CT_calls_1.f",
+                "loop_CT_calls_2.f",
+                "mp_coef_construction_1.f",
+                "mp_coef_construction_2.f",
+                "mp_coef_construction_3.f",
+                "mp_coef_construction_4.f",
+                "mp_coef_construction_5.f",
+                "mp_coef_construction_6.f",
+                "mp_coef_construction_7.f",
+                "mp_coef_construction_8.f",
+                "mp_coef_construction_9.f",
+                "TIR_interface.f",
+                "COLLIER_interface.f",
+                "mg5_citation.f",
+                "LINK"
+              ]
+            },
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132",
+                "-O3"
+              ],
+              "sources": [
+                "polynomial.f"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-4",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-08",
+            "mlstabthres": "1.000000d-03"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_epem_mupmumaa/makefile": "1ad4b77f458392ea0fa2dd350f330a617ca25c26cfe3d8fa90c972ff02df7f01"
+          },
+          "revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        }
+      },
+      "predicted_shared_setting_differences": {},
+      "source_only_predicted_shared_settings": {
+        "checkcycle": "3",
+        "colliercanoutput": ".false.",
+        "colliercomputeirpoles": ".true.",
+        "colliercomputeuvpoles": ".true.",
+        "collierglobalcache": "-1",
+        "colliermode": "1",
+        "collierrequiredaccuracy": "1e-12",
+        "collierusecacheforpoles": ".false.",
+        "collieruseinternalstabilitytest": ".true.",
+        "ctlooplibrary": "2",
+        "ctmodeinit": "1",
+        "ctmoderun": "-1",
+        "ctstabthres": "1.000000d-02",
+        "doublecheckhelicityfilter": ".true.",
+        "helicityfilterlevel": "2",
+        "helinitstartover": ".false.",
+        "improvepspoint": "2",
+        "iregimode": "2",
+        "iregirecy": ".true.",
+        "loopinitstartover": ".false.",
+        "maxattempts": "10",
+        "mlstabthres": "1e-09",
+        "nrotations_dp": "0",
+        "nrotations_qp": "0",
+        "osthres": "1.000000d-08",
+        "useloopfilter": ".false.",
+        "useqpintegrandforcuttools": ".true.",
+        "useqpintegrandforninja": ".true.",
+        "writeoutfilters": ".true.",
+        "zerothres": "1.000000d-09"
+      }
+    },
+    "qcd-1": {
+      "arms": {
+        "baseline": {
+          "compilation_metadata_has_source_identity": false,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/logs/compile-baseline-qcd-1.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "LINK"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/outputs/baseline/qcd-1",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-10",
+            "mlstabthres": "1.000000d-09"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_uux_z/makefile": "16292eca02396bb3b7b542c12d62ae739bbab197ab6dc4a07a5fd5787916f717"
+          },
+          "revision": "27147b3300f556a75661a886e92bdbe00558ee25"
+        },
+        "candidate": {
+          "compilation_metadata_has_source_identity": true,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-1.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "MadLoopParamReader.f",
+                "MadLoopCommons.f",
+                "loop_matrix.f",
+                "improve_ps.f",
+                "born_matrix.f",
+                "CT_interface.f",
+                "loop_num.f",
+                "helas_calls_ampb_1.f",
+                "mp_compute_loop_coefs.f",
+                "mp_helas_calls_ampb_1.f",
+                "coef_construction_1.f",
+                "loop_CT_calls_1.f",
+                "mp_coef_construction_1.f",
+                "TIR_interface.f",
+                "COLLIER_interface.f",
+                "mg5_citation.f",
+                "LINK"
+              ]
+            },
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132",
+                "-O3"
+              ],
+              "sources": [
+                "polynomial.f"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-1",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-08",
+            "mlstabthres": "1.000000d-03"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_uux_z/makefile": "16292eca02396bb3b7b542c12d62ae739bbab197ab6dc4a07a5fd5787916f717"
+          },
+          "revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        }
+      },
+      "predicted_shared_setting_differences": {},
+      "source_only_predicted_shared_settings": {
+        "checkcycle": "3",
+        "colliercanoutput": ".false.",
+        "colliercomputeirpoles": ".true.",
+        "colliercomputeuvpoles": ".true.",
+        "collierglobalcache": "-1",
+        "colliermode": "1",
+        "collierrequiredaccuracy": "1e-12",
+        "collierusecacheforpoles": ".false.",
+        "collieruseinternalstabilitytest": ".true.",
+        "ctlooplibrary": "2",
+        "ctmodeinit": "1",
+        "ctmoderun": "-1",
+        "ctstabthres": "1.000000d-02",
+        "doublecheckhelicityfilter": ".true.",
+        "helicityfilterlevel": "2",
+        "helinitstartover": ".false.",
+        "improvepspoint": "2",
+        "iregimode": "2",
+        "iregirecy": ".true.",
+        "loopinitstartover": ".false.",
+        "maxattempts": "10",
+        "mlstabthres": "1e-09",
+        "nrotations_dp": "0",
+        "nrotations_qp": "0",
+        "osthres": "1.000000d-08",
+        "useloopfilter": ".false.",
+        "useqpintegrandforcuttools": ".true.",
+        "useqpintegrandforninja": ".true.",
+        "writeoutfilters": ".true.",
+        "zerothres": "1.000000d-09"
+      }
+    },
+    "qcd-2": {
+      "arms": {
+        "baseline": {
+          "compilation_metadata_has_source_identity": false,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/logs/compile-baseline-qcd-2.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "MadLoopParamReader.f",
+                "MadLoopCommons.f",
+                "LINK"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/outputs/baseline/qcd-2",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-10",
+            "mlstabthres": "1.000000d-09"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_gg_ttx/makefile": "05cf8c45d69b3f6ebfe3e5de69cf2d4f14742700b9eb1526d55a5bf68dbb6572"
+          },
+          "revision": "27147b3300f556a75661a886e92bdbe00558ee25"
+        },
+        "candidate": {
+          "compilation_metadata_has_source_identity": true,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-2.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "MadLoopParamReader.f",
+                "MadLoopCommons.f",
+                "loop_matrix.f",
+                "improve_ps.f",
+                "born_matrix.f",
+                "CT_interface.f",
+                "loop_num.f",
+                "helas_calls_ampb_1.f",
+                "helas_calls_uvct_1.f",
+                "mp_compute_loop_coefs.f",
+                "mp_helas_calls_ampb_1.f",
+                "mp_helas_calls_uvct_1.f",
+                "coef_construction_1.f",
+                "loop_CT_calls_1.f",
+                "mp_coef_construction_1.f",
+                "TIR_interface.f",
+                "COLLIER_interface.f",
+                "mg5_citation.f",
+                "LINK"
+              ]
+            },
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132",
+                "-O3"
+              ],
+              "sources": [
+                "polynomial.f"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-2",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-08",
+            "mlstabthres": "1.000000d-03"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_gg_ttx/makefile": "0f7c3b034aed7fe0fa9d1526773aa5c95acc4f90b91b12b73dbc011045f2ef37"
+          },
+          "revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        }
+      },
+      "predicted_shared_setting_differences": {},
+      "source_only_predicted_shared_settings": {
+        "checkcycle": "3",
+        "colliercanoutput": ".false.",
+        "colliercomputeirpoles": ".true.",
+        "colliercomputeuvpoles": ".true.",
+        "collierglobalcache": "-1",
+        "colliermode": "1",
+        "collierrequiredaccuracy": "1e-12",
+        "collierusecacheforpoles": ".false.",
+        "collieruseinternalstabilitytest": ".true.",
+        "ctlooplibrary": "2",
+        "ctmodeinit": "1",
+        "ctmoderun": "-1",
+        "ctstabthres": "1.000000d-02",
+        "doublecheckhelicityfilter": ".true.",
+        "helicityfilterlevel": "2",
+        "helinitstartover": ".false.",
+        "improvepspoint": "2",
+        "iregimode": "2",
+        "iregirecy": ".true.",
+        "loopinitstartover": ".false.",
+        "maxattempts": "10",
+        "mlstabthres": "1e-09",
+        "nrotations_dp": "0",
+        "nrotations_qp": "0",
+        "osthres": "1.000000d-08",
+        "useloopfilter": ".false.",
+        "useqpintegrandforcuttools": ".true.",
+        "useqpintegrandforninja": ".true.",
+        "writeoutfilters": ".true.",
+        "zerothres": "1.000000d-09"
+      }
+    },
+    "qcd-3": {
+      "arms": {
+        "baseline": {
+          "compilation_metadata_has_source_identity": false,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/logs/compile-baseline-qcd-3.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "MadLoopParamReader.f",
+                "MadLoopCommons.f",
+                "LINK"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/outputs/baseline/qcd-3",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-10",
+            "mlstabthres": "1.000000d-09"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_uux_zgg/makefile": "a31ec183615b59e6367ef43a2fd01e051b2180eb19f4b76339ba70d34e3a06ab"
+          },
+          "revision": "27147b3300f556a75661a886e92bdbe00558ee25"
+        },
+        "candidate": {
+          "compilation_metadata_has_source_identity": true,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-3.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "MadLoopParamReader.f",
+                "MadLoopCommons.f",
+                "loop_matrix.f",
+                "improve_ps.f",
+                "born_matrix.f",
+                "CT_interface.f",
+                "loop_num.f",
+                "helas_calls_ampb_1.f",
+                "helas_calls_uvct_1.f",
+                "mp_compute_loop_coefs.f",
+                "mp_helas_calls_ampb_1.f",
+                "mp_helas_calls_uvct_1.f",
+                "coef_construction_1.f",
+                "loop_CT_calls_1.f",
+                "mp_coef_construction_1.f",
+                "TIR_interface.f",
+                "COLLIER_interface.f",
+                "mg5_citation.f",
+                "LINK"
+              ]
+            },
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132",
+                "-O3"
+              ],
+              "sources": [
+                "polynomial.f"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-3",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-08",
+            "mlstabthres": "1.000000d-03"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_uux_zgg/makefile": "a31ec183615b59e6367ef43a2fd01e051b2180eb19f4b76339ba70d34e3a06ab"
+          },
+          "revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        }
+      },
+      "predicted_shared_setting_differences": {},
+      "source_only_predicted_shared_settings": {
+        "checkcycle": "3",
+        "colliercanoutput": ".false.",
+        "colliercomputeirpoles": ".true.",
+        "colliercomputeuvpoles": ".true.",
+        "collierglobalcache": "-1",
+        "colliermode": "1",
+        "collierrequiredaccuracy": "1e-12",
+        "collierusecacheforpoles": ".false.",
+        "collieruseinternalstabilitytest": ".true.",
+        "ctlooplibrary": "2",
+        "ctmodeinit": "1",
+        "ctmoderun": "-1",
+        "ctstabthres": "1.000000d-02",
+        "doublecheckhelicityfilter": ".true.",
+        "helicityfilterlevel": "2",
+        "helinitstartover": ".false.",
+        "improvepspoint": "2",
+        "iregimode": "2",
+        "iregirecy": ".true.",
+        "loopinitstartover": ".false.",
+        "maxattempts": "10",
+        "mlstabthres": "1e-09",
+        "nrotations_dp": "0",
+        "nrotations_qp": "0",
+        "osthres": "1.000000d-08",
+        "useloopfilter": ".false.",
+        "useqpintegrandforcuttools": ".true.",
+        "useqpintegrandforninja": ".true.",
+        "writeoutfilters": ".true.",
+        "zerothres": "1.000000d-09"
+      }
+    },
+    "qcd-4": {
+      "arms": {
+        "baseline": {
+          "compilation_metadata_has_source_identity": false,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/logs/compile-baseline-qcd-4.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "MadLoopParamReader.f",
+                "MadLoopCommons.f",
+                "LINK"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/outputs/baseline/qcd-4",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-08",
+            "mlstabthres": "1.000000d-03"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_uux_zzgg/makefile": "02ae617b1637f78b2bfaf132433213726c6b535203edffa436eb50e1ac890200"
+          },
+          "revision": "27147b3300f556a75661a886e92bdbe00558ee25"
+        },
+        "candidate": {
+          "compilation_metadata_has_source_identity": true,
+          "compiler": "GNU Fortran (GCC) 15.3.0",
+          "log": ".benchmark-work/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-4.log",
+          "observed_flag_groups": [
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132"
+              ],
+              "sources": [
+                "check_sa.f",
+                "MadLoopParamReader.f",
+                "MadLoopCommons.f",
+                "loop_matrix.f",
+                "improve_ps.f",
+                "born_matrix.f",
+                "CT_interface.f",
+                "loop_num.f",
+                "helas_calls_ampb_1.f",
+                "helas_calls_uvct_1.f",
+                "mp_compute_loop_coefs.f",
+                "mp_helas_calls_ampb_1.f",
+                "mp_helas_calls_uvct_1.f",
+                "coef_construction_1.f",
+                "coef_construction_2.f",
+                "coef_construction_3.f",
+                "loop_CT_calls_1.f",
+                "mp_coef_construction_1.f",
+                "mp_coef_construction_2.f",
+                "mp_coef_construction_3.f",
+                "TIR_interface.f",
+                "COLLIER_interface.f",
+                "mg5_citation.f",
+                "LINK"
+              ]
+            },
+            {
+              "flags": [
+                "-w",
+                "-fPIC",
+                "-ffixed-line-length-132",
+                "-O3"
+              ],
+              "sources": [
+                "polynomial.f"
+              ]
+            }
+          ],
+          "output": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-4",
+          "polynomial_rules": [
+            "POLYNOMIAL_OPTIMIZATION = -O3",
+            "POLYNOMIAL_BOUNDS_CHECK ="
+          ],
+          "raw_origin_thresholds": {
+            "collierrequiredaccuracy": "1.000000d-08",
+            "mlstabthres": "1.000000d-03"
+          },
+          "recipe_hashes": {
+            "Source/DHELAS/makefile": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+            "Source/MODEL/makefile": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+            "Source/make_opts": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+            "Source/makefile": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+            "SubProcesses/P0_uux_zzgg/makefile": "419dd98686e98e8ef8246305647fc3aae73e9ff412842d0f1aed6bd8c5c72b2f"
+          },
+          "revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        }
+      },
+      "predicted_shared_setting_differences": {},
+      "source_only_predicted_shared_settings": {
+        "checkcycle": "3",
+        "colliercanoutput": ".false.",
+        "colliercomputeirpoles": ".true.",
+        "colliercomputeuvpoles": ".true.",
+        "collierglobalcache": "-1",
+        "colliermode": "1",
+        "collierrequiredaccuracy": "1e-12",
+        "collierusecacheforpoles": ".false.",
+        "collieruseinternalstabilitytest": ".true.",
+        "ctlooplibrary": "2",
+        "ctmodeinit": "1",
+        "ctmoderun": "-1",
+        "ctstabthres": "1.000000d-02",
+        "doublecheckhelicityfilter": ".true.",
+        "helicityfilterlevel": "2",
+        "helinitstartover": ".false.",
+        "improvepspoint": "2",
+        "iregimode": "2",
+        "iregirecy": ".true.",
+        "loopinitstartover": ".false.",
+        "maxattempts": "10",
+        "mlstabthres": "1e-09",
+        "nrotations_dp": "0",
+        "nrotations_qp": "0",
+        "osthres": "1.000000d-08",
+        "useloopfilter": ".false.",
+        "useqpintegrandforcuttools": ".true.",
+        "useqpintegrandforninja": ".true.",
+        "writeoutfilters": ".true.",
+        "zerothres": "1.000000d-09"
+      }
+    }
+  },
+  "reviewer": "/root/allocation_final",
+  "schema": "timing-pair-original-final-origin-comparability-source-audit-v1",
+  "scope": "Bounded read-only origin metadata, retained compiler logs, recipes and cards. No configure, compilation, model import, physics, MP, timing or tests.",
+  "utc": "2026-10-21T07:41:37.330555+00:00"
+}

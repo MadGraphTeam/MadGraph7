@@ -1,0 +1,26 @@
+{
+  "historical_files_unchanged_sha256": {
+    "docs/benchmarkfolder/benchmark.pdf": "4f721beef932e897c1de5649e5e49ad6ff74c57b5e85507a9b6a748fd481b588",
+    "docs/benchmarkfolder/benchmark.typ": "a2a51a2ec93b441eb20fc82899b8d041d80ba492acdf4973f7f0ac453e301be5",
+    "docs/benchmarkfolder/policy-v2/template/benchmark.typ": "46097459284e640c3bb8c6459591aba798c94198f4b369d9c2fad817185d8b29",
+    "docs/benchmarkfolder/style.typ": "6ceb2b7181fec52a9e97ef2a6a88a010abe1a297039759882a97aad32df479c0",
+    "tools/ninjars_report_v2.py": "d9c50cbf0de7c848a95839ff1a7e2ee656933c36d21dbfab2d32a5a35504b9a2"
+  },
+  "scope": "Actual source bytes used for this software snapshot; not generated physical processes",
+  "sources_sha256": {
+    "docs/benchmarkfolder/policy-v2/template/benchmark.typ": "46097459284e640c3bb8c6459591aba798c94198f4b369d9c2fad817185d8b29",
+    "docs/benchmarkfolder/policy-v3/template/benchmark.typ": "cfc7f4992104a8ac44b8e90274a0fd587689928d3aaf10fbbc0f4aed38147a7e",
+    "docs/benchmarkfolder/style.typ": "6ceb2b7181fec52a9e97ef2a6a88a010abe1a297039759882a97aad32df479c0",
+    "tests/unit_tests/loop/test_ninjars_benchmark_policy_v3.py": "33d28a24f13ecde16035c31776bcbdad56e73dbd113aff757c0f477f1f82ec59",
+    "tests/unit_tests/loop/test_ninjars_report_v3.py": "aa450f16458f357c8a50c44da6330a4c4ae8cf8e1fdb7658148e7f0e04b0c760",
+    "tools/ninjars_benchmark.py": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+    "tools/ninjars_benchmark_policy_v2.py": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a",
+    "tools/ninjars_benchmark_policy_v3.py": "24085e1414577a6f3ef0dee419fc821b6d2306033b0d2e9c2d3794285e15f031",
+    "tools/ninjars_benchmark_report_v3.py": "466d01fdd489e3138237c91227e0fb2c4a207a959f1b98f8704d2605e0f2ae5a",
+    "tools/ninjars_benchmark_workers.py": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+    "tools/ninjars_precision_v2.py": "6f7a4ec0a0744ef816e38d6f6a5bb45844d3e9bc264c617bbc22da01a1bb9cb5",
+    "tools/ninjars_profile_v2.py": "a4042b2b6dc3714a073e1a8908531f3e7f9443e2607195d8daf5029d870cc6a8",
+    "tools/ninjars_report_v2.py": "d9c50cbf0de7c848a95839ff1a7e2ee656933c36d21dbfab2d32a5a35504b9a2",
+    "tools/ninjars_supplement_v2.py": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8"
+  }
+}

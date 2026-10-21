@@ -1,0 +1,56 @@
+{
+  "all_test_processes_exited": true,
+  "command": [
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+    "-B",
+    "-m",
+    "unittest",
+    "tests.unit_tests.loop.test_ninjars_benchmark_policy_v3",
+    "tests.unit_tests.loop.test_ninjars_benchmark_pair_v3",
+    "tests.unit_tests.loop.test_ninjars_report_v3",
+    "-v"
+  ],
+  "compiled_amplitude_or_library_calls": 0,
+  "cpu_affinity": [
+    4
+  ],
+  "exit_code": 0,
+  "expected_tests": 73,
+  "parent_pid": 3931417,
+  "passed": true,
+  "physics_calls": 0,
+  "process": {
+    "pgid": 3931468,
+    "pid": 3931468,
+    "start_ticks": 60281616
+  },
+  "schema": "independent-v3-combined-software-request-v1",
+  "scientific_or_timing_acceptance_claim": false,
+  "scope": "Software-only, mocked numerical data and synthetic Typst renders; no amplitude/model import, Fortran/Rust compilation, MP or actual campaign execution",
+  "scope_wording_clarification": "Synthetic Typst compiler invocations are part of software tests; compiler exclusion refers to numerical libraries/amplitudes.",
+  "source_after_sha256": {
+    "docs/benchmarkfolder/policy-v3/template/benchmark.typ": "cfc7f4992104a8ac44b8e90274a0fd587689928d3aaf10fbbc0f4aed38147a7e",
+    "tests/unit_tests/loop/test_ninjars_benchmark_pair_v3.py": "26dc6391f1737c46d896a1faaf474c8552846a5153ead562dd2bbdb8e1a3c4a8",
+    "tests/unit_tests/loop/test_ninjars_benchmark_policy_v3.py": "33d28a24f13ecde16035c31776bcbdad56e73dbd113aff757c0f477f1f82ec59",
+    "tests/unit_tests/loop/test_ninjars_report_v3.py": "aa450f16458f357c8a50c44da6330a4c4ae8cf8e1fdb7658148e7f0e04b0c760",
+    "tools/ninjars_benchmark_pair_v3.py": "8f292d1f83185862d30e3540247b2c62a836917fcdf00a9fe585d762f8aa0419",
+    "tools/ninjars_benchmark_policy_v3.py": "24085e1414577a6f3ef0dee419fc821b6d2306033b0d2e9c2d3794285e15f031",
+    "tools/ninjars_benchmark_report_v3.py": "466d01fdd489e3138237c91227e0fb2c4a207a959f1b98f8704d2605e0f2ae5a"
+  },
+  "source_before_sha256": {
+    "docs/benchmarkfolder/policy-v3/template/benchmark.typ": "cfc7f4992104a8ac44b8e90274a0fd587689928d3aaf10fbbc0f4aed38147a7e",
+    "tests/unit_tests/loop/test_ninjars_benchmark_pair_v3.py": "26dc6391f1737c46d896a1faaf474c8552846a5153ead562dd2bbdb8e1a3c4a8",
+    "tests/unit_tests/loop/test_ninjars_benchmark_policy_v3.py": "33d28a24f13ecde16035c31776bcbdad56e73dbd113aff757c0f477f1f82ec59",
+    "tests/unit_tests/loop/test_ninjars_report_v3.py": "aa450f16458f357c8a50c44da6330a4c4ae8cf8e1fdb7658148e7f0e04b0c760",
+    "tools/ninjars_benchmark_pair_v3.py": "8f292d1f83185862d30e3540247b2c62a836917fcdf00a9fe585d762f8aa0419",
+    "tools/ninjars_benchmark_policy_v3.py": "24085e1414577a6f3ef0dee419fc821b6d2306033b0d2e9c2d3794285e15f031",
+    "tools/ninjars_benchmark_report_v3.py": "466d01fdd489e3138237c91227e0fb2c4a207a959f1b98f8704d2605e0f2ae5a"
+  },
+  "stderr_sha256": "e486461a6c8af88dc41ed636d21a1934aea9f20d634adc2e134e29a60f91ab78",
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "synthetic_typst_only": true,
+  "tests_run": 73,
+  "utc_end": "2026-10-21T07:52:23.496701+00:00",
+  "utc_start": "2026-10-21T07:51:55.043743+00:00",
+  "wall_seconds": 28.45268429198768
+}

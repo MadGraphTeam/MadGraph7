@@ -1,0 +1,99 @@
+{
+  "coverage": [
+    "Passing NRS core and failed external Collier finding stay distinct",
+    "Actual failure and unresolved display states retain their meanings",
+    "Valid-status changed original timed finite coefficient leaves NRS correctness passed but same-outcome/performance/core failed",
+    "NRS finite-coefficient failure is labelled failed on the cover",
+    "Calibration reference commands have zero timing repetitions",
+    "Original failed controller finalization and independently checked copied raw view are distinct",
+    "Historical research source/timing scopes remain separate and non-additive"
+  ],
+  "final_publication_passed": false,
+  "main_report_modified": false,
+  "pages_reviewed": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "private_pdf_assets": [
+    {
+      "bytes": 202467,
+      "path": ".benchmark-work/report-v3-software-validation-v1/attempt-9/rendered/layout-intervals-same-outcome/benchmark.pdf",
+      "sha256": "11d362f9d7b9bc3802c4a290e7054d7f749d02672b502ecde5c56eb9e344037d"
+    },
+    {
+      "bytes": 203754,
+      "path": ".benchmark-work/report-v3-software-validation-v1/attempt-9/rendered/layout-nrs-correctness-failure/benchmark.pdf",
+      "sha256": "e3838cbb4ea80bbbe33b041c592c7a07c96eedd8ec345eee0eb77070bfc6b7b1"
+    },
+    {
+      "bytes": 204459,
+      "path": ".benchmark-work/report-v3-software-validation-v1/attempt-9/rendered/layout-nrs-external/benchmark.pdf",
+      "sha256": "f741d3acd61f1b4dd4c2f082ffa205fcb35b2650d454329b1d2024831807427f"
+    },
+    {
+      "bytes": 202633,
+      "path": ".benchmark-work/report-v3-software-validation-v1/attempt-9/rendered/layout-reproduction-a/benchmark.pdf",
+      "sha256": "deaf729f0a69d2234450513dbd370632181bffffb12ae1a4b278d7764eb95279"
+    },
+    {
+      "bytes": 202633,
+      "path": ".benchmark-work/report-v3-software-validation-v1/attempt-9/rendered/layout-reproduction-b/benchmark.pdf",
+      "sha256": "deaf729f0a69d2234450513dbd370632181bffffb12ae1a4b278d7764eb95279"
+    }
+  ],
+  "private_raster_assets": [
+    {
+      "bytes": 127834,
+      "path": ".benchmark-work/report-v3-software-validation-v1/attempt-9/visual/page-1.png",
+      "sha256": "3359297ef79ff11203b6d0e857085de5aeaf62b125105f0a797f1c2aa4ce9b63"
+    },
+    {
+      "bytes": 122362,
+      "path": ".benchmark-work/report-v3-software-validation-v1/attempt-9/visual/page-2.png",
+      "sha256": "f7740454a3cd05d42bf22adc3082f223a2b1b081864699cbce540dbd99a5eddd"
+    },
+    {
+      "bytes": 97102,
+      "path": ".benchmark-work/report-v3-software-validation-v1/attempt-9/visual/page-3.png",
+      "sha256": "79c2f269cec963b13ebcf58aa3edf081015645a2e90f1db25bb324771cd18c04"
+    },
+    {
+      "bytes": 87064,
+      "path": ".benchmark-work/report-v3-software-validation-v1/attempt-9/visual/page-4.png",
+      "sha256": "542ecda0dbcedf52641876c916ee7b8e4ff5d2092fe518a527fb7cc4c29328ee"
+    },
+    {
+      "bytes": 103028,
+      "path": ".benchmark-work/report-v3-software-validation-v1/attempt-9/visual/page-5.png",
+      "sha256": "9ea6ae87839d33ec3d1130445bcf4751d0a90f67a2e6e62c45e0ec6debd1a43c"
+    },
+    {
+      "bytes": 204034,
+      "path": ".benchmark-work/report-v3-software-validation-v1/attempt-9/visual/page-6.png",
+      "sha256": "876bd00c1b03e9bf83bf649d298bd85998eba2ef122550eb46ce65ad4927c2b2"
+    }
+  ],
+  "reproduction": {
+    "byte_identical_sha256": {
+      "benchmark.pdf": "deaf729f0a69d2234450513dbd370632181bffffb12ae1a4b278d7764eb95279",
+      "report-data.json": "d3d1b860de339556d7c7f95d2ebb029f966e5cda0fee9f7be64596f46389f5d9"
+    },
+    "different_ambient_SOURCE_DATE_EPOCH": [
+      "1",
+      "999999999"
+    ],
+    "fixed_pdf_creation_timestamp": 315532800
+  },
+  "reviewed_sample": {
+    "bytes": 204459,
+    "path": ".benchmark-work/report-v3-software-validation-v1/attempt-9/rendered/layout-nrs-external/benchmark.pdf",
+    "sha256": "f741d3acd61f1b4dd4c2f082ffa205fcb35b2650d454329b1d2024831807427f"
+  },
+  "scientific_gates_executed": false,
+  "scope": "Synthetic layout and deterministic output only; no actual benchmark dataset, reduction call, numerical oracle, performance or publication qualification",
+  "verdict": "No clipping, overlap, invisible headers or orphaned interpretation paragraph in all six pages"
+}

@@ -1,0 +1,32 @@
+{
+  "status": "passed-source-only-schema-rehearsal",
+  "policy": {
+    "path": ".benchmark-work/policy-v3/policy-schema-rehearsal-v1/attempt-2/policy.json",
+    "sha256": "a4b32fd13079fcc883d061275c80ff12e0f9607bee5173b393a056d20c505d21"
+  },
+  "references": {
+    "path": ".benchmark-work/policy-v3/policy-schema-rehearsal-v1/attempt-2/references.json",
+    "sha256": "d2227602b5bdde7d898e55596a35f010eb3be48bb285cf49da65ae112765e765"
+  },
+  "partial_reference_entries": 14,
+  "reference_cases": [
+    "ew-1",
+    "ew-2",
+    "ew-3",
+    "qcd-1",
+    "qcd-2",
+    "qcd-3",
+    "qcd-4"
+  ],
+  "missing_reference_cases": [
+    "ew-4"
+  ],
+  "core_status": "pending",
+  "parent_statuses_unchanged": true,
+  "new_amplitude_evaluations": 0,
+  "policy_source": {
+    "path": "tools/ninjars_benchmark_policy_v3.py",
+    "sha256": "24085e1414577a6f3ef0dee419fc821b6d2306033b0d2e9c2d3794285e15f031"
+  },
+  "scope": "Actual retained calibration metadata only; no campaign, physics, performance or fresh-parity pass"
+}

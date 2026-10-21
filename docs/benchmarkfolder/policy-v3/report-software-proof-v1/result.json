@@ -1,0 +1,18 @@
+{
+  "command": "source .ninjars-build/dev-env.sh; export TMPDIR=\"$PWD/.ninjars-build/tmp\" RAYON_NUM_THREADS=1 NINJARS_REPORT_V3_SOFTWARE_ARTIFACTS=\"$PWD/.benchmark-work/report-v3-software-validation-v1/attempt-9/rendered\"; taskset -c 4 python -B -m unittest tests.unit_tests.loop.test_ninjars_report_v3 -v",
+  "cpu": 4,
+  "errors": 0,
+  "exit_code": 0,
+  "failures": 0,
+  "rayon_num_threads": 1,
+  "scope": "Synthetic software authority/layout/byte reproduction only; no physics or final publication qualification",
+  "source_sha256": {
+    "docs/benchmarkfolder/policy-v3/template/benchmark.typ": "cfc7f4992104a8ac44b8e90274a0fd587689928d3aaf10fbbc0f4aed38147a7e",
+    "tests/unit_tests/loop/test_ninjars_benchmark_policy_v3.py": "33d28a24f13ecde16035c31776bcbdad56e73dbd113aff757c0f477f1f82ec59",
+    "tests/unit_tests/loop/test_ninjars_report_v3.py": "aa450f16458f357c8a50c44da6330a4c4ae8cf8e1fdb7658148e7f0e04b0c760",
+    "tools/ninjars_benchmark_policy_v3.py": "24085e1414577a6f3ef0dee419fc821b6d2306033b0d2e9c2d3794285e15f031",
+    "tools/ninjars_benchmark_report_v3.py": "466d01fdd489e3138237c91227e0fb2c4a207a959f1b98f8704d2605e0f2ae5a"
+  },
+  "tests_run": 23,
+  "unittest_seconds": 19.996
+}

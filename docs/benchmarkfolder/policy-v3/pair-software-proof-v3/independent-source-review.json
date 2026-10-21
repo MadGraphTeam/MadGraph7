@@ -1,0 +1,49 @@
+{
+  "checked": [
+    "All top-level implementation outside preflight and the new validate_origin_records is AST-identical to independently reviewed68c2c622 source.",
+    "Both roles require byte-identical actual generation/compilation records, actual complete observed source manifest, and exact executable/driver hashes.",
+    "Only literal-original baseline accepts absent historical source_identity/generated_sources_sha256 fields; actual original_identity is checked, and any present modern fields must match. No old metadata file or dictionary is written or synthesized.",
+    "Final candidate still requires modern compilation source identity and generated-source hash; later exact b0ea/generator34aed/fullruntime8b/main800 checks are unchanged.",
+    "Three focused owner regressions cover immutable old-original acceptance, missing modern candidate rejection, and observed source drift rejection. Owner reports22/22 tests passed; reviewer did not rerun tests.",
+    "Exact targets, ownership/signal cleanup, one-thread conditions, calibration/alternating sequence, raw retention, timer and numerical payload remain unchanged."
+  ],
+  "files": {
+    "docs/benchmarkfolder/policy-v3/pair-software-proof-v2/independent-source-review.json": {
+      "bytes": 5468,
+      "sha256": "9f86cc6088e38e181688264bcd6c842282fb8a562ebcf980d62f71d93fb8b45f"
+    },
+    "docs/benchmarkfolder/policy-v3/pair-software-proof-v2/sources/ninjars_benchmark_pair_v3.py": {
+      "bytes": 29744,
+      "sha256": "68c2c6225cfaea1a9cb95075ad42402efa1c3c4ee77119c4808569e99f32c65a"
+    },
+    "docs/benchmarkfolder/policy-v3/pair-software-proof-v3/attempt-1.json": {
+      "bytes": 1282,
+      "sha256": "e5ebb4208268c35344545cd14531a4dbbdcf3ba9d3016a68c5207b3f214a8555"
+    },
+    "docs/benchmarkfolder/policy-v3/pair-software-proof-v3/attempt-1.stderr": {
+      "bytes": 4667,
+      "sha256": "7fe37e238e6a96ea78cef4c9d99e2be3a8342ba02015c2ea7cbe74eabfdeb8e8"
+    },
+    "docs/benchmarkfolder/policy-v3/pair-software-proof-v3/attempt-1.stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tests/unit_tests/loop/test_ninjars_benchmark_pair_v3.py": {
+      "bytes": 22318,
+      "sha256": "06ebe91a8c5beba0f2a093ca122e3d29c656bd1be91f5379dcd0b8d49484ecd0"
+    },
+    "tools/ninjars_benchmark_pair_v3.py": {
+      "bytes": 31043,
+      "sha256": "afddbeecbc5a0e2260cc0473964c454714dbe303e00801af90108aee233ac25f"
+    }
+  },
+  "limitations": [
+    "Historical observed manifests establish current origin bytes; the missing original compile-time fields are not retroactively invented.",
+    "Separate actual spec/runtime qualification/root resource handoff and numerical/performance acceptance remain required."
+  ],
+  "reviewer": "/root/allocation_final",
+  "schema": "pair-v3-original-metadata-independent-source-review-v1",
+  "scope": "Source/AST and existing owner software proof only; no benchmark-module import, tests, build, model import, physics, MP, or timing by reviewer.",
+  "utc": "2026-10-21T07:40:21.544582+00:00",
+  "verdict": "PASS: bounded literal-original metadata compatibility delta"
+}
