@@ -1,0 +1,45 @@
+{
+  "status": "legacy-only-scope-and-full-cli-assets-verified",
+  "scope": {
+    "cpu": 12,
+    "cases": [
+      "stress-qcd-4-gg-ttgg-scale",
+      "stress-ew-4-uu-4l-scale"
+    ],
+    "backends": [
+      6
+    ]
+  },
+  "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+  "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+  "configuration": {
+    "schema_version": 1,
+    "seed": 1940083,
+    "points_per_case": 8,
+    "repetitions": 2,
+    "energy_gev": 1000.0,
+    "relative_tolerance": 1e-07,
+    "scale_tolerance": 1e-10,
+    "madloop_parameters": {
+      "MLStabThres": 1e-09,
+      "COLLIERRequiredAccuracy": 1e-12
+    },
+    "cases": [
+      {
+        "id": "stress-qcd-4-gg-ttgg-scale",
+        "model": "loop_sm",
+        "process": "g g > t t~ g g [virt=QCD]",
+        "nfinal": 4
+      },
+      {
+        "id": "stress-ew-4-uu-4l-scale",
+        "model": "loop_qcd_qed_sm_Gmu",
+        "process": "u u~ > e+ e- mu+ mu- [virt=QED]",
+        "nfinal": 4
+      }
+    ]
+  },
+  "numerical_evaluations": 0,
+  "compiler_calls": 0,
+  "rust_or_symbolica_dispatch_permitted": false
+}

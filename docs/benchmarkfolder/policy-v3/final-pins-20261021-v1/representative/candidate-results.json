@@ -1,0 +1,168 @@
+{
+  "schema": "final-candidate-representative-results-v1",
+  "finished_utc": "2026-10-21T17:28:06.375090+00:00",
+  "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+  "candidate_cohort": {
+    "numerical_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+    "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+    "generator_identity_sha256": "77b16df0251af4104a2c541bab913c11f4e67496a290495ce1a1c5fc526dfe3c",
+    "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+    "archive_sha256": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c"
+  },
+  "collections": {
+    "ggh": {
+      "status": "passed",
+      "seconds": 82.7218869549688,
+      "runtime_binding": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runtime-bindings/ggh.json",
+        "sha256": "2915d774a42b4877ca055b77f9afa41a2a6f578ecec3fd1364536318ce9f9d45",
+        "bytes": 1058479
+      },
+      "targets": {
+        "control-gg-h-candidate-1": {
+          "status_counts": {
+            "329": 1,
+            "211": 9
+          },
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          },
+          "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+          "executable": "d1c791988b9e1a6a3715cd518e051bba633509d581c0a708bae40b185462a476"
+        },
+        "control-gg-h-candidate-6": {
+          "status_counts": {
+            "216": 10
+          },
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          },
+          "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+          "executable": "d1c791988b9e1a6a3715cd518e051bba633509d581c0a708bae40b185462a476"
+        },
+        "control-gg-h-candidate-7": {
+          "status_counts": {
+            "217": 10
+          },
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          },
+          "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+          "executable": "d1c791988b9e1a6a3715cd518e051bba633509d581c0a708bae40b185462a476"
+        },
+        "control-gg-h-candidate-8": {
+          "status_counts": {
+            "218": 10
+          },
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          },
+          "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+          "executable": "d1c791988b9e1a6a3715cd518e051bba633509d581c0a708bae40b185462a476"
+        }
+      },
+      "records": 8
+    },
+    "mixed": {
+      "status": "passed",
+      "seconds": 23.57705712504685,
+      "runtime_binding": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runtime-bindings/mixed.json",
+        "sha256": "7083fb58c42bae16545246aaef538607ec8916cd38908dc1d84514653e0d6f9e",
+        "bytes": 300508
+      },
+      "targets": {
+        "control-mixed-candidate-8": {
+          "status_counts": {
+            "218": 10
+          },
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          },
+          "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+          "executable": "f622ccba713d819ccc54d7d4a28adda6d7afe693ec08933413f16a321c3bf994"
+        }
+      },
+      "records": 2
+    },
+    "forced-qp": {
+      "status": "passed",
+      "seconds": 156.1150053399615,
+      "runtime_binding": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runtime-bindings/forced-qp.json",
+        "sha256": "96dbf9318a5a1d9e4536616d1786b1f9b67b9730524ea0d8e9504db56905cb35",
+        "bytes": 547193
+      },
+      "targets": {
+        "control-forced-qp-candidate-1": {
+          "status_counts": {
+            "329": 10
+          },
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          },
+          "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+          "executable": "1b1feac759a14ffa96bbc4423b82deed08305b1433322d3461ac393cdccb96e0"
+        },
+        "control-forced-qp-candidate-8": {
+          "status_counts": {
+            "322": 10
+          },
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          },
+          "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+          "executable": "1b1feac759a14ffa96bbc4423b82deed08305b1433322d3461ac393cdccb96e0"
+        }
+      },
+      "records": 4
+    },
+    "ninja-near-singular": {
+      "status": "passed",
+      "seconds": 58.77173663896974,
+      "runtime_binding": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runtime-bindings/ninja-near-singular.json",
+        "sha256": "98ab4438321f5cc0573018899d7160228c71c69e4bd2a0da71c86d4031f25d92",
+        "bytes": 275641
+      },
+      "targets": {
+        "control-forced-qp-candidate-6": {
+          "status_counts": {
+            "328": 10
+          },
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          },
+          "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+          "executable": "1b1feac759a14ffa96bbc4423b82deed08305b1433322d3461ac393cdccb96e0"
+        }
+      },
+      "records": 2
+    }
+  },
+  "runtime_bindings": [
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runtime-bindings/ggh.json",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runtime-bindings/mixed.json",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runtime-bindings/forced-qp.json",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runtime-bindings/ninja-near-singular.json"
+  ],
+  "targets": 8,
+  "status": "passed",
+  "final_role_proof_pending": true
+}

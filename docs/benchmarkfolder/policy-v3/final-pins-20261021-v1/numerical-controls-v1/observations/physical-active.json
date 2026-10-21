@@ -1,0 +1,11 @@
+{
+  "pid": 4027406,
+  "process_group_id": 4027406,
+  "start_ticks": 63401107,
+  "command": [
+    "taskset",
+    "-c",
+    "190",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/final-numerical-release-20261021-v1/physical-driver"
+  ]
+}

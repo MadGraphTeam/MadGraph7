@@ -1,0 +1,25 @@
+{
+  "run_id": "final-pins-representative-mixed",
+  "configuration": "docs/benchmarkfolder/policy-v2/controls.json",
+  "report": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runs/mixed",
+  "work": ".benchmark-work/policy-v3/final-pins-20261021-v1/representative/mixed",
+  "output_roots": {
+    "baseline": ".benchmark-work/outputs/baseline",
+    "candidate": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate"
+  },
+  "points_root": "docs/benchmarkfolder/points",
+  "cases": [
+    "control-mixed"
+  ],
+  "sources": [
+    "candidate"
+  ],
+  "backends": [
+    8
+  ],
+  "cpu": 190,
+  "representative": true,
+  "fresh_parity": true,
+  "timeout": 86400.0,
+  "minimum_seconds": 1e-12
+}

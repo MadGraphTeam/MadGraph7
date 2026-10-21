@@ -1,0 +1,219 @@
+{
+  "schema": "final-release-exact-planar-full-bridge-v1",
+  "requests": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/planar-exact-requests.json",
+    "sha256": "355aa5c0648b3690e0ff0fa41b3c03009e0ec0c298542e93588db00a746ad1e7",
+    "bytes": 15054
+  },
+  "request_stream": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/planar-exact-requests.txt",
+    "sha256": "23c8386ccea97cbff83593bd8d72c07103c14aae206ca3e7e58facffb1139f72",
+    "bytes": 11097
+  },
+  "controller": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/run_planar_exact.py",
+    "sha256": "3647efd2a26f57e2c247aca1f6b86b6139b024ccdb2b2f18da26f40f57cab1e7",
+    "bytes": 5021
+  },
+  "stdout": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/planar-exact.stdout",
+    "sha256": "245ef2113308391973cd5366a402b84aec1928ac4758965d260ff60fdac99f13",
+    "bytes": 3457
+  },
+  "stderr": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/planar-exact.stderr",
+    "sha256": "50d932a1246ef5cc01d6bba9c5c1fa784e661cb3ea3ce81aeeec877b0d7bf208",
+    "bytes": 814
+  },
+  "executable": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/physical-driver",
+    "sha256": "04ad821f7e1a426f08876bc8f7699fd6f6c3f6586293951b043684b529f7679e",
+    "bytes": 69646128
+  },
+  "archive": {
+    "path": ".ninjars-build/final-dependency-candidate-20261021/bridge/libninjars.a",
+    "sha256": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c",
+    "bytes": 297995026
+  },
+  "geometry": {
+    "exact_gram_determinant": "0",
+    "pair_distances_numerators": [
+      [
+        0,
+        -74767104,
+        -89257653,
+        -204731997
+      ],
+      [
+        -74767104,
+        0,
+        3440331,
+        -27478365
+      ],
+      [
+        -89257653,
+        3440331,
+        0,
+        0
+      ],
+      [
+        -204731997,
+        -27478365,
+        0,
+        0
+      ]
+    ],
+    "pair_distances_common_denominator": 262144,
+    "all_shifts_and_distances_exactly_binary64": true,
+    "coordinate_plane": "real Minkowski time/x, with y=z=0 exactly"
+  },
+  "exit_code": 0,
+  "outputs": [
+    {
+      "record": 0,
+      "mode": 0,
+      "status": 0,
+      "output": [
+        9.625278644268798e-05,
+        4.576877615076188e-05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "record": 1,
+      "mode": 1,
+      "status": 0,
+      "output": [
+        9.625278644268798e-05,
+        4.576877615076188e-05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "record": 2,
+      "mode": 2,
+      "status": 1,
+      "output": [
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+      ]
+    },
+    {
+      "record": 3,
+      "mode": 0,
+      "status": 0,
+      "output": [
+        9.625278644268798e-05,
+        4.576877615076188e-05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "record": 4,
+      "mode": 1,
+      "status": 0,
+      "output": [
+        9.625278644268798e-05,
+        4.576877615076188e-05,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "record": 5,
+      "mode": 2,
+      "status": 1,
+      "output": [
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+        "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "record": 0,
+      "mode": 0,
+      "lane": "positive-mass-zero",
+      "status": 0,
+      "output_untouched": false,
+      "safely_rejected": false
+    },
+    {
+      "record": 1,
+      "mode": 1,
+      "lane": "positive-mass-zero",
+      "status": 0,
+      "output_untouched": false,
+      "safely_rejected": false
+    },
+    {
+      "record": 2,
+      "mode": 2,
+      "lane": "positive-mass-zero",
+      "status": 1,
+      "output_untouched": true,
+      "safely_rejected": true
+    },
+    {
+      "record": 3,
+      "mode": 0,
+      "lane": "negative-mass-zero",
+      "status": 0,
+      "output_untouched": false,
+      "safely_rejected": false
+    },
+    {
+      "record": 4,
+      "mode": 1,
+      "lane": "negative-mass-zero",
+      "status": 0,
+      "output_untouched": false,
+      "safely_rejected": false
+    },
+    {
+      "record": 5,
+      "mode": 2,
+      "lane": "negative-mass-zero",
+      "status": 1,
+      "output_untouched": true,
+      "safely_rejected": true
+    }
+  ],
+  "complete": true,
+  "all_calls_reject_without_output_commit": false,
+  "wall_seconds": 1.490027517080307,
+  "cpu": 190,
+  "numerical_threads": 1,
+  "performance_claim": false
+}

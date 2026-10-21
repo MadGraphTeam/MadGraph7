@@ -1,0 +1,9 @@
+
+thread 'panic_contract_tests::panic_is_contained_and_success_clears_calling_thread_error' (1286931) panicked at src/panic_contract_tests.rs:7:25:
+deliberate boundary regression panic
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: madloop_ninjars::guard::<madloop_ninjars::panic_contract_tests::panic_is_contained_and_success_clears_calling_thread_error::{closure#1}>
+   3: <madloop_ninjars::panic_contract_tests::panic_is_contained_and_success_clears_calling_thread_error::{closure#0} as core::ops::function::FnOnce<()>>::call_once
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.

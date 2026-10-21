@@ -1,0 +1,21 @@
+
+thread '<unnamed>' (1989739) panicked at src/final_precision_tests.rs:214:9:
+assertion `left == right` failed: retain every historical output/status difference
+  left: 468
+ right: 0
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::assert_failed_inner
+   3: core::panicking::assert_failed::<usize, usize>
+   4: madloop_ninjars::final_precision_tests::retained_requests_replay_and_converge::{closure#0}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+
+thread 'final_precision_tests::retained_requests_replay_and_converge' (1989736) panicked at src/final_precision_tests.rs:114:38:
+called `Result::unwrap()` on an `Err` value: Any { .. }
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::result::unwrap_failed
+   3: <madloop_ninjars::final_precision_tests::retained_requests_replay_and_converge::{closure#0} as core::ops::function::FnOnce<()>>::call_once
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.

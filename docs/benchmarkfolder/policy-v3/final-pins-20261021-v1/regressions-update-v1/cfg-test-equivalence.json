@@ -1,0 +1,84 @@
+{
+  "cfg_test_declaration": {
+    "declaration": "#[cfg(test)]\\nmod upstream_master_tests;",
+    "path": "vendor/ninjars/src/lib.rs",
+    "sha256": "4f7bd6eb93d1860f983f8284b5256b06bb24e65d6698a9b885d9018be8e05d2c"
+  },
+  "current_sha256": "48eb9e0d7c7a23bd0f9039be3e986ea2322a4c31d236073a322ca4d71b57f456",
+  "current_source_freeze": {
+    "path": "cfg-test-source-freeze-v4.json",
+    "sha256": "b9488707deb57c8573fe34cd1fbbce69740fab4b024845d625ca1dbfe1060933"
+  },
+  "meaning": "Original 47-test execution does not compile/execute this Rust module. The recording harness hashed it as part of an overinclusive source inventory; that original hash is preserved unchanged.",
+  "new_47_test_execution_claimed": false,
+  "numerical_qualification_note": "The current cfg(test) module was compiled/exercised by separately owned Rust controls. Ordinary fenv tests pass; the retained planar unsafe-success diagnostic FAILS. Neither observation is included in the 47 Python/mock-Fortran count or promoted to complete numerical qualification.",
+  "original_inventoried_sha256": "1addb2b3676f25035477dc3ec275abeea27f7ecbb90dcee1bc72c8b786601cf4",
+  "path": "vendor/ninjars/src/upstream_master_tests.rs",
+  "precorrection_manifest_sha256": "fc28a1401587ac9093fe0284c2eb74159ce9aedeedd5f3f042e65cb2e3f3aca0",
+  "preserved_original_artifacts": {
+    "focused-result.json": "ec737cd01abddffa21c7a5323f7912376d40702e4eb051b1094f88dea21de145",
+    "focused.log": "dc6921f9ab1d83cd9801f798a786ce631a25ae88fda890123749ce2fbf66276a",
+    "fresh-source-hashes.json.gz": "6e097a043099ef79439fc5b5e9942e6ce20af27b63df2b85e2a7e6b451bef6cb",
+    "reuse-review.json": "c7313a0093b7cfe4a60b04081439ee4064647b8a47a0c4afab724e7dd847c8bb"
+  },
+  "production_and_47_test_sources_unchanged": true,
+  "schema": "ninjars-nonexecuted-cfg-test-source-equivalence-v1",
+  "separate_rust_authority": {
+    "handoff-manifest.json": {
+      "path": ".benchmark-work/final-numerical-release-20261021-v1/handoff-manifest.json",
+      "sha256": "d63e001e87e189d6024d472851b411dea56a259388a3d35ec4264f62e0b76572"
+    },
+    "unit-proof.json": {
+      "path": ".benchmark-work/final-numerical-release-20261021-v1/unit-proof.json",
+      "sha256": "9d8975d6f522c6436cf206defdca99fb533bd88b17f1c8d23d99e48a3df8abd9"
+    }
+  },
+  "separate_rust_controls": [
+    {
+      "executable_sha256": "a1643adfd169ea8c0171669dc75247c6cd8235f298b11d1cbad7acb4a20201c7",
+      "exit_code": 0,
+      "failed": 0,
+      "ignored": 7,
+      "included_in_47_software_tests": false,
+      "label": "ordinary-fenv",
+      "numerical_gate_passed": false,
+      "passed": 24,
+      "process_receipt_path": ".benchmark-work/final-numerical-release-20261021-v1/ordinary-fenv-process.json",
+      "process_receipt_sha256": "2ede0793eb0ff597281494954d5eaa23800eba408831a4c982ed0ee1d56e0eee",
+      "source_before_after_equal": true,
+      "stderr": {
+        "bytes": 663,
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/ordinary-fenv.stderr",
+        "sha256": "1aad549af7fb493c4e85d6e491acf56273bc0726ad622b09ef93a4e212f57c73"
+      },
+      "stdout": {
+        "bytes": 11824,
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/ordinary-fenv.stdout",
+        "sha256": "9dfb23e86afe938963d9a159f824d669adc5b97360c7b0bd815dbc0b1502899d"
+      }
+    },
+    {
+      "executable_sha256": "a1643adfd169ea8c0171669dc75247c6cd8235f298b11d1cbad7acb4a20201c7",
+      "exit_code": 101,
+      "failed": 1,
+      "ignored": 0,
+      "included_in_47_software_tests": false,
+      "label": "planar-sentinels-complete",
+      "numerical_gate_passed": false,
+      "passed": 0,
+      "process_receipt_path": ".benchmark-work/final-numerical-release-20261021-v1/planar-sentinels-complete-process.json",
+      "process_receipt_sha256": "4e8a2e328ec423ae9119c070fc20f50a3bb1aaa008c232ec56705d9865132e87",
+      "source_before_after_equal": true,
+      "stderr": {
+        "bytes": 1154,
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/planar-sentinels-complete.stderr",
+        "sha256": "357fe7d2303c58ac4b443673bf88e8101435fad39433627b797769f6928cbc42"
+      },
+      "stdout": {
+        "bytes": 11235,
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/planar-sentinels-complete.stdout",
+        "sha256": "b9b24d388e122b42c8f8fbcb611a4db8f2472b9f38638e48a4e76bcfcb15a278"
+      }
+    }
+  ]
+}

@@ -2,12 +2,14 @@
 import copy
 from contextlib import ExitStack
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -277,11 +279,11 @@ class PrivateFilesTest(PrivateFilesMixin, unittest.TestCase):
         binding = self.dump(report / "bindings.json", policy.v2.seal({"schema": "supplement-source-bindings-v1",
             "role_map": {"candidate": "candidate_corrected"}, "report": policy.v2.relative(report), "targets": {}}))
         for mutation in ("missing-policy-cohort", "wrong-spec-runtime", "wrong-protocol-archive"):
-            spec = {"schema": "final-pins-core-correctness-spec-v1", "candidate_cohort": dict(identities)}
+            spec = {"schema": "final-pins-core-correctness-spec-v1", "cohort": {"candidate_cohort": dict(identities)}}
             protocol = {"candidate_cohort": dict(identities)}
             rules = {"candidate_cohort": {"path": "not-read", "sha256": "0" * 64}}
             if mutation == "missing-policy-cohort": rules.pop("candidate_cohort")
-            elif mutation == "wrong-spec-runtime": spec["candidate_cohort"]["runtime_identity_sha256"] = "f" * 64
+            elif mutation == "wrong-spec-runtime": spec["cohort"]["candidate_cohort"]["runtime_identity_sha256"] = "f" * 64
             else: protocol["candidate_cohort"]["archive_sha256"] = "f" * 64
             self.dump(report / "input-spec.json", policy.v2.seal(spec))
             protocol["input_spec"] = policy.v2.bound_file(report / "input-spec.json")
@@ -291,6 +293,38 @@ class PrivateFilesTest(PrivateFilesMixin, unittest.TestCase):
                 context.enter_context(mock.patch.object(policy, "_check_protocol", return_value=protocol))
                 with self.assertRaisesRegex(RuntimeError, "explicit cohort|differs from qualified"):
                     policy.checked_correctness(binding, self.root / "unused-policy.json")
+
+    def actual_release_spec(self):
+        source = ROOT / "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/core_collect.py"
+        descriptor = importlib.util.spec_from_file_location("policy_test_actual_release_core", source)
+        core = importlib.util.module_from_spec(descriptor); descriptor.loader.exec_module(core)
+        cohort = policy.candidate_cohort()
+        identities = {name: cohort[name] for name in ("numerical_revision", "generation_revision",
+            "generator_identity_sha256", "runtime_identity_sha256", "archive_sha256")}
+        output = self.root / "actual-collector-spec.json"
+        # Only the runtime inspection is replaced. Serialize through the actual
+        # collector so this test catches cross-component schema mismatches.
+        with mock.patch.object(core, "cohort", return_value={"candidate_cohort": identities}):
+            core.write_spec(SimpleNamespace(report=self.root / "report", work=self.root / "work", output=output))
+        return json.loads(output.read_text()), {"candidate_cohort": identities}, cohort
+
+    def test_actual_release_collector_spec_matches_reader_without_top_level_spec_ids(self):
+        spec, protocol, cohort = self.actual_release_spec()
+        self.assertNotIn("candidate_cohort", spec)
+        self.assertTrue(policy._check_correctness_release(spec, protocol, {"candidate_cohort": {"bound": True}}, cohort))
+
+    def test_actual_release_collector_missing_nested_or_contradictory_ids_rejected(self):
+        good, protocol, cohort = self.actual_release_spec()
+        for mutation in ("missing-nested", "missing-id", "wrong-nested", "wrong-top-level", "wrong-protocol", "finalized"):
+            spec, observed = copy.deepcopy(good), copy.deepcopy(protocol)
+            if mutation == "missing-nested": spec["cohort"].pop("candidate_cohort")
+            elif mutation == "missing-id": spec["cohort"]["candidate_cohort"].pop("archive_sha256")
+            elif mutation == "wrong-nested": spec["cohort"]["candidate_cohort"]["runtime_identity_sha256"] = "f" * 64
+            elif mutation == "wrong-top-level": spec["candidate_cohort"] = {"archive_sha256": "f" * 64}
+            elif mutation == "wrong-protocol": observed["candidate_cohort"]["generation_revision"] = "f" * 40
+            with self.subTest(mutation=mutation), self.assertRaises(RuntimeError):
+                policy._check_correctness_release(policy.v2.seal(spec), observed,
+                    {"candidate_cohort": {"bound": True}}, cohort, finalization=mutation == "finalized")
 
     def test_literal_card_parser_rejects_missing_values_and_wrong_or_false_selector(self):
         card = self.put(self.root / "card.dat", "#MLReductionLib\n8\n#UseQPIntegrandForNinjaRS\n.true.\n")

@@ -1,0 +1,20 @@
+{
+  "actual_check_install_used": true,
+  "actual_reduction_engine_evaluations": 0,
+  "arguments": [
+    "ninjars",
+    "--update",
+    "--jobs=3"
+  ],
+  "interface_sha256": "5ae13768c15462ace63f7780cd4a0750c99479fadea3f1512175c2fc7393044d",
+  "note": "Additional read-only frontend control; not counted as another unittest case.",
+  "observed_options": {
+    "options_for_HEPToolsInstaller": [
+      "--update",
+      "--jobs=3"
+    ],
+    "update_options": []
+  },
+  "passed": true,
+  "schema": "ninjars-update-real-cli-validation-control-v1"
+}

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Root must first supply the exact new source/runtime freeze and CPU release.
 set -euo pipefail
-cd /shared/external/madloop_ninjars/madgraph7_madloop_ninjars
+campaign_script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+campaign_checkout="$(git -C "$campaign_script_dir" rev-parse --show-toplevel)"
+cd "$campaign_checkout"
 source .ninjars-build/dev-env.sh
 export TMPDIR="$PWD/.ninjars-build/tmp"
 export SYMBOLICA_LOCK_DIR="$PWD/.ninjars-build/symbolica-locks"

@@ -1,0 +1,10 @@
+{
+  "report": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runs/ninja-near-singular",
+  "outputs": {
+    "control-forced-qp-candidate-6": ".benchmark-work/policy-v3/final-pins-20261021-v1/representative/ninja-near-singular/workers/control-forced-qp-candidate-6/outputs/candidate/control-forced-qp"
+  },
+  "role_map": {
+    "baseline": "original",
+    "candidate": "candidate_corrected"
+  }
+}

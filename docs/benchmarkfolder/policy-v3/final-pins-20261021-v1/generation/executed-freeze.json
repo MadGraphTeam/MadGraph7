@@ -1,0 +1,23 @@
+{
+  "schema": "final-core-generation-freeze-v1",
+  "committed_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+  "source_and_installation_frozen": true,
+  "generation_resource_release": true,
+  "generation_cpus": [
+    6,
+    7
+  ],
+  "bridge_sources_sha256": "316c44cfcb1d21b032245870b0b7c7e81530f3adc0192620273f758bf6a6ca16",
+  "installation_files_sha256": {
+    "Cargo.toml": "aeb9c987c47586617585e3da782e60ee3670942db639ed48a73fc75f6f89c0d6",
+    "Cargo.lock": "b8c2eddffe0dd5cb3a88b3b934133c3a0146638fa33de5e5f9fa4d65ee124f18",
+    "include/mninjars.f90": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+    "include/ninjars.h": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+    "lib/libninjars.a": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c",
+    "lib/mninjars.mod": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+    "lib/ninjars-config.json": "a2b427c4e1c766180cec068ca716e2ff3d035226b06864c50156202bcfa4617f",
+    "lib/ninjars-link-before.txt": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+    "lib/ninjars-native-libs.txt": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+    "install.log": "cd49d7d3dcb26ed08cb252209ca8c7081ca7ce914fd636f704b5969ddb63d9a4"
+  }
+}

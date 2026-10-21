@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ninjars_benchmark_policy_v3 as authority
 import ninjars_report_v2 as legacy
 import ninjars_precision_v2 as precision
+import ninjars_report_qualifications_v3 as release_proofs
 
 v2 = legacy.policy
 ROOT = v2.ROOT
@@ -161,32 +162,54 @@ def external_snapshot(dataset, inputs):
 
 def qualification_snapshot(dataset, rules, proof, pair_binding, correction, inputs,
                            runtime_provenance_spec=None, validation_spec=None,
-                           precision_spec=None, supplement_spec=None, profile_spec=None):
+                           precision_spec=None, supplement_spec=None, profile_spec=None,
+                           installation_export_spec=None, numerical_controls_spec=None):
     """Use existing proof authorities; unsupported full scopes remain pending."""
     bindings = [pair_binding] if pair_binding is not None else []
     if not bindings:
         require(not any(p is not None for p in (runtime_provenance_spec, validation_spec,
-                    precision_spec, supplement_spec, profile_spec)), "Qualification requires actual pair source/runtime bindings")
+                    precision_spec, supplement_spec, profile_spec, installation_export_spec,
+                    numerical_controls_spec)), "Qualification requires actual pair source/runtime bindings")
         return {"runtime": pending("Actual timing-pair binding is absent"),
                 "qualifications": {k: pending("Independent proof authority not supplied") for k in authority.QUALIFICATION_KEYS},
                 "profiles": [], "profile_status": "pending"}
     signature = legacy.candidate_runtime_signature(bindings)
     runtime = legacy.runtime_provenance_snapshot(runtime_provenance_spec, dataset, bindings, inputs.checked)
-    regressions = legacy.regression_snapshot(validation_spec, bindings, inputs.checked)
+    generators = {}
+    if installation_export_spec is not None or (validation_spec is not None and
+            v2.path(validation_spec) == release_proofs.REGRESSIONS):
+        for item in pair_binding["targets"].values():
+            if item["role"] == "candidate_corrected":
+                files = item["generation_source_identity"]["tree_state"]["tracked"]
+                generators[legacy.bench.content_digest(files)] = files
+        require(len(generators) == 1, "Qualification requires one measured candidate generator")
+    regressions = (release_proofs.regression_snapshot(validation_spec, next(iter(generators.values())), inputs.checked)
+                   if validation_spec is not None and v2.path(validation_spec) == release_proofs.REGRESSIONS else
+                   legacy.regression_snapshot(validation_spec, bindings, inputs.checked))
+    installation_export = (release_proofs.installation_snapshot(installation_export_spec, signature,
+        next(iter(generators.values())), inputs.checked) if installation_export_spec is not None else
+        pending("Installed runtime smoke is checked separately; complete relocated standalone/NLO/export authority is not supplied"))
     controls = (precision.validate(precision_spec, signature["identity_sha256"], inputs.checked,
                                   runtime_signature=signature) if precision_spec is not None else
                 pending("Installed public-ABI and 256/384-bit proof not supplied"))
+    source_controls = (release_proofs.numerical_snapshot(numerical_controls_spec, precision_spec,
+        signature, inputs.checked) if numerical_controls_spec is not None else
+        pending("Final-release1392 source-bound convergence authority is not supplied"))
     groups = v2.proof_runtime_signatures(proof["entries"])
     coverage = groups.get("candidate_corrected/8", {}).get(signature["identity_sha256"], {})
     automatic_rescue = {"dp", "qp"}.issubset(coverage.get("precisions", []))
-    precision_rescue = {"status": "failed" if controls.get("status") == "failed" else "passed" if controls.get("status") == "passed" and automatic_rescue else "pending",
+    source_required = "candidate_cohort" in rules
+    precision_rescue = {"status": "failed" if any(c.get("status") == "failed" for c in (controls, source_controls)) else
+                        "passed" if controls.get("status") == "passed" and automatic_rescue and
+                        (not source_required or source_controls.get("status") == "passed") else "pending",
                         "installed_precision": controls, "normal_dp_qp_runtime_proven": automatic_rescue,
-                        "scope": "Existing independent installed precision and accepted representative-runtime authorities"}
+                        "source_precision_controls": source_controls, "source_precision_required": source_required,
+                        "scope": "Actual installed public-ABI precision and accepted normal DP/QP runtime; explicit final-release cohorts additionally require the complete source-bound convergence stream. Historical bit identity and direct-provider findings remain separate."}
     loop = legacy.supplement_snapshot(supplement_spec, dataset, bindings, inputs.checked)
     # A successful strict v2 supplement is sufficient; a future NRS-only loop
     # authority may be needed for an external-only failure. Never suppress it.
     qualifications = {
-        "installation_export": pending("Installed runtime smoke is checked separately; complete relocated standalone/NLO/export authority is not supplied"),
+        "installation_export": installation_export,
         "precision_rescue": precision_rescue,
         "focused_controls": pending("Source-bound complex/mixed/rotation/state-control authority is not supplied"),
         "loop_induced": {"status": "passed" if loop.get("complete_campaign_passed") is True else loop["status"],
@@ -201,7 +224,7 @@ def qualification_snapshot(dataset, rules, proof, pair_binding, correction, inpu
 
 def build_snapshot(dataset_path, timestamp=None, runtime_provenance_spec=None,
                    validation_spec=None, precision_spec=None, supplement_spec=None,
-                   profile_spec=None):
+                   profile_spec=None, installation_export_spec=None, numerical_controls_spec=None):
     dataset_path = v2.path(dataset_path)
     dataset = authority.validate_dataset(dataset_path)
     require(dataset.get("schema") == authority.DATASET, "Wrong v3 dataset authority")
@@ -294,7 +317,8 @@ def build_snapshot(dataset_path, timestamp=None, runtime_provenance_spec=None,
             if finding.get("case") == case["id"] and finding.get("backend") in BACKENDS:
                 case["external_backend_cells"][str(finding["backend"])] = finding["status"]
     qualified = qualification_snapshot(dataset, rules, proof, pair_binding, correction, inputs,
-        runtime_provenance_spec, validation_spec, precision_spec, supplement_spec, profile_spec)
+        runtime_provenance_spec, validation_spec, precision_spec, supplement_spec, profile_spec,
+        installation_export_spec=installation_export_spec, numerical_controls_spec=numerical_controls_spec)
     qualifications = qualified["qualifications"]
     qualification_gates = {k: qualifications[k]["status"] == "passed" for k in authority.QUALIFICATION_KEYS}
     publication = {"four_tool_report": False, "profiles": qualified["profile_status"] == "passed",
@@ -328,7 +352,7 @@ def build_snapshot(dataset_path, timestamp=None, runtime_provenance_spec=None,
             "v3_template": v2.relative(TEMPLATE),
             "style": "docs/benchmarkfolder/style.typ"},
         "authority_sources_sha256": {v2.relative(Path(module.__file__)): legacy.workers.digest(Path(module.__file__))
-            for module in (sys.modules[__name__], authority, legacy, precision, legacy.profiler,
+            for module in (sys.modules[__name__], authority, legacy, precision, release_proofs, legacy.profiler,
                            precision.supplement, v2, legacy.bench, legacy.workers)},
         "presentation_sources_sha256": {name: legacy.workers.digest(ROOT / name) for name in
             ("docs/benchmarkfolder/policy-v2/template/benchmark.typ", "docs/benchmarkfolder/style.typ")},
@@ -373,13 +397,14 @@ def main():
     parser.add_argument("--timestamp")
     parser.add_argument("--render", action="store_true", help="Write separate v3 Typst/assets to a fresh output directory")
     parser.add_argument("--compile", action="store_true", help="Render and compile v3 presentation; never a publication pass")
-    for name in ("runtime-provenance", "validation-spec", "precision-proof", "supplement", "profile-spec"):
+    for name in ("runtime-provenance", "validation-spec", "precision-proof", "supplement", "profile-spec", "installation-export", "numerical-controls"):
         parser.add_argument("--" + name, type=Path)
     args = parser.parse_args()
     target = v2.path(args.output)
     require(not target.exists(), "Preserve prior report snapshots; choose a new output")
     specifications = dict(runtime_provenance_spec=args.runtime_provenance, validation_spec=args.validation_spec,
-                          precision_spec=args.precision_proof, supplement_spec=args.supplement, profile_spec=args.profile_spec)
+                          precision_spec=args.precision_proof, supplement_spec=args.supplement, profile_spec=args.profile_spec,
+                          installation_export_spec=args.installation_export, numerical_controls_spec=args.numerical_controls)
     if args.render or args.compile:
         value = render(args.dataset, target, timestamp=args.timestamp, compile_pdf=args.compile, **specifications)
     else:

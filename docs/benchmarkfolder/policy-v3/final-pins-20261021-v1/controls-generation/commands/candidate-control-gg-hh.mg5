@@ -1,0 +1,13 @@
+set automatic_html_opening False
+set auto_update 0
+set nb_core 4
+set loop_optimized_output True
+set output_dependencies external
+set complex_mass_scheme False
+set ninja /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib
+set collier /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier
+set ninjars /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/HEPTools/ninjars/lib
+import model loop_sm
+generate g g > h h [sqrvirt=QCD]
+output standalone /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-hh
+quit

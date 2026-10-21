@@ -37,8 +37,12 @@ def cleanup_verified_workers(report,attempt):
     ledger=report/'process-ledger.jsonl'; actions=[]
     if not ledger.exists(): return actions
     for event in reversed([json.loads(line) for line in ledger.read_text().splitlines()]):
-        if event['event'] not in ('worker-start','build-start'): continue
-        recorded=event['identity'];actual=identity(recorded['pid'])
+        if event['event']=='spawn':
+            recorded={key:event[key] for key in ('pid','pgid','start_ticks')}
+        elif event['event'] in ('worker-start','build-start'):
+            recorded=event['identity']
+        else:continue
+        actual=identity(recorded['pid'])
         if actual is None: continue
         if actual['start_ticks']!=recorded['start_ticks'] or actual['pgid']!=recorded['pid']:
             actions.append({'action':'refused-stale-identity','recorded':recorded,'actual':actual});continue

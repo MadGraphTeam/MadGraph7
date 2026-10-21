@@ -1,0 +1,45 @@
+{
+  "schema": "final-core-orchestration-software-tests-v2",
+  "started_utc": "2026-10-21T17:38:41.626637+00:00",
+  "finished_utc": "2026-10-21T17:38:44.749090+00:00",
+  "revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+  "command": [
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+    "-B",
+    "-m",
+    "unittest",
+    "-v",
+    "tests.unit_tests.loop.test_ninjars_benchmark_policy_v3",
+    "tests.unit_tests.loop.test_ninjars_benchmark_pair_v3",
+    "tests.unit_tests.loop.test_ninjars_final_core_collection"
+  ],
+  "cwd_requirement": "repository root",
+  "affinity": [
+    180
+  ],
+  "python": "3.14.7 (main, Aug  5 2026, 10:29:49) [GCC 15.3.0]",
+  "seconds": 3.122470452915877,
+  "returncode": 0,
+  "tests_run": 67,
+  "passed": true,
+  "source_sha256_before": {
+    "tests/unit_tests/loop/test_ninjars_benchmark_policy_v3.py": "0c6d1bbbe75a710d874d5ba6018ccd04246a73ee3ee82a0ad116420ad7499ea3",
+    "tests/unit_tests/loop/test_ninjars_benchmark_pair_v3.py": "8ba1a87a480623f923f31044f5ad1561dc676c44f75174b2acbe0054b37e4bd0",
+    "tests/unit_tests/loop/test_ninjars_final_core_collection.py": "434124eb2f3886ddfcf668b203dc38869d1c8104a4607054edbaa4028a60c655",
+    "tools/ninjars_benchmark_policy_v3.py": "2fdd45f6c5b2e485d04f7ba81a1a13b38ec70017f186c8d72e20b5d574a30b8e",
+    "tools/ninjars_benchmark_pair_v3.py": "1e5fb83daa6021fc7c74350df60d16f64204a93887c7e511ac3347a513e78484",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/core_collect.py": "cd07ad5cbbaf8cb155388752cc77e82f266ffe30798fbfaecb9b68f0af3bff9a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/launch.py": "7da1387416c11bcb235a3c1d6a24ea0f08cf685298686fc17448b46e7548244c"
+  },
+  "source_sha256_after": {
+    "tests/unit_tests/loop/test_ninjars_benchmark_policy_v3.py": "0c6d1bbbe75a710d874d5ba6018ccd04246a73ee3ee82a0ad116420ad7499ea3",
+    "tests/unit_tests/loop/test_ninjars_benchmark_pair_v3.py": "8ba1a87a480623f923f31044f5ad1561dc676c44f75174b2acbe0054b37e4bd0",
+    "tests/unit_tests/loop/test_ninjars_final_core_collection.py": "434124eb2f3886ddfcf668b203dc38869d1c8104a4607054edbaa4028a60c655",
+    "tools/ninjars_benchmark_policy_v3.py": "2fdd45f6c5b2e485d04f7ba81a1a13b38ec70017f186c8d72e20b5d574a30b8e",
+    "tools/ninjars_benchmark_pair_v3.py": "1e5fb83daa6021fc7c74350df60d16f64204a93887c7e511ac3347a513e78484",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/core_collect.py": "cd07ad5cbbaf8cb155388752cc77e82f266ffe30798fbfaecb9b68f0af3bff9a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/launch.py": "7da1387416c11bcb235a3c1d6a24ea0f08cf685298686fc17448b46e7548244c"
+  },
+  "log_sha256": "a2fc9240529e750652c5faa582afc0eeb1b928f6fc3a7ee77769d1f42c317dd8",
+  "scope": "Software-only policy schema and worker ownership checks; no physical amplitudes, compilation, reduction engines, or performance acceptance."
+}

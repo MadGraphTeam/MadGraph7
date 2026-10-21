@@ -1,0 +1,204 @@
+{
+  "original_output_removed": true,
+  "original_nlo_output_removed": true,
+  "nlo_dependencies": "internal",
+  "original_output": ".benchmark-work/policy-v3/final-pins-20261021-v1/install-export/standalone",
+  "relocated_output": ".benchmark-work/policy-v3/final-pins-20261021-v1/install-export/standalone-relocated",
+  "copied_files": {
+    "libninjars.a": {
+      "sha256": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c",
+      "bytes": 297995026,
+      "regular_file": true
+    },
+    "mninjars.mod": {
+      "sha256": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+      "bytes": 1986,
+      "regular_file": true
+    },
+    "ninjars.h": {
+      "sha256": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+      "bytes": 4120,
+      "regular_file": true
+    },
+    "mninjars.f90": {
+      "sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+      "bytes": 8497,
+      "regular_file": true
+    },
+    "ninjars-config.json": {
+      "sha256": "a2b427c4e1c766180cec068ca716e2ff3d035226b06864c50156202bcfa4617f",
+      "bytes": 4050,
+      "regular_file": true
+    },
+    "ninjars-link-before.txt": {
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+      "bytes": 8,
+      "regular_file": true
+    },
+    "ninjars-native-libs.txt": {
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+      "bytes": 48,
+      "regular_file": true
+    }
+  },
+  "nlo_copied_files": {
+    "libninjars.a": {
+      "sha256": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c",
+      "bytes": 297995026,
+      "regular_file": true
+    },
+    "mninjars.mod": {
+      "sha256": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+      "bytes": 1986,
+      "regular_file": true
+    },
+    "ninjars.h": {
+      "sha256": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+      "bytes": 4120,
+      "regular_file": true
+    },
+    "mninjars.f90": {
+      "sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+      "bytes": 8497,
+      "regular_file": true
+    },
+    "ninjars-config.json": {
+      "sha256": "a2b427c4e1c766180cec068ca716e2ff3d035226b06864c50156202bcfa4617f",
+      "bytes": 4050,
+      "regular_file": true
+    },
+    "ninjars-link-before.txt": {
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+      "bytes": 8,
+      "regular_file": true
+    },
+    "ninjars-native-libs.txt": {
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+      "bytes": 48,
+      "regular_file": true
+    }
+  },
+  "link_flags_reference_original_ninjars": false,
+  "installed_config": {
+    "abi_version": 3,
+    "quad_precision": true,
+    "native_libs": [
+      "-ldl",
+      "-lgcc_s",
+      "-lutil",
+      "-lrt",
+      "-lpthread",
+      "-lm",
+      "-ldl",
+      "-lc"
+    ],
+    "local_sources": {},
+    "fortran_compiler": "gfortran",
+    "link_before": [
+      "-lgcc_s"
+    ],
+    "link_order_version": 1,
+    "compiler_runtime": "gnu-linux-libgcc_s-before-rust",
+    "build_provenance": {
+      "manifest_sha256": "aeb9c987c47586617585e3da782e60ee3670942db639ed48a73fc75f6f89c0d6",
+      "lock_sha256": "b8c2eddffe0dd5cb3a88b3b934133c3a0146638fa33de5e5f9fa4d65ee124f18",
+      "git_dependencies": [
+        {
+          "name": "dot-parser",
+          "version": "0.5.1",
+          "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+        },
+        {
+          "name": "feynkit-kinematics",
+          "version": "0.1.0",
+          "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+        },
+        {
+          "name": "gammaloop-workspace-hack",
+          "version": "0.1.0",
+          "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+        },
+        {
+          "name": "graphica",
+          "version": "3.0.1",
+          "source": "git+https://github.com/alphal00p/symbolica.git?rev=9cdc2949cdb153478c1eca0d40690dc0abfc616e#9cdc2949cdb153478c1eca0d40690dc0abfc616e"
+        },
+        {
+          "name": "linnet",
+          "version": "0.17.0",
+          "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+        },
+        {
+          "name": "ninjars",
+          "version": "0.1.0",
+          "source": "git+https://github.com/alphal00p/ninjars?rev=aa6a6307dd081dc3714f9accebc0df9e5561ae73#aa6a6307dd081dc3714f9accebc0df9e5561ae73"
+        },
+        {
+          "name": "ninjars-positional",
+          "version": "0.1.0",
+          "source": "git+https://github.com/alphal00p/ninjars?rev=aa6a6307dd081dc3714f9accebc0df9e5561ae73#aa6a6307dd081dc3714f9accebc0df9e5561ae73"
+        },
+        {
+          "name": "ninjars-symbolica",
+          "version": "0.1.0",
+          "source": "git+https://github.com/alphal00p/ninjars?rev=aa6a6307dd081dc3714f9accebc0df9e5561ae73#aa6a6307dd081dc3714f9accebc0df9e5561ae73"
+        },
+        {
+          "name": "numerica",
+          "version": "3.0.1",
+          "source": "git+https://github.com/alphal00p/symbolica.git?rev=9cdc2949cdb153478c1eca0d40690dc0abfc616e#9cdc2949cdb153478c1eca0d40690dc0abfc616e"
+        },
+        {
+          "name": "oneloop",
+          "version": "0.1.0",
+          "source": "git+https://github.com/alphal00p/oneloopmaster.git?rev=8ec256fc26cb361b20e10f59c19beb35717ef32c#8ec256fc26cb361b20e10f59c19beb35717ef32c"
+        },
+        {
+          "name": "spenso",
+          "version": "0.6.0",
+          "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+        },
+        {
+          "name": "spenso-macros",
+          "version": "0.3.2",
+          "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+        },
+        {
+          "name": "symbolica",
+          "version": "3.0.1",
+          "source": "git+https://github.com/alphal00p/symbolica.git?rev=9cdc2949cdb153478c1eca0d40690dc0abfc616e#9cdc2949cdb153478c1eca0d40690dc0abfc616e"
+        },
+        {
+          "name": "symbolica-typst-plugin",
+          "version": "0.1.0",
+          "source": "git+https://github.com/symbolica-dev/symbolica-typst-plugin?rev=57b7455b37c30f4f87353c0073e49f5225e937ab#57b7455b37c30f4f87353c0073e49f5225e937ab"
+        },
+        {
+          "name": "symbolica-utils",
+          "version": "0.1.0",
+          "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+        }
+      ]
+    }
+  },
+  "standalone_symbols": {
+    "executable_sha256": "e38d9aefdd61aed15ffdcbdd4dfd542ddc3140f76b975ae09f65aaba1d44118a",
+    "symbol_command": [
+      "nm",
+      "-D"
+    ],
+    "full_nm_stdout_sha256": "5e2f5dbf4fdace4ac05b2b015052f2c21bf8c136a64f2d06431dff74dc131039",
+    "binary128_helpers": [
+      "                 U __addtf3@GCC_4.3.0",
+      "                 U __divtf3@GCC_4.3.0",
+      "                 U __multf3@GCC_4.3.0",
+      "                 U __subtf3@GCC_4.3.0"
+    ],
+    "libgcc_s_resolved": true
+  },
+  "driver_change": "Use 20 calls to finish helicity/filter initialization. Argument 'stable' enables the documented force-stability call during initialization; normal DP/QP calls keep the original driver policy.",
+  "environment_libraries_removed": [
+    "LD_LIBRARY_PATH",
+    "LIBRARY_PATH"
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "schema": "final-release-exact-planar-acceptance-view-v1",
+  "raw_observation": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/planar-exact-proof.json",
+    "sha256": "bbd2dfa5f2167d7d0a27059c8199d224e800d6ccdd69f9167a6ff0f72a65956f",
+    "bytes": 5697
+  },
+  "direct_master_stdout": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/planar-sentinels.stdout",
+    "sha256": "29b73482f72c1d5074f0c07fa68f8e811f4e5d24aa5234d243a3b28c133ed2f7",
+    "bytes": 8079
+  },
+  "exact_geometry_certificate": {
+    "path": ".benchmark-work/final-release-audit-20261021-v1/ns9210-geometry.json",
+    "sha256": "f50deaf706dcaa13ca960dbd46003395a20e288fb92955ffafe6239bf5ae10c6"
+  },
+  "checks": [
+    {
+      "record": 0,
+      "mode": 0,
+      "lane": "positive-mass-zero",
+      "status": 0,
+      "passed": true,
+      "scope": "DP complete Laurent comparison to converged512/1024 scalar D0; coefficient1 rank0",
+      "scaled_error": "3.03288246556124308348076526372196007629155832791560743982234189845856130629650874555516123951863348123472698351338901392524377495615519412152246656935601684621364930653927465780069E-13",
+      "dp_tolerance": "1e-10",
+      "reference_512_1024_scaled_difference": "0"
+    },
+    {
+      "record": 1,
+      "mode": 1,
+      "lane": "positive-mass-zero",
+      "status": 0,
+      "passed": true,
+      "scope": "DP complete Laurent comparison to converged512/1024 scalar D0; coefficient1 rank0",
+      "scaled_error": "3.03288246556124308348076526372196007629155832791560743982234189845856130629650874555516123951863348123472698351338901392524377495615519412152246656935601684621364930653927465780069E-13",
+      "dp_tolerance": "1e-10",
+      "reference_512_1024_scaled_difference": "0"
+    },
+    {
+      "record": 2,
+      "mode": 2,
+      "lane": "positive-mass-zero",
+      "status": 1,
+      "passed": true,
+      "scope": "UNSTABLE(1), no512-byte output commit",
+      "scaled_error": null,
+      "dp_tolerance": "1e-10",
+      "reference_512_1024_scaled_difference": "0"
+    },
+    {
+      "record": 3,
+      "mode": 0,
+      "lane": "negative-mass-zero",
+      "status": 0,
+      "passed": true,
+      "scope": "DP complete Laurent comparison to converged512/1024 scalar D0; coefficient1 rank0",
+      "scaled_error": "3.03288246556124308348076526372196007629155832791560743982234189845856130629650874555516123951863348123472698351338901392524377495615519412152246656935601684621364930653927465780069E-13",
+      "dp_tolerance": "1e-10",
+      "reference_512_1024_scaled_difference": "0"
+    },
+    {
+      "record": 4,
+      "mode": 1,
+      "lane": "negative-mass-zero",
+      "status": 0,
+      "passed": true,
+      "scope": "DP complete Laurent comparison to converged512/1024 scalar D0; coefficient1 rank0",
+      "scaled_error": "3.03288246556124308348076526372196007629155832791560743982234189845856130629650874555516123951863348123472698351338901392524377495615519412152246656935601684621364930653927465780069E-13",
+      "dp_tolerance": "1e-10",
+      "reference_512_1024_scaled_difference": "0"
+    },
+    {
+      "record": 5,
+      "mode": 2,
+      "lane": "negative-mass-zero",
+      "status": 1,
+      "passed": true,
+      "scope": "UNSTABLE(1), no512-byte output commit",
+      "scaled_error": null,
+      "dp_tolerance": "1e-10",
+      "reference_512_1024_scaled_difference": "0"
+    }
+  ],
+  "all_calls_accurate_or_rejected_safely": true,
+  "direct_master_false_negative_resolved": false,
+  "production_guard_added": false,
+  "performance_claim": false
+}

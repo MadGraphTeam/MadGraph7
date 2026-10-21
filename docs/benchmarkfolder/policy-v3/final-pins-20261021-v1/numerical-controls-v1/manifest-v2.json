@@ -1,0 +1,1157 @@
+{
+  "schema": "final-release-numerical-capsule-v1",
+  "revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+  "revision_scope": "Exact45 source bytes are equal to this committed revision; original runs retain their earlier dirty capture identity in immutable logs/proofs.",
+  "bridge_source_sha256": {
+    ".gitignore": "75b7dbb02a9764029bd6e213d34359fa93b3241ba7e74ebf4b9b13dc3fbc27aa",
+    "Cargo.lock": "b8c2eddffe0dd5cb3a88b3b934133c3a0146638fa33de5e5f9fa4d65ee124f18",
+    "Cargo.toml": "aeb9c987c47586617585e3da782e60ee3670942db639ed48a73fc75f6f89c0d6",
+    "Makefile": "3373a4dea5f02c76b13a86b2d323b0f39d2d080e2acb3e682d692d528836838f",
+    "UPSTREAM.md": "2e546da726ff039d30b4fa76f10a06b0faec9538d0fc2a7c087a8990fb36954c",
+    "build.rs": "fa389383328261938398f067a18ad860ef21e0bb4bc15c95b24be3e0a6704342",
+    "examples/replay.rs": "6381e93e652fec4547949a7a2a4c05e7b6955fe817862e97f42e83f2d0182200",
+    "mninjars.f90": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+    "ninjars.h": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+    "smoke.f90": "913e96e53e2ba15a71679559d0a2b79b3a12cc7640286ab1a86d1db260e2919a",
+    "src/final_precision_tests.rs": "2b07301725c3f720410954ff7e5ccb33b131907e951b098a34693bf3e4d0ac77",
+    "src/guarded.rs": "0c7ac81fe597083e13b069e74a978161d56a101ca8b58bad4b8adaa04ad0d94c",
+    "src/guarded_fenv.c": "79e47e68003e6660cfc0d67318b1069e0f2f8958a7a6d642020543670ffbb427",
+    "src/guarded_tests.rs": "9566681f2b67e82f5fed8f3186c362820b7991624296d04c905491b230f3769d",
+    "src/lib.rs": "4f7bd6eb93d1860f983f8284b5256b06bb24e65d6698a9b885d9018be8e05d2c",
+    "src/panic_contract_tests.rs": "e029723d3ead3424b2f198c6efa2df5073025f9c2b75820b7d3e5b74926182f0",
+    "src/retry_tests.rs": "2492364fb5877d3ea34088b2f33e3a55c27ba77bafe7871c4d91f78aa41fb10e",
+    "src/tensor.rs": "525d5083904cd0257938c128e0e44f2d202de0e31f82b411f45e2a004ff8e5e1",
+    "src/tensor_allocation_tests.rs": "73703def29114280d188ff396a9177eb26fb8ab6e81516286fd3db47869e55ad",
+    "src/tensor_capture_tests.rs": "38354ecdff8568c877f465c2a6cce18120d737ad962ee5375039cfec15dfec53",
+    "src/tensor_dense_reference.rs": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55",
+    "src/transport_contract_tests.rs": "884307cd6500059cfb28a24748f8219d0d9f3a87ab84dd97bfd9af34a97ac6fb",
+    "src/transport_replay_tests.rs": "d0a0e3129a9eb43765087d182a204db012cd8bb90ade093c25449e94c6a9a6cf",
+    "src/upstream_master_tests.rs": "48eb9e0d7c7a23bd0f9039be3e986ea2322a4c31d236073a322ca4d71b57f456",
+    "tests/data/cases/madloop-four-photon-top-box-0.json": "9aea91e4e6c70b0f5984b2070e7aef8a77699260dacac1a9b3c9d65f23189796",
+    "tests/data/cases/madloop-gg-hh-top-box-2.json": "c9271b79b2a4df2155ee8855fda3ffc6090f37261711468efd3126cf6665d5a3",
+    "tests/data/cases/madloop-gg-hh-top-triangle-0.json": "5178de553b5dcfa0fcca616748943a63f2933399203f7d7040ba9c98aa3b4ea2",
+    "tests/data/cases/madloop-gg-hhh-top-box-8.json": "3f14438d72237acbd9c74f8ba813fa6fd04c2aa1af2cdde143134146a650a489",
+    "tests/data/cases/madloop-gg-hhh-top-pentagon-26.json": "af571c4df618dafad08dc0acdb345f39d0446a2ec814f03b7cc2ee5a25d727ca",
+    "tests/data/cases/madloop-gg-hhh-top-triangle-0.json": "98483fd5759713618d7dfa784d604b83a7f03b241a5402d9a808af3655920353",
+    "tests/data/cases/madloop-hgg-top-triangle-0.json": "8a70a0fc3569676b2601dbeb36b16cb70817b40df8eb3e762e4ed1899246d590",
+    "tests/data/compensated/corrected-results.json": "f868eb5d279ef0ef68aefcf34704a094cb4452447aff857c7650358b623dfa94",
+    "tests/data/compensated/expansion-results.json": "8bdf9a439db23f793ca38f774997d866d6a0fa279e00a086d81cee21a3d67b76",
+    "tests/data/compensated/inputs.json": "1fb7ea9413efd25053dfdab357baf9ee973d8df3b6452fbaa280b684aea177b9",
+    "tests/data/convergence.json": "b34d6ef194a5297914050ceb6ffd25f5402c0150898921d2dcaf65471e55ec93",
+    "tests/data/ninja/madloop-four-photon-top-box-0.json": "dc34ad2683fbe535140c63bba564b8f6e8e74ce3c64eb17ef3cfa96baa5a6dde",
+    "tests/data/ninja/madloop-gg-hh-top-box-2.json": "d893de26b4e2e4edbeb4d6ba3122a6cd231bd5842719b3b8b2c4a84ee5e67dcc",
+    "tests/data/ninja/madloop-gg-hh-top-triangle-0.json": "669b92538382201f26487865cd44a1d8eea03b13ed7b99dcdae21bd7662cca95",
+    "tests/data/ninja/madloop-gg-hhh-top-box-8.json": "c49f6d9db0c09602c6e663e60499a9b5126b9ca66d1738f6b5bac5846afda572",
+    "tests/data/ninja/madloop-gg-hhh-top-pentagon-26.json": "e4b1522302bab1592924b251a7ee153c94623726d68b2d552e6211a4b0b3ded3",
+    "tests/data/ninja/madloop-gg-hhh-top-triangle-0.json": "7905a646d4bb23daf1b0506b662913f60796c87dfcbbd556c5bd957f7eba3bd2",
+    "tests/data/ninja/madloop-hgg-top-triangle-0.json": "a50906866f8e8812c02365cff98cb56a20639537f1804d290edbd8020ed9d30b",
+    "tests/data/provenance.json": "f77b7cee3079a95f001a3cc7d6a9f0aa1f8a1b51f3668b0d709552c67016d18b",
+    "tests/fenv_helpers.c": "cdb2df81ddcfc898f00dae4d74a78f0d6436aaa6c9ea3e5991bf11616b8bbd8d",
+    "tests/replay.py": "9c475d4fa7c17c200eafda7a1e0e6e0bb0f4392de2c89a9e26a302f69089a2b9"
+  },
+  "verifier_sha256": "589b05ef13289489b5dee1fb247da5f912d4c3abb6448126403af4f310bc6f9d",
+  "installation": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/install-export/installation.json",
+    "sha256": "df329e3b705d6793753531fab84671056f654849a3d033325882539da55abd5b",
+    "bytes": 16025
+  },
+  "installed_precision_portable": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/installed-precision/run-v1/result-portable.json",
+    "sha256": "3fe9ea08112d4ad7238155f9d7db07d3e3533467c58c3046b9a73e885bea0657",
+    "bytes": 26806
+  },
+  "portable_unit_proof": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/portable-unit-proof.json",
+    "sha256": "fcc7e54b7fead1e820367f5f4afe882353392a24de6f8ab7b2a65e4ef3b085ec",
+    "bytes": 11257
+  },
+  "portable_build_record": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/portable-build-record.json",
+    "sha256": "592bcada00abe1e2be1ea9ab898920f20a03c312ac7156a782abf361137fe582",
+    "bytes": 6887
+  },
+  "artifacts": {
+    "build-active.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build-active.json",
+      "sha256": "08e1eabbbb07c091678f2347e28982406d25379ae94e2a0af0fbd4fb07e4e44e",
+      "bytes": 479
+    },
+    "build-attempt-2-active.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build-attempt-2-active.json",
+      "sha256": "5d7fdd08c4656ba868b9bca2d5bd89c881831c7667bec94c1ae99a56b7815011",
+      "bytes": 479
+    },
+    "build-attempt-2-process.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build-attempt-2-process.json",
+      "sha256": "f53d5022054989c07c28f50fa95d4b18b1e1e03898211548523bbb3b341fd103",
+      "bytes": 5367
+    },
+    "build-attempt-2.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build-attempt-2.stderr",
+      "sha256": "12c98394fb355ece37be52ab9af7e4a534241f1cd0ce874b65c40f7bcb899387",
+      "bytes": 218
+    },
+    "build-attempt-2.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build-attempt-2.stdout.gz",
+      "sha256": "e54299587e1c5f078dc040eb1c62666c9cce833258eca8615fcfe71ed686189d",
+      "bytes": 30229,
+      "compression": "gzip",
+      "decoded_sha256": "c9430db9c77666d8a4026aff42ec2946e6f4e244d69b8ac4d4cb56faad42a5ff",
+      "decoded_bytes": 553844
+    },
+    "build-failed-source-freeze.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build-failed-source-freeze.json",
+      "sha256": "67809cbe003f65d337c79d72a1bbd5c570b804e3f9dc1f99f61e013cb9f881a3",
+      "bytes": 5507
+    },
+    "build-failed-upstream_master_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build-failed-upstream_master_tests.rs",
+      "sha256": "49128e9ac893066e1926e625843d83fbdc5cc5e8cfa1ab771089c1e4090b6eb3",
+      "bytes": 10056
+    },
+    "build-fenv-active.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build-fenv-active.json",
+      "sha256": "fd99ac0a19126a34925d60121ec5ef433a14eef0718292003b3207d063bb4e5a",
+      "bytes": 522
+    },
+    "build-fenv-process.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build-fenv-process.json",
+      "sha256": "a4cb025d18e865c8e61beadb8eaeb5b2b9f28a933b3f322bda5ce6361ba04473",
+      "bytes": 5409
+    },
+    "build-fenv-record.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build-fenv-record.json",
+      "sha256": "34ca0462102999799757555e8dae6081f175e3397d655f930d797d8e4b7a6d52",
+      "bytes": 6212
+    },
+    "build-fenv.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build-fenv.stderr",
+      "sha256": "71a8d5b373c8ed3cb43cc9ec04015cd3cab0ca6de5cb93fb5c09a5cae117ddc6",
+      "bytes": 218
+    },
+    "build-fenv.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build-fenv.stdout.gz",
+      "sha256": "5bb338bb3e3fcb5ab08097a0828e717e68a7ad19c706abb9833e7923383627b6",
+      "bytes": 30243,
+      "compression": "gzip",
+      "decoded_sha256": "8dfd954be9a93c154d31d29eb0d8b58f66dc9e8a24bcc316df9eecd6449ec2ef",
+      "decoded_bytes": 554086
+    },
+    "build-process.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build-process.json",
+      "sha256": "2b81f93c881866442f3e3973956b583455e4cfde78273e4943912f6ea5206875",
+      "bytes": 5370
+    },
+    "build-record.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build-record.json",
+      "sha256": "7c909013edd8c3914d6282dcd9f2851aac383451d268fa0d4a2e0a0604c7536f",
+      "bytes": 6046
+    },
+    "build.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build.stderr",
+      "sha256": "7f161e3269fa24f6f033817b69db3f93794a25b9e5471ccc3b342445108fd98b",
+      "bytes": 7701
+    },
+    "build.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/build.stdout.gz",
+      "sha256": "da7ce9f47552f22d10a7a96d98c198debab3f30c47ebfebf65429bb664ef591c",
+      "bytes": 32743,
+      "compression": "gzip",
+      "decoded_sha256": "337b5248a67513e6fb0620267d9612847007869fcaee9172943a081dd77bba4e",
+      "decoded_bytes": 567393
+    },
+    "classify_replay.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/classify_replay.py",
+      "sha256": "01a0bec36a448d80dd01a659dc6e7e32e30905dcc91134ac769e3ec1682e6802",
+      "bytes": 9049
+    },
+    "committed-source-equivalence.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/committed-source-equivalence.json",
+      "sha256": "1d9b0011815c562ddbaef5ff55644c2ead39279de7929cc2a7cc2fd3044c0d49",
+      "bytes": 5649
+    },
+    "fortran-smoke-active.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/fortran-smoke-active.json",
+      "sha256": "e26b0e0091feb42ede746e754d79cc6a41bd5f4837913bce3af231c2355843bb",
+      "bytes": 266
+    },
+    "fortran-smoke-build.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/fortran-smoke-build.stderr",
+      "sha256": "7870622fc8bfa44e4efb2a3a1425de9c77c6d5dac70aa9eab4c56d763b4d75d9",
+      "bytes": 322
+    },
+    "fortran-smoke-build.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/fortran-smoke-build.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "fortran-smoke-proof.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/fortran-smoke-proof.json",
+      "sha256": "a30547d9e8058357ea6e351875790640ea0895cc8db6e940f95a9d11489c5cbc",
+      "bytes": 2953
+    },
+    "fortran-smoke.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/fortran-smoke.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "fortran-smoke.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/fortran-smoke.stdout",
+      "sha256": "a2653b0b09e6f9739c2bfaa5d85d889d1d72d9b12c19241478f4fbbe513b180a",
+      "bytes": 1323
+    },
+    "handoff-manifest.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/handoff-manifest.json",
+      "sha256": "d63e001e87e189d6024d472851b411dea56a259388a3d35ec4264f62e0b76572",
+      "bytes": 11269
+    },
+    "handoff-proof.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/handoff-proof.json",
+      "sha256": "bde910b70a51ca653a2d36d9aa217035da59c0f94baa4ecf9847e034eb4e7caa",
+      "bytes": 6016
+    },
+    "high-rank-active.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/high-rank-active.json",
+      "sha256": "f801eaf3ad52b138f7b8246990bb7cff7350cca8feba086146960376955a407a",
+      "bytes": 266
+    },
+    "high-rank-proof.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/high-rank-proof.json",
+      "sha256": "485680472bcb747e2fac8ae640a38a323af917335893e5957b1e17ba39bad73c",
+      "bytes": 18103
+    },
+    "high-rank-references.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/high-rank-references.json",
+      "sha256": "53a74f50105384631794c1638b554399b1e0f9dde842c202866893ca9b03aeba",
+      "bytes": 45669
+    },
+    "high-rank-requests.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/high-rank-requests.json",
+      "sha256": "2065e69a40618439f06f24437a4d5c141beb7230eb8ac67b80525625688a1cbe",
+      "bytes": 309660
+    },
+    "high-rank-requests.txt": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/high-rank-requests.txt",
+      "sha256": "c9d482ee96fc45169ced7d7026ab89ef8b3ccd9cdbe0e90bdb9ca7ee0b284cb7",
+      "bytes": 257478
+    },
+    "high-rank.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/high-rank.stderr",
+      "sha256": "e096203c68f3fab07a40f8b25a7c3ebd47f0d7b6fa1b64aa9228a693df4e3c40",
+      "bytes": 754
+    },
+    "high-rank.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/high-rank.stdout",
+      "sha256": "8cf8bfca52a8da1f912e1e212d6b9efe3610d830117bfdf24c1a2b46f1c7f7fd",
+      "bytes": 9016
+    },
+    "installed64-spec.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/installed64-spec.json",
+      "sha256": "90533816a24b4e53b43a6cfe5ad7d78423e723e694785245e92b5956c985bb98",
+      "bytes": 17882
+    },
+    "ordinary-convergence.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/ordinary-convergence.json",
+      "sha256": "5c82eda2f63979dc0cab019e100f57f4c0c1409ccdd8565728801e18e6425874",
+      "bytes": 11901
+    },
+    "ordinary-fenv-active.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/ordinary-fenv-active.json",
+      "sha256": "ce3aa1362605490d6fcfd853dd1f17c19295a277fdc36207e0b95e9696157b82",
+      "bytes": 339
+    },
+    "ordinary-fenv-process.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/ordinary-fenv-process.json",
+      "sha256": "2ede0793eb0ff597281494954d5eaa23800eba408831a4c982ed0ee1d56e0eee",
+      "bytes": 10979
+    },
+    "ordinary-fenv.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/ordinary-fenv.stderr",
+      "sha256": "1aad549af7fb493c4e85d6e491acf56273bc0726ad622b09ef93a4e212f57c73",
+      "bytes": 663
+    },
+    "ordinary-fenv.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/ordinary-fenv.stdout",
+      "sha256": "9dfb23e86afe938963d9a159f824d669adc5b97360c7b0bd815dbc0b1502899d",
+      "bytes": 11824
+    },
+    "ordinary-no-fenv-active.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/ordinary-no-fenv-active.json",
+      "sha256": "d28d6c34570a61ca93702c2001455098cf21e655c1b8b20e6242fd3000b55f0f",
+      "bytes": 340
+    },
+    "ordinary-no-fenv-process.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/ordinary-no-fenv-process.json",
+      "sha256": "50e0f023ebd43822ae45952af2ec21286ae91be6407c2dcb9d3a52cd1de91afb",
+      "bytes": 10948
+    },
+    "ordinary-no-fenv.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/ordinary-no-fenv.stderr",
+      "sha256": "667481aa2176573fa1b4b21d889d0abe7cddd518c701e54e0b0c7fe597503e26",
+      "bytes": 662
+    },
+    "ordinary-no-fenv.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/ordinary-no-fenv.stdout",
+      "sha256": "87d116d405cbf8210910967275edd5e622556f9e4b5737e9fe392926c3eb1b0a",
+      "bytes": 11733
+    },
+    "physical-active.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/physical-active.json",
+      "sha256": "0457af82683c6b2f77a505dbaaae30c309407aa9a1c2252a2eea1dcdf9919afb",
+      "bytes": 268
+    },
+    "physical-build.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/physical-build.stderr",
+      "sha256": "7870622fc8bfa44e4efb2a3a1425de9c77c6d5dac70aa9eab4c56d763b4d75d9",
+      "bytes": 322
+    },
+    "physical-build.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/physical-build.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "physical-driver.c": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/physical-driver.c",
+      "sha256": "8ce7d7f55d6a118f344ca785dc0ce60772b6a096474064dbf923f7c42a5c69a6",
+      "bytes": 5056
+    },
+    "physical-proof-v2.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/physical-proof-v2.json",
+      "sha256": "cb96a1216554352125671609de014cbbcc62d8670480861f395c8109bcc8d95f",
+      "bytes": 31917
+    },
+    "physical-proof.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/physical-proof.json",
+      "sha256": "e72d605f07f6685cc1061ce0ca69ca7b862023344152b51a9e336719b041af9e",
+      "bytes": 25729
+    },
+    "physical-requests.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/physical-requests.json",
+      "sha256": "088fce0cb0b97847c6f8086a6f3c4600ee0b82f4e7e856e26f0782bff72dce96",
+      "bytes": 377806
+    },
+    "physical-requests.txt": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/physical-requests.txt",
+      "sha256": "558dba9e62a5102b27d0af08482f9ff945e8c9a2be0208812b8504cf69561aa6",
+      "bytes": 324699
+    },
+    "physical.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/physical.stderr",
+      "sha256": "e096203c68f3fab07a40f8b25a7c3ebd47f0d7b6fa1b64aa9228a693df4e3c40",
+      "bytes": 754
+    },
+    "physical.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/physical.stdout",
+      "sha256": "17c95672a48d191bbe99995ea0f2ad49e822ca37d2a4c223e6c9ebae88e4e519",
+      "bytes": 19205
+    },
+    "planar-bridge-active.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-bridge-active.json",
+      "sha256": "cbc8f5b2a4bd13d859e660ff1dd1f28d9cc6dd7dfc32b9316b76272b9adda1d2",
+      "bytes": 266
+    },
+    "planar-bridge-proof.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-bridge-proof.json",
+      "sha256": "76f7a64a670f3157d4d2bb03fc3a1dcfcaca7c913e8e51a90f15294ab5fe0525",
+      "bytes": 6003
+    },
+    "planar-bridge-requests.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-bridge-requests.json",
+      "sha256": "698ad2b745f3ca44d526b9146bc32e655ef4d4f0a026d796ebf3dae045e6dfe2",
+      "bytes": 10077
+    },
+    "planar-bridge-requests.txt": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-bridge-requests.txt",
+      "sha256": "650ca7fe5a9d3009466fb06aa29368de824c5532592c776f3ec371b03a44cde6",
+      "bytes": 7406
+    },
+    "planar-bridge.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-bridge.stderr",
+      "sha256": "499d7f575553068ecb9588fdad4c7e188cb6de1ed43beaf38c3bc6624cedfd8f",
+      "bytes": 874
+    },
+    "planar-bridge.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-bridge.stdout",
+      "sha256": "4835028334059c3067494f75208e641f4ea534ca83c4d9ea89511edfa8549947",
+      "bytes": 3637
+    },
+    "planar-exact-acceptance-rational-view-v2.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-exact-acceptance-rational-view-v2.json",
+      "sha256": "f0f60ecd356e5a7461c37503374eabb6f200221d88dcb594b298f84478121f5d",
+      "bytes": 5361
+    },
+    "planar-exact-acceptance-view.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-exact-acceptance-view.json",
+      "sha256": "895d1dda8b1bee97afd53041ddfed060d48b83e73afc247b466ecdd89775d8d9",
+      "bytes": 3547
+    },
+    "planar-exact-active.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-exact-active.json",
+      "sha256": "550528c65f3120bcd7da13a6cde9f933401fd8721445ccd2ac08692c614f3e75",
+      "bytes": 266
+    },
+    "planar-exact-proof.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-exact-proof.json",
+      "sha256": "bbd2dfa5f2167d7d0a27059c8199d224e800d6ccdd69f9167a6ff0f72a65956f",
+      "bytes": 5697
+    },
+    "planar-exact-requests.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-exact-requests.json",
+      "sha256": "355aa5c0648b3690e0ff0fa41b3c03009e0ec0c298542e93588db00a746ad1e7",
+      "bytes": 15054
+    },
+    "planar-exact-requests.txt": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-exact-requests.txt",
+      "sha256": "23c8386ccea97cbff83593bd8d72c07103c14aae206ca3e7e58facffb1139f72",
+      "bytes": 11097
+    },
+    "planar-exact.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-exact.stderr",
+      "sha256": "50d932a1246ef5cc01d6bba9c5c1fa784e661cb3ea3ce81aeeec877b0d7bf208",
+      "bytes": 814
+    },
+    "planar-exact.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-exact.stdout",
+      "sha256": "245ef2113308391973cd5366a402b84aec1928ac4758965d260ff60fdac99f13",
+      "bytes": 3457
+    },
+    "planar-sentinels-active.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-sentinels-active.json",
+      "sha256": "42b666487dc93ddefec1ffe44d22f7d4e30395a921da489346117f9d3f65e055",
+      "bytes": 452
+    },
+    "planar-sentinels-complete-active.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-sentinels-complete-active.json",
+      "sha256": "7365b902b68409614790a30c47376b2776341b944bd8faab5208ed501c5a052f",
+      "bytes": 451
+    },
+    "planar-sentinels-complete-process.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-sentinels-complete-process.json",
+      "sha256": "4e8a2e328ec423ae9119c070fc20f50a3bb1aaa008c232ec56705d9865132e87",
+      "bytes": 11130
+    },
+    "planar-sentinels-complete.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-sentinels-complete.stderr",
+      "sha256": "357fe7d2303c58ac4b443673bf88e8101435fad39433627b797769f6928cbc42",
+      "bytes": 1154
+    },
+    "planar-sentinels-complete.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-sentinels-complete.stdout",
+      "sha256": "b9b24d388e122b42c8f8fbcb611a4db8f2472b9f38638e48a4e76bcfcb15a278",
+      "bytes": 11235
+    },
+    "planar-sentinels-process.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-sentinels-process.json",
+      "sha256": "3a7f474938f62a1dee2e086dc032f14564bb006a05b445da7236cce13b695f3b",
+      "bytes": 11061
+    },
+    "planar-sentinels.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-sentinels.stderr",
+      "sha256": "fa81de8de59a2a56fc5c076f2e293a5b819a0d81dd41ade763e5378e46831f1a",
+      "bytes": 1170
+    },
+    "planar-sentinels.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/planar-sentinels.stdout",
+      "sha256": "29b73482f72c1d5074f0c07fa68f8e811f4e5d24aa5234d243a3b28c133ed2f7",
+      "bytes": 8079
+    },
+    "replay-convergence-final-active.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/replay-convergence-final-active.json",
+      "sha256": "1239315bc1daf256a199663e472494576fc2473869adfe8f99cdfd776bdc6d30",
+      "bytes": 439
+    },
+    "replay-convergence-final-process.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/replay-convergence-final-process.json",
+      "sha256": "ac203fd750f8eec16d74b6d63e7f162078da98522d88ca566aa1c487d96920d4",
+      "bytes": 11113
+    },
+    "replay-convergence-final.jsonl": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/replay-convergence-final.jsonl.gz",
+      "sha256": "e0011c08032baf9c195f162a77215b3a1bb70b617e29d3313a72fcb433848713",
+      "bytes": 6725564,
+      "compression": "gzip",
+      "decoded_sha256": "cfe59522f22ddf43ff71f317fb2a59ae254ddd8dc7852da94bf2dd2c317d0b92",
+      "decoded_bytes": 27736412
+    },
+    "replay-convergence-final.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/replay-convergence-final.stderr",
+      "sha256": "05f23ee828bf2dec71d933207c1866ae9b108464f8e81d0c99de098aba735404",
+      "bytes": 1083
+    },
+    "replay-convergence-final.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/replay-convergence-final.stdout",
+      "sha256": "f3338f55b66019be0bf7de5fe8b5b764697b32922c2624514ef7c8a2092c9b12",
+      "bytes": 1957
+    },
+    "replay-exact-checks.jsonl": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/replay-exact-checks.jsonl.gz",
+      "sha256": "80131f41b9c7ce92157588246ff4025807499d7b21af1babd022678f8f08fef8",
+      "bytes": 37944,
+      "compression": "gzip",
+      "decoded_sha256": "4cecc7cb36de38764457fd68a1d5803c3eff221177e08a696ec9547988b0dc97",
+      "decoded_bytes": 690692
+    },
+    "replay-exact-classification.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/replay-exact-classification.json",
+      "sha256": "f6dfd54a6ecdc4811d777e5731ee61421e662a678f52d1b9ba795a28262f2c00",
+      "bytes": 5425
+    },
+    "replay-input-binding.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/replay-input-binding.json",
+      "sha256": "983be8688a5b2b03855430bcd3c4da93ac4e84c2f27aee22068730bbe6269355",
+      "bytes": 308
+    },
+    "replay-to-export-handoff.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/replay-to-export-handoff.json",
+      "sha256": "030483180d27e6814c9a39836041a377e143fd82d4b88ecb3903b5af9ed7e3a0",
+      "bytes": 695
+    },
+    "run_high_rank.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/run_high_rank.py",
+      "sha256": "c2d57d14a99823d42889ef905fded9af160093b5e181fbe48bf3cfdb20cbe1ba",
+      "bytes": 5738
+    },
+    "run_installed64.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/run_installed64.py",
+      "sha256": "11170c07e42727e35c1456b1282c9bf15e6b477be18ff53ef2fce84d7bf3b7e8",
+      "bytes": 4755
+    },
+    "run_planar_bridge.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/run_planar_bridge.py",
+      "sha256": "13b67e1591e70f42773d7208dbcbed9551bab5b6a1d4a230b4fde37bcc34108d",
+      "bytes": 5824
+    },
+    "run_planar_exact.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/run_planar_exact.py",
+      "sha256": "3647efd2a26f57e2c247aca1f6b86b6139b024ccdb2b2f18da26f40f57cab1e7",
+      "bytes": 5021
+    },
+    "run_test.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/run_test.py",
+      "sha256": "f65633bfdfb1c2f01f09e803f0659094ab59475b862a3ef903d2da2c01876107",
+      "bytes": 3876
+    },
+    "run_test_final.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/run_test_final.py",
+      "sha256": "09c38e1d4f97336e545c7a1695d0675d75aafb0ce0ae1cb74a458c99d844dc3a",
+      "bytes": 3924
+    },
+    "soft-master-active.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/soft-master-active.json",
+      "sha256": "e26783d74061856cd1e574b98874289fceeccce26090c7fa53cb5bf72bc323d3",
+      "bytes": 445
+    },
+    "soft-master-process.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/soft-master-process.json",
+      "sha256": "fe832e574a463c7af8d582bcec305d82aeccba56938023459d276b4f74aae3d0",
+      "bytes": 11035
+    },
+    "soft-master.stderr": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/soft-master.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "soft-master.stdout": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/soft-master.stdout",
+      "sha256": "16e18df9d6346604119902561f712a8c62f1b2a7ee53bab94598842513e4c318",
+      "bytes": 20088
+    },
+    "unit-proof.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/unit-proof.json",
+      "sha256": "9d8975d6f522c6436cf206defdca99fb533bd88b17f1c8d23d99e48a3df8abd9",
+      "bytes": 10735
+    },
+    "source-v2/.gitignore": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/.gitignore",
+      "sha256": "75b7dbb02a9764029bd6e213d34359fa93b3241ba7e74ebf4b9b13dc3fbc27aa",
+      "bytes": 97
+    },
+    "source-v2/Cargo.lock": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/Cargo.lock",
+      "sha256": "b8c2eddffe0dd5cb3a88b3b934133c3a0146638fa33de5e5f9fa4d65ee124f18",
+      "bytes": 78237
+    },
+    "source-v2/Cargo.toml": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/Cargo.toml",
+      "sha256": "aeb9c987c47586617585e3da782e60ee3670942db639ed48a73fc75f6f89c0d6",
+      "bytes": 1343
+    },
+    "source-v2/Makefile": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/Makefile",
+      "sha256": "3373a4dea5f02c76b13a86b2d323b0f39d2d080e2acb3e682d692d528836838f",
+      "bytes": 1653
+    },
+    "source-v2/UPSTREAM.md": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/UPSTREAM.md",
+      "sha256": "9cf5e1b5d31328e23779ebb6ac9888032f83d8a1a98d15913ffc8abca0295a38",
+      "bytes": 2826
+    },
+    "source-v2/build.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/build.rs",
+      "sha256": "fa389383328261938398f067a18ad860ef21e0bb4bc15c95b24be3e0a6704342",
+      "bytes": 375
+    },
+    "source-v2/examples/replay.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/examples/replay.rs",
+      "sha256": "6381e93e652fec4547949a7a2a4c05e7b6955fe817862e97f42e83f2d0182200",
+      "bytes": 6450
+    },
+    "source-v2/mninjars.f90": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/mninjars.f90",
+      "sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+      "bytes": 8497
+    },
+    "source-v2/ninjars.h": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/ninjars.h",
+      "sha256": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+      "bytes": 4120
+    },
+    "source-v2/smoke.f90": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/smoke.f90",
+      "sha256": "913e96e53e2ba15a71679559d0a2b79b3a12cc7640286ab1a86d1db260e2919a",
+      "bytes": 2398
+    },
+    "source-v2/src/final_precision_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/src/final_precision_tests.rs",
+      "sha256": "2b07301725c3f720410954ff7e5ccb33b131907e951b098a34693bf3e4d0ac77",
+      "bytes": 21900
+    },
+    "source-v2/src/guarded.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/src/guarded.rs",
+      "sha256": "0c7ac81fe597083e13b069e74a978161d56a101ca8b58bad4b8adaa04ad0d94c",
+      "bytes": 9559
+    },
+    "source-v2/src/guarded_fenv.c": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/src/guarded_fenv.c",
+      "sha256": "79e47e68003e6660cfc0d67318b1069e0f2f8958a7a6d642020543670ffbb427",
+      "bytes": 621
+    },
+    "source-v2/src/guarded_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/src/guarded_tests.rs",
+      "sha256": "9566681f2b67e82f5fed8f3186c362820b7991624296d04c905491b230f3769d",
+      "bytes": 11621
+    },
+    "source-v2/src/lib.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/src/lib.rs",
+      "sha256": "4f7bd6eb93d1860f983f8284b5256b06bb24e65d6698a9b885d9018be8e05d2c",
+      "bytes": 51448
+    },
+    "source-v2/src/panic_contract_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/src/panic_contract_tests.rs",
+      "sha256": "e029723d3ead3424b2f198c6efa2df5073025f9c2b75820b7d3e5b74926182f0",
+      "bytes": 1423
+    },
+    "source-v2/src/retry_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/src/retry_tests.rs",
+      "sha256": "2492364fb5877d3ea34088b2f33e3a55c27ba77bafe7871c4d91f78aa41fb10e",
+      "bytes": 5695
+    },
+    "source-v2/src/tensor.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/src/tensor.rs",
+      "sha256": "525d5083904cd0257938c128e0e44f2d202de0e31f82b411f45e2a004ff8e5e1",
+      "bytes": 17547
+    },
+    "source-v2/src/tensor_allocation_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/src/tensor_allocation_tests.rs",
+      "sha256": "73703def29114280d188ff396a9177eb26fb8ab6e81516286fd3db47869e55ad",
+      "bytes": 11495
+    },
+    "source-v2/src/tensor_capture_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/src/tensor_capture_tests.rs",
+      "sha256": "38354ecdff8568c877f465c2a6cce18120d737ad962ee5375039cfec15dfec53",
+      "bytes": 11781
+    },
+    "source-v2/src/tensor_dense_reference.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/src/tensor_dense_reference.rs",
+      "sha256": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55",
+      "bytes": 16731
+    },
+    "source-v2/src/transport_contract_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/src/transport_contract_tests.rs",
+      "sha256": "884307cd6500059cfb28a24748f8219d0d9f3a87ab84dd97bfd9af34a97ac6fb",
+      "bytes": 4083
+    },
+    "source-v2/src/transport_replay_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/src/transport_replay_tests.rs",
+      "sha256": "d0a0e3129a9eb43765087d182a204db012cd8bb90ade093c25449e94c6a9a6cf",
+      "bytes": 3592
+    },
+    "source-v2/src/upstream_master_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/src/upstream_master_tests.rs",
+      "sha256": "1addb2b3676f25035477dc3ec275abeea27f7ecbb90dcee1bc72c8b786601cf4",
+      "bytes": 10112
+    },
+    "source-v2/tests/data/cases/madloop-four-photon-top-box-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/cases/madloop-four-photon-top-box-0.json",
+      "sha256": "9aea91e4e6c70b0f5984b2070e7aef8a77699260dacac1a9b3c9d65f23189796",
+      "bytes": 7704
+    },
+    "source-v2/tests/data/cases/madloop-gg-hh-top-box-2.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/cases/madloop-gg-hh-top-box-2.json",
+      "sha256": "c9271b79b2a4df2155ee8855fda3ffc6090f37261711468efd3126cf6665d5a3",
+      "bytes": 5142
+    },
+    "source-v2/tests/data/cases/madloop-gg-hh-top-triangle-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/cases/madloop-gg-hh-top-triangle-0.json",
+      "sha256": "5178de553b5dcfa0fcca616748943a63f2933399203f7d7040ba9c98aa3b4ea2",
+      "bytes": 2317
+    },
+    "source-v2/tests/data/cases/madloop-gg-hhh-top-box-8.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/cases/madloop-gg-hhh-top-box-8.json",
+      "sha256": "3f14438d72237acbd9c74f8ba813fa6fd04c2aa1af2cdde143134146a650a489",
+      "bytes": 4976
+    },
+    "source-v2/tests/data/cases/madloop-gg-hhh-top-pentagon-26.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/cases/madloop-gg-hhh-top-pentagon-26.json",
+      "sha256": "af571c4df618dafad08dc0acdb345f39d0446a2ec814f03b7cc2ee5a25d727ca",
+      "bytes": 7781
+    },
+    "source-v2/tests/data/cases/madloop-gg-hhh-top-triangle-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/cases/madloop-gg-hhh-top-triangle-0.json",
+      "sha256": "98483fd5759713618d7dfa784d604b83a7f03b241a5402d9a808af3655920353",
+      "bytes": 2285
+    },
+    "source-v2/tests/data/cases/madloop-hgg-top-triangle-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/cases/madloop-hgg-top-triangle-0.json",
+      "sha256": "8a70a0fc3569676b2601dbeb36b16cb70817b40df8eb3e762e4ed1899246d590",
+      "bytes": 3453
+    },
+    "source-v2/tests/data/compensated/corrected-results.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/compensated/corrected-results.json",
+      "sha256": "f868eb5d279ef0ef68aefcf34704a094cb4452447aff857c7650358b623dfa94",
+      "bytes": 1734
+    },
+    "source-v2/tests/data/compensated/expansion-results.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/compensated/expansion-results.json",
+      "sha256": "8bdf9a439db23f793ca38f774997d866d6a0fa279e00a086d81cee21a3d67b76",
+      "bytes": 1350447
+    },
+    "source-v2/tests/data/compensated/inputs.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/compensated/inputs.json",
+      "sha256": "1fb7ea9413efd25053dfdab357baf9ee973d8df3b6452fbaa280b684aea177b9",
+      "bytes": 27152
+    },
+    "source-v2/tests/data/convergence.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/convergence.json",
+      "sha256": "b34d6ef194a5297914050ceb6ffd25f5402c0150898921d2dcaf65471e55ec93",
+      "bytes": 10189
+    },
+    "source-v2/tests/data/ninja/madloop-four-photon-top-box-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/ninja/madloop-four-photon-top-box-0.json",
+      "sha256": "dc34ad2683fbe535140c63bba564b8f6e8e74ce3c64eb17ef3cfa96baa5a6dde",
+      "bytes": 13356
+    },
+    "source-v2/tests/data/ninja/madloop-gg-hh-top-box-2.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/ninja/madloop-gg-hh-top-box-2.json",
+      "sha256": "d893de26b4e2e4edbeb4d6ba3122a6cd231bd5842719b3b8b2c4a84ee5e67dcc",
+      "bytes": 13271
+    },
+    "source-v2/tests/data/ninja/madloop-gg-hh-top-triangle-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/ninja/madloop-gg-hh-top-triangle-0.json",
+      "sha256": "669b92538382201f26487865cd44a1d8eea03b13ed7b99dcdae21bd7662cca95",
+      "bytes": 12534
+    },
+    "source-v2/tests/data/ninja/madloop-gg-hhh-top-box-8.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/ninja/madloop-gg-hhh-top-box-8.json",
+      "sha256": "c49f6d9db0c09602c6e663e60499a9b5126b9ca66d1738f6b5bac5846afda572",
+      "bytes": 13325
+    },
+    "source-v2/tests/data/ninja/madloop-gg-hhh-top-pentagon-26.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/ninja/madloop-gg-hhh-top-pentagon-26.json",
+      "sha256": "e4b1522302bab1592924b251a7ee153c94623726d68b2d552e6211a4b0b3ded3",
+      "bytes": 13393
+    },
+    "source-v2/tests/data/ninja/madloop-gg-hhh-top-triangle-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/ninja/madloop-gg-hhh-top-triangle-0.json",
+      "sha256": "7905a646d4bb23daf1b0506b662913f60796c87dfcbbd556c5bd957f7eba3bd2",
+      "bytes": 12531
+    },
+    "source-v2/tests/data/ninja/madloop-hgg-top-triangle-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/ninja/madloop-hgg-top-triangle-0.json",
+      "sha256": "a50906866f8e8812c02365cff98cb56a20639537f1804d290edbd8020ed9d30b",
+      "bytes": 12610
+    },
+    "source-v2/tests/data/provenance.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/data/provenance.json",
+      "sha256": "f77b7cee3079a95f001a3cc7d6a9f0aa1f8a1b51f3668b0d709552c67016d18b",
+      "bytes": 4897
+    },
+    "source-v2/tests/fenv_helpers.c": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/fenv_helpers.c",
+      "sha256": "cdb2df81ddcfc898f00dae4d74a78f0d6436aaa6c9ea3e5991bf11616b8bbd8d",
+      "bytes": 549
+    },
+    "source-v2/tests/replay.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v2/tests/replay.py",
+      "sha256": "9c475d4fa7c17c200eafda7a1e0e6e0bb0f4392de2c89a9e26a302f69089a2b9",
+      "bytes": 2449
+    },
+    "source-v4/.gitignore": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/.gitignore",
+      "sha256": "75b7dbb02a9764029bd6e213d34359fa93b3241ba7e74ebf4b9b13dc3fbc27aa",
+      "bytes": 97
+    },
+    "source-v4/Cargo.lock": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/Cargo.lock",
+      "sha256": "b8c2eddffe0dd5cb3a88b3b934133c3a0146638fa33de5e5f9fa4d65ee124f18",
+      "bytes": 78237
+    },
+    "source-v4/Cargo.toml": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/Cargo.toml",
+      "sha256": "aeb9c987c47586617585e3da782e60ee3670942db639ed48a73fc75f6f89c0d6",
+      "bytes": 1343
+    },
+    "source-v4/Makefile": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/Makefile",
+      "sha256": "3373a4dea5f02c76b13a86b2d323b0f39d2d080e2acb3e682d692d528836838f",
+      "bytes": 1653
+    },
+    "source-v4/UPSTREAM.md": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/UPSTREAM.md",
+      "sha256": "2e546da726ff039d30b4fa76f10a06b0faec9538d0fc2a7c087a8990fb36954c",
+      "bytes": 3217
+    },
+    "source-v4/build.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/build.rs",
+      "sha256": "fa389383328261938398f067a18ad860ef21e0bb4bc15c95b24be3e0a6704342",
+      "bytes": 375
+    },
+    "source-v4/examples/replay.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/examples/replay.rs",
+      "sha256": "6381e93e652fec4547949a7a2a4c05e7b6955fe817862e97f42e83f2d0182200",
+      "bytes": 6450
+    },
+    "source-v4/mninjars.f90": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/mninjars.f90",
+      "sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+      "bytes": 8497
+    },
+    "source-v4/ninjars.h": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/ninjars.h",
+      "sha256": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+      "bytes": 4120
+    },
+    "source-v4/smoke.f90": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/smoke.f90",
+      "sha256": "913e96e53e2ba15a71679559d0a2b79b3a12cc7640286ab1a86d1db260e2919a",
+      "bytes": 2398
+    },
+    "source-v4/src/final_precision_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/src/final_precision_tests.rs",
+      "sha256": "2b07301725c3f720410954ff7e5ccb33b131907e951b098a34693bf3e4d0ac77",
+      "bytes": 21900
+    },
+    "source-v4/src/guarded.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/src/guarded.rs",
+      "sha256": "0c7ac81fe597083e13b069e74a978161d56a101ca8b58bad4b8adaa04ad0d94c",
+      "bytes": 9559
+    },
+    "source-v4/src/guarded_fenv.c": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/src/guarded_fenv.c",
+      "sha256": "79e47e68003e6660cfc0d67318b1069e0f2f8958a7a6d642020543670ffbb427",
+      "bytes": 621
+    },
+    "source-v4/src/guarded_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/src/guarded_tests.rs",
+      "sha256": "9566681f2b67e82f5fed8f3186c362820b7991624296d04c905491b230f3769d",
+      "bytes": 11621
+    },
+    "source-v4/src/lib.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/src/lib.rs",
+      "sha256": "4f7bd6eb93d1860f983f8284b5256b06bb24e65d6698a9b885d9018be8e05d2c",
+      "bytes": 51448
+    },
+    "source-v4/src/panic_contract_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/src/panic_contract_tests.rs",
+      "sha256": "e029723d3ead3424b2f198c6efa2df5073025f9c2b75820b7d3e5b74926182f0",
+      "bytes": 1423
+    },
+    "source-v4/src/retry_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/src/retry_tests.rs",
+      "sha256": "2492364fb5877d3ea34088b2f33e3a55c27ba77bafe7871c4d91f78aa41fb10e",
+      "bytes": 5695
+    },
+    "source-v4/src/tensor.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/src/tensor.rs",
+      "sha256": "525d5083904cd0257938c128e0e44f2d202de0e31f82b411f45e2a004ff8e5e1",
+      "bytes": 17547
+    },
+    "source-v4/src/tensor_allocation_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/src/tensor_allocation_tests.rs",
+      "sha256": "73703def29114280d188ff396a9177eb26fb8ab6e81516286fd3db47869e55ad",
+      "bytes": 11495
+    },
+    "source-v4/src/tensor_capture_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/src/tensor_capture_tests.rs",
+      "sha256": "38354ecdff8568c877f465c2a6cce18120d737ad962ee5375039cfec15dfec53",
+      "bytes": 11781
+    },
+    "source-v4/src/tensor_dense_reference.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/src/tensor_dense_reference.rs",
+      "sha256": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55",
+      "bytes": 16731
+    },
+    "source-v4/src/transport_contract_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/src/transport_contract_tests.rs",
+      "sha256": "884307cd6500059cfb28a24748f8219d0d9f3a87ab84dd97bfd9af34a97ac6fb",
+      "bytes": 4083
+    },
+    "source-v4/src/transport_replay_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/src/transport_replay_tests.rs",
+      "sha256": "d0a0e3129a9eb43765087d182a204db012cd8bb90ade093c25449e94c6a9a6cf",
+      "bytes": 3592
+    },
+    "source-v4/src/upstream_master_tests.rs": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/src/upstream_master_tests.rs",
+      "sha256": "48eb9e0d7c7a23bd0f9039be3e986ea2322a4c31d236073a322ca4d71b57f456",
+      "bytes": 10980
+    },
+    "source-v4/tests/data/cases/madloop-four-photon-top-box-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/cases/madloop-four-photon-top-box-0.json",
+      "sha256": "9aea91e4e6c70b0f5984b2070e7aef8a77699260dacac1a9b3c9d65f23189796",
+      "bytes": 7704
+    },
+    "source-v4/tests/data/cases/madloop-gg-hh-top-box-2.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/cases/madloop-gg-hh-top-box-2.json",
+      "sha256": "c9271b79b2a4df2155ee8855fda3ffc6090f37261711468efd3126cf6665d5a3",
+      "bytes": 5142
+    },
+    "source-v4/tests/data/cases/madloop-gg-hh-top-triangle-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/cases/madloop-gg-hh-top-triangle-0.json",
+      "sha256": "5178de553b5dcfa0fcca616748943a63f2933399203f7d7040ba9c98aa3b4ea2",
+      "bytes": 2317
+    },
+    "source-v4/tests/data/cases/madloop-gg-hhh-top-box-8.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/cases/madloop-gg-hhh-top-box-8.json",
+      "sha256": "3f14438d72237acbd9c74f8ba813fa6fd04c2aa1af2cdde143134146a650a489",
+      "bytes": 4976
+    },
+    "source-v4/tests/data/cases/madloop-gg-hhh-top-pentagon-26.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/cases/madloop-gg-hhh-top-pentagon-26.json",
+      "sha256": "af571c4df618dafad08dc0acdb345f39d0446a2ec814f03b7cc2ee5a25d727ca",
+      "bytes": 7781
+    },
+    "source-v4/tests/data/cases/madloop-gg-hhh-top-triangle-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/cases/madloop-gg-hhh-top-triangle-0.json",
+      "sha256": "98483fd5759713618d7dfa784d604b83a7f03b241a5402d9a808af3655920353",
+      "bytes": 2285
+    },
+    "source-v4/tests/data/cases/madloop-hgg-top-triangle-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/cases/madloop-hgg-top-triangle-0.json",
+      "sha256": "8a70a0fc3569676b2601dbeb36b16cb70817b40df8eb3e762e4ed1899246d590",
+      "bytes": 3453
+    },
+    "source-v4/tests/data/compensated/corrected-results.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/compensated/corrected-results.json",
+      "sha256": "f868eb5d279ef0ef68aefcf34704a094cb4452447aff857c7650358b623dfa94",
+      "bytes": 1734
+    },
+    "source-v4/tests/data/compensated/expansion-results.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/compensated/expansion-results.json",
+      "sha256": "8bdf9a439db23f793ca38f774997d866d6a0fa279e00a086d81cee21a3d67b76",
+      "bytes": 1350447
+    },
+    "source-v4/tests/data/compensated/inputs.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/compensated/inputs.json",
+      "sha256": "1fb7ea9413efd25053dfdab357baf9ee973d8df3b6452fbaa280b684aea177b9",
+      "bytes": 27152
+    },
+    "source-v4/tests/data/convergence.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/convergence.json",
+      "sha256": "b34d6ef194a5297914050ceb6ffd25f5402c0150898921d2dcaf65471e55ec93",
+      "bytes": 10189
+    },
+    "source-v4/tests/data/ninja/madloop-four-photon-top-box-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/ninja/madloop-four-photon-top-box-0.json",
+      "sha256": "dc34ad2683fbe535140c63bba564b8f6e8e74ce3c64eb17ef3cfa96baa5a6dde",
+      "bytes": 13356
+    },
+    "source-v4/tests/data/ninja/madloop-gg-hh-top-box-2.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/ninja/madloop-gg-hh-top-box-2.json",
+      "sha256": "d893de26b4e2e4edbeb4d6ba3122a6cd231bd5842719b3b8b2c4a84ee5e67dcc",
+      "bytes": 13271
+    },
+    "source-v4/tests/data/ninja/madloop-gg-hh-top-triangle-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/ninja/madloop-gg-hh-top-triangle-0.json",
+      "sha256": "669b92538382201f26487865cd44a1d8eea03b13ed7b99dcdae21bd7662cca95",
+      "bytes": 12534
+    },
+    "source-v4/tests/data/ninja/madloop-gg-hhh-top-box-8.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/ninja/madloop-gg-hhh-top-box-8.json",
+      "sha256": "c49f6d9db0c09602c6e663e60499a9b5126b9ca66d1738f6b5bac5846afda572",
+      "bytes": 13325
+    },
+    "source-v4/tests/data/ninja/madloop-gg-hhh-top-pentagon-26.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/ninja/madloop-gg-hhh-top-pentagon-26.json",
+      "sha256": "e4b1522302bab1592924b251a7ee153c94623726d68b2d552e6211a4b0b3ded3",
+      "bytes": 13393
+    },
+    "source-v4/tests/data/ninja/madloop-gg-hhh-top-triangle-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/ninja/madloop-gg-hhh-top-triangle-0.json",
+      "sha256": "7905a646d4bb23daf1b0506b662913f60796c87dfcbbd556c5bd957f7eba3bd2",
+      "bytes": 12531
+    },
+    "source-v4/tests/data/ninja/madloop-hgg-top-triangle-0.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/ninja/madloop-hgg-top-triangle-0.json",
+      "sha256": "a50906866f8e8812c02365cff98cb56a20639537f1804d290edbd8020ed9d30b",
+      "bytes": 12610
+    },
+    "source-v4/tests/data/provenance.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/data/provenance.json",
+      "sha256": "f77b7cee3079a95f001a3cc7d6a9f0aa1f8a1b51f3668b0d709552c67016d18b",
+      "bytes": 4897
+    },
+    "source-v4/tests/fenv_helpers.c": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/fenv_helpers.c",
+      "sha256": "cdb2df81ddcfc898f00dae4d74a78f0d6436aaa6c9ea3e5991bf11616b8bbd8d",
+      "bytes": 549
+    },
+    "source-v4/tests/replay.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/source-v4/tests/replay.py",
+      "sha256": "9c475d4fa7c17c200eafda7a1e0e6e0bb0f4392de2c89a9e26a302f69089a2b9",
+      "bytes": 2449
+    },
+    "final-source-freeze-v2.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/final-source-freeze-v2.json",
+      "sha256": "044dfdbccb3689f0e1efe84604155274b2c21fb0e05f9baab2019fe2fb4b4c09",
+      "bytes": 5882
+    },
+    "final-source-freeze-v3.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/final-source-freeze-v3.json",
+      "sha256": "469708f354542baa7d722c44c0fb103dd7eed05f80d46e3c3a951ee0609c19e0",
+      "bytes": 6241
+    },
+    "final-source-freeze-v4.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/final-source-freeze-v4.json",
+      "sha256": "b9488707deb57c8573fe34cd1fbbce69740fab4b024845d625ca1dbfe1060933",
+      "bytes": 7060
+    },
+    "final-source-freeze.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/final-source-freeze.json",
+      "sha256": "67809cbe003f65d337c79d72a1bbd5c570b804e3f9dc1f99f61e013cb9f881a3",
+      "bytes": 5507
+    },
+    "original-replay.jsonl": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/original-replay.jsonl.gz",
+      "sha256": "0ed2f37733f9e6cc328c4a64930ad1eef9f814c3f09fbd65d02c8b95a54e868e",
+      "bytes": 2198321,
+      "compression": "gzip",
+      "decoded_sha256": "1fafb19d4b534c3e222e5b265dfd8b139f262d3353f847a5c39955c468fa9f4d",
+      "decoded_bytes": 7241132
+    },
+    "independent-audit/ns9210-geometry.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/independent-audit/ns9210-geometry.json",
+      "sha256": "f50deaf706dcaa13ca960dbd46003395a20e288fb92955ffafe6239bf5ae10c6",
+      "bytes": 3801
+    },
+    "independent-audit/ns9210-public-ABI-independent-audit.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/independent-audit/ns9210-public-ABI-independent-audit.json",
+      "sha256": "200757abd7c39cf80d8c031718f4f3f276a32a861effd4180365adf1eef61052",
+      "bytes": 4584
+    },
+    "independent-audit/replay1392-independent-exact-audit.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/independent-audit/replay1392-independent-exact-audit.json",
+      "sha256": "870ae3fec8b0bed6808194270c5bc7e65d44ef6fff880e1a23c868ca0555bf70",
+      "bytes": 3864
+    },
+    "independent-audit/replay-independent.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/independent-audit/replay-independent.py",
+      "sha256": "61aba98df0721788ed84ee11997ad49e6b8b9e1eff423cf0efe5ce94ac0662e4",
+      "bytes": 9061
+    },
+    "verifier.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/verifier.py",
+      "sha256": "2507b0ce3b5dfd87ed62b750a3a8f5f12a2f6cbd5747fb7756ac1e82c013129e",
+      "bytes": 14867
+    },
+    "verifier-v2.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/observations/verifier-v2.py",
+      "sha256": "589b05ef13289489b5dee1fb247da5f912d4c3abb6448126403af4f310bc6f9d",
+      "bytes": 19710
+    }
+  },
+  "expected_recomputed": {
+    "records_each_precision": 1392,
+    "raw_records": 2785,
+    "status_failures": 0,
+    "failed_convergence_records": 0,
+    "sign_changed_convergence_records": 0,
+    "maximum_scaled_errors": {
+      "laurent": "2.730627321815915036666601312317791641188192742581904719166792102660803196871547295685927803935200435E-62",
+      "CC": "2.743262080804189214428503548382036251530068198923764329935213688758608625762181756369209814068322797E-62",
+      "R1": "1.924350174604095356620457317613377900615757607942180865210457388334229388150738236099317021431871661E-67",
+      "split": "4.074978806112145231855629038565312388498694180741165760764516452376158522991572533339789625552783820E-64",
+      "old_laurent": "1.475574561369258424187995336658879055372633814783708035718401558922502573882180694704094523318795890E-34",
+      "old_R1": "4.783068483677724031397472576744824783900039141283855560099150659812252958497167098295480234470948137",
+      "ascii_rounding": "4.195424199019622796905865391564245011607450222089964994724300047096334956503141217529294024602723657E-36"
+    },
+    "minimum_tracked_precision_observed": {
+      "256": 131,
+      "384": 259
+    },
+    "historical_binary128_changed_records": 468,
+    "historical_ascii_changed_records": 482,
+    "historical_changed_component_counts": {
+      "rational.re": 410,
+      "rational.im": 448,
+      "finite.re": 22,
+      "finite.im": 12
+    },
+    "historical_changed_topology_rank_counts": {
+      "n3-r3": 312,
+      "n4-r4": 108,
+      "n2-r2": 48
+    },
+    "all_topology_rank_counts": {
+      "n2-r1": 216,
+      "n3-r2": 240,
+      "n4-r3": 252,
+      "n3-r1": 24,
+      "n2-r2": 72,
+      "n3-r3": 324,
+      "n5-r4": 144,
+      "n4-r2": 12,
+      "n4-r4": 108
+    },
+    "historical_complete_laurent_records_above_scaled_difference": {
+      "1e-31": 0,
+      "1e-20": 0,
+      "1e-10": 0,
+      "1e-7": 0
+    },
+    "historical_basis_rational_records_above_scaled_difference": {
+      "1e-31": 312,
+      "1e-20": 312,
+      "1e-10": 312,
+      "1e-7": 312
+    },
+    "ASCII_output_fields_examined": 22272,
+    "ASCII_adjacent113bit_rounding_fields": {
+      "384/single.im": 6,
+      "384/single.re": 4,
+      "256/single.im": 4,
+      "256/single.re": 2
+    },
+    "historical_values_are_oracle": false,
+    "historical_bit_identity_passed": false,
+    "final_source_convergence_passed": true,
+    "all1392_inputs_in_original_order_without_filtering": true
+  },
+  "known_provider_failure_preserved": {
+    "direct_provider_exit_code": 101,
+    "unsafe_successes": 2,
+    "full_bridge_calls": 6,
+    "full_bridge_dp_accurate_calls": 4,
+    "full_bridge_mp_rejected_without_output_commit": 2,
+    "production_guard_added": false
+  },
+  "precision_limits": "Float tracked precision is an internal estimate. Printed40-digit outputs do not prove151-digit scalar convergence.16 of22272 replay output fields land on an adjacent113-bit value versus exact raw rounding, at max4.20e-36 common Laurent scale; original113-bit input recovery is separately tested.",
+  "performance_claim": false,
+  "previous_manifest": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/manifest.json",
+    "sha256": "2ba38b8755f8cba9ce5074d75f2890aec273d4441fd4bdbedac9fd2776545666",
+    "bytes": 66873
+  },
+  "publication_metadata_version": 2,
+  "publication_metadata_delta": "Explicitly verify metadata-only unit/build/actual64 preparation/result relocation against original immutable observations; no numerical rerun or source45 changes."
+}

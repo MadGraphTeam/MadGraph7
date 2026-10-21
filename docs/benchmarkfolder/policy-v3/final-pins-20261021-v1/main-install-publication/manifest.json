@@ -1,0 +1,46 @@
+{
+  "compiler_calls": 0,
+  "count": 9,
+  "engine_calls": 0,
+  "files": {
+    "README.md": {
+      "bytes": 2010,
+      "sha256": "b3ccebf643f854e5f31ef361a55c41429c09d4201ad0b808fbf3adfa3d2ab505"
+    },
+    "accepted-installation.json": {
+      "bytes": 16025,
+      "sha256": "df329e3b705d6793753531fab84671056f654849a3d033325882539da55abd5b"
+    },
+    "afterimage-verification.json": {
+      "bytes": 863,
+      "sha256": "27e38347f3ff6bbc86bd65b86e4ae4153a28552718f797347711f3cebebb2efa"
+    },
+    "final-source-freeze-v4.json": {
+      "bytes": 7060,
+      "sha256": "b9488707deb57c8573fe34cd1fbbce69740fab4b024845d625ca1dbfe1060933"
+    },
+    "preparation.json": {
+      "bytes": 7564,
+      "sha256": "23e1844ea7fa9c6b7945e0131e860ebfb75c3e9d15231d81b280e5c0b5ff97a2"
+    },
+    "publication.log": {
+      "bytes": 1055,
+      "sha256": "6f693365b613b1691b27c4ed2734be53e13db7cda4804f35994ae011e91786e8"
+    },
+    "publish.py": {
+      "bytes": 12408,
+      "sha256": "ec5aee3ae1fb658a190069e44989c3c04a4e1e094e52153d4f241cd97e8a64c7"
+    },
+    "transition.json": {
+      "bytes": 8781,
+      "sha256": "7f318d8b798ba60959df93b235b48df33da006c481cf9f9f62c251170281c95a"
+    },
+    "verify.py": {
+      "bytes": 5939,
+      "sha256": "e79b156a39172074b9a7542a2abddc095a4318d2dfeb3d8b7e14a1c2fc850686"
+    }
+  },
+  "qualification_scope": "Copy-only publication of successful pinned CLI update; final science, export and timing gates remain separate.",
+  "revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+  "schema": "main-ninjars-final-pin-publication-capsule-v1"
+}

@@ -1,0 +1,55 @@
+{
+  "schema": "independent-final1392-exact-rational-audit-v1",
+  "records_each_precision": 1392,
+  "all_inputs_and_order_unchanged": true,
+  "new256_384_laurent_CC_R1_convergence_passed": true,
+  "maximum_scaled_errors": {
+    "laurent": "2.730627321815915036666601312317791641188192742581904719166792102660803196871547295685927803935200435E-62",
+    "CC": "2.743262080804189214428503548382036251530068198923764329935213688758608625762181756369209814068322797E-62",
+    "R1": "1.924350174604095356620457317613377900615757607942180865210457388334229388150738236099317021431871661E-67",
+    "split": "4.074978806112145231855629038565312388498694180741165760764516452376158522991572533339789625552783820E-64",
+    "old_laurent": "1.475574561369258424187995336658879055372633814783708035718401558922502573882180694704094523318795890E-34",
+    "old_R1": "4.783068483677724031397472576744824783900039141283855560099150659812252958497167098295480234470948137",
+    "ascii_rounding": "4.195424199019622796905865391564245011607450222089964994724300047096334956503141217529294024602723657E-36"
+  },
+  "historical_changed_binary128_records": 468,
+  "historical_changed_ascii_records": 482,
+  "historical_component_changes": {
+    "rational.re": 410,
+    "rational.im": 448,
+    "finite.re": 22,
+    "finite.im": 12
+  },
+  "historical_shape_changes": {
+    "n3-r3": 312,
+    "n4-r4": 108,
+    "n2-r2": 48
+  },
+  "ASCII_output_fields_examined": 22272,
+  "ASCII_adjacent113bit_rounding_fields": {
+    "384/single.im": 6,
+    "384/single.re": 4,
+    "256/single.im": 4,
+    "256/single.re": 2
+  },
+  "ASCII_rounding_scope": "40-digit text can round to the adjacent binary128 value versus exact raw Float rounding; observed effect is far below1e-31. Input113-bit recovery is a separate guarantee.",
+  "original_test_exit_code": 101,
+  "original_test_failure_retained": "Strict historical bit identity failed for468 requests. This separately recomputed convergence result does not relabel the Rust test as passed.",
+  "historical_outputs_are_oracle": false,
+  "committed_source_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+  "all45_tested_source_files_equal_commit": true,
+  "Fortran_semantics": "Both wrappers return complete NRS_RES Laurent values; their local R1 is not added to RES. Rust result[4] is the separate rational diagnostic, result[3] is CC. Full finite=CC+R1 is independently checked.",
+  "scope": "Focused convergence and historical classification only; core scientific and performance gates remain pending.",
+  "new_engine_calls": 0,
+  "inputs_sha256": {
+    ".benchmark-work/final-release-audit-20261021-v1/replay-independent.py": "61aba98df0721788ed84ee11997ad49e6b8b9e1eff423cf0efe5ce94ac0662e4",
+    ".benchmark-work/final-numerical-release-20261021-v1/replay-exact-classification.json": "f6dfd54a6ecdc4811d777e5731ee61421e662a678f52d1b9ba795a28262f2c00",
+    ".benchmark-work/final-numerical-release-20261021-v1/replay-convergence-final-process.json": "ac203fd750f8eec16d74b6d63e7f162078da98522d88ca566aa1c487d96920d4",
+    ".benchmark-work/final-numerical-release-20261021-v1/committed-source-equivalence.json": "1d9b0011815c562ddbaef5ff55644c2ead39279de7929cc2a7cc2fd3044c0d49",
+    ".benchmark-work/policy-v2/final-rust-abi3-v2/original-replay.jsonl": "1fafb19d4b534c3e222e5b265dfd8b139f262d3353f847a5c39955c468fa9f4d",
+    ".benchmark-work/final-numerical-release-20261021-v1/replay-convergence-final.jsonl": "cfe59522f22ddf43ff71f317fb2a59ae254ddd8dc7852da94bf2dd2c317d0b92",
+    "vendor/ninjars/src/lib.rs": "4f7bd6eb93d1860f983f8284b5256b06bb24e65d6698a9b885d9018be8e05d2c",
+    "vendor/ninjars/src/final_precision_tests.rs": "2b07301725c3f720410954ff7e5ccb33b131907e951b098a34693bf3e4d0ac77",
+    "madgraph/iolibs/template_files/loop_optimized/NINJARS_interface.inc": "a0746e73bc12740a425f585e39d923f38bda017371a0c55f2977fea7c9da18e5"
+  }
+}

@@ -1,0 +1,9 @@
+test_case_scope_preserves_every_other_physical_setting (__main__.LegacyScopeChecks.test_case_scope_preserves_every_other_physical_setting) ... ok
+test_exact_missing_legacy_targets (__main__.LegacyScopeChecks.test_exact_missing_legacy_targets) ... ok
+test_full_cohort_validation_is_restored_even_on_failure (__main__.LegacyScopeChecks.test_full_cohort_validation_is_restored_even_on_failure) ... ok
+test_resealed_ninjars_dispatch_is_rejected (__main__.LegacyScopeChecks.test_resealed_ninjars_dispatch_is_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.013s
+
+OK

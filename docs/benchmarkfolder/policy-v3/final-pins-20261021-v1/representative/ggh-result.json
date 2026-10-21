@@ -1,0 +1,61 @@
+{
+  "status": "passed",
+  "seconds": 82.7218869549688,
+  "runtime_binding": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runtime-bindings/ggh.json",
+    "sha256": "2915d774a42b4877ca055b77f9afa41a2a6f578ecec3fd1364536318ce9f9d45",
+    "bytes": 1058479
+  },
+  "targets": {
+    "control-gg-h-candidate-1": {
+      "status_counts": {
+        "329": 1,
+        "211": 9
+      },
+      "parity": {
+        "passed": true,
+        "exact_rows": true,
+        "status_counts_match": true
+      },
+      "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "executable": "d1c791988b9e1a6a3715cd518e051bba633509d581c0a708bae40b185462a476"
+    },
+    "control-gg-h-candidate-6": {
+      "status_counts": {
+        "216": 10
+      },
+      "parity": {
+        "passed": true,
+        "exact_rows": true,
+        "status_counts_match": true
+      },
+      "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "executable": "d1c791988b9e1a6a3715cd518e051bba633509d581c0a708bae40b185462a476"
+    },
+    "control-gg-h-candidate-7": {
+      "status_counts": {
+        "217": 10
+      },
+      "parity": {
+        "passed": true,
+        "exact_rows": true,
+        "status_counts_match": true
+      },
+      "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "executable": "d1c791988b9e1a6a3715cd518e051bba633509d581c0a708bae40b185462a476"
+    },
+    "control-gg-h-candidate-8": {
+      "status_counts": {
+        "218": 10
+      },
+      "parity": {
+        "passed": true,
+        "exact_rows": true,
+        "status_counts_match": true
+      },
+      "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "executable": "d1c791988b9e1a6a3715cd518e051bba633509d581c0a708bae40b185462a476"
+    }
+  },
+  "records": 8
+}

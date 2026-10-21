@@ -67,5 +67,17 @@ seven paired full streams may require hours. New dependencies can change these
 costs, so these observations are scheduling context only. Actual new-version
 durations and uncertainties will be reported after measurement.
 
-Current state: preparation only. No new runtime is assumed, and no numerical
-handoff is created by this document.
+Current state: the final pinned installation passed the actual CLI update,
+copied/relocated standalone and NLO checks. All eight core, five control and two
+challenging exports were freshly generated and compiled. The installed 64-call
+precision check, 1392-case 256/384-bit convergence study and representative
+fresh/persistent/rescue checks passed; historical bit-identity and direct scalar
+provider failures remain recorded with their actual scopes.
+
+The new eight-process 100-point correctness campaign is running. Final timing,
+unrecovered DP stability distributions, remaining loop-induced/stress studies,
+profiles and final PDF are pending. The requested four-tool comparison will add
+tables and figures analogous to arXiv:1604.01363, with its single-helicity profile
+and DP-only estimator clearly distinguished from the full-helicity,
+rescue-enabled runtime gate. This document creates no numerical handoff or
+performance acceptance.

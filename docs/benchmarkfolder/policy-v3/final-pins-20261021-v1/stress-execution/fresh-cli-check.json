@@ -1,0 +1,8 @@
+{
+  "status": "fresh-cli-inputs-verified",
+  "numerical_evaluations": 0,
+  "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+  "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+  "fixed_byte_identity_checks": 13,
+  "final_dataset_claim": false
+}

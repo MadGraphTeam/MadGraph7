@@ -1,0 +1,55 @@
+{
+  "pid": 2977837,
+  "process_group_id": 2977837,
+  "start_ticks": 63688487,
+  "cpu": 190,
+  "started_utc": "2026-10-21T17:19:43.750188+00:00",
+  "executable": {
+    "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/installed-precision/run-v1/precision-driver",
+    "sha256": "9044fc17c8a85a556c1af3223233562816b0fbe444577b2e97709a7ed4ef6fe3",
+    "bytes": 69646144
+  },
+  "schema": "serialized-installed-precision-handoff-v1",
+  "exit_code": 0,
+  "wall_seconds_diagnostic_only": 5.085514173028059,
+  "result": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/installed-precision/run-v1/result.json",
+    "sha256": "588a0acc912ec6c211bcc7db2526c1ce5f9bc1191ae42de502ac09aa0fe7aa86",
+    "bytes": 26408
+  },
+  "validation": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/installed-precision/run-v1/validation.json",
+    "sha256": "7feec548326dcddce904aea2f58555f47686fb80efc6b92408cdf3268c991aef",
+    "bytes": 24724
+  },
+  "child_pid_absent": true,
+  "remaining_process_group_members": [],
+  "all_children_exited": true,
+  "installed_image_sha256_before": {
+    "Cargo.lock": "b8c2eddffe0dd5cb3a88b3b934133c3a0146638fa33de5e5f9fa4d65ee124f18",
+    "Cargo.toml": "aeb9c987c47586617585e3da782e60ee3670942db639ed48a73fc75f6f89c0d6",
+    "install.log": "cd49d7d3dcb26ed08cb252209ca8c7081ca7ce914fd636f704b5969ddb63d9a4",
+    "include/ninjars.h": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+    "include/mninjars.f90": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+    "lib/ninjars-config.json": "a2b427c4e1c766180cec068ca716e2ff3d035226b06864c50156202bcfa4617f",
+    "lib/mninjars.mod": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+    "lib/ninjars-link-before.txt": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+    "lib/libninjars.a": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c",
+    "lib/ninjars-native-libs.txt": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871"
+  },
+  "installed_image_sha256_after": {
+    "Cargo.lock": "b8c2eddffe0dd5cb3a88b3b934133c3a0146638fa33de5e5f9fa4d65ee124f18",
+    "Cargo.toml": "aeb9c987c47586617585e3da782e60ee3670942db639ed48a73fc75f6f89c0d6",
+    "install.log": "cd49d7d3dcb26ed08cb252209ca8c7081ca7ce914fd636f704b5969ddb63d9a4",
+    "include/ninjars.h": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+    "include/mninjars.f90": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+    "lib/ninjars-config.json": "a2b427c4e1c766180cec068ca716e2ff3d035226b06864c50156202bcfa4617f",
+    "lib/mninjars.mod": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+    "lib/ninjars-link-before.txt": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+    "lib/libninjars.a": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c",
+    "lib/ninjars-native-libs.txt": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871"
+  },
+  "installed_image_unchanged": true,
+  "installed_image_files": 10,
+  "performance_claim": false
+}

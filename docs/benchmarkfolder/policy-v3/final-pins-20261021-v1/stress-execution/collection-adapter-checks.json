@@ -1,0 +1,46 @@
+{
+  "schema": "stress-collection-adapter-software-checks-v1",
+  "status": "passed",
+  "tests_run": 9,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "exit_code": 0,
+  "cpu": 8,
+  "source_hash_recording": "recorded after test subprocess completion",
+  "sources": {
+    "collect_final.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-execution/collect_final.py",
+      "sha256": "d1da015909d671152291b5218d3e28b29d870feefbeadd24e8ef539d78e3c2df",
+      "bytes": 6122
+    },
+    "collect_nrs_first.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-execution/collect_nrs_first.py",
+      "sha256": "fc4b1f74aab28480d1508b595bc3b5e325fb963714903be0d459558946283d1e",
+      "bytes": 4069
+    },
+    "check_collection_adapter.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-execution/check_collection_adapter.py",
+      "sha256": "eba044ce1cb5c9c576ad9b915776a39310f156cf482508b701c8313163438feb",
+      "bytes": 4597
+    }
+  },
+  "stdout": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-execution/nrs-first-adapter-tests.stdout",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "stderr": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-execution/nrs-first-adapter-tests.stderr",
+    "sha256": "680857fefe3c03683b8c8c54a25ff55ecdb0af332284ed5b18a529b9969be7eb",
+    "bytes": 1298
+  },
+  "fresh_cli_reader_check": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-execution/fresh-cli-check.json",
+    "sha256": "eba793ea125730cbf1691a80795ddc4d1d574c8c76b32ac34e7da28fb7e31715",
+    "bytes": 308
+  },
+  "numerical_evaluations": 0,
+  "compiler_calls": 0,
+  "scientific_or_performance_gate": false
+}

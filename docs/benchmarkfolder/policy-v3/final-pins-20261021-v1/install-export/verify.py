@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""Check retained installation/export evidence without executing a library."""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import re
+import sys
+import tomllib
+
+sys.dont_write_bytecode = True
+
+HERE = Path(__file__).resolve().parent
+ROOT = next(p for p in HERE.parents if (p / 'madgraph/__init__.py').is_file())
+
+
+def sha(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def read(name):
+    return json.loads((HERE / name).read_text())
+
+
+def coefficients(text):
+    values = {}
+    for key, label in (('born', 'Born'), ('finite', 'Finite'),
+                       ('single_pole', '1EPS'), ('double_pole', '2EPS')):
+        matches = re.findall(rf'(?im)^\s*Matrix element {label}\s*=\s*([+-]?[0-9.]+(?:[dDeE][+-]?\d+)?)', text)
+        assert matches, key
+        values[key] = float(matches[-1].replace('D', 'E').replace('d', 'e'))
+    values['return_code'] = int(re.findall(r'MadLoop return code\s*=\s*(\d+)', text)[-1])
+    return values
+
+
+def verify(live=False):
+    if not __debug__:
+        raise RuntimeError('Verification requires Python assertions; do not use optimized Python')
+    manifest = read('manifest.json')
+    actual = {str(p.relative_to(HERE)) for p in HERE.rglob('*') if p.is_file()
+              and '__pycache__' not in p.parts and p.name != 'manifest.json'}
+    assert actual == set(manifest['files'])
+    for name, record in manifest['files'].items():
+        p = HERE / name
+        assert not p.is_symlink() and p.stat().st_size == record['bytes']
+        assert sha(p) == record['sha256'], name
+    install = read('installation.json')
+    freeze_binding = read('bridge-freeze-binding.json')
+    assert install['bridge_freeze_binding_sha256'] == sha(HERE / 'bridge-freeze-binding.json')
+    freeze_path = (ROOT / freeze_binding['path']).resolve()
+    assert freeze_path.is_relative_to(ROOT)
+    assert freeze_path.stat().st_size == freeze_binding['bytes']
+    assert sha(freeze_path) == freeze_binding['sha256']
+    assert json.loads(freeze_path.read_text())['files'] == install['archived_bridge_source_sha256']
+    locked = tomllib.loads((HERE / 'Cargo.lock').read_text())
+    expected_provenance = {
+        'manifest_sha256': sha(HERE / 'Cargo.toml'), 'lock_sha256': sha(HERE / 'Cargo.lock'),
+        'git_dependencies': sorted(
+            [{'name': p['name'], 'version': p['version'], 'source': p['source']}
+             for p in locked['package'] if p.get('source', '').startswith('git+')],
+            key=lambda item: (item['name'], item['source']))}
+    assert install['build_provenance'] == install['expected_build_provenance'] == expected_provenance
+    assert install['local_sources'] == {}
+    assert install['installed_file_sha256'] == install['files']
+    assert install['installed_symlinks'] == []
+    assert install['actual_cli_update']
+    assert install['previous_installation_preserved'] and install['previous_source_unchanged']
+    assert install['previous_archive_sha256'] != install['files']['lib/libninjars.a']
+    assert install['previous_installation_image_sha256'] == sha(HERE / 'previous-installation-image.json')
+    assert 'install ninjars --update ' in (HERE / 'install.mg5').read_text()
+    previous = read('previous-installation-image.json')
+    assert previous['files']['lib/libninjars.a'] == install['previous_archive_sha256']
+    for name, retained in (('Cargo.lock', 'previous-Cargo.lock'),
+            ('Cargo.toml', 'previous-Cargo.toml'), ('install.log', 'previous-install.log'),
+            ('lib/ninjars-config.json', 'previous-ninjars-config.json')):
+        assert sha(HERE / retained) == previous['files'][name]
+    assert install['archived_generator_sources_sha256'] == sha(HERE / 'archived-generator-sources.json')
+    assert install['installer_rust_command'] == '$(CARGO) rustc --release --locked --lib -- --print native-static-libs'
+    assert install['passed'] and install['compiled_smoke_passed'] and install['exit_code'] == 0
+    assert install['abi_version'] == 3 and install['cargo_jobs'] == 1
+    assert install['cli_log_sha256'] == sha(HERE / 'install-cli.log')
+    assert install['cli_card_sha256'] == sha(HERE / 'install.mg5')
+    assert 'NinjaRS ABI3 native/compensated DP and genuine binary128-input rescue passed' in (HERE / 'install.log').read_text()
+    for name in ('install.log', 'Cargo.lock', 'Cargo.toml'):
+        assert sha(HERE / name) == install['files'][name]
+    exports = read('exports.json')
+    assert exports['source_revision'] == install['revision']
+    assert exports['archived_generator_sources_sha256'] == install['archived_generator_sources_sha256']
+    assert exports['installation_sha256'] == sha(HERE / 'installation.json')
+    assert set(exports['exports']) == {'standalone', 'nlo'}
+    for name, record in exports['exports'].items():
+        assert record['exit_code'] == 0
+        assert record['card_sha256'] == sha(HERE / (name + '.mg5'))
+        assert record['log_sha256'] == sha(HERE / (name + '-export.log'))
+        assert 'set output_dependencies internal' in (HERE / (name + '.mg5')).read_text()
+    relocation = read('relocation.json')
+    hidden = read('installation-hidden.json')
+    assert relocation['original_output_removed'] and relocation['original_nlo_output_removed']
+    assert hidden['original_installation_path_absent']
+    restoration = read('installation-restored.json')
+    assert restoration['restored'] and restoration['hidden_path_absent']
+    assert restoration['runtime_exit_code'] == 0
+    assert restoration['installed_file_sha256'] == install['installed_file_sha256']
+    assert set(relocation['copied_files']) == {'libninjars.a', 'mninjars.mod', 'ninjars.h',
+        'mninjars.f90', 'ninjars-config.json', 'ninjars-link-before.txt', 'ninjars-native-libs.txt'}
+    assert all(r['regular_file'] for r in relocation['copied_files'].values())
+    assert relocation['nlo_copied_files'] == relocation['copied_files']
+    assert relocation['copied_files']['libninjars.a']['sha256'] == install['files']['lib/libninjars.a']
+    observed = read('standalone-results.json')
+    reference = read('inputs/cuttools-reference.json')
+    for label, status in (('dp', 110), ('qp', 120), ('stable', 218)):
+        assert coefficients((HERE / f'standalone-{label}.log').read_text()) == observed[label]
+        assert observed[label]['return_code'] == status
+        for name, old in (('born', 'born'), ('finite', 'finite'),
+                          ('single_pole', '1eps'), ('double_pole', '2eps')):
+            assert abs(observed[label][name] - reference[old]) <= 1e-11 * max(1, abs(reference[old]))
+    runtime = read('runtime-results.json')
+    assert runtime['standalone'] == observed
+    assert runtime['nlo_cli_success'] and runtime['pole_checks_passed'] == runtime['pole_checks_tested'] == 20
+    assert runtime['pole_test_tolerance'] == 1e-5
+    handoff = read('runtime-handoff.json')
+    assert handoff['tool_exit_code'] == 0 and handoff['mp190_released']
+    assert not handoff['runtime_controller']['present'] and handoff['owned_process_group_remaining'] == []
+    assert handoff['prefix_restored_byte_exact']
+    assert handoff['runtime_results_sha256'] == sha(HERE / 'runtime-results.json')
+    assert handoff['restoration_sha256'] == sha(HERE / 'installation-restored.json')
+    assert 'Poles successfully cancel for 20 points over 20' in (HERE / 'nlo-compile.log').read_text()
+    assert 'Fraction of failures: 0.00' in (HERE / 'nlo-test_ME.log').read_text()
+    assert 'FAILED' not in (HERE / 'nlo-test_ME.log').read_text()
+    assert re.search(r'>\s*MLReductionLib\s*=\s*8\b', (HERE / 'nlo-check_poles.log').read_text())
+    for name in ('standalone', 'nlo-check_poles', 'nlo-madevent_mintFO'):
+        nm = (HERE / (name + '-nm.txt')).read_text()
+        assert re.search(r'\bU __(?:add|sub|mul|div)tf3@GCC_', nm)
+        linked = (HERE / (name + '-ldd.txt')).read_text()
+        assert 'libgcc_s.so' in linked and 'not found' not in linked
+    focused = read('focused-unit-results.json')
+    python = read('focused-python-results.json')
+    assert focused['passed'] and python['passed']
+    assert focused['python_tests'] == python['tests'] == len(python['test_ids']) > 0
+    assert python['failures'] == python['errors'] == python['skipped'] == 0
+    assert focused['test_ids'] == python['test_ids']
+    assert len(set(python['test_ids'])) == len(python['test_ids'])
+    assert focused['python_results_sha256'] == sha(HERE / 'focused-python-results.json')
+    assert focused['log_sha256'] == sha(HERE / 'focused-unit-tests.log')
+    assert re.search(r'(?m)^Ran %d tests? in ' % python['tests'], (HERE / 'focused-unit-tests.log').read_text())
+    assert re.search(r'(?m)^OK$', (HERE / 'focused-unit-tests.log').read_text())
+    assert focused['archived_bridge_source_sha256'] == install['archived_bridge_source_sha256']
+    assert focused['installation_sha256'] == sha(HERE / 'installation.json')
+    if live:
+        work = ROOT / '.benchmark-work/policy-v3/final-pins-20261021-v1/install-export'
+        assert not (work / 'source/HEPTools/ninjars-unavailable').exists()
+        prior = ROOT / previous['retained_at']
+        assert {str(p.relative_to(prior)): sha(p) for p in sorted(prior.rglob('*'))
+                if p.is_file()} == previous['files']
+        source = work / 'source/HEPTools/ninjars'
+        for name, expected in install['files'].items():
+            assert sha(source / name) == expected, name
+        archived = work / 'source'
+        for name, expected in read('archived-generator-sources.json').items():
+            assert sha(archived / name) == expected, name
+        archived_bridge = {str(p.relative_to(archived / 'vendor/ninjars')): sha(p)
+                           for p in sorted((archived / 'vendor/ninjars').rglob('*')) if p.is_file()}
+        assert archived_bridge == install['archived_bridge_source_sha256']
+        for name, expected in python['archived_source_files_sha256'].items():
+            assert sha(archived / name) == expected, name
+        for output in ('standalone-relocated', 'nlo-relocated'):
+            archive = work / output / 'lib/libninjars.a'
+            assert archive.is_file() and not archive.is_symlink()
+            assert sha(archive) == install['files']['lib/libninjars.a']
+        assert sha(work / 'standalone-relocated/SubProcesses/P0_uux_z/check') == relocation['standalone_symbols']['executable_sha256']
+        for name, record in runtime['nlo_symbols'].items():
+            assert sha(work / 'nlo-relocated/SubProcesses/P0_uux_z' / name) == record['executable_sha256']
+    return {'passed': True, 'files': len(actual), 'live': live,
+            'standalone_statuses': [110, 120, 218], 'nlo_poles': 20,
+            'compiled_smoke': True, 'engine_executions': 0}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--live', action='store_true', help='Also rehash preserved installation and executables')
+    args = parser.parse_args()
+    print(json.dumps(verify(live=args.live)))
+
+
+if __name__ == '__main__':
+    main()

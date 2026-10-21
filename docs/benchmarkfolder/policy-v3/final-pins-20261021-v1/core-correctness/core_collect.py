@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT/'docs/benchmarkfolder/policy-v2/final-stress-raw-col
 import collect as operations
 import ninjars_benchmark as bench
 import ninjars_benchmark_policy_v2 as policy
+import ninjars_benchmark_pair_v3 as pair
 import ninjars_benchmark_workers as workers
 import ninjars_supplement_v2 as supplement
 
@@ -60,6 +61,7 @@ def frozen_sources():
     # These additional imported adapters are bound by their real current bytes.
     paths.update({'core_collect.py':Path(__file__), 'launch.py':HERE/'launch.py',
                   'owned_operations.py':Path(operations.__file__),
+                  'ninjars_benchmark_pair_v3.py':Path(pair.__file__),
                   'ninjars_benchmark_references_v2.py':ROOT/'tools/ninjars_benchmark_references_v2.py'})
     return {name:supplement.bound(path) for name,path in paths.items()}
 
@@ -252,9 +254,10 @@ def collect(args):
     args_worker=SimpleNamespace(cpu=CPU,repetitions=2,minimum_seconds=1e-12,timeout=86400.,fresh_parity=False,clean_build=True)
     sentinel=work/'input-root-sentinel'
     try:
-        with supplement.harness(sentinel,report),supplement.input_roots(roots,sentinel),operations.owned_processes(work,report):
+        with supplement.harness(sentinel,report),supplement.input_roots(roots,sentinel):
             for case in config['cases']:
-                workers.run_case(case,('candidate',),(8,),config,args_worker,work/'workers',report,'final-pins-core-correctness-v1')
+                with pair.owned_preparation(report,label=case['id']):
+                    workers.run_case(case,('candidate',),(8,),config,args_worker,work/'workers',report,'final-pins-core-correctness-v1')
                 strict_records(report,case['id'])
                 status['source_checkpoints'].append(check_sources(spec))
                 status['completed_cases'].append(case['id']);bench.dump(report/'run-status.json',status)

@@ -1,0 +1,51 @@
+{
+  "schema": "final-numerical-verifier-regression-v1",
+  "command": [
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+    "-m",
+    "unittest",
+    "tests.unit_tests.various.test_ninjars_final_numerical",
+    "-v"
+  ],
+  "cpu": 4,
+  "exit_code": 0,
+  "source_sha256_before": [
+    {
+      "path": "tools/ninjars_final_numerical.py",
+      "sha256": "2507b0ce3b5dfd87ed62b750a3a8f5f12a2f6cbd5747fb7756ac1e82c013129e",
+      "bytes": 14867
+    },
+    {
+      "path": "tests/unit_tests/various/test_ninjars_final_numerical.py",
+      "sha256": "c9018b121a0a1cb3c934a55885e9d0a80b2de01887c3718d8de31c754cfba155",
+      "bytes": 5098
+    }
+  ],
+  "source_sha256_after": [
+    {
+      "path": "tools/ninjars_final_numerical.py",
+      "sha256": "2507b0ce3b5dfd87ed62b750a3a8f5f12a2f6cbd5747fb7756ac1e82c013129e",
+      "bytes": 14867
+    },
+    {
+      "path": "tests/unit_tests/various/test_ninjars_final_numerical.py",
+      "sha256": "c9018b121a0a1cb3c934a55885e9d0a80b2de01887c3718d8de31c754cfba155",
+      "bytes": 5098
+    }
+  ],
+  "source_unchanged": true,
+  "stdout": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/verifier-tests.stdout",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "stderr": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/verifier-tests.stderr",
+    "sha256": "64258f0fe511f6eabcda291166578461d4dfa3082e56a8ec082ae8d81ec1ecd2",
+    "bytes": 1274
+  },
+  "wall_seconds_diagnostic_only": 1.1318149931030348,
+  "numerical_engine_calls": 0,
+  "tests": 6,
+  "performance_claim": false
+}

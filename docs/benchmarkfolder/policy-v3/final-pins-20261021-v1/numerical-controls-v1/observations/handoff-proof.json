@@ -1,0 +1,165 @@
+{
+  "schema": "final-release-numerical-mp-handoff-v1",
+  "completed_utc": "2026-10-21T16:57:08.992597+00:00",
+  "unit_proof": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/unit-proof.json",
+    "sha256": "9d8975d6f522c6436cf206defdca99fb533bd88b17f1c8d23d99e48a3df8abd9",
+    "bytes": 10735
+  },
+  "final_source_freeze": {
+    "path": ".ninjars-build/final-dependency-candidate-20261021/final-source-freeze-v4.json",
+    "sha256": "b9488707deb57c8573fe34cd1fbbce69740fab4b024845d625ca1dbfe1060933",
+    "bytes": 7060
+  },
+  "owned_process_audit": [
+    {
+      "identity_record": {
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/ordinary-fenv-active.json",
+        "sha256": "ce3aa1362605490d6fcfd853dd1f17c19295a277fdc36207e0b95e9696157b82",
+        "bytes": 339
+      },
+      "pid": 1283949,
+      "recorded_start_ticks": 63537778,
+      "current_start_ticks": null,
+      "same_owned_identity_alive": false
+    },
+    {
+      "identity_record": {
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/planar-bridge-active.json",
+        "sha256": "cbc8f5b2a4bd13d859e660ff1dd1f28d9cc6dd7dfc32b9316b76272b9adda1d2",
+        "bytes": 266
+      },
+      "pid": 732486,
+      "recorded_start_ticks": 63475587,
+      "current_start_ticks": null,
+      "same_owned_identity_alive": false
+    },
+    {
+      "identity_record": {
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/build-active.json",
+        "sha256": "08e1eabbbb07c091678f2347e28982406d25379ae94e2a0af0fbd4fb07e4e44e",
+        "bytes": 479
+      },
+      "pid": 3677971,
+      "recorded_start_ticks": 63372893,
+      "current_start_ticks": null,
+      "same_owned_identity_alive": false
+    },
+    {
+      "identity_record": {
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/high-rank-active.json",
+        "sha256": "f801eaf3ad52b138f7b8246990bb7cff7350cca8feba086146960376955a407a",
+        "bytes": 266
+      },
+      "pid": 379405,
+      "recorded_start_ticks": 63441585,
+      "current_start_ticks": null,
+      "same_owned_identity_alive": false
+    },
+    {
+      "identity_record": {
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/ordinary-no-fenv-active.json",
+        "sha256": "d28d6c34570a61ca93702c2001455098cf21e655c1b8b20e6242fd3000b55f0f",
+        "bytes": 340
+      },
+      "pid": 552989,
+      "recorded_start_ticks": 63462088,
+      "current_start_ticks": null,
+      "same_owned_identity_alive": false
+    },
+    {
+      "identity_record": {
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/build-attempt-2-active.json",
+        "sha256": "5d7fdd08c4656ba868b9bca2d5bd89c881831c7667bec94c1ae99a56b7815011",
+        "bytes": 479
+      },
+      "pid": 4122951,
+      "recorded_start_ticks": 63412539,
+      "current_start_ticks": null,
+      "same_owned_identity_alive": false
+    },
+    {
+      "identity_record": {
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/soft-master-active.json",
+        "sha256": "e26783d74061856cd1e574b98874289fceeccce26090c7fa53cb5bf72bc323d3",
+        "bytes": 445
+      },
+      "pid": 420549,
+      "recorded_start_ticks": 63448040,
+      "current_start_ticks": null,
+      "same_owned_identity_alive": false
+    },
+    {
+      "identity_record": {
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/build-fenv-active.json",
+        "sha256": "fd99ac0a19126a34925d60121ec5ef433a14eef0718292003b3207d063bb4e5a",
+        "bytes": 522
+      },
+      "pid": 1010899,
+      "recorded_start_ticks": 63510672,
+      "current_start_ticks": null,
+      "same_owned_identity_alive": false
+    },
+    {
+      "identity_record": {
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/fortran-smoke-active.json",
+        "sha256": "e26b0e0091feb42ede746e754d79cc6a41bd5f4837913bce3af231c2355843bb",
+        "bytes": 266
+      },
+      "pid": 3783406,
+      "recorded_start_ticks": 63382288,
+      "current_start_ticks": null,
+      "same_owned_identity_alive": false
+    },
+    {
+      "identity_record": {
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/physical-active.json",
+        "sha256": "0457af82683c6b2f77a505dbaaae30c309407aa9a1c2252a2eea1dcdf9919afb",
+        "bytes": 268
+      },
+      "pid": 4027406,
+      "recorded_start_ticks": 63401107,
+      "current_start_ticks": null,
+      "same_owned_identity_alive": false
+    },
+    {
+      "identity_record": {
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/planar-sentinels-active.json",
+        "sha256": "42b666487dc93ddefec1ffe44d22f7d4e30395a921da489346117f9d3f65e055",
+        "bytes": 452
+      },
+      "pid": 432163,
+      "recorded_start_ticks": 63449740,
+      "current_start_ticks": null,
+      "same_owned_identity_alive": false
+    },
+    {
+      "identity_record": {
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/planar-sentinels-complete-active.json",
+        "sha256": "7365b902b68409614790a30c47376b2776341b944bd8faab5208ed501c5a052f",
+        "bytes": 451
+      },
+      "pid": 1297507,
+      "recorded_start_ticks": 63540193,
+      "current_start_ticks": null,
+      "same_owned_identity_alive": false
+    },
+    {
+      "identity_record": {
+        "path": ".benchmark-work/final-numerical-release-20261021-v1/planar-exact-active.json",
+        "sha256": "550528c65f3120bcd7da13a6cde9f933401fd8721445ccd2ac08692c614f3e75",
+        "bytes": 266
+      },
+      "pid": 784101,
+      "recorded_start_ticks": 63484446,
+      "current_start_ticks": null,
+      "same_owned_identity_alive": false
+    }
+  ],
+  "all_owned_processes_exited": true,
+  "mp_slot_released": true,
+  "cargo_cache_released": true,
+  "recipient": "exports_release",
+  "full_1392_replay": "pending; root scheduled actual CLI update and installed smoke first",
+  "proof_scope": "Source-bound ordinary controls and separately retained known-tail failures; no full process or performance qualification."
+}

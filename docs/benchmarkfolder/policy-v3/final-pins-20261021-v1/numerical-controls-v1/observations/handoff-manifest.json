@@ -1,0 +1,272 @@
+{
+  "schema": "final-release-numerical-handoff-manifest-v1",
+  "scope": "Explicit source/unit/diagnostic handoff payload, not an exhaustive inventory of earlier private attempts or future replay work. Private executable is hash-bound in build record.",
+  "files": {
+    "unit-proof.json": {
+      "sha256": "9d8975d6f522c6436cf206defdca99fb533bd88b17f1c8d23d99e48a3df8abd9",
+      "bytes": 10735
+    },
+    "build-fenv-record.json": {
+      "sha256": "34ca0462102999799757555e8dae6081f175e3397d655f930d797d8e4b7a6d52",
+      "bytes": 6212
+    },
+    "build-fenv-process.json": {
+      "sha256": "a4cb025d18e865c8e61beadb8eaeb5b2b9f28a933b3f322bda5ce6361ba04473",
+      "bytes": 5409
+    },
+    "build-fenv.stdout": {
+      "sha256": "8dfd954be9a93c154d31d29eb0d8b58f66dc9e8a24bcc316df9eecd6449ec2ef",
+      "bytes": 554086
+    },
+    "build-fenv.stderr": {
+      "sha256": "71a8d5b373c8ed3cb43cc9ec04015cd3cab0ca6de5cb93fb5c09a5cae117ddc6",
+      "bytes": 218
+    },
+    "ordinary-fenv-process.json": {
+      "sha256": "2ede0793eb0ff597281494954d5eaa23800eba408831a4c982ed0ee1d56e0eee",
+      "bytes": 10979
+    },
+    "ordinary-fenv.stdout": {
+      "sha256": "9dfb23e86afe938963d9a159f824d669adc5b97360c7b0bd815dbc0b1502899d",
+      "bytes": 11824
+    },
+    "ordinary-fenv.stderr": {
+      "sha256": "1aad549af7fb493c4e85d6e491acf56273bc0726ad622b09ef93a4e212f57c73",
+      "bytes": 663
+    },
+    "ordinary-convergence.json": {
+      "sha256": "5c82eda2f63979dc0cab019e100f57f4c0c1409ccdd8565728801e18e6425874",
+      "bytes": 11901
+    },
+    "planar-sentinels-complete-process.json": {
+      "sha256": "4e8a2e328ec423ae9119c070fc20f50a3bb1aaa008c232ec56705d9865132e87",
+      "bytes": 11130
+    },
+    "planar-sentinels-complete.stdout": {
+      "sha256": "b9b24d388e122b42c8f8fbcb611a4db8f2472b9f38638e48a4e76bcfcb15a278",
+      "bytes": 11235
+    },
+    "planar-sentinels-complete.stderr": {
+      "sha256": "357fe7d2303c58ac4b443673bf88e8101435fad39433627b797769f6928cbc42",
+      "bytes": 1154
+    },
+    "handoff-proof.json": {
+      "sha256": "bde910b70a51ca653a2d36d9aa217035da59c0f94baa4ecf9847e034eb4e7caa",
+      "bytes": 6016
+    },
+    "run_test_final.py": {
+      "sha256": "09c38e1d4f97336e545c7a1695d0675d75aafb0ce0ae1cb74a458c99d844dc3a",
+      "bytes": 3924
+    },
+    "planar-exact-acceptance-view.json": {
+      "sha256": "895d1dda8b1bee97afd53041ddfed060d48b83e73afc247b466ecdd89775d8d9",
+      "bytes": 3547
+    },
+    "planar-exact-proof.json": {
+      "sha256": "bbd2dfa5f2167d7d0a27059c8199d224e800d6ccdd69f9167a6ff0f72a65956f",
+      "bytes": 5697
+    },
+    "planar-exact-requests.json": {
+      "sha256": "355aa5c0648b3690e0ff0fa41b3c03009e0ec0c298542e93588db00a746ad1e7",
+      "bytes": 15054
+    },
+    "planar-exact-requests.txt": {
+      "sha256": "23c8386ccea97cbff83593bd8d72c07103c14aae206ca3e7e58facffb1139f72",
+      "bytes": 11097
+    },
+    "planar-exact.stdout": {
+      "sha256": "245ef2113308391973cd5366a402b84aec1928ac4758965d260ff60fdac99f13",
+      "bytes": 3457
+    },
+    "planar-exact.stderr": {
+      "sha256": "50d932a1246ef5cc01d6bba9c5c1fa784e661cb3ea3ce81aeeec877b0d7bf208",
+      "bytes": 814
+    },
+    "run_planar_exact.py": {
+      "sha256": "3647efd2a26f57e2c247aca1f6b86b6139b024ccdb2b2f18da26f40f57cab1e7",
+      "bytes": 5021
+    },
+    "source-v4/vendor/ninjars/UPSTREAM.md": {
+      "sha256": "2e546da726ff039d30b4fa76f10a06b0faec9538d0fc2a7c087a8990fb36954c",
+      "bytes": 3217
+    },
+    "source-v4/vendor/ninjars/Cargo.toml": {
+      "sha256": "aeb9c987c47586617585e3da782e60ee3670942db639ed48a73fc75f6f89c0d6",
+      "bytes": 1343
+    },
+    "source-v4/vendor/ninjars/.gitignore": {
+      "sha256": "75b7dbb02a9764029bd6e213d34359fa93b3241ba7e74ebf4b9b13dc3fbc27aa",
+      "bytes": 97
+    },
+    "source-v4/vendor/ninjars/mninjars.f90": {
+      "sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+      "bytes": 8497
+    },
+    "source-v4/vendor/ninjars/smoke.f90": {
+      "sha256": "913e96e53e2ba15a71679559d0a2b79b3a12cc7640286ab1a86d1db260e2919a",
+      "bytes": 2398
+    },
+    "source-v4/vendor/ninjars/ninjars.h": {
+      "sha256": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+      "bytes": 4120
+    },
+    "source-v4/vendor/ninjars/Makefile": {
+      "sha256": "3373a4dea5f02c76b13a86b2d323b0f39d2d080e2acb3e682d692d528836838f",
+      "bytes": 1653
+    },
+    "source-v4/vendor/ninjars/build.rs": {
+      "sha256": "fa389383328261938398f067a18ad860ef21e0bb4bc15c95b24be3e0a6704342",
+      "bytes": 375
+    },
+    "source-v4/vendor/ninjars/Cargo.lock": {
+      "sha256": "b8c2eddffe0dd5cb3a88b3b934133c3a0146638fa33de5e5f9fa4d65ee124f18",
+      "bytes": 78237
+    },
+    "source-v4/vendor/ninjars/tests/fenv_helpers.c": {
+      "sha256": "cdb2df81ddcfc898f00dae4d74a78f0d6436aaa6c9ea3e5991bf11616b8bbd8d",
+      "bytes": 549
+    },
+    "source-v4/vendor/ninjars/tests/replay.py": {
+      "sha256": "9c475d4fa7c17c200eafda7a1e0e6e0bb0f4392de2c89a9e26a302f69089a2b9",
+      "bytes": 2449
+    },
+    "source-v4/vendor/ninjars/examples/replay.rs": {
+      "sha256": "6381e93e652fec4547949a7a2a4c05e7b6955fe817862e97f42e83f2d0182200",
+      "bytes": 6450
+    },
+    "source-v4/vendor/ninjars/src/panic_contract_tests.rs": {
+      "sha256": "e029723d3ead3424b2f198c6efa2df5073025f9c2b75820b7d3e5b74926182f0",
+      "bytes": 1423
+    },
+    "source-v4/vendor/ninjars/src/transport_contract_tests.rs": {
+      "sha256": "884307cd6500059cfb28a24748f8219d0d9f3a87ab84dd97bfd9af34a97ac6fb",
+      "bytes": 4083
+    },
+    "source-v4/vendor/ninjars/src/guarded.rs": {
+      "sha256": "0c7ac81fe597083e13b069e74a978161d56a101ca8b58bad4b8adaa04ad0d94c",
+      "bytes": 9559
+    },
+    "source-v4/vendor/ninjars/src/tensor_allocation_tests.rs": {
+      "sha256": "73703def29114280d188ff396a9177eb26fb8ab6e81516286fd3db47869e55ad",
+      "bytes": 11495
+    },
+    "source-v4/vendor/ninjars/src/tensor_dense_reference.rs": {
+      "sha256": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55",
+      "bytes": 16731
+    },
+    "source-v4/vendor/ninjars/src/retry_tests.rs": {
+      "sha256": "2492364fb5877d3ea34088b2f33e3a55c27ba77bafe7871c4d91f78aa41fb10e",
+      "bytes": 5695
+    },
+    "source-v4/vendor/ninjars/src/guarded_fenv.c": {
+      "sha256": "79e47e68003e6660cfc0d67318b1069e0f2f8958a7a6d642020543670ffbb427",
+      "bytes": 621
+    },
+    "source-v4/vendor/ninjars/src/guarded_tests.rs": {
+      "sha256": "9566681f2b67e82f5fed8f3186c362820b7991624296d04c905491b230f3769d",
+      "bytes": 11621
+    },
+    "source-v4/vendor/ninjars/src/upstream_master_tests.rs": {
+      "sha256": "48eb9e0d7c7a23bd0f9039be3e986ea2322a4c31d236073a322ca4d71b57f456",
+      "bytes": 10980
+    },
+    "source-v4/vendor/ninjars/src/tensor_capture_tests.rs": {
+      "sha256": "38354ecdff8568c877f465c2a6cce18120d737ad962ee5375039cfec15dfec53",
+      "bytes": 11781
+    },
+    "source-v4/vendor/ninjars/src/final_precision_tests.rs": {
+      "sha256": "2b07301725c3f720410954ff7e5ccb33b131907e951b098a34693bf3e4d0ac77",
+      "bytes": 21900
+    },
+    "source-v4/vendor/ninjars/src/transport_replay_tests.rs": {
+      "sha256": "d0a0e3129a9eb43765087d182a204db012cd8bb90ade093c25449e94c6a9a6cf",
+      "bytes": 3592
+    },
+    "source-v4/vendor/ninjars/src/tensor.rs": {
+      "sha256": "525d5083904cd0257938c128e0e44f2d202de0e31f82b411f45e2a004ff8e5e1",
+      "bytes": 17547
+    },
+    "source-v4/vendor/ninjars/src/lib.rs": {
+      "sha256": "4f7bd6eb93d1860f983f8284b5256b06bb24e65d6698a9b885d9018be8e05d2c",
+      "bytes": 51448
+    },
+    "source-v4/vendor/ninjars/tests/data/convergence.json": {
+      "sha256": "b34d6ef194a5297914050ceb6ffd25f5402c0150898921d2dcaf65471e55ec93",
+      "bytes": 10189
+    },
+    "source-v4/vendor/ninjars/tests/data/provenance.json": {
+      "sha256": "f77b7cee3079a95f001a3cc7d6a9f0aa1f8a1b51f3668b0d709552c67016d18b",
+      "bytes": 4897
+    },
+    "source-v4/vendor/ninjars/tests/data/ninja/madloop-gg-hhh-top-triangle-0.json": {
+      "sha256": "7905a646d4bb23daf1b0506b662913f60796c87dfcbbd556c5bd957f7eba3bd2",
+      "bytes": 12531
+    },
+    "source-v4/vendor/ninjars/tests/data/ninja/madloop-gg-hhh-top-box-8.json": {
+      "sha256": "c49f6d9db0c09602c6e663e60499a9b5126b9ca66d1738f6b5bac5846afda572",
+      "bytes": 13325
+    },
+    "source-v4/vendor/ninjars/tests/data/ninja/madloop-gg-hh-top-triangle-0.json": {
+      "sha256": "669b92538382201f26487865cd44a1d8eea03b13ed7b99dcdae21bd7662cca95",
+      "bytes": 12534
+    },
+    "source-v4/vendor/ninjars/tests/data/ninja/madloop-hgg-top-triangle-0.json": {
+      "sha256": "a50906866f8e8812c02365cff98cb56a20639537f1804d290edbd8020ed9d30b",
+      "bytes": 12610
+    },
+    "source-v4/vendor/ninjars/tests/data/ninja/madloop-four-photon-top-box-0.json": {
+      "sha256": "dc34ad2683fbe535140c63bba564b8f6e8e74ce3c64eb17ef3cfa96baa5a6dde",
+      "bytes": 13356
+    },
+    "source-v4/vendor/ninjars/tests/data/ninja/madloop-gg-hh-top-box-2.json": {
+      "sha256": "d893de26b4e2e4edbeb4d6ba3122a6cd231bd5842719b3b8b2c4a84ee5e67dcc",
+      "bytes": 13271
+    },
+    "source-v4/vendor/ninjars/tests/data/ninja/madloop-gg-hhh-top-pentagon-26.json": {
+      "sha256": "e4b1522302bab1592924b251a7ee153c94623726d68b2d552e6211a4b0b3ded3",
+      "bytes": 13393
+    },
+    "source-v4/vendor/ninjars/tests/data/compensated/expansion-results.json": {
+      "sha256": "8bdf9a439db23f793ca38f774997d866d6a0fa279e00a086d81cee21a3d67b76",
+      "bytes": 1350447
+    },
+    "source-v4/vendor/ninjars/tests/data/compensated/corrected-results.json": {
+      "sha256": "f868eb5d279ef0ef68aefcf34704a094cb4452447aff857c7650358b623dfa94",
+      "bytes": 1734
+    },
+    "source-v4/vendor/ninjars/tests/data/compensated/inputs.json": {
+      "sha256": "1fb7ea9413efd25053dfdab357baf9ee973d8df3b6452fbaa280b684aea177b9",
+      "bytes": 27152
+    },
+    "source-v4/vendor/ninjars/tests/data/cases/madloop-gg-hhh-top-triangle-0.json": {
+      "sha256": "98483fd5759713618d7dfa784d604b83a7f03b241a5402d9a808af3655920353",
+      "bytes": 2285
+    },
+    "source-v4/vendor/ninjars/tests/data/cases/madloop-gg-hh-top-triangle-0.json": {
+      "sha256": "5178de553b5dcfa0fcca616748943a63f2933399203f7d7040ba9c98aa3b4ea2",
+      "bytes": 2317
+    },
+    "source-v4/vendor/ninjars/tests/data/cases/madloop-gg-hh-top-box-2.json": {
+      "sha256": "c9271b79b2a4df2155ee8855fda3ffc6090f37261711468efd3126cf6665d5a3",
+      "bytes": 5142
+    },
+    "source-v4/vendor/ninjars/tests/data/cases/madloop-gg-hhh-top-box-8.json": {
+      "sha256": "3f14438d72237acbd9c74f8ba813fa6fd04c2aa1af2cdde143134146a650a489",
+      "bytes": 4976
+    },
+    "source-v4/vendor/ninjars/tests/data/cases/madloop-four-photon-top-box-0.json": {
+      "sha256": "9aea91e4e6c70b0f5984b2070e7aef8a77699260dacac1a9b3c9d65f23189796",
+      "bytes": 7704
+    },
+    "source-v4/vendor/ninjars/tests/data/cases/madloop-gg-hhh-top-pentagon-26.json": {
+      "sha256": "af571c4df618dafad08dc0acdb345f39d0446a2ec814f03b7cc2ee5a25d727ca",
+      "bytes": 7781
+    },
+    "source-v4/vendor/ninjars/tests/data/cases/madloop-hgg-top-triangle-0.json": {
+      "sha256": "8a70a0fc3569676b2601dbeb36b16cb70817b40df8eb3e762e4ed1899246d590",
+      "bytes": 3453
+    }
+  },
+  "count": 66,
+  "full_1392_replay_complete": false
+}

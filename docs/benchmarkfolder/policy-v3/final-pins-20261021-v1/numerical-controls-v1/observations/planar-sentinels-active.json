@@ -1,0 +1,15 @@
+{
+  "pid": 432163,
+  "process_group_id": 432163,
+  "start_ticks": 63449740,
+  "command": [
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/final-numerical-release-20261021-v1/libtest-no-fenv",
+    "--ignored",
+    "--exact",
+    "upstream_master_tests::planar_box_sentinels_retain_unconverged_successes",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "started_utc": "2026-10-21T16:39:56.285434+00:00",
+  "cpu": 190
+}

@@ -1,0 +1,13 @@
+test_CC_R1_cancellation_cannot_hide_precision_instability (tests.unit_tests.various.test_ninjars_final_numerical.TestFinalNumericalEvidence.test_CC_R1_cancellation_cannot_hide_precision_instability) ... ok
+test_filtered_reordered_and_failed_streams_are_rejected (tests.unit_tests.various.test_ninjars_final_numerical.TestFinalNumericalEvidence.test_filtered_reordered_and_failed_streams_are_rejected) ... ok
+test_historical_R1_changes_do_not_replace_new_convergence (tests.unit_tests.various.test_ninjars_final_numerical.TestFinalNumericalEvidence.test_historical_R1_changes_do_not_replace_new_convergence) ... ok
+test_inconsistent_complete_finite_is_rejected (tests.unit_tests.various.test_ninjars_final_numerical.TestFinalNumericalEvidence.test_inconsistent_complete_finite_is_rejected) ... ok
+test_metadata_relocation_cannot_add_or_drop_unknown_fields (tests.unit_tests.various.test_ninjars_final_numerical.TestFinalNumericalEvidence.test_metadata_relocation_cannot_add_or_drop_unknown_fields) ... ok
+test_metadata_relocation_cannot_change_physics_runtime_or_scope (tests.unit_tests.various.test_ninjars_final_numerical.TestFinalNumericalEvidence.test_metadata_relocation_cannot_change_physics_runtime_or_scope) ... ok
+test_nearest_even_binary128_and_subnormal_rounding (tests.unit_tests.various.test_ninjars_final_numerical.TestFinalNumericalEvidence.test_nearest_even_binary128_and_subnormal_rounding) ... ok
+test_optimized_python_cannot_skip_failure_checks (tests.unit_tests.various.test_ninjars_final_numerical.TestFinalNumericalEvidence.test_optimized_python_cannot_skip_failure_checks) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 1.056s
+
+OK

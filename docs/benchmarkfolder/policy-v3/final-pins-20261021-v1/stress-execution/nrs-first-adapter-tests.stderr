@@ -1,0 +1,14 @@
+test_another_numerical_revision_is_rejected (__main__.AdapterChecks.test_another_numerical_revision_is_rejected) ... ok
+test_dirty_production_fails_before_any_worker (__main__.AdapterChecks.test_dirty_production_fails_before_any_worker) ... ok
+test_live_production_matches_frozen_generation (__main__.AdapterChecks.test_live_production_matches_frozen_generation) ... ok
+test_nrs_first_targets_preserve_independent_derived_controls (__main__.AdapterChecks.test_nrs_first_targets_preserve_independent_derived_controls) ... ok
+test_numerical_functions_and_target_inventory_are_preserved (__main__.AdapterChecks.test_numerical_functions_and_target_inventory_are_preserved) ... ok
+test_resealed_backend_relabeling_is_rejected (__main__.AdapterChecks.test_resealed_backend_relabeling_is_rejected) ... ok
+test_single_job_adapter_restores_dispatch_on_failure (__main__.AdapterChecks.test_single_job_adapter_restores_dispatch_on_failure) ... ok
+test_target_policy_requires_immutable_base_specification (__main__.AdapterChecks.test_target_policy_requires_immutable_base_specification) ... ok
+test_untracked_generator_input_is_rejected (__main__.AdapterChecks.test_untracked_generator_input_is_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.541s
+
+OK

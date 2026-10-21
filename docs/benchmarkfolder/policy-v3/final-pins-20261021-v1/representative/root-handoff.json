@@ -1,0 +1,9 @@
+{
+  "root_authorized": true,
+  "phase": "final-pins-representative",
+  "cpu": 190,
+  "source_sha256": "f321dce9ccde72d0d0f496925c5324c0184b65ddaa86780e019f84c4cfcbf963",
+  "freeze_sha256": "1f6e9fb21096e5c83df0e51b264151985f9bb4ca9bf2d7bd5190c6761a23cea9",
+  "core_status_sha256": "036113c34f4894c4508bf217a454749d4cdcccdfe5d739b53f835090e837b565",
+  "control_status_sha256": "8ea4e438a3660339876cd8ee69def3a0488e77449c8be358b0a8453462581211"
+}

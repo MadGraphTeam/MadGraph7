@@ -1,0 +1,64 @@
+{
+  "standalone": {
+    "dp": {
+      "born": 110.81538588507335,
+      "finite": 5.187888821262764,
+      "single_pole": -8.324577356963767,
+      "double_pole": -5.549718237975846,
+      "return_code": 110
+    },
+    "qp": {
+      "born": 110.81538588507335,
+      "finite": 5.187888821262763,
+      "single_pole": -8.32457735696377,
+      "double_pole": -5.549718237975847,
+      "return_code": 120
+    },
+    "stable": {
+      "born": 110.81538588507335,
+      "finite": 5.187888821262764,
+      "single_pole": -8.324577356963767,
+      "double_pole": -5.549718237975846,
+      "return_code": 218
+    }
+  },
+  "standalone_comparison": "All four coefficients agree with retained CutTools reference at 1e-11 relative or absolute.",
+  "nlo_symbols": {
+    "check_poles": {
+      "executable_sha256": "432e60dbe2f536c51e53d92a70e0d124c28dbe80b33a9dc22534cb1adee09c6c",
+      "symbol_command": [
+        "nm",
+        "-D"
+      ],
+      "full_nm_stdout_sha256": "d56d755dedde4b72d73554090b22ab0220b81cbfca64a2d249e7b8178c6afe6b",
+      "binary128_helpers": [
+        "                 U __addtf3@GCC_4.3.0",
+        "                 U __divtf3@GCC_4.3.0",
+        "                 U __multf3@GCC_4.3.0",
+        "                 U __subtf3@GCC_4.3.0"
+      ],
+      "libgcc_s_resolved": true
+    },
+    "madevent_mintFO": {
+      "executable_sha256": "7c3f91ae3d850f922e778e0865db77a90fa7b4cb24f3e0df5497a9190b838602",
+      "symbol_command": [
+        "nm",
+        "-D"
+      ],
+      "full_nm_stdout_sha256": "d56d755dedde4b72d73554090b22ab0220b81cbfca64a2d249e7b8178c6afe6b",
+      "binary128_helpers": [
+        "                 U __addtf3@GCC_4.3.0",
+        "                 U __divtf3@GCC_4.3.0",
+        "                 U __multf3@GCC_4.3.0",
+        "                 U __subtf3@GCC_4.3.0"
+      ],
+      "libgcc_s_resolved": true
+    }
+  },
+  "nlo_cli_success": true,
+  "pole_checks_passed": 20,
+  "pole_checks_tested": 20,
+  "pole_test_tolerance": 1e-05,
+  "soft_collinear_checks": "Passed, zero failures",
+  "scope": "Linux/GNU Fortran 15.3.0; no shower validation."
+}

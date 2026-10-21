@@ -1,0 +1,92 @@
+{
+  "schema": "stress-early-build-result-v1",
+  "registration": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/early-registration.json",
+    "sha256": "3a3ca383f295ee01e3d9566f832ee173b4e20209d0788ab325fee6f4bd336b16",
+    "bytes": 329381
+  },
+  "status": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/preparation-status.json",
+    "sha256": "bd631afc82cd9ec9303dfb3c35e668a99b03aaf3d9a5b3c5b3ec899c2897e47f",
+    "bytes": 1147
+  },
+  "configurations": {
+    "ordinary": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/ordinary.json",
+      "sha256": "17a856698754aa519e777b62645f5e3dacd6bf9babcf89972138352fc86a5609",
+      "bytes": 577
+    },
+    "rotation": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/rotation.json",
+      "sha256": "6543793310aeece650ef6a7d88c4bac50d29a855d3417c50fd3e40f3bfc073ac",
+      "bytes": 594
+    },
+    "scale": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/scale.json",
+      "sha256": "5947cb8735b3b4e0a8dd017fd70911be60681bdb6ef704689c02dc946b4a846e",
+      "bytes": 588
+    }
+  },
+  "source_proofs": {
+    "stress-qcd-4-gg-ttgg": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/source-proofs/stress-qcd-4-gg-ttgg.json",
+      "sha256": "358d785976da7bbe70de452f467399aabdb16d53485b9899902b15b940a69aa3",
+      "bytes": 449988
+    },
+    "stress-ew-4-uu-4l": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/source-proofs/stress-ew-4-uu-4l.json",
+      "sha256": "32aff968775ffbbaad37c0f9e5cf7a7a84c52a2a9a98a0dafa0bd157d22fd6c0",
+      "bytes": 473010
+    }
+  },
+  "point_files": {
+    "stress-qcd-4-gg-ttgg": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/points/stress-qcd-4-gg-ttgg.dat",
+      "sha256": "4b22c12ad1e9e9aeb9f41671fa5f096429a714e345afdf48750d8a8a385b5a49",
+      "bytes": 11671
+    },
+    "stress-ew-4-uu-4l": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/points/stress-ew-4-uu-4l.dat",
+      "sha256": "cb9ebe2579b51698d8c52550ab652d0f96b657a7e6a5ecd1b6940944b33663d7",
+      "bytes": 11659
+    },
+    "stress-qcd-4-gg-ttgg-rotation": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/points/stress-qcd-4-gg-ttgg-rotation.dat",
+      "sha256": "fe0f1d7ba8ddc2e3e2b95db44d51ef1c72998fea698aa2ca5ea40c009ed345eb",
+      "bytes": 2335
+    },
+    "stress-ew-4-uu-4l-rotation": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/points/stress-ew-4-uu-4l-rotation.dat",
+      "sha256": "52b47facbf1eaff32c3642f3e0123570eb958e2dc23a2d085804c2755db66dc8",
+      "bytes": 2333
+    },
+    "stress-qcd-4-gg-ttgg-scale": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/points/stress-qcd-4-gg-ttgg-scale.dat",
+      "sha256": "ecdc84c339fd8a1d1c3af4933a59d2a0a6ea46d56b12ea1a39638dcb31688a2f",
+      "bytes": 4674
+    },
+    "stress-ew-4-uu-4l-scale": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/points/stress-ew-4-uu-4l-scale.dat",
+      "sha256": "9398583c66b9b8aa79a4556355a6c437145cf60b7f409272f436dfc34186a6d6",
+      "bytes": 4654
+    }
+  },
+  "ordinary_point_metadata": {
+    "stress-qcd-4-gg-ttgg": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/points/stress-qcd-4-gg-ttgg.json",
+      "sha256": "7b37c2472c48b96299929dd26e8870f132e328cec821442a136296698f130080",
+      "bytes": 218
+    },
+    "stress-ew-4-uu-4l": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/points/stress-ew-4-uu-4l.json",
+      "sha256": "c1776559ca6009e1603cc57349c025d142d2cea4d8f25403bf33f86b145b0507",
+      "bytes": 214
+    }
+  },
+  "scale_schedule": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/points/stress_scales.dat",
+    "sha256": "62a5b09265ad55d97944dc683788ef5345fb58cc4548d3254fa321af3f0f4167",
+    "bytes": 192
+  },
+  "identity_sha256": "3a2a10140d094e5987f26778a9c3193a06ad4bca0c617bd876ad142539f7e846"
+}

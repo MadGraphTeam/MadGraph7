@@ -300,8 +300,10 @@ class NinjaRSReportV3Test(unittest.TestCase):
         self.assertEqual(case["timings"]["candidate"]["7"]["status"], "pending")
         self.assertIsNone(case["timings"]["candidate"]["7"]["median_us"])
 
-    def qualification(self, profiles, precision_result=None):
-        binding = {"targets": {"qcd-1-candidate-8": {"role": "candidate_corrected", "backend": 8}}}
+    def qualification(self, profiles, precision_result=None, rules=None, **specifications):
+        target = {"role": "candidate_corrected", "backend": 8,
+                  "generation_source_identity": {"tree_state": {"tracked": {"madgraph/example.py": "source"}}}}
+        binding = {"targets": {"qcd-1-candidate-8": target}}
         signature = {"identity_sha256": "runtime", "libraries": {"libninjars.a": "archive"}}
         with ExitStack() as stack:
             stack.enter_context(patch.object(report.legacy, "candidate_runtime_signature", return_value=signature))
@@ -313,8 +315,8 @@ class NinjaRSReportV3Test(unittest.TestCase):
             profile_reader = stack.enter_context(patch.object(report.legacy, "profile_snapshot", return_value=profiles))
             precision_reader = stack.enter_context(patch.object(report.precision, "validate", return_value=precision_result or {"status": "passed"}))
             inputs = type("Checked", (), {"checked": {}})()
-            value = report.qualification_snapshot({"identity_sha256": "dataset"}, {}, {"entries": []},
-                binding, {}, inputs, precision_spec="actual-proof", profile_spec="profile-spec")
+            value = report.qualification_snapshot({"identity_sha256": "dataset"}, rules or {}, {"entries": []},
+                binding, {}, inputs, precision_spec="actual-proof", profile_spec="profile-spec", **specifications)
             return value, profile_reader.call_args, precision_reader.call_args, binding, signature
 
     def test_nonempty_profile_is_separate_and_uses_only_unique_pair_binding(self):
@@ -338,6 +340,37 @@ class NinjaRSReportV3Test(unittest.TestCase):
     def test_failed_installed_precision_does_not_inherit_representative_pass(self):
         result, _, _, _, _ = self.qualification([], precision_result={"status": "failed"})
         self.assertEqual(result["qualifications"]["precision_rescue"]["status"], "failed")
+
+    def test_explicit_release_requires_separate_source_convergence_authority(self):
+        result, _, _, _, _ = self.qualification([], rules={"candidate_cohort": "bound final cohort"})
+        precision = result["qualifications"]["precision_rescue"]
+        self.assertEqual(precision["installed_precision"]["status"], "passed")
+        self.assertTrue(precision["normal_dp_qp_runtime_proven"])
+        self.assertTrue(precision["source_precision_required"])
+        self.assertEqual(precision["status"], "pending")
+        with patch.object(report.release_proofs, "numerical_snapshot", return_value={
+                "status": "passed", "historical_bit_identity_test_passed": False,
+                "known_provider_regression_test_passed": False}) as reader:
+            result, _, _, _, signature = self.qualification([], rules={"candidate_cohort": "bound final cohort"},
+                numerical_controls_spec=report.release_proofs.NUMERICAL)
+        self.assertEqual(reader.call_args.args[2], signature)
+        precision = result["qualifications"]["precision_rescue"]
+        self.assertEqual(precision["status"], "passed")
+        self.assertFalse(precision["source_precision_controls"]["historical_bit_identity_test_passed"])
+        self.assertFalse(precision["source_precision_controls"]["known_provider_regression_test_passed"])
+
+    def test_new_install_software_readers_receive_measured_source_and_runtime(self):
+        with patch.object(report.release_proofs, "installation_snapshot", return_value={"status": "passed"}) as install:
+            with patch.object(report.release_proofs, "regression_snapshot", return_value={"status": "passed"}) as software:
+                result, _, _, binding, signature = self.qualification([], installation_export_spec=report.release_proofs.INSTALLATION,
+                    validation_spec=report.release_proofs.REGRESSIONS)
+        self.assertEqual(install.call_args.args[1], signature)
+        files = binding["targets"]["qcd-1-candidate-8"]["generation_source_identity"]["tree_state"]["tracked"]
+        self.assertEqual(install.call_args.args[2], files)
+        self.assertEqual(software.call_args.args[1], files)
+        self.assertEqual(result["qualifications"]["installation_export"]["status"], "passed")
+        self.assertEqual(result["qualifications"]["focused_controls"]["status"], "pending")
+        self.assertEqual(result["profile_status"], "pending")
 
     def pdf_fixture(self, snapshot, name):
         target = self.root / name
@@ -419,6 +452,9 @@ class NinjaRSReportV3Test(unittest.TestCase):
         inputs = type("Checked", (), {"checked": {}})()
         with self.assertRaisesRegex(ValueError, "actual pair"):
             report.qualification_snapshot({}, {}, {}, None, {}, inputs, precision_spec="other-proof")
+        with self.assertRaisesRegex(ValueError, "actual pair"):
+            report.qualification_snapshot({}, {}, {}, None, {}, inputs,
+                installation_export_spec=report.release_proofs.INSTALLATION)
 
 
 if __name__ == "__main__":

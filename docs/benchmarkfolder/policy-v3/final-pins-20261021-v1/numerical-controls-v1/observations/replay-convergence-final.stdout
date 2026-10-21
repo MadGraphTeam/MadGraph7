@@ -1,0 +1,27 @@
+
+running 1 test
+test final_precision_tests::retained_requests_replay_and_converge ... ┌────────────────────────────────────────────────────────┐
+│ You are running a restricted Symbolica instance.       │
+│                                                        │
+│ For non-commercial use only, limited to one            │
+│ Symbolica thread per user.                             │
+│                                                        │
+├─ Unlock all cores ─────────────────────────────────────┤
+│                                                        │
+│ Hobbyists and students: free annual key                │
+│ https://symbolica.io/license/#get-hobbyist-license     │
+│                                                        │
+│ Free 30-day professional trial:                        │
+│ https://symbolica.io/license/#get-trial-license        │
+│                                                        │
+└────────────────────────────────────────────────────────┘
+NINJARS_CONVERGENCE_CAPTURE_SUMMARY {"complete":true,"convergence_tolerance":"1e-31","failed_binary128_replay_records":468,"failed_convergence_records":0,"fields_per_precision":11136,"historical_ascii_changed_records_retained":482,"kind":"summary","performance_claim":false,"production_bits":256,"records":1392,"reference_bits":384,"sign_changed_convergence_records_require_review":0,"single_production_backend_no_selector":true}
+FAILED
+
+failures:
+
+failures:
+    final_precision_tests::retained_requests_replay_and_converge
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 30 filtered out; finished in 45.91s
+

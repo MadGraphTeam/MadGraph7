@@ -1,0 +1,717 @@
+{
+  "schema": "final-release-high-rank-private-abi-v1",
+  "inputs": {
+    "rn2-int-complex-n2-r4.json": {
+      "path": ".ninjars-build/upstream-final-20261021/ninjars/crates/ninjars-symbolica/tests/rank_n2_data/rn2-int-complex-n2-r4.json",
+      "sha256": "0624c75a43051ff2fb393f9f0c38edf72025ab93ade63669b5f9aa55817db99f",
+      "bytes": 16361
+    },
+    "red-rn2-int-complex-n2-r4.json": {
+      "path": ".ninjars-build/upstream-final-20261021/ninjars/crates/ninjars-symbolica/tests/rank_n2_data/red-rn2-int-complex-n2-r4.json",
+      "sha256": "0e330cc88c1d49f5fe1fad24141e14de90f6bdcaa3a8855939a17fb4385ef771",
+      "bytes": 1654
+    },
+    "hpref-rn2-int-complex-n2-r4.json": {
+      "path": ".ninjars-build/upstream-final-20261021/ninjars/crates/ninjars-symbolica/tests/rank_n2_data/hpref-rn2-int-complex-n2-r4.json",
+      "sha256": "ae7a9a37ac6e12b034c56927125cba122864cd1d9f04969f162d07a91c6a23b6",
+      "bytes": 2940
+    },
+    "rn2-int-complex-n3-r5.json": {
+      "path": ".ninjars-build/upstream-final-20261021/ninjars/crates/ninjars-symbolica/tests/rank_n2_data/rn2-int-complex-n3-r5.json",
+      "sha256": "ee30bcc053c71b074fd30f884c032f1703e1b2e908a7a90c547af56c35e4d7b4",
+      "bytes": 28597
+    },
+    "red-rn2-int-complex-n3-r5.json": {
+      "path": ".ninjars-build/upstream-final-20261021/ninjars/crates/ninjars-symbolica/tests/rank_n2_data/red-rn2-int-complex-n3-r5.json",
+      "sha256": "25552e160b7c04b310be159ca01e40da6cc53949403af2ec0e70216f1ce193f3",
+      "bytes": 1681
+    },
+    "hpref-rn2-int-complex-n3-r5.json": {
+      "path": ".ninjars-build/upstream-final-20261021/ninjars/crates/ninjars-symbolica/tests/rank_n2_data/hpref-rn2-int-complex-n3-r5.json",
+      "sha256": "20ea11db9c4c403f6f6122083b3d89df2aba5e73f7b1d53a7ddd717651152898",
+      "bytes": 3001
+    },
+    "rn2-int-complex-n4-r6.json": {
+      "path": ".ninjars-build/upstream-final-20261021/ninjars/crates/ninjars-symbolica/tests/rank_n2_data/rn2-int-complex-n4-r6.json",
+      "sha256": "f080859c1f43016c4fdbea23181b2e8294f2ca348009f4978e83b65ea4a8b8aa",
+      "bytes": 46896
+    },
+    "red-rn2-int-complex-n4-r6.json": {
+      "path": ".ninjars-build/upstream-final-20261021/ninjars/crates/ninjars-symbolica/tests/rank_n2_data/red-rn2-int-complex-n4-r6.json",
+      "sha256": "f81b6df209ff0565e396f8009112b81fc08586afe668d40516f51e0fa2c8734f",
+      "bytes": 1735
+    },
+    "hpref-rn2-int-complex-n4-r6.json": {
+      "path": ".ninjars-build/upstream-final-20261021/ninjars/crates/ninjars-symbolica/tests/rank_n2_data/hpref-rn2-int-complex-n4-r6.json",
+      "sha256": "025d27127b9cccf06f8474cb65d5e17d761ba6abd11a0d9517cb412b3423d95f",
+      "bytes": 3047
+    }
+  },
+  "requests": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/high-rank-requests.json",
+    "sha256": "2065e69a40618439f06f24437a4d5c141beb7230eb8ac67b80525625688a1cbe",
+    "bytes": 309660
+  },
+  "references": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/high-rank-references.json",
+    "sha256": "53a74f50105384631794c1638b554399b1e0f9dde842c202866893ca9b03aeba",
+    "bytes": 45669
+  },
+  "input_stream": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/high-rank-requests.txt",
+    "sha256": "c9d482ee96fc45169ced7d7026ab89ef8b3ccd9cdbe0e90bdb9ca7ee0b284cb7",
+    "bytes": 257478
+  },
+  "stdout": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/high-rank.stdout",
+    "sha256": "8cf8bfca52a8da1f912e1e212d6b9efe3610d830117bfdf24c1a2b46f1c7f7fd",
+    "bytes": 9016
+  },
+  "stderr": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/high-rank.stderr",
+    "sha256": "e096203c68f3fab07a40f8b25a7c3ebd47f0d7b6fa1b64aa9228a693df4e3c40",
+    "bytes": 754
+  },
+  "driver": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/physical-driver",
+    "sha256": "04ad821f7e1a426f08876bc8f7699fd6f6c3f6586293951b043684b529f7679e",
+    "bytes": 69646128
+  },
+  "driver_source": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/physical-driver.c",
+    "sha256": "8ce7d7f55d6a118f344ca785dc0ce60772b6a096474064dbf923f7c42a5c69a6",
+    "bytes": 5056
+  },
+  "archive": {
+    "path": ".ninjars-build/final-dependency-candidate-20261021/bridge/libninjars.a",
+    "sha256": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c",
+    "bytes": 297995026
+  },
+  "controller": {
+    "path": ".benchmark-work/final-numerical-release-20261021-v1/run_high_rank.py",
+    "sha256": "c2d57d14a99823d42889ef905fded9af160093b5e181fbe48bf3cfdb20cbe1ba",
+    "bytes": 5738
+  },
+  "checks": [
+    {
+      "record": 0,
+      "case": "rn2-int-complex-n2-r4",
+      "lane": "rn2-int-complex-n2-r4-lane0",
+      "mode": 0,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          3.230174559915942e-14,
+          1.8950043318796687e-16,
+          0.0
+        ],
+        "hpref": [
+          3.230174559915942e-14,
+          1.8950043318796687e-16,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 1,
+      "case": "rn2-int-complex-n2-r4",
+      "lane": "rn2-int-complex-n2-r4-lane0",
+      "mode": 1,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          3.230174559915942e-14,
+          1.8950043318796687e-16,
+          0.0
+        ],
+        "hpref": [
+          3.230174559915942e-14,
+          1.8950043318796687e-16,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 2,
+      "case": "rn2-int-complex-n2-r4",
+      "lane": "rn2-int-complex-n2-r4-lane0",
+      "mode": 2,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "hpref": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 3,
+      "case": "rn2-int-complex-n2-r4",
+      "lane": "rn2-int-complex-n2-r4-lane1",
+      "mode": 0,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          4.799496454932622e-16,
+          5.894544823208705e-15,
+          0.0
+        ],
+        "hpref": [
+          4.799496454932622e-16,
+          5.894544823208705e-15,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 4,
+      "case": "rn2-int-complex-n2-r4",
+      "lane": "rn2-int-complex-n2-r4-lane1",
+      "mode": 1,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          4.799496454932622e-16,
+          5.894544823208705e-15,
+          0.0
+        ],
+        "hpref": [
+          4.799496454932622e-16,
+          5.894544823208705e-15,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 5,
+      "case": "rn2-int-complex-n2-r4",
+      "lane": "rn2-int-complex-n2-r4-lane1",
+      "mode": 2,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "hpref": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 6,
+      "case": "rn2-int-complex-n2-r4",
+      "lane": "rn2-int-complex-n2-r4-lane2",
+      "mode": 0,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          5.125306304918459e-16,
+          1.606542709335484e-16,
+          0.0
+        ],
+        "hpref": [
+          5.125306304918459e-16,
+          1.606542709335484e-16,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 7,
+      "case": "rn2-int-complex-n2-r4",
+      "lane": "rn2-int-complex-n2-r4-lane2",
+      "mode": 1,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          5.125306304918459e-16,
+          1.606542709335484e-16,
+          0.0
+        ],
+        "hpref": [
+          5.125306304918459e-16,
+          1.606542709335484e-16,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 8,
+      "case": "rn2-int-complex-n2-r4",
+      "lane": "rn2-int-complex-n2-r4-lane2",
+      "mode": 2,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "hpref": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 9,
+      "case": "rn2-int-complex-n3-r5",
+      "lane": "rn2-int-complex-n3-r5-lane0",
+      "mode": 0,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          3.910427674020476e-15,
+          8.971425698347598e-16,
+          0.0
+        ],
+        "hpref": [
+          3.843203336352964e-15,
+          8.971425698347598e-16,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 10,
+      "case": "rn2-int-complex-n3-r5",
+      "lane": "rn2-int-complex-n3-r5-lane0",
+      "mode": 1,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          3.910427674020476e-15,
+          8.971425698347598e-16,
+          0.0
+        ],
+        "hpref": [
+          3.843203336352964e-15,
+          8.971425698347598e-16,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 11,
+      "case": "rn2-int-complex-n3-r5",
+      "lane": "rn2-int-complex-n3-r5-lane0",
+      "mode": 2,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "hpref": [
+          9.869652629038964e-17,
+          0.0,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 12,
+      "case": "rn2-int-complex-n3-r5",
+      "lane": "rn2-int-complex-n3-r5-lane1",
+      "mode": 0,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          8.017530841153065e-15,
+          1.762984371031329e-15,
+          0.0
+        ],
+        "hpref": [
+          8.017530841153065e-15,
+          1.762984371031329e-15,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 13,
+      "case": "rn2-int-complex-n3-r5",
+      "lane": "rn2-int-complex-n3-r5-lane1",
+      "mode": 1,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          8.017530841153065e-15,
+          1.762984371031329e-15,
+          0.0
+        ],
+        "hpref": [
+          8.017530841153065e-15,
+          1.762984371031329e-15,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 14,
+      "case": "rn2-int-complex-n3-r5",
+      "lane": "rn2-int-complex-n3-r5-lane1",
+      "mode": 2,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "hpref": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 15,
+      "case": "rn2-int-complex-n3-r5",
+      "lane": "rn2-int-complex-n3-r5-lane2",
+      "mode": 0,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          4.594889227755668e-16,
+          2.314409786063609e-16,
+          0.0
+        ],
+        "hpref": [
+          4.622704450772473e-16,
+          2.314409786063609e-16,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 16,
+      "case": "rn2-int-complex-n3-r5",
+      "lane": "rn2-int-complex-n3-r5-lane2",
+      "mode": 1,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          4.594889227755668e-16,
+          2.314409786063609e-16,
+          0.0
+        ],
+        "hpref": [
+          4.622704450772473e-16,
+          2.314409786063609e-16,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 17,
+      "case": "rn2-int-complex-n3-r5",
+      "lane": "rn2-int-complex-n3-r5-lane2",
+      "mode": 2,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "hpref": [
+          1.0408340855860843e-17,
+          0.0,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 18,
+      "case": "rn2-int-complex-n4-r6",
+      "lane": "rn2-int-complex-n4-r6-lane0",
+      "mode": 0,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          3.031346344434408e-20,
+          1.034565503018508e-20,
+          0.0
+        ],
+        "hpref": [
+          3.049778407450013e-20,
+          1.034565503018508e-20,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 19,
+      "case": "rn2-int-complex-n4-r6",
+      "lane": "rn2-int-complex-n4-r6-lane0",
+      "mode": 1,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          3.031346344434408e-20,
+          1.034565503018508e-20,
+          0.0
+        ],
+        "hpref": [
+          3.049778407450013e-20,
+          1.034565503018508e-20,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 20,
+      "case": "rn2-int-complex-n4-r6",
+      "lane": "rn2-int-complex-n4-r6-lane0",
+      "mode": 2,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "hpref": [
+          3.327857708176098e-22,
+          0.0,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 21,
+      "case": "rn2-int-complex-n4-r6",
+      "lane": "rn2-int-complex-n4-r6-lane1",
+      "mode": 0,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          2.7143144031734505e-19,
+          6.76491342615916e-20,
+          0.0
+        ],
+        "hpref": [
+          2.659899250196658e-19,
+          6.76491342615916e-20,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 22,
+      "case": "rn2-int-complex-n4-r6",
+      "lane": "rn2-int-complex-n4-r6-lane1",
+      "mode": 1,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          2.7143144031734505e-19,
+          6.76491342615916e-20,
+          0.0
+        ],
+        "hpref": [
+          2.659899250196658e-19,
+          6.76491342615916e-20,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 23,
+      "case": "rn2-int-complex-n4-r6",
+      "lane": "rn2-int-complex-n4-r6-lane1",
+      "mode": 2,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "hpref": [
+          6.984812619815426e-21,
+          0.0,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 24,
+      "case": "rn2-int-complex-n4-r6",
+      "lane": "rn2-int-complex-n4-r6-lane2",
+      "mode": 0,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          6.2468031932519874e-18,
+          2.6440464631407465e-19,
+          0.0
+        ],
+        "hpref": [
+          6.2478508615322396e-18,
+          2.6440464631407465e-19,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 25,
+      "case": "rn2-int-complex-n4-r6",
+      "lane": "rn2-int-complex-n4-r6-lane2",
+      "mode": 1,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          6.2468031932519874e-18,
+          2.6440464631407465e-19,
+          0.0
+        ],
+        "hpref": [
+          6.2478508615322396e-18,
+          2.6440464631407465e-19,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    },
+    {
+      "record": 26,
+      "case": "rn2-int-complex-n4-r6",
+      "lane": "rn2-int-complex-n4-r6-lane2",
+      "mode": 2,
+      "status": 0,
+      "complete_laurent_scaled_errors": {
+        "red": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "hpref": [
+          2.3401096660750727e-20,
+          0.0,
+          0.0
+        ]
+      },
+      "tolerance": 1e-09,
+      "passed": true,
+      "rational_compared": false
+    }
+  ],
+  "failures": [],
+  "exit_code": 0,
+  "complete": true,
+  "passed": true,
+  "wall_seconds": 4.912644503056072,
+  "call_count": 27,
+  "topologies": [
+    2,
+    3,
+    4
+  ],
+  "ranks": [
+    4,
+    5,
+    6
+  ],
+  "lanes": 9,
+  "modes": [
+    0,
+    1,
+    2
+  ],
+  "explicit_mu_squared_numerators": false,
+  "installed_archive": false,
+  "performance_claim": false,
+  "rational_comparison": "Complete finite/single/double Laurent coefficients only; independent references do not specify the engine-basis rational split."
+}

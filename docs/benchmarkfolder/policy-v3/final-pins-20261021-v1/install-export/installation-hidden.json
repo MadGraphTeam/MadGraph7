@@ -1,0 +1,18 @@
+{
+  "original_installation_path_absent": true,
+  "retained_at": ".benchmark-work/policy-v3/final-pins-20261021-v1/install-export/source/HEPTools/ninjars-unavailable",
+  "copied_interfaces": {
+    "standalone-relocated": [
+      {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/install-export/standalone-relocated/lib/mninjars.f90",
+        "sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05"
+      }
+    ],
+    "nlo-relocated": [
+      {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/install-export/nlo-relocated/lib/mninjars.f90",
+        "sha256": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05"
+      }
+    ]
+  }
+}

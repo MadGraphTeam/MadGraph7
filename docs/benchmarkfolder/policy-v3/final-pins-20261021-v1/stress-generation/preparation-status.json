@@ -1,0 +1,38 @@
+{
+  "status": "complete",
+  "cases": {
+    "stress-qcd-4-gg-ttgg": {
+      "output": ".benchmark-work/policy-v3/final-pins-20261021-v1/stress-generation/outputs/candidate/stress-qcd-4-gg-ttgg",
+      "masses": [
+        0.0,
+        0.0,
+        173.0,
+        173.0,
+        0.0,
+        0.0
+      ],
+      "source_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/source-proofs/stress-qcd-4-gg-ttgg.json",
+        "sha256": "358d785976da7bbe70de452f467399aabdb16d53485b9899902b15b940a69aa3",
+        "bytes": 449988
+      }
+    },
+    "stress-ew-4-uu-4l": {
+      "output": ".benchmark-work/policy-v3/final-pins-20261021-v1/stress-generation/outputs/candidate/stress-ew-4-uu-4l",
+      "masses": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "source_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-generation/source-proofs/stress-ew-4-uu-4l.json",
+        "sha256": "32aff968775ffbbaad37c0f9e5cf7a7a84c52a2a9a98a0dafa0bd157d22fd6c0",
+        "bytes": 473010
+      }
+    }
+  },
+  "amplitude_evaluations": 0
+}

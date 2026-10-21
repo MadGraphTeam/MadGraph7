@@ -791,6 +791,22 @@ def _check_finalization(data, inputs):
     return data["bindings"], view
 
 
+def _check_correctness_release(specification, protocol, policy, cohort, finalization=False):
+    """Match the new collector's nested spec and its top-level protocol IDs."""
+    release = specification.get("schema") == "final-pins-core-correctness-spec-v1"
+    v2.verified(specification, "final-pins-core-correctness-spec-v1" if release else "nrs-first-core-correctness-spec-v1")
+    if release:
+        require(policy.get("candidate_cohort") and not finalization, "Release correctness needs its explicit cohort and actual completion")
+        identities = {name: cohort[name] for name in ("numerical_revision", "generation_revision",
+            "generator_identity_sha256", "runtime_identity_sha256", "archive_sha256")}
+        require(specification.get("cohort", {}).get("candidate_cohort") == identities
+                and protocol.get("candidate_cohort") == identities,
+                "Release correctness collector differs from qualified policy cohort")
+        require("candidate_cohort" not in specification or specification["candidate_cohort"] == identities,
+                "Contradictory top-level release cohort")
+    return release
+
+
 def checked_correctness(filename, policy_path, inputs=None):
     inputs = {} if inputs is None else inputs
     active_policy, correction, config, proof = validate_policy(policy_path, inputs)
@@ -807,14 +823,7 @@ def checked_correctness(filename, policy_path, inputs=None):
     require(view is None or report == view, "Finalization view/binding mismatch")
     protocol = _check_protocol(report, inputs)
     specification = read(checked(protocol["input_spec"], inputs), inputs)
-    release_collection = specification.get("schema") == "final-pins-core-correctness-spec-v1"
-    v2.verified(specification, "final-pins-core-correctness-spec-v1" if release_collection else "nrs-first-core-correctness-spec-v1")
-    if release_collection:
-        require(active_policy.get("candidate_cohort") and not finalization, "Release correctness needs its explicit cohort and actual completion")
-        identities = {name: cohort[name] for name in ("numerical_revision", "generation_revision",
-            "generator_identity_sha256", "runtime_identity_sha256", "archive_sha256")}
-        require(specification.get("candidate_cohort") == identities and protocol.get("candidate_cohort") == identities,
-                "Release correctness collector differs from qualified policy cohort")
+    release_collection = _check_correctness_release(specification, protocol, active_policy, cohort, finalization)
     validate_configuration(protocol["configuration"], correctness=True)
     require(protocol["sources"] == "candidate" and protocol["backends"] == [8] and protocol["repetitions"] == 2
             and specification["configuration"] == protocol["configuration"]

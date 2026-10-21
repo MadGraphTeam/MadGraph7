@@ -1,0 +1,77 @@
+{
+  "schema": "independent-exact-planar-public-ABI-arithmetic-audit-v1",
+  "input_geometry_and_ascii_stream_exactly_match_certificate": true,
+  "all_six_raw_outputs_equal_original_proof": true,
+  "checks": [
+    {
+      "record": 0,
+      "mode": 0,
+      "zero_mass_lip": "positive",
+      "status": 0,
+      "raw_binary64_scaled_error": "3.03327343306111505647101330205969605109037978318284592827938967951969259044158517517238237E-13",
+      "producer_display_scaled_error": "3.03288246556124308348076526372196007629155832791560743982234189845856130629650874555516123951863348123472698351338901392524377495615519412152246656935601684621364930653927465780069E-13",
+      "accepted_accurately_or_rejected": true
+    },
+    {
+      "record": 1,
+      "mode": 1,
+      "zero_mass_lip": "positive",
+      "status": 0,
+      "raw_binary64_scaled_error": "3.03327343306111505647101330205969605109037978318284592827938967951969259044158517517238237E-13",
+      "producer_display_scaled_error": "3.03288246556124308348076526372196007629155832791560743982234189845856130629650874555516123951863348123472698351338901392524377495615519412152246656935601684621364930653927465780069E-13",
+      "accepted_accurately_or_rejected": true
+    },
+    {
+      "record": 2,
+      "mode": 2,
+      "zero_mass_lip": "positive",
+      "status": 1,
+      "raw_binary64_scaled_error": null,
+      "producer_display_scaled_error": null,
+      "accepted_accurately_or_rejected": true
+    },
+    {
+      "record": 3,
+      "mode": 0,
+      "zero_mass_lip": "negative",
+      "status": 0,
+      "raw_binary64_scaled_error": "3.03327343306111505647101330205969605109037978318284592827938967951969259044158517517238237E-13",
+      "producer_display_scaled_error": "3.03288246556124308348076526372196007629155832791560743982234189845856130629650874555516123951863348123472698351338901392524377495615519412152246656935601684621364930653927465780069E-13",
+      "accepted_accurately_or_rejected": true
+    },
+    {
+      "record": 4,
+      "mode": 1,
+      "zero_mass_lip": "negative",
+      "status": 0,
+      "raw_binary64_scaled_error": "3.03327343306111505647101330205969605109037978318284592827938967951969259044158517517238237E-13",
+      "producer_display_scaled_error": "3.03288246556124308348076526372196007629155832791560743982234189845856130629650874555516123951863348123472698351338901392524377495615519412152246656935601684621364930653927465780069E-13",
+      "accepted_accurately_or_rejected": true
+    },
+    {
+      "record": 5,
+      "mode": 2,
+      "zero_mass_lip": "negative",
+      "status": 1,
+      "raw_binary64_scaled_error": null,
+      "producer_display_scaled_error": null,
+      "accepted_accurately_or_rejected": true
+    }
+  ],
+  "accepted_accurately_or_rejected": true,
+  "original_all_calls_reject_flag_correctly_false": true,
+  "full_float_reference_convergence_recomputed": false,
+  "reference_precision_limit": "The retained 512/1024 outputs coincide at 40 significant decimal digits. Internal 3.67438e-151 convergence is an upstream diagnostic, not independently recoverable from those prints. DP acceptance margin is about 330x, vastly larger than print uncertainty.",
+  "producer_diagnostic_rounding": "The producer view shortens DP values through decimal str(float); exact raw binary64 recomputation gives3.033273433061115e-13 versus reported3.032882465561243e-13. The 1e-10 acceptance decision agrees.",
+  "direct_provider_256_false_success_remains_outstanding": true,
+  "engine_calls": 0,
+  "input_sha256": {
+    ".benchmark-work/final-numerical-release-20261021-v1/planar-exact-proof.json": "bbd2dfa5f2167d7d0a27059c8199d224e800d6ccdd69f9167a6ff0f72a65956f",
+    ".benchmark-work/final-numerical-release-20261021-v1/planar-exact-requests.json": "355aa5c0648b3690e0ff0fa41b3c03009e0ec0c298542e93588db00a746ad1e7",
+    ".benchmark-work/final-numerical-release-20261021-v1/planar-exact.stdout": "245ef2113308391973cd5366a402b84aec1928ac4758965d260ff60fdac99f13",
+    ".benchmark-work/final-numerical-release-20261021-v1/planar-exact-requests.txt": "23c8386ccea97cbff83593bd8d72c07103c14aae206ca3e7e58facffb1139f72",
+    ".benchmark-work/final-numerical-release-20261021-v1/planar-sentinels.stdout": "29b73482f72c1d5074f0c07fa68f8e811f4e5d24aa5234d243a3b28c133ed2f7",
+    ".benchmark-work/final-numerical-release-20261021-v1/planar-exact-acceptance-view.json": "895d1dda8b1bee97afd53041ddfed060d48b83e73afc247b466ecdd89775d8d9",
+    ".benchmark-work/final-release-audit-20261021-v1/ns9210-geometry.json": "f50deaf706dcaa13ca960dbd46003395a20e288fb92955ffafe6239bf5ae10c6"
+  }
+}

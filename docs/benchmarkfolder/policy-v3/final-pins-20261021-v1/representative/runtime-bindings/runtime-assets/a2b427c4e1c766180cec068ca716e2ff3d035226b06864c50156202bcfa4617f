@@ -1,0 +1,102 @@
+{
+  "abi_version": 3,
+  "quad_precision": true,
+  "native_libs": [
+    "-ldl",
+    "-lgcc_s",
+    "-lutil",
+    "-lrt",
+    "-lpthread",
+    "-lm",
+    "-ldl",
+    "-lc"
+  ],
+  "local_sources": {},
+  "fortran_compiler": "gfortran",
+  "link_before": [
+    "-lgcc_s"
+  ],
+  "link_order_version": 1,
+  "compiler_runtime": "gnu-linux-libgcc_s-before-rust",
+  "build_provenance": {
+    "manifest_sha256": "aeb9c987c47586617585e3da782e60ee3670942db639ed48a73fc75f6f89c0d6",
+    "lock_sha256": "b8c2eddffe0dd5cb3a88b3b934133c3a0146638fa33de5e5f9fa4d65ee124f18",
+    "git_dependencies": [
+      {
+        "name": "dot-parser",
+        "version": "0.5.1",
+        "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+      },
+      {
+        "name": "feynkit-kinematics",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+      },
+      {
+        "name": "gammaloop-workspace-hack",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+      },
+      {
+        "name": "graphica",
+        "version": "3.0.1",
+        "source": "git+https://github.com/alphal00p/symbolica.git?rev=9cdc2949cdb153478c1eca0d40690dc0abfc616e#9cdc2949cdb153478c1eca0d40690dc0abfc616e"
+      },
+      {
+        "name": "linnet",
+        "version": "0.17.0",
+        "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+      },
+      {
+        "name": "ninjars",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/ninjars?rev=aa6a6307dd081dc3714f9accebc0df9e5561ae73#aa6a6307dd081dc3714f9accebc0df9e5561ae73"
+      },
+      {
+        "name": "ninjars-positional",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/ninjars?rev=aa6a6307dd081dc3714f9accebc0df9e5561ae73#aa6a6307dd081dc3714f9accebc0df9e5561ae73"
+      },
+      {
+        "name": "ninjars-symbolica",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/ninjars?rev=aa6a6307dd081dc3714f9accebc0df9e5561ae73#aa6a6307dd081dc3714f9accebc0df9e5561ae73"
+      },
+      {
+        "name": "numerica",
+        "version": "3.0.1",
+        "source": "git+https://github.com/alphal00p/symbolica.git?rev=9cdc2949cdb153478c1eca0d40690dc0abfc616e#9cdc2949cdb153478c1eca0d40690dc0abfc616e"
+      },
+      {
+        "name": "oneloop",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/oneloopmaster.git?rev=8ec256fc26cb361b20e10f59c19beb35717ef32c#8ec256fc26cb361b20e10f59c19beb35717ef32c"
+      },
+      {
+        "name": "spenso",
+        "version": "0.6.0",
+        "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+      },
+      {
+        "name": "spenso-macros",
+        "version": "0.3.2",
+        "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+      },
+      {
+        "name": "symbolica",
+        "version": "3.0.1",
+        "source": "git+https://github.com/alphal00p/symbolica.git?rev=9cdc2949cdb153478c1eca0d40690dc0abfc616e#9cdc2949cdb153478c1eca0d40690dc0abfc616e"
+      },
+      {
+        "name": "symbolica-typst-plugin",
+        "version": "0.1.0",
+        "source": "git+https://github.com/symbolica-dev/symbolica-typst-plugin?rev=57b7455b37c30f4f87353c0073e49f5225e937ab#57b7455b37c30f4f87353c0073e49f5225e937ab"
+      },
+      {
+        "name": "symbolica-utils",
+        "version": "0.1.0",
+        "source": "git+https://github.com/alphal00p/gammaloop.git?rev=d1904bf2bd5bf4f26969a73b415095e941a55610#d1904bf2bd5bf4f26969a73b415095e941a55610"
+      }
+    ]
+  }
+}

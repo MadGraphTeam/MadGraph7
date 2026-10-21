@@ -971,3 +971,33 @@ and its correctness, performance and publication requirements remain in force.
   external-tool comparisons and unresolved requirements explicitly. Complete
   the goal only after the required gates, reproducible PDF and milestone pushes
   pass, then await the user's instruction to open a PR.
+
+### Four-tool timing and stability comparison — 2026-10-21
+
+The user explicitly requests comparisons among CutTools, Ninja, Collier and
+NinjaRS in `benchmark.pdf`, with tables and figures analogous to Tables 2–3 and
+Figures 4–7 of https://arxiv.org/pdf/1604.01363. Inspect the optional public
+script archive linked by the user for reusable measurement/plotting methods;
+record its provenance and inspect scripts before running or adapting them.
+
+- Add process generation costs, loop-diagram/group counts, maximum numerator
+  rank, numerator construction and each backend's reduction cost. Label the
+  paper's single-helicity, color-summed profile separately from the agreed full
+  helicity/color, full-pole, rescue-enabled end-to-end timing gate.
+- Plot cumulative accuracy tails for all four tools, with consistent point
+  samples, denominators, uncertainty and a Ninja comparison panel. Measure
+  unrecovered double-precision direction/rotation estimates separately from
+  accepted rescued results; do not infer those estimates from post-rescue data.
+  Include loop-induced and challenging-process comparisons. Preserve the agreed
+  core inputs and tolerances; any extra study has its own explicit configuration.
+- Keep rejected/nonfinite points visible and record real backend/rescue counts.
+  A failed tool is a reported finding, not a successful timing or an omitted
+  sample. Retained calibration elapsed times cannot stand in for a new timing
+  study. The full evaluation performance gate remains unchanged.
+- Continue the new NinjaRS correctness campaign first. Separate correctness
+  controllers for legacy-only selectors 1/6/7 may run on CPU12 while the sole
+  NinjaRS/Symbolica engine uses CPU190: source audit confirmed lazy NinjaRS
+  initialization, selector-isolated retries and private process/cache paths.
+  Use separate Python processes and work/report trees, exact single-backend
+  selectors, one thread, and owned child groups. No concurrent final timing or
+  profiling is permitted; those phases require a new explicit resource handoff.

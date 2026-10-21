@@ -1,0 +1,21 @@
+{
+  "pid": 3677971,
+  "process_group_id": 3677971,
+  "start_ticks": 63372893,
+  "command": [
+    "taskset",
+    "-c",
+    "4-11",
+    "cargo",
+    "test",
+    "--manifest-path",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.ninjars-build/final-dependency-candidate-20261021/bridge/Cargo.toml",
+    "--release",
+    "--lib",
+    "--no-run",
+    "--locked",
+    "--offline",
+    "--message-format=json"
+  ],
+  "started_utc": "2026-10-21T16:27:07.812738+00:00"
+}

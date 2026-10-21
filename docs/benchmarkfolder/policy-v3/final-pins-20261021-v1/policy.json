@@ -1,0 +1,224 @@
+{
+  "schema": "madloop-nrs-first-policy-v3",
+  "v2_policy": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/role-policy.json",
+    "sha256": "d31d7e5c02c3c128891f8a60c656238b1b45dc0619efd13a7d9ab05c982100dd"
+  },
+  "representative_proof": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/representative-proof.json",
+    "sha256": "809037ae1e58dff05a52c37c770919e0e1f58935021b9066b6a85122b122db81"
+  },
+  "configuration": {
+    "path": "docs/benchmarkfolder/policy-v2/cases.json",
+    "sha256": "f7fdf15ae6e0b20852144ce484a02ddc98ce13ff84bddb57154e77e1e7fbbbd3"
+  },
+  "correction": {
+    "path": "docs/benchmarkfolder/policy-v2/model-correction.json",
+    "sha256": "20d24a3f19c03b6f7c6c3eda4ef209e2e46cd69ab67990504602028ae3dfb526"
+  },
+  "correction_identity_sha256": "16ae35077b8c1ae3c81cc31fb8d3291874555e345c8d8c115ca1ab0796f71a9a",
+  "worker_protocol": {
+    "schema": "persistent-worker-v1",
+    "sources": {
+      "ninjars_benchmark_worker.f": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79",
+      "ninjars_benchmark_workers.py": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "ninjars_benchmark.py": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237"
+    },
+    "initialization": "Once per worker, then full fixed stream warmed",
+    "measurement": "Full evaluation; status every call; rows copied in final timed traversal",
+    "ordering": "One active worker, all pinned to same CPU; adjacent gate pair; alternating order"
+  },
+  "user_priority": "Continue as planned, but focus first on getting a validated MadLoop+NinjaRS version. Then if you uncovered issues with other reduction tools (e.g. COLLIER), then just post an issue with an MRE to the corresponding github",
+  "amendment_source": "references/PLAN.md (quoted statement retained here)",
+  "required_cases": [
+    "ew-1",
+    "ew-2",
+    "ew-3",
+    "ew-4",
+    "qcd-1",
+    "qcd-2",
+    "qcd-3",
+    "qcd-4"
+  ],
+  "correctness_references": [
+    1,
+    6
+  ],
+  "pair_targets": [
+    [
+      "baseline",
+      6
+    ],
+    [
+      "candidate",
+      8
+    ]
+  ],
+  "performance_denominator": "original/6",
+  "numerical_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+  "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+  "candidate_generator_identity_sha256": "77b16df0251af4104a2c541bab913c11f4e67496a290495ce1a1c5fc526dfe3c",
+  "candidate_runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+  "candidate_archive_sha256": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c",
+  "candidate_generation_status": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/status.json",
+    "sha256": "036113c34f4894c4508bf217a454749d4cdcccdfe5d739b53f835090e837b565"
+  },
+  "candidate_generation_inputs": {
+    "ew-1": {
+      "generation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-1/generation.json",
+        "sha256": "f3a9f15597564cb7c94d6db4de70fe97720f0319f41a9c79f7fdd1219880511c"
+      },
+      "compilation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-1/compilation.json",
+        "sha256": "d030a020f8552c6314b685fcfe61a379ea7b19be3eab1dcc1fee5797c08007c8"
+      },
+      "compiled-sources.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-1/compiled-sources.json",
+        "sha256": "ccd77aa360296ac5fd5b06976b6409e7c21c6c0401773b1e2a0ff620afaed06a"
+      }
+    },
+    "ew-2": {
+      "generation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-2/generation.json",
+        "sha256": "af2ae7a3bc46fb259507fc9ba32519e039ee077cbb66eefd64a98fa1a67c5c4b"
+      },
+      "compilation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-2/compilation.json",
+        "sha256": "b187573584bcc5a7f9fca87cfca1e9b1db28cd04a3933c35a4c7815aadea2841"
+      },
+      "compiled-sources.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-2/compiled-sources.json",
+        "sha256": "1c914a290bd440eee00e4cffe9f3cadb7a5d9d149c1851f6e5432951758460c5"
+      }
+    },
+    "ew-3": {
+      "generation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-3/generation.json",
+        "sha256": "287d0604fb2fc6f7207a551dfc5d11f73444dcad792521b291139792ae78921b"
+      },
+      "compilation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-3/compilation.json",
+        "sha256": "be0e04cef7658d9e0a1e3b38c894d4effdd9eaa12733d7df0defd765bfd213e9"
+      },
+      "compiled-sources.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-3/compiled-sources.json",
+        "sha256": "fac4550e389b0543f86d639166d31a705c567ca2a09800842c6a307ac56b19be"
+      }
+    },
+    "ew-4": {
+      "generation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-4/generation.json",
+        "sha256": "c236b555dd361ce9e08359969378d0c9f95081aac62cff385dcb369eac92d86d"
+      },
+      "compilation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-4/compilation.json",
+        "sha256": "357edd9e637d50ff1262551a53e58affddcc8f73fa57b209fa6fd03273a2c014"
+      },
+      "compiled-sources.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-4/compiled-sources.json",
+        "sha256": "02f6cef8b093bd6462c0f1b680a36df791ab7687963b10351fe063fe05675af9"
+      }
+    },
+    "qcd-1": {
+      "generation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-1/generation.json",
+        "sha256": "b2d4304c94ac02e950c0bac4039d590e6fb57fca4ae71914b67aafceb1f3e031"
+      },
+      "compilation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-1/compilation.json",
+        "sha256": "f2f060db98928104bc9bda1f4d019032b51a331fbe9941709c9db6c097d8e823"
+      },
+      "compiled-sources.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-1/compiled-sources.json",
+        "sha256": "a16812249d466842d96233064e1c3df2a24995663dab8b0ec28c3088ecd3af9f"
+      }
+    },
+    "qcd-2": {
+      "generation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-2/generation.json",
+        "sha256": "1856d941276660e428656071a162bc3bb2f3bff17349b4c25d647bcdcef9ab68"
+      },
+      "compilation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-2/compilation.json",
+        "sha256": "d96781fa2b9371f098e59af0bd654a5d8fb6c7d516a583a4bea6484690fe7a6d"
+      },
+      "compiled-sources.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-2/compiled-sources.json",
+        "sha256": "72b6ca92e627aeb8717918e28046d82f9bcf2e379b2d7fb9b23b3aace51ca159"
+      }
+    },
+    "qcd-3": {
+      "generation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-3/generation.json",
+        "sha256": "c1447f1d9984e8b420978ccf425eedd08354fe6c7758ecc9267a0d85a8afaa10"
+      },
+      "compilation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-3/compilation.json",
+        "sha256": "2bc74a25a3707fd871d489200d2f7365b575ccbf42541455436ef84479cb45dd"
+      },
+      "compiled-sources.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-3/compiled-sources.json",
+        "sha256": "daeee170fe56e4755300826d805dcbce46dba407c39b5b43d22ba20dbacb3f24"
+      }
+    },
+    "qcd-4": {
+      "generation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-4/generation.json",
+        "sha256": "83dee96d6d94a7c973a8c325f65adb55bf41b2fc5754d69ce7825d3fc82748cc"
+      },
+      "compilation.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-4/compilation.json",
+        "sha256": "d34e4d95eab55dfebf58405ba689fdeb3bbb5eac562416088febec1a7ce70423"
+      },
+      "compiled-sources.json": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-4/compiled-sources.json",
+        "sha256": "6d60816497e34f7fe21893a47b348c0f4a7ccb22bc295b1f4741da09d53543a1"
+      }
+    }
+  },
+  "candidate_fixed_points": {
+    "ew-1": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-1.dat",
+      "sha256": "5869f48fc0546031f7c50ee8f68a4b0104fa6da66bc3b434e47d1422edcbb576"
+    },
+    "ew-2": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-2.dat",
+      "sha256": "ed6f3f83033372061ed6de45c05a366aeeb68a63ddd006998682f406174e7b53"
+    },
+    "ew-3": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-3.dat",
+      "sha256": "c030e6c68d53e9ecc1e2ac5ee99e4f81d97a80268dcbe3a0dc76065655a492a1"
+    },
+    "ew-4": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-4.dat",
+      "sha256": "75a3765dca97afa14e5efb795cb1a9fa1ff9e0475ebcb79a883b6a2a4e84ba5a"
+    },
+    "qcd-1": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-1.dat",
+      "sha256": "bd8a00c863710123dd62cb5e079dcd11d2aebdcf49d8128313bbd6ecc6de1099"
+    },
+    "qcd-2": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-2.dat",
+      "sha256": "6efb8cb1752f37badd187e17aff2103eb6814402dbaeaa598165a83d22bd0b63"
+    },
+    "qcd-3": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-3.dat",
+      "sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41"
+    },
+    "qcd-4": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-4.dat",
+      "sha256": "d66b0c04ee3d8e6ed90ef1fbf97abb9cd444d9ea1f84a508850688bff317b52d"
+    }
+  },
+  "implementation": {
+    "path": "tools/ninjars_benchmark_policy_v3.py",
+    "sha256": "2fdd45f6c5b2e485d04f7ba81a1a13b38ec70017f186c8d72e20b5d574a30b8e"
+  },
+  "candidate_cohort": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/candidate-cohort.json",
+    "sha256": "77660cca5ea4814aa0351654b46b067bb1a147bd3863f83d5b3654c3cd6628c3"
+  },
+  "identity_sha256": "d5777a41ae6b0fe27b44d40b8d25a08b7f0b837a38ae03b45f4a98245df2dd10"
+}

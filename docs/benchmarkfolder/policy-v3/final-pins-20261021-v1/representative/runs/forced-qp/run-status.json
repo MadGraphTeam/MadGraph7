@@ -1,0 +1,10 @@
+{
+  "status": "complete",
+  "requested_cases": [
+    "control-forced-qp"
+  ],
+  "completed_cases": [
+    "control-forced-qp"
+  ],
+  "acceptance_eligible": false
+}
