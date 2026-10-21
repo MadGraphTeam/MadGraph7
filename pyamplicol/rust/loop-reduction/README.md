@@ -66,11 +66,14 @@ upstream computation completed, not that an accuracy target was established.
 Cross-precision agreement and independent physical controls remain necessary;
 removing a coordinator multiplicity limit is not universal master certification.
 
-The existing `tools/loop_reference/reproduce_cms_zero_box.py` still reproduces
-the AP80 zero-width box boundary on this pin: numerically equal sqrt-square and
-decimal-reparsed masses yield opposite finite imaginary signs, both with
-`success` status. The coherent packaging update does not resolve that separate
-CMS acceptance gate. No numerical snapping or local master replacement is used.
+`tools/loop_reference/reproduce_cms_zero_box.py` no longer reproduces the AP80
+zero-width box boundary on these pins: through Symbolica e679e8c1 numerically
+equal sqrt-square and decimal-reparsed masses yielded opposite finite imaginary
+signs, both with `success` status. Symbolica 9cdc2949 alone (with NinjaRS
+0d0d7e7 and oneloopmaster 09b2c74 unchanged) makes both take the reparsed
+branch: a `Float` product with an exact ±1 no longer rounds the one extra bit of
+a square root away. The AP80 zero-width physical test passes. No numerical
+snapping or local master replacement is used.
 
 Focused consumer adoption checks pass on these pins: the seven existing analytic
 and adapter anchors, profiling on/off for a screened rank-n+2 A0-cancellation
@@ -340,11 +343,10 @@ dependency, so its normal builds do not require the `upstream` symlink.
 - Broad B0/C0/D0 analytic continuation, threshold and complex-mass validation
   remain upstream readiness gates. Passing A0 and μ² C0 is insufficient.
   The AP80 real-mass box reproducer in
-  `tools/loop_reference/reproduce_cms_zero_box.py` still selects opposite
+  `tools/loop_reference/reproduce_cms_zero_box.py` selected opposite
   imaginary branches for numerically equal sqrt-square and reparsed masses
-  at b5b93be; e4c16a7 does not modify the scalar master provider. This consumer
-  does not normalize precision metadata or substitute
-  a scalar integral to hide that unresolved owner issue.
+  through Symbolica e679e8c1; 9cdc2949 resolves it (see above). This consumer
+  does not normalize precision metadata or substitute a scalar integral.
 - Native batching is established by the called interfaces, but end-to-end
   throughput, SIMD coverage and the MadLoop/Recola/OpenLoops performance
   targets require physical process benchmarks after integration.
