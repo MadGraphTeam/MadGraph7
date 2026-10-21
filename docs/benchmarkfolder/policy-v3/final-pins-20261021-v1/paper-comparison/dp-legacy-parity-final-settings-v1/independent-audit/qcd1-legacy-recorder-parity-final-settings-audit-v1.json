@@ -1,0 +1,93 @@
+{
+  "schema": "independent-qcd1-legacy-recorder-final-settings-raw-parity-audit-v1",
+  "status": "PASS",
+  "complete": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/complete.json",
+    "sha256": "5e6d797e19bd656002d9fb94ddced3543bb362c3c1faa91bc91869d0028a8755"
+  },
+  "audit_executed_source_sha256": "9ae1f9a930019a2ddac9d78e601032a56b842dd631ad38004b33dcf6b8b43f56",
+  "audit_base_source_sha256": "289fda3646f26c23b60e8440b10e510d33470c3e65663ad6ab08a2cbe3eaa1a9",
+  "audit_exact_delta": [
+    [
+      "legacy-qcd1-parity-v1'",
+      "legacy-qcd1-parity-final-settings-v1'"
+    ],
+    [
+      "9e5c5669f6885e4672f73c2b8a9a729784fd1040b67443a27078c382acc36407",
+      "5e6d797e19bd656002d9fb94ddced3543bb362c3c1faa91bc91869d0028a8755"
+    ],
+    [
+      "'collieruseinternalstabilitytest':'.false.'}",
+      "'collieruseinternalstabilitytest':'.false.','mlstabthres':'1.000000d-09','collierrequiredaccuracy':'1.000000d-12'}"
+    ],
+    [
+      "'audit_source_sha256':sha(Path(__file__))",
+      "'audit_executed_source_sha256':AUDIT_EXECUTED_SHA,'audit_base_source_sha256':sha(Path(__file__)),'audit_exact_delta':AUDIT_DELTA"
+    ],
+    [
+      "qcd1-legacy-recorder-parity-audit-v1.json",
+      "qcd1-legacy-recorder-parity-final-settings-audit-v1.json"
+    ],
+    [
+      "independent-qcd1-legacy-recorder-raw-parity-audit-v1",
+      "independent-qcd1-legacy-recorder-final-settings-raw-parity-audit-v1"
+    ]
+  ],
+  "method": "stdlib-only independent raw parser, IEEE754 binary64 byte comparison, all live generated-source and reducer-runtime hash checks; no engine/build/imported producer call",
+  "results": {
+    "1": {
+      "observations_each_variant": 300,
+      "orders": 2,
+      "physical_coefficients_bitexact": 2400,
+      "accuracy_values_bitexact": 600,
+      "observed_dispatches": 300,
+      "status_counts": {
+        "110": 300
+      },
+      "reject_nonfinite_QP_compensated_FPE_hardware_flags": 0,
+      "plain_dispatch_counts": 0,
+      "null_teardowns_each_variant": 1
+    },
+    "6": {
+      "observations_each_variant": 300,
+      "orders": 2,
+      "physical_coefficients_bitexact": 2400,
+      "accuracy_values_bitexact": 600,
+      "observed_dispatches": 300,
+      "status_counts": {
+        "110": 300
+      },
+      "reject_nonfinite_QP_compensated_FPE_hardware_flags": 0,
+      "plain_dispatch_counts": 0,
+      "null_teardowns_each_variant": 1
+    },
+    "7": {
+      "observations_each_variant": 300,
+      "orders": 2,
+      "physical_coefficients_bitexact": 2400,
+      "accuracy_values_bitexact": 600,
+      "observed_dispatches": 300,
+      "status_counts": {
+        "110": 300
+      },
+      "reject_nonfinite_QP_compensated_FPE_hardware_flags": 0,
+      "plain_dispatch_counts": 0,
+      "null_teardowns_each_variant": 1
+    }
+  },
+  "physical_coefficient_float64_bit_comparisons": 7200,
+  "internal_accuracy_float64_bit_comparisons": 1800,
+  "physical_zero_coefficients_in_sample": 0,
+  "zero_sign_equality": "included in binary64 comparison; zero physical coefficients absent if count0",
+  "live_file_bindings_checked": 1530,
+  "registered_spawn_groups_reaped": 19,
+  "source_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+  "generator_identity_sha256": "77b16df0251af4104a2c541bab913c11f4e67496a290495ce1a1c5fc526dfe3c",
+  "full_runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+  "original_source_unchanged": true,
+  "numerical_calls_by_auditor": 0,
+  "builds_by_auditor": 0,
+  "NinjaRS8_qualified": false,
+  "four_tool_campaign_qualified": false,
+  "performance_qualified": false
+}

@@ -164,6 +164,7 @@ class RowsAndGatesTest(unittest.TestCase):
 
 class PrivateFilesMixin:
     def setUp(self):
+        (ROOT / ".benchmark-work").mkdir(parents=True, exist_ok=True)
         temporary = tempfile.TemporaryDirectory(prefix="policy-v3-test-", dir=ROOT / ".benchmark-work")
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
@@ -399,6 +400,7 @@ class PrivateFilesTest(PrivateFilesMixin, unittest.TestCase):
         self.dump(attempt / "result.json", {"returncode": 1, "interruptions": []})
         self.put(attempt / "stdout", "retained stdout\n")
         self.put(attempt / "stderr", "retained metadata error\n")
+        finalizer = self.put(self.root / "finalize.py", "# Synthetic finalizer fixture; not executed.\n")
         receipt = policy.v2.seal({"schema": policy.FINALIZATION,
             "original_failure_promoted": False, "fresh_parity": False,
             "numerical_retries": 0, "new_amplitude_evaluations": 0,
@@ -409,7 +411,7 @@ class PrivateFilesTest(PrivateFilesMixin, unittest.TestCase):
             "original_launcher_result": policy.v2.bound_file(attempt / "result.json"),
             "original_launcher_stdout": policy.v2.bound_file(attempt / "stdout"),
             "original_launcher_stderr": policy.v2.bound_file(attempt / "stderr"),
-            "finalizer_source": policy.v2.bound_file(ROOT / "docs/benchmarkfolder/policy-v3/nrs-first-core-correctness-v1/finalize.py"),
+            "finalizer_source": policy.v2.bound_file(finalizer),
             "bindings": policy.v2.bound_file(view / "source-bindings.json"),
             "original_status": policy.v2.bound_file(original / "run-status.json"),
             "original_protocol": policy.v2.bound_file(original / "protocol.json"),

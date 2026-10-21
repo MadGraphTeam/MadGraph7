@@ -1,0 +1,276 @@
+{
+  "schema": "ninjars-forced-dp-raw-v1",
+  "stream": "forced_dp_self_consistency",
+  "rescue_enabled": false,
+  "instrumentation": "per-dispatch-observer-v1",
+  "cohort": {
+    "numerical_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+    "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+    "generator_identity_sha256": "77b16df0251af4104a2c541bab913c11f4e67496a290495ce1a1c5fc526dfe3c",
+    "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+    "archive_sha256": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c"
+  },
+  "cohort_record": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/candidate-cohort.json",
+    "sha256": "77660cca5ea4814aa0351654b46b067bb1a147bd3863f83d5b3654c3cd6628c3"
+  },
+  "bindings": [
+    {
+      "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/started.json",
+      "sha256": "c95c3fd13bc7171000f3f3fc2ec0fc528becc2f0234b7f45ff46bd7169f86b97"
+    },
+    {
+      "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/run.py",
+      "sha256": "ca301b2e5bd4515f3b42839fddbc9ad10ab4e7e69acee6a72dc14b5afc9635e6"
+    },
+    {
+      "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/guard.c",
+      "sha256": "13f5702a530ede39a74333d266bb3078799e7b3f9889a29c9c2fdd2683176477"
+    }
+  ],
+  "thresholds": [
+    1e-12,
+    1e-09,
+    1e-06,
+    0.001
+  ],
+  "runs": [
+    {
+      "case": "qcd-1",
+      "process": "u u~ > z [virt=QCD]",
+      "group": "QCD",
+      "sample_kind": "recorder-parity-control",
+      "N": 100,
+      "nso": 1,
+      "nexternal": 3,
+      "helicity": -1,
+      "tool": 1,
+      "artifacts": {
+        "original_interface": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1/SubProcesses/P0_uux_z/CT_interface.f",
+          "sha256": "f93d65469090d89269e50b4540ccca34b70807d7fddea4f08e0134d851c132fa"
+        },
+        "instrumented_interface": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/1-observed/SubProcesses/P0_uux_z/CT_interface.f",
+          "sha256": "0fc70e89451197659237b8162cc4a1d54ebe76f6755dcc1ff61ce991d8bcb7cd"
+        },
+        "driver": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/1-observed/SubProcesses/P0_uux_z/check_sa.f",
+          "sha256": "581ad6e953f5b65e6abbf65a419c429af23e9c6fd70be7f6bb041bb9cf5b2c77"
+        },
+        "executable": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/1-observed/SubProcesses/P0_uux_z/check",
+          "sha256": "c17b75aa0fe6430338a38fe99e9b2da54e959376a68b99fc9f530b2d4050ef68"
+        },
+        "points": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-1.dat",
+          "sha256": "bd8a00c863710123dd62cb5e079dcd11d2aebdcf49d8128313bbd6ecc6de1099"
+        },
+        "parameter_card": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/1-observed/Cards/param_card.dat",
+          "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+        },
+        "madloop_card": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/1-observed/Cards/MadLoopParams.dat",
+          "sha256": "0d3c8b5fbffd6304d840b7ff93ea8eb7c050f31359858569f064d9cda2b1fe50"
+        },
+        "execution": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/1-normalized-execution.json",
+          "sha256": "a71a8b8d474a611de999ffa63b95b31d87ca71379fa0f3e91cc13f868673df0e"
+        },
+        "build": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/1-normalized-build.json",
+          "sha256": "e3987f1f086155377c2d406cd0e601ced8b5446743cd14cad9384511960c824b"
+        },
+        "stdout": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/1-observed-execute.stdout",
+          "sha256": "837bd8d552ead47d0d8719ed5ed32a974290273d011ba9dbc4e2d608f181c160"
+        },
+        "stderr": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/1-observed-execute.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/1-observed.raw",
+        "sha256": "b640e355d1e0b6ab064360ef8cf75938e434267c7823a4706d95ec287275d7d3"
+      },
+      "qualification": {
+        "start": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/started.json",
+          "sha256": "c95c3fd13bc7171000f3f3fc2ec0fc528becc2f0234b7f45ff46bd7169f86b97"
+        },
+        "parity_receipt": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/1-parity.json",
+          "sha256": "9949b460f800b8b10ae032f4c607bfdc76997480222d0a1cb19b038e79c98eda"
+        },
+        "plain_result": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/1-plain-result.json",
+          "sha256": "70bc235471c25e7d88b11b514257fe4a70bb22b2b4bc0284fdb4c6b1a0a39b11"
+        },
+        "observed_result": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/1-observed-result.json",
+          "sha256": "fa7db74c62af68ce4311bf919a5b4a3d1732b4526e90fef3d9e4ec140cffd7a8"
+        }
+      }
+    },
+    {
+      "case": "qcd-1",
+      "process": "u u~ > z [virt=QCD]",
+      "group": "QCD",
+      "sample_kind": "recorder-parity-control",
+      "N": 100,
+      "nso": 1,
+      "nexternal": 3,
+      "helicity": -1,
+      "tool": 6,
+      "artifacts": {
+        "original_interface": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1/SubProcesses/P0_uux_z/CT_interface.f",
+          "sha256": "f93d65469090d89269e50b4540ccca34b70807d7fddea4f08e0134d851c132fa"
+        },
+        "instrumented_interface": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/6-observed/SubProcesses/P0_uux_z/CT_interface.f",
+          "sha256": "0fc70e89451197659237b8162cc4a1d54ebe76f6755dcc1ff61ce991d8bcb7cd"
+        },
+        "driver": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/6-observed/SubProcesses/P0_uux_z/check_sa.f",
+          "sha256": "581ad6e953f5b65e6abbf65a419c429af23e9c6fd70be7f6bb041bb9cf5b2c77"
+        },
+        "executable": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/6-observed/SubProcesses/P0_uux_z/check",
+          "sha256": "c17b75aa0fe6430338a38fe99e9b2da54e959376a68b99fc9f530b2d4050ef68"
+        },
+        "points": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-1.dat",
+          "sha256": "bd8a00c863710123dd62cb5e079dcd11d2aebdcf49d8128313bbd6ecc6de1099"
+        },
+        "parameter_card": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/6-observed/Cards/param_card.dat",
+          "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+        },
+        "madloop_card": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/6-observed/Cards/MadLoopParams.dat",
+          "sha256": "faf17a5b447d046330cb7f4a86915427bfe06f5a729a641182ae61b65dac5c28"
+        },
+        "execution": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/6-normalized-execution.json",
+          "sha256": "d3e2e4e6148ac75aade2430de9106bf7927c29ca00bae1caa1996d2330bf3459"
+        },
+        "build": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/6-normalized-build.json",
+          "sha256": "c1838d9cf472960c6b9b1b42dc789171c8178ab584fd8ff912c0e5d36d78cd8c"
+        },
+        "stdout": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/6-observed-execute.stdout",
+          "sha256": "ce427df915b615ba1af5ff8c6219c8c1ee1382c89e8ad7fa802bee03387f43ac"
+        },
+        "stderr": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/6-observed-execute.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/6-observed.raw",
+        "sha256": "831faf5cab70043751fd763347ee4dda48d6c53092d70cca833a041de1f985e9"
+      },
+      "qualification": {
+        "start": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/started.json",
+          "sha256": "c95c3fd13bc7171000f3f3fc2ec0fc528becc2f0234b7f45ff46bd7169f86b97"
+        },
+        "parity_receipt": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/6-parity.json",
+          "sha256": "ae0c26eae34878b54119d162aa02ea2bfd2313ba27f13a08f35ed8062378b150"
+        },
+        "plain_result": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/6-plain-result.json",
+          "sha256": "9fc343a7107de689972f14053e921bf8092a91e0c32fef0d9c6d60b551a4dafb"
+        },
+        "observed_result": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/6-observed-result.json",
+          "sha256": "d8f1bb3fcb04d3ba3f68ee93173d40db11ec15f941cf66b1a152d807716f3d2d"
+        }
+      }
+    },
+    {
+      "case": "qcd-1",
+      "process": "u u~ > z [virt=QCD]",
+      "group": "QCD",
+      "sample_kind": "recorder-parity-control",
+      "N": 100,
+      "nso": 1,
+      "nexternal": 3,
+      "helicity": -1,
+      "tool": 7,
+      "artifacts": {
+        "original_interface": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1/SubProcesses/P0_uux_z/CT_interface.f",
+          "sha256": "f93d65469090d89269e50b4540ccca34b70807d7fddea4f08e0134d851c132fa"
+        },
+        "instrumented_interface": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/7-observed/SubProcesses/P0_uux_z/CT_interface.f",
+          "sha256": "0fc70e89451197659237b8162cc4a1d54ebe76f6755dcc1ff61ce991d8bcb7cd"
+        },
+        "driver": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/7-observed/SubProcesses/P0_uux_z/check_sa.f",
+          "sha256": "581ad6e953f5b65e6abbf65a419c429af23e9c6fd70be7f6bb041bb9cf5b2c77"
+        },
+        "executable": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/7-observed/SubProcesses/P0_uux_z/check",
+          "sha256": "c17b75aa0fe6430338a38fe99e9b2da54e959376a68b99fc9f530b2d4050ef68"
+        },
+        "points": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-1.dat",
+          "sha256": "bd8a00c863710123dd62cb5e079dcd11d2aebdcf49d8128313bbd6ecc6de1099"
+        },
+        "parameter_card": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/7-observed/Cards/param_card.dat",
+          "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+        },
+        "madloop_card": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/7-observed/Cards/MadLoopParams.dat",
+          "sha256": "26343577cbebe00156031ad87a80c2645f72312737fd8d13337c68319acff361"
+        },
+        "execution": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/7-normalized-execution.json",
+          "sha256": "93ac5258230a4830fda6786faed6e9b5385549160299a797d10b6b5d721c7847"
+        },
+        "build": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/7-normalized-build.json",
+          "sha256": "660a507999dc70d7f10467a9b41f564a03ad3133422d38682e3e0161a4b3d8bd"
+        },
+        "stdout": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/7-observed-execute.stdout",
+          "sha256": "3e1add5bb29fb9a1ff2a0b7dd2fcc1219dd4aca799b8111e70031e593b87bfa5"
+        },
+        "stderr": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/7-observed-execute.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/7-observed.raw",
+        "sha256": "05cbf30ab10b29b4fb19b80add031d9078f1a83ffd05b85b24dc7329285f034e"
+      },
+      "qualification": {
+        "start": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/started.json",
+          "sha256": "c95c3fd13bc7171000f3f3fc2ec0fc528becc2f0234b7f45ff46bd7169f86b97"
+        },
+        "parity_receipt": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/7-parity.json",
+          "sha256": "02d49e679ee1a3e95f13c2d1f9c733995b3146350451d18313fc48ed8a91c97a"
+        },
+        "plain_result": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/7-plain-result.json",
+          "sha256": "ed4d4ced23a85fa77b5b01655d26c63cc48980ab7f7d0074f620a7437ca2a1bf"
+        },
+        "observed_result": {
+          "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/7-observed-result.json",
+          "sha256": "938f33cc1cab38e8d78eb50a6613efff7c2ce29cac4b1eec28f8b7a943120cf2"
+        }
+      }
+    }
+  ]
+}

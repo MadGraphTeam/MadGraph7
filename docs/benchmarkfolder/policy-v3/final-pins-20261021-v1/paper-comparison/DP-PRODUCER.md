@@ -147,3 +147,49 @@ nonfinite parts, QP mode, algorithmic FPE, compensated-DP selection, hardware
 flags, and argument immutability for tool IDs 1, 6, 7, and 8. This verifies
 the recorder without loading a numerical reduction engine. It does not
 replace the later actual instrumented-process parity and failure controls.
+## Actual target qualification
+
+The optional per-run `qualification` binds a controller start record, original
+and instrumented result records, and a parity receipt. The reader validates the
+explicit release through the existing v3 cohort reader. It then checks the
+actual CLI origin through `validate_origin_records`, recomputes the private
+generated source manifest and complete runtime through `actual_runtime`, and
+requires every source change to be the exact rendered driver or declared
+observer insertion. Model/DHELAS archives, scalar/reducer libraries, Fortran
+modules, native link metadata, physical cards, fixed point bytes, executable,
+selector, command exits, and thread settings are retained separately.
+
+Publication observations use the agreed `MLStabThres=1e-9` and
+`COLLIERRequiredAccuracy=1e-12`. Other numerical settings remain those of the
+qualified origin, apart from explicit DP modes, singleton backend selection,
+full poles, disabled COLLIER internal acceptance, and declared cache zero.
+The first cheap legacy recorder control used the export default
+`MLStabThres=0.001`; it remains narrower control evidence and cannot qualify a
+publication stream. No card is silently relabelled.
+
+The reader recomputes recorder parity from all raw Born/Laurent/split-order
+coefficients and internal accuracy records. Finite numbers compare by float64
+bits, including signed zero. Matching nonfinite spellings are counted separately
+and never described as finite bit accuracy. Rejected reductions and FPEs remain
+numerical failures in the stability estimator even when mechanical recorder
+parity succeeds. Thus recorder qualification does not select successful points.
+
+`physical_qualified` denotes an actual source/runtime-bound observation stream;
+it is not a statement that all its numerical results are accurate or accepted.
+Individual legacy target controls may qualify while the summary remains
+incomplete. Summary completion requires every declared process to contain all
+four qualified, complete backend streams. It does not replace the independent
+core correctness, performance, or whole-task completion gates. Missing NinjaRS8
+parity is reported as pending. All qualification is read-only: the reader never
+initializes MadLoop, creates a numerical context, or executes a benchmark.
+
+Current qualification requires a complete matching plain/instrumented raw
+scope. The raw reader retains truncated streams and assigns missing slots to
+the failure-inclusive diagnostic denominator, but abnormal-exit or truncated
+streams cannot yet receive mechanical parity qualification. If an actual
+campaign process fails this way, its attempted backend/process cell must remain
+visible as failed and qualification pending; it must not disappear from the
+case list or become a successful zero curve. Matched-prefix failure qualification
+must then be added and audited against that concrete failure before a qualified
+CDF is published. An unattempted backend is pending, not an observed failure.
+

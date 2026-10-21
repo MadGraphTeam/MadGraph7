@@ -1,0 +1,33 @@
+{
+  "schema": "dp-semantic-software-controls-v1",
+  "scope": "software/mock filesystem checks only; not physics",
+  "command": [
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+    "-m",
+    "unittest",
+    "tests.unit_tests.loop.test_ninjars_dp_stability",
+    "-v"
+  ],
+  "cpu": [
+    4
+  ],
+  "python": "3.14.7 (main, Aug  5 2026, 10:29:49) [GCC 15.3.0]",
+  "exit_code": 0,
+  "pid": 2624468,
+  "reaped": true,
+  "sources_before": {
+    "tools/ninjars_dp_stability.py": "b0fa3802df8e195a0d23474afd7211bbd3cfadaa872d4f41d9bbbb4c4ee14daa",
+    "tools/ninjars_dp_stability_driver.f": "3d8d06325dd955408771b94873ee34ad438c0ba4a459e48bbfbbf69ed33d7dc7",
+    "tests/unit_tests/loop/test_ninjars_dp_stability.py": "4688413fd06e3d20415491fece6deb6fa107b81483552fc702b5b2a324826124"
+  },
+  "sources_after": {
+    "tools/ninjars_dp_stability.py": "b0fa3802df8e195a0d23474afd7211bbd3cfadaa872d4f41d9bbbb4c4ee14daa",
+    "tools/ninjars_dp_stability_driver.f": "3d8d06325dd955408771b94873ee34ad438c0ba4a459e48bbfbbf69ed33d7dc7",
+    "tests/unit_tests/loop/test_ninjars_dp_stability.py": "4688413fd06e3d20415491fece6deb6fa107b81483552fc702b5b2a324826124"
+  },
+  "source_unchanged": true,
+  "tests": 30,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "f0c275b2fb4814475f210f6367a7bc99e04354ff43aa4081a083d5e49a016a5e",
+  "physical_campaign_complete": false
+}

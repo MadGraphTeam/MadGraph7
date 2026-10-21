@@ -15,6 +15,7 @@ import ninjars_benchmark_references_v2 as references
 
 class PolicyV2Test(unittest.TestCase):
     def setUp(self):
+        (ROOT / ".benchmark-work").mkdir(parents=True, exist_ok=True)
         temporary = tempfile.TemporaryDirectory(prefix="policy-v2-test-", dir=ROOT / ".benchmark-work")
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)

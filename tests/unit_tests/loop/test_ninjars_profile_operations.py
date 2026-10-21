@@ -13,6 +13,7 @@ from tools import ninjars_profile_v2 as profile
 
 class NinjaRSProfileOperationsTest(unittest.TestCase):
     def setUp(self):
+        (profile.ROOT / ".ninjars-build/tmp").mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(
             dir=profile.ROOT / ".ninjars-build/tmp", prefix="profile-operations-")
         self.addCleanup(self.temp.cleanup)

@@ -102,6 +102,7 @@ class TestNinjaRSSupplement(unittest.TestCase):
         plan = supplement.frozen_configuration()["gg_hh_threshold"]
         self.assertEqual([(g["delta"], g["cos_theta"]) for g in grid],
                          [(d, c) for d in plan["delta"] for c in plan["cos_theta"]])
+        (ROOT / ".benchmark-work").mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / ".benchmark-work") as directory:
             path = Path(directory) / "points.dat"
             path.write_text("12\n" + "".join(" ".join(f"{x:.17e}" for x in p)+"\n"
@@ -126,6 +127,7 @@ class TestNinjaRSSupplement(unittest.TestCase):
                 supplement.validate_configuration(changed)
 
     def test_nonfinite_or_nonconserving_points_are_rejected(self):
+        (ROOT / ".benchmark-work").mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / ".benchmark-work") as directory:
             path = Path(directory) / "points.dat"
             for raw in ("1\n1 0 0 1\n1 0 0 -1\nnan 0 0 0\n",

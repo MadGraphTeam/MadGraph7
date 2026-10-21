@@ -1,0 +1,61 @@
+{
+  "payloads": {
+    "README.md": {
+      "bytes": 3476,
+      "sha256": "1b1b0f622472b050734f7f09cb0f4e067a1d56958b9882160ea9c70e1e528f10"
+    },
+    "archive-preparation.json": {
+      "bytes": 785,
+      "sha256": "2470772283dea99088a47498147264e9e925550c746cbd65749bf7ccb955bfb3"
+    },
+    "dp-checkpoint-overlay.json": {
+      "bytes": 398,
+      "sha256": "37a43ec6f89a60ea94a22fee81ba98ccc90f2e721fd136663b03fa85566c9226"
+    },
+    "fixture-changes.json": {
+      "bytes": 3662,
+      "sha256": "40891289596fdc24bd63bf3d81e8ad5011b42d4fe611233e1efafe9d72115085"
+    },
+    "fixture-changes.patch": {
+      "bytes": 14840,
+      "sha256": "8941e4801a3b2cffb80ea6f11ecafbd0c348481b5e00c572188492e60a3af6e7"
+    },
+    "modules-current.json": {
+      "bytes": 924,
+      "sha256": "02e6f9fa9aa26ef22ff22068682cb0a715ab9f594213053f6e0c47579355b27a"
+    },
+    "raw-logs.json.gz": {
+      "bytes": 15198,
+      "sha256": "14703590425270a927396e89fa65a7801a38194e3c51c6366df301c50d09918d"
+    },
+    "result.json": {
+      "bytes": 3451,
+      "sha256": "d45cead831a9f5af1cbf9c8fe7054e3eaa47f39d694f9872885def99534c6fa0"
+    },
+    "run-module.py": {
+      "bytes": 1248,
+      "sha256": "74d233de110add3d6400cecc9adcf837d0ce8d58add9266290b0a3598df6d6ae"
+    },
+    "run-suite-current.py": {
+      "bytes": 2247,
+      "sha256": "bac296fd71cbb534871648629d7b81706300a5b3ab90809a2a1ef8efd1ea9c89"
+    },
+    "runs.json.gz": {
+      "bytes": 18357,
+      "sha256": "d8c3ec7a19269a770180f7bd73b20b2848dfdb483b98bc7d1c5f08780f51ac58"
+    },
+    "software-sources.tar.gz": {
+      "bytes": 253103,
+      "sha256": "be1c129ef9e5cec9729a70111fa45190962a2c6b0b4eb1834e1c9ea099791ee5"
+    },
+    "source-state.json": {
+      "bytes": 5648,
+      "sha256": "0c63644c0200bcb5f86d967bd76ab26636a951d685fdc3b148a4aba4d377273b"
+    },
+    "verify.py": {
+      "bytes": 7016,
+      "sha256": "b00f7cb8d7e8e8b662e54f1ace7767d55948520d607bb5fbce5d1a6c13bfc772"
+    }
+  },
+  "schema": "ninjars-pristine-software-portability-payload-seal-v1"
+}

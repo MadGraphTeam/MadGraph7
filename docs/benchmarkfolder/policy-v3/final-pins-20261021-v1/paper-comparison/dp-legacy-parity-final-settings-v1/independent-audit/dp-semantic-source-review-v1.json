@@ -1,0 +1,25 @@
+{
+  "schema": "independent-dp-semantic-source-review-v1",
+  "utc": "2026-10-21T18:49:09.369795+00:00",
+  "scope": "Bounded read-only source/test review; no software test rerun, compile or engine invocation. Actual parity data audited separately.",
+  "sources": {
+    "tools/ninjars_dp_stability.py": "b0fa3802df8e195a0d23474afd7211bbd3cfadaa872d4f41d9bbbb4c4ee14daa",
+    "tools/ninjars_dp_stability_driver.f": "3d8d06325dd955408771b94873ee34ad438c0ba4a459e48bbfbbf69ed33d7dc7",
+    "tests/unit_tests/loop/test_ninjars_dp_stability.py": "4688413fd06e3d20415491fece6deb6fa107b81483552fc702b5b2a324826124"
+  },
+  "verdict": "No source blocker for the declared diagnostic scope",
+  "checks": [
+    "Explicit cohort goes through existing v3 validator before physical target qualification.",
+    "Private target is checked against actual generated origin, sole exact driver/interface transformation, dimensions, fixed points, physical card, process and requested selector.",
+    "Runtime includes reducer/scalar libraries, model/DHELAS, modules/native-link inputs; actual executable and exact source artifacts are bound.",
+    "Full MadLoop settings preserve committed origin except declared forced-DP controls and explicit MLStabThres1e-9/COLLIERRequiredAccuracy1e-12; old0.001 controls reject.",
+    "Actual command/build/link guards are checked, including identical legacy guard object and forwarded NULL teardown in plain/observed variants.",
+    "Mechanical parity is independently recomputed from complete raw output, including signed zero and identical nonfinite tokens; numerical rejection/FPE remains failure-inclusive.",
+    "A missing backend8 prevents all-four observations_complete/physical_qualified completion; no synthetic pass boolean qualifies observations."
+  ],
+  "limits": [
+    "Mechanical parity establishes recorder nonperturbation for the exact process/card/points/selector scope, not numerical correctness.",
+    "The current qualification path resolves cases from the core generation authority; loop-induced/complex targets require their actual correct existing authority before future publication.",
+    "Original full correctness, rescue-on runtime, seven-repetition1.05 gates and four-tool DP campaign remain separate pending acceptance obligations."
+  ]
+}

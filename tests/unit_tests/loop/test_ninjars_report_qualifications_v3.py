@@ -12,6 +12,7 @@ from tools import ninjars_report_qualifications_v3 as qualification
 
 class NinjaRSReportQualificationsV3Test(unittest.TestCase):
     def setUp(self):
+        (qualification.ROOT / ".ninjars-build/tmp").mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(dir=qualification.ROOT / ".ninjars-build/tmp",
                                                 prefix="report-qualification-")
         self.addCleanup(self.temp.cleanup)

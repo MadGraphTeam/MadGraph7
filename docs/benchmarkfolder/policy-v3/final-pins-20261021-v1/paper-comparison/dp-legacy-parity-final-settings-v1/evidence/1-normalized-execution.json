@@ -1,0 +1,16 @@
+{
+  "source_record": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/1-observed-result.json",
+    "sha256": "fa7db74c62af68ce4311bf919a5b4a3d1732b4526e90fef3d9e4ec140cffd7a8"
+  },
+  "requested_tool": 1,
+  "helicity": -1,
+  "exit_code": 0,
+  "cpu": 12,
+  "thread_environment": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  }
+}

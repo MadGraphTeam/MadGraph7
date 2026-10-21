@@ -23,6 +23,7 @@ LAUNCH_SPEC.loader.exec_module(launch)
 
 class FinalCoreCollectionTest(unittest.TestCase):
     def setUp(self):
+        (ROOT / '.benchmark-work').mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(dir=ROOT / '.benchmark-work',
                                                prefix='final-core-collection-test-')
         self.addCleanup(self.temp.cleanup)

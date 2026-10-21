@@ -17,6 +17,7 @@ import ninjars_benchmark_pair_v3 as pair
 
 class ExplicitPairCollectorTest(unittest.TestCase):
     def setUp(self):
+        (ROOT / ".benchmark-work").mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(dir=ROOT / ".benchmark-work", prefix="pair-v3-test-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)

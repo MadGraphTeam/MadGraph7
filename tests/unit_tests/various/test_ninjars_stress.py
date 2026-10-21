@@ -85,6 +85,7 @@ class TestNinjaRSStress(unittest.TestCase):
         self.assertEqual(len(result), 4)
         self.assertEqual(result[0][2][0], events[0][2][0])
         self.assertNotEqual(result[0][2][1:], events[0][2][1:])
+        (ROOT / ".benchmark-work").mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / ".benchmark-work") as directory:
             path = Path(directory) / "points.dat"
             path.write_text(stress.serialize(result))
@@ -232,6 +233,7 @@ class TestNinjaRSStress(unittest.TestCase):
     def snapshot(self, groups, failed=None):
         signature = self.signature()
         expected = self.expected(signature)
+        (ROOT / ".benchmark-work").mkdir(parents=True, exist_ok=True)
         directory = tempfile.TemporaryDirectory(dir=ROOT / ".benchmark-work")
         self.addCleanup(directory.cleanup)
         path = Path(directory.name)
@@ -338,6 +340,7 @@ class TestNinjaRSStress(unittest.TestCase):
         targets.pop(next(iter(targets)))
         binding = stress.policy.seal({"schema": "supplement-source-bindings-v1", "report": ".benchmark-work",
             "role_map": {"candidate": "candidate_corrected"}, "targets": targets})
+        (ROOT / ".benchmark-work").mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / ".benchmark-work") as directory:
             filename = Path(directory) / "binding.json"
             stress.bench.dump(filename, binding)

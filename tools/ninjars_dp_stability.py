@@ -12,6 +12,7 @@ import json
 import math
 from pathlib import Path
 import re
+import struct
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = "ninjars-dp-stability-summary-v1"
@@ -442,6 +443,252 @@ def validate_run_sources(run, inputs=None):
     return receipt, paths, execution
 
 
+def _read_bound(record, inputs=None):
+    return json.loads(_bound(ROOT, record, inputs).read_text())
+
+
+def _local_path(value):
+    path = Path(value)
+    return (path if path.is_absolute() else ROOT/path).resolve()
+
+
+def _successful_command(record, inputs):
+    if record.get("exit_code") != 0 or record.get("reaped") is not True:
+        raise ValueError("Physical DP command failed or was not reaped")
+    for name in ("stdout", "stderr"):
+        _bound(ROOT, record[name], inputs)
+
+
+def _same_bits(left, right):
+    """Includes signed zero; rejects incomplete/nonfinite parity controls."""
+    return (left is not None and right is not None and
+            math.isfinite(left) and math.isfinite(right) and
+            struct.pack("!d",left) == struct.pack("!d",right))
+
+
+def validate_recorder_parity(plain, observed, tool):
+    """Recompute the control from raw rows, never its retained passed boolean."""
+    if not plain["complete"] or not observed["complete"] or plain["header"] != observed["header"]:
+        raise ValueError("Recorder parity has incomplete or different raw streams")
+    physical, accuracy, zero, nonfinite = 0, 0, 0, 0
+    failures = Counter()
+    for key,left in plain["observations"].items():
+        right = observed["observations"][key]
+        if (left["metadata"][:5] != right["metadata"][:5] or
+                left["metadata"][-3:] != right["metadata"][-3:]):
+            raise ValueError("Recorder parity modes/status/FPE/rounding differ")
+        if any(left["metadata"][5:20]):
+            raise ValueError("Uninstrumented parity target has observer calls")
+        reason = observation_failure(right,tool)
+        if reason not in (None,"reduction_rejected","reduction_fpe","nonfinite_result"):
+            raise ValueError("Recorder parity violates the explicit DP control: " + reason)
+        if reason:
+            failures[reason] += 1
+        for order,row in left["rows"].items():
+            other = right["rows"][order]
+            for index,(a,b) in enumerate(zip(row["values"],other["values"])):
+                if a is None or b is None:
+                    if a is not None or b is not None or row["raw"][index] != other["raw"][index]:
+                        raise ValueError("Recorder changes a nonfinite output token")
+                    nonfinite += 1
+                elif not _same_bits(a,b):
+                    raise ValueError("Recorder changes a physical coefficient or internal accuracy")
+            physical += 4
+            accuracy += 1
+            zero += sum(v == 0. for v in row["values"][:4])
+    return {"physical_coefficients_compared":physical,
+            "internal_accuracies_compared":accuracy,"zero_coefficients_compared":zero,
+            "f64_bitexact":nonfinite == 0, "finite_values_f64_bitexact":True,
+            "matching_nonfinite_tokens":nonfinite,"numerical_failure_observations":dict(failures)}
+
+
+def validate_dp_settings(origin, target, tool):
+    """Preserve all normal numerical settings except the declared DP controls."""
+    overrides = {"MLReductionLib":str(tool), "CTModeRun":1, "CTModeInit":1,
+        "MLStabThres":1e-9, "COLLIERRequiredAccuracy":1e-12,
+        "COLLIERComputeUVpoles":True, "COLLIERComputeIRpoles":True,
+        "COLLIERGlobalCache":0, "COLLIERUseInternalStabilityTest":False}
+    expected = {key.lower():value for key,value in origin.items()}
+    expected.update({key.lower():value for key,value in overrides.items()})
+    actual = {key.lower():value for key,value in target.items()}
+    if actual != expected:
+        changed = sorted(key for key in set(expected)|set(actual)
+                         if expected.get(key) != actual.get(key))
+        raise ValueError("DP publication settings differ: " + ",".join(changed))
+    return overrides
+
+
+def validate_target_qualification(run, release, runpaths, inputs=None):
+    """Bind a private diagnostic to the existing actual CLI/cohort authorities.
+
+    This checks live files and independently replays the retained parity rows;
+    it launches no executable. A self-declared cohort or success flag cannot
+    qualify data. The additional legacy C link guard remains explicit.
+    """
+    import ninjars_benchmark as bench
+    import ninjars_benchmark_pair_v3 as pair
+    import ninjars_benchmark_policy_v2 as policy_v2
+    from madgraph.various.banner import MadLoopParam
+    proof = run["qualification"]
+    start = _read_bound(proof["start"],inputs)
+    retained_parity = _read_bound(proof["parity_receipt"],inputs)
+    cohort_path = _bound(ROOT,start["cohort"],inputs)
+    if json.loads(cohort_path.read_text()) != release:
+        raise ValueError("Parity start names another explicit cohort")
+    thread_environment = {name:"1" for name in pair.THREADS}
+    if start.get("thread_environment") != thread_environment or len(start.get("cpu",[])) != 1:
+        raise ValueError("Parity CPU/thread settings are not bound")
+    root = _local_path(release["generation_root"])
+    status_path = root/"status.json"
+    _bound(ROOT,{"path":str(status_path),"sha256":digest(status_path)},inputs)
+    case = json.loads(status_path.read_text())["cases"].get(run["case"])
+    if not case or case.get("status") != "complete":
+        raise ValueError("DP case is absent from the validated actual CLI cohort")
+    origin = _local_path(case["output"])
+    retained = root/"inputs/candidate"/run["case"]
+    records = {}
+    for name in ("generation.json","compilation.json","compiled-sources.json"):
+        path = retained/name
+        records[name] = _read_bound({"path":str(path),"sha256":digest(path)},inputs)
+    manifest = records["compiled-sources.json"]
+    identity = pair.validate_origin_records("candidate",origin,records["generation.json"],
+                                          records["compilation.json"],manifest)
+    if (identity["revision"] != release["generation_revision"] or
+            identity["tree_state_sha256"] != release["generator_identity_sha256"]):
+        raise ValueError("Actual DP origin source differs from its explicit cohort")
+    points = root/"points"/(run["case"]+".dat")
+    if (runpaths["points"].read_bytes() != points.read_bytes() or
+            digest(points) != case["physical_inputs"]["points"]["sha256"] or
+            run["process"] != case["case"]["process"] or
+            run["nexternal"] != case["case"]["nfinal"]+2):
+        raise ValueError("DP process/points differ from its actual CLI case")
+    _bound(ROOT,{"path":str(points),"sha256":digest(points)},inputs)
+    source_dirs = list(origin.glob("SubProcesses/P*_*"))
+    if len(source_dirs) != 1:
+        raise ValueError("DP origin requires exactly one subprocess")
+    source_dir = source_dirs[0]
+    original_interface = source_dir/"CT_interface.f"
+    transformed, receipt = instrument_interface(original_interface.read_text())
+    if runpaths["original_interface"].read_bytes() != original_interface.read_bytes():
+        raise ValueError("DP original interface was grafted from another source")
+    if run["nso"] != int(re.search(r"NSQUAREDSO\s*=\s*(\d+)",
+            (source_dir/"nsquaredSO.inc").read_text(),re.I)[1]):
+        raise ValueError("DP split-order dimension differs from actual generated source")
+    origin_libraries = policy_v2.library_hashes(origin)
+    origin_physical = origin/"Cards/param_card.dat"
+    if (digest(origin_physical) != records["generation.json"]["parameter_card_sha256"] or
+            origin_physical.read_bytes() != (retained/"param_card.dat").read_bytes()):
+        raise ValueError("Actual CLI physical parameter card changed")
+    template_name = "Template/loop_material/StandAlone/Cards/MadLoopParams.dat"
+    committed_settings = MadLoopParam(policy_v2.git_bytes(release["generation_revision"],template_name).decode())
+    origin_settings = MadLoopParam(str(origin/"Cards/MadLoopParams.dat"))
+    if dict(origin_settings) != dict(committed_settings):
+        raise ValueError("Actual CLI origin MadLoop settings differ from its committed template")
+    results, parsed = {}, {}
+    for variant in ("plain","observed"):
+        result = _read_bound(proof[variant+"_result"],inputs)
+        if result.get("variant") != variant or result.get("tool") != run["tool"]:
+            raise ValueError("Parity target variant/backend differs")
+        execution, build = result["execution"],result["build"]
+        _successful_command(execution,inputs)
+        _successful_command(build,inputs)
+        directory = _local_path(execution["cwd"])
+        output = directory.parents[1]
+        if directory != output/"SubProcesses"/source_dir.name or _local_path(build["cwd"]) != directory:
+            raise ValueError("Parity subprocess/build target differs")
+        actual = bench.generated_source_manifest(output)
+        if actual != result["compiled_manifest"]:
+            raise ValueError("Live compiled DP source manifest differs")
+        allowed = {str((directory/"check_sa.f").relative_to(output))}
+        if variant == "observed":
+            allowed.add(str((directory/"CT_interface.f").relative_to(output)))
+        if set(policy_v2.delta(manifest["files"],actual["files"])) != allowed:
+            raise ValueError("Unreviewed numerical/build source change in DP target")
+        expected_interface = transformed if variant == "observed" else original_interface.read_text()
+        if ((directory/"CT_interface.f").read_text() != expected_interface or
+                (directory/"check_sa.f").read_text() != render_driver(receipt["prefix"],run["nexternal"],run["nso"])):
+            raise ValueError("Parity driver/interface differs from exact source transformation")
+        for name,key in (("check_sa.f","driver_sha256"),("CT_interface.f","interface_sha256"),("check","executable_sha256")):
+            _bound(ROOT,{"path":str(directory/name),"sha256":result[key]},inputs)
+        runtime = pair.actual_runtime(output,actual,run["tool"])
+        if (runtime != result["runtime"] or runtime["identity_sha256"] != release["runtime_identity_sha256"] or
+                release["archive_sha256"] not in runtime["libraries"].values()):
+            raise ValueError("Actual DP reduction/native/module/link runtime differs from explicit cohort")
+        libraries = policy_v2.library_hashes(output)
+        if libraries != origin_libraries:
+            raise ValueError("DP model/DHELAS or reducer/scalar libraries differ from actual CLI origin")
+        for relative,sha256 in libraries.items():
+            _bound(ROOT,{"path":str(output/"lib"/relative),"sha256":sha256},inputs)
+        for relative,path in policy_v2.runtime_metadata_files(output).items():
+            _bound(ROOT,{"path":str(path),"sha256":runtime["metadata"][relative]},inputs)
+        physical = output/"Cards/param_card.dat"
+        if physical.read_bytes() != (origin/"Cards/param_card.dat").read_bytes():
+            raise ValueError("DP physical parameter card differs from actual CLI origin")
+        _bound(ROOT,{"path":str(physical),"sha256":result["physical_card_sha256"]},inputs)
+        cardpath = output/"Cards/MadLoopParams.dat"
+        _bound(ROOT,{"path":str(cardpath),"sha256":result["madloop_card_sha256"]},inputs)
+        settings = validate_dp_settings(origin_settings,
+                                       MadLoopParam(str(cardpath)),run["tool"])
+        for card in output.glob("SubProcesses/**/MadLoopParams.dat"):
+            if dict(MadLoopParam(str(card))) != dict(MadLoopParam(str(cardpath))):
+                raise ValueError("Private subprocess reads a different DP card")
+            _bound(ROOT,{"path":str(card),"sha256":digest(card)},inputs)
+        rawpath = _bound(ROOT,result["raw"],inputs)
+        expected_command = [str(directory/"check"),str(points),str(run["tool"]),str(run["helicity"]),str(rawpath)]
+        if execution["command"] != expected_command:
+            raise ValueError("Physical DP executable/point/selector command differs")
+        if result.get("additional_link_flags"):
+            if run["tool"] == 8:
+                raise ValueError("Legacy numerical-entry guard cannot qualify NinjaRS8")
+            guard = _bound(ROOT,start["guard_source"],inputs)
+            if digest(guard) != "13f5702a530ede39a74333d266bb3078799e7b3f9889a29c9c2fdd2683176477":
+                raise ValueError("Unknown legacy numerical-entry guard source")
+            obj = _bound(ROOT,result["guard_object"],inputs)
+            symbols = ("ninjars_context_create","ninjars_evaluate_dp","ninjars_evaluate_dp_compensated",
+                       "ninjars_evaluate_mp","ninjars_context_destroy")
+            flags = str(obj)+" -L$(LIBDIR) -ldhelas -lmodel $(LINK_LOOP_LIBS) $(LDFLAGS) "+" ".join("-Wl,--wrap="+s for s in symbols)
+            expected_guard = "GUARD_FINAL create=0 dp=0 compensated=0 mp=0 destroy=1 nonnull=0"
+            if (result["additional_link_flags"] != flags or
+                    _bound(ROOT,result["guard"],inputs).read_text().splitlines() !=
+                    [expected_guard.replace("GUARD_FINAL","NULL_TEARDOWN_FORWARDED"),expected_guard]):
+                raise ValueError("Legacy parity entered a numerical NinjaRS path or changed link guard")
+            expected_build = ["make","-j1","check","LINKLIBS="+flags]
+        else:
+            expected_build = ["make","-j1","check"]
+        if build["command"] != expected_build:
+            raise ValueError("DP parity build has undeclared compiler/link flags")
+        parsed[variant] = parse_raw(rawpath,run["N"],run["tool"],run["nso"])
+        if parsed[variant]["header"][4] != run["helicity"]:
+            raise ValueError("Parity raw helicity differs")
+        results[variant] = result
+        if variant == "observed":
+            expected_paths = {"instrumented_interface":directory/"CT_interface.f",
+                "driver":directory/"check_sa.f","executable":directory/"check",
+                "parameter_card":physical,"madloop_card":cardpath}
+            if any(runpaths[name].resolve() != path.resolve() for name,path in expected_paths.items()) or run["raw"] != result["raw"]:
+                raise ValueError("DP observations are not the qualified private target")
+            normalized_execution = json.loads(runpaths["execution"].read_text())
+            normalized_build = json.loads(runpaths["build"].read_text())
+            if (normalized_execution.get("source_record") != proof["observed_result"] or
+                    normalized_build.get("source_record") != proof["observed_result"] or
+                    normalized_execution.get("exit_code") != execution["exit_code"] or
+                    normalized_execution.get("cpu") != start["cpu"][0] or
+                    normalized_execution.get("thread_environment") != thread_environment):
+                raise ValueError("DP normalized command records differ from actual parity execution")
+    if (results["plain"].get("additional_link_flags") != results["observed"].get("additional_link_flags") or
+            results["plain"].get("guard_object") != results["observed"].get("guard_object")):
+        raise ValueError("Plain and observed parity link boundaries differ")
+    parity = validate_recorder_parity(parsed["plain"],parsed["observed"],run["tool"])
+    receipt_keys = ("physical_coefficients_compared","zero_coefficients_compared","f64_bitexact")
+    if any(retained_parity.get(key) != parity[key] for key in receipt_keys):
+        raise ValueError("Retained parity receipt contradicts independently replayed raw rows")
+    return {"source_runtime_qualified":True,"recorder_parity_qualified":True,
+            "settings":settings,"runtime_identity_sha256":release["runtime_identity_sha256"],
+            "source_manifest_sha256":results["observed"]["compiled_manifest"]["files_sha256"],
+            "executable_sha256":results["observed"]["executable_sha256"],
+            "parity":parity,"scope":"this declared process/tool/point/selector stream only"}
+
+
 def report_snapshot(manifest_or_summary, expected=None, inputs=None):
     """Always re-read bound raw observations; a supplied summary is not authority."""
     path = Path(manifest_or_summary).resolve()
@@ -467,7 +714,7 @@ def report_snapshot(manifest_or_summary, expected=None, inputs=None):
                        "runtime_identity_sha256", "archive_sha256"}
     if not required_cohort.issubset(data["cohort"]):
         raise ValueError("DP authority lacks full cohort identities")
-    cohort_validated = False
+    cohort_validated, release = False, None
     if expected is not None and not data.get("cohort_record"):
         raise ValueError("An actual consumer requires a bound explicit cohort file")
     if data.get("cohort_record"):
@@ -529,6 +776,12 @@ def report_snapshot(manifest_or_summary, expected=None, inputs=None):
             name:sum(bool(obs["metadata"][5+index]) for obs in parsed["observations"].values()
                      if obs["metadata"] is not None)
             for index,name in enumerate(COUNTER_NAMES) if index >= 15}
+        entry["physical_qualified"] = False
+        if run.get("qualification"):
+            if not cohort_validated:
+                raise ValueError("Physical DP qualification requires a validated explicit cohort")
+            entry["qualification"] = validate_target_qualification(run,release,runpaths,inputs)
+            entry["physical_qualified"] = True
         group = cases.setdefault(case,{"id":case,"tools":{},"group":run.get("group","unspecified"),
                  "process":run.get("process",case),"sample_kind":run.get("sample_kind","fixed-core-pilot"),
                  "N":n,"helicity":run["helicity"]})
@@ -541,14 +794,17 @@ def report_snapshot(manifest_or_summary, expected=None, inputs=None):
     for case in cases.values():
         if set(case["tools"]) != {str(t) for t in TOOLS}:
             all_complete = False
+    physical_qualified = (all_complete and cohort_validated and
+        all(entry["physical_qualified"] for case in cases.values() for entry in case["tools"].values()))
     return {"schema": SCHEMA, "manifest": {"path":str(path),"sha256":digest(path)},
             "stream":"forced_dp_self_consistency", "rescue_enabled":False,
             "requested_precision":"native-double", "thresholds":thresholds,
             "floating_point_rounding":"nearest observed before/after every call",
             "cohort": data["cohort"], "observations_complete": all_complete,
             "cohort_record":data.get("cohort_record"), "cohort_validated":cohort_validated,
-            "complete": False, "physical_qualified": False,
-            "physical_qualification_pending": "Independent actual cohort/runtime target binding and instrumented-process parity controls",
+            "complete": physical_qualified, "physical_qualified": physical_qualified,
+            "physical_qualification_pending": None if physical_qualified else
+                "Every declared case needs all four actual cohort/runtime target bindings and instrumented-process parity controls",
             "qualification": "diagnostic only; does not replace correctness or timing gates",
             "estimator": "(max(v)-min(v))/abs(mean(v)); failures count above every finite threshold",
             "interval_method": "Wilson two-sided 95%; exact one-sided 95% zero-event upper bound",

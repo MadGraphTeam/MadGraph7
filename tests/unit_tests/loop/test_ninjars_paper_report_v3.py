@@ -13,6 +13,7 @@ from tools import ninjars_paper_report_v3 as report
 
 class NinjaRSPaperReportV3Test(unittest.TestCase):
     def setUp(self):
+        (report.ROOT / ".ninjars-build/tmp").mkdir(parents=True, exist_ok=True)
         self.temporary = tempfile.TemporaryDirectory(dir=report.ROOT / ".ninjars-build/tmp", prefix="paper-report-")
         self.addCleanup(self.temporary.cleanup)
         self.directory = Path(self.temporary.name)

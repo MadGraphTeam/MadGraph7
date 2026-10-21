@@ -1,0 +1,57 @@
+{
+  "scope": "compile/link only; no Worker/SETPARA/reducer/MP/executable invocation",
+  "pid": 1774990,
+  "ppid": 1774977,
+  "pgid": 1774977,
+  "start_ticks": 64101586,
+  "affinity": [
+    6
+  ],
+  "started_utc": "2026-10-21T18:28:34.871470+00:00",
+  "controller": {
+    "path": ".benchmark-work/paper-timing-compatibility-v1/compile-only.py",
+    "sha256": "355436d7a50d62246df09b395c15f328ca34aa065fbd3f9e2c1173a41ef0d20a",
+    "bytes": 2864
+  },
+  "specification": {
+    "path": "docs/benchmarkfolder/policy-v3/paper-timing-software-proof-v1/specification-held-v2.json",
+    "sha256": "f391bfb4437c68924c473cddbe1d2c66de0ab89537de202b1a863605aff531c4",
+    "bytes": 203322
+  },
+  "requested": [
+    "qcd-1",
+    "supplement-gg-hh"
+  ],
+  "backend": 8,
+  "completed": [
+    {
+      "case": "qcd-1",
+      "output": ".benchmark-work/paper-timing-compatibility-v1/workers/qcd-1-candidate-8/outputs/candidate/qcd-1",
+      "executable_sha256": "180d8b7a852b9ae935a0555879c9a0df7b81afe44eefd626794a150b924ecf46",
+      "helicity_index": 10,
+      "physical_helicity": [
+        -1,
+        1,
+        -1
+      ],
+      "fortran_executable_invoked": false,
+      "helicity_filters_created": 0
+    },
+    {
+      "case": "supplement-gg-hh",
+      "output": ".benchmark-work/paper-timing-compatibility-v1/workers/supplement-gg-hh-candidate-8/outputs/candidate/supplement-gg-hh",
+      "executable_sha256": "ca8b54551a2b2f3a74e4a99062db335364abaf1e9ca4f41ee3fbd739f75fe30b",
+      "helicity_index": 1,
+      "physical_helicity": [
+        -1,
+        -1,
+        0,
+        0
+      ],
+      "fortran_executable_invoked": false,
+      "helicity_filters_created": 0
+    }
+  ],
+  "status": "complete",
+  "finished_utc": "2026-10-21T18:29:16.035625+00:00"
+}

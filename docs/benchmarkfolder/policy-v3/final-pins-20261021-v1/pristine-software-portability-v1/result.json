@@ -1,0 +1,64 @@
+{
+  "archive_base_revision": "690202028535afb2cb699cc95d5e9a4b365a3c28",
+  "cpu_affinity": [
+    180
+  ],
+  "errors": 0,
+  "failures": 0,
+  "final_phase": "after-current",
+  "fixture_changed_test_files": 13,
+  "full_source_files": 42,
+  "historical_observations_retained": [
+    "before",
+    "before-new-loop",
+    "after",
+    "after-final"
+  ],
+  "independent_semantic_checkpoint": "dp-checkpoint-overlay.json",
+  "modules": 16,
+  "native_library_or_install_calls": 0,
+  "production_regression": {
+    "manifest_path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/regressions-update-v1/manifest.json",
+    "manifest_sha256": "e4752a6a3d0476008470b0997c193cee7bc0842edfcf87452f5cf82621508da1",
+    "source_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+    "unchanged_bound_sources": {
+      "madgraph/interface/madgraph_interface.py": "5ae13768c15462ace63f7780cd4a0750c99479fadea3f1512175c2fc7393044d",
+      "madgraph/various/ninjars_install.py": "ea7536939563a038a52005e71e229120216b6cf6d03bd54e63122692552aadba",
+      "tests/unit_tests/various/test_ninjars_install.py": "42536e8b1701d30d69e8d0e9ad8ba3e191072bd823730baedd6367fe5c4e4469",
+      "tests/unit_tests/various/test_ninjars_integration_boundaries.py": "ce9300966ecdd85cc8fcdd9fb733a17c391db34b5c4bc20673e08c60c0e86299",
+      "vendor/ninjars/Cargo.lock": "b8c2eddffe0dd5cb3a88b3b934133c3a0146638fa33de5e5f9fa4d65ee124f18",
+      "vendor/ninjars/Cargo.toml": "aeb9c987c47586617585e3da782e60ee3670942db639ed48a73fc75f6f89c0d6",
+      "vendor/ninjars/UPSTREAM.md": "2e546da726ff039d30b4fa76f10a06b0faec9538d0fc2a7c087a8990fb36954c"
+    }
+  },
+  "recorded_module_elapsed_seconds": 56.29100828780793,
+  "reproduction": {
+    "archive_and_overlay": "Create git archive of archive_base_revision inside the repository; overlay the 42 exact test/helper source images from software-sources.tar.gz. Put run-module.py, run-suite-current.py and modules-current.json beside the source directory, with tmp/ and cache/. The controller removes only its own private source ignored parents before each module.",
+    "controller_command": [
+      "taskset",
+      "-c",
+      "180",
+      "python3",
+      "-B",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/pristine-software-portability-20261021-v1/run-suite-current.py",
+      "after-current"
+    ],
+    "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+    "environment_overrides": {
+      "MKL_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "RAYON_NUM_THREADS": "1",
+      "TMPDIR": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/pristine-software-portability-20261021-v1/tmp",
+      "XDG_CACHE_HOME": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/pristine-software-portability-20261021-v1/cache"
+    },
+    "python_executable": "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+    "shell_setup": "source .ninjars-build/dev-env.sh"
+  },
+  "schema": "ninjars-pristine-software-portability-v1",
+  "scope": "Additive pristine-checkout portability/software tests only; not an amplitude, native installation, export, numerical-stability or performance qualification. Existing production-interface regression qualification remains separate and unchanged.",
+  "skips": 1,
+  "tests_passed": 307,
+  "tests_run": 308
+}

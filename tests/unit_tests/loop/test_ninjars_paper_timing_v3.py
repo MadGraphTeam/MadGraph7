@@ -14,6 +14,7 @@ import ninjars_paper_timing_v3 as paper
 
 class PaperTimingTest(unittest.TestCase):
     def setUp(self):
+        (ROOT / ".benchmark-work").mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(dir=ROOT / ".benchmark-work", prefix="paper-timing-test-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)

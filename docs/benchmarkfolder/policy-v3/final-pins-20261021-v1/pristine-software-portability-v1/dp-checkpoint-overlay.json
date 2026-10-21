@@ -1,0 +1,9 @@
+{
+  "engines": 0,
+  "files": {
+    "tests/unit_tests/loop/test_ninjars_dp_stability.py": "4688413fd06e3d20415491fece6deb6fa107b81483552fc702b5b2a324826124",
+    "tools/ninjars_dp_stability.py": "b0fa3802df8e195a0d23474afd7211bbd3cfadaa872d4f41d9bbbb4c4ee14daa"
+  },
+  "permission": "Frozen semantic checkpoint explicitly handed over for software-only replay",
+  "source_owner": "paper_benchmark"
+}

@@ -5,7 +5,9 @@ import json
 import math
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 SPEC = importlib.util.spec_from_file_location("dp_stability",ROOT/"tools/ninjars_dp_stability.py")
@@ -247,6 +249,184 @@ class RawReader(unittest.TestCase):
                 "instrumentation":"per-dispatch-observer-v1","cohort":{key:"fixture" for key in [
                 "numerical_revision","generation_revision","generator_identity_sha256","runtime_identity_sha256","archive_sha256"]},"runs":[]})
             with self.assertRaisesRegex(ValueError,"no observed runs"):dp.report_snapshot(path)
+
+
+class SemanticQualification(unittest.TestCase):
+    """Small filesystem controls; mocked external authorities are not physics."""
+    def setUp(self):
+        self.temporary=tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root=Path(self.temporary.name)
+        self.patch=mock.patch.object(dp,"ROOT",self.root);self.patch.start();self.addCleanup(self.patch.stop)
+        (self.root/"tools").mkdir()
+        (self.root/"tools/ninjars_dp_stability_driver.f").write_bytes((ROOT/"tools/ninjars_dp_stability_driver.f").read_bytes())
+        def put(path,value):
+            path.parent.mkdir(parents=True,exist_ok=True)
+            path.write_text(value if isinstance(value,str) else json.dumps(value))
+            return {"path":str(path),"sha256":dp.digest(path)}
+        self.put=put
+        def manifest(output):
+            files={str(f.relative_to(output)):{"sha256":dp.digest(f),"bytes":f.stat().st_size}
+                   for name in ("Source","SubProcesses") for f in sorted((output/name).rglob("*"))
+                   if f.is_file() and f.suffix in (".f",".inc")}
+            return {"files":files,"files_sha256":__import__("hashlib").sha256(json.dumps(files,sort_keys=True).encode()).hexdigest()}
+        self.manifest=manifest
+        self.defaults={"MLReductionLib":"6|7|1","CTModeRun":-1,"CTModeInit":1,
+            "MLStabThres":.001,"COLLIERRequiredAccuracy":1e-8,"COLLIERComputeUVpoles":True,
+            "COLLIERComputeIRpoles":True,"COLLIERGlobalCache":-1,"COLLIERUseInternalStabilityTest":True,
+            "CTStabThres":1e-2,"UseQPIntegrandForNinjaRS":True}
+        target=dict(self.defaults,MLReductionLib="1",CTModeRun=1,MLStabThres=1e-9,
+            COLLIERRequiredAccuracy=1e-12,COLLIERGlobalCache=0,COLLIERUseInternalStabilityTest=False)
+        origin=self.root/"origin";self.origin=origin
+        source=origin/"SubProcesses/P0_fixture";self.source=source
+        original=interface();observed,receipt=dp.instrument_interface(original)
+        for name,text in [("CT_interface.f",original),("check_sa.f","original driver\n"),
+                ("nsquaredSO.inc","      PARAMETER (NSQUAREDSO=1)\n"),("check","original binary")]:put(source/name,text)
+        put(origin/"Source/dummy.f","      END\n")
+        put(origin/"Cards/MadLoopParams.dat",self.defaults)
+        physical=put(origin/"Cards/param_card.dat","physical software fixture\n")
+        release={"generation_root":str(self.root/"generation"),"generation_revision":"revision",
+            "generator_identity_sha256":"generator","runtime_identity_sha256":"runtime","archive_sha256":"archive"}
+        self.release=release
+        cohort=put(self.root/"cohort.json",release)
+        self.points=self.root/"generation/points/fixture.dat"
+        pointrecord=put(self.points,"1\n"+"0 0 0 0\n"*3)
+        put(self.root/"generation/status.json",{"cases":{"fixture":{"status":"complete","output":str(origin),
+            "case":{"process":"software fixture","nfinal":1},"physical_inputs":{"points":pointrecord}}}})
+        retained=self.root/"generation/inputs/candidate/fixture"
+        identity={"revision":"revision","tree_state_sha256":"generator"}
+        put(retained/"generation.json",{"source_identity":identity,"parameter_card_sha256":physical["sha256"]})
+        put(retained/"compilation.json",{})
+        put(retained/"compiled-sources.json",manifest(origin))
+        put(retained/"param_card.dat","physical software fixture\n")
+        libs={}
+        for name in ("libmodel.a","libdhelas.a","libcts.a"):
+            libs[name]=put(origin/"lib"/name,name)["sha256"]
+        runtime={"identity_sha256":"runtime","libraries":{"libninjars.a":"archive"},"metadata":{}}
+        self.runtime=runtime
+        self.library_maps={origin:dict(libs)}
+        self.runtime_maps={}
+        self.results={};self.raws={};self.outputs={};self.proof={}
+        threads={k:"1" for k in ("OMP_NUM_THREADS","OPENBLAS_NUM_THREADS","RAYON_NUM_THREADS","MKL_NUM_THREADS")}
+        self.proof["start"]=put(self.root/"start.json",{"cohort":cohort,"cpu":[4],"thread_environment":threads})
+        for variant,text in (("plain",original),("observed",observed)):
+            output=self.root/variant;directory=output/"SubProcesses/P0_fixture";self.outputs[variant]=output
+            for relative in ("Source/dummy.f","SubProcesses/P0_fixture/nsquaredSO.inc"):
+                put(output/relative,(origin/relative).read_text())
+            put(directory/"CT_interface.f",text)
+            put(directory/"check_sa.f",dp.render_driver("ML5_0_",3,1))
+            executable=directory/"check";executable.write_bytes(b"\x7fELF software-only fixture")
+            put(output/"Cards/param_card.dat","physical software fixture\n")
+            put(output/"Cards/MadLoopParams.dat",target)
+            for name in libs:put(output/"lib"/name,name)
+            self.library_maps[output]=dict(libs);self.runtime_maps[output]=runtime
+            raw=raw_text(tool=1)
+            if variant=="plain":
+                raw="\n".join(" ".join(line.split()[:8]+["0"]*15+line.split()[-3:]) if line.startswith("OBS ") else line for line in raw.splitlines())+"\n"
+            rawrecord=put(self.root/(variant+".raw"),raw)
+            self.raws[variant]=dp.parse_raw(Path(rawrecord["path"]),1,1,1)
+            logs={name:put(self.root/(variant+name+".txt"),"") for name in ("stdout","stderr")}
+            build={"command":["make","-j1","check"],"cwd":str(directory),"exit_code":0,"reaped":True,**logs}
+            execution={"command":[str(executable),str(self.points),"1","-1",rawrecord["path"]],
+                "cwd":str(directory),"exit_code":0,"reaped":True,**logs}
+            result={"variant":variant,"tool":1,"build":build,"execution":execution,"raw":rawrecord,
+                "compiled_manifest":manifest(output),"runtime":runtime,
+                "driver_sha256":dp.digest(directory/"check_sa.f"),"interface_sha256":dp.digest(directory/"CT_interface.f"),
+                "executable_sha256":dp.digest(executable),"physical_card_sha256":physical["sha256"],
+                "madloop_card_sha256":dp.digest(output/"Cards/MadLoopParams.dat")}
+            self.results[variant]=result
+            self.proof[variant+"_result"]=put(self.root/(variant+".json"),result)
+        self.proof["parity_receipt"]=put(self.root/"parity.json",dp.validate_recorder_parity(self.raws["plain"],self.raws["observed"],1))
+        output=self.outputs["observed"];directory=output/"SubProcesses/P0_fixture"
+        artifacts={"original_interface":{"path":str(source/"CT_interface.f"),"sha256":dp.digest(source/"CT_interface.f")},
+            "instrumented_interface":{"path":str(directory/"CT_interface.f"),"sha256":dp.digest(directory/"CT_interface.f")},
+            "driver":{"path":str(directory/"check_sa.f"),"sha256":dp.digest(directory/"check_sa.f")},
+            "executable":{"path":str(directory/"check"),"sha256":dp.digest(directory/"check")},"points":pointrecord,
+            "parameter_card":{"path":str(output/"Cards/param_card.dat"),"sha256":physical["sha256"]},
+            "madloop_card":{"path":str(output/"Cards/MadLoopParams.dat"),"sha256":dp.digest(output/"Cards/MadLoopParams.dat")},
+            **self.results["observed"]["execution"]}
+        artifacts={key:value for key,value in artifacts.items() if isinstance(value,dict)}
+        execution={"requested_tool":1,"helicity":-1,"exit_code":0,"cpu":4,"thread_environment":threads,"source_record":self.proof["observed_result"]}
+        artifacts["execution"]=put(self.root/"normalized-execution.json",execution)
+        artifacts["build"]=put(self.root/"normalized-build.json",dict(source_record=self.proof["observed_result"],
+            driver_sha256=artifacts["driver"]["sha256"],instrumented_interface_sha256=artifacts["instrumented_interface"]["sha256"],executable_sha256=artifacts["executable"]["sha256"]))
+        self.run={"case":"fixture","process":"software fixture","tool":1,"N":1,"nexternal":3,"nso":1,"helicity":-1,
+            "raw":self.results["observed"]["raw"],"qualification":self.proof,"artifacts":artifacts}
+        modules={"ninjars_benchmark":SimpleNamespace(generated_source_manifest=manifest),
+            "ninjars_benchmark_pair_v3":SimpleNamespace(THREADS=tuple(threads),validate_origin_records=lambda *args:identity,
+                actual_runtime=lambda output,*args:self.runtime_maps[output]),
+            "ninjars_benchmark_policy_v2":SimpleNamespace(library_hashes=lambda output:self.library_maps[output],
+                runtime_metadata_files=lambda output:{},delta=lambda a,b:{k for k in set(a)|set(b) if a.get(k)!=b.get(k)},
+                git_bytes=lambda *args:json.dumps(self.defaults).encode()),
+            "madgraph.various.banner":SimpleNamespace(MadLoopParam=lambda value:json.loads(value if value.startswith("{") else Path(value).read_text()))}
+        self.modules=mock.patch.dict(__import__("sys").modules,modules);self.modules.start();self.addCleanup(self.modules.stop)
+
+    def qualify(self):
+        _,paths,_=dp.validate_run_sources(self.run)
+        return dp.validate_target_qualification(self.run,self.release,paths)
+
+    def rewrite_result(self,variant):
+        self.proof[variant+"_result"]=self.put(self.root/(variant+".json"),self.results[variant])
+
+    def test_actual_target_semantics_are_required_not_a_passed_flag(self):
+        result=self.qualify()
+        self.assertTrue(result["source_runtime_qualified"])
+        self.assertEqual(result["parity"]["physical_coefficients_compared"],24)
+        self.assertEqual(result["settings"]["MLStabThres"],1e-9)
+
+    def test_numerical_source_changes_and_restamped_manifests_rejected(self):
+        path=self.outputs["observed"]/"Source/dummy.f";path.write_text("      STOP\n      END\n")
+        self.results["observed"]["compiled_manifest"]=self.manifest(self.outputs["observed"])
+        self.rewrite_result("observed")
+        with self.assertRaisesRegex(ValueError,"Unreviewed numerical"):self.qualify()
+
+    def test_changed_native_runtime_and_model_libraries_rejected(self):
+        self.runtime_maps[self.outputs["observed"]]={**self.runtime,"identity_sha256":"other"}
+        with self.assertRaisesRegex(ValueError,"runtime differs"):self.qualify()
+        self.runtime_maps[self.outputs["observed"]]=self.runtime
+        self.library_maps[self.outputs["observed"]]["libmodel.a"]="other"
+        with self.assertRaisesRegex(ValueError,"model/DHELAS"):self.qualify()
+
+    def test_control_settings_001_are_not_publication_settings(self):
+        target=self.outputs["plain"]/"Cards/MadLoopParams.dat"
+        card=json.loads(target.read_text());card["MLStabThres"]=.001
+        self.put(target,card);self.results["plain"]["madloop_card_sha256"]=dp.digest(target);self.rewrite_result("plain")
+        with self.assertRaisesRegex(ValueError,"publication settings"):self.qualify()
+
+    def test_changed_selector_and_grafted_cohort_rejected(self):
+        self.results["plain"]["execution"]["command"][2]="8";self.rewrite_result("plain")
+        with self.assertRaisesRegex(ValueError,"selector command"):self.qualify()
+        self.results["plain"]["execution"]["command"][2]="1";self.rewrite_result("plain")
+        with self.assertRaisesRegex(ValueError,"another explicit cohort"):
+            dp.validate_target_qualification(self.run,{**self.release,"archive_sha256":"grafted"},dp.validate_run_sources(self.run)[1])
+
+    def test_reserialized_raw_disagreement_cannot_use_retained_parity_boolean(self):
+        path=Path(self.results["plain"]["raw"]["path"])
+        path.write_text(path.read_text().replace("ROW 1 1 0 1.0 0.0","ROW 1 1 0 1.0 0.1"))
+        self.results["plain"]["raw"]["sha256"]=dp.digest(path);self.rewrite_result("plain")
+        with self.assertRaisesRegex(ValueError,"physical coefficient"):self.qualify()
+
+    def test_zero_parity_preserves_sign_and_failed_zeros_stay_numerical_failures(self):
+        plain=copy.deepcopy(self.raws["plain"]);observed=copy.deepcopy(self.raws["observed"])
+        observed["observations"][(1,1)]["rows"][0]["values"][1]=-0.
+        with self.assertRaisesRegex(ValueError,"physical coefficient"):dp.validate_recorder_parity(plain,observed,1)
+        observed=copy.deepcopy(self.raws["observed"])
+        observed["observations"][(1,1)]["metadata"][6]=1
+        parity=dp.validate_recorder_parity(plain,observed,1)
+        self.assertEqual(parity["numerical_failure_observations"],{"reduction_rejected":1})
+        self.assertTrue(dp.estimator({i:observed["observations"][(1,i)] for i in (1,2,3)},1,(1,2,3))["unbounded"])
+
+    def test_nonfinite_parity_is_token_equality_not_finite_bit_accuracy(self):
+        plain=copy.deepcopy(self.raws["plain"]);observed=copy.deepcopy(self.raws["observed"])
+        for sample in (plain,observed):
+            row=sample["observations"][(1,1)]["rows"][0]
+            row["values"][1]=None;row["raw"][1]="NaN"
+        parity=dp.validate_recorder_parity(plain,observed,1)
+        self.assertFalse(parity["f64_bitexact"])
+        self.assertEqual(parity["matching_nonfinite_tokens"],1)
+        self.assertEqual(parity["numerical_failure_observations"],{"nonfinite_result":1})
+        observed["observations"][(1,1)]["rows"][0]["raw"][1]="Inf"
+        with self.assertRaisesRegex(ValueError,"nonfinite output token"):dp.validate_recorder_parity(plain,observed,1)
 
 
 if __name__=="__main__":unittest.main()

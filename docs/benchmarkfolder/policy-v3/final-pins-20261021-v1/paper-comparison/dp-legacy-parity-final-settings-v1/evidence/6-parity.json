@@ -1,0 +1,13 @@
+{
+  "tool": 6,
+  "points": 100,
+  "transformations": 3,
+  "orders_including_total": 2,
+  "physical_coefficients_compared": 2400,
+  "zero_coefficients_compared": 0,
+  "f64_bitexact": true,
+  "status_commonFPE_rounding_and_hardware_flags_exact": true,
+  "instrumentation_failure_counters_retained": true,
+  "null_teardown_forwarded_both": true,
+  "numericalNRScontext_creation_or_evaluation": false
+}

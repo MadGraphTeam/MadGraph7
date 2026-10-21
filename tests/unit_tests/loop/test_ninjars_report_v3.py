@@ -16,6 +16,7 @@ from tools import ninjars_benchmark_report_v3 as report
 
 class NinjaRSReportV3Test(unittest.TestCase):
     def setUp(self):
+        (report.ROOT / ".ninjars-build/tmp").mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(dir=report.ROOT / ".ninjars-build/tmp", prefix="report-v3-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)

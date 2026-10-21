@@ -1,0 +1,18 @@
+[
+  "tests.unit_tests.loop.test_ninjars_report_v2",
+  "tests.unit_tests.loop.test_ninjars_report_v3",
+  "tests.unit_tests.loop.test_ninjars_report_qualifications_v3",
+  "tests.unit_tests.loop.test_ninjars_paper_report_v3",
+  "tests.unit_tests.loop.test_ninjars_paper_timing_v3",
+  "tests.unit_tests.loop.test_ninjars_benchmark_pair_v3",
+  "tests.unit_tests.loop.test_ninjars_benchmark_policy_v3",
+  "tests.unit_tests.loop.test_ninjars_final_core_collection",
+  "tests.unit_tests.loop.test_ninjars_profile_operations",
+  "tests.unit_tests.various.test_ninjars_benchmark_policy_v2",
+  "tests.unit_tests.various.test_ninjars_supplement",
+  "tests.unit_tests.various.test_ninjars_stress",
+  "tests.unit_tests.various.test_ninjars_benchmark_workers",
+  "tests.unit_tests.various.test_ninjars_benchmark_extract",
+  "tests.unit_tests.loop.test_ninjars_final_loop_preparation",
+  "tests.unit_tests.loop.test_ninjars_dp_stability"
+]

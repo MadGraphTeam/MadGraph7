@@ -1,6 +1,7 @@
 """Independent report checks; structural source/worker validation has its own suite."""
 import copy
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,7 @@ from tools import ninjars_report_v2 as report
 
 class NinjaRSReportV2Test(unittest.TestCase):
     def setUp(self):
+        (report.ROOT / ".ninjars-build/tmp").mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(dir=report.ROOT / ".ninjars-build/tmp",
                                                 prefix="report-v2-test-")
         self.addCleanup(self.temp.cleanup)
@@ -515,6 +517,7 @@ class NinjaRSProfileReportTest(unittest.TestCase):
     """Exercise retained CPU samples without launching numerical workers."""
 
     def setUp(self):
+        (report.ROOT / ".ninjars-build/tmp").mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(dir=report.ROOT / ".ninjars-build/tmp",
                                                 prefix="profile-report-test-")
         self.addCleanup(self.temp.cleanup)
@@ -669,6 +672,7 @@ class NinjaRSReportSupplementBoundaryTest(unittest.TestCase):
                         complete_campaign_passed=False)
 
         module = SimpleNamespace(report_snapshot=snapshot)
+        (report.ROOT / ".ninjars-build/tmp").mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=report.ROOT / ".ninjars-build/tmp") as directory:
             manifest = Path(directory) / "supplement.json"
             manifest.write_text("{}")
@@ -744,6 +748,7 @@ class NinjaRSStressReportBoundaryTest(unittest.TestCase):
                             "ordinary": {"diagnostic_timings": {"8": {"median_us": 1e12}}},
                             "optional_reference": {"status": "unavailable", "failures": ["fixture"]}}])
 
+        (report.ROOT / ".ninjars-build/tmp").mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=report.ROOT / ".ninjars-build/tmp") as directory:
             path = Path(directory) / "stress.json"
             path.write_text("{}")
@@ -779,6 +784,7 @@ class NinjaRSStressReportBoundaryTest(unittest.TestCase):
 
 class NinjaRSRuntimeProvenanceReportTest(unittest.TestCase):
     def setUp(self):
+        (report.ROOT / ".ninjars-build/tmp").mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(dir=report.ROOT / ".ninjars-build/tmp",
                                                 prefix="runtime-report-test-")
         self.addCleanup(self.temp.cleanup)
@@ -893,28 +899,29 @@ class NinjaRSRegressionReportTest(unittest.TestCase):
             "policy-v2/runtime-bindings-abi3-tensor-factor-v1/"
             "representative-candidate-abi3-tensor-factor-v1-ggh-20261020.json"))
 
-    def test_actual_reviewed_mg7_suites_keep_one_explicit_legacy_skip(self):
-        inputs = {}
-        result = report.regression_snapshot(self.spec, [self.binding], inputs)
-        self.assertEqual(result["status"], "passed")
-        self.assertEqual(result["tests_run"], 90)
-        self.assertEqual(result["tests_passed"], 89)
-        self.assertEqual(result["total_skipped"], 1)
-        self.assertEqual(result["failures"], 0)
-        self.assertEqual(result["errors"], 0)
-        self.assertIn("python3-bypass", result["qualification"])
-        self.assertGreaterEqual(len(inputs), 1000)
-        self.assertEqual(inputs[report.policy.relative(self.spec)], report.workers.digest(self.spec))
-
-    def test_tested_source_cannot_be_relabelled_as_a_different_final_generator(self):
+    def test_historical_reviewed_suites_keep_their_recorded_legacy_skip(self):
+        # Check the retained evidence without claiming that its old source
+        # hashes qualify the current implementation.
+        loader = importlib.util.spec_from_file_location(
+            "ninjars_test_historical_regression_seal", self.spec.with_name("verify_seal.py"))
+        seal = importlib.util.module_from_spec(loader)
+        with patch.object(sys, "dont_write_bytecode", True):
+            loader.loader.exec_module(seal)
+            self.assertEqual(seal.verify()["status"], "verified")
         spec = report.policy.read(self.spec)
-        filename = next(iter(spec["production_source_sha256"]))
-        # Change every target identically so this exercises the verifier's
-        # actual tested/final hash check rather than the unique-generator check.
-        for item in self.binding["targets"].values():
-            if item["role"] == "candidate_corrected":
-                item["generation_source_identity"]["tree_state"]["tracked"][filename] = "wrong"
-        with self.assertRaisesRegex(AssertionError, "Tested/candidate source mismatch"):
+        self.assertEqual((spec["tests_run"], spec["tests_passed"], spec["total_skipped"]), (90, 89, 1))
+        self.assertEqual(sum(suite["skipped"] for suite in spec["suites"]), 1)
+        for suite in spec["suites"]:
+            log = report.ROOT / suite["logbound"]["path"]
+            self.assertEqual(report.workers.digest(log), suite["logbound"]["sha256"])
+            self.assertRegex(log.read_text(), rf"(?m)^Ran {suite['tests_run']} tests? in ")
+
+    def test_historical_source_cannot_qualify_the_changed_current_generator(self):
+        spec = report.policy.read(self.spec)
+        filename = "madgraph/interface/madgraph_interface.py"
+        self.assertNotEqual(report.workers.digest(report.ROOT / filename),
+                            spec["production_source_sha256"][filename])
+        with self.assertRaisesRegex(AssertionError, r"^madgraph/interface/madgraph_interface\.py$"):
             report.regression_snapshot(self.spec, [self.binding], {})
 
 

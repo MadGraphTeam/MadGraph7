@@ -1,0 +1,16 @@
+{
+  "root_authorization": "qcd1 legacy1/6/7 only CPU12 at final forcedDP stabilitysettings; no8 numericalentry/perf",
+  "delta_from_audited_v1": [
+    "current Python source freeze (Fortran unchanged)",
+    "MLStabThres=1e-9",
+    "COLLIERRequiredAccuracy=1e-12",
+    "new owned work namespace"
+  ],
+  "sources": {
+    "tools/ninjars_dp_stability.py": "b0fa3802df8e195a0d23474afd7211bbd3cfadaa872d4f41d9bbbb4c4ee14daa",
+    "tools/ninjars_dp_stability_driver.f": "3d8d06325dd955408771b94873ee34ad438c0ba4a459e48bbfbbf69ed33d7dc7",
+    "tests/unit_tests/loop/test_ninjars_dp_stability.py": "4688413fd06e3d20415491fece6deb6fa107b81483552fc702b5b2a324826124",
+    ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/run.py": "ca301b2e5bd4515f3b42839fddbc9ad10ab4e7e69acee6a72dc14b5afc9635e6",
+    ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/guard.c": "13f5702a530ede39a74333d266bb3078799e7b3f9889a29c9c2fdd2683176477"
+  }
+}

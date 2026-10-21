@@ -1,0 +1,22 @@
+{
+  "command": [
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/7-plain/SubProcesses/P0_uux_z/check",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-1.dat",
+    "7",
+    "-1",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/7-plain.raw"
+  ],
+  "cwd": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/outputs/7-plain/SubProcesses/P0_uux_z",
+  "exit_code": 0,
+  "seconds_diagnostic_only": 0.06631126604042947,
+  "pid": 2494006,
+  "reaped": true,
+  "stdout": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/7-plain-execute.stdout",
+    "sha256": "3e1add5bb29fb9a1ff2a0b7dd2fcc1219dd4aca799b8111e70031e593b87bfa5"
+  },
+  "stderr": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/7-plain-execute.stderr",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

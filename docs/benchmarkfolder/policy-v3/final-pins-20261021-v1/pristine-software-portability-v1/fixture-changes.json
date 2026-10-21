@@ -1,0 +1,80 @@
+[
+  {
+    "after_sha256": "c77dffadb67e613df78249f80ea1290423c05fe7fc1a841b3172edec776faf9d",
+    "base_tracked": true,
+    "before_sha256": "d00210615d74fc23bd5376a6209e41447749f7e756066709574324a967011ef7",
+    "path": "tests/unit_tests/loop/test_ninjars_report_v2.py"
+  },
+  {
+    "after_sha256": "4f1a119ec40f06c7566d18900ebe04a996a8f0305114d7fe715c278638b55491",
+    "base_tracked": true,
+    "before_sha256": "c899a81d061a6c64b2acf2031ed334fd82fff9ba76ef269c572fab0e755bab8c",
+    "path": "tests/unit_tests/loop/test_ninjars_report_v3.py"
+  },
+  {
+    "after_sha256": "66262954428d27d5549f390a5537539aa48b7e33fef6deaa1afa597ce5946fef",
+    "base_tracked": true,
+    "before_sha256": "af79b155a0e4516e210c017542331569f70b7230cc9bc65b47bd9f55d731b51b",
+    "path": "tests/unit_tests/loop/test_ninjars_report_qualifications_v3.py"
+  },
+  {
+    "after_sha256": "4d4177f2b7910067d05314a279f3fc8807f4b493a8d2f477432162dcfee2b82c",
+    "base_tracked": true,
+    "before_sha256": "eda9664b17ee56f322e9249893fecea3b3cf0c7526e1844eb4a0c9f97ab39673",
+    "path": "tests/unit_tests/loop/test_ninjars_paper_report_v3.py"
+  },
+  {
+    "after_sha256": "d433d9392cb2255e94cd67a0a5f832e147038964777d9bc7d1bad890c693d20d",
+    "base_tracked": true,
+    "before_sha256": "ac1e960f67824d9bae4f990f4bf644f413655e78ca956170ff8adab61b109510",
+    "path": "tests/unit_tests/loop/test_ninjars_paper_timing_v3.py"
+  },
+  {
+    "after_sha256": "8d29460fc4031f5ba0d11115e69c426f790f13315003486b79e8c0eea7da5bea",
+    "base_tracked": true,
+    "before_sha256": "8ba1a87a480623f923f31044f5ad1561dc676c44f75174b2acbe0054b37e4bd0",
+    "path": "tests/unit_tests/loop/test_ninjars_benchmark_pair_v3.py"
+  },
+  {
+    "after_sha256": "9046972be3c5bfa0e15ff50685abf1b9201ed28d0371d58cb15889dace46de66",
+    "base_tracked": true,
+    "before_sha256": "0c6d1bbbe75a710d874d5ba6018ccd04246a73ee3ee82a0ad116420ad7499ea3",
+    "path": "tests/unit_tests/loop/test_ninjars_benchmark_policy_v3.py"
+  },
+  {
+    "after_sha256": "7da94cdf725d95d26e97ad34c28c0dd1e6de315911bef80d686ea0ea8b374298",
+    "base_tracked": true,
+    "before_sha256": "434124eb2f3886ddfcf668b203dc38869d1c8104a4607054edbaa4028a60c655",
+    "path": "tests/unit_tests/loop/test_ninjars_final_core_collection.py"
+  },
+  {
+    "after_sha256": "d526f6d70748d6ee6c07c82f6c81f5fa6a34db8afbf0186a6d72e28cbcd8819e",
+    "base_tracked": true,
+    "before_sha256": "0505a76377d0e16ffdf4f4872702f84b0f65198a51cb6053e9767152e2f5fb6b",
+    "path": "tests/unit_tests/loop/test_ninjars_profile_operations.py"
+  },
+  {
+    "after_sha256": "4f0d8fea5448b3722ecf95548d33d0e596c3ef6b9ea9e0d801ee96fbc42b8a0f",
+    "base_tracked": true,
+    "before_sha256": "806cd19ee63f31f2af66079905469959ba3e83ef519b103dc0e7c4feb6d909d5",
+    "path": "tests/unit_tests/various/test_ninjars_benchmark_policy_v2.py"
+  },
+  {
+    "after_sha256": "2d3639c41f1703aca6aeed9408dfb27266a423fa11b0b47c020847072b7fbebb",
+    "base_tracked": true,
+    "before_sha256": "25bb77be04accf7c5f3c0b4ebe0abd43bc9c99e816932581714811d45206ec50",
+    "path": "tests/unit_tests/various/test_ninjars_supplement.py"
+  },
+  {
+    "after_sha256": "79edcae115011bf0a40473597196dd58711a7aa8d2c54fd6894dc138db5ba5c7",
+    "base_tracked": true,
+    "before_sha256": "2da91ab75be6fdfd0f9f0d31f126154027ab5fe148d91e17a7eaa68fc9319277",
+    "path": "tests/unit_tests/various/test_ninjars_stress.py"
+  },
+  {
+    "after_sha256": "bfb9ca08ccf5ecc4d996f7569744c41325f2436bbd4a26835e9b055cc5c0aa66",
+    "base_tracked": false,
+    "before_sha256": "a5e53a051fbe9e84ad60394971e0b4fe56b5c2a63f2e055138b7c6b9b54d12b5",
+    "path": "tests/unit_tests/loop/test_ninjars_final_loop_preparation.py"
+  }
+]

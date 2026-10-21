@@ -1,0 +1,76 @@
+{
+  "status": "passed-static-readiness-only",
+  "numerical_calls": 0,
+  "compilation_calls": 0,
+  "cargo_calls": 0,
+  "source_inputs": [
+    {
+      "path": ".benchmark-work/focused-readiness-20261021-v1/prepare.py",
+      "sha256": "653969b83f230e467d6008eb7677a225da516a77c50c105e5c8bcc9a8345ca11",
+      "bytes": 17765
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v2/controls.json",
+      "sha256": "e623e89f58e048efdc9b6f79075cb12b61fb5c8d3abc432b8e37f9cbc51602cb",
+      "bytes": 1164
+    },
+    {
+      "path": "tools/ninjars_benchmark.py",
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+      "bytes": 49893
+    },
+    {
+      "path": "tools/ninjars_benchmark_pair_v3.py",
+      "sha256": "1e5fb83daa6021fc7c74350df60d16f64204a93887c7e511ac3347a513e78484",
+      "bytes": 34216
+    },
+    {
+      "path": "tools/ninjars_benchmark_references_v2.py",
+      "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c",
+      "bytes": 18761
+    },
+    {
+      "path": "tools/ninjars_benchmark_workers.py",
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "bytes": 44582
+    },
+    {
+      "path": "tools/ninjars_benchmark_policy_v2.py",
+      "sha256": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a",
+      "bytes": 53416
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-both-precision/controls_driver.py",
+      "sha256": "93e41b821058e89c04d01f72070406ede09a55cb37021b5995cb27635897ff9c",
+      "bytes": 18486
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/execute.py",
+      "sha256": "afb498db54e663be6bb131e511a797760de070d915fd6f2aa6eff2df5c1e60fd",
+      "bytes": 12274
+    }
+  ],
+  "generator_before_sha256": "77b16df0251af4104a2c541bab913c11f4e67496a290495ce1a1c5fc526dfe3c",
+  "generator_after_sha256": "77b16df0251af4104a2c541bab913c11f4e67496a290495ce1a1c5fc526dfe3c",
+  "production_source_unchanged": true,
+  "actual_compiled_outputs_checked": [
+    "control-complex",
+    "control-mixed",
+    "control-forced-qp",
+    "control-gg-hh"
+  ],
+  "checked_runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+  "point_streams_checked": 7,
+  "rotation_absolute_difference": 0.0,
+  "held_specs_checked": [
+    "complex",
+    "mixed-legacy",
+    "near-singular-nrs"
+  ],
+  "readiness": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-readiness-v1/readiness.json",
+    "sha256": "6960b98b607b3cfdd7e21f052d626c50df005ea4bd2a4e320d06fd81d282c8e7",
+    "bytes": 30005
+  },
+  "scope": "Static metadata/source/library hashing and ordinary Python kinematic arithmetic; not a new numerical acceptance result"
+}

@@ -1,0 +1,42 @@
+{
+  "schema": "final-loop-fullsum-held-readiness-v1",
+  "status": "held-no-numerical-launch",
+  "specification": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/loop-execution/specification-held-v1.json",
+    "sha256": "b6dceb4b730e8d7a625b3a9b6430c0a1753dbe19fc57eaa63b3c54c32c6a809b",
+    "bytes": 3891
+  },
+  "archive_aliases": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/loop-execution/archive-aliases-v1.json",
+    "sha256": "4a26b83e1f47debe5b777ab407c6c5ab1e339bf9e2daf797d49d7056fbddcdcd",
+    "bytes": 73575
+  },
+  "existing_collector": {
+    "path": "tools/ninjars_supplement_v2.py",
+    "sha256": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8",
+    "bytes": 60858
+  },
+  "ownership_helper": {
+    "path": "tools/ninjars_benchmark_pair_v3.py",
+    "sha256": "1e5fb83daa6021fc7c74350df60d16f64204a93887c7e511ac3347a513e78484",
+    "bytes": 34216
+  },
+  "preparation_script": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/loop-execution/prepare.py",
+    "sha256": "61e4cd68be577cc1f2e6bfcfdc4c4e3ca49fe17bc507c9513af19ad5cb82d926",
+    "bytes": 12871
+  },
+  "actual_loop_points_per_case": 100,
+  "actual_timing_pairs": 0,
+  "performance_gate_passed": false,
+  "compiler_invocations": 0,
+  "loop_amplitude_evaluations": 0,
+  "source_generation_invocations": 0,
+  "launch_requires": [
+    "Root explicit MP and quiet CPU207 handoff after actual core correctness",
+    "Revalidate held source/card/point/runtime hashes and exact archived directory copies",
+    "Run unchanged supplement.collect inside frozen pair.owned_preparation",
+    "Independently verify actual adjacent6/8 seven-pair order and denominator agreement before CI gate"
+  ],
+  "identity_sha256": "dd839f0e411963fd015c06e331fa02b0fd7e16d42f4d3df86fd705a539f33d9c"
+}
