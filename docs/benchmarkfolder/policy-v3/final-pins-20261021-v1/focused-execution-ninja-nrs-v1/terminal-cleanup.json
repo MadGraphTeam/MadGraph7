@@ -1,0 +1,174 @@
+{
+  "scope": "Read-only process/group absence check; no signals sent",
+  "checked_utc": "2026-10-21T20:49:13.083529+00:00",
+  "controller_returncode": 0,
+  "identities": [
+    {
+      "pid": 3741091,
+      "start_ticks": 64919294,
+      "kind": "controller",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3750607,
+      "start_ticks": 64920598,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3750851,
+      "start_ticks": 64920649,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3756425,
+      "start_ticks": 64921408,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3756512,
+      "start_ticks": 64921458,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3762568,
+      "start_ticks": 64922222,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3762577,
+      "start_ticks": 64922237,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3762588,
+      "start_ticks": 64922250,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3762604,
+      "start_ticks": 64922265,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3780351,
+      "start_ticks": 64924721,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3780610,
+      "start_ticks": 64924777,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3786762,
+      "start_ticks": 64925572,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3787365,
+      "start_ticks": 64925606,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3801443,
+      "start_ticks": 64927630,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3801571,
+      "start_ticks": 64927667,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3813485,
+      "start_ticks": 64929057,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3833065,
+      "start_ticks": 64932461,
+      "kind": "spawn",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": true,
+      "owned_group_present": false
+    },
+    {
+      "pid": 3741071,
+      "start_ticks": 64919285,
+      "kind": "supervisor",
+      "current_start_ticks": null,
+      "exact_alive": false,
+      "owned_group": false,
+      "owned_group_present": null
+    }
+  ],
+  "all_exact_owned_identities_absent": true,
+  "all_isolated_owned_groups_absent": true,
+  "mp190_released": true,
+  "source_sha256": "f76a2bdefba5c0e98fea38f19bdd4eb59b0b47033999e441171d3c86f6e170c3",
+  "specification_sha256": "166f512637879d9de9f614171b09062452439b65d2c159efadb0d7e05bf21820"
+}

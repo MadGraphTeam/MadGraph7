@@ -1,0 +1,9 @@
+{
+  "root_authorized": false,
+  "phase": "final-light-explicit-pair-spec-v1",
+  "cpu": 207,
+  "specification_sha256": "336edcaf69d8af21dbd84df1c6020ad98f0e8a5efbf0b6c1c07b2835af1a0172",
+  "quiet_cpu207": false,
+  "all_other_numerical_and_compiler_work_released": false,
+  "release_evidence": []
+}

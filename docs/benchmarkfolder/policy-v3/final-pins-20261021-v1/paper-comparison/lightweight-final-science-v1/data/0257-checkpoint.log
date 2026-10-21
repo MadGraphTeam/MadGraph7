@@ -1,0 +1,4 @@
+SNAPSHOT phase=1 stage=postwarm file=HelFilter.dat available=1 bytes=156
+SNAPSHOT phase=1 stage=postwarm file=LoopFilter.dat available=0 bytes=0
+SNAPSHOT phase=2 stage=final file=HelFilter.dat available=1 bytes=156
+SNAPSHOT phase=2 stage=final file=LoopFilter.dat available=0 bytes=0

@@ -1,0 +1,34 @@
+{
+  "status": "passed",
+  "completed": [
+    "hh-state-retained-6",
+    "hh-state-retained-8",
+    "hh-state-finalized-8",
+    "hh-state-qp-retained-8",
+    "hh-state-qp-finalized-8",
+    "complex-qp-6",
+    "complex-qp-8",
+    "hh-qp-forward-8",
+    "hh-qp-reverse-8"
+  ],
+  "scope": "Only declared two-state/context, complex trueQP and HHQP forward/reverse checks; no ten-state restoration or physical-rotation claim",
+  "comparisons": {
+    "state": {
+      "passed": true,
+      "pairs": 10,
+      "failures": []
+    },
+    "complex": {
+      "passed": true,
+      "pairs": 6,
+      "failures": []
+    },
+    "direction": {
+      "passed": true,
+      "pairs": 1,
+      "failures": []
+    }
+  },
+  "physical_component_comparisons": 272,
+  "normal_HH_anchor": "Pending actual light HH10 cal first2 read-only comparison; not claimed here"
+}

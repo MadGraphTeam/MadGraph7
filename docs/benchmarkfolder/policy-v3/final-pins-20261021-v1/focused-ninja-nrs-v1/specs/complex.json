@@ -1,0 +1,26 @@
+{
+  "run_id": "final-pins-focused-ninja-nrs-complex",
+  "configuration": "docs/benchmarkfolder/policy-v2/controls.json",
+  "report": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-ninja-nrs-v1/runs/complex",
+  "work": ".benchmark-work/policy-v3/final-pins-20261021-v1/focused-ninja-nrs-v1/complex",
+  "output_roots": {
+    "baseline": ".benchmark-work/outputs/baseline",
+    "candidate": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate"
+  },
+  "points_root": "docs/benchmarkfolder/points",
+  "cases": [
+    "control-complex"
+  ],
+  "sources": [
+    "candidate"
+  ],
+  "backends": [
+    6,
+    8
+  ],
+  "cpu": 190,
+  "representative": true,
+  "fresh_parity": true,
+  "timeout": 86400.0,
+  "minimum_seconds": 1e-12
+}

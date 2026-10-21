@@ -1,0 +1,19 @@
+{
+  "schema": "final-light-preparation-stage-addition-v1",
+  "utc": "2026-10-21T21:28:14.862696+00:00",
+  "unchanged_stage_manifest": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/preparation-stage-manifest-v1.json",
+    "sha256": "afd6b9e19b9e4334a4d7059e84d27f85afaad570427c0a71d2d7fa1f6bc44b57",
+    "bytes": 6432
+  },
+  "additional_required_files": [
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/independent-held-spec-review-v1.json",
+      "sha256": "cb4592a685f04b7ff245580c0b38d745cc2637cf97b843d000156225e381f570",
+      "bytes": 1791
+    }
+  ],
+  "purpose": "Add the exact heldspec336e/contentseal/six10-prefix independent review after the preparation stage list was frozen. No source/spec/data or root authorization changes.",
+  "stage_this_receipt_itself": true,
+  "actual_engine_or_compiler_calls": 0
+}

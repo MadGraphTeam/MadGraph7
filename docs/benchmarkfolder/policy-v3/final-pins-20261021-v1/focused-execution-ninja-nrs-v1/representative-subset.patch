@@ -1,0 +1,133 @@
+--- retained-representative.py
++++ focused-collect.py
+@@ -4,6 +4,8 @@
+ import datetime
+ import json
+ import os
++import signal
++from contextlib import contextmanager
+ from pathlib import Path
+ import shutil
+ import subprocess
+@@ -12,7 +14,8 @@
+ import traceback
+ 
+ ROOT = next(p for p in Path(__file__).resolve().parents if (p / 'madgraph/__init__.py').is_file())
+-HERE = Path(__file__).resolve().parent
++HERE = ROOT / "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1"
++SPECIFICATION = Path(__file__).with_name("specification-held.json")
+ sys.path[:0] = [str(ROOT), str(ROOT / 'tools')]
+ import ninjars_benchmark as bench
+ import ninjars_benchmark_pair_v3 as pair
+@@ -23,12 +26,28 @@
+ 
+ CPU = 190
+ COLLECTIONS = (
+-    ('ggh', ['control-gg-h'], [1, 6, 7, 8], 'docs/benchmarkfolder/points'),
+-    ('mixed', ['control-mixed'], [8], 'docs/benchmarkfolder/points'),
+-    ('forced-qp', ['control-forced-qp'], [1, 8], 'docs/benchmarkfolder/points'),
+-    ('ninja-near-singular', ['control-forced-qp'], [6],
++    ('complex', ['control-complex'], [6, 8], 'docs/benchmarkfolder/points'),
++    ('mixed-ninja', ['control-mixed'], [6], 'docs/benchmarkfolder/points'),
++    ('near-singular-nrs', ['control-forced-qp'], [8],
+      'docs/benchmarkfolder/policy-v2/representative-point-streams/near-singular'),
+ )
++
++
++@contextmanager
++def owned_collection(report, label):
++    def interrupted(signum, _frame):
++        raise SystemExit('Focused collection interrupted by signal ' + str(signum))
++    signals = (signal.SIGTERM, signal.SIGHUP)
++    previous = {sig: signal.getsignal(sig) for sig in signals}
++    try:
++        for sig in signals:
++            signal.signal(sig, interrupted)
++        with pair.owned_preparation(report, label=label, fresh_cpu=CPU):
++            yield
++    finally:
++        for sig, handler in previous.items():
++            signal.signal(sig, handler)
++
+ 
+ 
+ def read(path):
+@@ -53,12 +72,16 @@
+     parser.add_argument('--handoff', type=Path, required=True)
+     parser.add_argument('--execute-numerical', action='store_true')
+     args = parser.parse_args()
++    specification = read(SPECIFICATION)
++    for record in specification['bound_inputs']:
++        policy.check_file(record)
+     generation = HERE / 'generation'
+     controls = HERE / 'controls-generation'
+     freeze = read(generation / 'executed-freeze.json')
+     core_status, control_status = read(generation / 'status.json'), read(controls / 'status.json')
+-    expected_handoff = {'root_authorized': True, 'phase': 'final-pins-representative', 'cpu': CPU,
++    expected_handoff = {'root_authorized': True, 'phase': 'final-pins-focused-ninja-nrs-v1', 'cpu': CPU,
+         'source_sha256': workers.digest(Path(__file__)),
++        'specification_sha256': workers.digest(SPECIFICATION),
+         'freeze_sha256': workers.digest(generation / 'executed-freeze.json'),
+         'core_status_sha256': workers.digest(generation / 'status.json'),
+         'control_status_sha256': workers.digest(controls / 'status.json')}
+@@ -100,19 +123,20 @@
+                     pair.actual_runtime(output, manifest, 8) != signature):
+                 raise ValueError('A generated representative control changed: ' + cid)
+     check_sources()
+-    report = HERE / 'representative'
+-    work = ROOT / '.benchmark-work/policy-v3/final-pins-20261021-v1/representative'
++    report = HERE / 'focused-ninja-nrs-v1'
++    work = ROOT / '.benchmark-work/policy-v3/final-pins-20261021-v1/focused-ninja-nrs-v1'
+     if report.exists() or work.exists():
+         raise ValueError('Retain this representative attempt; use a fresh namespace for a retry')
+     report.mkdir(); work.mkdir(parents=True)
+-    shutil.copy2(Path(__file__), report / 'representative.py')
++    shutil.copy2(Path(__file__), report / 'focused.py')
++    shutil.copy2(SPECIFICATION, report / 'input-specification.json')
+     shutil.copy2(args.handoff, report / 'root-handoff.json')
+     write(report / 'release-cohort.json', cohort)
+     write(report / 'production-sources.json', frozen['production_sources'])
+     correction = ROOT / 'docs/benchmarkfolder/policy-v2/model-correction.json'
+     results, bindings = {}, []
+     for name, cases, backends, points in COLLECTIONS:
+-        spec = {'run_id': 'final-pins-representative-' + name,
++        spec = {'run_id': 'final-pins-focused-ninja-nrs-' + name,
+             'configuration': 'docs/benchmarkfolder/policy-v2/controls.json',
+             'report': policy.relative(report / 'runs' / name), 'work': policy.relative(work / name),
+             'output_roots': {'baseline': '.benchmark-work/outputs/baseline',
+@@ -120,12 +144,14 @@
+             'points_root': points, 'cases': cases, 'sources': ['candidate'], 'backends': backends,
+             'cpu': CPU, 'representative': True, 'fresh_parity': True,
+             'timeout': 86400., 'minimum_seconds': 1e-12}
++        if spec != read(HERE / 'focused-readiness-ninja-nrs-v1/specs' / (name + '.json')):
++            raise ValueError('Focused target scope differs from the reviewed retained specification')
+         spec_path = report / 'specs' / (name + '.json'); write(spec_path, spec)
+         started = time.monotonic()
+         print(name, 'started', flush=True)
+         try:
+             check_sources()
+-            with pair.owned_preparation(report, label=name, fresh_cpu=CPU):
++            with owned_collection(report, label=name):
+                 collected = references.collect_timing(spec_path)
+             run = policy.path(spec['report'])
+             role = run / 'role-bindings.json'; bound = report / 'runtime-bindings' / (name + '.json')
+@@ -142,8 +168,8 @@
+                 parity = workers.numerical_parity(first, fresh, protocol['configuration'])
+                 targets[key] = {'status_counts': first['status_counts'], 'parity': parity,
+                                 'runtime': runtime, 'executable': target['executable_sha256']}
+-            if name in ('forced-qp', 'ninja-near-singular') and any(
+-                    int(code) // 100 != 3 for target in targets.values() for code in target['status_counts']):
++            if name == 'near-singular-nrs' and any(
++                    code != '322' for target in targets.values() for code in target['status_counts']):
+                 raise ValueError('The forced-QP representative failed to exercise genuine rescue')
+             results[name] = {'status': 'passed', 'seconds': time.monotonic() - started,
+                              'runtime_binding': supplement.bound(bound), 'targets': targets, 'records': len(rows)}
+@@ -155,7 +181,7 @@
+                   'error': str(error), 'seconds': time.monotonic() - started})
+             (report / (name + '-traceback.txt')).write_text(traceback.format_exc())
+             raise
+-    write(report / 'candidate-results.json', {'schema': 'final-candidate-representative-results-v1',
++    write(report / 'candidate-results.json', {'schema': 'final-candidate-focused-ninja-nrs-results-v1',
+         'finished_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'runtime': runtime,
+         'candidate_cohort': cohort, 'collections': results, 'runtime_bindings': bindings,
+         'targets': sum(len(item['targets']) for item in results.values()),

@@ -1,0 +1,49 @@
+{
+  "schema": "final-light-pair-held-launch-readiness-v1",
+  "utc": "2026-10-21T21:26:49.898117+00:00",
+  "status": "source-reviewed-software21-passed-sealed-live-preflight-passed-awaiting-root-quiet207",
+  "preparation": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/preparation-readiness-v1.json",
+    "sha256": "6661467d16cd7ea5b5a510b8920156695dddd6c8702d92a23a978b2eb14f062e",
+    "bytes": 5097
+  },
+  "specification": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/specification-held-v1.json",
+    "sha256": "336edcaf69d8af21dbd84df1c6020ad98f0e8a5efbf0b6c1c07b2835af1a0172",
+    "bytes": 3119543
+  },
+  "software": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing-software-proof-v1/manifest.json",
+    "sha256": "41a210a7727ece32561f2c8be0e0f472fbccac7462e4f959c46b809f80089bb6",
+    "bytes": 1411
+  },
+  "source_review": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/independent-source-review-v1.json",
+    "sha256": "7612477cd3f56e6ff525d4ccfc464926ae9df3491ab1c65b936425cdb81bc585",
+    "bytes": 3047
+  },
+  "instructions": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/README.md",
+    "sha256": "6cbfa944641c9257927ebffc45d9bae7c99633b0ead3abbf71efd8ff69297f7a",
+    "bytes": 3338
+  },
+  "handoff_template_not_authorization": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/handoff-template-v1.json",
+    "sha256": "e1142e9c707d648fef5359fd77d4a596b61b7400ee721209c489af6b9bf66be5",
+    "bytes": 297
+  },
+  "scope_amendment": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/scope-amendment-v1.json",
+    "sha256": "e96a906223637de71b083f0265fb67a9456c78a5080ac9a365f195ac9c7e82ea",
+    "bytes": 2618
+  },
+  "actual_points_per_case": 10,
+  "cases": 6,
+  "adjacent_pairs": 7,
+  "minimum_seconds_per_command": 0.5,
+  "root_authorized": false,
+  "actual_timing_pairs_launched": 0,
+  "requires_fresh_root_release_evidence": true,
+  "main_benchmark": "Separate actualMG7CLI profiles; this is the light ancillary fullsum comparison.",
+  "old_full8_runtime_gate_required_for_completion": false
+}

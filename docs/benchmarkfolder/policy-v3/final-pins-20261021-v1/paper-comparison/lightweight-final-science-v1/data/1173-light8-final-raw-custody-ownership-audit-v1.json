@@ -1,0 +1,948 @@
+{
+  "schema": "independent-light8-final-raw-custody-ownership-audit-v1",
+  "passed": true,
+  "recorded_utc": "2026-10-21T21:44:36.660991+00:00",
+  "inputs": {
+    "manifest": {
+      "path": ".benchmark-work/paper-dp-stability-20261021-v1/lightweight-final-eight-qualified-v2/manifest.json",
+      "sha256": "de92bfae90b1068ba0fcb22034163d0b97ec9e4ab416ad17146bfa605e87f1a2",
+      "bytes": 99377
+    },
+    "summary": {
+      "path": ".benchmark-work/paper-dp-stability-20261021-v1/lightweight-final-eight-qualified-v2/summary.json",
+      "sha256": "c46368e08f039d39d4acb6369f067407785315cf5a591099db97f1e9adb6b12e",
+      "bytes": 7332985
+    },
+    "new14_terminal": {
+      "path": ".benchmark-work/paper-dp-stability-20261021-v1/approved-cheap-science-execution-v1/terminal.json",
+      "sha256": "7e19eae4fb4089e05e0a36acc894f2ff71e87eb902a9afc4b12d744667a8e8d8",
+      "bytes": 69553
+    },
+    "root_authorization": {
+      "path": ".benchmark-work/paper-dp-stability-20261021-v1/cheap-seven-science-authorization-v2/inventory.json",
+      "sha256": "b88718cb92c608ac93c4cf0f9e7fcdd985a9341a3965621bbb2289f5f2240ec8",
+      "bytes": 14576
+    },
+    "command_inventory": {
+      "path": ".benchmark-work/paper-dp-stability-20261021-v1/approved-cheap-science-execution-v1/authorized-command-inventory.json",
+      "sha256": "5a82080b43ce43ea5f22e9f7a923bab54f0be4a68c4c72c8b29001b96f4a98f9",
+      "bytes": 14069
+    },
+    "reused_qcd1_independent_audit": {
+      "path": ".benchmark-work/final-release-audit-20261021-v1/qcd1-random-science-audit-v1.json",
+      "sha256": "61a284108d1ff4e4cc5cb2b973b334aaf9769ab04ccf656ba74ea92a52eb442c",
+      "bytes": 3573
+    },
+    "reused_qcd1_handoff": {
+      "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/science-handoff.json",
+      "sha256": "4b4971e38a381fe6d4a734c57700f49551dc6dd1712a01f16d40687a8316add5",
+      "bytes": 8772
+    }
+  },
+  "new14_jobs": {
+    "ew-1-6": {
+      "N": 100,
+      "transforms": 3,
+      "orders": 2,
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "warm_iterations": 104,
+      "warm_selected_backend_reductions": 888,
+      "warm_unsafe": false,
+      "warm_science_denominator_contribution": 0,
+      "science_counter_sums": [
+        1800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hardware_flag_counts": {
+        "invalid": 0,
+        "division_by_zero": 0,
+        "overflow": 0
+      },
+      "nonfinite_returned_numbers": 0,
+      "same_observed_prefix_build_metadata": true,
+      "native_DP_guard_calls": 0,
+      "owned_groups_recorded_reaped0": 7,
+      "source_result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/science-observed/result.json",
+        "sha256": "eef0c9a4f3a204115dfacdd0d8cbfe78f00216960504b4cb8506f16c273b3d7e",
+        "bytes": 58815
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/science-observed/observations.raw",
+        "sha256": "834637b0f35a8520ecd06d933f89d074ded193c7588c4c31af6bb83af474c8c2",
+        "bytes": 254040
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/science-observed/guard.log",
+        "sha256": "f581ec6d30a6ef6c9c7c0b573518a64a4babdd4578897131e0119df51eac5327",
+        "bytes": 142
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/process-ledger.jsonl",
+        "sha256": "4e9ee5e025ba996e3cb10c162a7723c58923d943f648ecdbed9d905c0cc72ebd",
+        "bytes": 6011
+      }
+    },
+    "ew-1-8": {
+      "N": 100,
+      "transforms": 3,
+      "orders": 2,
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "warm_iterations": 104,
+      "warm_selected_backend_reductions": 888,
+      "warm_unsafe": false,
+      "warm_science_denominator_contribution": 0,
+      "science_counter_sums": [
+        1800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hardware_flag_counts": {
+        "invalid": 0,
+        "division_by_zero": 0,
+        "overflow": 0
+      },
+      "nonfinite_returned_numbers": 0,
+      "same_observed_prefix_build_metadata": true,
+      "native_DP_guard_calls": 2688,
+      "owned_groups_recorded_reaped0": 7,
+      "source_result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/science-observed/result.json",
+        "sha256": "ee079031ba37dec2df73f6abe9976ce50bf2727287a68f5be6918c740036e11b",
+        "bytes": 59173
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/science-observed/observations.raw",
+        "sha256": "65d11970b59020f952de0696968b8fe56e669b8237676428977d77eb24b04a98",
+        "bytes": 254040
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/science-observed/guard.log",
+        "sha256": "3edc534213389dec4f66af9c6bdd33c3c7980189d0d205a3e0b465335febdd52",
+        "bytes": 219598
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/process-ledger.jsonl",
+        "sha256": "e1b321546f025128f41ed3acaa174188d209c59bbe9ae352658c161014aebb83",
+        "bytes": 6011
+      }
+    },
+    "qcd-2-6": {
+      "N": 100,
+      "transforms": 3,
+      "orders": 2,
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "warm_iterations": 104,
+      "warm_selected_backend_reductions": 4592,
+      "warm_unsafe": false,
+      "warm_science_denominator_contribution": 0,
+      "science_counter_sums": [
+        8400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        8400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hardware_flag_counts": {
+        "invalid": 0,
+        "division_by_zero": 0,
+        "overflow": 0
+      },
+      "nonfinite_returned_numbers": 0,
+      "same_observed_prefix_build_metadata": true,
+      "native_DP_guard_calls": 0,
+      "owned_groups_recorded_reaped0": 7,
+      "source_result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/science-observed/result.json",
+        "sha256": "2825c04197a47bbd0ed52e9418971de2f8c0b4b052c3241d931fef573cd9ca3d",
+        "bytes": 61929
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/science-observed/observations.raw",
+        "sha256": "3218f1449d149389c8276d3a371d0dcd513e881871bfaeb80452b71b4ffb0392",
+        "bytes": 254042
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/science-observed/guard.log",
+        "sha256": "f581ec6d30a6ef6c9c7c0b573518a64a4babdd4578897131e0119df51eac5327",
+        "bytes": 142
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/process-ledger.jsonl",
+        "sha256": "d8f03c367aeed0dc87af241ac930ea6840911585caf9db4b6aec05b11e374d29",
+        "bytes": 6029
+      }
+    },
+    "qcd-2-8": {
+      "N": 100,
+      "transforms": 3,
+      "orders": 2,
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "warm_iterations": 104,
+      "warm_selected_backend_reductions": 4592,
+      "warm_unsafe": false,
+      "warm_science_denominator_contribution": 0,
+      "science_counter_sums": [
+        8400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        8400,
+        0,
+        0,
+        0,
+        300,
+        0,
+        0
+      ],
+      "hardware_flag_counts": {
+        "invalid": 300,
+        "division_by_zero": 0,
+        "overflow": 0
+      },
+      "nonfinite_returned_numbers": 0,
+      "same_observed_prefix_build_metadata": true,
+      "native_DP_guard_calls": 12992,
+      "owned_groups_recorded_reaped0": 7,
+      "source_result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/science-observed/result.json",
+        "sha256": "4679e68b2d9def1de80ba00408e58fc56e88eff34885bfae19dcc370017c6507",
+        "bytes": 62291
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/science-observed/observations.raw",
+        "sha256": "b85e9f2f621c872f8912b166d27d03dfdcca22c9fa3d2472cd3c205636cd895d",
+        "bytes": 254042
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/science-observed/guard.log",
+        "sha256": "307b35379a606a7dbacdd3f2689ef94e8ef08b016c31bede9da54d2592209b78",
+        "bytes": 1067521
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/process-ledger.jsonl",
+        "sha256": "b55daae3458285e3eacadfb6490020ebd1419318f72f2bcd6f7bbb7d285a3808",
+        "bytes": 6029
+      }
+    },
+    "ew-2-6": {
+      "N": 100,
+      "transforms": 3,
+      "orders": 2,
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "warm_iterations": 104,
+      "warm_selected_backend_reductions": 4264,
+      "warm_unsafe": false,
+      "warm_science_denominator_contribution": 0,
+      "science_counter_sums": [
+        7800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        7800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hardware_flag_counts": {
+        "invalid": 0,
+        "division_by_zero": 0,
+        "overflow": 0
+      },
+      "nonfinite_returned_numbers": 0,
+      "same_observed_prefix_build_metadata": true,
+      "native_DP_guard_calls": 0,
+      "owned_groups_recorded_reaped0": 7,
+      "source_result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/science-observed/result.json",
+        "sha256": "3de63895044915a47d1ebb3141574660af83c20812a9ea5d44dd720437e9a024",
+        "bytes": 79855
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/science-observed/observations.raw",
+        "sha256": "d71a7e7216cd2521e9d2851b073e0bab4b53f74319047b209cb0ce913275cac8",
+        "bytes": 254042
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/science-observed/guard.log",
+        "sha256": "f581ec6d30a6ef6c9c7c0b573518a64a4babdd4578897131e0119df51eac5327",
+        "bytes": 142
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/process-ledger.jsonl",
+        "sha256": "b3d8a99314cdb1de6b66c4c44c3ecc1d757e544990345d64f2d9d3b2c331fd72",
+        "bytes": 6051
+      }
+    },
+    "ew-2-8": {
+      "N": 100,
+      "transforms": 3,
+      "orders": 2,
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "warm_iterations": 104,
+      "warm_selected_backend_reductions": 4264,
+      "warm_unsafe": false,
+      "warm_science_denominator_contribution": 0,
+      "science_counter_sums": [
+        7800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        7800,
+        0,
+        0,
+        0,
+        300,
+        0,
+        0
+      ],
+      "hardware_flag_counts": {
+        "invalid": 300,
+        "division_by_zero": 0,
+        "overflow": 0
+      },
+      "nonfinite_returned_numbers": 0,
+      "same_observed_prefix_build_metadata": true,
+      "native_DP_guard_calls": 12064,
+      "owned_groups_recorded_reaped0": 7,
+      "source_result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/science-observed/result.json",
+        "sha256": "dc4fe63e58b6a71e2ffcb8817618d5f1a6e44571bdf5e8e8de529e6490aa78ac",
+        "bytes": 80216
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/science-observed/observations.raw",
+        "sha256": "819e7bd56899a9b680d0db48ccebd87f4bfd1c7093070f821e0e648e780ab663",
+        "bytes": 254042
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/science-observed/guard.log",
+        "sha256": "9dabf664a0b8c6e19ec35d7886a062e3be3722b5d8493b9bc0655387de42aea5",
+        "bytes": 990497
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/process-ledger.jsonl",
+        "sha256": "058666f2fd0db40691e8347761ff06f62d4cc0f149a7c4f179c8b836a37f7176",
+        "bytes": 6051
+      }
+    },
+    "qcd-3-6": {
+      "N": 100,
+      "transforms": 3,
+      "orders": 2,
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "warm_iterations": 104,
+      "warm_selected_backend_reductions": 33872,
+      "warm_unsafe": false,
+      "warm_science_denominator_contribution": 0,
+      "science_counter_sums": [
+        34800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        34800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hardware_flag_counts": {
+        "invalid": 0,
+        "division_by_zero": 0,
+        "overflow": 0
+      },
+      "nonfinite_returned_numbers": 0,
+      "same_observed_prefix_build_metadata": true,
+      "native_DP_guard_calls": 0,
+      "owned_groups_recorded_reaped0": 7,
+      "source_result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/science-observed/result.json",
+        "sha256": "d6270bb7144b47df3f7141424b5bcde246a15c097197e4cc464ddf23fc707e36",
+        "bytes": 71214
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/science-observed/observations.raw",
+        "sha256": "8345684ef7a022858050154f5307f2678c4bae6c11f842e7fd52ab745a8f4317",
+        "bytes": 254044
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/science-observed/guard.log",
+        "sha256": "f581ec6d30a6ef6c9c7c0b573518a64a4babdd4578897131e0119df51eac5327",
+        "bytes": 142
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/process-ledger.jsonl",
+        "sha256": "565d23cf540f196cdce09cbadd64f07102cdedc35a5f5751e5e8d01d63561d7f",
+        "bytes": 6037
+      }
+    },
+    "qcd-3-8": {
+      "N": 100,
+      "transforms": 3,
+      "orders": 2,
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "warm_iterations": 104,
+      "warm_selected_backend_reductions": 33872,
+      "warm_unsafe": false,
+      "warm_science_denominator_contribution": 0,
+      "science_counter_sums": [
+        34800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        34800,
+        0,
+        0,
+        0,
+        300,
+        0,
+        0
+      ],
+      "hardware_flag_counts": {
+        "invalid": 300,
+        "division_by_zero": 0,
+        "overflow": 0
+      },
+      "nonfinite_returned_numbers": 0,
+      "same_observed_prefix_build_metadata": true,
+      "native_DP_guard_calls": 68672,
+      "owned_groups_recorded_reaped0": 7,
+      "source_result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/science-observed/result.json",
+        "sha256": "f7c2a9a317f68e8a2fd2b6f6075aee9bb33eec9f2b49f4c5ad587fed8b389246",
+        "bytes": 71576
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/science-observed/observations.raw",
+        "sha256": "97a51f3769f8244e373c6016b26ce9ca44c278054910c3f4eac295858e3aa5c9",
+        "bytes": 254044
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/science-observed/guard.log",
+        "sha256": "ebd6c1fff250703c4e02d16414f29e2a7c27d5e8f1a8dec5d4896d1819d8e03e",
+        "bytes": 5688961
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/process-ledger.jsonl",
+        "sha256": "8e059c59819a78320eba7cbe6df2404179e7a034d53fac6c927f8b49fd0a1328",
+        "bytes": 6037
+      }
+    },
+    "ew-3-6": {
+      "N": 100,
+      "transforms": 3,
+      "orders": 2,
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "warm_iterations": 104,
+      "warm_selected_backend_reductions": 45600,
+      "warm_unsafe": false,
+      "warm_science_denominator_contribution": 0,
+      "science_counter_sums": [
+        60000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        60000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hardware_flag_counts": {
+        "invalid": 0,
+        "division_by_zero": 0,
+        "overflow": 0
+      },
+      "nonfinite_returned_numbers": 0,
+      "same_observed_prefix_build_metadata": true,
+      "native_DP_guard_calls": 0,
+      "owned_groups_recorded_reaped0": 7,
+      "source_result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/science-observed/result.json",
+        "sha256": "15c2f3ec6c3a34891e3166f051f0352b037bc3ff764ef5ff9265cd8f52ab9162",
+        "bytes": 107695
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/science-observed/observations.raw",
+        "sha256": "069aeb836d811206a0389a3f5c2fe783c6e76d755c1a42f571a3f15b099f5e16",
+        "bytes": 254044
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/science-observed/guard.log",
+        "sha256": "f581ec6d30a6ef6c9c7c0b573518a64a4babdd4578897131e0119df51eac5327",
+        "bytes": 142
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/process-ledger.jsonl",
+        "sha256": "8e38fd609faa461f2a6f1c1e89fb1eea4ac304c942cc791b1893354dc562e5ea",
+        "bytes": 6035
+      }
+    },
+    "ew-3-8": {
+      "N": 100,
+      "transforms": 3,
+      "orders": 2,
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "warm_iterations": 104,
+      "warm_selected_backend_reductions": 45600,
+      "warm_unsafe": false,
+      "warm_science_denominator_contribution": 0,
+      "science_counter_sums": [
+        60000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        60000,
+        0,
+        0,
+        0,
+        300,
+        0,
+        0
+      ],
+      "hardware_flag_counts": {
+        "invalid": 300,
+        "division_by_zero": 0,
+        "overflow": 0
+      },
+      "nonfinite_returned_numbers": 0,
+      "same_observed_prefix_build_metadata": true,
+      "native_DP_guard_calls": 105600,
+      "owned_groups_recorded_reaped0": 7,
+      "source_result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/science-observed/result.json",
+        "sha256": "8777440d4fc3b01f132e16630e293dfd898fe07033e30a27c0eb1d3551088407",
+        "bytes": 108060
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/science-observed/observations.raw",
+        "sha256": "8c23ef01a11e63558e2e61ccc6603bf498ddc63ac93fd7efca03b7463e066fd1",
+        "bytes": 254044
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/science-observed/guard.log",
+        "sha256": "74e75cd7208097410141de233bf546af66cc5df66e395ac9671e9393e750fff3",
+        "bytes": 8759588
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/process-ledger.jsonl",
+        "sha256": "54e790200f1110226fa78e3c1dc11f525518fd4f18db465e9cefe324cf70dca9",
+        "bytes": 6035
+      }
+    },
+    "supplement-gg-h-6": {
+      "N": 100,
+      "transforms": 3,
+      "orders": 2,
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "warm_iterations": 107,
+      "warm_selected_backend_reductions": 512,
+      "warm_unsafe": false,
+      "warm_science_denominator_contribution": 0,
+      "science_counter_sums": [
+        1200,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1200,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hardware_flag_counts": {
+        "invalid": 0,
+        "division_by_zero": 0,
+        "overflow": 0
+      },
+      "nonfinite_returned_numbers": 0,
+      "same_observed_prefix_build_metadata": true,
+      "native_DP_guard_calls": 0,
+      "owned_groups_recorded_reaped0": 7,
+      "source_result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/science-observed/result.json",
+        "sha256": "72600806e758a3c904994bab02ae4a775caec164c620e489d6c264e77e703e41",
+        "bytes": 50709
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/science-observed/observations.raw",
+        "sha256": "d17c27185e04336a2b7cc4d7c3c4b1ff4dc6d452f27690c49fb4760c3c4ea8cd",
+        "bytes": 254040
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/science-observed/guard.log",
+        "sha256": "f581ec6d30a6ef6c9c7c0b573518a64a4babdd4578897131e0119df51eac5327",
+        "bytes": 142
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/process-ledger.jsonl",
+        "sha256": "7cad977e46b7981fac5702fb37c3436808ad0989a11756cdb02049922da9043c",
+        "bytes": 6202
+      }
+    },
+    "supplement-gg-h-8": {
+      "N": 100,
+      "transforms": 3,
+      "orders": 2,
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "warm_iterations": 107,
+      "warm_selected_backend_reductions": 512,
+      "warm_unsafe": false,
+      "warm_science_denominator_contribution": 0,
+      "science_counter_sums": [
+        1200,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1200,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hardware_flag_counts": {
+        "invalid": 0,
+        "division_by_zero": 0,
+        "overflow": 0
+      },
+      "nonfinite_returned_numbers": 0,
+      "same_observed_prefix_build_metadata": true,
+      "native_DP_guard_calls": 1712,
+      "owned_groups_recorded_reaped0": 7,
+      "source_result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/science-observed/result.json",
+        "sha256": "52c391d9914640dbe6e766ce6d95bbe5d1f2b2dcd26543ed18e80530237be82f",
+        "bytes": 51065
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/science-observed/observations.raw",
+        "sha256": "7ba9b73542d969fde6c06f623f20614a501aade276aad0b2598df75e77764b74",
+        "bytes": 254040
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/science-observed/guard.log",
+        "sha256": "d430253b77bc5232e4b35b6b4e0deffea35430ac11c69cb3dbfbaff7e9fd92a5",
+        "bytes": 139566
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/process-ledger.jsonl",
+        "sha256": "c8ff851b3a0c343723e088311e4763dd9ec73c4252965d48cec0a76ee2a38ead",
+        "bytes": 6202
+      }
+    },
+    "supplement-gg-hh-6": {
+      "N": 100,
+      "transforms": 3,
+      "orders": 2,
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "warm_iterations": 107,
+      "warm_selected_backend_reductions": 2048,
+      "warm_unsafe": false,
+      "warm_science_denominator_contribution": 0,
+      "science_counter_sums": [
+        4800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "hardware_flag_counts": {
+        "invalid": 0,
+        "division_by_zero": 0,
+        "overflow": 0
+      },
+      "nonfinite_returned_numbers": 0,
+      "same_observed_prefix_build_metadata": true,
+      "native_DP_guard_calls": 0,
+      "owned_groups_recorded_reaped0": 7,
+      "source_result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/science-observed/result.json",
+        "sha256": "9987cefe43318c4eff7d45c772d252a9d2aadf78f566f0d40ac60b0eeac334a9",
+        "bytes": 52350
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/science-observed/observations.raw",
+        "sha256": "711e30ffada7fcc3620eb1c0c7d27925c29e209eed5ff6eb1da9d24d04e8fe62",
+        "bytes": 254042
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/science-observed/guard.log",
+        "sha256": "f581ec6d30a6ef6c9c7c0b573518a64a4babdd4578897131e0119df51eac5327",
+        "bytes": 142
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/process-ledger.jsonl",
+        "sha256": "f461299a464637dcefca561738b29a940b7597d0311b2e9dfa54c0c9bce7ea1a",
+        "bytes": 6228
+      }
+    },
+    "supplement-gg-hh-8": {
+      "N": 100,
+      "transforms": 3,
+      "orders": 2,
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "warm_iterations": 107,
+      "warm_selected_backend_reductions": 2048,
+      "warm_unsafe": false,
+      "warm_science_denominator_contribution": 0,
+      "science_counter_sums": [
+        4800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4800,
+        0,
+        0,
+        0,
+        300,
+        0,
+        0
+      ],
+      "hardware_flag_counts": {
+        "invalid": 300,
+        "division_by_zero": 0,
+        "overflow": 0
+      },
+      "nonfinite_returned_numbers": 0,
+      "same_observed_prefix_build_metadata": true,
+      "native_DP_guard_calls": 6848,
+      "owned_groups_recorded_reaped0": 7,
+      "source_result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/science-observed/result.json",
+        "sha256": "1c6ebf14cdf243b8874e4bd2af16ea59be8ac7408f63a6682fb651c44c43be85",
+        "bytes": 52707
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/science-observed/observations.raw",
+        "sha256": "928f6d6f526ab7ccf8e58f846ddafda01b3489b610b77c39f34c48ffc9af1c5e",
+        "bytes": 254042
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/science-observed/guard.log",
+        "sha256": "d2f58944adec96b908cccbe2240d91153e7facf3c73b0326b4547dbd1c18692d",
+        "bytes": 560718
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/process-ledger.jsonl",
+        "sha256": "edb7a54312af3da8be315200912842ac36bdbeaa489e30191d20f52e367347eb",
+        "bytes": 6228
+      }
+    }
+  },
+  "new_science_observations": 4200,
+  "new_science_rows": 8400,
+  "new_science_returned_float_tokens_checked": 42000,
+  "new_plain_observed_prefix_f64_bit_comparisons": 1260,
+  "new_recorded_owned_groups_reaped0": 98,
+  "total_light8_observations_including_reused_qcd1": 4800,
+  "total_light8_rows_including_reused_qcd1": 9600,
+  "text_binding_checks": 1140,
+  "unique_text_files_hashed": 869,
+  "source_runtime_record_identity": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+  "old_qcd1_raw_reaudited": false,
+  "native_binary_object_or_archive_reads": false,
+  "process_polling": false,
+  "new_evaluations_tests_builds": 0,
+  "estimator_or_cross_backend_arithmetic_recomputed": false,
+  "performance_qualification": false,
+  "limitations": [
+    "Same observed executable is bound by unchanged start/prefix/science build metadata; no native file reopened.",
+    "Warm safety is counter/common-flag safety; no warm ANS read and zero science denominator contribution.",
+    "Forced-DP raw/status/flag diagnostics are separate from production correctness and timing qualification; hardware IEEE flags are retained separately, not assumed zero.",
+    "Old qcd1 sealed61a284 proof reused; only final-manifest metadata association checked."
+  ]
+}

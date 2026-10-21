@@ -94,3 +94,29 @@ The generation procedure refuses existing output/work directories. Preserve the
 current attempt when reproducing and select a new namespace; do not overwrite
 its source proofs, first-retained streams, or logs. Compiled programs and the
 large reduction archives stay in ignored build directories inside MadGraph.
+
+`collect_nrs_only.py` is the later, separately sealed successor for the final
+Ninja6/NinjaRS8 comparison. It selects NinjaRS8 for both challenging processes
+in all three retained variants: ordinary20, rotation4 and scale8. The existing
+6+8 wrapper and its specifications remain unchanged. Six accepted Ninja6
+calibrations are decoded from the audited public capsule and bound by
+`nrs-only-specs-v1/reference-inventory.json`. The QCD ordinary calibration keeps
+its historical source, runtime and failed parent status; the other five retain
+their fresh856e source and a757 runtime. No old NinjaRS rows are reused.
+
+Each variant performs one calibration and two diagnostic traversals, then uses
+the existing fixed Born/Laurent comparison against the exact matching Ninja6
+points and cards. These are correctness controls with no performance promotion.
+`nrs-only-specs-v1/readiness.json` records six software checks and three read-only
+source/export/reference preflights. Actual collection requires a matching root
+handoff after the current CPU190 owner has released its reaped process groups.
+
+The user subsequently requested lighter testing and cancelled this heavy
+sequence on 2026-10-21. The first ordinary QCD worker was interrupted through
+the identity-checked controller and existing owned cleanup. No calibration or
+diagnostic traversal was accepted; rotation and scale never launched. The
+unchanged failed/SystemExit parent status, partial worker log, dimensions,
+source/build records and private work tree are preserved. The explicit resource
+release is `nrs-only-specs-v1/user-interrupted-terminal.json`; all three child
+groups and the controller were reaped or confirmed absent. The held heavy
+specifications and source-only checks do not imply a completed scientific run.

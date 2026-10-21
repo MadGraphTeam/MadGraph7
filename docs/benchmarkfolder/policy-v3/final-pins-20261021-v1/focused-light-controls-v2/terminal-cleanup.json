@@ -1,0 +1,109 @@
+{
+  "status": "passed",
+  "finished_utc": "2026-10-21T21:30:08.557003+00:00",
+  "controller_result_sha256": "3355fc61f695032ebf67f9f1f19394ecc0cbc1495bd25370a57223ef10e59744",
+  "run_status_sha256": "8e60da18d05a5356a4669f65b0f21d2228769f8bd93e389f3c7ea90193df2090",
+  "owned_identity_checks": [
+    {
+      "pid": 2158775,
+      "expected_start_ticks": 65176769,
+      "pgid": 2158775,
+      "present": false,
+      "actual": null
+    },
+    {
+      "pid": 2167770,
+      "expected_start_ticks": 65179517,
+      "pgid": 2167770,
+      "present": false,
+      "actual": null
+    },
+    {
+      "pid": 2171858,
+      "expected_start_ticks": 65180078,
+      "pgid": 2171858,
+      "present": false,
+      "actual": null
+    },
+    {
+      "pid": 2175224,
+      "expected_start_ticks": 65180632,
+      "pgid": 2175224,
+      "present": false,
+      "actual": null
+    },
+    {
+      "pid": 2176872,
+      "expected_start_ticks": 65181101,
+      "pgid": 2176872,
+      "present": false,
+      "actual": null
+    },
+    {
+      "pid": 2189952,
+      "expected_start_ticks": 65182822,
+      "pgid": 2189952,
+      "present": false,
+      "actual": null
+    },
+    {
+      "pid": 2199770,
+      "expected_start_ticks": 65184884,
+      "pgid": 2199770,
+      "present": false,
+      "actual": null
+    },
+    {
+      "pid": 2202914,
+      "expected_start_ticks": 65185372,
+      "pgid": 2202914,
+      "present": false,
+      "actual": null
+    },
+    {
+      "pid": 2205331,
+      "expected_start_ticks": 65186119,
+      "pgid": 2205331,
+      "present": false,
+      "actual": null
+    },
+    {
+      "pid": 2217968,
+      "expected_start_ticks": 65187928,
+      "pgid": 2217968,
+      "present": false,
+      "actual": null
+    },
+    {
+      "pid": 2158775,
+      "expected_start_ticks": 65176769,
+      "pgid": 2158775,
+      "present": false,
+      "actual": null
+    },
+    {
+      "pid": 2158772,
+      "expected_start_ticks": 65176760,
+      "pgid": 2158769,
+      "present": false,
+      "actual": null
+    }
+  ],
+  "isolated_group_members": {
+    "2189952": [],
+    "2202914": [],
+    "2176872": [],
+    "2199770": [],
+    "2217968": [],
+    "2171858": [],
+    "2205331": [],
+    "2158775": [],
+    "2175224": [],
+    "2167770": []
+  },
+  "cpu190_released": true,
+  "native_targets": 9,
+  "physical_component_comparisons": 272,
+  "normal_HH_anchor": "Pending light10 calibration, not claimed",
+  "scope": "Two fixed states only; explicit120/-1 is genuine QP diagnostic, not rescue/stability/performance acceptance"
+}

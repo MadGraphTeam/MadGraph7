@@ -1,0 +1,1455 @@
+{
+  "schema": "final-light-explicit-pair-bindings-v1",
+  "specification": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/input-spec.json",
+    "sha256": "336edcaf69d8af21dbd84df1c6020ad98f0e8a5efbf0b6c1c07b2835af1a0172",
+    "bytes": 3119543
+  },
+  "protocol": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/protocol.json",
+    "sha256": "172f2526d2cce57d2acb26ad1130c9f7c6bff8557812477d81096f6b7cbc8fe0",
+    "bytes": 3212
+  },
+  "dispatch": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/dispatch.jsonl",
+    "sha256": "764de0ef03874f04b648bddac8f882eed009ac28a5ca4b4ff1285e6924caaccd",
+    "bytes": 122832
+  },
+  "process_ledger": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/process-ledger.jsonl",
+    "sha256": "6ae22211abc56b2f4014d67efa9f17b611a6d3fea6eb413d9063c180160499ea",
+    "bytes": 23112
+  },
+  "candidate_cohort": {
+    "archive_sha256": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c",
+    "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+    "generator_identity_sha256": "77b16df0251af4104a2c541bab913c11f4e67496a290495ce1a1c5fc526dfe3c",
+    "numerical_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+    "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008"
+  },
+  "cases": {
+    "qcd-1": {
+      "agreement": {
+        "passed": true,
+        "comparisons": [
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          }
+        ]
+      },
+      "timing": {
+        "passed": true,
+        "status": "passed",
+        "runtime_ratio": 0.9198624206186806,
+        "ratio_confidence_interval_95": [
+          0.9117613773772438,
+          0.9218660875106502
+        ],
+        "maximum_ratio": 1.05,
+        "bootstrap": {
+          "method": "paired percentile",
+          "resamples": 10000,
+          "seed": 410083
+        },
+        "measurements": {
+          "baseline": {
+            "samples": [
+              4.229729630102041e-05,
+              4.197760663265306e-05,
+              4.2023266198979595e-05,
+              4.2328244260204076e-05,
+              4.212825892857143e-05,
+              4.204343482142857e-05,
+              4.2057178571428566e-05
+            ],
+            "median": 4.2057178571428566e-05,
+            "minimum": 4.197760663265306e-05,
+            "maximum": 4.2328244260204076e-05,
+            "stdev": 1.3800757161447678e-07,
+            "median_absolute_deviation": 7.108035714286211e-08
+          },
+          "candidate": {
+            "samples": [
+              3.8553131914893615e-05,
+              3.8698209219858155e-05,
+              3.873982399527187e-05,
+              3.8643003427895984e-05,
+              3.8879644917257684e-05,
+              3.868681808510639e-05,
+              3.856504113475177e-05
+            ],
+            "median": 3.868681808510639e-05,
+            "minimum": 3.8553131914893615e-05,
+            "maximum": 3.8879644917257684e-05,
+            "stdev": 1.1142281810566743e-07,
+            "median_absolute_deviation": 5.300591016548547e-08
+          }
+        }
+      },
+      "actual_pairs": 7,
+      "actual_points": 10,
+      "sampling_label": "First10 fixed events of each original100-event stream; no100-point timing claim",
+      "targets": {
+        "baseline/6": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/targets/qcd-1-baseline-6.json",
+          "sha256": "d48c73ce71f684a13c13fc90a447483b8beef64783d4eea24b67e4c32a8123c4",
+          "bytes": 76369
+        },
+        "candidate/8": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/targets/qcd-1-candidate-8.json",
+          "sha256": "d9c461d61bbb5ef37f97a799476954d2eb0288f0e668d2427b667f2bdca5c618",
+          "bytes": 80492
+        }
+      },
+      "status_counts": {
+        "baseline/6": [
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          }
+        ],
+        "candidate/8": [
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          }
+        ]
+      }
+    },
+    "ew-1": {
+      "agreement": {
+        "passed": true,
+        "comparisons": [
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          }
+        ]
+      },
+      "timing": {
+        "passed": true,
+        "status": "passed",
+        "runtime_ratio": 0.9342693030055261,
+        "ratio_confidence_interval_95": [
+          0.930253076915019,
+          0.9413358218877591
+        ],
+        "maximum_ratio": 1.05,
+        "bootstrap": {
+          "method": "paired percentile",
+          "resamples": 10000,
+          "seed": 410083
+        },
+        "measurements": {
+          "baseline": {
+            "samples": [
+              0.00020263712897196262,
+              0.00020300465841121496,
+              0.00020443710654205607,
+              0.0002031050238317757,
+              0.00020291570514018693,
+              0.00020284100467289718,
+              0.00020385560140186916
+            ],
+            "median": 0.00020300465841121496,
+            "minimum": 0.00020263712897196262,
+            "maximum": 0.00020443710654205607,
+            "stdev": 6.469829222406037e-07,
+            "median_absolute_deviation": 1.6365373831778423e-07
+          },
+          "candidate": {
+            "samples": [
+              0.00018882514414414415,
+              0.00019101182207207205,
+              0.00018976277792792794,
+              0.00018966102072072072,
+              0.0001912774545045045,
+              0.00018951579549549548,
+              0.00018963730045045045
+            ],
+            "median": 0.00018966102072072072,
+            "minimum": 0.00018882514414414415,
+            "maximum": 0.0001912774545045045,
+            "stdev": 8.717352530166398e-07,
+            "median_absolute_deviation": 1.4522522522524917e-07
+          }
+        }
+      },
+      "actual_pairs": 7,
+      "actual_points": 10,
+      "sampling_label": "First10 fixed events of each original100-event stream; no100-point timing claim",
+      "targets": {
+        "baseline/6": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/targets/ew-1-baseline-6.json",
+          "sha256": "a734f8637034bc3bfb0fb094f823424b59da2daf61c3c3930625ce1af10939a3",
+          "bytes": 83616
+        },
+        "candidate/8": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/targets/ew-1-candidate-8.json",
+          "sha256": "68eca1b3e173f47bea20e3f01f96efa13d1eb205542fafa0abbd16b389902fe6",
+          "bytes": 87739
+        }
+      },
+      "status_counts": {
+        "baseline/6": [
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          }
+        ],
+        "candidate/8": [
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          }
+        ]
+      }
+    },
+    "qcd-2": {
+      "agreement": {
+        "passed": true,
+        "comparisons": [
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          }
+        ]
+      },
+      "timing": {
+        "passed": true,
+        "status": "passed",
+        "runtime_ratio": 0.8830123357384022,
+        "ratio_confidence_interval_95": [
+          0.8798127529003507,
+          0.8869686609644211
+        ],
+        "maximum_ratio": 1.05,
+        "bootstrap": {
+          "method": "paired percentile",
+          "resamples": 10000,
+          "seed": 410083
+        },
+        "measurements": {
+          "baseline": {
+            "samples": [
+              0.0013853607027777778,
+              0.0013804526333333334,
+              0.0013865009611111112,
+              0.0013812362222222223,
+              0.0013882327472222223,
+              0.0013821185888888887,
+              0.0013997491194444446
+            ],
+            "median": 0.0013853607027777778,
+            "minimum": 0.0013804526333333334,
+            "maximum": 0.0013997491194444446,
+            "stdev": 6.618483312448996e-06,
+            "median_absolute_deviation": 3.2421138888890765e-06
+          },
+          "candidate": {
+            "samples": [
+              0.001225154115,
+              0.001221384875,
+              0.0012231038375,
+              0.0012251132425,
+              0.00122851888,
+              0.00122329059,
+              0.001221162935
+            ],
+            "median": 0.00122329059,
+            "minimum": 0.001221162935,
+            "maximum": 0.00122851888,
+            "stdev": 2.555230610759819e-06,
+            "median_absolute_deviation": 1.8635250000000221e-06
+          }
+        }
+      },
+      "actual_pairs": 7,
+      "actual_points": 10,
+      "sampling_label": "First10 fixed events of each original100-event stream; no100-point timing claim",
+      "targets": {
+        "baseline/6": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/targets/qcd-2-baseline-6.json",
+          "sha256": "84d0bdc65cd2c2e75d7c0314890409b141447200b17dd0b5f4430641c16739cc",
+          "bytes": 82395
+        },
+        "candidate/8": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/targets/qcd-2-candidate-8.json",
+          "sha256": "20ea8674df1a8944cf97c83eba78adfc710969befb706c2b2c2716ec6d147ef0",
+          "bytes": 86519
+        }
+      },
+      "status_counts": {
+        "baseline/6": [
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          }
+        ],
+        "candidate/8": [
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          }
+        ]
+      }
+    },
+    "ew-2": {
+      "agreement": {
+        "passed": true,
+        "comparisons": [
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          }
+        ]
+      },
+      "timing": {
+        "passed": true,
+        "status": "passed",
+        "runtime_ratio": 1.0332405446051574,
+        "ratio_confidence_interval_95": [
+          1.0305244106215907,
+          1.0392695537924197
+        ],
+        "maximum_ratio": 1.05,
+        "bootstrap": {
+          "method": "paired percentile",
+          "resamples": 10000,
+          "seed": 410083
+        },
+        "measurements": {
+          "baseline": {
+            "samples": [
+              0.0007967102716666667,
+              0.0007998227316666667,
+              0.0007955943366666667,
+              0.000797316175,
+              0.000799413015,
+              0.000813094345,
+              0.00080019807
+            ],
+            "median": 0.000799413015,
+            "minimum": 0.0007955943366666667,
+            "maximum": 0.000813094345,
+            "stdev": 5.897068021061537e-06,
+            "median_absolute_deviation": 2.0968399999999384e-06
+          },
+          "candidate": {
+            "samples": [
+              0.0008254766813559322,
+              0.0008241615593220339,
+              0.0008259859389830508,
+              0.0008286557457627119,
+              0.0008242368491525423,
+              0.0008274533355932203,
+              0.0008286264254237289
+            ],
+            "median": 0.0008259859389830508,
+            "minimum": 0.0008241615593220339,
+            "maximum": 0.0008286557457627119,
+            "stdev": 1.9088724036644503e-06,
+            "median_absolute_deviation": 1.7490898305084828e-06
+          }
+        }
+      },
+      "actual_pairs": 7,
+      "actual_points": 10,
+      "sampling_label": "First10 fixed events of each original100-event stream; no100-point timing claim",
+      "targets": {
+        "baseline/6": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/targets/ew-2-baseline-6.json",
+          "sha256": "16537f73bfa018340bbeeccf5f10229c1604adab9274a6dcfeda4be79b49fe59",
+          "bytes": 101414
+        },
+        "candidate/8": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/targets/ew-2-candidate-8.json",
+          "sha256": "ec3a6951fcaada30c7368394c1e477ebf1d8dde792aee5e96a54b61fb89cdedc",
+          "bytes": 105537
+        }
+      },
+      "status_counts": {
+        "baseline/6": [
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          }
+        ],
+        "candidate/8": [
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          }
+        ]
+      }
+    },
+    "supplement-gg-h": {
+      "agreement": {
+        "passed": true,
+        "comparisons": [
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          }
+        ]
+      },
+      "timing": {
+        "passed": true,
+        "status": "passed",
+        "runtime_ratio": 0.7862324413438299,
+        "ratio_confidence_interval_95": [
+          0.784061825516816,
+          0.7991948959944504
+        ],
+        "maximum_ratio": 1.05,
+        "bootstrap": {
+          "method": "paired percentile",
+          "resamples": 10000,
+          "seed": 410083
+        },
+        "measurements": {
+          "baseline": {
+            "samples": [
+              0.00016434450804195806,
+              0.00016101573496503496,
+              0.0001582328237762238,
+              0.00015775330489510488,
+              0.00015582233006993006,
+              0.00015497587657342657,
+              0.00015484856503496504
+            ],
+            "median": 0.00015775330489510488,
+            "minimum": 0.00015484856503496504,
+            "maximum": 0.00016434450804195806,
+            "stdev": 3.4914350297922965e-06,
+            "median_absolute_deviation": 2.7774283216783137e-06
+          },
+          "candidate": {
+            "samples": [
+              0.0001281472827044025,
+              0.00012661572421383648,
+              0.00012406431666666667,
+              0.00012403076603773587,
+              0.00012388006792452832,
+              0.0001238089358490566,
+              0.00012385592955974843
+            ],
+            "median": 0.00012403076603773587,
+            "minimum": 0.0001238089358490566,
+            "maximum": 0.0001281472827044025,
+            "stdev": 1.7445982399114363e-06,
+            "median_absolute_deviation": 1.7483647798743679e-07
+          }
+        }
+      },
+      "actual_pairs": 7,
+      "actual_points": 10,
+      "sampling_label": "First10 fixed events of each original100-event stream; no100-point timing claim",
+      "targets": {
+        "baseline/6": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/targets/supplement-gg-h-baseline-6.json",
+          "sha256": "f0a42ccec3cf7b127364e7d603e23984d21538ef566793be4d223d002eed5809",
+          "bytes": 75430
+        },
+        "candidate/8": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/targets/supplement-gg-h-candidate-8.json",
+          "sha256": "edb405171b8487bafd804c5f13d95b6741318eae43c1bf50d8b1bec8787d1eb6",
+          "bytes": 79379
+        }
+      },
+      "status_counts": {
+        "baseline/6": [
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          }
+        ],
+        "candidate/8": [
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          }
+        ]
+      }
+    },
+    "supplement-gg-hh": {
+      "agreement": {
+        "passed": true,
+        "comparisons": [
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          },
+          {
+            "passed": true,
+            "pairs": 1,
+            "failures": []
+          }
+        ]
+      },
+      "timing": {
+        "passed": true,
+        "status": "passed",
+        "runtime_ratio": 0.8072931983626191,
+        "ratio_confidence_interval_95": [
+          0.7897604598306105,
+          0.8148265835211542
+        ],
+        "maximum_ratio": 1.05,
+        "bootstrap": {
+          "method": "paired percentile",
+          "resamples": 10000,
+          "seed": 410083
+        },
+        "measurements": {
+          "baseline": {
+            "samples": [
+              0.0027974821555555554,
+              0.0027971351055555557,
+              0.0028037529555555558,
+              0.0028008202833333337,
+              0.002806665527777778,
+              0.00286588695,
+              0.0028813370555555557
+            ],
+            "median": 0.0028037529555555558,
+            "minimum": 0.0027971351055555557,
+            "maximum": 0.0028813370555555557,
+            "stdev": 3.578383800937897e-05,
+            "median_absolute_deviation": 6.270800000000333e-06
+          },
+          "candidate": {
+            "samples": [
+              0.0022366662772727273,
+              0.0022807332863636364,
+              0.002279462827272727,
+              0.0022499743727272727,
+              0.0022662753363636365,
+              0.002263450690909091,
+              0.0022633641954545457
+            ],
+            "median": 0.002263450690909091,
+            "minimum": 0.0022366662772727273,
+            "maximum": 0.0022807332863636364,
+            "stdev": 1.559660836399435e-05,
+            "median_absolute_deviation": 1.3476318181818246e-05
+          }
+        }
+      },
+      "actual_pairs": 7,
+      "actual_points": 10,
+      "sampling_label": "First10 fixed events of each original100-event stream; no100-point timing claim",
+      "targets": {
+        "baseline/6": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/targets/supplement-gg-hh-baseline-6.json",
+          "sha256": "54680603d11daf714f601d8aced6ec5b70a23ca6d9c2891e4bb32cb86cf4eceb",
+          "bytes": 76084
+        },
+        "candidate/8": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/targets/supplement-gg-hh-candidate-8.json",
+          "sha256": "a102c3692750c8c570d1319b66113a6d4879fde493200fcbdd1c8693e87be4ee",
+          "bytes": 80034
+        }
+      },
+      "status_counts": {
+        "baseline/6": [
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          },
+          {
+            "216": 10
+          }
+        ],
+        "candidate/8": [
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          },
+          {
+            "218": 10
+          }
+        ]
+      }
+    }
+  },
+  "ninja_ninjars_correctness_passed": true,
+  "timing_complete": true,
+  "status": "correctness-passed-timing-reported",
+  "reference_1p05_passed": true,
+  "old_full8_runtime_gate_required_for_completion": false,
+  "new_cuttools_or_collier_evaluations": 0,
+  "sampling_label": "First10 fixed events of each original100-event stream; no100-point timing claim",
+  "parent_sampling_seeds": {
+    "qcd-1": 410083,
+    "ew-1": 410083,
+    "qcd-2": 410083,
+    "ew-2": 410083,
+    "supplement-gg-h": 930083,
+    "supplement-gg-hh": 930083
+  },
+  "bootstrap_seed": 410083,
+  "inputs_sha256": {
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-baseline-6-0.json": "fb7bf89364495f8562255e5e1f51a384d8a1bcf5392bfe81cad7056f5fc88ed3",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-baseline-6-1.json": "a944922c1b76bd3cf6370d6fcf925a7dcdbec172bc9985ea638ed082618af34b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-baseline-6-2.json": "e07cf15f36510083c0879fd9499bbc328b04fe86ee78666a6aa3e584e7a363bc",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-baseline-6-3.json": "f04cbc0e8a332fc799921a8a8125e3fb028f19ef1feaad852d7773a5dccd283d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-baseline-6-4.json": "7832decd473b8c5fc666a3aaa01265749f5a4c731a8247246d6e14fbd3e472b6",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-baseline-6-5.json": "37fe2f191f6deddd762eeb24f098d285a7238c8032ed9a2366ffa5f9659290e4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-baseline-6-6.json": "ae153d856e379dd8f56a62687a13598f14263928ce8eab0a17690809e0ffa98e",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-baseline-6-calibration.json": "84f85432c71c918c5d1bf26364745e175352338574cfdb998b4f34c3e1d9b68d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-candidate-8-0.json": "6dcb271e89c8b53344e8d35af160cda26da4b197b5655dfc7ab265efde8e6590",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-candidate-8-1.json": "8ff524cd079a2b4c6087ee8fce958332e073848defef066572c28fbf71841950",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-candidate-8-2.json": "64d70ddf8062a92635298164e5690879096074f132a803b39e3b4cc4fdf47280",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-candidate-8-3.json": "d48f79b37bff86bf8ce2a440e83ffc193ac43dd3ba162fcfcac3f2d3eaa515fb",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-candidate-8-4.json": "bfcf8e0147c7ef6e5ea616f5521a84f3131d63ff7eb621ed905ef026650deb97",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-candidate-8-5.json": "2c25f90d6dd639f8be47fecf2a0fc66b029ffe9313293522c46f3326878fe1ad",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-candidate-8-6.json": "90115d725166f84dc2dac60342013de8fac406dfd1340b9f76d0dea404fcdfd2",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-1-candidate-8-calibration.json": "61f3c6dbaa6295782d7ed1587762f0c8091793886b9ee817eb0bba75ae7daf40",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-baseline-6-0.json": "7451fc3e6dc5936bd4085e04f562dabee6ae84a01dc0d1a0efa7a5d64395df02",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-baseline-6-1.json": "eafad3239a6419f4de64d82418db306b1a975eef6ebdf5044b5ecb7496d23b3a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-baseline-6-2.json": "724fc349f1ea4fe66f84fc20292b009f87b1766697467a50cac43c0bd76b35c3",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-baseline-6-3.json": "26326b688c1325aeab0e33355e7f9912b72c467d242c5cb0e2e3880c67e9d00a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-baseline-6-4.json": "8fa68f6077589165a257595f2fa075f7d6a65497daa85b92072e1b9b9a4fb0ca",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-baseline-6-5.json": "f958560bbec6916f6dfcbb6025eb46d9c937e42294bcac3b1d542c7d5b8f6985",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-baseline-6-6.json": "bc131ae2b6f45dc462ba5d8545e8d63f5572e7de18d0552fd4b34cccc5d69719",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-baseline-6-calibration.json": "9c0a826a19bf0b8994b92e71a60dfd8540fa0c691bf626cfe9f143d073532c7a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-candidate-8-0.json": "7e10d9e68444b98d3644e83a14e4cf7f31d7522a68e5fcc3272f76cc85b48829",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-candidate-8-1.json": "a42487fc5d7540a27fbb39f88a7ad08dd2e69991fe067e2e72ea0038f270ac6a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-candidate-8-2.json": "71547461781e52effa96c1f974dee1d3a538757a787805c03d2322f8354e20d8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-candidate-8-3.json": "3cc9e2962f56630b5c7738d71e41347279f6b7ce90e80edc84d882714e5a4335",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-candidate-8-4.json": "6f5c144e5ad7b0618917d1f08a4e2bb49975b783f0e51df24eb12dc21fde5c92",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-candidate-8-5.json": "2bf4cfd63d97c3a00e2ae0a5115ad0a20667cc5d91e7ef73606fcd1cd11a3919",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-candidate-8-6.json": "e6486d430b8004349cde31fd1dbeb5591f5513df28d02bbbf772431bd9d49faf",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/ew-2-candidate-8-calibration.json": "a6d03ad748b70d09b57ad1a9fdcd44ad14e0fa310f60faca76e3f0ca734dd71d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-baseline-6-0.json": "3aa8b5b18d9e88e70931d309a4a5e20d252c3d1d281d45248cde42dc2da3ba72",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-baseline-6-1.json": "81e5b2d8852cdbc945ce41b109bb6d29ee5d6784c5b2ef4ca97e51fba23e2c8c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-baseline-6-2.json": "89297e4f9a8c2597a392578978d6ec44d7e8405bf2dc2190fbb2e5a95effb343",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-baseline-6-3.json": "894246b0ac78ce63b0d1ce42600cb6a29a63ab10912ad7277fa6541c7a7b6ce0",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-baseline-6-4.json": "a8c8117f00267b2793198dc831e897f43be74886f54f9cf405f68fb6a07d7a21",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-baseline-6-5.json": "f5e5bd76050c9fc567803048431a23dcb86c4a181dbfa2dfacf27fa20cf4fd2a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-baseline-6-6.json": "afe5c6d3d3b3fc6b07417d94f29168f20261d2384ce001a913be48c6f87f9573",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-baseline-6-calibration.json": "e4d4a12ca18fbc1fc3945ef3778eec41825f6350b8a4f369bf0a08088273ddc5",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-candidate-8-0.json": "d7ab6f8ec001045022ad37fed81d23c78dbb41ade121e5685cd12469a6b5f656",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-candidate-8-1.json": "1cb3d348064fc21ab9745f0b8425610d8c16d2af0deb3935a797cebc443f4cff",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-candidate-8-2.json": "fea47c6eebdc8685c8c4c0ecff633ecc5ceae2108c5a20467ec1d7c5a7bbada9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-candidate-8-3.json": "d853e25fb45ba0d7a09304ecb1428638597b34ef1c8c15f5f6730eca703a712e",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-candidate-8-4.json": "08ed76f1d73c95c2823ef62649bce7f8c75d7f08ef7c4cd2b8b4b64c09a6b73a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-candidate-8-5.json": "953fe26c10209a3dce8e77cb7d073b5227c8833c2f19059751797ca31eee69bc",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-candidate-8-6.json": "21a83cbe4f7e236b2b24320bceed5e1f1f1e98349232ea3dfcfeb0371cb84176",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-1-candidate-8-calibration.json": "c2edf337333b3a6cc776ceb5dc6beb2f08a4a5b9c04d8d9d6b5d332eacb571b5",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-baseline-6-0.json": "134f331b694f5070bf99c14238242041d01c662172b8cfd0c3d58d0abae8e480",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-baseline-6-1.json": "a1c1288e0d24edf1c6e921ee201b35fa927d02abd8fe32a23c991727e733085c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-baseline-6-2.json": "426d5143254cc09bd27aba088fee4ada69379e10a6be68fb03c64a992f2f7d20",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-baseline-6-3.json": "faaba6c9f933694122fb32a406b94656dffa633df03639674ab6c8df7519fb44",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-baseline-6-4.json": "bfc291dee3b0a8321895707008b8f085f57d6813b63413c037ac9fb33e64f423",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-baseline-6-5.json": "457d1d3fbc08e104a6bf39123ad0b84cd211ada52dac4c338f2c6f87524333d7",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-baseline-6-6.json": "b9bb93bcb1dd06a341c1398664f6ff37f0e37c3bba10fddf281c4c1dfb4011a2",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-baseline-6-calibration.json": "b1bb507b7585c9b98348f351832cd0b8d9050f0cd9dbc7d856666b701a3d7bbe",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-candidate-8-0.json": "deb021c68c8679e5948128dbc91b322de348b7f5982d233a1bd8069c9af00890",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-candidate-8-1.json": "fcfed2e53b7f86fd9a546680b9f585cc330a2f0772b3201aa316142cc02bd35a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-candidate-8-2.json": "3588601bd431a08741e130af191c2eacf574479a2bdd27f542eeb8af76074b31",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-candidate-8-3.json": "ba01e42aafd2da0b3da1a771d3946062d13930ba76016bb12eceb8c93c8bfa29",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-candidate-8-4.json": "ce258dfb43df1be6ffafafea9b1bf4eee1cd60265860efb62e528a280ddebb62",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-candidate-8-5.json": "5331705d594fb6bd2c67f0bec4477672abe366c4a3c901a2975249f7dd7cbf21",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-candidate-8-6.json": "ed2fbb9eab80da19fddd589e4d26319faaa2a6d4071317894a8649c90125a474",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/qcd-2-candidate-8-calibration.json": "74f57bfd847d7a040d3a72fe39f3469b32625a460e0a57188ff753a5b3e89363",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-baseline-6-0.json": "3f92eb4b9c353ea1d8495f34540abd92ab49f0bd9ffc602602af4c8df8ad67b7",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-baseline-6-1.json": "d1d9dcd8bfa4d3b2fe26322d20cc717af24f2a21db388a15031f753caf458ebf",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-baseline-6-2.json": "b0f5172adfaf0bc129cd4c508fe2f50eb5434449f8c84981e9f66537d963aed3",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-baseline-6-3.json": "421cbdfa62f556e61c005dac830cd05d0fa6986846c0a759f2f5baaf81e656d6",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-baseline-6-4.json": "ee9ed18006b83a4f2576e85c25168dcd74c0709e6def3c79b91c302518cf2fc6",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-baseline-6-5.json": "b97190a99ac65da467e727c897be4fc458243ae78a318faf212482bba6b22acb",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-baseline-6-6.json": "174bcf1d402e0025d228202bddace6b000886a52ae520c154a09b4f36eb5f794",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-baseline-6-calibration.json": "846be6ff4cbec45c17639d69e88d2aa71a03ce55083a6ff931349524aa4f9da1",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-candidate-8-0.json": "ba3125f08a4c0135bbdb5bf9fe5a1f75f2f3c758fb4540566a3979d80fc4e0e3",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-candidate-8-1.json": "51f15056b8b3f3a312fb6305dc655088718ad506d7f97a98ceb85c66f82e39b7",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-candidate-8-2.json": "e9febe60e1af728a579e56c0321c8e5b04c084c78ae2c7587342156d618d0a55",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-candidate-8-3.json": "01bdf930c12ff5c8b52ffc45f8d3751bcbe08ab0e8ca129ab55aae761ab0700a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-candidate-8-4.json": "d68dd7e6d5fb4772fe48ee644f24d47340ebed6e9ba437b4d4ae5f41ff2a55f4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-candidate-8-5.json": "a6b103e5785689b1ca9647d7232b66e9a75ff39a76b4f3605c706780ca5bd793",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-candidate-8-6.json": "bd25cadcff0016e00ab44779c38b75665673fa16fc4ae62437597c1b1fa2f644",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-h-candidate-8-calibration.json": "99795d61afac66aab6c5912a03a41a7071925b3582562f2e42e5ce2a61c0df7b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-baseline-6-0.json": "63856d5defdc8115a6d4c2cf7d4a603f88f717a287f91b16f1e707ca549e8c8b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-baseline-6-1.json": "33ffdb1e2bc166c4831936bca3b0ac92435ed36a4c9ec03f814079e7f20db53d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-baseline-6-2.json": "3b87b31736d9b0ac0dfa43580f6a57136a6e84163d88b80ec0981e61ed0b6c8a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-baseline-6-3.json": "b5f04979edede9731109ac88722751ea55c66e069b48f44297fe49090011e8d2",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-baseline-6-4.json": "cfd06300f4b866571c589c362b84ed95afd5ddb76dd4fc6dc1accde06216922c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-baseline-6-5.json": "3c07529b15f9446e966f84a433e5156b841946675c016b8cdc37f1912fb26ddf",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-baseline-6-6.json": "f1d96ccf395a1a72d47ff52e2835f671c47457db369886d6bf046bcddd79f7d4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-baseline-6-calibration.json": "f4d465550263c9782c63329700b02b7a62873d145dca6876775a9f7ca7791cbc",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-candidate-8-0.json": "632fd3dfa485cbf1d248d3a7097bed9038cd375b018fa9d3461ae6d40639a348",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-candidate-8-1.json": "2c4a2c869f354b07af73ab30326c512fa3c4306bc92533f2f5b515acf54b23a0",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-candidate-8-2.json": "13326fef571e666d0bc297697a5291d49cedea38387cd7fbd5bdba5d073ce52f",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-candidate-8-3.json": "381d22d2afd7d0ff7dd51036d50324cdc12a093cd24ea3e674f7e87592d84db5",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-candidate-8-4.json": "1131dee07429475231fc3a0b1da217a7d5156e4c546489622cc87f7d1ee811e9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-candidate-8-5.json": "a3de1d66cc3a68242b254f81e10b5078e8a9aa8d0621cb049172a53a564d5dc4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-candidate-8-6.json": "077939baeb7ad659adc92fe65427c6b5e86538befae46feccbdded091b0bbc7a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/data/supplement-gg-hh-candidate-8-calibration.json": "1e4ccb8c27ffd366c130b1cf68a777affc2ea78dc06008b45e39ecfef22bf24b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/calibration-calibration/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/calibration-calibration/timed_status.dat": "6623f53a80a05ea37813e6916fcb9606891a8fdf3933e110aa68cfe3dd27d204",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/calibration-calibration/timing.dat": "45b6a25be87b5b7db03d74b64694880d87f528a30b69a38a86141805df8cced5",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/calibration-calibration/values.dat": "b11a6738ba726abd78968588134761f47929f046547101cb2b355d8b7340c2d9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-0/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-0/timed_status.dat": "dd2773de7a785cb081dc37fe475c44fb6cb54cfecd3a1b8783ee11c2add4a1a9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-0/timing.dat": "89ac17643c7b2b24e9074b19cde2a75fe4b215d3abdd79cab1d5da0814e9f6e8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-0/values.dat": "b11a6738ba726abd78968588134761f47929f046547101cb2b355d8b7340c2d9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-1/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-1/timed_status.dat": "dd2773de7a785cb081dc37fe475c44fb6cb54cfecd3a1b8783ee11c2add4a1a9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-1/timing.dat": "528ad9d28987d6a3ac93a8358a9303cc35bec77640a48affd70a09fd4b9f3693",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-1/values.dat": "b11a6738ba726abd78968588134761f47929f046547101cb2b355d8b7340c2d9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-2/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-2/timed_status.dat": "dd2773de7a785cb081dc37fe475c44fb6cb54cfecd3a1b8783ee11c2add4a1a9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-2/timing.dat": "f384b92da8ff3f674ff990e3d3a8ad68bd1a135fd350d51794c2dcadabe0bc88",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-2/values.dat": "b11a6738ba726abd78968588134761f47929f046547101cb2b355d8b7340c2d9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-3/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-3/timed_status.dat": "dd2773de7a785cb081dc37fe475c44fb6cb54cfecd3a1b8783ee11c2add4a1a9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-3/timing.dat": "d0390bc5eb471011a45f83621fa0ac7b47f09a4911c037e52b521e37a1c48144",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-3/values.dat": "b11a6738ba726abd78968588134761f47929f046547101cb2b355d8b7340c2d9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-4/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-4/timed_status.dat": "dd2773de7a785cb081dc37fe475c44fb6cb54cfecd3a1b8783ee11c2add4a1a9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-4/timing.dat": "bb312ccce5f40f67af08d26646a4234ec614f7454239d286089120b186f6e791",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-4/values.dat": "b11a6738ba726abd78968588134761f47929f046547101cb2b355d8b7340c2d9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-5/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-5/timed_status.dat": "dd2773de7a785cb081dc37fe475c44fb6cb54cfecd3a1b8783ee11c2add4a1a9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-5/timing.dat": "9f5fa092c58920bc8e36dcae5eaafc307787d2b4c0c59365cccd029c4e977887",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-5/values.dat": "b11a6738ba726abd78968588134761f47929f046547101cb2b355d8b7340c2d9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-6/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-6/timed_status.dat": "dd2773de7a785cb081dc37fe475c44fb6cb54cfecd3a1b8783ee11c2add4a1a9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-6/timing.dat": "86ca20ea67cb6c5623925a68f73cd195c18d692a23cefddb9ef4b0ebf8b73324",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-baseline-6/measurement-6/values.dat": "b11a6738ba726abd78968588134761f47929f046547101cb2b355d8b7340c2d9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/calibration-calibration/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/calibration-calibration/timed_status.dat": "ac6de06c1c136df7a28b6749b45a40aca992cfef2baf0e9e7d5bb1e9143f71e7",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/calibration-calibration/timing.dat": "9b999bf5ced1b7e3f24e0c8586d97be83e9c209562b2e37259db8b1aaccdd3c4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/calibration-calibration/values.dat": "53ad9eb863a408b13df8fca89ce68b1f7fb79cd32fd496c784818f322a50c268",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-0/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-0/timed_status.dat": "43d896cc8b10f177dc5a9e4fdcfc41dcf3d3d84f651cd8be07ea0c59948a7e4d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-0/timing.dat": "ea7e89884e9af65731ae2f9692a43282c51a4dcd1fa787a9f77dc75387fa53bf",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-0/values.dat": "53ad9eb863a408b13df8fca89ce68b1f7fb79cd32fd496c784818f322a50c268",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-1/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-1/timed_status.dat": "43d896cc8b10f177dc5a9e4fdcfc41dcf3d3d84f651cd8be07ea0c59948a7e4d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-1/timing.dat": "90c84069a5656d40ce241078aed1f2e3834fa073104c22fb0da7ff177675879f",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-1/values.dat": "53ad9eb863a408b13df8fca89ce68b1f7fb79cd32fd496c784818f322a50c268",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-2/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-2/timed_status.dat": "43d896cc8b10f177dc5a9e4fdcfc41dcf3d3d84f651cd8be07ea0c59948a7e4d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-2/timing.dat": "120d5583e36bc72486434efe7787919a1032324e57a0521b98b5515c3bf02c27",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-2/values.dat": "53ad9eb863a408b13df8fca89ce68b1f7fb79cd32fd496c784818f322a50c268",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-3/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-3/timed_status.dat": "43d896cc8b10f177dc5a9e4fdcfc41dcf3d3d84f651cd8be07ea0c59948a7e4d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-3/timing.dat": "172ce4a83564a6cf7b407368705a5f2c643dabfab7a4e39914339ae3ca4f136d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-3/values.dat": "53ad9eb863a408b13df8fca89ce68b1f7fb79cd32fd496c784818f322a50c268",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-4/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-4/timed_status.dat": "43d896cc8b10f177dc5a9e4fdcfc41dcf3d3d84f651cd8be07ea0c59948a7e4d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-4/timing.dat": "443a242d52e436fbdb5a88f6086a01ccbc8aa22e2d0f1ad74bf605a089252d2f",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-4/values.dat": "53ad9eb863a408b13df8fca89ce68b1f7fb79cd32fd496c784818f322a50c268",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-5/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-5/timed_status.dat": "43d896cc8b10f177dc5a9e4fdcfc41dcf3d3d84f651cd8be07ea0c59948a7e4d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-5/timing.dat": "dbfe6318cc0a8cf778778579e58b677c6c70d91eeaa4de66d8f0018e930d8048",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-5/values.dat": "53ad9eb863a408b13df8fca89ce68b1f7fb79cd32fd496c784818f322a50c268",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-6/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-6/timed_status.dat": "43d896cc8b10f177dc5a9e4fdcfc41dcf3d3d84f651cd8be07ea0c59948a7e4d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-6/timing.dat": "2221923f2b3516ec47d05f9ff6eecce4691c020e15b8ba412f0c0b634105bca4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-1-candidate-8/measurement-6/values.dat": "53ad9eb863a408b13df8fca89ce68b1f7fb79cd32fd496c784818f322a50c268",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/calibration-calibration/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/calibration-calibration/timed_status.dat": "6623f53a80a05ea37813e6916fcb9606891a8fdf3933e110aa68cfe3dd27d204",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/calibration-calibration/timing.dat": "ce4a221ca2f228a6d136965e052f155132b91114f19b0a0b22db72a0dec54312",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/calibration-calibration/values.dat": "96ef28a2a2e03496bb5a8189d0dfb94e94d047d71f42a1a8dbe36532af2d1f1b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-0/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-0/timed_status.dat": "16c69a5fd569065b2e06d45d38c658509e758556d968e37eecfbb28564140f0c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-0/timing.dat": "844a083cddd2d8f415e1505a90421712f91eda76281696b98470fd08edc6cdd5",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-0/values.dat": "96ef28a2a2e03496bb5a8189d0dfb94e94d047d71f42a1a8dbe36532af2d1f1b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-1/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-1/timed_status.dat": "16c69a5fd569065b2e06d45d38c658509e758556d968e37eecfbb28564140f0c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-1/timing.dat": "5347c6d66b366467617a6c70ac1a1eda3d5cc332394d44991f534d1c2983bd73",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-1/values.dat": "96ef28a2a2e03496bb5a8189d0dfb94e94d047d71f42a1a8dbe36532af2d1f1b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-2/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-2/timed_status.dat": "16c69a5fd569065b2e06d45d38c658509e758556d968e37eecfbb28564140f0c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-2/timing.dat": "a513df7b9a6505322b502d2c64e1697306c0731fa0f9a61a343eaf16cd230649",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-2/values.dat": "96ef28a2a2e03496bb5a8189d0dfb94e94d047d71f42a1a8dbe36532af2d1f1b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-3/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-3/timed_status.dat": "16c69a5fd569065b2e06d45d38c658509e758556d968e37eecfbb28564140f0c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-3/timing.dat": "a37dcaeceee7c274b03302bf6fc583893a9361439e0e3e6ad6e0f7e221ac28e0",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-3/values.dat": "96ef28a2a2e03496bb5a8189d0dfb94e94d047d71f42a1a8dbe36532af2d1f1b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-4/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-4/timed_status.dat": "16c69a5fd569065b2e06d45d38c658509e758556d968e37eecfbb28564140f0c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-4/timing.dat": "cb8a8eb9886a47f3617c8533771b1cda36d955e202129351f2c7e4459ea769ee",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-4/values.dat": "96ef28a2a2e03496bb5a8189d0dfb94e94d047d71f42a1a8dbe36532af2d1f1b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-5/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-5/timed_status.dat": "16c69a5fd569065b2e06d45d38c658509e758556d968e37eecfbb28564140f0c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-5/timing.dat": "09c5f1d58425615cf280b3ac71f628d31fbb54df02d4ecfccaa99f587a2f0ee2",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-5/values.dat": "96ef28a2a2e03496bb5a8189d0dfb94e94d047d71f42a1a8dbe36532af2d1f1b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-6/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-6/timed_status.dat": "16c69a5fd569065b2e06d45d38c658509e758556d968e37eecfbb28564140f0c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-6/timing.dat": "0cf0861d5f549f4d5c3f323713ee19b1d3e391a371934cd9dd62f5a514faf1f7",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-6/values.dat": "96ef28a2a2e03496bb5a8189d0dfb94e94d047d71f42a1a8dbe36532af2d1f1b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/calibration-calibration/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/calibration-calibration/timed_status.dat": "ac6de06c1c136df7a28b6749b45a40aca992cfef2baf0e9e7d5bb1e9143f71e7",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/calibration-calibration/timing.dat": "c5c93f8ea17d979cb35102fa5394cd612916a19db2605ab02f83a31dfe6f7ec7",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/calibration-calibration/values.dat": "3ea35e2666fba4ca77a04eb4607b1e53f7fd112a768c800cf33da7cc228904a8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-0/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-0/timed_status.dat": "5b803f924086b40f46e48d0f1a30d0c0414142a3db244806a1e9e6c71faec5c3",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-0/timing.dat": "693272feadcf0cbc78ac4bbe4f7d107496e143486a19da46e9a6b3c5b150592a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-0/values.dat": "3ea35e2666fba4ca77a04eb4607b1e53f7fd112a768c800cf33da7cc228904a8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-1/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-1/timed_status.dat": "5b803f924086b40f46e48d0f1a30d0c0414142a3db244806a1e9e6c71faec5c3",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-1/timing.dat": "f69f3cc994369a63ba5cdb6ca4570f68fc808d0ee483e9132839b1696e598042",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-1/values.dat": "3ea35e2666fba4ca77a04eb4607b1e53f7fd112a768c800cf33da7cc228904a8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-2/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-2/timed_status.dat": "5b803f924086b40f46e48d0f1a30d0c0414142a3db244806a1e9e6c71faec5c3",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-2/timing.dat": "9712414d6b78ccfa80c205e8a5a1af8802ccf268179461f3a01a7a786534d41c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-2/values.dat": "3ea35e2666fba4ca77a04eb4607b1e53f7fd112a768c800cf33da7cc228904a8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-3/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-3/timed_status.dat": "5b803f924086b40f46e48d0f1a30d0c0414142a3db244806a1e9e6c71faec5c3",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-3/timing.dat": "70f06b496fa5d55569467bb6895e13a51635e8ca96f2a6cbdd350a5e5a8af065",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-3/values.dat": "3ea35e2666fba4ca77a04eb4607b1e53f7fd112a768c800cf33da7cc228904a8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-4/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-4/timed_status.dat": "5b803f924086b40f46e48d0f1a30d0c0414142a3db244806a1e9e6c71faec5c3",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-4/timing.dat": "f84bc578fde3f3c993c60c492e4b5e2a7bd18157b9950867d77201ebb6898bcb",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-4/values.dat": "3ea35e2666fba4ca77a04eb4607b1e53f7fd112a768c800cf33da7cc228904a8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-5/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-5/timed_status.dat": "5b803f924086b40f46e48d0f1a30d0c0414142a3db244806a1e9e6c71faec5c3",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-5/timing.dat": "d9ad6cb4f7dd3fd3d7dac346f9dd112a57e567be2016e732b6dfdaed6d4a8f78",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-5/values.dat": "3ea35e2666fba4ca77a04eb4607b1e53f7fd112a768c800cf33da7cc228904a8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-6/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-6/timed_status.dat": "5b803f924086b40f46e48d0f1a30d0c0414142a3db244806a1e9e6c71faec5c3",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-6/timing.dat": "1f6f1c1ca1d6f1d2e86196c4c1f3ef68a5b9676a2473e08a5cf322b91ac2d928",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-candidate-8/measurement-6/values.dat": "3ea35e2666fba4ca77a04eb4607b1e53f7fd112a768c800cf33da7cc228904a8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/calibration-calibration/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/calibration-calibration/timed_status.dat": "6623f53a80a05ea37813e6916fcb9606891a8fdf3933e110aa68cfe3dd27d204",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/calibration-calibration/timing.dat": "65f1edb346a7b34e35b1d79cdbef28740139c0d5772455efcd4a6c49934205fa",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/calibration-calibration/values.dat": "9d1ee95581a6feb90f3e82dc202ed9d439c9cd7571af262f766d5ede0053128f",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-0/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-0/timed_status.dat": "0a0b5c9e0c73faa9a207fb89f86d97c63332c90575b7c9f7bbd5aa56b6264ee1",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-0/timing.dat": "4d78bf42b881ce5a20f1395ecd77371802dc697e552b87c7244ad85d4eec8f59",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-0/values.dat": "9d1ee95581a6feb90f3e82dc202ed9d439c9cd7571af262f766d5ede0053128f",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-1/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-1/timed_status.dat": "0a0b5c9e0c73faa9a207fb89f86d97c63332c90575b7c9f7bbd5aa56b6264ee1",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-1/timing.dat": "e58d582ef1128ba92f1aa6b9f7a6f04d815941b732cd2f18e7303b2e149967fb",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-1/values.dat": "9d1ee95581a6feb90f3e82dc202ed9d439c9cd7571af262f766d5ede0053128f",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-2/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-2/timed_status.dat": "0a0b5c9e0c73faa9a207fb89f86d97c63332c90575b7c9f7bbd5aa56b6264ee1",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-2/timing.dat": "7930698e5c052f0fbb87d2bc300f3cdde5eb68f5e62e510bab5a6598aed66f05",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-2/values.dat": "9d1ee95581a6feb90f3e82dc202ed9d439c9cd7571af262f766d5ede0053128f",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-3/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-3/timed_status.dat": "0a0b5c9e0c73faa9a207fb89f86d97c63332c90575b7c9f7bbd5aa56b6264ee1",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-3/timing.dat": "bc9c8493594f13f818cdc43b89042bbef59eacb24f626ffcf770dbd19a0544fb",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-3/values.dat": "9d1ee95581a6feb90f3e82dc202ed9d439c9cd7571af262f766d5ede0053128f",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-4/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-4/timed_status.dat": "0a0b5c9e0c73faa9a207fb89f86d97c63332c90575b7c9f7bbd5aa56b6264ee1",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-4/timing.dat": "a5ff47f85a2f586d7b91b0d518cdbeb1c7bbfbb4aaf3fcdab96f5d796751f340",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-4/values.dat": "9d1ee95581a6feb90f3e82dc202ed9d439c9cd7571af262f766d5ede0053128f",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-5/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-5/timed_status.dat": "0a0b5c9e0c73faa9a207fb89f86d97c63332c90575b7c9f7bbd5aa56b6264ee1",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-5/timing.dat": "d82aedeca798beb94e5c48a35577735237921f201a65904be089c95f8dea111f",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-5/values.dat": "9d1ee95581a6feb90f3e82dc202ed9d439c9cd7571af262f766d5ede0053128f",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-6/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-6/timed_status.dat": "0a0b5c9e0c73faa9a207fb89f86d97c63332c90575b7c9f7bbd5aa56b6264ee1",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-6/timing.dat": "ee6947ad5215191682f7852479492a59487e83723126aa808b93a0d271035ed1",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-baseline-6/measurement-6/values.dat": "9d1ee95581a6feb90f3e82dc202ed9d439c9cd7571af262f766d5ede0053128f",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/calibration-calibration/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/calibration-calibration/timed_status.dat": "ac6de06c1c136df7a28b6749b45a40aca992cfef2baf0e9e7d5bb1e9143f71e7",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/calibration-calibration/timing.dat": "6978957263ec9e1ddb4058724e0719da89c065057e2ca94fc6d4c54df746fb64",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/calibration-calibration/values.dat": "e0bf93ae174e0bf840cd1e9a3cf4d7d6600910c185b5fc3eeabb91891e240bcd",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-0/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-0/timed_status.dat": "7b99c58ab4bf7ab0945ee70f60a1825109063ee68ea645eadaa7f099b8df52b0",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-0/timing.dat": "4551bfd6d0212337247504b48a0d7c8b9545d39516fa71f0344a049022c64516",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-0/values.dat": "e0bf93ae174e0bf840cd1e9a3cf4d7d6600910c185b5fc3eeabb91891e240bcd",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-1/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-1/timed_status.dat": "7b99c58ab4bf7ab0945ee70f60a1825109063ee68ea645eadaa7f099b8df52b0",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-1/timing.dat": "0eef571962fcb2aeef79cc6b26d17b54a70a7cb33a81693f9d1c5fd7699e909d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-1/values.dat": "e0bf93ae174e0bf840cd1e9a3cf4d7d6600910c185b5fc3eeabb91891e240bcd",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-2/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-2/timed_status.dat": "7b99c58ab4bf7ab0945ee70f60a1825109063ee68ea645eadaa7f099b8df52b0",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-2/timing.dat": "98fc73c9e0a74bf7d41dcb34a90fa7ac15968fb214e247e61d98797a4bb68972",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-2/values.dat": "e0bf93ae174e0bf840cd1e9a3cf4d7d6600910c185b5fc3eeabb91891e240bcd",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-3/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-3/timed_status.dat": "7b99c58ab4bf7ab0945ee70f60a1825109063ee68ea645eadaa7f099b8df52b0",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-3/timing.dat": "6e47fb215fd487ecf86094a3b6fe5e2b949ebc231732701802b231fc38de2a7e",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-3/values.dat": "e0bf93ae174e0bf840cd1e9a3cf4d7d6600910c185b5fc3eeabb91891e240bcd",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-4/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-4/timed_status.dat": "7b99c58ab4bf7ab0945ee70f60a1825109063ee68ea645eadaa7f099b8df52b0",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-4/timing.dat": "f39b82bc3593d8b71318cfcebed387928eeb47f8c7a38430fa0bb152a70ed51d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-4/values.dat": "e0bf93ae174e0bf840cd1e9a3cf4d7d6600910c185b5fc3eeabb91891e240bcd",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-5/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-5/timed_status.dat": "7b99c58ab4bf7ab0945ee70f60a1825109063ee68ea645eadaa7f099b8df52b0",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-5/timing.dat": "289314288f5b1b95075b7238b595cb349e26a7ece797ddf543fd3c084ba2144a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-5/values.dat": "e0bf93ae174e0bf840cd1e9a3cf4d7d6600910c185b5fc3eeabb91891e240bcd",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-6/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-6/timed_status.dat": "7b99c58ab4bf7ab0945ee70f60a1825109063ee68ea645eadaa7f099b8df52b0",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-6/timing.dat": "ca2c3de218e1e97d8c1075521caeb2afa3ee78aa79b5fe5ea3f2a74e63e2f28d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-1-candidate-8/measurement-6/values.dat": "e0bf93ae174e0bf840cd1e9a3cf4d7d6600910c185b5fc3eeabb91891e240bcd",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/calibration-calibration/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/calibration-calibration/timed_status.dat": "6623f53a80a05ea37813e6916fcb9606891a8fdf3933e110aa68cfe3dd27d204",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/calibration-calibration/timing.dat": "db8585b9c19681b2a31df71354fa39df7bba0d419cc301963b0d50581d25748d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/calibration-calibration/values.dat": "ad627a05516009f19e2e798672aa4d7c4ce3d3176fd1b34ae95754e480c9737c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-0/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-0/timed_status.dat": "65da7900b859bece9ae31a0524dd0a91d3ae1a00da64361e54bd5d4486ff5df9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-0/timing.dat": "87d0db4f476028a29f3e877e77d3c74b6391ed935933dfb9ffe0d57a31b5f4ca",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-0/values.dat": "ad627a05516009f19e2e798672aa4d7c4ce3d3176fd1b34ae95754e480c9737c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-1/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-1/timed_status.dat": "65da7900b859bece9ae31a0524dd0a91d3ae1a00da64361e54bd5d4486ff5df9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-1/timing.dat": "f44c88dd2b3ba459e712c8864fc0d0047313971b964f7daad1b216ac87e4e752",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-1/values.dat": "ad627a05516009f19e2e798672aa4d7c4ce3d3176fd1b34ae95754e480c9737c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-2/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-2/timed_status.dat": "65da7900b859bece9ae31a0524dd0a91d3ae1a00da64361e54bd5d4486ff5df9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-2/timing.dat": "f79bfd9d1194cde7b846e38dac77cb803a3f4d4e8615f17786f41466d823426a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-2/values.dat": "ad627a05516009f19e2e798672aa4d7c4ce3d3176fd1b34ae95754e480c9737c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-3/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-3/timed_status.dat": "65da7900b859bece9ae31a0524dd0a91d3ae1a00da64361e54bd5d4486ff5df9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-3/timing.dat": "bd60fc121517b4178609991f0594bb3cd8b9e97637929f569cb5e26655983b22",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-3/values.dat": "ad627a05516009f19e2e798672aa4d7c4ce3d3176fd1b34ae95754e480c9737c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-4/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-4/timed_status.dat": "65da7900b859bece9ae31a0524dd0a91d3ae1a00da64361e54bd5d4486ff5df9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-4/timing.dat": "66aefab4a3188525d65aad76df56944a283e377cd9bbb0a73a110150624e5a67",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-4/values.dat": "ad627a05516009f19e2e798672aa4d7c4ce3d3176fd1b34ae95754e480c9737c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-5/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-5/timed_status.dat": "65da7900b859bece9ae31a0524dd0a91d3ae1a00da64361e54bd5d4486ff5df9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-5/timing.dat": "3f285436b86de057473055da5d50f58782e07e74ead0c019774b4528972c5e5d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-5/values.dat": "ad627a05516009f19e2e798672aa4d7c4ce3d3176fd1b34ae95754e480c9737c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-6/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-6/timed_status.dat": "65da7900b859bece9ae31a0524dd0a91d3ae1a00da64361e54bd5d4486ff5df9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-6/timing.dat": "1a712cd3036464934ab5dae5f162beabd987c9857f9eba8d7c70bc9c5c0769ef",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-baseline-6/measurement-6/values.dat": "ad627a05516009f19e2e798672aa4d7c4ce3d3176fd1b34ae95754e480c9737c",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/calibration-calibration/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/calibration-calibration/timed_status.dat": "ac6de06c1c136df7a28b6749b45a40aca992cfef2baf0e9e7d5bb1e9143f71e7",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/calibration-calibration/timing.dat": "849c729b130ddbe592da00c1f051cc4d17d38e55023d6ca529abd7407588ebd6",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/calibration-calibration/values.dat": "2700bfdac006bf8a844a1ba76c255c4a7a4cbeb1c864d4525fb43edda3a6e275",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-0/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-0/timed_status.dat": "71ea19b11f7939618bf903ba93d467a05b8c8cd4784fe9204942fce14b90b915",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-0/timing.dat": "383af4c072b7b8763f1643571433989ca468034b49dc2b46c4e490e306fe7a6a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-0/values.dat": "2700bfdac006bf8a844a1ba76c255c4a7a4cbeb1c864d4525fb43edda3a6e275",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-1/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-1/timed_status.dat": "71ea19b11f7939618bf903ba93d467a05b8c8cd4784fe9204942fce14b90b915",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-1/timing.dat": "8521bf58ba0d4af48281faa24ad20b2224f5b25d7ce18eedbb533159bc6a668f",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-1/values.dat": "2700bfdac006bf8a844a1ba76c255c4a7a4cbeb1c864d4525fb43edda3a6e275",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-2/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-2/timed_status.dat": "71ea19b11f7939618bf903ba93d467a05b8c8cd4784fe9204942fce14b90b915",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-2/timing.dat": "f559f109127437160d5bc11433cb0ec8d4587b255072456ece42584d22653c00",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-2/values.dat": "2700bfdac006bf8a844a1ba76c255c4a7a4cbeb1c864d4525fb43edda3a6e275",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-3/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-3/timed_status.dat": "71ea19b11f7939618bf903ba93d467a05b8c8cd4784fe9204942fce14b90b915",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-3/timing.dat": "b67057147a5502508be926abb46848623d1647a0883b3f52046b7b711274d275",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-3/values.dat": "2700bfdac006bf8a844a1ba76c255c4a7a4cbeb1c864d4525fb43edda3a6e275",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-4/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-4/timed_status.dat": "71ea19b11f7939618bf903ba93d467a05b8c8cd4784fe9204942fce14b90b915",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-4/timing.dat": "ebef567c1a24b218b8f5709ae637e7e30654d5bc89af54d35695ec458ed5e226",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-4/values.dat": "2700bfdac006bf8a844a1ba76c255c4a7a4cbeb1c864d4525fb43edda3a6e275",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-5/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-5/timed_status.dat": "71ea19b11f7939618bf903ba93d467a05b8c8cd4784fe9204942fce14b90b915",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-5/timing.dat": "1eee5a6fab9c8ef3db41f61488451abfd3ec472962476d4b56d5c4790f31cfd9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-5/values.dat": "2700bfdac006bf8a844a1ba76c255c4a7a4cbeb1c864d4525fb43edda3a6e275",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-6/dimensions.dat": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-6/timed_status.dat": "71ea19b11f7939618bf903ba93d467a05b8c8cd4784fe9204942fce14b90b915",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-6/timing.dat": "ae56cd0d2e21ba5420d6d156d8fd0c8fcab2386a85b35c211be0fa9936b9711d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/qcd-2-candidate-8/measurement-6/values.dat": "2700bfdac006bf8a844a1ba76c255c4a7a4cbeb1c864d4525fb43edda3a6e275",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/calibration-calibration/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/calibration-calibration/timed_status.dat": "6623f53a80a05ea37813e6916fcb9606891a8fdf3933e110aa68cfe3dd27d204",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/calibration-calibration/timing.dat": "4be9df9a515685118dbbaa8578cac2b687b8ea82ac44af997f0bac85eaaa00bb",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/calibration-calibration/values.dat": "209e5fa98d0eb96cf50de8f363c49bd730666a746305ee6f936adba90e64d613",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-0/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-0/timed_status.dat": "cdaa01694e656c8bec5928d6f7b6a3d68845a75892d4013e17b9ec8d8c4dae3a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-0/timing.dat": "1a6b03325633baa7ede8f40835e22c12b487bbced4bdd8175e3ef1bb12b5ab8b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-0/values.dat": "209e5fa98d0eb96cf50de8f363c49bd730666a746305ee6f936adba90e64d613",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-1/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-1/timed_status.dat": "cdaa01694e656c8bec5928d6f7b6a3d68845a75892d4013e17b9ec8d8c4dae3a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-1/timing.dat": "80deee89ddb8ce7774458251797ddd7387a2d82c894ab36ebe59465e0bac9fcc",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-1/values.dat": "209e5fa98d0eb96cf50de8f363c49bd730666a746305ee6f936adba90e64d613",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-2/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-2/timed_status.dat": "cdaa01694e656c8bec5928d6f7b6a3d68845a75892d4013e17b9ec8d8c4dae3a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-2/timing.dat": "fb18edc0fd25860594621b0d8b7a519ec44a39ae2923917e8f20aecbd8c7e5af",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-2/values.dat": "209e5fa98d0eb96cf50de8f363c49bd730666a746305ee6f936adba90e64d613",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-3/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-3/timed_status.dat": "cdaa01694e656c8bec5928d6f7b6a3d68845a75892d4013e17b9ec8d8c4dae3a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-3/timing.dat": "0bf931c72a926f6b3e72a79228bc5c4c86476b8664bec780c6f6629132551214",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-3/values.dat": "209e5fa98d0eb96cf50de8f363c49bd730666a746305ee6f936adba90e64d613",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-4/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-4/timed_status.dat": "cdaa01694e656c8bec5928d6f7b6a3d68845a75892d4013e17b9ec8d8c4dae3a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-4/timing.dat": "b62a9034d30d6ff74c450de69ecec695f3cc0a3a425fa44698911e1ad84b6489",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-4/values.dat": "209e5fa98d0eb96cf50de8f363c49bd730666a746305ee6f936adba90e64d613",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-5/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-5/timed_status.dat": "cdaa01694e656c8bec5928d6f7b6a3d68845a75892d4013e17b9ec8d8c4dae3a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-5/timing.dat": "17db4857508c5891f75faed027f0bee6a6e753d9c67248e93dc64ca6dc0c68b9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-5/values.dat": "209e5fa98d0eb96cf50de8f363c49bd730666a746305ee6f936adba90e64d613",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-6/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-6/timed_status.dat": "cdaa01694e656c8bec5928d6f7b6a3d68845a75892d4013e17b9ec8d8c4dae3a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-6/timing.dat": "ec0d6d61e2184463dfd89f75117b02696b2d1bc8df6f4735436e5e4d9b619db5",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-baseline-6/measurement-6/values.dat": "209e5fa98d0eb96cf50de8f363c49bd730666a746305ee6f936adba90e64d613",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/calibration-calibration/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/calibration-calibration/timed_status.dat": "ac6de06c1c136df7a28b6749b45a40aca992cfef2baf0e9e7d5bb1e9143f71e7",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/calibration-calibration/timing.dat": "313990a49576ce8a6ed97d6e72286be437d9aecda168b2c9e25f6019efa38ca7",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/calibration-calibration/values.dat": "e819ea4897f05bcac76e59d35c1d36bb280678ade70e338aa764e43683dd2b7e",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-0/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-0/timed_status.dat": "9ee540c3590e468af07835200e98cb74f68d2672deafb594b70f4a3eb635da25",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-0/timing.dat": "81366bb3b4c6b333e1a25e513b80a2b8da80ed2284465aee281bf253e2e72aaa",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-0/values.dat": "e819ea4897f05bcac76e59d35c1d36bb280678ade70e338aa764e43683dd2b7e",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-1/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-1/timed_status.dat": "9ee540c3590e468af07835200e98cb74f68d2672deafb594b70f4a3eb635da25",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-1/timing.dat": "4dac46ab646e8b12de481620876ac3fcd7a085a95714cdc4c2a652ca4970a08e",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-1/values.dat": "e819ea4897f05bcac76e59d35c1d36bb280678ade70e338aa764e43683dd2b7e",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-2/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-2/timed_status.dat": "9ee540c3590e468af07835200e98cb74f68d2672deafb594b70f4a3eb635da25",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-2/timing.dat": "aff7451a85b55636bfdcd9ff31d86322fdc9f51779c6d2135e71df51bc117a14",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-2/values.dat": "e819ea4897f05bcac76e59d35c1d36bb280678ade70e338aa764e43683dd2b7e",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-3/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-3/timed_status.dat": "9ee540c3590e468af07835200e98cb74f68d2672deafb594b70f4a3eb635da25",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-3/timing.dat": "98aac2ec701d3f65b5f492096bf04878543344626b037c678f94be7f6347ea22",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-3/values.dat": "e819ea4897f05bcac76e59d35c1d36bb280678ade70e338aa764e43683dd2b7e",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-4/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-4/timed_status.dat": "9ee540c3590e468af07835200e98cb74f68d2672deafb594b70f4a3eb635da25",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-4/timing.dat": "f2f036d7213c89a894b747ab1c1e7576e354f0486342209df06b1a0ece8d516b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-4/values.dat": "e819ea4897f05bcac76e59d35c1d36bb280678ade70e338aa764e43683dd2b7e",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-5/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-5/timed_status.dat": "9ee540c3590e468af07835200e98cb74f68d2672deafb594b70f4a3eb635da25",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-5/timing.dat": "ce2489d937b7ff805e6b1201d3a249297c1e7862cc13e1c7f38c4f4c09c64919",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-5/values.dat": "e819ea4897f05bcac76e59d35c1d36bb280678ade70e338aa764e43683dd2b7e",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-6/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-6/timed_status.dat": "9ee540c3590e468af07835200e98cb74f68d2672deafb594b70f4a3eb635da25",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-6/timing.dat": "2ee2889d2e1c064122aed776d24c4c3f0858c89ec1b82d837484ed84818f8928",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-h-candidate-8/measurement-6/values.dat": "e819ea4897f05bcac76e59d35c1d36bb280678ade70e338aa764e43683dd2b7e",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/calibration-calibration/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/calibration-calibration/timed_status.dat": "6623f53a80a05ea37813e6916fcb9606891a8fdf3933e110aa68cfe3dd27d204",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/calibration-calibration/timing.dat": "792a610e79476d55858839ae33bdaf1db9f37a7c8c5bafccee214ba8a11dbde2",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/calibration-calibration/values.dat": "daf800b653e9920d7b8e3344b0e1f63fc704f44210f5775c36c72c8818110b45",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-0/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-0/timed_status.dat": "95b8ed17d8d639eafe95c78680102dd1b90b0f5e758a283ca071f5be0b8d3573",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-0/timing.dat": "7ab4f7f65897a6ba8b59834d90d5f1a3977b772845d9defc5e77a12511b4d774",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-0/values.dat": "daf800b653e9920d7b8e3344b0e1f63fc704f44210f5775c36c72c8818110b45",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-1/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-1/timed_status.dat": "95b8ed17d8d639eafe95c78680102dd1b90b0f5e758a283ca071f5be0b8d3573",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-1/timing.dat": "ed5ba6ea507c26b03adcecac4d9c0d08ed1a6b8c0350022a46df7e4fed2d7f56",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-1/values.dat": "daf800b653e9920d7b8e3344b0e1f63fc704f44210f5775c36c72c8818110b45",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-2/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-2/timed_status.dat": "95b8ed17d8d639eafe95c78680102dd1b90b0f5e758a283ca071f5be0b8d3573",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-2/timing.dat": "f959b4d652f9f02c47241c8d2c6b92dd84a575387fe21d4c59ee80b725d53256",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-2/values.dat": "daf800b653e9920d7b8e3344b0e1f63fc704f44210f5775c36c72c8818110b45",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-3/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-3/timed_status.dat": "95b8ed17d8d639eafe95c78680102dd1b90b0f5e758a283ca071f5be0b8d3573",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-3/timing.dat": "a8cbd1ed922c2e350c08dcf3d5a550c90f56c6ad985cf7e10e289f51aa305466",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-3/values.dat": "daf800b653e9920d7b8e3344b0e1f63fc704f44210f5775c36c72c8818110b45",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-4/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-4/timed_status.dat": "95b8ed17d8d639eafe95c78680102dd1b90b0f5e758a283ca071f5be0b8d3573",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-4/timing.dat": "37cdb0ee1f3c67b0bdca1bf6de5755ec0b402c0220882758671ff301fbe63755",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-4/values.dat": "daf800b653e9920d7b8e3344b0e1f63fc704f44210f5775c36c72c8818110b45",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-5/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-5/timed_status.dat": "95b8ed17d8d639eafe95c78680102dd1b90b0f5e758a283ca071f5be0b8d3573",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-5/timing.dat": "b4b6a85412fa46dbb593ff5a812b53bb7ee11041a04f6ca928356a5271b241b2",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-5/values.dat": "daf800b653e9920d7b8e3344b0e1f63fc704f44210f5775c36c72c8818110b45",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-6/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-6/timed_status.dat": "95b8ed17d8d639eafe95c78680102dd1b90b0f5e758a283ca071f5be0b8d3573",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-6/timing.dat": "60385e0c0a8ff0dcdb8660a1ba74f3d4d97237985b3ca76ee2b1f26514657474",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-baseline-6/measurement-6/values.dat": "daf800b653e9920d7b8e3344b0e1f63fc704f44210f5775c36c72c8818110b45",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/calibration-calibration/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/calibration-calibration/timed_status.dat": "ac6de06c1c136df7a28b6749b45a40aca992cfef2baf0e9e7d5bb1e9143f71e7",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/calibration-calibration/timing.dat": "8fe8e91b1f00626255359379b1af5bff0dec4e8e0c2e7f5903df6d1711554b2b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/calibration-calibration/values.dat": "76242763dd67745bf0c5f58bff83b09c4647b9918bcc20c41d7a8b2b6f34bb64",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-0/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-0/timed_status.dat": "544c5e89263f1bd54a1163b4dd404b26b6dff47f91deea7f652429023790a8e4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-0/timing.dat": "123cdfa8120236e053cca50779173af3c8afff1445fd4b9351b2708480dd7a89",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-0/values.dat": "76242763dd67745bf0c5f58bff83b09c4647b9918bcc20c41d7a8b2b6f34bb64",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-1/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-1/timed_status.dat": "544c5e89263f1bd54a1163b4dd404b26b6dff47f91deea7f652429023790a8e4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-1/timing.dat": "8abaeccf896238ec141671ba3b84fe8b976cdfbb49e81eb667957612b72400dc",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-1/values.dat": "76242763dd67745bf0c5f58bff83b09c4647b9918bcc20c41d7a8b2b6f34bb64",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-2/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-2/timed_status.dat": "544c5e89263f1bd54a1163b4dd404b26b6dff47f91deea7f652429023790a8e4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-2/timing.dat": "f98d9b80923e6bace1609fbcec0f5075b5b42fbe5ec0abf66a5d9a67705bd425",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-2/values.dat": "76242763dd67745bf0c5f58bff83b09c4647b9918bcc20c41d7a8b2b6f34bb64",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-3/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-3/timed_status.dat": "544c5e89263f1bd54a1163b4dd404b26b6dff47f91deea7f652429023790a8e4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-3/timing.dat": "8b6c9b3a0702781b3fb872897a24bf140e5f8b4f768f68ad5dcd556eefd89569",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-3/values.dat": "76242763dd67745bf0c5f58bff83b09c4647b9918bcc20c41d7a8b2b6f34bb64",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-4/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-4/timed_status.dat": "544c5e89263f1bd54a1163b4dd404b26b6dff47f91deea7f652429023790a8e4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-4/timing.dat": "c93253ade3c1622390a71febdc9a71fae00c9097e8c8b3dfc0412d5dcd682e16",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-4/values.dat": "76242763dd67745bf0c5f58bff83b09c4647b9918bcc20c41d7a8b2b6f34bb64",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-5/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-5/timed_status.dat": "544c5e89263f1bd54a1163b4dd404b26b6dff47f91deea7f652429023790a8e4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-5/timing.dat": "67440352c80edd1a91e4180364d747cb042bf695d2f623e240969d5166c7ef70",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-5/values.dat": "76242763dd67745bf0c5f58bff83b09c4647b9918bcc20c41d7a8b2b6f34bb64",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-6/dimensions.dat": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-6/timed_status.dat": "544c5e89263f1bd54a1163b4dd404b26b6dff47f91deea7f652429023790a8e4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-6/timing.dat": "1f51fec6203f2ced72bb6f326fd51ae59ab9502a92f1784c22039ed9d6d23e9a",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/supplement-gg-hh-candidate-8/measurement-6/values.dat": "76242763dd67745bf0c5f58bff83b09c4647b9918bcc20c41d7a8b2b6f34bb64"
+  },
+  "identity_sha256": "4a62381068617548a3c144d23d6b1192877b59f9953bacfbf0db38dffe935beb"
+}

@@ -1,0 +1,52 @@
+{
+  "collector": {
+    "bytes": 33451,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/light_pair.py",
+    "sha256": "eff3d2752da6bcb13598b3619d36382c1270e5435117abe4f4462691e223630b"
+  },
+  "compiler_invocations": 0,
+  "findings": [
+    "Exact six approved cases, baseline Ninja6/final NinjaRS8 only, exact first10 original point bytes; explicit ten-point scope and inherited parent seeds.",
+    "Seven adjacent alternating pairs and0.5-second minimum reuse unchanged pair worker, raw Laurent/status parser, warmed evaluation and statistics; no calibration promoted to repetition.",
+    "Live production guard and actual source inventory checked before and after every calibration/measurement command; retained contexts bind event indices and historical orchestration commit production bytes.",
+    "Retained validation never substitutes current production checkout for measured source; pinned numerical revision and historical commits must reconstruct identical GEN/vendor file bytes, including symlink targets.",
+    "Exact source/card/runtime and sole driver delta checks, full repeated raw outputs, complete dispatch and reaped ownership required; failed, partial, missing or injected observations reject.",
+    "Quiet CPU207 root handoff, no restart/append and600-second global budget preserve existing deferred-registration/owned cleanup."
+  ],
+  "launcher": {
+    "bytes": 3323,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/launch.py",
+    "sha256": "492cdc6725883c4b76da7ded5df48fb35254465009872de08d125e8ab53d5b03"
+  },
+  "limitations": [
+    "No actual timing result reviewed or numerical/performance pass claimed.",
+    "The old full8 runtime gate is explicitly superseded, not represented as passed.",
+    "Owner21 software tests inspected through frozen tests/proof; no tests rerun by auditor."
+  ],
+  "numerical_calls": 0,
+  "observed_target_helpers": {
+    "bytes": 29090,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/loop-execution/loop_pair.py",
+    "sha256": "7bec5833258c4ba6a57e51236aef865e71fd0abe8f41e24f83f5250474a47953"
+  },
+  "owner_software_capsule": {
+    "bytes": 1411,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing-software-proof-v1/manifest.json",
+    "sha256": "41a210a7727ece32561f2c8be0e0f472fbccac7462e4f959c46b809f80089bb6"
+  },
+  "reviewed_utc": "2026-10-21T21:25:46.814309+00:00",
+  "schema": "independent-light-six-timing-source-review-v1",
+  "scope": "Source-only execution/retained-reader boundary review; actual specification and quiet handoff still required",
+  "status": "PASS",
+  "tests": {
+    "bytes": 26722,
+    "path": "tests/unit_tests/loop/test_ninjars_light_pair.py",
+    "sha256": "92b424ba31b87ce831bf23d451534b9c3c72ff52159fc6c79b0e985c886be834"
+  },
+  "tests_run_by_auditor": 0,
+  "unchanged_pair_primitive": {
+    "bytes": 34216,
+    "path": "tools/ninjars_benchmark_pair_v3.py",
+    "sha256": "1e5fb83daa6021fc7c74350df60d16f64204a93887c7e511ac3347a513e78484"
+  }
+}

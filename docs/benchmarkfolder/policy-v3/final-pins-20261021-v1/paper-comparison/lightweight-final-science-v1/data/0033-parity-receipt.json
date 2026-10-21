@@ -1,0 +1,37 @@
+{
+  "tool": 6,
+  "case": "qcd-1",
+  "N": 3,
+  "transforms": 3,
+  "plain": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-1-6/parity-plain/result.json",
+    "sha256": "a1f1d49fd9d792fa3cd7e88e4b9666fbd04fd1136939625cd0ed69c664e8501d",
+    "bytes": 50144
+  },
+  "observed": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-1-6/parity-observed/result.json",
+    "sha256": "c51f326c8612db05239b5d4722434504fbc5ddff68959ac4ecd12f61ce72dcf9",
+    "bytes": 51594
+  },
+  "start": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-1-6/start.json",
+    "sha256": "ed94a2f0f1ef1cab304a76c691170f5a07ae3c249c758f396d764de35973c5ca",
+    "bytes": 93386
+  },
+  "source_and_guard_same": true,
+  "filter_states_identical": true,
+  "warm_parity": {
+    "warm_iterations_identical": true,
+    "warm_common_flags_identical": true,
+    "plain_warm_observer_counters_zero": true,
+    "initialization_safe": true,
+    "unsafe_initialization_reasons": []
+  },
+  "physical_coefficients_compared": 72,
+  "internal_accuracies_compared": 18,
+  "zero_coefficients_compared": 0,
+  "f64_bitexact": true,
+  "finite_values_f64_bitexact": true,
+  "matching_nonfinite_tokens": 0,
+  "numerical_failure_observations": {}
+}

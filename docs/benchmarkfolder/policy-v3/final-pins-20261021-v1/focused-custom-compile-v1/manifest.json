@@ -1,0 +1,225 @@
+{
+  "scope": "Compile-only; no numerical calls; superseded full18 scope not executed",
+  "files": {
+    "README.md": {
+      "sha256": "a06c79dd04749865143f6d16d946d837d8071a471777867cd067fcc9da9adc06",
+      "bytes": 965
+    },
+    "compile-launch-v1/launch.json": {
+      "sha256": "62cab3c88789fc5f8dcfa53ff965793707fd927694d40f14ba113e728b9bcd66",
+      "bytes": 848
+    },
+    "compile-launch-v1/process-ledger.jsonl": {
+      "sha256": "70f9344417f5e859f4d25a7503ed2791e404eaaf609cd148a1af39a7f3c4a27b",
+      "bytes": 540
+    },
+    "compile-launch-v1/result.json": {
+      "sha256": "cf68aa0a250a0253d70b674ba713a55aab4d9884349fd2fdec4be7f969863d3d",
+      "bytes": 945
+    },
+    "compile-launch-v1/stderr.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "compile-launch-v1/stdout.log": {
+      "sha256": "c913a100585bc638af530318a4c484bacdff4273d9a60a8cb9764bc15385271b",
+      "bytes": 378
+    },
+    "drivers/control-complex-qp.f": {
+      "sha256": "8dd82006615e01bf5cc41f03c2676ad1ba257a6780b905f902d4250cd17e4857",
+      "bytes": 4176
+    },
+    "drivers/control-complex-qp.patch": {
+      "sha256": "263344f4578570c2b47fae2351ce12210d3141579c54f1fba156d417a338b591",
+      "bytes": 345
+    },
+    "drivers/control-direction.f": {
+      "sha256": "56983d678e6d7fc349662dfd0d15e7e253d7dfd1ad2e454e52b39fd412eea2d9",
+      "bytes": 4176
+    },
+    "drivers/control-direction.patch": {
+      "sha256": "837ed95d46b82abf9c7d1e18f9fdda29b2a6ae4fce780c726339c3c15a55d403",
+      "bytes": 344
+    },
+    "drivers/control-rebinding-fresh-qp.f": {
+      "sha256": "9c0dd8f830f96d12074b0daa97502a5c97bc7d9ed938a531b2676e950cb28427",
+      "bytes": 4979
+    },
+    "drivers/control-rebinding-fresh-qp.patch": {
+      "sha256": "36c9c18ccd5f51d9c97255ded3445cbc9a196758119c12e7233944b59ad038b3",
+      "bytes": 353
+    },
+    "drivers/control-rebinding-fresh.f": {
+      "sha256": "7123043db723e5400ae425b2b5e2db421acab94b2142831b19c39a3aa4c88014",
+      "bytes": 4978
+    },
+    "drivers/control-rebinding-fresh.patch": {
+      "sha256": "afd0d2204ba762329cf95dbb9ea938eca0cab587aa088fd1c53209a5677d5ba9",
+      "bytes": 2409
+    },
+    "drivers/control-rebinding-qp.f": {
+      "sha256": "ab46cfe8ed50334382e8e04ea9e26bdb3c3acb176ccd22b9a83ce522d6a0f30a",
+      "bytes": 4949
+    },
+    "drivers/control-rebinding-qp.patch": {
+      "sha256": "7fca96c7127a6a9e749451886501fb359dc7dbdda38e04d977f8cae86ac003e1",
+      "bytes": 347
+    },
+    "drivers/control-rebinding.f": {
+      "sha256": "d1a8df92ed855db3225aa64e635f9bf70ec825e4296fdd52b94cbb6454557bcc",
+      "bytes": 4948
+    },
+    "drivers/control-rebinding.patch": {
+      "sha256": "89b643843d85be3f794a0a6b52adfa978e95cfcb951e3ddf412993fb243f96ff",
+      "bytes": 2371
+    },
+    "drivers/control-rotation.f": {
+      "sha256": "29fd7f67d67cfdc1e1ae3fede7a3f50679d46fc921b7e82e8b38b0178b59b857",
+      "bytes": 4175
+    },
+    "drivers/control-rotation.patch": {
+      "sha256": "0e3d3a955b3e7d3587f31e69fa727eb2dafa22efe0d58b49bb1b370af082ff22",
+      "bytes": 17
+    },
+    "inputs/candidate/control-rebinding/compilation.json": {
+      "sha256": "045cd3c3810e93a040f2c020916ed61f8e3d8c3a55a047d027331b133b86932f",
+      "bytes": 177252
+    },
+    "inputs/candidate/control-rebinding/compiled-source-manifests/44559eacf82233b6188516680fe9a41929714fa279b70aac8f114c47f8223475.json": {
+      "sha256": "5619c56b35fcb49a72ed2a6d2378dd4ceb87948e8e68db892d18445931373dfd",
+      "bytes": 16318
+    },
+    "inputs/candidate/control-rebinding/compiled-sources.json": {
+      "sha256": "5619c56b35fcb49a72ed2a6d2378dd4ceb87948e8e68db892d18445931373dfd",
+      "bytes": 16318
+    },
+    "inputs/candidate/control-rebinding/generation.json": {
+      "sha256": "790783e658cb9382234b9b0e58a3da7a796bfcc7c87bd862eb3617ef428a3826",
+      "bytes": 171447
+    },
+    "inputs/candidate/control-rebinding/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "inputs/candidate/control-rebinding-fresh/compilation.json": {
+      "sha256": "b1d01b282e468cdd062e221f23f72b72ea4dac24f06dc8f2354926225efa3a60",
+      "bytes": 177252
+    },
+    "inputs/candidate/control-rebinding-fresh/compiled-source-manifests/04f8e1636070fabe0d4b5707eee204bee755ceb067cf5de5fdc7451e16ebbd1c.json": {
+      "sha256": "be7f710796f55d5f0ff3683856a777e9a64b8d0c3a1867513bf5e8cf999b63ab",
+      "bytes": 16318
+    },
+    "inputs/candidate/control-rebinding-fresh/compiled-sources.json": {
+      "sha256": "be7f710796f55d5f0ff3683856a777e9a64b8d0c3a1867513bf5e8cf999b63ab",
+      "bytes": 16318
+    },
+    "inputs/candidate/control-rebinding-fresh/generation.json": {
+      "sha256": "790783e658cb9382234b9b0e58a3da7a796bfcc7c87bd862eb3617ef428a3826",
+      "bytes": 171447
+    },
+    "inputs/candidate/control-rebinding-fresh/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "logs/copy-focused-compile-1.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/copy-focused-compile-2.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/copy-focused-compile-3.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/copy-focused-compile-4.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/copy-focused-compile-5.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/copy-focused-compile-6.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "logs/copy-focused-compile-7.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "points/control-complex-qp.dat": {
+      "sha256": "81d6dd8e303246ef120dd4156760ab6fb1a0347d56624b691cc43091d63b5749",
+      "bytes": 3883
+    },
+    "points/control-direction.dat": {
+      "sha256": "a1fb9b0af7a351bf383a0ab5302f0be46f8053c1da33941e291fc5a0e2ec02b4",
+      "bytes": 3883
+    },
+    "points/control-rebinding-fresh-qp.dat": {
+      "sha256": "1344798666e43bca9cfcae39023834c8d76962ca8f9db5259acc76052bd1531d",
+      "bytes": 3883
+    },
+    "points/control-rebinding-fresh.dat": {
+      "sha256": "1344798666e43bca9cfcae39023834c8d76962ca8f9db5259acc76052bd1531d",
+      "bytes": 3883
+    },
+    "points/control-rebinding-qp.dat": {
+      "sha256": "1344798666e43bca9cfcae39023834c8d76962ca8f9db5259acc76052bd1531d",
+      "bytes": 3883
+    },
+    "points/control-rebinding.dat": {
+      "sha256": "1344798666e43bca9cfcae39023834c8d76962ca8f9db5259acc76052bd1531d",
+      "bytes": 3883
+    },
+    "points/control-rotation.dat": {
+      "sha256": "f04af45ad1116c3b4560bd9de79809b824a6d408de36084b30048a1280d4f2cc",
+      "bytes": 3893
+    },
+    "prepared.json": {
+      "sha256": "d39d358ab0a030d7ec320aaac99b92de97afb5ed472be82a28adeaf2045cdc78",
+      "bytes": 1709673
+    },
+    "process-ledger.jsonl": {
+      "sha256": "ea85be8239f181885e33ac7b21abfaf0e42a4349585216b26a2ff5b514a0360c",
+      "bytes": 7033
+    },
+    "sources/controls_driver.py": {
+      "sha256": "93e41b821058e89c04d01f72070406ede09a55cb37021b5995cb27635897ff9c",
+      "bytes": 18486
+    },
+    "sources/custom-controls-held.json": {
+      "sha256": "0e81b9f49b355217022da681ae50d14791e9e2ec416f3df1970ed44a46bd0370",
+      "bytes": 13375
+    },
+    "sources/draft-2-source-boundary.json": {
+      "sha256": "058d2193cba3000f3c551d3492d577a15f59997ea085f92e1447a41031e6ede7",
+      "bytes": 602
+    },
+    "sources/independent-source-review-compile-v1.json": {
+      "sha256": "37364155fc1b18e99f1177377c04ea9a0e95d37a5f38f955e7e3020170893756",
+      "bytes": 3388
+    },
+    "sources/parser-software.log": {
+      "sha256": "3d0df18bb7268e906604fd6b810224038ab3f74920be47071b647f413c306e6a",
+      "bytes": 775
+    },
+    "sources/prepare.py": {
+      "sha256": "e633e03a7c469c45f9a8f976590fa0a3cff65128a6443835f4bf9a6fdd1e20f0",
+      "bytes": 13851
+    },
+    "sources/source-review-installer-compile-v1.json": {
+      "sha256": "62821bc4381a492e44dfa7a0e2ffb333e338c208c1f06607aa69479654d1fc1e",
+      "bytes": 2975
+    },
+    "sources/test_direct_parser.py": {
+      "sha256": "43b747cfd4f04910a0f15dab96ba9b14b645ec504ec4624fbd3610ff0d02b5cd",
+      "bytes": 2863
+    },
+    "terminal-cleanup.json": {
+      "sha256": "d8682b6498aeb26a4803f4b9cb4e7d18a2b7ab38d52f0e7cbe1eee02fa258862",
+      "bytes": 5647
+    }
+  }
+}

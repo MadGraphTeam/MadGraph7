@@ -1,0 +1,28 @@
+{
+  "scope": "Software-only light timing controls plus observed/historical source checkpoints; no native/compiler/reducer launches",
+  "archive": ".benchmark-work/profile-cli-publication-software-v1/tracked-source.tar",
+  "archive_base": "9b5abb345452becddd37ee603c9bed17aed7db04",
+  "selected_archive_members": 560,
+  "overlays": {
+    "tests/unit_tests/loop/test_ninjars_light_pair.py": {
+      "sha256": "92b424ba31b87ce831bf23d451534b9c3c72ff52159fc6c79b0e985c886be834",
+      "bytes": 26722
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/light_pair.py": {
+      "sha256": "eff3d2752da6bcb13598b3619d36382c1270e5435117abe4f4462691e223630b",
+      "bytes": 33451
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/loop-execution/loop_pair.py": {
+      "sha256": "7bec5833258c4ba6a57e51236aef865e71fd0abe8f41e24f83f5250474a47953",
+      "bytes": 29090
+    }
+  },
+  "ignored_parents_absent": true,
+  "cpu": 180,
+  "started_utc": "2026-10-21T21:23:12.859981+00:00",
+  "initial_attempt": "attempt-1 preserves the first15-test pass before adding the resource-boundary control",
+  "historical_attempts": [
+    "attempt-1 preserves first15 precheckpoint pass",
+    "attempt-2-precheckpoint preserves16 precheckpoint pass and explicit failed post-source-freeze check"
+  ]
+}

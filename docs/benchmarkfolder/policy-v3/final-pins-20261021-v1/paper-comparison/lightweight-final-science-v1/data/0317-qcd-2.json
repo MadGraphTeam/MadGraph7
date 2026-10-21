@@ -1,0 +1,59 @@
+{
+  "actual_generation_case": "qcd-2",
+  "cuts": {
+    "delta_r_min": 0.5,
+    "eta_definition": "pseudorapidity",
+    "interpretation": "Strict final-state cuts; loop-induced reference omits pT only",
+    "pt_min_gev": 50.0
+  },
+  "definition": {
+    "id": "qcd-2",
+    "model": "loop_sm",
+    "nfinal": 2,
+    "process": "g g > t t~ [virt=QCD]"
+  },
+  "energy_gev": 1000.0,
+  "generation": {
+    "bytes": 4626169,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/status.json",
+    "sha256": "036113c34f4894c4508bf217a454749d4cdcccdfe5d739b53f835090e837b565"
+  },
+  "masses": [
+    0.0,
+    0.0,
+    173.0,
+    173.0
+  ],
+  "min_final_pt_gev": 104.19392624349723,
+  "min_pair_delta_r": 3.1418093372917713,
+  "origin_authority": null,
+  "physical_card": {
+    "bytes": 2471,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-2/param_card.dat",
+    "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+  },
+  "physical_validation": {
+    "external_masses": [
+      0.0,
+      0.0,
+      173.0,
+      173.0
+    ],
+    "invariant_interpretation": "RAMBO orientations at fixed center-of-mass energy",
+    "max_relative_conservation_residual": 1.642916913624386e-13,
+    "max_relative_mass_shell_residual": 4.348112270235393e-13,
+    "physical_distinct_invariant_s": null,
+    "points": 100,
+    "serialized_distinct_configurations": 100,
+    "serialized_invariant_s_max": 1000000.0,
+    "serialized_invariant_s_min": 1000000.0,
+    "sha256": "4d0a64001d79f742013f93cf8fcb502704af01d37f3ef16f3bde11526733d47f",
+    "storage": "binary64 values serialized as 17 digits after decimal in exponential notation"
+  },
+  "points_count": 100,
+  "proposals": 100,
+  "rejected": 0,
+  "rejection_reasons": {},
+  "sample_kind": "independent-random-dp-measurement",
+  "seed": 20261023
+}

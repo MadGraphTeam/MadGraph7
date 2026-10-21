@@ -1,0 +1,236 @@
+{
+  "status": "passed",
+  "scope": "Exactly nine fixed-two-point controls; no benchmark/stability/full normalHH acceptance",
+  "source_sha256": "e1b35f2b841e8692afc99e51af9a87907e31271f778ccc626b0e661f3d314217",
+  "specification_sha256": "d1449e8e6ea99671787439e6dc83bdf97444a418a814918508847c379c0c2207",
+  "targets": [
+    {
+      "target": "complex-qp-6",
+      "backend": 6,
+      "mode": 4,
+      "status_counts": {
+        "120": 2
+      },
+      "timed_status_counts": {
+        "120": 2
+      },
+      "actual_rows": 4,
+      "answer_dimensions": {
+        "allocated": 1,
+        "loop_orders": 1,
+        "born_orders": 1
+      },
+      "executable_sha256": "62ebeb78f6f31f711ed1979b4c9e2a372437303f33d8a0ba7165ebe90b5b9961",
+      "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "points_sha256": "d9608d8d6c8b750eda7b45dcb4f700dd32defb5e3e97ff91acb99cecb59e7132",
+      "physical_card_sha256": "1511223edb8e5e1a5ad12baee88c013f94a32161491e6889b05a35e022c9eaa4",
+      "all_explicit_qp_rows_120_accuracy_minus_one": true,
+      "result_sha256": "ed6b4197418ec9611b755e996c0616d3f7af28d035fb09cd4ebe6ec1fc1b116a"
+    },
+    {
+      "target": "complex-qp-8",
+      "backend": 8,
+      "mode": 4,
+      "status_counts": {
+        "120": 2
+      },
+      "timed_status_counts": {
+        "120": 2
+      },
+      "actual_rows": 4,
+      "answer_dimensions": {
+        "allocated": 1,
+        "loop_orders": 1,
+        "born_orders": 1
+      },
+      "executable_sha256": "62ebeb78f6f31f711ed1979b4c9e2a372437303f33d8a0ba7165ebe90b5b9961",
+      "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "points_sha256": "d9608d8d6c8b750eda7b45dcb4f700dd32defb5e3e97ff91acb99cecb59e7132",
+      "physical_card_sha256": "1511223edb8e5e1a5ad12baee88c013f94a32161491e6889b05a35e022c9eaa4",
+      "all_explicit_qp_rows_120_accuracy_minus_one": true,
+      "result_sha256": "36a0d7fa10d8492dc845f483857568725d64060ae27b1a7dcc852e963c81c45c"
+    },
+    {
+      "target": "hh-qp-forward-8",
+      "backend": 8,
+      "mode": 4,
+      "status_counts": {
+        "120": 2
+      },
+      "timed_status_counts": {
+        "120": 2
+      },
+      "actual_rows": 4,
+      "answer_dimensions": {
+        "allocated": 1,
+        "loop_orders": 1,
+        "born_orders": 0
+      },
+      "executable_sha256": "8ab77ca2f73d38d5bc8a56eed3f4265887cba90799125b11a1b39c87ca58dd47",
+      "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "points_sha256": "ae31c370d14496e2cfef94981f154658a2cc0aebd03c4c56bb6c428d0f3d1239",
+      "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "all_explicit_qp_rows_120_accuracy_minus_one": true,
+      "result_sha256": "e61afbcb071cb8287c67288145c247b41bb93a3dc0bcedc973f4ed24f215cc75"
+    },
+    {
+      "target": "hh-qp-reverse-8",
+      "backend": 8,
+      "mode": 5,
+      "status_counts": {
+        "120": 2
+      },
+      "timed_status_counts": {
+        "120": 2
+      },
+      "actual_rows": 4,
+      "answer_dimensions": {
+        "allocated": 1,
+        "loop_orders": 1,
+        "born_orders": 0
+      },
+      "executable_sha256": "8ab77ca2f73d38d5bc8a56eed3f4265887cba90799125b11a1b39c87ca58dd47",
+      "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "points_sha256": "ae31c370d14496e2cfef94981f154658a2cc0aebd03c4c56bb6c428d0f3d1239",
+      "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "all_explicit_qp_rows_120_accuracy_minus_one": true,
+      "result_sha256": "0be1ac61f028aa82cef385267a8516d2e9630755e58c0fcda0e984c9dde92741"
+    },
+    {
+      "target": "hh-state-finalized-8",
+      "backend": 8,
+      "mode": -1,
+      "status_counts": {
+        "218": 2
+      },
+      "timed_status_counts": {
+        "218": 2
+      },
+      "actual_rows": 4,
+      "answer_dimensions": {
+        "allocated": 1,
+        "loop_orders": 1,
+        "born_orders": 0
+      },
+      "executable_sha256": "31c5b380f3d68df330466f9233ab26fcfc68116b6e4ce445ef3d676acf68ba69",
+      "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "points_sha256": "4e48c38cf3d5def08caaaf8ba070d3c12a21f67c25e9a2f4fa3bdc1647063261",
+      "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "all_explicit_qp_rows_120_accuracy_minus_one": null,
+      "result_sha256": "26749cd982dbaa70f5a491510ed84021e4019007596ea86db9d5dc7a4cea0dd1"
+    },
+    {
+      "target": "hh-state-qp-finalized-8",
+      "backend": 8,
+      "mode": 4,
+      "status_counts": {
+        "120": 2
+      },
+      "timed_status_counts": {
+        "120": 2
+      },
+      "actual_rows": 4,
+      "answer_dimensions": {
+        "allocated": 1,
+        "loop_orders": 1,
+        "born_orders": 0
+      },
+      "executable_sha256": "670e668bd04d5a7ea5466b2d70f7deaa7a19e5f13a734213a5b21db6b77dc076",
+      "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "points_sha256": "4e48c38cf3d5def08caaaf8ba070d3c12a21f67c25e9a2f4fa3bdc1647063261",
+      "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "all_explicit_qp_rows_120_accuracy_minus_one": true,
+      "result_sha256": "4c31fc4ebc7247e6178d71607a1fbf304a099da63867e2d531a3ff3c5920d43f"
+    },
+    {
+      "target": "hh-state-qp-retained-8",
+      "backend": 8,
+      "mode": 4,
+      "status_counts": {
+        "120": 2
+      },
+      "timed_status_counts": {
+        "120": 2
+      },
+      "actual_rows": 4,
+      "answer_dimensions": {
+        "allocated": 1,
+        "loop_orders": 1,
+        "born_orders": 0
+      },
+      "executable_sha256": "9b4ac6e20552cbccd4080209e5edc4dcd482c73662cf93afd43122c8c806bd74",
+      "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "points_sha256": "4e48c38cf3d5def08caaaf8ba070d3c12a21f67c25e9a2f4fa3bdc1647063261",
+      "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "all_explicit_qp_rows_120_accuracy_minus_one": true,
+      "result_sha256": "b90c13e31fd9e39ec269960d7dab52b8e5ff3dd00ff9289d91b3e5c02e0f0096"
+    },
+    {
+      "target": "hh-state-retained-6",
+      "backend": 6,
+      "mode": -1,
+      "status_counts": {
+        "216": 2
+      },
+      "timed_status_counts": {
+        "216": 2
+      },
+      "actual_rows": 4,
+      "answer_dimensions": {
+        "allocated": 1,
+        "loop_orders": 1,
+        "born_orders": 0
+      },
+      "executable_sha256": "5ed90243d7855075723e2ec1f83499411958fa5774a95b9e492c614b6baefb9e",
+      "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "points_sha256": "4e48c38cf3d5def08caaaf8ba070d3c12a21f67c25e9a2f4fa3bdc1647063261",
+      "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "all_explicit_qp_rows_120_accuracy_minus_one": null,
+      "result_sha256": "8d528244b3220f33fd54bcde192a3d442f6212cb221dcef5744968c81cef86b9"
+    },
+    {
+      "target": "hh-state-retained-8",
+      "backend": 8,
+      "mode": -1,
+      "status_counts": {
+        "218": 2
+      },
+      "timed_status_counts": {
+        "218": 2
+      },
+      "actual_rows": 4,
+      "answer_dimensions": {
+        "allocated": 1,
+        "loop_orders": 1,
+        "born_orders": 0
+      },
+      "executable_sha256": "5ed90243d7855075723e2ec1f83499411958fa5774a95b9e492c614b6baefb9e",
+      "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "points_sha256": "4e48c38cf3d5def08caaaf8ba070d3c12a21f67c25e9a2f4fa3bdc1647063261",
+      "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "all_explicit_qp_rows_120_accuracy_minus_one": null,
+      "result_sha256": "848897a6e4b6c6823456222ba440a298defd3b39e8d59aca383a4b4f193bc53b"
+    }
+  ],
+  "comparisons": {
+    "state": {
+      "passed": true,
+      "pairs": 10,
+      "failures": []
+    },
+    "complex": {
+      "passed": true,
+      "pairs": 6,
+      "failures": []
+    },
+    "direction": {
+      "passed": true,
+      "pairs": 1,
+      "failures": []
+    }
+  },
+  "physical_components": 272,
+  "postflight": "Existing verify_output executes after every target; final generator identity checked before passed status",
+  "normal_HH_anchor": "Pending separate read-only comparison to actual light10 normal calibration; only unchanged-state HHQP direction rows are eligible",
+  "failed_predecessor": "focused-light-controls-v1 failed on required Python schema argument before any output/native operation; retained unchanged"
+}

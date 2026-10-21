@@ -1,0 +1,152 @@
+{
+  "authorities": {
+    "cross-backend-discrepancy.json": {
+      "bytes": 4089600,
+      "path": ".benchmark-work/paper-dp-stability-20261021-v1/lightweight-final-eight-qualified-v2/cross-backend-discrepancy.json",
+      "sha256": "392f3ff2360df961aa1cb2170b08ca2aea446e1db5dc55c27b710bd76b13d94d"
+    },
+    "manifest.json": {
+      "bytes": 99377,
+      "path": ".benchmark-work/paper-dp-stability-20261021-v1/lightweight-final-eight-qualified-v2/manifest.json",
+      "sha256": "de92bfae90b1068ba0fcb22034163d0b97ec9e4ab416ad17146bfa605e87f1a2"
+    },
+    "summary.json": {
+      "bytes": 7332985,
+      "path": ".benchmark-work/paper-dp-stability-20261021-v1/lightweight-final-eight-qualified-v2/summary.json",
+      "sha256": "c46368e08f039d39d4acb6369f067407785315cf5a591099db97f1e9adb6b12e"
+    }
+  },
+  "cases": [
+    "qcd-1",
+    "ew-1",
+    "qcd-2",
+    "ew-2",
+    "qcd-3",
+    "ew-3",
+    "supplement-gg-h",
+    "supplement-gg-hh"
+  ],
+  "coefficient_tolerance_failures": 0,
+  "combined_tool_scores": 1600,
+  "compiler_invocations": 0,
+  "crossbackend_coefficients": 6400,
+  "goal_or_performance_achieved_claim": false,
+  "hardware_semantics": "IEEE hardware observation flags are retained diagnostics, separate from algorithmicFPE, rejected reductions and numerical discrepancy. NRS8 invalid=300 for each of qcd2/ew2/qcd3/ew3/ggHH, with matching plain-prefix flags; no divide-by-zero/overflow, no algorithmicFPE/rejection/nonfinite/MP/compensated calls. They are not silently labelled zero or automatic failures.",
+  "independent_arithmetic": {
+    "bytes": 22530,
+    "path": ".benchmark-work/final-release-audit-20261021-v1/light-eight-arithmetic-audit-v1.json",
+    "sha256": "99e0f508d32c2c668fe0a54a9c2e4cf3361e8915197ad54782137ef4c027baa7"
+  },
+  "independent_arithmetic_source": {
+    "bytes": 9856,
+    "path": ".benchmark-work/final-release-audit-20261021-v1/audit-light-eight-arithmetic-v1.py",
+    "sha256": "1e7a6149baad0b42f62d25a50e56c3643cb183f89346d1d6c3d9e2fa6c1e26f8"
+  },
+  "independent_new14_raw_custody_ownership": {
+    "bytes": 30839,
+    "path": ".benchmark-work/final-release-audit-20261021-v1/light8-final-raw-custody-ownership-audit-v1.json",
+    "sha256": "7a99193f3970403891d1e2dd5285843779c8063274dac4966a206ec4489811d4"
+  },
+  "new14_hardware_observation_flags": {
+    "ew-1-6": {
+      "division_by_zero": 0,
+      "invalid": 0,
+      "overflow": 0
+    },
+    "ew-1-8": {
+      "division_by_zero": 0,
+      "invalid": 0,
+      "overflow": 0
+    },
+    "ew-2-6": {
+      "division_by_zero": 0,
+      "invalid": 0,
+      "overflow": 0
+    },
+    "ew-2-8": {
+      "division_by_zero": 0,
+      "invalid": 300,
+      "overflow": 0
+    },
+    "ew-3-6": {
+      "division_by_zero": 0,
+      "invalid": 0,
+      "overflow": 0
+    },
+    "ew-3-8": {
+      "division_by_zero": 0,
+      "invalid": 300,
+      "overflow": 0
+    },
+    "qcd-2-6": {
+      "division_by_zero": 0,
+      "invalid": 0,
+      "overflow": 0
+    },
+    "qcd-2-8": {
+      "division_by_zero": 0,
+      "invalid": 300,
+      "overflow": 0
+    },
+    "qcd-3-6": {
+      "division_by_zero": 0,
+      "invalid": 0,
+      "overflow": 0
+    },
+    "qcd-3-8": {
+      "division_by_zero": 0,
+      "invalid": 300,
+      "overflow": 0
+    },
+    "supplement-gg-h-6": {
+      "division_by_zero": 0,
+      "invalid": 0,
+      "overflow": 0
+    },
+    "supplement-gg-h-8": {
+      "division_by_zero": 0,
+      "invalid": 0,
+      "overflow": 0
+    },
+    "supplement-gg-hh-6": {
+      "division_by_zero": 0,
+      "invalid": 0,
+      "overflow": 0
+    },
+    "supplement-gg-hh-8": {
+      "division_by_zero": 0,
+      "invalid": 300,
+      "overflow": 0
+    }
+  },
+  "numerical_calls": 0,
+  "observations": 4800,
+  "origin_policy_source_review": {
+    "bytes": 2430,
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/loop-origin-card-qualification-v1/independent-source-review.json",
+    "sha256": "d2014c1472ab6dd296afff6c4a6bb6572f278727143c8f87f31a8a089e63cf6b"
+  },
+  "recorded_utc": "2026-10-21T21:45:27.712500+00:00",
+  "requested_tools": [
+    6,
+    8
+  ],
+  "reused_original_qcd1_raw_audit": {
+    "bytes": 3573,
+    "path": ".benchmark-work/final-release-audit-20261021-v1/qcd1-random-science-audit-v1.json",
+    "sha256": "61a284108d1ff4e4cc5cb2b973b334aaf9769ab04ccf656ba74ea92a52eb442c"
+  },
+  "rows": 9600,
+  "schema": "independent-final-light-eight-dp-composite-audit-v1",
+  "scope_limits": [
+    "Six Born1/2/3 processes use full helicity/color sums; ggH/HH use explicitly verified physical all-minus helicities.",
+    "On-shell2to1 boosted events are descriptive samples of one invariant, not100 independent invariant configurations.",
+    "NativeDP rescue-off stability diagnostics do not replace full rescued correctness or performance authorities.",
+    "No new heavy full100, per-case sample extension or deadline adapter; only the completed lightweight scopes.",
+    "Raw/custody audit uses retained text source/runtime identities and recorded terminal ownership; no fresh native binary reads or process queries."
+  ],
+  "status": "PASS-for-declared-lightweight-native-DP-study",
+  "tests_run_by_auditors": 0,
+  "unique_common_process_points": 800,
+  "worst_tolerance_fraction": 0.001989676162852025
+}

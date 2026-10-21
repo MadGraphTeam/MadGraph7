@@ -1,0 +1,361 @@
+{
+  "source": "baseline",
+  "case": "ew-2",
+  "backend": 6,
+  "worker_scheme": "persistent-worker-v1",
+  "acceptance_eligible": false,
+  "build_kind": "clean-subprocess",
+  "build_scope": "Generated subprocess Fortran; copied cached model/DHELAS/dependency libraries",
+  "compilation_seconds": 2.0761063450481743,
+  "compiler": "GNU Fortran (GCC) 15.3.0",
+  "origin_compilation": {
+    "seconds": 0.9434616810176522,
+    "settings": {
+      "Source/make_opts": "DEFAULT_CPP_COMPILER=g++\nMACFLAG=\nSTDLIB=-lstdc++\nSTDLIB_FLAG=\nDEFAULT_F2PY_COMPILER=f2py\nDEFAULT_F_COMPILER=gfortran\nMG5AMC_VERSION=SpecifiedByMG5aMCAtRunTime\nPYTHIA8_PATH=NotInstalled\n#end_of_make_opts_variables\n\nBIASLIBDIR=../../../lib/\nBIASLIBRARY=libbias.$(libext)\n\n# Rest of the makefile\nifeq ($(origin FFLAGS),undefined)\nFFLAGS= -w -fPIC\n#FFLAGS+= -g -fbounds-check -ffpe-trap=invalid,zero,overflow,underflow,denormal -Wall\nendif\n\nFFLAGS += $(GLOBAL_FLAG)\n\n# REMOVE MACFLAG IF NOT ON MAC OR FOR F2PY\nUNAME := $(shell uname -s)\nifdef f2pymode\nMACFLAG=\nelse\nifneq ($(UNAME), Darwin)\nMACFLAG=\nendif\nendif\n\n# set the flag for dynamical library\nifeq ($(UNAME), Darwin)\nDYNLIBFLAG=-dynamiclib\nRPATHFLAG=-install_name @rpath/\nelse\nDYNLIBFLAG=-shared -fPIC\nRPATHFLAG=-Wl,-soname,\nendif\n\nifeq ($(origin CXXFLAGS),undefined)\nCXXFLAGS= -O $(STDLIB_FLAG) $(MACFLAG)\nendif\n\nifeq ($(origin CFLAGS),undefined)\nCFLAGS= -O $(STDLIB_FLAG) $(MACFLAG)\nendif\n\n# Set FC unless it's defined by an environment variable\nifeq ($(origin FC),default)\nFC=$(DEFAULT_F_COMPILER)\nendif\nifeq ($(origin F2PY), undefined)\nF2PY=$(DEFAULT_F2PY_COMPILER)\nendif\n\n# Increase the number of allowed charcters in a Fortran line\nifeq ($(FC), ftn)\nFFLAGS+= -extend-source # for ifort type of compiler\nelse\nVERS=\"$(shell $(FC) --version | grep ifort -i)\"\nifeq ($(VERS), \"\")\nFFLAGS+= -ffixed-line-length-132\nelse\nFFLAGS+= -extend-source # for ifort type of compiler\nendif\nendif\n\n\nUNAME := $(shell uname -s)\nifeq ($(origin LDFLAGS), undefined)\nLDFLAGS=$(STDLIB) $(MACFLAG)\nendif\n\n# Options: dynamic, lhapdf\n# Option dynamic\n\nifeq ($(UNAME), Darwin)\ndylibext=dylib\nelse\ndylibext=so\nendif\n\nifdef dynamic\nifeq ($(UNAME), Darwin)\nlibext=dylib\nFFLAGS+= -fno-common\nLDFLAGS += -bundle\ndefine CREATELIB\n$(FC) -dynamiclib -undefined dynamic_lookup -o $(1) $(2)\nendef\nelse\nlibext=so\nFFLAGS+= -fPIC\nLDFLAGS += -shared\ndefine CREATELIB\n$(FC) $(FFLAGS) $(LDFLAGS) -o $(1) $(2)\nendef\nendif\nelse\nlibext=a\ndefine CREATELIB\n$(AR) cru $(1) $(2)\nranlib $(1)\nendef\nendif\n\n# Option lhapdf\n\nifneq ($(lhapdf),)\nCXXFLAGS += $(shell $(lhapdf) --cppflags)\nalfas_functions=alfas_functions_lhapdf\nalfas_to_clean=alfas_functions.o\nllhapdf+= $(shell $(lhapdf) --cflags --libs) -lLHAPDF\n# check if we need to activate c++11 (for lhapdf6.2)\nifeq ($(origin CXX),default)\nifeq ($lhapdfversion$lhapdfsubversion,62)\nCXX=$(DEFAULT_CPP_COMPILER) -std=c++11\nelse\nCXX=$(DEFAULT_CPP_COMPILER)\nendif\nendif\nelse\nalfas_functions=alfas_functions\nalfas_to_clean=alfas_functions_lhapdf.o\nllhapdf=\nendif\n\n\n# Helper function to check MG5 version\ndefine CHECK_MG5AMC_VERSION\npython -c 'import re; from distutils.version import StrictVersion; print StrictVersion(\"$(MG5AMC_VERSION)\") >= StrictVersion(\"$(1)\") if re.match(\"^[\\d\\.]+$$\",\"$(MG5AMC_VERSION)\") else True;'\nendef",
+      "SubProcesses/MadLoop_makefile_definitions": "LINK_LOOP_LIBS = -L$(LIBDIR) -lcts -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/ -lninja -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/ -lavh_olo -L/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier/ -lcollier\nLOOP_LIBS = $(LIBDIR)libcts.$(libext) /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/libninja.$(libext) /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/libavh_olo.$(libext) /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier/libcollier.$(libext)\nDYLOOP_LIBS = /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/libninja.$(dylibext) /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib/libavh_olo.$(libext) /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier/libcollier.$(dylibext)\nLOOP_INCLUDE = -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/include -I /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/include\nLOOP_PREFIX = P\nDOTO = %.o\nDOTF = %.f\nLINK_MADLOOP_LIB = -L$(LIBDIR) -lMadLoop\nMADLOOP_LIB = $(LIBDIR)libMadLoop.$(libext)\nRPATH_LIBS = -Wl,-rpath,/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib -Wl,-rpath,/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib -Wl,-rpath,/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier \n\n$(MADLOOP_LIB):\n\tcd ..; make -f makefile_MadLoop OLP_static\n"
+    },
+    "compiler": "GNU Fortran (GCC) 15.3.0",
+    "driver_sha256": "22c54bc7368cf1fec68167078575b386c6b662e4ee1e83ae2d5c694b4cc8e90f",
+    "executable_sha256": "eaf401b21c7caf7d243924347769719d342b24a3d8874204a997fdb5084e75a2"
+  },
+  "generation_source_identity": {
+    "status": "reconstructed-from-verified-archive",
+    "revision": "27147b3300f556a75661a886e92bdbe00558ee25",
+    "reason": "The original archive was independently verified unchanged.",
+    "verification": "provenance.json:baseline_source_integrity",
+    "dirty_patch_sha256": null,
+    "identity_sha256": "fe26d772032ce87d96b3b1bdd00327a4b18f3148ee47254bbfc27082eb7862c7"
+  },
+  "original_generated_sources_sha256": "453ae5ecc36a754779aac05b844540dfc1c7ecb3d718e53918ac24b9ad95e855",
+  "generated_sources_sha256": "039c1a02c71fb1498701444dd7bdbacbf1a4a4f38387da849414073722d9eebd",
+  "driver_sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+  "executable_sha256": "51b4c687c35a4f46f34f2ae663fbd1173dc03f9320baeabb1715915df25fc183",
+  "fresh_executable_sha256": "eaf401b21c7caf7d243924347769719d342b24a3d8874204a997fdb5084e75a2",
+  "fresh_driver_sha256": "22c54bc7368cf1fec68167078575b386c6b662e4ee1e83ae2d5c694b4cc8e90f",
+  "parameter_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+  "madloop_card_sha256": "04ad6547f9d0fd5d9ef940b8635ecb7bf19a2f1b49c7978fbb8aa7fe73341ba2",
+  "shared_numerical_settings": {
+    "iregimode": 2,
+    "iregirecy": true,
+    "ctmoderun": -1,
+    "mlstabthres": 1e-09,
+    "nrotations_dp": 0,
+    "nrotations_qp": 0,
+    "improvepspoint": 2,
+    "ctlooplibrary": 2,
+    "ctstabthres": 0.01,
+    "ctmodeinit": 1,
+    "checkcycle": 3,
+    "maxattempts": 10,
+    "zerothres": 1e-09,
+    "osthres": 1e-08,
+    "doublecheckhelicityfilter": true,
+    "writeoutfilters": true,
+    "useloopfilter": false,
+    "helicityfilterlevel": 2,
+    "loopinitstartover": false,
+    "helinitstartover": false,
+    "useqpintegrandforninja": true,
+    "useqpintegrandforcuttools": true,
+    "colliermode": 1,
+    "colliercomputeuvpoles": true,
+    "colliercomputeirpoles": true,
+    "collierrequiredaccuracy": 1e-12,
+    "colliercanoutput": false,
+    "collierglobalcache": -1,
+    "collierusecacheforpoles": false,
+    "collieruseinternalstabilitytest": true,
+    "selected_backend_qp_integrand": true
+  },
+  "cpu": 207,
+  "points_sha256": "e44f1a4e983a320716e05cbd6ca9e07450fdc227a21df7bf665bcd687d72bc68",
+  "measurement_run_id": "final-pins-light-six-case-pairs-v1",
+  "paired_baseline_candidate": true,
+  "benchmark_protocol": "persistent-worker-v1",
+  "protocol_identity_sha256": "383c21122fc089ad9a90eea685d6f0406d43d497df3816b54288b111225431c9",
+  "captured_during_timed_final_traversal": true,
+  "cold_seconds": 0.056143073,
+  "seconds": 0.478389705,
+  "seconds_per_point": 0.000797316175,
+  "rows": [
+    {
+      "point": 1,
+      "order": 0,
+      "status": 216,
+      "coefficients": [
+        0.03317840866442125,
+        0.003849692490169412,
+        -0.0009755765109185821,
+        -0.00015940315743860454
+      ],
+      "accuracy": 1.9170242929991913e-15
+    },
+    {
+      "point": 1,
+      "order": 1,
+      "status": 216,
+      "coefficients": [
+        0.03317840866442125,
+        0.003849692490169412,
+        -0.0009755765109185821,
+        -0.00015940315743860454
+      ],
+      "accuracy": 1.9170242929991913e-15
+    },
+    {
+      "point": 2,
+      "order": 0,
+      "status": 216,
+      "coefficients": [
+        0.007696264705828661,
+        0.0002388823090975854,
+        -3.716727511138942e-05,
+        -3.69761222426549e-05
+      ],
+      "accuracy": 6.861043045954521e-14
+    },
+    {
+      "point": 2,
+      "order": 1,
+      "status": 216,
+      "coefficients": [
+        0.007696264705828661,
+        0.0002388823090975854,
+        -3.716727511138942e-05,
+        -3.69761222426549e-05
+      ],
+      "accuracy": 6.861043045954521e-14
+    },
+    {
+      "point": 3,
+      "order": 0,
+      "status": 216,
+      "coefficients": [
+        0.006048429746206117,
+        0.0005377096804073254,
+        8.654172976999497e-07,
+        -2.9059223691000206e-05
+      ],
+      "accuracy": 3.0163075536600425e-14
+    },
+    {
+      "point": 3,
+      "order": 1,
+      "status": 216,
+      "coefficients": [
+        0.006048429746206117,
+        0.0005377096804073254,
+        8.654172976999497e-07,
+        -2.9059223691000206e-05
+      ],
+      "accuracy": 3.0163075536600425e-14
+    },
+    {
+      "point": 4,
+      "order": 0,
+      "status": 216,
+      "coefficients": [
+        0.008011892839429081,
+        0.00022358724760217387,
+        -4.166104723259069e-05,
+        -3.849253376139943e-05
+      ],
+      "accuracy": 7.114824008785084e-14
+    },
+    {
+      "point": 4,
+      "order": 1,
+      "status": 216,
+      "coefficients": [
+        0.008011892839429081,
+        0.00022358724760217387,
+        -4.166104723259069e-05,
+        -3.849253376139943e-05
+      ],
+      "accuracy": 7.114824008785084e-14
+    },
+    {
+      "point": 5,
+      "order": 0,
+      "status": 216,
+      "coefficients": [
+        0.006938103456795539,
+        0.00029566807301706,
+        -2.5745957339764644e-05,
+        -3.333359380900268e-05
+      ],
+      "accuracy": 3.076103196105346e-14
+    },
+    {
+      "point": 5,
+      "order": 1,
+      "status": 216,
+      "coefficients": [
+        0.006938103456795539,
+        0.00029566807301706,
+        -2.5745957339764644e-05,
+        -3.333359380900268e-05
+      ],
+      "accuracy": 3.076103196105346e-14
+    },
+    {
+      "point": 6,
+      "order": 0,
+      "status": 216,
+      "coefficients": [
+        0.024225513408242572,
+        0.0012344291027783592,
+        -0.0003701942274193801,
+        -0.0001163896486688978
+      ],
+      "accuracy": 5.599729384862039e-14
+    },
+    {
+      "point": 6,
+      "order": 1,
+      "status": 216,
+      "coefficients": [
+        0.024225513408242572,
+        0.0012344291027783592,
+        -0.0003701942274193801,
+        -0.0001163896486688978
+      ],
+      "accuracy": 5.599729384862039e-14
+    },
+    {
+      "point": 7,
+      "order": 0,
+      "status": 216,
+      "coefficients": [
+        0.024639054151170375,
+        0.0012980700546934443,
+        -0.0003833685942566858,
+        -0.0001183764739207942
+      ],
+      "accuracy": 4.0845214862428615e-15
+    },
+    {
+      "point": 7,
+      "order": 1,
+      "status": 216,
+      "coefficients": [
+        0.024639054151170375,
+        0.0012980700546934443,
+        -0.0003833685942566858,
+        -0.0001183764739207942
+      ],
+      "accuracy": 4.0845214862428615e-15
+    },
+    {
+      "point": 8,
+      "order": 0,
+      "status": 216,
+      "coefficients": [
+        0.006376605560742911,
+        0.000376322138608308,
+        -1.5173722146351967e-05,
+        -3.063591959469027e-05
+      ],
+      "accuracy": 8.364934960230414e-15
+    },
+    {
+      "point": 8,
+      "order": 1,
+      "status": 216,
+      "coefficients": [
+        0.006376605560742911,
+        0.000376322138608308,
+        -1.5173722146351967e-05,
+        -3.063591959469027e-05
+      ],
+      "accuracy": 8.364934960230414e-15
+    },
+    {
+      "point": 9,
+      "order": 0,
+      "status": 216,
+      "coefficients": [
+        0.011960473749836014,
+        0.00021129029938615746,
+        -9.948763926885684e-05,
+        -5.7463192387218964e-05
+      ],
+      "accuracy": 8.043306624832157e-14
+    },
+    {
+      "point": 9,
+      "order": 1,
+      "status": 216,
+      "coefficients": [
+        0.011960473749836014,
+        0.00021129029938615746,
+        -9.948763926885684e-05,
+        -5.7463192387218964e-05
+      ],
+      "accuracy": 8.043306624832157e-14
+    },
+    {
+      "point": 10,
+      "order": 0,
+      "status": 216,
+      "coefficients": [
+        0.006916438874603504,
+        0.0009518148498857268,
+        6.17624997840263e-05,
+        -3.322950796085562e-05
+      ],
+      "accuracy": 3.821700801385278e-14
+    },
+    {
+      "point": 10,
+      "order": 1,
+      "status": 216,
+      "coefficients": [
+        0.006916438874603504,
+        0.0009518148498857268,
+        6.17624997840263e-05,
+        -3.322950796085562e-05
+      ],
+      "accuracy": 3.821700801385278e-14
+    }
+  ],
+  "status_counts": {
+    "216": 10
+  },
+  "timed_status_counts": {
+    "216": 600
+  },
+  "answer_dimensions": {
+    "allocated": 1,
+    "loop_orders": 1,
+    "born_orders": 1
+  },
+  "repetition": 3,
+  "loops": 60,
+  "command_wall_seconds": 0.47902007796801627,
+  "worker_sequence": 5,
+  "dispatch_index": 158,
+  "raw_capture": {
+    "timing.dat": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-3/timing.dat",
+      "sha256": "a37dcaeceee7c274b03302bf6fc583893a9361439e0e3e6ad6e0f7e221ac28e0",
+      "bytes": 53
+    },
+    "values.dat": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-3/values.dat",
+      "sha256": "96ef28a2a2e03496bb5a8189d0dfb94e94d047d71f42a1a8dbe36532af2d1f1b",
+      "bytes": 3100
+    },
+    "timed_status.dat": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-3/timed_status.dat",
+      "sha256": "16c69a5fd569065b2e06d45d38c658509e758556d968e37eecfbb28564140f0c",
+      "bytes": 27
+    },
+    "dimensions.dat": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/raw/ew-2-baseline-6/measurement-3/dimensions.dat",
+      "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+      "bytes": 37
+    }
+  },
+  "recorded_utc": "2026-10-21T21:35:58.480190+00:00"
+}

@@ -1,0 +1,40 @@
+{
+  "status": "complete",
+  "returncode": 0,
+  "elapsed_seconds": 250.156731983996,
+  "finished_utc": "2026-10-21T21:37:39.527494+00:00",
+  "interruptions": [],
+  "failure": null,
+  "controller_identity": {
+    "pid": 2314907,
+    "ppid": 2309086,
+    "pgid": 2314907,
+    "start_ticks": 65211049,
+    "state": "R",
+    "affinity": [
+      6,
+      7,
+      207
+    ],
+    "command": "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3 -B /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/light_pair.py collect --spec docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/specification-held-v1.json --handoff docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/launch-v1-root-handoff.json --execute-numerical "
+  },
+  "controller_absent": true,
+  "controller_group_absent": true,
+  "terminal_custody": {
+    "ledger": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/process-ledger.jsonl",
+      "sha256": "6ae22211abc56b2f4014d67efa9f17b611a6d3fea6eb413d9063c180160499ea",
+      "bytes": 23112
+    },
+    "spawned_groups": 36,
+    "all_reaped_exit0_and_absent": true,
+    "status": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/run-status.json",
+      "sha256": "91f39bc9488ae38460d93c19feb7a672f45980b0396689a726f4350026de1f9e",
+      "bytes": 298
+    }
+  },
+  "automatic_retry": false,
+  "in_place_resume": false,
+  "scientific_gate_decision": "Requires the existing pair authority; this is an execution receipt only"
+}

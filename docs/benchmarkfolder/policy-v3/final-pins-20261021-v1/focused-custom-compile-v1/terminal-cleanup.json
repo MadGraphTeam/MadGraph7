@@ -1,0 +1,183 @@
+{
+  "scope": "Compile-only process/group postflight; no signals or numerical calls",
+  "checked_utc": "2026-10-21T21:06:27.613135+00:00",
+  "exact_owned_identities_absent": true,
+  "isolated_owned_groups_absent": true,
+  "identities": [
+    {
+      "pid": 219124,
+      "start_ticks": 65021971,
+      "current_start_ticks": null,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 221376,
+      "start_ticks": 65022659,
+      "current_start_ticks": null,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 221737,
+      "start_ticks": 65022871,
+      "current_start_ticks": null,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 221763,
+      "start_ticks": 65022876,
+      "current_start_ticks": null,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 223753,
+      "start_ticks": 65023499,
+      "current_start_ticks": null,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 223754,
+      "start_ticks": 65023505,
+      "current_start_ticks": null,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 226126,
+      "start_ticks": 65024136,
+      "current_start_ticks": null,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 226127,
+      "start_ticks": 65024142,
+      "current_start_ticks": null,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 228555,
+      "start_ticks": 65024750,
+      "current_start_ticks": null,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 228557,
+      "start_ticks": 65024755,
+      "current_start_ticks": null,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 230930,
+      "start_ticks": 65025345,
+      "current_start_ticks": null,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 230931,
+      "start_ticks": 65025350,
+      "current_start_ticks": null,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 232658,
+      "start_ticks": 65025924,
+      "current_start_ticks": null,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 232659,
+      "start_ticks": 65025938,
+      "current_start_ticks": null,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 219123,
+      "start_ticks": 65021962,
+      "current_start_ticks": null,
+      "isolated_group_absent": true
+    }
+  ],
+  "registered_commands": [
+    [
+      "cp",
+      "-a",
+      "--reflink=auto",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-hh",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-rotation"
+    ],
+    [
+      "cp",
+      "-a",
+      "--reflink=auto",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-hh",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-rebinding"
+    ],
+    [
+      "make",
+      "-j1",
+      "check"
+    ],
+    [
+      "cp",
+      "-a",
+      "--reflink=auto",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-hh",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-rebinding-fresh"
+    ],
+    [
+      "make",
+      "-j1",
+      "check"
+    ],
+    [
+      "cp",
+      "-a",
+      "--reflink=auto",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-hh",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-direction"
+    ],
+    [
+      "make",
+      "-j1",
+      "check"
+    ],
+    [
+      "cp",
+      "-a",
+      "--reflink=auto",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-rebinding",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-rebinding-qp"
+    ],
+    [
+      "make",
+      "-j1",
+      "check"
+    ],
+    [
+      "cp",
+      "-a",
+      "--reflink=auto",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-rebinding-fresh",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-rebinding-fresh-qp"
+    ],
+    [
+      "make",
+      "-j1",
+      "check"
+    ],
+    [
+      "cp",
+      "-a",
+      "--reflink=auto",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-complex",
+      "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-complex-qp"
+    ],
+    [
+      "make",
+      "-j1",
+      "check"
+    ]
+  ],
+  "clone_count": 7,
+  "driver_only_make_count": 6,
+  "native_evaluation_calls": 0,
+  "CPU6_released": true
+}

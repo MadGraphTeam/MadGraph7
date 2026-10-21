@@ -1,0 +1,31 @@
+{
+  "scope": "Root-authorized narrow complex6+8/mixed6/near8 actual collection only; no1/7; no performance acceptance",
+  "command": [
+    "taskset",
+    "-c",
+    "190",
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+    "-u",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-execution-ninja-nrs-v1/collect.py",
+    "--handoff",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-execution-ninja-nrs-v1/root-handoff.json",
+    "--execute-numerical"
+  ],
+  "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+  "source_sha256": "f76a2bdefba5c0e98fea38f19bdd4eb59b0b47033999e441171d3c86f6e170c3",
+  "specification_sha256": "166f512637879d9de9f614171b09062452439b65d2c159efadb0d7e05bf21820",
+  "root_handoff_sha256": "72f7ac4048ede59a95e5b14a555f2923fcf877d123abca89518bfa430bd28eac",
+  "started_utc": "2026-10-21T20:44:51.822500+00:00",
+  "supervisor": {
+    "pid": 3741071,
+    "start_ticks": 64919285,
+    "pgid": 3741067,
+    "session": 3741067
+  },
+  "controller": {
+    "pid": 3741091,
+    "start_ticks": 64919294,
+    "pgid": 3741091,
+    "session": 3741091
+  }
+}

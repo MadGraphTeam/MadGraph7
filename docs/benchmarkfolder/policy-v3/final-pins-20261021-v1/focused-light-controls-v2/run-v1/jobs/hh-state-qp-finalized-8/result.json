@@ -1,0 +1,109 @@
+{
+  "rows": [
+    {
+      "point": 1,
+      "order": 0,
+      "status": 120,
+      "coefficients": [
+        0.0,
+        3.221213306281455e-05,
+        1.2358927305998815e-21,
+        9.4039548065783e-38
+      ],
+      "accuracy": -1.0
+    },
+    {
+      "point": 1,
+      "order": 1,
+      "status": 120,
+      "coefficients": [
+        0.0,
+        3.221213306281455e-05,
+        1.2358927305998815e-21,
+        9.4039548065783e-38
+      ],
+      "accuracy": -1.0
+    },
+    {
+      "point": 2,
+      "order": 0,
+      "status": 120,
+      "coefficients": [
+        0.0,
+        3.277088977816313e-05,
+        8.895731374257122e-22,
+        9.4039548065783e-38
+      ],
+      "accuracy": -1.0
+    },
+    {
+      "point": 2,
+      "order": 1,
+      "status": 120,
+      "coefficients": [
+        0.0,
+        3.277088977816313e-05,
+        8.895731374257122e-22,
+        9.4039548065783e-38
+      ],
+      "accuracy": -1.0
+    }
+  ],
+  "status_counts": {
+    "120": 2
+  },
+  "timed_status_counts": {
+    "120": 2
+  },
+  "answer_dimensions": {
+    "allocated": 1,
+    "loop_orders": 1,
+    "born_orders": 0
+  },
+  "direct_mode": 4,
+  "stability_measurement": false,
+  "automatic_rescue": false,
+  "performance_acceptance_claim": false,
+  "shared_numerical_settings": {
+    "iregimode": 2,
+    "iregirecy": true,
+    "ctmoderun": 4,
+    "mlstabthres": 1e-09,
+    "nrotations_dp": 2,
+    "nrotations_qp": 2,
+    "improvepspoint": 2,
+    "ctlooplibrary": 2,
+    "ctstabthres": 0.01,
+    "ctmodeinit": 1,
+    "checkcycle": 3,
+    "maxattempts": 10,
+    "zerothres": 1e-09,
+    "osthres": 1e-08,
+    "doublecheckhelicityfilter": true,
+    "writeoutfilters": true,
+    "useloopfilter": false,
+    "helicityfilterlevel": 2,
+    "loopinitstartover": false,
+    "helinitstartover": false,
+    "useqpintegrandforninja": true,
+    "useqpintegrandforcuttools": true,
+    "colliermode": 1,
+    "colliercomputeuvpoles": true,
+    "colliercomputeirpoles": true,
+    "collierrequiredaccuracy": 1e-12,
+    "colliercanoutput": false,
+    "collierglobalcache": -1,
+    "collierusecacheforpoles": false,
+    "collieruseinternalstabilitytest": true,
+    "selected_backend_qp_integrand": true
+  },
+  "label": "hh-state-qp-finalized-8",
+  "variant": "control-rebinding-fresh-qp",
+  "backend": 8,
+  "mode": 4,
+  "points_sha256": "4e48c38cf3d5def08caaaf8ba070d3c12a21f67c25e9a2f4fa3bdc1647063261",
+  "parameter_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+  "executable_sha256": "670e668bd04d5a7ea5466b2d70f7deaa7a19e5f13a734213a5b21db6b77dc076",
+  "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+  "process_wall_seconds": 15.841050037066452
+}

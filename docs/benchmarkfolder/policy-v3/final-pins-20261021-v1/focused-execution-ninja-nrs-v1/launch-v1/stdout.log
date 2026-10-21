@@ -1,0 +1,18 @@
+complex started
+control-complex candidate 6 ready 0.0008557731
+control-complex candidate 8 ready 0.0009260614000000001
+control-complex candidate 6 0 0.0008678882000000001
+control-complex candidate 8 0 0.0009479265
+control-complex candidate 8 1 0.0009123734
+control-complex candidate 6 1 0.0008497072
+complex passed
+mixed-ninja started
+control-mixed candidate 6 ready 0.0033318273000000004
+control-mixed candidate 6 0 0.0033274862000000002
+control-mixed candidate 6 1 0.0033378733
+mixed-ninja passed
+near-singular-nrs started
+control-forced-qp candidate 8 ready 0.8836837339000001
+control-forced-qp candidate 8 0 0.9002819421
+control-forced-qp candidate 8 1 0.8927443473000001
+near-singular-nrs passed

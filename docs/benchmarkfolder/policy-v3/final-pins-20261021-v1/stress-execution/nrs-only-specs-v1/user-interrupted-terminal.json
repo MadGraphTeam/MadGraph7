@@ -1,0 +1,114 @@
+{
+  "schema": "stress8-user-interrupted-terminal-v1",
+  "status": "user-interrupted; heavy test sequence cancelled",
+  "recorded_utc": "2026-10-21T21:06:26.033661+00:00",
+  "root_authorized_stop": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-execution/nrs-only-specs-v1/user-lightweight-stop-request.json",
+    "sha256": "cfc66e718b6c938b186eb1ec9ddd5170860051d3b75f46aa7cbfd7ba4d009f97",
+    "bytes": 682
+  },
+  "controller_launch": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-execution/nrs-only-specs-v1/controller-ordinary-launch.json",
+    "sha256": "51721edee041c2e21a65eb9cabfb83b36755e9167a859d5ac6c0286af95d351e",
+    "bytes": 2093
+  },
+  "controller_session": 29200,
+  "controller_exit_code": 1,
+  "run_status_unchanged": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-nrs8-v1/ordinary/run-status.json",
+    "sha256": "02cb9504da04559d5470b2469d22ba38d6c6d9497bbf177cb1fb17c96cedbfc8",
+    "bytes": 296
+  },
+  "owned_process_ledger": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-nrs8-v1/ordinary/process-ledger.jsonl",
+    "sha256": "fefa823aed0edd2df3e742b0e91a70d05c72ccf1e14f09192907e50040cdd6a7",
+    "bytes": 2073
+  },
+  "owned_spawned_groups": 3,
+  "owned_reaped_groups": 3,
+  "child_returncodes": {
+    "4047098": 0,
+    "4047351": 0,
+    "4083861": -15
+  },
+  "identity_and_group_absence": [
+    {
+      "pid": 4044952,
+      "pgid": 4044952,
+      "start_ticks": 64971119,
+      "proc_identity_absent": true,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 4047098,
+      "pgid": 4047098,
+      "start_ticks": 64971561,
+      "proc_identity_absent": true,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 4047351,
+      "pgid": 4047351,
+      "start_ticks": 64971621,
+      "proc_identity_absent": true,
+      "isolated_group_absent": true
+    },
+    {
+      "pid": 4083861,
+      "pgid": 4083861,
+      "start_ticks": 64976864,
+      "proc_identity_absent": true,
+      "isolated_group_absent": true
+    }
+  ],
+  "live_owned_group_members": [],
+  "controller_stdout": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-execution/nrs-only-specs-v1/controller-ordinary.stdout",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "controller_stderr": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-execution/nrs-only-specs-v1/controller-ordinary.stderr",
+    "sha256": "921b392b8308cb679a6a29238d34f0ff321f6713195567d65d55c237890041ff",
+    "bytes": 56
+  },
+  "worker_log": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-nrs8-v1/ordinary/logs/worker-stress-qcd-4-gg-ttgg-candidate-8.log",
+    "sha256": "189863d3f5aa4de4d1c0c2ae44958be8a24fed2003490acc49b8ff7cffea3591",
+    "bytes": 5084
+  },
+  "partial_raw_presence_and_snapshot": {
+    "timing.dat": {
+      "present": false
+    },
+    "values.dat": {
+      "present": false
+    },
+    "timed_status.dat": {
+      "present": false
+    },
+    "dimensions.dat": {
+      "present": true,
+      "original": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/stress-nrs8-v1/ordinary/workers/stress-qcd-4-gg-ttgg-candidate-8/outputs/candidate/stress-qcd-4-gg-ttgg/SubProcesses/P0_gg_ttxgg/dimensions.dat",
+        "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+        "bytes": 37
+      },
+      "snapshot": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/stress-nrs8-v1/ordinary/interrupted-raw/dimensions.dat",
+        "sha256": "ae1c64c4ff538fae3af577b4d163481cac69b03cb578b50ead30ed4f6f488a98",
+        "bytes": 37
+      }
+    }
+  },
+  "accepted_calibrations": 0,
+  "accepted_diagnostic_traversals": 0,
+  "completed_cases": [],
+  "numerical_phase_at_interruption": "not established by retained worker protocol; no accepted calibration",
+  "rotation_launched": false,
+  "scale_launched": false,
+  "automatic_retry": false,
+  "MP190_explicitly_released": true,
+  "science_or_performance_pass_claim": false,
+  "preservation": "All existing public report, raw, source/build, input, private worker tree and logs remain in place; dimensions snapshot copied without deleting originals."
+}

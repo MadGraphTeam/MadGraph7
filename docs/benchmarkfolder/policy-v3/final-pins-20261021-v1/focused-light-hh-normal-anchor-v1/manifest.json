@@ -1,0 +1,21 @@
+{
+  "scope": "Read-only first-two unchanged-state HH normal/explicitQP anchor; no new samples or timing authority",
+  "files": {
+    "compare-attempt-1.py": {
+      "sha256": "fab417993cfe482c34ed7f8efbad8525c1923474eddaec1200165068dc66f467",
+      "bytes": 5121
+    },
+    "compare.py": {
+      "sha256": "c380a7157028b84ae59dfb28c9337b9edc5d2763f728d3090684b20682f02e19",
+      "bytes": 5132
+    },
+    "comparison.json": {
+      "sha256": "4873f62e81c63d68a1d3b62f3beea24f4f83f5df1d850a350b73727acf934464",
+      "bytes": 6264
+    },
+    "read-only-preparation-note.json": {
+      "sha256": "9477675564ee037b0783616289f6b980579feb3e1110c38b2218375dceb16c3e",
+      "bytes": 406
+    }
+  }
+}

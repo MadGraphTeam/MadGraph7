@@ -1,0 +1,29 @@
+{
+  "start": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/start.json",
+    "sha256": "b51d8701337fea2c8e7161d28fadd59315862227294a2270129a5f11768988e4",
+    "bytes": 210107
+  },
+  "plain_result": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/parity-plain/result.json",
+    "sha256": "510d4edc560e5aaafe95088ba39421f9c3fd6f28751a8b0c7a6dad5a8534c479",
+    "bytes": 100183
+  },
+  "observed_result": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/parity-observed/result.json",
+    "sha256": "c6aea06fc8db0689fe2672c25b3dfe4bcae9df475061ef1981d55552516c44c9",
+    "bytes": 108063
+  },
+  "parity_receipt": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/parity-receipt.json",
+    "sha256": "64102b5a01b423ba0d4bbd2cc44b2400806600717ab74f7ce943158f9cb327ac",
+    "bytes": 1343
+  },
+  "science_result": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/science-observed/result.json",
+    "sha256": "8777440d4fc3b01f132e16630e293dfd898fe07033e30a27c0eb1d3551088407",
+    "bytes": 108060
+  },
+  "full_study_complete": false,
+  "qualification_performed": false
+}

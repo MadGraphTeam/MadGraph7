@@ -1,0 +1,139 @@
+{
+  "schema": "final-light-pair-preparation-stage-manifest-v1",
+  "utc": "2026-10-21T21:26:49.918870+00:00",
+  "scope": "Source/spec/prefix/readiness/software only; no actual numerical/build invocation or oldheavyqueue execution.",
+  "required_files": [
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/README.md",
+      "sha256": "6cbfa944641c9257927ebffc45d9bae7c99633b0ead3abbf71efd8ff69297f7a",
+      "bytes": 3338
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/handoff-template-v1.json",
+      "sha256": "e1142e9c707d648fef5359fd77d4a596b61b7400ee721209c489af6b9bf66be5",
+      "bytes": 297
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/independent-source-review-v1.json",
+      "sha256": "7612477cd3f56e6ff525d4ccfc464926ae9df3491ab1c65b936425cdb81bc585",
+      "bytes": 3047
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/launch-readiness-v1.json",
+      "sha256": "ec32a567bcbccf644539c4a30e939bad2d54ffd23b001ab0813703f58150895b",
+      "bytes": 2243
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/launch.py",
+      "sha256": "492cdc6725883c4b76da7ded5df48fb35254465009872de08d125e8ab53d5b03",
+      "bytes": 3323
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/light_pair.py",
+      "sha256": "eff3d2752da6bcb13598b3619d36382c1270e5435117abe4f4462691e223630b",
+      "bytes": 33451
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/points/ew-1.dat",
+      "sha256": "ae9eb5d2d251a04c5f4c394769fa43d9c6eb7d29b3ee25cc0097a416c08645a3",
+      "bytes": 2932
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/points/ew-2.dat",
+      "sha256": "e44f1a4e983a320716e05cbd6ca9e07450fdc227a21df7bf665bcd687d72bc68",
+      "bytes": 3883
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/points/qcd-1.dat",
+      "sha256": "bcb99bd9efe5d65e4d6af755fbd0498fad33cdb3a70da6827598af78b22a19a0",
+      "bytes": 2916
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/points/qcd-2.dat",
+      "sha256": "7a0a99ff0ecec3aac2022bb33146cf0ba9ba73fde7fb1e535da527daff5f4386",
+      "bytes": 3883
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/points/supplement-gg-h.dat",
+      "sha256": "bccf515472fc9e4526ace2243c2a65afdc4fc040b85d9c88eced34bbe7e5b6ba",
+      "bytes": 2937
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/points/supplement-gg-hh.dat",
+      "sha256": "a1fb9b0af7a351bf383a0ab5302f0be46f8053c1da33941e291fc5a0e2ec02b4",
+      "bytes": 3883
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/preparation-readiness-v1.json",
+      "sha256": "6661467d16cd7ea5b5a510b8920156695dddd6c8702d92a23a978b2eb14f062e",
+      "bytes": 5097
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/scope-amendment-v1.json",
+      "sha256": "e96a906223637de71b083f0265fb67a9456c78a5080ac9a365f195ac9c7e82ea",
+      "bytes": 2618
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/specification-held-v1.json",
+      "sha256": "336edcaf69d8af21dbd84df1c6020ad98f0e8a5efbf0b6c1c07b2835af1a0172",
+      "bytes": 3119543
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing-software-proof-v1/README.md",
+      "sha256": "fed7df511fdd326eef57d90c1cccc7798b9d8a38d1e6278529bef73487d0b366",
+      "bytes": 1500
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing-software-proof-v1/manifest.json",
+      "sha256": "41a210a7727ece32561f2c8be0e0f472fbccac7462e4f959c46b809f80089bb6",
+      "bytes": 1411
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing-software-proof-v1/preparation.json",
+      "sha256": "94fef6fdda22b098ac732ac1597614fe12292e02dda7b5ba90c9433a556f2916",
+      "bytes": 1316
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing-software-proof-v1/result.json",
+      "sha256": "e1e644f00efa81ec6d0ee43492a4ac010d1661f3ea743294aca3241e866dd9a4",
+      "bytes": 1635
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing-software-proof-v1/sources/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/light_pair.py",
+      "sha256": "eff3d2752da6bcb13598b3619d36382c1270e5435117abe4f4462691e223630b",
+      "bytes": 33451
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing-software-proof-v1/sources/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/loop-execution/loop_pair.py",
+      "sha256": "7bec5833258c4ba6a57e51236aef865e71fd0abe8f41e24f83f5250474a47953",
+      "bytes": 29090
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing-software-proof-v1/sources/tests/unit_tests/loop/test_ninjars_light_pair.py",
+      "sha256": "92b424ba31b87ce831bf23d451534b9c3c72ff52159fc6c79b0e985c886be834",
+      "bytes": 26722
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing-software-proof-v1/tests.log",
+      "sha256": "6acc82b37de4606579be617bb46ce1a5305bebefd630dc8ec7b241315216d511",
+      "bytes": 4328
+    },
+    {
+      "path": "tests/unit_tests/loop/test_ninjars_light_pair.py",
+      "sha256": "92b424ba31b87ce831bf23d451534b9c3c72ff52159fc6c79b0e985c886be834",
+      "bytes": 26722
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/timing-launch/loop-first-sequence-v1.json",
+      "sha256": "1397476974762f25fc8bb60b79d91a0ba37a41e79ea38dfa22f4ac254c66dbd9",
+      "bytes": 8851
+    }
+  ],
+  "files": 25,
+  "total_bytes": 3328417,
+  "stage_this_manifest_itself": true,
+  "all_files_UTF8": true,
+  "source_guard_and_source_identity_changes": false,
+  "actual_timing_pairs": 0,
+  "historical_only_scope_dependency": "The already-written retired loop-first recipe is retained only because scope-amendment-v1 binds its exact bytes; it must never be executed."
+}

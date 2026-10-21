@@ -1,0 +1,338 @@
+{
+  "status": "HELD-source-recipe-not-executable",
+  "native_calls": 0,
+  "build_calls": 0,
+  "candidate_cohort": {
+    "numerical_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+    "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+    "generator_identity_sha256": "77b16df0251af4104a2c541bab913c11f4e67496a290495ce1a1c5fc526dfe3c",
+    "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+    "archive_sha256": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c"
+  },
+  "parents": {
+    "control-gg-hh": {
+      "output": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-hh",
+      "definition": {
+        "id": "control-gg-hh",
+        "model": "loop_sm",
+        "process": "g g > h h [sqrvirt=QCD]",
+        "nfinal": 2
+      },
+      "dimensions": [
+        1,
+        1,
+        0
+      ],
+      "param_card": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-hh/Cards/param_card.dat",
+        "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+        "bytes": 2471
+      },
+      "generated_sources_sha256": "d70826df5f0a353c4962a3cf58c5df18697d002ed1fcefa101f72411bb509a00",
+      "executable_sha256": "c832a8bd8416a941adfee7b9a654f2ee2f62d17e0525b0804fba4e4d830fcd7a",
+      "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "generation": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-hh/generation.json",
+        "sha256": "790783e658cb9382234b9b0e58a3da7a796bfcc7c87bd862eb3617ef428a3826",
+        "bytes": 171447
+      },
+      "compilation": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-hh/compilation.json",
+        "sha256": "27b239475a092898100c1aa9835814f4a6f35add8351bcfa3b6488683671b2b6",
+        "bytes": 177255
+      },
+      "compiled_sources": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-gg-hh/compiled-sources.json",
+        "sha256": "3761a53a10a6a0699e5f63abecf78746e12a9970c03cfe2f74c297018f95425c",
+        "bytes": 16318
+      }
+    },
+    "control-complex": {
+      "output": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-complex",
+      "definition": {
+        "id": "control-complex",
+        "model": "loop_qcd_qed_sm_Gmu",
+        "process": "e+ e- > mu+ mu- [virt=QED]",
+        "nfinal": 2,
+        "complex_mass_scheme": true
+      },
+      "dimensions": [
+        1,
+        1,
+        1
+      ],
+      "param_card": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-complex/Cards/param_card.dat",
+        "sha256": "1511223edb8e5e1a5ad12baee88c013f94a32161491e6889b05a35e022c9eaa4",
+        "bytes": 4396
+      },
+      "generated_sources_sha256": "3896a63987c1f79d26e2fb8219b90a50b9bc8c8f64364c3497c054e88aaede84",
+      "executable_sha256": "337341efff72f69953f9ed5c46cd7cca07f9c3223e81e9938117504e8f90fc53",
+      "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "generation": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-complex/generation.json",
+        "sha256": "285eabe69ebd99bb67e5bc7d0c772929b197c7ddceae8db5e062c132f009b597",
+        "bytes": 171447
+      },
+      "compilation": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-complex/compilation.json",
+        "sha256": "3f0037a8d5cfae896122bdad284d262674cd9c4f5766c06c550e79ea07be9697",
+        "bytes": 177253
+      },
+      "compiled_sources": {
+        "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/controls-generation/outputs/candidate/control-complex/compiled-sources.json",
+        "sha256": "1600cc1d494168c6acf03fe926162907b0f2d376fdef2f77578d9b77212bac15",
+        "bytes": 40557
+      }
+    }
+  },
+  "corrected_state_helper": {
+    "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-both-precision/controls_driver.py",
+    "sha256": "93e41b821058e89c04d01f72070406ede09a55cb37021b5995cb27635897ff9c",
+    "bytes": 18486
+  },
+  "generic_retained_driver": {
+    "path": "tools/ninjars_benchmark_driver.f",
+    "sha256": "7fde7bd50af7604424bdeab028616cb6c861251fbe748c0748dfe7be17a3fee4",
+    "bytes": 4205
+  },
+  "clone_and_ordinary_api": {
+    "path": "tools/ninjars_benchmark_references_v2.py",
+    "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c",
+    "bytes": 18761
+  },
+  "existing_variant_source_pattern": {
+    "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/execute.py",
+    "sha256": "981f02419a931d34c6ba3afaeb5de5aeed8c59ae685a62f65a77777f44146f41",
+    "bytes": 17725
+  },
+  "existing_direct_mode_pattern": {
+    "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/execute.py",
+    "sha256": "afb498db54e663be6bb131e511a797760de070d915fd6f2aa6eff2df5c1e60fd",
+    "bytes": 12274
+  },
+  "fixed_points": {
+    "control-gg-hh": {
+      "path": "docs/benchmarkfolder/points/control-gg-hh.dat",
+      "sha256": "a1fb9b0af7a351bf383a0ab5302f0be46f8053c1da33941e291fc5a0e2ec02b4",
+      "bytes": 3883
+    },
+    "control-rotation": {
+      "path": "docs/benchmarkfolder/points/control-rotation.dat",
+      "sha256": "f04af45ad1116c3b4560bd9de79809b824a6d408de36084b30048a1280d4f2cc",
+      "bytes": 3893
+    },
+    "control-rebinding": {
+      "path": "docs/benchmarkfolder/points/control-rebinding.dat",
+      "sha256": "1344798666e43bca9cfcae39023834c8d76962ca8f9db5259acc76052bd1531d",
+      "bytes": 3883
+    },
+    "control-rebinding-fresh": {
+      "path": "docs/benchmarkfolder/points/control-rebinding-fresh.dat",
+      "sha256": "1344798666e43bca9cfcae39023834c8d76962ca8f9db5259acc76052bd1531d",
+      "bytes": 3883
+    },
+    "control-complex": {
+      "path": "docs/benchmarkfolder/points/control-complex.dat",
+      "sha256": "81d6dd8e303246ef120dd4156760ab6fb1a0347d56624b691cc43091d63b5749",
+      "bytes": 3883
+    }
+  },
+  "execution_namespace_proposal": {
+    "work": ".benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-ninja-nrs-v1",
+    "report": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-custom-ninja-nrs-v1"
+  },
+  "targets": [
+    {
+      "family": "rotation",
+      "parent": "control-gg-hh",
+      "points": "control-rotation",
+      "backends": [
+        6,
+        8
+      ],
+      "mode": "normal rescue-enabled",
+      "force_stability_check": true,
+      "driver": "Unchanged generic retained benchmark driver; only fixed point stream differs",
+      "comparison": "Cross-backend all Born/Laurent/split rows, then each backend against future accepted HH100 first10 ordinary anchor"
+    },
+    {
+      "family": "mass-scale-rebinding-ordinary",
+      "parent": "control-gg-hh",
+      "points": "control-rebinding",
+      "backends": [
+        6,
+        8
+      ],
+      "variant": "retain contexts",
+      "force_stability_check": true,
+      "driver": "Exact corrected93e41b8 build_rebinding_driver transformation covering all4 calls"
+    },
+    {
+      "family": "mass-scale-rebinding-finalized-ordinary",
+      "parent": "control-gg-hh",
+      "points": "control-rebinding-fresh",
+      "backends": [
+        8
+      ],
+      "variant": "NINJARS_FINALIZE before every evaluation",
+      "force_stability_check": true,
+      "driver": "Same corrected state driver, only documented NRS finalization insertion; not a fresh Ninja6 context"
+    },
+    {
+      "family": "mass-scale-rebinding-qp",
+      "parent": "control-gg-hh",
+      "points": "control-rebinding",
+      "backends": [
+        6,
+        8
+      ],
+      "variant": "retain contexts",
+      "mode": 4,
+      "force_stability_check": false,
+      "expected_status": 120,
+      "expected_accuracy": -1
+    },
+    {
+      "family": "mass-scale-rebinding-finalized-qp",
+      "parent": "control-gg-hh",
+      "points": "control-rebinding-fresh",
+      "backends": [
+        8
+      ],
+      "variant": "NINJARS_FINALIZE before every evaluation",
+      "mode": 4,
+      "force_stability_check": false,
+      "expected_status": 120,
+      "expected_accuracy": -1
+    },
+    {
+      "family": "direction",
+      "parent": "control-gg-hh",
+      "points": "control-gg-hh",
+      "backends": [
+        6,
+        8
+      ],
+      "modes": [
+        1,
+        2,
+        4,
+        5
+      ],
+      "force_stability_check": false,
+      "expected_status_by_mode": {
+        "1": 110,
+        "2": 110,
+        "4": 120,
+        "5": 120
+      },
+      "expected_accuracy": -1,
+      "comparison": "Forward/reverse in DP and QP; DP vs QP; then normal accepted HH first10 anchor"
+    },
+    {
+      "family": "complex-qp",
+      "parent": "control-complex",
+      "points": "control-complex",
+      "backends": [
+        6,
+        8
+      ],
+      "mode": 4,
+      "force_stability_check": false,
+      "expected_status": 120,
+      "expected_accuracy": -1,
+      "comparison": "Same finite-width physical card and complex scheme, new normal complex6/8 batch and explicitQP6vs8"
+    }
+  ],
+  "settings": {
+    "config": {
+      "path": "docs/benchmarkfolder/policy-v2/controls.json",
+      "sha256": "e623e89f58e048efdc9b6f79075cb12b61fb5c8d3abc432b8e37f9cbc51602cb",
+      "bytes": 1164
+    },
+    "MLStabThres": 1e-09,
+    "COLLIERRequiredAccuracy": 1e-12,
+    "full_poles": true,
+    "selected_qp_integrand_true_for_both_tools": true,
+    "CTModeInit": 1,
+    "CTModeRun": "normal except named direct modes",
+    "one_backend_per_card": true
+  },
+  "state_schedule": {
+    "top_mass_factors": [
+      1,
+      1.125,
+      0.875,
+      1,
+      1.125,
+      0.875,
+      1,
+      1.125,
+      0.875,
+      1
+    ],
+    "mu_r_factors": [
+      1,
+      2,
+      0.5,
+      1,
+      0.5,
+      2,
+      1,
+      2,
+      0.5,
+      1
+    ],
+    "all4_sites_reset_mu_r_from_incoming_momenta": true,
+    "assign_DP_and_MP_before_COUP": true,
+    "restoration_equalities": [
+      [
+        1,
+        4,
+        7,
+        10
+      ],
+      [
+        2,
+        8
+      ],
+      [
+        3,
+        9
+      ]
+    ],
+    "require_nontrivial_finite_response": true
+  },
+  "direct_parser_contract": [
+    "Bind dimensions from actual final parent (HH1/1/0, complex1/1/1); do not hardcodeHH shape forcomplex.",
+    "For10 points require exact point/order keys (p,o), p1..10, o0..NSO; all coefficients finite.",
+    "Require exactly110/-1 for directDP1/2 or120/-1 for directQP4/5 and exact timed histogram of10 evaluations.",
+    "Codes110/120 carry no backend identity: bind sole selector6/8, own trueQP integrand flag, source dispatch/fullruntime/executable/effectivecards.",
+    "Do not modify ordinary validator or classify direct120 as rescue/stability/performance acceptance."
+  ],
+  "clone_build_contract": [
+    "Use adapter.clone_output with internal symlink rewriting and reviewed writable_clone checks; no top symlink aliases.",
+    "Only private clones can be configured/relinked; preserve final parents pre/post source/card/runtime/exe identities.",
+    "Derive actual process prefix from generated metadata; replace exactly one FORCE_STABILITY_CHECK TRUE toFALSE in direct drivers.",
+    "Never use generic persistent workers for customdrivers: they replace check_sa.f; reuse retained fresh-driver bench.measure pattern for normal variants, standalone direct parser for110/120.",
+    "Record every driver/source/card/point/library/runtime/executable hash, all raw outputs and owned PID/start/PGID lifecycle; no auto-retries."
+  ],
+  "pending_normal_HH_anchor": {
+    "status": "Not available; HH100 remainsheld",
+    "authority": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/loop-execution/specification-pair-held-v2.json",
+      "sha256": "56cee094b28452ba481c998410d6095b0f46d4737f6b200dea31587cf08c2d47",
+      "bytes": 382138
+    },
+    "future_points": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/loop-execution/runs/loop-pair-v2/points/supplement-gg-hh.dat",
+    "selection": "Require exact serialized first10 event bytes equal control-gg-hh.dat after count header replacement, then bind complete source row record and selected total/split rows. No claim before actual run exists.",
+    "math_scope": "Normal full helicity/color sums; not random all-minus stability scope."
+  },
+  "cost": {
+    "status": "Unmeasured final custom controls; no numerical calls",
+    "historical_nonqualifying_context": "Old directQP HH10 NRS retained/finalized timed traversals15.97s/22.56s, with cold17.26s/23.65s; old800runtime, not final performance or correctness authority.",
+    "planning_only": "About18 named custom target/mode traversals plus private relinks; budget5-20min is only an initial scheduling estimate, complexQP current cost unknown; retain actual durations/failures and stop for explicit root decision if a new difficulty appears."
+  },
+  "activation": "Separate root build/MP handoff after source adaptation and independent audit; immediate ordinary batch has its own exact source/spec/root authorization."
+}

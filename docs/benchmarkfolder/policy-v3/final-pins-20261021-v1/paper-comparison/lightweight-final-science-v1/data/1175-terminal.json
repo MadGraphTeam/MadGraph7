@@ -1,0 +1,2040 @@
+{
+  "schema": "approved-lightweight14-full100-raw-terminal-v1",
+  "status": "RAW_COLLECTION_PASS",
+  "cpu": 12,
+  "case_count": 7,
+  "tool_jobs": 14,
+  "new_evaluation_processes": 14,
+  "results": {
+    "ew-1-6": {
+      "case": "ew-1",
+      "tool": 6,
+      "proof": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/science-proof.json",
+        "sha256": "4b16876de7322b966b81d66b7b2af84cf8bf627564ce069414ba9eaecc8b6a6f",
+        "bytes": 1334
+      },
+      "result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/science-observed/result.json",
+        "sha256": "eef0c9a4f3a204115dfacdd0d8cbfe78f00216960504b4cb8506f16c273b3d7e",
+        "bytes": 58815
+      },
+      "launch": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/science-launch.json",
+        "sha256": "97c24f06e9cfc8ce91103571245510fbf329229f02d1b1eded5b127edeb0e81c",
+        "bytes": 600
+      },
+      "controller": {
+        "pid": 1268132,
+        "start_ticks": 65041656,
+        "pgid": 1268019,
+        "cpu_affinity": [
+          12
+        ]
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/science-observed/observations.raw",
+        "sha256": "834637b0f35a8520ecd06d933f89d074ded193c7588c4c31af6bb83af474c8c2",
+        "bytes": 254040
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/science-observed/guard.log",
+        "sha256": "f581ec6d30a6ef6c9c7c0b573518a64a4babdd4578897131e0119df51eac5327",
+        "bytes": 142
+      },
+      "guard_observations": {
+        "no_numerical_nrs_entry": true
+      },
+      "warm_diagnostics": {
+        "schema": "dp-warm-diagnostics-v1",
+        "iterations": 104,
+        "counts": {
+          "reductions": 888,
+          "rejected": 0,
+          "nonfinite_reductions": 0,
+          "qp_reductions": 0,
+          "backend_1": 0,
+          "backend_2": 0,
+          "backend_3": 0,
+          "backend_4": 0,
+          "backend_5": 0,
+          "backend_6": 888,
+          "backend_7": 0,
+          "backend_8": 0,
+          "observer_fpe_dp": 0,
+          "observer_fpe_qp": 0,
+          "compensated_dp": 0
+        },
+        "flags": {
+          "fpe_dp": 0,
+          "fpe_qp": 0,
+          "nrs_retry_mode": 0,
+          "nrs_retry_used": 0
+        },
+        "initialization_safe": true,
+        "unsafe_reasons": [],
+        "score_denominator_contribution": 0,
+        "limitations": "No warm ANS read; observer counters unavailable in plain variant"
+      },
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "observation_counter_sums": [
+        1800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nonfinite_returned_numbers": 0,
+      "WARM": [
+        "104",
+        "3.1366395999999998E-002"
+      ],
+      "DONE": [
+        "300",
+        "6.1657587000000000E-002"
+      ],
+      "whole_process_seconds_diagnostic_only": 0.11623084102757275,
+      "owned_spawn": {
+        "event": "spawn",
+        "pid": 1269388,
+        "pgid": 1269388,
+        "start_ticks": 65042032,
+        "command": [
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/outputs/observed/SubProcesses/P0_udx_wp/check",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-1.dat",
+          "6",
+          "-1",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/science-observed/observations.raw"
+        ],
+        "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/outputs/observed/SubProcesses/P0_udx_wp"
+      },
+      "owned_reap": {
+        "event": "reaped",
+        "pid": 1269388,
+        "pgid": 1269388,
+        "start_ticks": 65042032,
+        "reaped": true,
+        "returncode": 0
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-6/process-ledger.jsonl",
+        "sha256": "4e9ee5e025ba996e3cb10c162a7723c58923d943f648ecdbed9d905c0cc72ebd",
+        "bytes": 6011
+      }
+    },
+    "ew-1-8": {
+      "case": "ew-1",
+      "tool": 8,
+      "proof": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/science-proof.json",
+        "sha256": "df4e1f38e1875ddbbe5aa16265770c46a8ba258a6c14de4a50b1324d4149b6a8",
+        "bytes": 1334
+      },
+      "result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/science-observed/result.json",
+        "sha256": "ee079031ba37dec2df73f6abe9976ce50bf2727287a68f5be6918c740036e11b",
+        "bytes": 59173
+      },
+      "launch": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/science-launch.json",
+        "sha256": "4a1b3afa099d45630256847b05e24c38abbb69025c82a534a7ac271a3cbeea15",
+        "bytes": 600
+      },
+      "controller": {
+        "pid": 1269767,
+        "start_ticks": 65042145,
+        "pgid": 1268019,
+        "cpu_affinity": [
+          12
+        ]
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/science-observed/observations.raw",
+        "sha256": "65d11970b59020f952de0696968b8fe56e669b8237676428977d77eb24b04a98",
+        "bytes": 254040
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/science-observed/guard.log",
+        "sha256": "3edc534213389dec4f66af9c6bdd33c3c7980189d0d205a3e0b465335febdd52",
+        "bytes": 219598
+      },
+      "guard_observations": {
+        "boundary_counts": {
+          "create": 1,
+          "dp": 2688,
+          "compensated": 0,
+          "mp": 0,
+          "destroy": 1,
+          "nonnull": 1
+        },
+        "native_per_call_status_counts": {
+          "0": 2688
+        },
+        "lifecycle_status_counts": {
+          "create:0": 1,
+          "destroy:0": 1
+        },
+        "events": 2692,
+        "no_compensated_or_mp_entry": true,
+        "native_error_returns_retained": 0
+      },
+      "warm_diagnostics": {
+        "schema": "dp-warm-diagnostics-v1",
+        "iterations": 104,
+        "counts": {
+          "reductions": 888,
+          "rejected": 0,
+          "nonfinite_reductions": 0,
+          "qp_reductions": 0,
+          "backend_1": 0,
+          "backend_2": 0,
+          "backend_3": 0,
+          "backend_4": 0,
+          "backend_5": 0,
+          "backend_6": 0,
+          "backend_7": 0,
+          "backend_8": 888,
+          "observer_fpe_dp": 0,
+          "observer_fpe_qp": 0,
+          "compensated_dp": 0
+        },
+        "flags": {
+          "fpe_dp": 0,
+          "fpe_qp": 0,
+          "nrs_retry_mode": 0,
+          "nrs_retry_used": 0
+        },
+        "initialization_safe": true,
+        "unsafe_reasons": [],
+        "score_denominator_contribution": 0,
+        "limitations": "No warm ANS read; observer counters unavailable in plain variant"
+      },
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "observation_counter_sums": [
+        1800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nonfinite_returned_numbers": 0,
+      "WARM": [
+        "104",
+        "3.5850069999999998E-002"
+      ],
+      "DONE": [
+        "300",
+        "8.7890756000000000E-002"
+      ],
+      "whole_process_seconds_diagnostic_only": 0.16708604292944074,
+      "owned_spawn": {
+        "event": "spawn",
+        "pid": 1271459,
+        "pgid": 1271459,
+        "start_ticks": 65042441,
+        "command": [
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/outputs/observed/SubProcesses/P0_udx_wp/check",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-1.dat",
+          "8",
+          "-1",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/science-observed/observations.raw"
+        ],
+        "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/outputs/observed/SubProcesses/P0_udx_wp"
+      },
+      "owned_reap": {
+        "event": "reaped",
+        "pid": 1271459,
+        "pgid": 1271459,
+        "start_ticks": 65042441,
+        "reaped": true,
+        "returncode": 0
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-1-8/process-ledger.jsonl",
+        "sha256": "e1b321546f025128f41ed3acaa174188d209c59bbe9ae352658c161014aebb83",
+        "bytes": 6011
+      }
+    },
+    "qcd-2-6": {
+      "case": "qcd-2",
+      "tool": 6,
+      "proof": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/science-proof.json",
+        "sha256": "2557182585b2eac0319d3c9bce3928fe3cc974c348a7be805046acb0921dead8",
+        "bytes": 1339
+      },
+      "result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/science-observed/result.json",
+        "sha256": "2825c04197a47bbd0ed52e9418971de2f8c0b4b052c3241d931fef573cd9ca3d",
+        "bytes": 61929
+      },
+      "launch": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/science-launch.json",
+        "sha256": "93a7ef9e2fa7be9cd1e1ff47410747abc7ae613435697750e75aa747800e1d44",
+        "bytes": 602
+      },
+      "controller": {
+        "pid": 1273479,
+        "start_ticks": 65042561,
+        "pgid": 1268019,
+        "cpu_affinity": [
+          12
+        ]
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/science-observed/observations.raw",
+        "sha256": "3218f1449d149389c8276d3a371d0dcd513e881871bfaeb80452b71b4ffb0392",
+        "bytes": 254042
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/science-observed/guard.log",
+        "sha256": "f581ec6d30a6ef6c9c7c0b573518a64a4babdd4578897131e0119df51eac5327",
+        "bytes": 142
+      },
+      "guard_observations": {
+        "no_numerical_nrs_entry": true
+      },
+      "warm_diagnostics": {
+        "schema": "dp-warm-diagnostics-v1",
+        "iterations": 104,
+        "counts": {
+          "reductions": 4592,
+          "rejected": 0,
+          "nonfinite_reductions": 0,
+          "qp_reductions": 0,
+          "backend_1": 0,
+          "backend_2": 0,
+          "backend_3": 0,
+          "backend_4": 0,
+          "backend_5": 0,
+          "backend_6": 4592,
+          "backend_7": 0,
+          "backend_8": 0,
+          "observer_fpe_dp": 0,
+          "observer_fpe_qp": 0,
+          "compensated_dp": 0
+        },
+        "flags": {
+          "fpe_dp": 0,
+          "fpe_qp": 0,
+          "nrs_retry_mode": 0,
+          "nrs_retry_used": 0
+        },
+        "initialization_safe": true,
+        "unsafe_reasons": [],
+        "score_denominator_contribution": 0,
+        "limitations": "No warm ANS read; observer counters unavailable in plain variant"
+      },
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "observation_counter_sums": [
+        8400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        8400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nonfinite_returned_numbers": 0,
+      "WARM": [
+        "104",
+        "0.14121201600000000"
+      ],
+      "DONE": [
+        "300",
+        "0.33350993299999998"
+      ],
+      "whole_process_seconds_diagnostic_only": 0.5174691020511091,
+      "owned_spawn": {
+        "event": "spawn",
+        "pid": 1274625,
+        "pgid": 1274625,
+        "start_ticks": 65042857,
+        "command": [
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/outputs/observed/SubProcesses/P0_gg_ttx/check",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-2.dat",
+          "6",
+          "-1",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/science-observed/observations.raw"
+        ],
+        "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/outputs/observed/SubProcesses/P0_gg_ttx"
+      },
+      "owned_reap": {
+        "event": "reaped",
+        "pid": 1274625,
+        "pgid": 1274625,
+        "start_ticks": 65042857,
+        "reaped": true,
+        "returncode": 0
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-6/process-ledger.jsonl",
+        "sha256": "d8f03c367aeed0dc87af241ac930ea6840911585caf9db4b6aec05b11e374d29",
+        "bytes": 6029
+      }
+    },
+    "qcd-2-8": {
+      "case": "qcd-2",
+      "tool": 8,
+      "proof": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/science-proof.json",
+        "sha256": "ed784b77afeed8ed301ba41b781c6daebc04efd160ec03cd0057e09231a0066e",
+        "bytes": 1339
+      },
+      "result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/science-observed/result.json",
+        "sha256": "4679e68b2d9def1de80ba00408e58fc56e88eff34885bfae19dcc370017c6507",
+        "bytes": 62291
+      },
+      "launch": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/science-launch.json",
+        "sha256": "ab9a01d337a3381d735a18b4bc7caebed5491561198fc567bd1b7fda648b13d1",
+        "bytes": 602
+      },
+      "controller": {
+        "pid": 1275079,
+        "start_ticks": 65043011,
+        "pgid": 1268019,
+        "cpu_affinity": [
+          12
+        ]
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/science-observed/observations.raw",
+        "sha256": "b85e9f2f621c872f8912b166d27d03dfdcca22c9fa3d2472cd3c205636cd895d",
+        "bytes": 254042
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/science-observed/guard.log",
+        "sha256": "307b35379a606a7dbacdd3f2689ef94e8ef08b016c31bede9da54d2592209b78",
+        "bytes": 1067521
+      },
+      "guard_observations": {
+        "boundary_counts": {
+          "create": 1,
+          "dp": 12992,
+          "compensated": 0,
+          "mp": 0,
+          "destroy": 1,
+          "nonnull": 1
+        },
+        "native_per_call_status_counts": {
+          "0": 12992
+        },
+        "lifecycle_status_counts": {
+          "create:0": 1,
+          "destroy:0": 1
+        },
+        "events": 12996,
+        "no_compensated_or_mp_entry": true,
+        "native_error_returns_retained": 0
+      },
+      "warm_diagnostics": {
+        "schema": "dp-warm-diagnostics-v1",
+        "iterations": 104,
+        "counts": {
+          "reductions": 4592,
+          "rejected": 0,
+          "nonfinite_reductions": 0,
+          "qp_reductions": 0,
+          "backend_1": 0,
+          "backend_2": 0,
+          "backend_3": 0,
+          "backend_4": 0,
+          "backend_5": 0,
+          "backend_6": 0,
+          "backend_7": 0,
+          "backend_8": 4592,
+          "observer_fpe_dp": 0,
+          "observer_fpe_qp": 0,
+          "compensated_dp": 0
+        },
+        "flags": {
+          "fpe_dp": 0,
+          "fpe_qp": 0,
+          "nrs_retry_mode": 0,
+          "nrs_retry_used": 0
+        },
+        "initialization_safe": true,
+        "unsafe_reasons": [],
+        "score_denominator_contribution": 0,
+        "limitations": "No warm ANS read; observer counters unavailable in plain variant"
+      },
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "observation_counter_sums": [
+        8400,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        8400,
+        0,
+        0,
+        0,
+        300,
+        0,
+        0
+      ],
+      "nonfinite_returned_numbers": 0,
+      "WARM": [
+        "104",
+        "0.19954242200000000"
+      ],
+      "DONE": [
+        "300",
+        "0.45537321400000003"
+      ],
+      "whole_process_seconds_diagnostic_only": 0.6680278399726376,
+      "owned_spawn": {
+        "event": "spawn",
+        "pid": 1275552,
+        "pgid": 1275552,
+        "start_ticks": 65043305,
+        "command": [
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/outputs/observed/SubProcesses/P0_gg_ttx/check",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-2.dat",
+          "8",
+          "-1",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/science-observed/observations.raw"
+        ],
+        "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/outputs/observed/SubProcesses/P0_gg_ttx"
+      },
+      "owned_reap": {
+        "event": "reaped",
+        "pid": 1275552,
+        "pgid": 1275552,
+        "start_ticks": 65043305,
+        "reaped": true,
+        "returncode": 0
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-2-8/process-ledger.jsonl",
+        "sha256": "b55daae3458285e3eacadfb6490020ebd1419318f72f2bcd6f7bbb7d285a3808",
+        "bytes": 6029
+      }
+    },
+    "ew-2-6": {
+      "case": "ew-2",
+      "tool": 6,
+      "proof": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/science-proof.json",
+        "sha256": "f26b5b4673b0f55c366208f9389e1ad42f1f8bdef05810174a1877490fdae5cd",
+        "bytes": 1334
+      },
+      "result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/science-observed/result.json",
+        "sha256": "3de63895044915a47d1ebb3141574660af83c20812a9ea5d44dd720437e9a024",
+        "bytes": 79855
+      },
+      "launch": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/science-launch.json",
+        "sha256": "73a439c328b5302960a25296f724746bbd0b8e5d560ff0f7e7183918ea2b0bf5",
+        "bytes": 600
+      },
+      "controller": {
+        "pid": 1275874,
+        "start_ticks": 65043478,
+        "pgid": 1268019,
+        "cpu_affinity": [
+          12
+        ]
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/science-observed/observations.raw",
+        "sha256": "d71a7e7216cd2521e9d2851b073e0bab4b53f74319047b209cb0ce913275cac8",
+        "bytes": 254042
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/science-observed/guard.log",
+        "sha256": "f581ec6d30a6ef6c9c7c0b573518a64a4babdd4578897131e0119df51eac5327",
+        "bytes": 142
+      },
+      "guard_observations": {
+        "no_numerical_nrs_entry": true
+      },
+      "warm_diagnostics": {
+        "schema": "dp-warm-diagnostics-v1",
+        "iterations": 104,
+        "counts": {
+          "reductions": 4264,
+          "rejected": 0,
+          "nonfinite_reductions": 0,
+          "qp_reductions": 0,
+          "backend_1": 0,
+          "backend_2": 0,
+          "backend_3": 0,
+          "backend_4": 0,
+          "backend_5": 0,
+          "backend_6": 4264,
+          "backend_7": 0,
+          "backend_8": 0,
+          "observer_fpe_dp": 0,
+          "observer_fpe_qp": 0,
+          "compensated_dp": 0
+        },
+        "flags": {
+          "fpe_dp": 0,
+          "fpe_qp": 0,
+          "nrs_retry_mode": 0,
+          "nrs_retry_used": 0
+        },
+        "initialization_safe": true,
+        "unsafe_reasons": [],
+        "score_denominator_contribution": 0,
+        "limitations": "No warm ANS read; observer counters unavailable in plain variant"
+      },
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "observation_counter_sums": [
+        7800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        7800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nonfinite_returned_numbers": 0,
+      "WARM": [
+        "104",
+        "9.5243491000000000E-002"
+      ],
+      "DONE": [
+        "300",
+        "0.21676187999999999"
+      ],
+      "whole_process_seconds_diagnostic_only": 0.3675306980730966,
+      "owned_spawn": {
+        "event": "spawn",
+        "pid": 1277606,
+        "pgid": 1277606,
+        "start_ticks": 65043779,
+        "command": [
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/outputs/observed/SubProcesses/P0_epem_mupmum/check",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-2.dat",
+          "6",
+          "-1",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/science-observed/observations.raw"
+        ],
+        "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/outputs/observed/SubProcesses/P0_epem_mupmum"
+      },
+      "owned_reap": {
+        "event": "reaped",
+        "pid": 1277606,
+        "pgid": 1277606,
+        "start_ticks": 65043779,
+        "reaped": true,
+        "returncode": 0
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-6/process-ledger.jsonl",
+        "sha256": "b3d8a99314cdb1de6b66c4c44c3ecc1d757e544990345d64f2d9d3b2c331fd72",
+        "bytes": 6051
+      }
+    },
+    "ew-2-8": {
+      "case": "ew-2",
+      "tool": 8,
+      "proof": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/science-proof.json",
+        "sha256": "0116101323456add31ac68eb3d692fe73b67090f2a6741da7cba5c509f6582a3",
+        "bytes": 1334
+      },
+      "result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/science-observed/result.json",
+        "sha256": "dc4fe63e58b6a71e2ffcb8817618d5f1a6e44571bdf5e8e8de529e6490aa78ac",
+        "bytes": 80216
+      },
+      "launch": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/science-launch.json",
+        "sha256": "d28e23a9f739eea8b91eb2fc693623ff29f1c669448eddf439893e77039333ee",
+        "bytes": 600
+      },
+      "controller": {
+        "pid": 1277856,
+        "start_ticks": 65043919,
+        "pgid": 1268019,
+        "cpu_affinity": [
+          12
+        ]
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/science-observed/observations.raw",
+        "sha256": "819e7bd56899a9b680d0db48ccebd87f4bfd1c7093070f821e0e648e780ab663",
+        "bytes": 254042
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/science-observed/guard.log",
+        "sha256": "9dabf664a0b8c6e19ec35d7886a062e3be3722b5d8493b9bc0655387de42aea5",
+        "bytes": 990497
+      },
+      "guard_observations": {
+        "boundary_counts": {
+          "create": 1,
+          "dp": 12064,
+          "compensated": 0,
+          "mp": 0,
+          "destroy": 1,
+          "nonnull": 1
+        },
+        "native_per_call_status_counts": {
+          "0": 12064
+        },
+        "lifecycle_status_counts": {
+          "create:0": 1,
+          "destroy:0": 1
+        },
+        "events": 12068,
+        "no_compensated_or_mp_entry": true,
+        "native_error_returns_retained": 0
+      },
+      "warm_diagnostics": {
+        "schema": "dp-warm-diagnostics-v1",
+        "iterations": 104,
+        "counts": {
+          "reductions": 4264,
+          "rejected": 0,
+          "nonfinite_reductions": 0,
+          "qp_reductions": 0,
+          "backend_1": 0,
+          "backend_2": 0,
+          "backend_3": 0,
+          "backend_4": 0,
+          "backend_5": 0,
+          "backend_6": 0,
+          "backend_7": 0,
+          "backend_8": 4264,
+          "observer_fpe_dp": 0,
+          "observer_fpe_qp": 0,
+          "compensated_dp": 0
+        },
+        "flags": {
+          "fpe_dp": 0,
+          "fpe_qp": 0,
+          "nrs_retry_mode": 0,
+          "nrs_retry_used": 0
+        },
+        "initialization_safe": true,
+        "unsafe_reasons": [],
+        "score_denominator_contribution": 0,
+        "limitations": "No warm ANS read; observer counters unavailable in plain variant"
+      },
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "observation_counter_sums": [
+        7800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        7800,
+        0,
+        0,
+        0,
+        300,
+        0,
+        0
+      ],
+      "nonfinite_returned_numbers": 0,
+      "WARM": [
+        "104",
+        "0.15693406900000001"
+      ],
+      "DONE": [
+        "300",
+        "0.34214811299999998"
+      ],
+      "whole_process_seconds_diagnostic_only": 0.5176456650951877,
+      "owned_spawn": {
+        "event": "spawn",
+        "pid": 1278944,
+        "pgid": 1278944,
+        "start_ticks": 65044216,
+        "command": [
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/outputs/observed/SubProcesses/P0_epem_mupmum/check",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-2.dat",
+          "8",
+          "-1",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/science-observed/observations.raw"
+        ],
+        "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/outputs/observed/SubProcesses/P0_epem_mupmum"
+      },
+      "owned_reap": {
+        "event": "reaped",
+        "pid": 1278944,
+        "pgid": 1278944,
+        "start_ticks": 65044216,
+        "reaped": true,
+        "returncode": 0
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-2-8/process-ledger.jsonl",
+        "sha256": "058666f2fd0db40691e8347761ff06f62d4cc0f149a7c4f179c8b836a37f7176",
+        "bytes": 6051
+      }
+    },
+    "qcd-3-6": {
+      "case": "qcd-3",
+      "tool": 6,
+      "proof": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/science-proof.json",
+        "sha256": "35ddf77fb4b7424390102eabe2a13db49502ef5576849d013ff56fdefaba797e",
+        "bytes": 1339
+      },
+      "result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/science-observed/result.json",
+        "sha256": "d6270bb7144b47df3f7141424b5bcde246a15c097197e4cc464ddf23fc707e36",
+        "bytes": 71214
+      },
+      "launch": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/science-launch.json",
+        "sha256": "0a29c3a2a898bdf3f83ea4144f3d0ec002a33d996711b3251268161d98bb57ae",
+        "bytes": 602
+      },
+      "controller": {
+        "pid": 1281337,
+        "start_ticks": 65044374,
+        "pgid": 1268019,
+        "cpu_affinity": [
+          12
+        ]
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/science-observed/observations.raw",
+        "sha256": "8345684ef7a022858050154f5307f2678c4bae6c11f842e7fd52ab745a8f4317",
+        "bytes": 254044
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/science-observed/guard.log",
+        "sha256": "f581ec6d30a6ef6c9c7c0b573518a64a4babdd4578897131e0119df51eac5327",
+        "bytes": 142
+      },
+      "guard_observations": {
+        "no_numerical_nrs_entry": true
+      },
+      "warm_diagnostics": {
+        "schema": "dp-warm-diagnostics-v1",
+        "iterations": 104,
+        "counts": {
+          "reductions": 33872,
+          "rejected": 0,
+          "nonfinite_reductions": 0,
+          "qp_reductions": 0,
+          "backend_1": 0,
+          "backend_2": 0,
+          "backend_3": 0,
+          "backend_4": 0,
+          "backend_5": 0,
+          "backend_6": 33872,
+          "backend_7": 0,
+          "backend_8": 0,
+          "observer_fpe_dp": 0,
+          "observer_fpe_qp": 0,
+          "compensated_dp": 0
+        },
+        "flags": {
+          "fpe_dp": 0,
+          "fpe_qp": 0,
+          "nrs_retry_mode": 0,
+          "nrs_retry_used": 0
+        },
+        "initialization_safe": true,
+        "unsafe_reasons": [],
+        "score_denominator_contribution": 0,
+        "limitations": "No warm ANS read; observer counters unavailable in plain variant"
+      },
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "observation_counter_sums": [
+        34800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        34800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nonfinite_returned_numbers": 0,
+      "WARM": [
+        "104",
+        "3.4951332090000000"
+      ],
+      "DONE": [
+        "300",
+        "9.2144480770000001"
+      ],
+      "whole_process_seconds_diagnostic_only": 12.752161188982427,
+      "owned_spawn": {
+        "event": "spawn",
+        "pid": 1282237,
+        "pgid": 1282237,
+        "start_ticks": 65044668,
+        "command": [
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/outputs/observed/SubProcesses/P0_uux_zgg/check",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-3.dat",
+          "6",
+          "-1",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/science-observed/observations.raw"
+        ],
+        "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/outputs/observed/SubProcesses/P0_uux_zgg"
+      },
+      "owned_reap": {
+        "event": "reaped",
+        "pid": 1282237,
+        "pgid": 1282237,
+        "start_ticks": 65044668,
+        "reaped": true,
+        "returncode": 0
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-6/process-ledger.jsonl",
+        "sha256": "565d23cf540f196cdce09cbadd64f07102cdedc35a5f5751e5e8d01d63561d7f",
+        "bytes": 6037
+      }
+    },
+    "qcd-3-8": {
+      "case": "qcd-3",
+      "tool": 8,
+      "proof": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/science-proof.json",
+        "sha256": "851eff9741988328ea5b31c9600afc35b1117ac57d6149089718f45e0945c7c9",
+        "bytes": 1339
+      },
+      "result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/science-observed/result.json",
+        "sha256": "f7c2a9a317f68e8a2fd2b6f6075aee9bb33eec9f2b49f4c5ad587fed8b389246",
+        "bytes": 71576
+      },
+      "launch": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/science-launch.json",
+        "sha256": "139e7cf7ac107db4e6265afa397adfe6285345e05b165bfa488195916f789db2",
+        "bytes": 602
+      },
+      "controller": {
+        "pid": 1288421,
+        "start_ticks": 65046045,
+        "pgid": 1268019,
+        "cpu_affinity": [
+          12
+        ]
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/science-observed/observations.raw",
+        "sha256": "97a51f3769f8244e373c6016b26ce9ca44c278054910c3f4eac295858e3aa5c9",
+        "bytes": 254044
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/science-observed/guard.log",
+        "sha256": "ebd6c1fff250703c4e02d16414f29e2a7c27d5e8f1a8dec5d4896d1819d8e03e",
+        "bytes": 5688961
+      },
+      "guard_observations": {
+        "boundary_counts": {
+          "create": 1,
+          "dp": 68672,
+          "compensated": 0,
+          "mp": 0,
+          "destroy": 1,
+          "nonnull": 1
+        },
+        "native_per_call_status_counts": {
+          "0": 68672
+        },
+        "lifecycle_status_counts": {
+          "create:0": 1,
+          "destroy:0": 1
+        },
+        "events": 68676,
+        "no_compensated_or_mp_entry": true,
+        "native_error_returns_retained": 0
+      },
+      "warm_diagnostics": {
+        "schema": "dp-warm-diagnostics-v1",
+        "iterations": 104,
+        "counts": {
+          "reductions": 33872,
+          "rejected": 0,
+          "nonfinite_reductions": 0,
+          "qp_reductions": 0,
+          "backend_1": 0,
+          "backend_2": 0,
+          "backend_3": 0,
+          "backend_4": 0,
+          "backend_5": 0,
+          "backend_6": 0,
+          "backend_7": 0,
+          "backend_8": 33872,
+          "observer_fpe_dp": 0,
+          "observer_fpe_qp": 0,
+          "compensated_dp": 0
+        },
+        "flags": {
+          "fpe_dp": 0,
+          "fpe_qp": 0,
+          "nrs_retry_mode": 0,
+          "nrs_retry_used": 0
+        },
+        "initialization_safe": true,
+        "unsafe_reasons": [],
+        "score_denominator_contribution": 0,
+        "limitations": "No warm ANS read; observer counters unavailable in plain variant"
+      },
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "observation_counter_sums": [
+        34800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        34800,
+        0,
+        0,
+        0,
+        300,
+        0,
+        0
+      ],
+      "nonfinite_returned_numbers": 0,
+      "WARM": [
+        "104",
+        "4.0727977180000003"
+      ],
+      "DONE": [
+        "300",
+        "9.8101856180000002"
+      ],
+      "whole_process_seconds_diagnostic_only": 13.906620846013539,
+      "owned_spawn": {
+        "event": "spawn",
+        "pid": 1289308,
+        "pgid": 1289308,
+        "start_ticks": 65046340,
+        "command": [
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/outputs/observed/SubProcesses/P0_uux_zgg/check",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/qcd-3.dat",
+          "8",
+          "-1",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/science-observed/observations.raw"
+        ],
+        "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/outputs/observed/SubProcesses/P0_uux_zgg"
+      },
+      "owned_reap": {
+        "event": "reaped",
+        "pid": 1289308,
+        "pgid": 1289308,
+        "start_ticks": 65046340,
+        "reaped": true,
+        "returncode": 0
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/qcd-3-8/process-ledger.jsonl",
+        "sha256": "8e059c59819a78320eba7cbe6df2404179e7a034d53fac6c927f8b49fd0a1328",
+        "bytes": 6037
+      }
+    },
+    "ew-3-6": {
+      "case": "ew-3",
+      "tool": 6,
+      "proof": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/science-proof.json",
+        "sha256": "3a5c2fa44ddd1b0de7c9f31a79171d725569d059a1704d0a9cb465448a8b3e63",
+        "bytes": 1336
+      },
+      "result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/science-observed/result.json",
+        "sha256": "15c2f3ec6c3a34891e3166f051f0352b037bc3ff764ef5ff9265cd8f52ab9162",
+        "bytes": 107695
+      },
+      "launch": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/science-launch.json",
+        "sha256": "17f7176a4873f150dc8f78f8011e76c40630c96380c4e247298f69d6a54bf388",
+        "bytes": 600
+      },
+      "controller": {
+        "pid": 1294569,
+        "start_ticks": 65047853,
+        "pgid": 1268019,
+        "cpu_affinity": [
+          12
+        ]
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/science-observed/observations.raw",
+        "sha256": "069aeb836d811206a0389a3f5c2fe783c6e76d755c1a42f571a3f15b099f5e16",
+        "bytes": 254044
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/science-observed/guard.log",
+        "sha256": "f581ec6d30a6ef6c9c7c0b573518a64a4babdd4578897131e0119df51eac5327",
+        "bytes": 142
+      },
+      "guard_observations": {
+        "no_numerical_nrs_entry": true
+      },
+      "warm_diagnostics": {
+        "schema": "dp-warm-diagnostics-v1",
+        "iterations": 104,
+        "counts": {
+          "reductions": 45600,
+          "rejected": 0,
+          "nonfinite_reductions": 0,
+          "qp_reductions": 0,
+          "backend_1": 0,
+          "backend_2": 0,
+          "backend_3": 0,
+          "backend_4": 0,
+          "backend_5": 0,
+          "backend_6": 45600,
+          "backend_7": 0,
+          "backend_8": 0,
+          "observer_fpe_dp": 0,
+          "observer_fpe_qp": 0,
+          "compensated_dp": 0
+        },
+        "flags": {
+          "fpe_dp": 0,
+          "fpe_qp": 0,
+          "nrs_retry_mode": 0,
+          "nrs_retry_used": 0
+        },
+        "initialization_safe": true,
+        "unsafe_reasons": [],
+        "score_denominator_contribution": 0,
+        "limitations": "No warm ANS read; observer counters unavailable in plain variant"
+      },
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "observation_counter_sums": [
+        60000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        60000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nonfinite_returned_numbers": 0,
+      "WARM": [
+        "104",
+        "4.2619697700000003"
+      ],
+      "DONE": [
+        "300",
+        "11.334552822999999"
+      ],
+      "whole_process_seconds_diagnostic_only": 15.616152620059438,
+      "owned_spawn": {
+        "event": "spawn",
+        "pid": 1295294,
+        "pgid": 1295294,
+        "start_ticks": 65048157,
+        "command": [
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/outputs/observed/SubProcesses/P0_epem_ttxa/check",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-3.dat",
+          "6",
+          "-1",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/science-observed/observations.raw"
+        ],
+        "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/outputs/observed/SubProcesses/P0_epem_ttxa"
+      },
+      "owned_reap": {
+        "event": "reaped",
+        "pid": 1295294,
+        "pgid": 1295294,
+        "start_ticks": 65048157,
+        "reaped": true,
+        "returncode": 0
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-6/process-ledger.jsonl",
+        "sha256": "8e38fd609faa461f2a6f1c1e89fb1eea4ac304c942cc791b1893354dc562e5ea",
+        "bytes": 6035
+      }
+    },
+    "ew-3-8": {
+      "case": "ew-3",
+      "tool": 8,
+      "proof": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/science-proof.json",
+        "sha256": "929eb0b587aa506d6a6dd8d886068dec49d381821f2eb98a852a57e12e1af5f7",
+        "bytes": 1337
+      },
+      "result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/science-observed/result.json",
+        "sha256": "8777440d4fc3b01f132e16630e293dfd898fe07033e30a27c0eb1d3551088407",
+        "bytes": 108060
+      },
+      "launch": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/science-launch.json",
+        "sha256": "1028016d47876c4d03163730f011359f53d677bafd8fa3d7ba9fb7df55a4614d",
+        "bytes": 600
+      },
+      "controller": {
+        "pid": 1300270,
+        "start_ticks": 65049824,
+        "pgid": 1268019,
+        "cpu_affinity": [
+          12
+        ]
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/science-observed/observations.raw",
+        "sha256": "8c23ef01a11e63558e2e61ccc6603bf498ddc63ac93fd7efca03b7463e066fd1",
+        "bytes": 254044
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/science-observed/guard.log",
+        "sha256": "74e75cd7208097410141de233bf546af66cc5df66e395ac9671e9393e750fff3",
+        "bytes": 8759588
+      },
+      "guard_observations": {
+        "boundary_counts": {
+          "create": 1,
+          "dp": 105600,
+          "compensated": 0,
+          "mp": 0,
+          "destroy": 1,
+          "nonnull": 1
+        },
+        "native_per_call_status_counts": {
+          "0": 105600
+        },
+        "lifecycle_status_counts": {
+          "create:0": 1,
+          "destroy:0": 1
+        },
+        "events": 105604,
+        "no_compensated_or_mp_entry": true,
+        "native_error_returns_retained": 0
+      },
+      "warm_diagnostics": {
+        "schema": "dp-warm-diagnostics-v1",
+        "iterations": 104,
+        "counts": {
+          "reductions": 45600,
+          "rejected": 0,
+          "nonfinite_reductions": 0,
+          "qp_reductions": 0,
+          "backend_1": 0,
+          "backend_2": 0,
+          "backend_3": 0,
+          "backend_4": 0,
+          "backend_5": 0,
+          "backend_6": 0,
+          "backend_7": 0,
+          "backend_8": 45600,
+          "observer_fpe_dp": 0,
+          "observer_fpe_qp": 0,
+          "compensated_dp": 0
+        },
+        "flags": {
+          "fpe_dp": 0,
+          "fpe_qp": 0,
+          "nrs_retry_mode": 0,
+          "nrs_retry_used": 0
+        },
+        "initialization_safe": true,
+        "unsafe_reasons": [],
+        "score_denominator_contribution": 0,
+        "limitations": "No warm ANS read; observer counters unavailable in plain variant"
+      },
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "observation_counter_sums": [
+        60000,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        60000,
+        0,
+        0,
+        0,
+        300,
+        0,
+        0
+      ],
+      "nonfinite_returned_numbers": 0,
+      "WARM": [
+        "104",
+        "5.2253177680000000"
+      ],
+      "DONE": [
+        "300",
+        "11.804766323999999"
+      ],
+      "whole_process_seconds_diagnostic_only": 17.070181288057938,
+      "owned_spawn": {
+        "event": "spawn",
+        "pid": 1301305,
+        "pgid": 1301305,
+        "start_ticks": 65050132,
+        "command": [
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/outputs/observed/SubProcesses/P0_epem_ttxa/check",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/ew-3.dat",
+          "8",
+          "-1",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/science-observed/observations.raw"
+        ],
+        "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/outputs/observed/SubProcesses/P0_epem_ttxa"
+      },
+      "owned_reap": {
+        "event": "reaped",
+        "pid": 1301305,
+        "pgid": 1301305,
+        "start_ticks": 65050132,
+        "reaped": true,
+        "returncode": 0
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/ew-3-8/process-ledger.jsonl",
+        "sha256": "54e790200f1110226fa78e3c1dc11f525518fd4f18db465e9cefe324cf70dca9",
+        "bytes": 6035
+      }
+    },
+    "supplement-gg-h-6": {
+      "case": "supplement-gg-h",
+      "tool": 6,
+      "proof": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/science-proof.json",
+        "sha256": "f86d0bcdb739b7d9e596eda06f9dd58c5afca85f4e17507f6265b0eed488db86",
+        "bytes": 1388
+      },
+      "result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/science-observed/result.json",
+        "sha256": "72600806e758a3c904994bab02ae4a775caec164c620e489d6c264e77e703e41",
+        "bytes": 50709
+      },
+      "launch": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/science-launch.json",
+        "sha256": "4d5bb97610fea0d56d390e64c251311c2978dc5ae7d03b9fa4cc9b8925b071a8",
+        "bytes": 621
+      },
+      "controller": {
+        "pid": 1307981,
+        "start_ticks": 65051999,
+        "pgid": 1268019,
+        "cpu_affinity": [
+          12
+        ]
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/science-observed/observations.raw",
+        "sha256": "d17c27185e04336a2b7cc4d7c3c4b1ff4dc6d452f27690c49fb4760c3c4ea8cd",
+        "bytes": 254040
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/science-observed/guard.log",
+        "sha256": "f581ec6d30a6ef6c9c7c0b573518a64a4babdd4578897131e0119df51eac5327",
+        "bytes": 142
+      },
+      "guard_observations": {
+        "no_numerical_nrs_entry": true
+      },
+      "warm_diagnostics": {
+        "schema": "dp-warm-diagnostics-v1",
+        "iterations": 107,
+        "counts": {
+          "reductions": 512,
+          "rejected": 0,
+          "nonfinite_reductions": 0,
+          "qp_reductions": 0,
+          "backend_1": 0,
+          "backend_2": 0,
+          "backend_3": 0,
+          "backend_4": 0,
+          "backend_5": 0,
+          "backend_6": 512,
+          "backend_7": 0,
+          "backend_8": 0,
+          "observer_fpe_dp": 0,
+          "observer_fpe_qp": 0,
+          "compensated_dp": 0
+        },
+        "flags": {
+          "fpe_dp": 0,
+          "fpe_qp": 0,
+          "nrs_retry_mode": 0,
+          "nrs_retry_used": 0
+        },
+        "initialization_safe": true,
+        "unsafe_reasons": [],
+        "score_denominator_contribution": 0,
+        "limitations": "No warm ANS read; observer counters unavailable in plain variant"
+      },
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "observation_counter_sums": [
+        1200,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1200,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nonfinite_returned_numbers": 0,
+      "WARM": [
+        "107",
+        "2.2099285000000000E-002"
+      ],
+      "DONE": [
+        "300",
+        "3.3860135000000000E-002"
+      ],
+      "whole_process_seconds_diagnostic_only": 0.06690105702728033,
+      "owned_spawn": {
+        "event": "spawn",
+        "pid": 1308058,
+        "pgid": 1308058,
+        "start_ticks": 65052300,
+        "command": [
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/outputs/observed/SubProcesses/P0_gg_h/check",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/supplement-gg-h.dat",
+          "6",
+          "1",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/science-observed/observations.raw"
+        ],
+        "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/outputs/observed/SubProcesses/P0_gg_h"
+      },
+      "owned_reap": {
+        "event": "reaped",
+        "pid": 1308058,
+        "pgid": 1308058,
+        "start_ticks": 65052300,
+        "reaped": true,
+        "returncode": 0
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-6/process-ledger.jsonl",
+        "sha256": "7cad977e46b7981fac5702fb37c3436808ad0989a11756cdb02049922da9043c",
+        "bytes": 6202
+      }
+    },
+    "supplement-gg-h-8": {
+      "case": "supplement-gg-h",
+      "tool": 8,
+      "proof": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/science-proof.json",
+        "sha256": "22a9082ae673f84137e8556662054cd60df03e65c5331ba8b81cc51be50482a6",
+        "bytes": 1388
+      },
+      "result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/science-observed/result.json",
+        "sha256": "52c391d9914640dbe6e766ce6d95bbe5d1f2b2dcd26543ed18e80530237be82f",
+        "bytes": 51065
+      },
+      "launch": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/science-launch.json",
+        "sha256": "7df4e597e0cb496c29f43e235db8adde5f53e731f30370a17bfba93e23315218",
+        "bytes": 621
+      },
+      "controller": {
+        "pid": 1308118,
+        "start_ticks": 65052410,
+        "pgid": 1268019,
+        "cpu_affinity": [
+          12
+        ]
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/science-observed/observations.raw",
+        "sha256": "7ba9b73542d969fde6c06f623f20614a501aade276aad0b2598df75e77764b74",
+        "bytes": 254040
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/science-observed/guard.log",
+        "sha256": "d430253b77bc5232e4b35b6b4e0deffea35430ac11c69cb3dbfbaff7e9fd92a5",
+        "bytes": 139566
+      },
+      "guard_observations": {
+        "boundary_counts": {
+          "create": 1,
+          "dp": 1712,
+          "compensated": 0,
+          "mp": 0,
+          "destroy": 1,
+          "nonnull": 1
+        },
+        "native_per_call_status_counts": {
+          "0": 1712
+        },
+        "lifecycle_status_counts": {
+          "create:0": 1,
+          "destroy:0": 1
+        },
+        "events": 1716,
+        "no_compensated_or_mp_entry": true,
+        "native_error_returns_retained": 0
+      },
+      "warm_diagnostics": {
+        "schema": "dp-warm-diagnostics-v1",
+        "iterations": 107,
+        "counts": {
+          "reductions": 512,
+          "rejected": 0,
+          "nonfinite_reductions": 0,
+          "qp_reductions": 0,
+          "backend_1": 0,
+          "backend_2": 0,
+          "backend_3": 0,
+          "backend_4": 0,
+          "backend_5": 0,
+          "backend_6": 0,
+          "backend_7": 0,
+          "backend_8": 512,
+          "observer_fpe_dp": 0,
+          "observer_fpe_qp": 0,
+          "compensated_dp": 0
+        },
+        "flags": {
+          "fpe_dp": 0,
+          "fpe_qp": 0,
+          "nrs_retry_mode": 0,
+          "nrs_retry_used": 0
+        },
+        "initialization_safe": true,
+        "unsafe_reasons": [],
+        "score_denominator_contribution": 0,
+        "limitations": "No warm ANS read; observer counters unavailable in plain variant"
+      },
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "observation_counter_sums": [
+        1200,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1200,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nonfinite_returned_numbers": 0,
+      "WARM": [
+        "107",
+        "1.8689412999999998E-002"
+      ],
+      "DONE": [
+        "300",
+        "4.8695525000000003E-002"
+      ],
+      "whole_process_seconds_diagnostic_only": 0.11686597601510584,
+      "owned_spawn": {
+        "event": "spawn",
+        "pid": 1308511,
+        "pgid": 1308511,
+        "start_ticks": 65052709,
+        "command": [
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/outputs/observed/SubProcesses/P0_gg_h/check",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/supplement-gg-h.dat",
+          "8",
+          "1",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/science-observed/observations.raw"
+        ],
+        "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/outputs/observed/SubProcesses/P0_gg_h"
+      },
+      "owned_reap": {
+        "event": "reaped",
+        "pid": 1308511,
+        "pgid": 1308511,
+        "start_ticks": 65052709,
+        "reaped": true,
+        "returncode": 0
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-h-8/process-ledger.jsonl",
+        "sha256": "c8ff851b3a0c343723e088311e4763dd9ec73c4252965d48cec0a76ee2a38ead",
+        "bytes": 6202
+      }
+    },
+    "supplement-gg-hh-6": {
+      "case": "supplement-gg-hh",
+      "tool": 6,
+      "proof": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/science-proof.json",
+        "sha256": "d05c3541dcb95da8fbf400af9a38095d479924c01f6e36d52bb04020082bfada",
+        "bytes": 1393
+      },
+      "result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/science-observed/result.json",
+        "sha256": "9987cefe43318c4eff7d45c772d252a9d2aadf78f566f0d40ac60b0eeac334a9",
+        "bytes": 52350
+      },
+      "launch": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/science-launch.json",
+        "sha256": "33e1b53b8f7cd39c48aa728c050c63f682353e1351f7e769722ae254f991e9be",
+        "bytes": 623
+      },
+      "controller": {
+        "pid": 1308893,
+        "start_ticks": 65052825,
+        "pgid": 1268019,
+        "cpu_affinity": [
+          12
+        ]
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/science-observed/observations.raw",
+        "sha256": "711e30ffada7fcc3620eb1c0c7d27925c29e209eed5ff6eb1da9d24d04e8fe62",
+        "bytes": 254042
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/science-observed/guard.log",
+        "sha256": "f581ec6d30a6ef6c9c7c0b573518a64a4babdd4578897131e0119df51eac5327",
+        "bytes": 142
+      },
+      "guard_observations": {
+        "no_numerical_nrs_entry": true
+      },
+      "warm_diagnostics": {
+        "schema": "dp-warm-diagnostics-v1",
+        "iterations": 107,
+        "counts": {
+          "reductions": 2048,
+          "rejected": 0,
+          "nonfinite_reductions": 0,
+          "qp_reductions": 0,
+          "backend_1": 0,
+          "backend_2": 0,
+          "backend_3": 0,
+          "backend_4": 0,
+          "backend_5": 0,
+          "backend_6": 2048,
+          "backend_7": 0,
+          "backend_8": 0,
+          "observer_fpe_dp": 0,
+          "observer_fpe_qp": 0,
+          "compensated_dp": 0
+        },
+        "flags": {
+          "fpe_dp": 0,
+          "fpe_qp": 0,
+          "nrs_retry_mode": 0,
+          "nrs_retry_used": 0
+        },
+        "initialization_safe": true,
+        "unsafe_reasons": [],
+        "score_denominator_contribution": 0,
+        "limitations": "No warm ANS read; observer counters unavailable in plain variant"
+      },
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "observation_counter_sums": [
+        4800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "nonfinite_returned_numbers": 0,
+      "WARM": [
+        "107",
+        "0.10619870100000001"
+      ],
+      "DONE": [
+        "300",
+        "0.24172015099999999"
+      ],
+      "whole_process_seconds_diagnostic_only": 0.36683351604733616,
+      "owned_spawn": {
+        "event": "spawn",
+        "pid": 1309607,
+        "pgid": 1309607,
+        "start_ticks": 65053119,
+        "command": [
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/outputs/observed/SubProcesses/P0_gg_hh/check",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/supplement-gg-hh.dat",
+          "6",
+          "1",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/science-observed/observations.raw"
+        ],
+        "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/outputs/observed/SubProcesses/P0_gg_hh"
+      },
+      "owned_reap": {
+        "event": "reaped",
+        "pid": 1309607,
+        "pgid": 1309607,
+        "start_ticks": 65053119,
+        "reaped": true,
+        "returncode": 0
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-6/process-ledger.jsonl",
+        "sha256": "f461299a464637dcefca561738b29a940b7597d0311b2e9dfa54c0c9bce7ea1a",
+        "bytes": 6228
+      }
+    },
+    "supplement-gg-hh-8": {
+      "case": "supplement-gg-hh",
+      "tool": 8,
+      "proof": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/science-proof.json",
+        "sha256": "ead7f371ee39085169323b346c59d99c7270327efa21d4adacaeb9257a40c353",
+        "bytes": 1393
+      },
+      "result": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/science-observed/result.json",
+        "sha256": "1c6ebf14cdf243b8874e4bd2af16ea59be8ac7408f63a6682fb651c44c43be85",
+        "bytes": 52707
+      },
+      "launch": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/science-launch.json",
+        "sha256": "c918660e9679476a82f9ea9fd407ef08698b133effbf9cb557767bea11e8be68",
+        "bytes": 623
+      },
+      "controller": {
+        "pid": 1310144,
+        "start_ticks": 65053260,
+        "pgid": 1268019,
+        "cpu_affinity": [
+          12
+        ]
+      },
+      "raw": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/science-observed/observations.raw",
+        "sha256": "928f6d6f526ab7ccf8e58f846ddafda01b3489b610b77c39f34c48ffc9af1c5e",
+        "bytes": 254042
+      },
+      "guard": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/science-observed/guard.log",
+        "sha256": "d2f58944adec96b908cccbe2240d91153e7facf3c73b0326b4547dbd1c18692d",
+        "bytes": 560718
+      },
+      "guard_observations": {
+        "boundary_counts": {
+          "create": 1,
+          "dp": 6848,
+          "compensated": 0,
+          "mp": 0,
+          "destroy": 1,
+          "nonnull": 1
+        },
+        "native_per_call_status_counts": {
+          "0": 6848
+        },
+        "lifecycle_status_counts": {
+          "create:0": 1,
+          "destroy:0": 1
+        },
+        "events": 6852,
+        "no_compensated_or_mp_entry": true,
+        "native_error_returns_retained": 0
+      },
+      "warm_diagnostics": {
+        "schema": "dp-warm-diagnostics-v1",
+        "iterations": 107,
+        "counts": {
+          "reductions": 2048,
+          "rejected": 0,
+          "nonfinite_reductions": 0,
+          "qp_reductions": 0,
+          "backend_1": 0,
+          "backend_2": 0,
+          "backend_3": 0,
+          "backend_4": 0,
+          "backend_5": 0,
+          "backend_6": 0,
+          "backend_7": 0,
+          "backend_8": 2048,
+          "observer_fpe_dp": 0,
+          "observer_fpe_qp": 0,
+          "compensated_dp": 0
+        },
+        "flags": {
+          "fpe_dp": 0,
+          "fpe_qp": 0,
+          "nrs_retry_mode": 0,
+          "nrs_retry_used": 0
+        },
+        "initialization_safe": true,
+        "unsafe_reasons": [],
+        "score_denominator_contribution": 0,
+        "limitations": "No warm ANS read; observer counters unavailable in plain variant"
+      },
+      "observations": 300,
+      "rows": 600,
+      "status_counts": {
+        "110": 300
+      },
+      "observation_counter_sums": [
+        4800,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4800,
+        0,
+        0,
+        0,
+        300,
+        0,
+        0
+      ],
+      "nonfinite_returned_numbers": 0,
+      "WARM": [
+        "107",
+        "0.11138182900000000"
+      ],
+      "DONE": [
+        "300",
+        "0.26698795700000000"
+      ],
+      "whole_process_seconds_diagnostic_only": 0.41739638801664114,
+      "owned_spawn": {
+        "event": "spawn",
+        "pid": 1310865,
+        "pgid": 1310865,
+        "start_ticks": 65053556,
+        "command": [
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/outputs/observed/SubProcesses/P0_gg_hh/check",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dp-random-points-v2/points/supplement-gg-hh.dat",
+          "8",
+          "1",
+          "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/science-observed/observations.raw"
+        ],
+        "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/outputs/observed/SubProcesses/P0_gg_hh"
+      },
+      "owned_reap": {
+        "event": "reaped",
+        "pid": 1310865,
+        "pgid": 1310865,
+        "start_ticks": 65053556,
+        "reaped": true,
+        "returncode": 0
+      },
+      "ledger": {
+        "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/jobs/supplement-gg-hh-8/process-ledger.jsonl",
+        "sha256": "edb7a54312af3da8be315200912842ac36bdbeaa489e30191d20f52e367347eb",
+        "bytes": 6228
+      }
+    }
+  },
+  "total_observations": 4200,
+  "all_recorded_initialization_safe": true,
+  "root_authorization": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/cheap-seven-science-authorization-v2/inventory.json",
+    "sha256": "b88718cb92c608ac93c4cf0f9e7fcdd985a9341a3965621bbb2289f5f2240ec8",
+    "bytes": 14576
+  },
+  "command_inventory": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/approved-cheap-science-execution-v1/authorized-command-inventory.json",
+    "sha256": "5a82080b43ce43ea5f22e9f7a923bab54f0be4a68c4c72c8b29001b96f4a98f9",
+    "bytes": 14069
+  },
+  "script": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/approved-cheap-science-execution-v1/commands.sh",
+    "sha256": "156bad1f37456fba6d684e87adeda35f4fe48b87c94a9643962d12fdbee5cc38",
+    "bytes": 10712
+  },
+  "source_freeze": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/source-freeze.json",
+    "sha256": "49d1b815bacc37302c432b498b6154513d31f2687c958fc0954af2df26ebd4b7",
+    "bytes": 2769
+  },
+  "runner": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/generic-random-parity-held-v2/run.py",
+    "sha256": "df52d1b82cf7eecc7d9c17791a9aa8b1d193af408579eaf4f5e4146cf75a89a3",
+    "bytes": 22441
+  },
+  "owned_pgids": [
+    1268019,
+    1269388,
+    1271459,
+    1274625,
+    1275552,
+    1277606,
+    1278944,
+    1282237,
+    1289308,
+    1295294,
+    1301305,
+    1308058,
+    1308511,
+    1309607,
+    1310865
+  ],
+  "live_owned_members": [],
+  "heavy_full100_science_created": false,
+  "excluded": "No4body/full100stress/nativeextension; no furthercalls authorized",
+  "independent_physical_qualification": "PENDING paper owner revalidation, includes previousqcd1 toform8lightweightcases",
+  "performance_acceptance_eligible": false
+}

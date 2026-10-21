@@ -1,0 +1,444 @@
+{
+  "phase": "final-focused-light-controls-v1",
+  "status": "HELD until matching root handoff",
+  "points_per_target": 2,
+  "target_timeout_seconds": 180.0,
+  "cohort": {
+    "numerical_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+    "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+    "generator_identity_sha256": "77b16df0251af4104a2c541bab913c11f4e67496a290495ce1a1c5fc526dfe3c",
+    "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+    "archive_sha256": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c"
+  },
+  "compiled_preparation": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/prepared.json",
+    "sha256": "d39d358ab0a030d7ec320aaac99b92de97afb5ed472be82a28adeaf2045cdc78",
+    "bytes": 1709673
+  },
+  "compiled_work": ".benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1",
+  "report": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/run-v1",
+  "configuration": {
+    "path": "docs/benchmarkfolder/policy-v2/controls.json",
+    "sha256": "e623e89f58e048efdc9b6f79075cb12b61fb5c8d3abc432b8e37f9cbc51602cb",
+    "bytes": 1164
+  },
+  "points": {
+    "control-rebinding": {
+      "source": {
+        "path": "docs/benchmarkfolder/points/control-rebinding.dat",
+        "sha256": "1344798666e43bca9cfcae39023834c8d76962ca8f9db5259acc76052bd1531d",
+        "bytes": 3883
+      },
+      "selected": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-rebinding.dat",
+        "sha256": "4e48c38cf3d5def08caaaf8ba070d3c12a21f67c25e9a2f4fa3bdc1647063261",
+        "bytes": 778
+      },
+      "selection": "Exact first2 serialized events; only count header10 to2 changed",
+      "points": 2,
+      "nexternal": 4
+    },
+    "control-rebinding-fresh": {
+      "source": {
+        "path": "docs/benchmarkfolder/points/control-rebinding-fresh.dat",
+        "sha256": "1344798666e43bca9cfcae39023834c8d76962ca8f9db5259acc76052bd1531d",
+        "bytes": 3883
+      },
+      "selected": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-rebinding-fresh.dat",
+        "sha256": "4e48c38cf3d5def08caaaf8ba070d3c12a21f67c25e9a2f4fa3bdc1647063261",
+        "bytes": 778
+      },
+      "selection": "Exact first2 serialized events; only count header10 to2 changed",
+      "points": 2,
+      "nexternal": 4
+    },
+    "control-gg-hh": {
+      "source": {
+        "path": "docs/benchmarkfolder/points/control-gg-hh.dat",
+        "sha256": "a1fb9b0af7a351bf383a0ab5302f0be46f8053c1da33941e291fc5a0e2ec02b4",
+        "bytes": 3883
+      },
+      "selected": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-gg-hh.dat",
+        "sha256": "ae31c370d14496e2cfef94981f154658a2cc0aebd03c4c56bb6c428d0f3d1239",
+        "bytes": 778
+      },
+      "selection": "Exact first2 serialized events; only count header10 to2 changed",
+      "points": 2,
+      "nexternal": 4
+    },
+    "control-complex": {
+      "source": {
+        "path": "docs/benchmarkfolder/points/control-complex.dat",
+        "sha256": "81d6dd8e303246ef120dd4156760ab6fb1a0347d56624b691cc43091d63b5749",
+        "bytes": 3883
+      },
+      "selected": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-complex.dat",
+        "sha256": "d9608d8d6c8b750eda7b45dcb4f700dd32defb5e3e97ff91acb99cecb59e7132",
+        "bytes": 778
+      },
+      "selection": "Exact first2 serialized events; only count header10 to2 changed",
+      "points": 2,
+      "nexternal": 4
+    }
+  },
+  "schedule": [
+    {
+      "id": "hh-state-retained-6",
+      "variant": "control-rebinding",
+      "backend": 6,
+      "mode": -1,
+      "points": "control-rebinding",
+      "group": "state",
+      "expected_dimensions": [
+        1,
+        1,
+        0
+      ],
+      "executable_sha256": "5ed90243d7855075723e2ec1f83499411958fa5774a95b9e492c614b6baefb9e",
+      "command": [
+        "taskset",
+        "-c",
+        "190",
+        "./check",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-rebinding.dat",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-rebinding/SubProcesses/P0_gg_hh",
+      "source_manifest_sha256": "44559eacf82233b6188516680fe9a41929714fa279b70aac8f114c47f8223475"
+    },
+    {
+      "id": "hh-state-retained-8",
+      "variant": "control-rebinding",
+      "backend": 8,
+      "mode": -1,
+      "points": "control-rebinding",
+      "group": "state",
+      "expected_dimensions": [
+        1,
+        1,
+        0
+      ],
+      "executable_sha256": "5ed90243d7855075723e2ec1f83499411958fa5774a95b9e492c614b6baefb9e",
+      "command": [
+        "taskset",
+        "-c",
+        "190",
+        "./check",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-rebinding.dat",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-rebinding/SubProcesses/P0_gg_hh",
+      "source_manifest_sha256": "44559eacf82233b6188516680fe9a41929714fa279b70aac8f114c47f8223475"
+    },
+    {
+      "id": "hh-state-finalized-8",
+      "variant": "control-rebinding-fresh",
+      "backend": 8,
+      "mode": -1,
+      "points": "control-rebinding-fresh",
+      "group": "state",
+      "expected_dimensions": [
+        1,
+        1,
+        0
+      ],
+      "executable_sha256": "31c5b380f3d68df330466f9233ab26fcfc68116b6e4ce445ef3d676acf68ba69",
+      "command": [
+        "taskset",
+        "-c",
+        "190",
+        "./check",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-rebinding-fresh.dat",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-rebinding-fresh/SubProcesses/P0_gg_hh",
+      "source_manifest_sha256": "04f8e1636070fabe0d4b5707eee204bee755ceb067cf5de5fdc7451e16ebbd1c"
+    },
+    {
+      "id": "hh-state-qp-retained-8",
+      "variant": "control-rebinding-qp",
+      "backend": 8,
+      "mode": 4,
+      "points": "control-rebinding",
+      "group": "state",
+      "expected_dimensions": [
+        1,
+        1,
+        0
+      ],
+      "executable_sha256": "9b4ac6e20552cbccd4080209e5edc4dcd482c73662cf93afd43122c8c806bd74",
+      "command": [
+        "taskset",
+        "-c",
+        "190",
+        "./check",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-rebinding.dat",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-rebinding-qp/SubProcesses/P0_gg_hh",
+      "source_manifest_sha256": "d9beb0e1ccb7b94a111cffe31efe4eae5badeb763af56ced91054607785f8373"
+    },
+    {
+      "id": "hh-state-qp-finalized-8",
+      "variant": "control-rebinding-fresh-qp",
+      "backend": 8,
+      "mode": 4,
+      "points": "control-rebinding-fresh",
+      "group": "state",
+      "expected_dimensions": [
+        1,
+        1,
+        0
+      ],
+      "executable_sha256": "670e668bd04d5a7ea5466b2d70f7deaa7a19e5f13a734213a5b21db6b77dc076",
+      "command": [
+        "taskset",
+        "-c",
+        "190",
+        "./check",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-rebinding-fresh.dat",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-rebinding-fresh-qp/SubProcesses/P0_gg_hh",
+      "source_manifest_sha256": "53d38d60556c43a1ce2762bbdc2ba96b722b126bf46bd0b868481626e9596d3c"
+    },
+    {
+      "id": "complex-qp-6",
+      "variant": "control-complex-qp",
+      "backend": 6,
+      "mode": 4,
+      "points": "control-complex",
+      "group": "complex",
+      "expected_dimensions": [
+        1,
+        1,
+        1
+      ],
+      "executable_sha256": "62ebeb78f6f31f711ed1979b4c9e2a372437303f33d8a0ba7165ebe90b5b9961",
+      "command": [
+        "taskset",
+        "-c",
+        "190",
+        "./check",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-complex.dat",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-complex-qp/SubProcesses/P0_epem_mupmum",
+      "source_manifest_sha256": "dbf5940626cd33c4773048d4047963b678fce68097a25de261ee25120827f581"
+    },
+    {
+      "id": "complex-qp-8",
+      "variant": "control-complex-qp",
+      "backend": 8,
+      "mode": 4,
+      "points": "control-complex",
+      "group": "complex",
+      "expected_dimensions": [
+        1,
+        1,
+        1
+      ],
+      "executable_sha256": "62ebeb78f6f31f711ed1979b4c9e2a372437303f33d8a0ba7165ebe90b5b9961",
+      "command": [
+        "taskset",
+        "-c",
+        "190",
+        "./check",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-complex.dat",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-complex-qp/SubProcesses/P0_epem_mupmum",
+      "source_manifest_sha256": "dbf5940626cd33c4773048d4047963b678fce68097a25de261ee25120827f581"
+    },
+    {
+      "id": "hh-qp-forward-8",
+      "variant": "control-direction",
+      "backend": 8,
+      "mode": 4,
+      "points": "control-gg-hh",
+      "group": "direction",
+      "expected_dimensions": [
+        1,
+        1,
+        0
+      ],
+      "executable_sha256": "8ab77ca2f73d38d5bc8a56eed3f4265887cba90799125b11a1b39c87ca58dd47",
+      "command": [
+        "taskset",
+        "-c",
+        "190",
+        "./check",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-gg-hh.dat",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-direction/SubProcesses/P0_gg_hh",
+      "source_manifest_sha256": "d61892fe33728421b122f8ad82194cb318c06577889d0319f3bc326be884b203"
+    },
+    {
+      "id": "hh-qp-reverse-8",
+      "variant": "control-direction",
+      "backend": 8,
+      "mode": 5,
+      "points": "control-gg-hh",
+      "group": "direction",
+      "expected_dimensions": [
+        1,
+        1,
+        0
+      ],
+      "executable_sha256": "8ab77ca2f73d38d5bc8a56eed3f4265887cba90799125b11a1b39c87ca58dd47",
+      "command": [
+        "taskset",
+        "-c",
+        "190",
+        "./check",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-gg-hh.dat",
+        "1"
+      ],
+      "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/outputs/candidate/control-direction/SubProcesses/P0_gg_hh",
+      "source_manifest_sha256": "d61892fe33728421b122f8ad82194cb318c06577889d0319f3bc326be884b203"
+    }
+  ],
+  "complex_normal_references": {
+    "points": {
+      "path": "docs/benchmarkfolder/points/control-complex.dat",
+      "sha256": "81d6dd8e303246ef120dd4156760ab6fb1a0347d56624b691cc43091d63b5749",
+      "bytes": 3883
+    },
+    "6": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-ninja-nrs-v1/runs/complex/data/control-complex-candidate-6-0.json",
+      "sha256": "757cf1b2394bd10b997240df05e451f76d93abf67baaca4d5447185d2b3e2d13",
+      "bytes": 359697
+    },
+    "8": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-ninja-nrs-v1/runs/complex/data/control-complex-candidate-8-0.json",
+      "sha256": "47d2887eef17538934bcf3dcaf2f80fd65a428140cf0fa51cf1306617d92336e",
+      "bytes": 359702
+    }
+  },
+  "bound_inputs": [
+    {
+      "path": "docs/benchmarkfolder/policy-v2/controls.json",
+      "sha256": "e623e89f58e048efdc9b6f79075cb12b61fb5c8d3abc432b8e37f9cbc51602cb",
+      "bytes": 1164
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-custom-compile-v1/prepared.json",
+      "sha256": "d39d358ab0a030d7ec320aaac99b92de97afb5ed472be82a28adeaf2045cdc78",
+      "bytes": 1709673
+    },
+    {
+      "path": "tools/ninjars_benchmark.py",
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+      "bytes": 49893
+    },
+    {
+      "path": "tools/ninjars_benchmark_policy_v2.py",
+      "sha256": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a",
+      "bytes": 53416
+    },
+    {
+      "path": "tools/ninjars_benchmark_pair_v3.py",
+      "sha256": "1e5fb83daa6021fc7c74350df60d16f64204a93887c7e511ac3347a513e78484",
+      "bytes": 34216
+    },
+    {
+      "path": "tools/ninjars_benchmark_workers.py",
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "bytes": 44582
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/candidate-cohort.json",
+      "sha256": "77660cca5ea4814aa0351654b46b067bb1a147bd3863f83d5b3654c3cd6628c3",
+      "bytes": 1528
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-rebinding.dat",
+      "sha256": "4e48c38cf3d5def08caaaf8ba070d3c12a21f67c25e9a2f4fa3bdc1647063261",
+      "bytes": 778
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-rebinding-fresh.dat",
+      "sha256": "4e48c38cf3d5def08caaaf8ba070d3c12a21f67c25e9a2f4fa3bdc1647063261",
+      "bytes": 778
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-gg-hh.dat",
+      "sha256": "ae31c370d14496e2cfef94981f154658a2cc0aebd03c4c56bb6c428d0f3d1239",
+      "bytes": 778
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/points/control-complex.dat",
+      "sha256": "d9608d8d6c8b750eda7b45dcb4f700dd32defb5e3e97ff91acb99cecb59e7132",
+      "bytes": 778
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-ninja-nrs-v1/runs/complex/data/control-complex-candidate-6-0.json",
+      "sha256": "757cf1b2394bd10b997240df05e451f76d93abf67baaca4d5447185d2b3e2d13",
+      "bytes": 359697
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-ninja-nrs-v1/runs/complex/data/control-complex-candidate-8-0.json",
+      "sha256": "47d2887eef17538934bcf3dcaf2f80fd65a428140cf0fa51cf1306617d92336e",
+      "bytes": 359702
+    },
+    {
+      "path": "tools/ninjars_benchmark_driver.f",
+      "sha256": "7fde7bd50af7604424bdeab028616cb6c861251fbe748c0748dfe7be17a3fee4",
+      "bytes": 4205
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-ninja-nrs-v1/runtime-bindings/complex.json",
+      "sha256": "c8635fe5ce98229aadd0756f0b973cb8a3de248d8459de9b520e9a3834988500",
+      "bytes": 590769
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-execution-ninja-nrs-v1/physical-comparison.json",
+      "sha256": "4f79d0c82e312efa76f9a3a5e854ad3ae6c3fc8e04f53c704712d5d7df9a7042",
+      "bytes": 10081
+    },
+    {
+      "path": "docs/benchmarkfolder/points/control-rebinding.dat",
+      "sha256": "1344798666e43bca9cfcae39023834c8d76962ca8f9db5259acc76052bd1531d",
+      "bytes": 3883
+    },
+    {
+      "path": "docs/benchmarkfolder/points/control-rebinding-fresh.dat",
+      "sha256": "1344798666e43bca9cfcae39023834c8d76962ca8f9db5259acc76052bd1531d",
+      "bytes": 3883
+    },
+    {
+      "path": "docs/benchmarkfolder/points/control-gg-hh.dat",
+      "sha256": "a1fb9b0af7a351bf383a0ab5302f0be46f8053c1da33941e291fc5a0e2ec02b4",
+      "bytes": 3883
+    },
+    {
+      "path": "docs/benchmarkfolder/points/control-complex.dat",
+      "sha256": "81d6dd8e303246ef120dd4156760ab6fb1a0347d56624b691cc43091d63b5749",
+      "bytes": 3883
+    }
+  ],
+  "scope": "Latest lighter user scope, exactly9 low-multiplicity two-point traversals; no2->4, no10-point recalibration, no timing/performance gate or stability-CDF claim",
+  "normal_HH_anchor": "Pending actual light paired10-point HH records, later exactfirst2 comparison only; no claim now",
+  "failed_predecessor": {
+    "source": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v1/execute.py",
+      "sha256": "e6d19bc99c44f583c89d5443e10bc771793e8f07417660b046b3b518633771d0",
+      "bytes": 12254
+    },
+    "specification": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v1/specification.json",
+      "sha256": "cb400ca524acb042f2859a4bf9dd9f787aed39b5c17ce99aeba940d41fb3f4b2",
+      "bytes": 17600
+    },
+    "failure_cleanup": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v1/failure-cleanup.json",
+      "sha256": "22a7a450db35427e912c9b40c242592f4e15b40b2bb3be5753ab3759721cae35",
+      "bytes": 819
+    },
+    "failure": "Missing required policy.verified schema argument;0 native calls/output mutations"
+  }
+}

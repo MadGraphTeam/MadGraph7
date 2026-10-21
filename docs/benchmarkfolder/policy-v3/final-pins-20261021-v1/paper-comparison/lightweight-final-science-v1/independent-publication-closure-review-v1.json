@@ -1,0 +1,164 @@
+{
+  "N": 100,
+  "all_files": 1186,
+  "all_gzip_original_hashes_and_sizes_recovered": true,
+  "all_identity_original_hashes_and_sizes_verified": true,
+  "all_payloads_utf8_no_native_magic_or_native_cache_suffixes": true,
+  "all_stored_hashes_and_sizes_verified": true,
+  "authority_hashes": {
+    "cross-backend-discrepancy.json": "392f3ff2360df961aa1cb2170b08ca2aea446e1db5dc55c27b710bd76b13d94d",
+    "manifest.json": "de92bfae90b1068ba0fcb22034163d0b97ec9e4ab416ad17146bfa605e87f1a2",
+    "summary.json": "c46368e08f039d39d4acb6369f067407785315cf5a591099db97f1e9adb6b12e"
+  },
+  "cases": [
+    "ew-1",
+    "ew-2",
+    "ew-3",
+    "qcd-1",
+    "qcd-2",
+    "qcd-3",
+    "supplement-gg-h",
+    "supplement-gg-hh"
+  ],
+  "encoding_counts": {
+    "gzip": 10,
+    "identity": 1173
+  },
+  "finite_paths_unique_inside_capsule_no_symlinks": true,
+  "hardware_exception_observations_preserved_from_byte_exact_summary": {
+    "ew-1": {
+      "6": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 0,
+        "ieee_overflow_seen": 0
+      },
+      "8": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 0,
+        "ieee_overflow_seen": 0
+      }
+    },
+    "ew-2": {
+      "6": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 0,
+        "ieee_overflow_seen": 0
+      },
+      "8": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 300,
+        "ieee_overflow_seen": 0
+      }
+    },
+    "ew-3": {
+      "6": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 0,
+        "ieee_overflow_seen": 0
+      },
+      "8": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 300,
+        "ieee_overflow_seen": 0
+      }
+    },
+    "qcd-1": {
+      "6": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 0,
+        "ieee_overflow_seen": 0
+      },
+      "8": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 0,
+        "ieee_overflow_seen": 0
+      }
+    },
+    "qcd-2": {
+      "6": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 0,
+        "ieee_overflow_seen": 0
+      },
+      "8": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 300,
+        "ieee_overflow_seen": 0
+      }
+    },
+    "qcd-3": {
+      "6": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 0,
+        "ieee_overflow_seen": 0
+      },
+      "8": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 300,
+        "ieee_overflow_seen": 0
+      }
+    },
+    "supplement-gg-h": {
+      "6": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 0,
+        "ieee_overflow_seen": 0
+      },
+      "8": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 0,
+        "ieee_overflow_seen": 0
+      }
+    },
+    "supplement-gg-hh": {
+      "6": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 0,
+        "ieee_overflow_seen": 0
+      },
+      "8": {
+        "ieee_divzero_seen": 0,
+        "ieee_invalid_seen": 300,
+        "ieee_overflow_seen": 0
+      }
+    }
+  },
+  "independent_audits": [
+    {
+      "bytes": 22530,
+      "path": ".benchmark-work/final-release-audit-20261021-v1/light-eight-arithmetic-audit-v1.json",
+      "sha256": "99e0f508d32c2c668fe0a54a9c2e4cf3361e8915197ad54782137ef4c027baa7"
+    },
+    {
+      "bytes": 30839,
+      "path": ".benchmark-work/final-release-audit-20261021-v1/light8-final-raw-custody-ownership-audit-v1.json",
+      "sha256": "7a99193f3970403891d1e2dd5285843779c8063274dac4966a206ec4489811d4"
+    },
+    {
+      "bytes": 5232,
+      "path": ".benchmark-work/final-release-audit-20261021-v1/light-eight-final-independent-composite-audit-v1.json",
+      "sha256": "64ac6c50cb1712272e11dbca41e797e7389d893df88ca67c1189e8f1bdf14e33"
+    }
+  ],
+  "inventory": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/paper-comparison/lightweight-final-science-v1/inventory.json",
+    "sha256": "8a3a2b125ef197c609ea4149a633d02c54a117735e876e908b5b8486ef8b7b73"
+  },
+  "observed_utc": "2026-10-21T21:55:03.121021+00:00",
+  "original_current_comparison": {
+    "changed_or_missing": [],
+    "current_byte_exact": 1183
+  },
+  "payloads": 1183,
+  "portable_full_runtime_qualification": false,
+  "qualified_manifest_original_paths_preserved": true,
+  "relocation_map_entries": 1001,
+  "schema": "light-eight-finite-publication-closure-review-v1",
+  "scope": "Finite publication byte/path/encoding closure only; no scientific or semantic qualification replay, estimator recomputation, physics imports, engines, compiler, tests, process polls, source edits, staging, deletion or native binary reads.",
+  "status": "PASS",
+  "stored_bytes": 34505259,
+  "tools": [
+    6,
+    8
+  ]
+}

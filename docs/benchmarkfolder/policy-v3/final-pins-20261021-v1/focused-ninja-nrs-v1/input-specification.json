@@ -1,0 +1,303 @@
+{
+  "phase": "final-pins-focused-ninja-nrs-v1",
+  "status": "HELD for exact root CPU190/MP handoff",
+  "actual_numerical_calls": 0,
+  "actual_build_calls": 0,
+  "cpu": 190,
+  "backend_ids": [
+    6,
+    8
+  ],
+  "source": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-execution-ninja-nrs-v1/collect.py",
+    "sha256": "f76a2bdefba5c0e98fea38f19bdd4eb59b0b47033999e441171d3c86f6e170c3",
+    "bytes": 10796
+  },
+  "original_source": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative.py",
+    "sha256": "f321dce9ccde72d0d0f496925c5324c0184b65ddaa86780e019f84c4cfcbf963",
+    "bytes": 9745
+  },
+  "candidate_cohort": {
+    "numerical_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+    "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+    "generator_identity_sha256": "77b16df0251af4104a2c541bab913c11f4e67496a290495ce1a1c5fc526dfe3c",
+    "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+    "archive_sha256": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c"
+  },
+  "bound_inputs": [
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/candidate-cohort.json",
+      "sha256": "77660cca5ea4814aa0351654b46b067bb1a147bd3863f83d5b3654c3cd6628c3",
+      "bytes": 1528
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-readiness-ninja-nrs-v1/readiness.json",
+      "sha256": "b5d9e652d38ad4707c0e7b06e28a9df155f319802bcca2b6b1a32e6f176e076c",
+      "bytes": 27332
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/executed-freeze.json",
+      "sha256": "1f6e9fb21096e5c83df0e51b264151985f9bb4ca9bf2d7bd5190c6761a23cea9",
+      "bytes": 1309
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/status.json",
+      "sha256": "036113c34f4894c4508bf217a454749d4cdcccdfe5d739b53f835090e837b565",
+      "bytes": 4626169
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/controls-generation/status.json",
+      "sha256": "8ea4e438a3660339876cd8ee69def3a0488e77449c8be358b0a8453462581211",
+      "bytes": 2985439
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/runtime-inventory.json",
+      "sha256": "828928197d9a76f4cf0ec5cded0a9df271cc8f8671efcc853964bf23cf72952a",
+      "bytes": 1723824
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v2/controls.json",
+      "sha256": "e623e89f58e048efdc9b6f79075cb12b61fb5c8d3abc432b8e37f9cbc51602cb",
+      "bytes": 1164
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-readiness-ninja-nrs-v1/specs/complex.json",
+      "sha256": "0de33c89a3fc245d4370802ec269892ba9eda575324900a39990d5c8ea334aa2",
+      "bytes": 771
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-readiness-ninja-nrs-v1/specs/mixed-ninja.json",
+      "sha256": "6166cecab15b2f1eb7529e68025a9ba8b582f2807d6bcbee389c62248416dfca",
+      "bytes": 774
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-readiness-ninja-nrs-v1/specs/near-singular-nrs.json",
+      "sha256": "f4c8e6a224a57b79b980f6c46765ff81200a22d60ca8cda732c9cc58b3cec093",
+      "bytes": 842
+    },
+    {
+      "path": "tools/ninjars_benchmark.py",
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+      "bytes": 49893
+    },
+    {
+      "path": "tools/ninjars_benchmark_workers.py",
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "bytes": 44582
+    },
+    {
+      "path": "tools/ninjars_benchmark_worker.f",
+      "sha256": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79",
+      "bytes": 4704
+    },
+    {
+      "path": "tools/ninjars_benchmark_policy_v2.py",
+      "sha256": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a",
+      "bytes": 53416
+    },
+    {
+      "path": "tools/ninjars_benchmark_pair_v3.py",
+      "sha256": "1e5fb83daa6021fc7c74350df60d16f64204a93887c7e511ac3347a513e78484",
+      "bytes": 34216
+    },
+    {
+      "path": "tools/ninjars_benchmark_references_v2.py",
+      "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c",
+      "bytes": 18761
+    },
+    {
+      "path": "tools/ninjars_supplement_v2.py",
+      "sha256": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8",
+      "bytes": 60858
+    },
+    {
+      "path": "docs/benchmarkfolder/points/control-complex.dat",
+      "sha256": "81d6dd8e303246ef120dd4156760ab6fb1a0347d56624b691cc43091d63b5749",
+      "bytes": 3883
+    },
+    {
+      "path": "docs/benchmarkfolder/points/control-mixed.dat",
+      "sha256": "c0640d8258fea3bec32d28da8eb7a9bb8bbc50210efd2e22bf030c3dabf35527",
+      "bytes": 3883
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v2/representative-point-streams/near-singular/control-forced-qp.dat",
+      "sha256": "1810d50e8b67fcebfabdeb132a84ee2c5df1cf7333e55b6f38a9115291f9ed57",
+      "bytes": 3883
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/mixed-result.json",
+      "sha256": "fa852dfa609fa706938ca52b273192137d39b6893f3d2572cb5166935dbbef23",
+      "bytes": 715
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runtime-bindings/mixed.json",
+      "sha256": "7083fb58c42bae16545246aaef538607ec8916cd38908dc1d84514653e0d6f9e",
+      "bytes": 300508
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/forced-qp-result.json",
+      "sha256": "319d06daab69c762966de8a867a0334ee96d9d5e87c4ba7d649c25af2ffc3441",
+      "bytes": 1108
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runtime-bindings/forced-qp.json",
+      "sha256": "96dbf9318a5a1d9e4536616d1786b1f9b67b9730524ea0d8e9504db56905cb35",
+      "bytes": 547193
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/ninja-near-singular-result.json",
+      "sha256": "941527019f4237166587d460d7f3d1f619b6242a491b85df2f7dfda367dba4e2",
+      "bytes": 733
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runtime-bindings/ninja-near-singular.json",
+      "sha256": "98ab4438321f5cc0573018899d7160228c71c69e4bd2a0da71c86d4031f25d92",
+      "bytes": 275641
+    }
+  ],
+  "schedule": [
+    {
+      "collection": "complex",
+      "cases": [
+        "control-complex"
+      ],
+      "backends": [
+        6,
+        8
+      ],
+      "points_root": "docs/benchmarkfolder/points",
+      "points": 10,
+      "persistent_commands": 2,
+      "fresh_parity": true
+    },
+    {
+      "collection": "mixed-ninja",
+      "cases": [
+        "control-mixed"
+      ],
+      "backends": [
+        6
+      ],
+      "points_root": "docs/benchmarkfolder/points",
+      "points": 10,
+      "persistent_commands": 2,
+      "fresh_parity": true
+    },
+    {
+      "collection": "near-singular-nrs",
+      "cases": [
+        "control-forced-qp"
+      ],
+      "backends": [
+        8
+      ],
+      "points_root": "docs/benchmarkfolder/policy-v2/representative-point-streams/near-singular",
+      "points": 10,
+      "persistent_commands": 2,
+      "fresh_parity": true
+    }
+  ],
+  "reused_current_evidence": {
+    "mixed": {
+      "result": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/mixed-result.json",
+        "sha256": "fa852dfa609fa706938ca52b273192137d39b6893f3d2572cb5166935dbbef23",
+        "bytes": 715
+      },
+      "runtime_binding": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runtime-bindings/mixed.json",
+        "sha256": "7083fb58c42bae16545246aaef538607ec8916cd38908dc1d84514653e0d6f9e",
+        "bytes": 300508
+      },
+      "targets": {
+        "control-mixed-candidate-8": {
+          "status_counts": {
+            "218": 10
+          },
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          },
+          "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+          "executable": "f622ccba713d819ccc54d7d4a28adda6d7afe693ec08933413f16a321c3bf994"
+        }
+      }
+    },
+    "forced-qp": {
+      "result": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/forced-qp-result.json",
+        "sha256": "319d06daab69c762966de8a867a0334ee96d9d5e87c4ba7d649c25af2ffc3441",
+        "bytes": 1108
+      },
+      "runtime_binding": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runtime-bindings/forced-qp.json",
+        "sha256": "96dbf9318a5a1d9e4536616d1786b1f9b67b9730524ea0d8e9504db56905cb35",
+        "bytes": 547193
+      },
+      "targets": {
+        "control-forced-qp-candidate-8": {
+          "status_counts": {
+            "322": 10
+          },
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          },
+          "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+          "executable": "1b1feac759a14ffa96bbc4423b82deed08305b1433322d3461ac393cdccb96e0"
+        }
+      }
+    },
+    "ninja-near-singular": {
+      "result": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/ninja-near-singular-result.json",
+        "sha256": "941527019f4237166587d460d7f3d1f619b6242a491b85df2f7dfda367dba4e2",
+        "bytes": 733
+      },
+      "runtime_binding": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/runtime-bindings/ninja-near-singular.json",
+        "sha256": "98ab4438321f5cc0573018899d7160228c71c69e4bd2a0da71c86d4031f25d92",
+        "bytes": 275641
+      },
+      "targets": {
+        "control-forced-qp-candidate-6": {
+          "status_counts": {
+            "328": 10
+          },
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          },
+          "runtime": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+          "executable": "1b1feac759a14ffa96bbc4423b82deed08305b1433322d3461ac393cdccb96e0"
+        }
+      }
+    }
+  },
+  "post_collection_comparisons": [
+    "complex candidate6 vs8 all Born/Laurent/split rows",
+    "new mixed6 versus retained current mixed8 all4 loop/3 Born order slots",
+    "new near8 actual322/full QP versus retained current near6 status328"
+  ],
+  "scope": "Fixed10-point correctness/state diagnostics only; no timing acceptance, no matched-random CDF claim",
+  "no_new_backends_1_or_7": true,
+  "cost_estimate": "Four private target builds plus warm/calibration/two commands/fresh parity. Current mixed8 complete wrapper23.6s; current near6 wrapper58.8s; current forced8 target contributes O(1min). Planning range2-5min after resources granted, not a measured upper bound; per-call timeout86400s retained and no auto-retry.",
+  "additional_missing_controls": [
+    "HH rotation vs pending actual HH100 first10 anchor",
+    "HH both-precision mass/scale retained vs NRS-finalized contexts",
+    "HH direction DP1/2 and QP4/5, expected110/-1 or120/-1",
+    "finite-width complex explicitQP6/8 expected120/-1"
+  ],
+  "handoff_requires": [
+    "execute-numerical flag",
+    "root_authorized exact phase/source/spec/freeze/core/control hashes",
+    "CPU190 and all four thread variables1",
+    "source/gen77b/runtimea757/archiveb0d before/after",
+    "fresh empty work/report namespaces; every failure preserved; no automatic retries"
+  ]
+}

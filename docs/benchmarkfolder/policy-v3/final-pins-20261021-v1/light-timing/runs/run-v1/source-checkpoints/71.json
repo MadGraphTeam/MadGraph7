@@ -1,0 +1,19 @@
+{
+  "schema": "final-light-source-checkpoint-v1",
+  "index": 71,
+  "case": "ew-1",
+  "phase": "measurement",
+  "event": "complete",
+  "source": "baseline",
+  "backend": 6,
+  "repetition": 3,
+  "utc": "2026-10-21T21:34:35.084140+00:00",
+  "orchestration_revision": "235901b925688282c61172d5695fe4f9bb2be93d",
+  "numerical_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+  "generator_identity_sha256": "77b16df0251af4104a2c541bab913c11f4e67496a290495ce1a1c5fc526dfe3c",
+  "observed_inventory": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/source-checkpoints/c9054075d2c73ae7781c0caba6d908d74a5ef64c9763ddf2be6b82dc097dee9e.json",
+    "sha256": "a0d20fcf0e833c670f7dd8b1166c222d20d8f369dab09c83709408bb7f69c86d",
+    "bytes": 305045
+  }
+}

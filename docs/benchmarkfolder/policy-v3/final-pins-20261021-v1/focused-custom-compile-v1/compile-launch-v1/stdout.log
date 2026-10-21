@@ -1,0 +1,8 @@
+control-rotation compile-only prepared
+control-rebinding compile-only prepared
+control-rebinding-fresh compile-only prepared
+control-direction compile-only prepared
+control-rebinding-qp compile-only prepared
+control-rebinding-fresh-qp compile-only prepared
+control-complex-qp compile-only prepared
+Compile-only preparation complete; no custom numerical execution is authorized.

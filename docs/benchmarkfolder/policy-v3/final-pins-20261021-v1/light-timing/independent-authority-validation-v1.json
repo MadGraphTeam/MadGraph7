@@ -1,0 +1,48 @@
+{
+  "authority": {
+    "bytes": 123422,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/result.json",
+    "sha256": "ab7f9b9dc0e870e1ba62aa534615250ddaaa8eed6d7dffa6b37846266aaf46ae"
+  },
+  "collector": {
+    "bytes": 33451,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/light_pair.py",
+    "sha256": "eff3d2752da6bcb13598b3619d36382c1270e5435117abe4f4462691e223630b"
+  },
+  "compiler_invocations": 0,
+  "independent_arithmetic_and_custody": {
+    "bytes": 137787,
+    "path": ".benchmark-work/final-release-audit-20261021-v1/light-six-actual-timing-audit-v1.json",
+    "sha256": "e0b6a069bc31f91c1b94583ff93907b569a08f2c00d966f012feae993489ab19"
+  },
+  "numerical_calls": 0,
+  "read_only_command_exit_code": 0,
+  "recorded_utc": "2026-10-21T21:43:21.650576+00:00",
+  "retained_validator_stderr": {
+    "bytes": 0,
+    "path": ".benchmark-work/final-release-audit-20261021-v1/light-six-retained-validator.stderr",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "retained_validator_stdout": {
+    "bytes": 123422,
+    "path": ".benchmark-work/final-release-audit-20261021-v1/light-six-retained-validator.stdout",
+    "sha256": "ab7f9b9dc0e870e1ba62aa534615250ddaaa8eed6d7dffa6b37846266aaf46ae"
+  },
+  "schema": "independent-light-six-authority-validation-receipt-v1",
+  "scope": "Exact six-process N10/seven-pair retained source/runtime/raw/dispatch/source-checkpoint authority plus independently recomputed arithmetic; no old withdrawn heavy timing or whole-goal claim. Original terminal absence evidence checked; no new process queries.",
+  "source_and_held_scope_reviews": [
+    {
+      "bytes": 3047,
+      "path": ".benchmark-work/final-release-audit-20261021-v1/light-six-timing-source-review-v1.json",
+      "sha256": "7612477cd3f56e6ff525d4ccfc464926ae9df3491ab1c65b936425cdb81bc585"
+    },
+    {
+      "bytes": 1791,
+      "path": ".benchmark-work/final-release-audit-20261021-v1/light-six-timing-held-spec-review-v1.json",
+      "sha256": "cb4592a685f04b7ff245580c0b38d745cc2637cf97b843d000156225e381f570"
+    }
+  ],
+  "status": "PASS",
+  "tests_run": 0,
+  "validated_return_equals_original_measured_authority": true
+}
