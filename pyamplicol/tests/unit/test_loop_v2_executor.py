@@ -57,6 +57,10 @@ ARBITRARY = Precision.arbitrary(60)
 DOUBLE_TOLERANCE = 1e-13
 # Both executors carry the working digits (60 + 20 guard digits).
 ARBITRARY_TOLERANCE = 1e-70
+# Families below these fractions of the point's numerator scale vanish
+# exactly: their size is the carrier's rounding noise.
+DOUBLE_NOISE = 1e-12
+ARBITRARY_NOISE = 1e-60
 
 
 def _points(source: str) -> tuple[list, list[str]]:
@@ -220,6 +224,37 @@ def test_plan_v4_round_trips_through_the_native_loader(slices):
 # ----------------------------------------------------------------- numerators
 
 
+def _assert_numerators(native, reference, point, tolerance, noise, label):
+    """Deviation on the point's numerator scale for every family, and on each
+    family's own scale except for families that vanish exactly: their size
+    (below ``noise`` times the point scale) is the carrier's rounding of the
+    point, e.g. Furry's C-odd quark loops of uu~ -> e-e+gg."""
+
+    energy = _energy(point)
+    deviation = compare_numerators(native, reference, energy=energy, scale="point")
+    assert deviation <= tolerance, (label, "point", deviation)
+    floor = noise * _point_size(reference, energy)
+    alone = {k: v for k, v in reference.items() if _size(v, energy) > floor}
+    deviation = compare_numerators(
+        {key: native[key] for key in alone}, alone, energy=energy
+    )
+    assert deviation <= tolerance, (label, "family", deviation)
+
+
+def _size(numerator, energy) -> float:
+    from pyamplicol.loops.v2.plan_export import _degree
+
+    return max(
+        abs(complex(v)) * energy ** _degree(k)
+        for column in numerator.columns
+        for k, v in enumerate(column)
+    )
+
+
+def _point_size(numerators, energy) -> float:
+    return max(_size(value, energy) for value in numerators.values())
+
+
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", (*SLICE, *EXTRA))
 def test_numerators_equal_the_reference_in_binary64(slices, name):
@@ -236,25 +271,40 @@ def test_numerators_equal_the_reference_in_binary64(slices, name):
         (native,) = executor.family_numerators(
             [point], [scale], parameters=PARAMETERS, precision=DOUBLE, schedule=schedule
         )
-        deviation = compare_numerators(
-            native, reference.numerators, energy=_energy(point)
+        _assert_numerators(
+            native,
+            reference.numerators,
+            point,
+            DOUBLE_TOLERANCE,
+            DOUBLE_NOISE,
+            schedule,
         )
-        assert deviation <= DOUBLE_TOLERANCE, (schedule, deviation)
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("name", (*SLICE, "uux_ggg"))
+@pytest.mark.parametrize("name", (*SLICE, "uux_ggg", "uux_emepgg"))
 def test_numerators_equal_the_reference_in_arbitrary_precision(slices, name):
     slice_, executor = slices(name)
     point, scale = _point(name)
-    reference, _ = slice_.family_numerators(
-        point, scale, parameters=PARAMETERS, precision=ARBITRARY
-    )
-    (native,) = executor.family_numerators(
-        [point], [scale], parameters=PARAMETERS, precision=ARBITRARY
-    )
-    deviation = compare_numerators(native, reference.numerators, energy=_energy(point))
-    assert deviation <= ARBITRARY_TOLERANCE, deviation
+    for schedule in ("B", "F"):
+        reference, _ = slice_.family_numerators(
+            point, scale, parameters=PARAMETERS, precision=ARBITRARY, schedule=schedule
+        )
+        (native,) = executor.family_numerators(
+            [point],
+            [scale],
+            parameters=PARAMETERS,
+            precision=ARBITRARY,
+            schedule=schedule,
+        )
+        _assert_numerators(
+            native,
+            reference.numerators,
+            point,
+            ARBITRARY_TOLERANCE,
+            ARBITRARY_NOISE,
+            schedule,
+        )
 
 
 class _ExactNumbers:
@@ -405,24 +455,38 @@ def test_native_stability_estimates_equal_the_slice(slices):
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("arithmetic", ["double", "double-double"])
-def test_native_bare_equals_the_assembled_bare(slices, arithmetic):
+def test_native_bare_equals_the_assembled_bare(slices):
     """The executor's own bare virtual (2 Re(i/16pi^2 avg sum Omega)) equals
     the slice assembly of its family integrals."""
 
     slice_, executor = slices("gg_gg")
     points, scales = PROCESSES["gg_gg"][2]()
-    precision = DOUBLE
     results = executor.evaluate(points, scales, parameters=PARAMETERS)
-    bare = executor.last_bare
-    for result, columns in zip(results, bare, strict=True):
+    for result, columns in zip(results, executor.last_bare, strict=True):
         for (sector, _pairs), column in zip(slice_.sectors, columns, strict=True):
             value = result.components["bare"][sector]
+            scale = max(abs(complex(x)) for x in value.coefficients)
             for a, b in zip(value.coefficients, column, strict=True):
-                assert abs(complex(a) - complex(*map(float, b))) <= 1e-13 * max(
-                    abs(complex(x)) for x in value.coefficients
-                )
-    assert precision.arithmetic == "double"
-    if arithmetic == "double-double":
-        native = executor.native("double-double")
-        assert native.lanes == 16
+                assert abs(complex(a) - complex(*map(float, b))) <= 1e-13 * scale
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["gg_gg", "uux_ddxg"])
+def test_double_double_numerators_equal_the_reference(slices, name):
+    """The DoubleFloat carrier on 200-bit inputs equals the arbitrary-
+    precision reference to its own precision (2^-104 ~ 5e-32)."""
+
+    slice_, executor = slices(name)
+    point, scale = _point(name)
+    reference, _ = slice_.family_numerators(
+        point, scale, parameters=PARAMETERS, precision=ARBITRARY
+    )
+    (native,) = executor.family_numerators(
+        [point],
+        [scale],
+        parameters=PARAMETERS,
+        precision=ARBITRARY,
+        double_double=True,
+    )
+    deviation = compare_numerators(native, reference.numerators, energy=_energy(point))
+    assert deviation <= 1e-28, deviation

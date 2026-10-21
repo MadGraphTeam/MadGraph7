@@ -6,11 +6,9 @@
 //! batch's Born components; and the leaf objects `w_s U0[k]` that schedule B
 //! dresses (a seed times `δ_ab`, one lane vector per object row).
 
-use super::dress::{Carrier, LaneData, cadd, parse_rational};
+use super::dress::{Carrier, LaneData, cadd};
 use super::kernels::lane_vector_len;
 use super::plan::LoopProgramV4;
-use crate::RusticolResult;
-use symbolica::domains::float::Complex;
 
 /// Seeds of one chunk: per seed key, `rows × columns` lane vectors in object
 /// row order `h × columns + o`.
@@ -18,22 +16,8 @@ pub struct Seeds<T> {
     pub values: Vec<Vec<T>>,
 }
 
-/// An exact complex literal pair cast to the carrier.
-pub fn cast_complex<T: Carrier, const L: usize>(
-    data: &LaneData<T, L>,
-    value: &[String; 2],
-) -> RusticolResult<Complex<T>> {
-    Ok(Complex::new(
-        data.cast(&parse_rational(&value[0])?),
-        data.cast(&parse_rational(&value[1])?),
-    ))
-}
-
 /// `U0` of every seed key of the plan.
-pub fn seeds<T: Carrier, const L: usize>(
-    plan: &LoopProgramV4,
-    data: &LaneData<T, L>,
-) -> RusticolResult<Seeds<T>> {
+pub fn seeds<T: Carrier, const L: usize>(plan: &LoopProgramV4, data: &LaneData<T, L>) -> Seeds<T> {
     let v = lane_vector_len(L);
     let columns = plan.columns;
     let mut term = vec![data.zero.clone(); v];
@@ -41,36 +25,39 @@ pub fn seeds<T: Carrier, const L: usize>(
         .seeds
         .iter()
         .map(|seed| {
-            let weights = seed
+            let weights: Vec<Vec<(usize, T, T)>> = seed
                 .columns
                 .iter()
                 .map(|terms| {
                     terms
                         .iter()
-                        .map(|t| Ok((t.component, cast_complex(data, &t.weight)?)))
-                        .collect::<RusticolResult<Vec<_>>>()
+                        .map(|t| {
+                            let [re, im] = &t.weight;
+                            (t.component, data.cast(re), data.cast(im))
+                        })
+                        .collect()
                 })
-                .collect::<RusticolResult<Vec<_>>>()?;
+                .collect();
             let mut out = vec![data.zero.clone(); plan.rows * columns * v];
             for h in 0..plan.rows {
                 for (o, terms) in weights.iter().enumerate() {
                     let target = &mut out[(h * columns + o) * v..][..v];
-                    for (component, weight) in terms {
+                    for (component, re, im) in terms {
                         let born = &data.born[(h * plan.born_components + component) * v..][..v];
                         // weight * conj(A0): (a + ib)(c - id).
                         for l in 0..L {
                             let (c, d) = (&born[l], &born[L + l]);
-                            term[l] = weight.re.clone() * c + weight.im.clone() * d;
-                            term[L + l] = weight.im.clone() * c - weight.re.clone() * d;
+                            term[l] = re.clone() * c + im.clone() * d;
+                            term[L + l] = im.clone() * c - re.clone() * d;
                         }
                         cadd::<T, L>(target, &term);
                     }
                 }
             }
-            Ok(out)
+            out
         })
-        .collect::<RusticolResult<Vec<_>>>()?;
-    Ok(Seeds { values })
+        .collect();
+    Seeds { values }
 }
 
 /// The leaf object `weight × U0[seed]` into `out` (`rows × columns` lane

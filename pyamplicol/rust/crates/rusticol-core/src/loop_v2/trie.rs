@@ -11,7 +11,7 @@
 //! [`run_family`] owns its workspace, so families run on separate threads.
 
 use super::closure::{FamilyNumerator, trace_into};
-use super::dress::{Carrier, FactorStore, LaneData, Pool, dress_edge, parse_rational};
+use super::dress::{Carrier, FactorStore, LaneData, Pool, dress_edge};
 use super::kernels::lane_vector_len;
 use super::plan::{LoopProgramV4, Source};
 use super::seeds::{Seeds, leaf_object};
@@ -38,11 +38,11 @@ pub fn run_family<T: Carrier, const L: usize>(
     let mut pool = Pool::new(zero);
     let mut numerator = FamilyNumerator::zeros::<L>(index, family, columns, zero);
     let mut outputs: Vec<Option<Vec<T>>> = (0..family.steps.len()).map(|_| None).collect();
-    let weights = family
+    let weights: Vec<T> = family
         .leaves
         .iter()
-        .map(|leaf| Ok(data.cast(&parse_rational(&leaf.weight)?)))
-        .collect::<RusticolResult<Vec<_>>>()?;
+        .map(|leaf| data.cast(&leaf.weight))
+        .collect();
     for (s, step) in family.steps.iter().enumerate() {
         let mut out = pool.take(step.rows * columns * step.out_row() * v);
         for edge in &step.edges {

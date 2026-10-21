@@ -11,9 +11,7 @@
 //! produce the same numerators in the same frames.
 
 use super::closure::{FamilyNumerator, frame_shift, substitute};
-use super::dress::{
-    Carrier, FactorStore, LaneData, Pool, cadd, cmul_into, dress_edge, parse_rational,
-};
+use super::dress::{Carrier, FactorStore, LaneData, Pool, cadd, cmul_into, dress_edge};
 use super::kernels::lane_vector_len;
 use super::plan::LoopProgramV4;
 use super::seeds::Seeds;
@@ -94,7 +92,7 @@ pub fn run_forward<T: Carrier, const L: usize>(
         let n = ncoeff(state.rank);
         let row = state.out_row() * v;
         for closure in &state.closures {
-            let weight = data.cast(&parse_rational(&closure.weight)?);
+            let weight = data.cast(&closure.weight);
             let seed = &seeds.values[closure.seed];
             let family = &plan.families[closure.family];
             let n_family = ncoeff(family.rank);

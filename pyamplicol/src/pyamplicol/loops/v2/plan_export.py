@@ -166,6 +166,38 @@ class _Exporter:
 
     # -- contents -----------------------------------------------------------
 
+    def _binding(self, binding, index, split: bool) -> dict:
+        """A kernel bound to a routing term's slots: resolved inputs and, per
+        kernel output, its fused entry (and, for a split vertex binding, the
+        flat block-component index nu it multiplies)."""
+
+        kernel = self._kernel(binding)
+        current_slots, momentum_slots = [], []
+        for slot, dimension in enumerate(binding.block_dimensions):
+            current_slots += [(slot, k) for k in range(dimension)]
+            momentum_slots += [(slot, mu) for mu in range(4)]
+        inputs = []
+        for kind, component, _ in self.kernel_records[kernel]["inputs"]:
+            if kind == "current":
+                if split:
+                    raise ValueError("a split vertex kernel reads a block current")
+                inputs.append(["current", *current_slots[component]])
+            elif kind == "momentum":
+                inputs.append(["momentum", *momentum_slots[component]])
+            else:
+                inputs.append([kind, component, 0])
+        if split:
+            entries = [
+                [
+                    index[(e.loop_in, e.out, e.exponents)],
+                    rx._flat(e.blocks, binding.block_dimensions),
+                ]
+                for e in binding.entries
+            ]
+        else:
+            entries = [index[(e.loop_in, e.out, e.exponents)] for e in binding.entries]
+        return {"kernel": kernel, "inputs": inputs, "entries": entries}
+
     def content(self, content) -> tuple[int, rx.ContentShape]:
         shape = self.kinematics.shape(content)
         found = self.contents.get(content)
@@ -175,33 +207,9 @@ class _Exporter:
         row_index = {row: i for i, row in enumerate(shape.rows)}
         terms = []
         for term in self.kinematics.lowered(content):
-            bindings = []
-            for binding in term.fused:
-                kernel = self._kernel(binding)
-                current_slots, momentum_slots = [], []
-                for slot, dimension in enumerate(binding.block_dimensions):
-                    current_slots += [(slot, k) for k in range(dimension)]
-                    momentum_slots += [(slot, mu) for mu in range(4)]
-                inputs = []
-                for kind, component, _ in self.kernel_records[kernel]["inputs"]:
-                    if kind == "current":
-                        inputs.append(["current", *current_slots[component]])
-                    elif kind == "momentum":
-                        inputs.append(["momentum", *momentum_slots[component]])
-                    else:
-                        inputs.append([kind, component, 0])
-                bindings.append(
-                    {
-                        "kernel": kernel,
-                        "inputs": inputs,
-                        "entries": [
-                            index[(e.loop_in, e.out, e.exponents)]
-                            for e in binding.entries
-                        ],
-                        "dimensions": list(binding.block_dimensions),
-                    }
-                )
-            dimensions = {tuple(b["dimensions"]) for b in bindings}
+            bindings = [self._binding(b, index, False) for b in term.fused]
+            split = [self._binding(b, index, True) for b in term.split]
+            dimensions = {tuple(b.block_dimensions) for b in (*term.fused, *term.split)}
             if len(dimensions) != 1:
                 raise ValueError(f"content {content.label} mixes block dimensions")
             (dims,) = dimensions
@@ -217,12 +225,12 @@ class _Exporter:
                 ]
                 for row, parts in term.rows
             ]
-            for binding in bindings:
-                del binding["dimensions"]
             terms.append(
                 {
                     "slots": [slot.block.mask for slot in term.slots],
+                    "dimensions": list(dims),
                     "bindings": bindings,
+                    "split": split,
                     "rows": rows,
                 }
             )
@@ -706,21 +714,29 @@ class NativeExecutor:
         precision: Any = None,
         schedule: Literal["B", "F"] = "B",
         exact: bool = False,
+        double_double: bool = False,
     ) -> list[dict[tuple[FamilyKey, Orders], NativeNumerator]]:
         """Native family numerators per point (one column per sector), in the
         families' trie frames: the comparison with ``LoopSlice.family_numerators``.
 
         ``exact`` runs the native rational carrier on the carrier's tree rows
         and Born amplitudes read as exact rationals and the exact kernel
-        constants (``reference_executor.KernelConstants`` stand-ins).
+        constants (``reference_executor.KernelConstants`` stand-ins);
+        ``double_double`` runs the native DoubleFloat carrier on the inputs
+        of an arbitrary ``precision``.
         """
 
         precision, evaluations = self._points(
             points, scales, parameters, precision, True
         )
         arithmetic, digits = self._arithmetic(precision, exact)
+        inputs = self._inputs(evaluations, arithmetic)
+        if double_double:
+            if arithmetic != "arbitrary":
+                raise ValueError("double-double reads arbitrary-precision inputs")
+            arithmetic, digits = "double-double", None
         native = self.native(arithmetic, digits)
-        raw = native.numerators(self._inputs(evaluations, arithmetic), schedule)
+        raw = native.numerators(inputs, schedule)
         return [self._numerators(point, arithmetic) for point in raw]
 
     def _numerators(self, point, arithmetic) -> dict:
@@ -861,36 +877,47 @@ def compare_numerators(
     native: Mapping[tuple[FamilyKey, Orders], NativeNumerator],
     reference: Mapping[tuple[FamilyKey, Orders], Any],
     energy: float = 1.0,
+    scale: Literal["family", "point"] = "family",
 ) -> float:
-    """Largest coefficient deviation of two numerator sets, relative to each
-    family column's largest coefficient (0 for identical sets); raises if the
-    family sets differ.
+    """Largest coefficient deviation of two numerator sets (0 if identical);
+    raises if the family sets differ.
 
     Coefficients of degree r are weighted by ``energy``^r, so with a typical
-    energy (sqrt(s)) the deviation is that of N(q) at |q| ~ energy, the
-    units-independent metric of oracle O2.
+    energy (sqrt(s)) a deviation is that of N(q) at |q| ~ energy, the
+    units-independent metric of oracle O2. ``scale="family"`` divides by
+    each family column's largest weighted coefficient; ``"point"`` by the
+    largest of the column over every family of the point, the scale of the
+    numerators that enter one sector (families that vanish exactly, e.g. by
+    Furry's theorem, are rounding noise on any other scale).
     """
 
     if native.keys() != reference.keys():
         raise AssertionError(
             f"family sets differ: {sorted(native.keys() ^ reference.keys())[:3]}"
         )
+
+    def weighted(column):
+        return [
+            abs(complex(v)) * float(energy) ** _degree(k) for k, v in enumerate(column)
+        ]
+
+    point: dict[int, float] = defaultdict(float)
+    for numerator in reference.values():
+        for o, column in enumerate(numerator.columns):
+            point[o] = max(point[o], max(weighted(column), default=0.0))
     worst = 0.0
     for key, mine in native.items():
         theirs = reference[key]
-        for x, y in zip(mine.columns, theirs.columns, strict=True):
+        for o, (x, y) in enumerate(zip(mine.columns, theirs.columns, strict=True)):
             width = max(len(x), len(y))
             x = list(x) + [0] * (width - len(x))
             y = list(y) + [0] * (width - len(y))
-            weights = [float(energy) ** _degree(k) for k in range(width)]
-            scale = max(
-                (abs(complex(v)) * w for v, w in zip(y, weights, strict=True)),
-                default=0.0,
-            )
-            for a, b, w in zip(x, y, weights, strict=True):
-                difference = abs(complex(rx.exact(a) - rx.exact(b))) * w
+            size = point[o] if scale == "point" else max(weighted(y), default=0.0)
+            for k, (a, b) in enumerate(zip(x, y, strict=True)):
+                difference = abs(complex(rx.exact(a) - rx.exact(b)))
+                difference *= float(energy) ** _degree(k)
                 if difference:
-                    worst = max(worst, difference / scale if scale else float("inf"))
+                    worst = max(worst, difference / size if size else float("inf"))
     return worst
 
 

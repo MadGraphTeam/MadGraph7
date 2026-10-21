@@ -60,7 +60,14 @@ pub fn parse_rational(value: &str) -> RusticolResult<Rational> {
 /// like Python's `float(Fraction)`.
 pub fn cast<T: Carrier>(zero: &T, value: &Rational) -> T {
     if (zero as &dyn std::any::Any).is::<f64>() {
-        let rounded = value.to_multi_prec_float(f64::MANTISSA_DIGITS).to_f64();
+        const EXACT: i64 = 1 << f64::MANTISSA_DIGITS;
+        let rounded = match (value.numerator_ref(), value.denominator_ref()) {
+            // Both exact in binary64: one correctly rounded division.
+            (Integer::Single(n), Integer::Single(d)) if n.abs() <= EXACT && *d <= EXACT => {
+                *n as f64 / *d as f64
+            }
+            _ => value.to_multi_prec_float(f64::MANTISSA_DIGITS).to_f64(),
+        };
         return (&rounded as &dyn std::any::Any)
             .downcast_ref::<T>()
             .expect("binary64 carrier")
@@ -333,6 +340,13 @@ impl<T: Carrier> FactorStore<T> {
 }
 
 /// `X(J)` of factor `id`: per content row, one lane vector per fused entry.
+///
+/// A routing term with split vertex kernels evaluates its vertex tensor
+/// `V[e]` once (loop shift and block momenta only) and contracts it with
+/// each row's block components, `X[row][e] += V[e] J[row][nu(e)]`; a term
+/// without them evaluates its fused kernels per row. Both are the same
+/// polynomial (the reference executor's fused and split forms agree
+/// exactly).
 pub fn build_factor<T: Carrier, const L: usize>(
     plan: &LoopProgramV4,
     id: usize,
@@ -347,6 +361,42 @@ pub fn build_factor<T: Carrier, const L: usize>(
     let mut scratch = Scratch::<T>::new(&data.zero, v);
     for term in &content.terms {
         let slot_momenta: Vec<_> = term.slots.iter().map(|&mask| data.momentum(mask)).collect();
+        let input = |input: &KernelInput, blocks: Option<&[usize]>| -> Option<&[T]> {
+            match *input {
+                KernelInput::Loop(mu) => Some(&loop_momentum[mu * v..][..v]),
+                KernelInput::Current { slot, component } => {
+                    Some(data.block_component(blocks.expect("block rows")[slot], component))
+                }
+                KernelInput::Momentum { slot, mu } => Some(&slot_momenta[slot][mu * v..][..v]),
+                KernelInput::Parameter => None,
+            }
+        };
+        if !term.split.is_empty() {
+            // Vertex tensor once, then one complex multiply-add per entry
+            // and row.
+            let mut vertex: Vec<(usize, usize, Vec<T>)> = Vec::new();
+            for binding in &term.split {
+                let kernel = &plan.kernels[binding.kernel];
+                let inputs: Vec<Option<&[T]>> =
+                    binding.inputs.iter().map(|i| input(i, None)).collect();
+                for (terms, &(entry, nu)) in kernel.outputs.iter().zip(&binding.entries) {
+                    scratch.evaluate::<L>(terms, &inputs, data);
+                    vertex.push((entry, nu, scratch.total.clone()));
+                }
+            }
+            let width = term.width();
+            let mut components = vec![data.zero.clone(); width * v];
+            let mut product = vec![data.zero.clone(); v];
+            for (row, blocks) in &term.rows {
+                block_components::<T, L>(term, blocks, data, &mut components, &mut product);
+                let target = &mut out[row * row_len..][..row_len];
+                for (entry, nu, value) in &vertex {
+                    cmul_into::<T, L>(&mut product, value, &components[nu * v..][..v]);
+                    cadd::<T, L>(&mut target[entry * v..][..v], &product);
+                }
+            }
+            continue;
+        }
         for (row, blocks) in &term.rows {
             let target = &mut out[row * row_len..][..row_len];
             for binding in &term.bindings {
@@ -354,35 +404,46 @@ pub fn build_factor<T: Carrier, const L: usize>(
                 let inputs: Vec<Option<&[T]>> = binding
                     .inputs
                     .iter()
-                    .map(|input| match *input {
-                        KernelInput::Loop(mu) => Some(&loop_momentum[mu * v..][..v]),
-                        KernelInput::Current { slot, component } => {
-                            Some(data.block_component(blocks[slot], component))
-                        }
-                        KernelInput::Momentum { slot, mu } => {
-                            Some(&slot_momenta[slot][mu * v..][..v])
-                        }
-                        KernelInput::Parameter => None,
-                    })
+                    .map(|i| input(i, Some(blocks)))
                     .collect();
                 for (terms, &entry) in kernel.outputs.iter().zip(&binding.entries) {
-                    scratch.total_clear();
-                    for term in terms {
-                        scratch.value_set(data.constant(term.constant));
-                        for &(position, power) in &term.monomial {
-                            let factor = inputs[position].expect("parameter in a monomial");
-                            for _ in 0..power {
-                                scratch.value_mul::<L>(factor);
-                            }
-                        }
-                        scratch.total_add::<L>();
-                    }
+                    scratch.evaluate::<L>(terms, &inputs, data);
                     cadd::<T, L>(&mut target[entry * v..][..v], &scratch.total);
                 }
             }
         }
     }
     out
+}
+
+/// `J[nu]`: the products of the slots' block components of one row, flat
+/// over the slots with the first slot slowest.
+fn block_components<T: Carrier, const L: usize>(
+    term: &super::plan::ContentTerm,
+    blocks: &[usize],
+    data: &LaneData<T, L>,
+    out: &mut [T],
+    scratch: &mut [T],
+) {
+    let v = lane_vector_len(L);
+    let mut filled = 1;
+    for x in &mut out[..v] {
+        *x = data.zero.clone();
+    }
+    for x in &mut out[..L] {
+        *x = data.zero.one();
+    }
+    for (slot, &dimension) in term.dimensions.iter().enumerate() {
+        // Expand in place from the back: nu = previous * dimension + k.
+        for previous in (0..filled).rev() {
+            let head: Vec<T> = out[previous * v..][..v].to_vec();
+            for k in (0..dimension).rev() {
+                cmul_into::<T, L>(scratch, &head, data.block_component(blocks[slot], k));
+                out[(previous * dimension + k) * v..][..v].clone_from_slice(scratch);
+            }
+        }
+        filled *= dimension;
+    }
 }
 
 /// Work vectors of the factor builder.
@@ -420,6 +481,27 @@ impl<T: Carrier> Scratch<T> {
 
     fn total_add<const L: usize>(&mut self) {
         cadd::<T, L>(&mut self.total, &self.value);
+    }
+
+    /// `total = Σ_terms constant Π input^power` (the reference executor's
+    /// `ExactKernel.evaluate` order).
+    fn evaluate<const L: usize>(
+        &mut self,
+        terms: &[super::plan::KernelTerm],
+        inputs: &[Option<&[T]>],
+        data: &LaneData<T, L>,
+    ) {
+        self.total_clear();
+        for term in terms {
+            self.value_set(data.constant(term.constant));
+            for &(position, power) in &term.monomial {
+                let factor = inputs[position].expect("parameter in a monomial");
+                for _ in 0..power {
+                    self.value_mul::<L>(factor);
+                }
+            }
+            self.total_add::<L>();
+        }
     }
 }
 

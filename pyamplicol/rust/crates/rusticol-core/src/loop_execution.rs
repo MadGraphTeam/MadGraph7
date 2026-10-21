@@ -2326,22 +2326,56 @@ pub mod v2 {
     }
 
     /// Dress every family of `families` on one chunk (schedule B).
-    fn dress_families<T: Carrier, const L: usize>(
-        plan: &LoopProgramV4,
-        families: &[usize],
-        factors: &mut FactorStore<T>,
-        seeds: &crate::loop_v2::seeds::Seeds<T>,
-        data: &LaneData<T, L>,
-        report: &mut Report,
-    ) -> RusticolResult<Vec<FamilyNumerator<T>>> {
-        let start = Instant::now();
+    /// The fused factors of `families`, ascending.
+    fn chunk_factors(plan: &LoopProgramV4, families: &[usize]) -> Vec<usize> {
         let mut ids: Vec<usize> = families
             .iter()
             .flat_map(|&f| plan.families[f].factors.iter().copied())
             .collect();
         ids.sort_unstable();
         ids.dedup();
-        factors.retain(&ids);
+        ids
+    }
+
+    /// Bucket chunks of at most `size` families, and per chunk the factors
+    /// read by it or a later chunk (a factor lives from its first to its
+    /// last chunk).
+    fn bucket_chunks(plan: &LoopProgramV4, size: usize) -> Vec<(Vec<usize>, Vec<usize>)> {
+        let parts: Vec<Vec<usize>> = plan
+            .buckets()
+            .values()
+            .flat_map(|members| members.chunks(size.max(1)).map(<[usize]>::to_vec))
+            .collect();
+        let mut last = vec![0; plan.factors.len()];
+        for (k, part) in parts.iter().enumerate() {
+            for id in chunk_factors(plan, part) {
+                last[id] = k;
+            }
+        }
+        parts
+            .into_iter()
+            .enumerate()
+            .map(|(k, part)| {
+                let live = (0..plan.factors.len())
+                    .filter(|&id| last[id] >= k)
+                    .collect();
+                (part, live)
+            })
+            .collect()
+    }
+
+    fn dress_families<T: Carrier, const L: usize>(
+        plan: &LoopProgramV4,
+        families: &[usize],
+        live: &[usize],
+        factors: &mut FactorStore<T>,
+        seeds: &crate::loop_v2::seeds::Seeds<T>,
+        data: &LaneData<T, L>,
+        report: &mut Report,
+    ) -> RusticolResult<Vec<FamilyNumerator<T>>> {
+        let start = Instant::now();
+        let ids = chunk_factors(plan, families);
+        factors.retain(live);
         factors.build(plan, data, &ids);
         report.time("factors", start);
         report.peak("factors", factors.reals(), L);
@@ -2381,12 +2415,13 @@ pub mod v2 {
         let mut report = Report::default();
         for points in chunks(batch.points(), L) {
             let data = LaneData::<T, L>::new(plan, batch, &points, zero)?;
-            let seeds = seeds(plan, &data)?;
+            let seeds = seeds(plan, &data);
             let mut factors = FactorStore::new(plan);
             let numerators = match schedule {
                 Schedule::B => {
                     let all: Vec<usize> = (0..plan.families.len()).collect();
-                    dress_families(plan, &all, &mut factors, &seeds, &data, &mut report)?
+                    let live = chunk_factors(plan, &all);
+                    dress_families(plan, &all, &live, &mut factors, &seeds, &data, &mut report)?
                 }
                 Schedule::F => {
                     factors.build(plan, &data, &forward_factors(plan));
@@ -2537,13 +2572,12 @@ pub mod v2 {
         let mut failures: Vec<Vec<String>> = vec![Vec::new(); points];
         let mut families: Vec<Vec<(LaneKey, Vec<Complex<T>>)>> = vec![Vec::new(); points];
         let mut checks: Vec<Vec<(LaneKey, Vec<Complex<T>>)>> = vec![Vec::new(); points];
-        let buckets = plan.buckets();
-        let chunk_families = options.chunk_families.max(1);
+        let chunks_of_buckets = bucket_chunks(plan, options.chunk_families);
         for chunk in chunks(points, L) {
             backend.begin();
             let start = Instant::now();
             let data = LaneData::<T, L>::new(plan, batch, &chunk, zero)?;
-            let seeds = seeds(plan, &data)?;
+            let seeds = seeds(plan, &data);
             report.time("seeds", start);
             let mut factors = FactorStore::new(plan);
             let masses: Vec<Complex<T>> = batch
@@ -2560,66 +2594,62 @@ pub mod v2 {
                     squares: HashMap::new(),
                 })
                 .collect();
-            for members in buckets.values() {
-                for part in members.chunks(chunk_families) {
-                    let numerators =
-                        dress_families(plan, part, &mut factors, &seeds, &data, &mut report)?;
-                    let start = Instant::now();
-                    let mut failed = vec![false; points];
-                    for (point, list) in failures.iter().enumerate() {
-                        failed[point] = !list.is_empty();
-                    }
-                    let groups: Vec<FamilyLanes<T>> = numerators
-                        .iter()
-                        .map(|numerator| {
-                            lanes_of(
-                                plan,
-                                &masses,
-                                numerator,
-                                &data,
-                                &mut invariants,
-                                &failed,
-                                &mut failures,
-                            )
-                        })
-                        .filter(|group| !group.keys.is_empty())
-                        .collect();
-                    report.time("scatter", start);
-                    report.count(
-                        "reduction lanes",
-                        groups.iter().map(|g| g.keys.len() as u64).sum(),
-                    );
-                    if groups.is_empty() {
-                        continue;
-                    }
-                    let start = Instant::now();
-                    let (direct, check) = backend.reduce(&groups, options.poles, options.check)?;
-                    report.time("reduction", start);
-                    for (index, group) in groups.iter().enumerate() {
-                        for (row, (&point, &key)) in
-                            group.points.iter().zip(&group.keys).enumerate()
-                        {
-                            let outcome = &direct[index][row];
+            for (part, live) in &chunks_of_buckets {
+                let numerators =
+                    dress_families(plan, part, live, &mut factors, &seeds, &data, &mut report)?;
+                let start = Instant::now();
+                let mut failed = vec![false; points];
+                for (point, list) in failures.iter().enumerate() {
+                    failed[point] = !list.is_empty();
+                }
+                let groups: Vec<FamilyLanes<T>> = numerators
+                    .iter()
+                    .map(|numerator| {
+                        lanes_of(
+                            plan,
+                            &masses,
+                            numerator,
+                            &data,
+                            &mut invariants,
+                            &failed,
+                            &mut failures,
+                        )
+                    })
+                    .filter(|group| !group.keys.is_empty())
+                    .collect();
+                report.time("scatter", start);
+                report.count(
+                    "reduction lanes",
+                    groups.iter().map(|g| g.keys.len() as u64).sum(),
+                );
+                if groups.is_empty() {
+                    continue;
+                }
+                let start = Instant::now();
+                let (direct, check) = backend.reduce(&groups, options.poles, options.check)?;
+                report.time("reduction", start);
+                for (index, group) in groups.iter().enumerate() {
+                    for (row, (&point, &key)) in group.points.iter().zip(&group.keys).enumerate() {
+                        let outcome = &direct[index][row];
+                        match &outcome.value {
+                            Some(value) if outcome.status == "success" => {
+                                families[point].push((key, value.clone()));
+                            }
+                            _ => failures[point].push(format!(
+                                "family {} lane {key:?}: {}",
+                                group.family, outcome.status
+                            )),
+                        }
+                        if let Some(check) = &check {
+                            let outcome = &check[index][row];
                             match &outcome.value {
                                 Some(value) if outcome.status == "success" => {
-                                    families[point].push((key, value.clone()));
+                                    checks[point].push((key, value.clone()));
                                 }
                                 _ => failures[point].push(format!(
-                                    "family {} lane {key:?}: {}",
+                                    "re-test of family {} lane {key:?}: {}",
                                     group.family, outcome.status
                                 )),
-                            }
-                            if let Some(check) = &check {
-                                let outcome = &check[index][row];
-                                match &outcome.value {
-                                    Some(value) if outcome.status == "success" => {
-                                        checks[point].push((key, value.clone()));
-                                    }
-                                    _ => failures[point].push(format!(
-                                        "re-test of family {} lane {key:?}: {}",
-                                        group.family, outcome.status
-                                    )),
-                                }
                             }
                         }
                     }

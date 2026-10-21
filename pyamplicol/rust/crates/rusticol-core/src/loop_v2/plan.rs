@@ -28,6 +28,7 @@ use crate::{RusticolError, RusticolResult};
 use ninjars::fast::tensor_layout::ncoeff;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use symbolica::domains::rational::Rational;
 
 /// The plan schema version this executor runs.
 pub const PLAN_SCHEMA: u32 = 4;
@@ -88,8 +89,18 @@ struct ContentFile {
 #[serde(deny_unknown_fields)]
 struct TermFile {
     slots: Vec<u64>,
+    dimensions: Vec<usize>,
     bindings: Vec<BindingFile>,
+    split: Vec<SplitFile>,
     rows: Vec<(usize, Vec<usize>)>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SplitFile {
+    kernel: usize,
+    inputs: Vec<(String, usize, usize)>,
+    entries: Vec<(usize, usize)>,
 }
 
 #[derive(Deserialize)]
@@ -215,14 +226,39 @@ pub struct Binding {
     pub entries: Vec<usize>,
 }
 
+/// A block-independent vertex kernel of a routing term (the split form):
+/// each output multiplies block component `nu` (flat over the slots'
+/// current components, first slot slowest) into a fused entry.
+#[derive(Clone, Debug)]
+pub struct SplitBinding {
+    pub kernel: usize,
+    pub inputs: Vec<KernelInput>,
+    /// (fused entry, nu) per kernel output.
+    pub entries: Vec<(usize, usize)>,
+}
+
 /// One routing term of a content with fixed block chiralities.
 #[derive(Clone, Debug)]
 pub struct ContentTerm {
     /// Leg mask of each slot's block.
     pub slots: Vec<u64>,
+    /// Current components of each slot.
+    pub dimensions: Vec<usize>,
+    /// Kernels of `X(J)` itself (block currents among their inputs).
     pub bindings: Vec<Binding>,
+    /// The same term as vertex kernels times block components; when present
+    /// the factor builder evaluates the vertex once per (content, shift)
+    /// and contracts it with each row's block components.
+    pub split: Vec<SplitBinding>,
     /// (content row, block row id per slot).
     pub rows: Vec<(usize, Vec<usize>)>,
+}
+
+impl ContentTerm {
+    /// Block components `nu` of the split form: the product of the slots'.
+    pub fn width(&self) -> usize {
+        self.dimensions.iter().product()
+    }
 }
 
 /// One position content: dimensions, q-degree, fused entries and the
@@ -252,7 +288,7 @@ impl Content {
 #[derive(Clone, Debug)]
 pub struct SeedTerm {
     pub component: usize,
-    pub weight: [String; 2],
+    pub weight: [Rational; 2],
 }
 
 /// Seed key (class, loop orders): per observable column its terms.
@@ -265,7 +301,7 @@ pub struct Seed {
 pub struct Leaf {
     pub seed: usize,
     /// Exact leaf weight (automorphism, flavour multiplicity, fermion sign).
-    pub weight: String,
+    pub weight: Rational,
 }
 
 /// The source of an edge: a leaf seed or the output of an earlier step.
@@ -347,7 +383,7 @@ pub struct Closure {
     pub family: usize,
     pub accumulator: usize,
     pub seed: usize,
-    pub weight: String,
+    pub weight: Rational,
     /// Born row of each state row (`None`: no seed row).
     pub rows: Vec<Option<usize>>,
     /// `q = sign q' - V(mask)` into the family's trie frame.
@@ -438,6 +474,10 @@ fn expand_links(flat: &[u32], columns: usize) -> RusticolResult<Vec<super::kerne
         }
     }
     Ok(out)
+}
+
+fn exact(value: &str) -> RusticolResult<Rational> {
+    super::dress::parse_rational(value).map_err(|error| invalid(error.message()))
 }
 
 fn kernel_input(kind: &str, a: usize, b: usize) -> RusticolResult<KernelInput> {
@@ -589,9 +629,67 @@ impl LoopProgramV4 {
                         }
                     }
                 }
+                require(
+                    t.dimensions.len() == t.slots.len(),
+                    "content term dimensions",
+                )?;
+                let width: usize = t.dimensions.iter().product();
+                let split = t
+                    .split
+                    .iter()
+                    .map(|b| {
+                        let kernel = kernels
+                            .get(b.kernel)
+                            .ok_or_else(|| invalid("split kernel index"))?;
+                        require(
+                            b.inputs.len() == kernel.inputs
+                                && b.entries.len() == kernel.outputs.len()
+                                && b.entries
+                                    .iter()
+                                    .all(|&(e, nu)| e < c.fused.len() && nu < width),
+                            "split binding shape",
+                        )?;
+                        let inputs = b
+                            .inputs
+                            .iter()
+                            .map(|(kind, a, b)| kernel_input(kind, *a, *b))
+                            .collect::<RusticolResult<Vec<_>>>()?;
+                        for input in &inputs {
+                            match *input {
+                                KernelInput::Current { .. } => {
+                                    return Err(invalid("a split vertex reads a block current"));
+                                }
+                                KernelInput::Loop(mu) | KernelInput::Momentum { mu, .. }
+                                    if mu >= 4 =>
+                                {
+                                    return Err(invalid("momentum component"));
+                                }
+                                KernelInput::Momentum { slot, .. } if slot >= t.slots.len() => {
+                                    return Err(invalid("split slot index"));
+                                }
+                                _ => {}
+                            }
+                        }
+                        Ok(SplitBinding {
+                            kernel: b.kernel,
+                            inputs,
+                            entries: b.entries.clone(),
+                        })
+                    })
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                for (_row, blocks) in &t.rows {
+                    for (slot, &block) in blocks.iter().enumerate() {
+                        require(
+                            file.block_rows[block] == t.dimensions[slot],
+                            "block row dimension",
+                        )?;
+                    }
+                }
                 terms.push(ContentTerm {
                     slots: t.slots.clone(),
+                    dimensions: t.dimensions.clone(),
                     bindings,
+                    split,
                     rows: t.rows.clone(),
                 });
             }
@@ -624,7 +722,7 @@ impl LoopProgramV4 {
                                     require(*component < file.born_components, "seed component")?;
                                     Ok(SeedTerm {
                                         component: *component,
-                                        weight: [re.clone(), im.clone()],
+                                        weight: [exact(re)?, exact(im)?],
                                     })
                                 })
                                 .collect::<RusticolResult<Vec<_>>>()
@@ -696,7 +794,7 @@ impl LoopProgramV4 {
                 require(leaf.seed < seeds, "leaf seed index")?;
                 Ok(Leaf {
                     seed: leaf.seed,
-                    weight: leaf.weight.clone(),
+                    weight: exact(&leaf.weight)?,
                 })
             })
             .collect::<RusticolResult<Vec<_>>>()?;
@@ -867,7 +965,7 @@ impl LoopProgramV4 {
                         family: closure.family,
                         accumulator: closure.accumulator,
                         seed: closure.seed,
-                        weight: closure.weight.clone(),
+                        weight: exact(&closure.weight)?,
                         rows: closure
                             .rows
                             .iter()
