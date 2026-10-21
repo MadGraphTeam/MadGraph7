@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from decimal import Context, Decimal, localcontext
+from decimal import Context, Decimal
 from fractions import Fraction
 from functools import cache
 from itertools import product
@@ -56,6 +56,8 @@ from pyamplicol.loops.v2.fields import (
     external_field_insertions,
 )
 from tools.loop_reference import legacy_capture
+
+from .loop_v2_stage_rows import stage_rows
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "loop" / "legacy"
 # Design §16.3: components against the legacy engine.
@@ -397,68 +399,17 @@ def _exact_u1_weights():
 def _block_rows(ct: CountertermSlice, point, parameters, digits):
     """Tree-runtime rows {(current id, variant): (re, im) Decimals}, exactly.
 
-    The interpreted stage evaluators of the numerical-current warm-up, with
-    every input upcast to ``digits`` and the runtime-derived model values
-    computed from their exact definitions (as the exact runtime does).
+    The shared interpreted stage evaluation, with the runtime-derived model
+    values computed from their exact definitions (as the exact runtime does).
     """
 
     from symbolica import E
 
     from pyamplicol._internal.physics.symbols import symbols
-    from pyamplicol.evaluators.symbolica_settings import SymbolicaEvaluatorSettings
-    from pyamplicol.generation.contracts import StageCompilationInput
-    from pyamplicol.generation.numerical_current_warmup import (
-        _build_interpreted_stage_evaluator,
-        _evaluate_interpreted_stage,
-    )
-    from pyamplicol.generation.runtime_schema import build_runtime_expression_schema
-    from pyamplicol.generation.stage_planning import (
-        build_generic_stage_compiler_blueprint,
-    )
     from pyamplicol.models.external import CompiledUFOModel
-    from pyamplicol.runtime.symbolica_exact import (
-        _fill_momenta,
-        _fill_sources,
-        _upcast_complex_inputs,
-    )
+    from pyamplicol.runtime.symbolica_exact import _upcast_complex_inputs
 
-    compiled, dag = ct.compiled, ct.blocks.blocks_dag
-    model = CompiledUFOModel(compiled)
-    runtime_schema = build_runtime_expression_schema(dag, model, process_id="ct")
-    schema = runtime_schema.to_mapping()
-    blueprint = build_generic_stage_compiler_blueprint(
-        StageCompilationInput(dag, model, runtime_schema)
-    )
-    assert blueprint.expression_ready, blueprint.blockers
-    settings = SymbolicaEvaluatorSettings(
-        iterations=1,
-        cpe_iterations=0,
-        n_cores=1,
-        direct_translation=False,
-        jit_direct_translation=False,
-        jit_optimization_level=0,
-        compiled_output_chunk_size=None,
-        output_chunk_strategy="uniform",
-        compiled_chunk_compile_workers=1,
-    )
-    records = sorted(
-        schema["model_parameters"], key=lambda record: record["parameter_index"]
-    )
-    external = {
-        record["name"]: Decimal(parameters.get(record["name"], repr(record["default"])))
-        for record in records
-        if record["kind"] == "external_parameter"
-    }
-    model_symbols = symbols.model(compiled.name)
-    substitutions = dict(
-        zip(
-            (E(model_symbols.symbol(name).to_canonical_string()) for name in external),
-            _upcast_complex_inputs(
-                [(value, Decimal(0)) for value in external.values()], digits
-            ),
-            strict=True,
-        )
-    )
+    compiled = ct.compiled
     definitions = {
         record.name: record.resolved_expression
         for record in compiled.ir.parameters
@@ -470,51 +421,46 @@ def _block_rows(ct: CountertermSlice, point, parameters, digits):
             for term in compiled.ir.vertex_terms
         }
     )
-    derived, values = {}, []
-    for record in records:
-        if record["kind"] == "external_parameter":
-            values.append(external[record["name"]])
-            continue
-        name = record["runtime_name"]
-        if name not in derived:
-            value = E(definitions[name]).evaluate(
-                substitutions, decimal_digit_precision=digits
+    model_symbols = symbols.model(compiled.name)
+
+    def values(records):
+        external = {
+            record["name"]: Decimal(
+                parameters.get(record["name"], repr(record["default"]))
             )
-            derived[name] = tuple(Decimal(x) for x in value.to_decimal_tuple())
-        values.append(derived[name][record["complex_component"] == "imag"])
-    layout = schema["parameter_layout"]
-    value_count = int(layout["value_component_count"])
-    offset = value_count + int(layout["momentum_parameter_count"])
-    momenta = tuple(tuple(Decimal(x) for x in vector) for vector in point)
-    state = [(Decimal(0), Decimal(0))] * max(
-        int(layout["parameter_count_if_flattened"]), offset + len(values)
+            for record in records
+            if record["kind"] == "external_parameter"
+        }
+        substitutions = dict(
+            zip(
+                (
+                    E(model_symbols.symbol(name).to_canonical_string())
+                    for name in external
+                ),
+                _upcast_complex_inputs(
+                    [(value, Decimal(0)) for value in external.values()], digits
+                ),
+                strict=True,
+            )
+        )
+        derived, values = {}, []
+        for record in records:
+            if record["kind"] == "external_parameter":
+                values.append(external[record["name"]])
+                continue
+            name = record["runtime_name"]
+            if name not in derived:
+                value = E(definitions[name]).evaluate(
+                    substitutions, decimal_digit_precision=digits
+                )
+                derived[name] = tuple(Decimal(x) for x in value.to_decimal_tuple())
+            values.append(derived[name][record["complex_component"] == "imag"])
+        return values
+
+    momenta = [[Decimal(x) for x in vector] for vector in point]
+    return stage_rows(
+        ct.blocks.blocks_dag, CompiledUFOModel(compiled), momenta, values, digits
     )
-    with localcontext() as context:
-        context.prec = digits + 10
-        _fill_sources(state, momenta, schema, tuple(values))
-        _fill_momenta(state, momenta, schema)
-    for index, value in enumerate(values):
-        state[offset + index] = (value, Decimal(0))
-    for stage in blueprint.stages:
-        evaluator = _build_interpreted_stage_evaluator(
-            stage, settings=settings, output_partitions=((0, stage.output_length),)
-        )
-        inputs = [None] * stage.parameter_count
-        for component in stage.input_components:
-            inputs[component.parameter_index] = state[component.global_component]
-        outputs = _evaluate_interpreted_stage(
-            evaluator, _upcast_complex_inputs(tuple(inputs), digits), precision=digits
-        )
-        for slot in stage.output_slots:
-            state[slot.component_start : slot.component_stop] = outputs[
-                slot.output_start : slot.output_stop
-            ]
-    return {
-        (int(slot["current_id"]), str(slot["variant"])): tuple(
-            state[slot["component_start"] : slot["component_stop"]]
-        )
-        for slot in schema["value_storage"]["value_slots"]
-    }
 
 
 def _scalars(ct: CountertermSlice, plan, parameters, label):
