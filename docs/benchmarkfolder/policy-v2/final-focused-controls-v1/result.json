@@ -1,0 +1,23 @@
+{
+  "schema": "final-focused-completed-v1",
+  "passed": true,
+  "cases": [
+    "control-complex",
+    "control-mixed"
+  ],
+  "commands_per_candidate_target": 2,
+  "candidate_fresh_parity": true,
+  "helper_complex_fresh_parity": false,
+  "independent_correctness_audit": {
+    "path": "docs/benchmarkfolder/policy-v2/final-focused-correctness-audit-v1/receipt.json",
+    "sha256": "0e243a717489a9cad197672c5545f2c50df5e247cbb5a27c863c3225a74ec036",
+    "bytes": 105298
+  },
+  "helper_reuse_audit": {
+    "path": "docs/benchmarkfolder/policy-v2/final-focused-reference-reuse-v1/receipt.json",
+    "sha256": "6fe6c7f4f76f46b2f2daee1e501883b7c49ddc9d2e1e954567b2a3cd03336ff6",
+    "bytes": 118785
+  },
+  "coefficient_comparisons": 11760,
+  "performance_acceptance_claim": false
+}

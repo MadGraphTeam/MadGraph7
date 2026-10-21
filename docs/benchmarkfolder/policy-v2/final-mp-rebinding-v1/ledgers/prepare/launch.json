@@ -1,0 +1,21 @@
+{
+  "schema": "final-variant-owned-phase-v1",
+  "controller": {
+    "pid": 1554262,
+    "pgid": 1554262,
+    "start_ticks": 58271308
+  },
+  "authorization": "Root approved separate public CTModeRun4 HH state rebinding 2026-10-21",
+  "action": "prepare",
+  "started_utc": "2026-10-21T02:16:52.062789+00:00",
+  "timeout_seconds": 21600,
+  "orchestration_revision": "295f0c63cb694ea0b2a134323ad3a0f7ef8aa12b",
+  "generation_revision": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "numerical_revision": "d05b59f3277ce0d727cb2816d8b7ad45107e58c4",
+  "source": {
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/launch.py": "33f2c71e7adb248526a40190058a599eeb021d66b9ee5ca23b61f8dcc904b628",
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/execute.py": "afb498db54e663be6bb131e511a797760de070d915fd6f2aa6eff2df5c1e60fd",
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/controls_driver.py": "93e41b821058e89c04d01f72070406ede09a55cb37021b5995cb27635897ff9c"
+  },
+  "binding": null
+}

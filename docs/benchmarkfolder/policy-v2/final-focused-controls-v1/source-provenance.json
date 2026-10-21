@@ -1,0 +1,24 @@
+{
+  "schema": "final-focused-source-provenance-v1",
+  "executed_collector_source": {
+    "collect.py": {
+      "sha256": "ce505d032ff926b16e4dcdb98d4ebc797c38726df31999e8104dd8f96a8a8633",
+      "bytes": 7690
+    },
+    "specs/complex.json": {
+      "sha256": "665bdbde9f7fe39b583ebfaeacae1ce60e4c6c27622cdf36ac9586fafcaea899",
+      "bytes": 722
+    },
+    "specs/mixed-legacy.json": {
+      "sha256": "8d90b2116055706d1af890a13a881a61956f38ef0ee7f3c34a378a6080ac7e7c",
+      "bytes": 735
+    }
+  },
+  "orchestration_only": true,
+  "unchanged_comparison_policy": "tools/ninjars_benchmark_policy_v2.py:compare_rows",
+  "configuration": "docs/benchmarkfolder/policy-v2/controls.json",
+  "generation_revision": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "numerical_revision": "d05b59f3277ce0d727cb2816d8b7ad45107e58c4",
+  "runtime_identity": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+  "performance_acceptance_claim": false
+}

@@ -1,0 +1,13 @@
+{
+  "report": "docs/benchmarkfolder/policy-v2/final-focused-controls-v1/runs/complex",
+  "outputs": {
+    "control-complex-candidate-1": ".benchmark-work/policy-v2/final-focused-controls-v1/complex/workers/control-complex-candidate-1/outputs/candidate/control-complex",
+    "control-complex-candidate-6": ".benchmark-work/policy-v2/final-focused-controls-v1/complex/workers/control-complex-candidate-6/outputs/candidate/control-complex",
+    "control-complex-candidate-7": ".benchmark-work/policy-v2/final-focused-controls-v1/complex/workers/control-complex-candidate-7/outputs/candidate/control-complex",
+    "control-complex-candidate-8": ".benchmark-work/policy-v2/final-focused-controls-v1/complex/workers/control-complex-candidate-8/outputs/candidate/control-complex"
+  },
+  "role_map": {
+    "baseline": "original",
+    "candidate": "candidate_corrected"
+  }
+}

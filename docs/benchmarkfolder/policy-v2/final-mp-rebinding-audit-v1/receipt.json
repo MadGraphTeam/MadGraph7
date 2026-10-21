@@ -1,0 +1,310 @@
+{
+  "auditor_source": {
+    "bytes": 14860,
+    "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-audit-v1/audit.py",
+    "sha256": "5f9fee0ae6932572bdd54acb99b472b9beed8112fabede227b47af6f55b1e645"
+  },
+  "automatic_rescue": false,
+  "automatic_stability_measurement": false,
+  "bound_inputs": {
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/config.json": {
+      "bytes": 988,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/config.json",
+      "sha256": "ba83d3a5a10c2b5109afec61a472b355640557a76ed10007d9d0c3d523e6d8d3"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/controls_driver.py": {
+      "bytes": 18486,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/controls_driver.py",
+      "sha256": "93e41b821058e89c04d01f72070406ede09a55cb37021b5995cb27635897ff9c"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/data/candidate-control-rebinding-8-0.json": {
+      "bytes": 6427,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/data/candidate-control-rebinding-8-0.json",
+      "sha256": "20fdf3920c0ab7275dc26115d78d113fb5da8a178347335ef89cf34e1b7c11c3"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/data/candidate-control-rebinding-fresh-8-0.json": {
+      "bytes": 6433,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/data/candidate-control-rebinding-fresh-8-0.json",
+      "sha256": "fee02e9f0f8db99338fdf2ec71dde25752f6d267392a0e6c01ab99c7bb222174"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/drivers/control-rebinding-fresh/forced-qp.f": {
+      "bytes": 4979,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/drivers/control-rebinding-fresh/forced-qp.f",
+      "sha256": "9c0dd8f830f96d12074b0daa97502a5c97bc7d9ed938a531b2676e950cb28427"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/drivers/control-rebinding-fresh/ordinary.f": {
+      "bytes": 4978,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/drivers/control-rebinding-fresh/ordinary.f",
+      "sha256": "7123043db723e5400ae425b2b5e2db421acab94b2142831b19c39a3aa4c88014"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/drivers/control-rebinding/forced-qp.f": {
+      "bytes": 4949,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/drivers/control-rebinding/forced-qp.f",
+      "sha256": "ab46cfe8ed50334382e8e04ea9e26bdb3c3acb176ccd22b9a83ce522d6a0f30a"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/drivers/control-rebinding/ordinary.f": {
+      "bytes": 4948,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/drivers/control-rebinding/ordinary.f",
+      "sha256": "d1a8df92ed855db3225aa64e635f9bf70ec825e4296fdd52b94cbb6454557bcc"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/execute.py": {
+      "bytes": 12274,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/execute.py",
+      "sha256": "afb498db54e663be6bb131e511a797760de070d915fd6f2aa6eff2df5c1e60fd"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/inputs/candidate/control-rebinding-fresh/MadLoopParams-8.dat": {
+      "bytes": 13352,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/inputs/candidate/control-rebinding-fresh/MadLoopParams-8.dat",
+      "sha256": "3e18c19ab3a72caa2bff3981571b656864d5ec2ba0d4ce94ebd6a9b7758da83f"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/inputs/candidate/control-rebinding/MadLoopParams-8.dat": {
+      "bytes": 13352,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/inputs/candidate/control-rebinding/MadLoopParams-8.dat",
+      "sha256": "3e18c19ab3a72caa2bff3981571b656864d5ec2ba0d4ce94ebd6a9b7758da83f"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/points/control-rebinding-fresh.dat": {
+      "bytes": 3883,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/points/control-rebinding-fresh.dat",
+      "sha256": "1344798666e43bca9cfcae39023834c8d76962ca8f9db5259acc76052bd1531d"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/points/control-rebinding.dat": {
+      "bytes": 3883,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/points/control-rebinding.dat",
+      "sha256": "1344798666e43bca9cfcae39023834c8d76962ca8f9db5259acc76052bd1531d"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/prepared.json": {
+      "bytes": 451437,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/prepared.json",
+      "sha256": "bad81982a3dbfd340f16130fef7557aa7a70cb1fb4bc15f29b6c1e8816e7d6ff"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/raw/control-rebinding-fresh/dimensions.dat": {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/raw/control-rebinding-fresh/dimensions.dat",
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/raw/control-rebinding-fresh/timed_status.dat": {
+      "bytes": 27,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/raw/control-rebinding-fresh/timed_status.dat",
+      "sha256": "3b4b8f256a05dd6d587275996f490b673c0dd6a8438ca134f0add4697cb3b8de"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/raw/control-rebinding-fresh/values.dat": {
+      "bytes": 3100,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/raw/control-rebinding-fresh/values.dat",
+      "sha256": "228d4a50449770cf3498f5e9fd640585125f19d70208ccabce2ef9d572497425"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/raw/control-rebinding/dimensions.dat": {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/raw/control-rebinding/dimensions.dat",
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/raw/control-rebinding/timed_status.dat": {
+      "bytes": 27,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/raw/control-rebinding/timed_status.dat",
+      "sha256": "3b4b8f256a05dd6d587275996f490b673c0dd6a8438ca134f0add4697cb3b8de"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/raw/control-rebinding/values.dat": {
+      "bytes": 3100,
+      "path": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-v1/raw/control-rebinding/values.dat",
+      "sha256": "228d4a50449770cf3498f5e9fd640585125f19d70208ccabce2ef9d572497425"
+    },
+    "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/controls_driver.py": {
+      "bytes": 18486,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/controls_driver.py",
+      "sha256": "93e41b821058e89c04d01f72070406ede09a55cb37021b5995cb27635897ff9c"
+    },
+    "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/data/candidate-control-rebinding-8-0.json": {
+      "bytes": 178590,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/data/candidate-control-rebinding-8-0.json",
+      "sha256": "a5ced1fde4094af2a0853d83ca44fe306db2af4a7b0a59c39f0d23a08bd102f4"
+    },
+    "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/data/candidate-control-rebinding-fresh-8-0.json": {
+      "bytes": 178595,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/data/candidate-control-rebinding-fresh-8-0.json",
+      "sha256": "e9cdd085e59a15ef43fe6f3ed6501f87a48f875f4917b6d74256023a9e56d26a"
+    },
+    "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/prepared.json": {
+      "bytes": 1841322,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/prepared.json",
+      "sha256": "1c038775f97927283ef3ae9f4a73e6a095ff2ca1b913f7e1365568a995c69f1f"
+    },
+    "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/raw/control-rebinding-fresh/8/dimensions.dat": {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/raw/control-rebinding-fresh/8/dimensions.dat",
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/raw/control-rebinding-fresh/8/timed_status.dat": {
+      "bytes": 27,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/raw/control-rebinding-fresh/8/timed_status.dat",
+      "sha256": "ac6de06c1c136df7a28b6749b45a40aca992cfef2baf0e9e7d5bb1e9143f71e7"
+    },
+    "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/raw/control-rebinding-fresh/8/values.dat": {
+      "bytes": 3100,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/raw/control-rebinding-fresh/8/values.dat",
+      "sha256": "160b4016c588b8d56878729aa977c2c51d760371f6c9d86c167556b218ee3a75"
+    },
+    "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/raw/control-rebinding/8/dimensions.dat": {
+      "bytes": 37,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/raw/control-rebinding/8/dimensions.dat",
+      "sha256": "ed3b3c46e9286ea6d8408d16912ff5c805b069992c0fc30755ddf54abcf1bc12"
+    },
+    "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/raw/control-rebinding/8/timed_status.dat": {
+      "bytes": 27,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/raw/control-rebinding/8/timed_status.dat",
+      "sha256": "ac6de06c1c136df7a28b6749b45a40aca992cfef2baf0e9e7d5bb1e9143f71e7"
+    },
+    "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/raw/control-rebinding/8/values.dat": {
+      "bytes": 3100,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/raw/control-rebinding/8/values.dat",
+      "sha256": "160b4016c588b8d56878729aa977c2c51d760371f6c9d86c167556b218ee3a75"
+    }
+  },
+  "checked_utc": "2026-10-21T02:23:17.181841+00:00",
+  "comparisons": {
+    "finalized-qp-vs-dp": {
+      "agreement": {
+        "failures": [],
+        "pairs": 1,
+        "passed": true
+      },
+      "coefficient_values_exact": false,
+      "maximum": {
+        "coefficient": 2,
+        "difference": 1.0463577864549075e-18,
+        "fraction_of_tolerance": 0.00032883178657856993,
+        "order": 0,
+        "point": 6,
+        "point_scale": 3.1820457423158396e-05,
+        "tolerance": 3.1820457424206292e-15,
+        "values": [
+          1.5377924010789453e-21,
+          1.0478955788559864e-18
+        ]
+      },
+      "scalar_comparisons": 80
+    },
+    "retained-qp-vs-dp": {
+      "agreement": {
+        "failures": [],
+        "pairs": 1,
+        "passed": true
+      },
+      "coefficient_values_exact": false,
+      "maximum": {
+        "coefficient": 2,
+        "difference": 1.0463577864549075e-18,
+        "fraction_of_tolerance": 0.00032883178657856993,
+        "order": 0,
+        "point": 6,
+        "point_scale": 3.1820457423158396e-05,
+        "tolerance": 3.1820457424206292e-15,
+        "values": [
+          1.5377924010789453e-21,
+          1.0478955788559864e-18
+        ]
+      },
+      "scalar_comparisons": 80
+    },
+    "retained-vs-finalized-qp": {
+      "agreement": {
+        "failures": [],
+        "pairs": 1,
+        "passed": true
+      },
+      "coefficient_values_exact": true,
+      "maximum": {
+        "coefficient": 0,
+        "difference": 0.0,
+        "fraction_of_tolerance": 0.0,
+        "order": 0,
+        "point": 1,
+        "point_scale": 3.221213306281455e-05,
+        "tolerance": 3.2212133062814548e-15,
+        "values": [
+          0.0,
+          0.0
+        ]
+      },
+      "scalar_comparisons": 80
+    }
+  },
+  "compiler_calls": 0,
+  "cpu_affinity": [
+    3
+  ],
+  "helper_sha256": "93e41b821058e89c04d01f72070406ede09a55cb37021b5995cb27635897ff9c",
+  "identity_sha256": "6151c02b3cbb8c535afc50daeb9c6864e64aa190185151b6627aea2df8da9c09",
+  "limitations": [
+    "Explicit public CTModeRun4 returns120/accuracy-1; no automated stability or rescue claim.",
+    "One fixed ten-point rebinding stream per context lifecycle; no full campaign/performance acceptance claim."
+  ],
+  "numerical_executions": 0,
+  "passed": true,
+  "performance_acceptance_claim": false,
+  "reader_sources": {
+    "ninjars_benchmark.py": {
+      "bytes": 49893,
+      "path": "tools/ninjars_benchmark.py",
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237"
+    },
+    "ninjars_benchmark_policy_v2.py": {
+      "bytes": 53416,
+      "path": "tools/ninjars_benchmark_policy_v2.py",
+      "sha256": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a"
+    },
+    "ninjars_benchmark_workers.py": {
+      "bytes": 44582,
+      "path": "tools/ninjars_benchmark_workers.py",
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca"
+    }
+  },
+  "schema": "final-mp-rebinding-independent-audit-v1",
+  "source_only": true,
+  "tests_or_worker_reruns": 0,
+  "total_scalar_comparisons": 240,
+  "validation": {
+    "control-rebinding": {
+      "approved_driver_changed_paths": [
+        "SubProcesses/P0_gg_hh/check_sa.f"
+      ],
+      "dp_executable_sha256": "61caa730698165f81ed7e2bcc426e41042347ec8e79d21034ea2d6353034002c",
+      "dp_status": 218,
+      "only_card_difference": {
+        "ctmoderun": [
+          -1,
+          4
+        ]
+      },
+      "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "points_sha256": "1344798666e43bca9cfcae39023834c8d76962ca8f9db5259acc76052bd1531d",
+      "qp_accuracy": -1,
+      "qp_executable_sha256": "f5da6496a72479207af36e38c44bdadcd5de802becacea14a81ed182d34d4327",
+      "qp_points": 10,
+      "qp_rows": 20,
+      "qp_status": 120,
+      "resets_context_before_each_evaluation": false,
+      "runtime_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff"
+    },
+    "control-rebinding-fresh": {
+      "approved_driver_changed_paths": [
+        "SubProcesses/P0_gg_hh/check_sa.f"
+      ],
+      "dp_executable_sha256": "aa1b0cccbaf7fda183e17362d2dc77ea64cddac4b47b80f97acb66bcdb2142ad",
+      "dp_status": 218,
+      "only_card_difference": {
+        "ctmoderun": [
+          -1,
+          4
+        ]
+      },
+      "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "points_sha256": "1344798666e43bca9cfcae39023834c8d76962ca8f9db5259acc76052bd1531d",
+      "qp_accuracy": -1,
+      "qp_executable_sha256": "bf64baa6e0097513cf2f430fb208dfaa60a8021aa806da182dd61839baddfeb5",
+      "qp_points": 10,
+      "qp_rows": 20,
+      "qp_status": 120,
+      "resets_context_before_each_evaluation": true,
+      "runtime_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff"
+    }
+  }
+}

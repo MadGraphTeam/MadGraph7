@@ -1,0 +1,435 @@
+{
+  "schema_version": 1,
+  "files": {
+    "Source/DHELAS/FFS1L1_2.f": {
+      "sha256": "bb76f5dda5b5d4e4e9f602e1a59996e2ceb4a7b40092e9f4925168c3a9cd7217",
+      "bytes": 3133
+    },
+    "Source/DHELAS/FFS1L2_1.f": {
+      "sha256": "a2870a897242668e439060a73aadbf476962fa07fb8a875fec0f3a9632231caa",
+      "bytes": 3127
+    },
+    "Source/DHELAS/FFV1L1_2.f": {
+      "sha256": "0dd08724f20733a6587c11d7af4da04e954ed4c6e0f47f4e374f7e3c5e50596e",
+      "bytes": 5117
+    },
+    "Source/DHELAS/FFV1L2_1.f": {
+      "sha256": "3f139deb9e215327fb11b45ef40aa7b49d1ed5f802316202572d319c1180f9ae",
+      "bytes": 5201
+    },
+    "Source/DHELAS/MP_FFS1L1_2.f": {
+      "sha256": "3a942100844675c473549be9bae2c9fcacebcafb2a7ff001eb16208ddddfd7a6",
+      "bytes": 3141
+    },
+    "Source/DHELAS/MP_FFS1L2_1.f": {
+      "sha256": "6a63b7ac0f9c5619d0b59a5d882a0362d8e06070f9fc243f29140fa4d0d516b8",
+      "bytes": 3135
+    },
+    "Source/DHELAS/MP_FFV1L1_2.f": {
+      "sha256": "317a0efa7931a857d1f5ccb02f2c6adacccd5668d9b7250b7b7a1c7654f95fe1",
+      "bytes": 5125
+    },
+    "Source/DHELAS/MP_FFV1L2_1.f": {
+      "sha256": "6e0cec11584db6ec4c10eed980c5f882f53c1d6aaf991ee8da1d5faf4679044b",
+      "bytes": 5209
+    },
+    "Source/DHELAS/MP_R2_GGHH_0.f": {
+      "sha256": "2944c25bab1d1276bcbb15fdf9946d071f76bf562e3b8e73551ccbf5db3e808d",
+      "bytes": 610
+    },
+    "Source/DHELAS/MP_SSS1_1.f": {
+      "sha256": "afe71fa10edba690a7f69a10db235295b39549fd8d89dfdab30797cd1ed1294b",
+      "bytes": 636
+    },
+    "Source/DHELAS/MP_VVS1_0.f": {
+      "sha256": "c55a1b034334d6bb2eeeb032ac4bfcd188be901281b6ca697a01f74b476119f4",
+      "bytes": 569
+    },
+    "Source/DHELAS/R2_GGHH_0.f": {
+      "sha256": "65cce285cdcd07a2e64f972384229ae76a4e73992390b9513f9a84aa0aa28074",
+      "bytes": 595
+    },
+    "Source/DHELAS/SSS1_1.f": {
+      "sha256": "e7aff0d1987e37a3a55f02105615b98dd9a4b84ac430c8de25fb25b78aa99005",
+      "bytes": 621
+    },
+    "Source/DHELAS/VVS1_0.f": {
+      "sha256": "8155560baa9dc8f6e2d60d194af02a33aaadf2cac736ec4247db0a34602c7d26",
+      "bytes": 557
+    },
+    "Source/DHELAS/aloha_file.inc": {
+      "sha256": "c19189641b32e310f27af01b9b4291e9c557e30c19c87cfbd750e447bba38748",
+      "bytes": 184
+    },
+    "Source/DHELAS/aloha_functions.f": {
+      "sha256": "a771e1ff0b41ac71bb6c44a0cad7659a6dfbf1e9afa6ac54cd6b361af1c856cf",
+      "bytes": 87869
+    },
+    "Source/DHELAS/coef_specs.inc": {
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "bytes": 120
+    },
+    "Source/DHELAS/makefile": {
+      "sha256": "9d852b46fc8f29346c4a740606b700bcaed351aa3445e6246b60f74162b2143c",
+      "bytes": 1407
+    },
+    "Source/MODEL/actualize_mp_ext_params.inc": {
+      "sha256": "4108b4fb1f82d348413a9f7f777eb94537061f7ccf339d7d23f30f4f835676ac",
+      "bytes": 243
+    },
+    "Source/MODEL/coupl.inc": {
+      "sha256": "0dbc6b6f62d453b0526f30f78d3bbaa303d0259cdea654ba7f5efe120b3cd125",
+      "bytes": 1074
+    },
+    "Source/MODEL/coupl_write.inc": {
+      "sha256": "66bbc4f02ef188062992a54bcae96e10670ebe4e918b9a3002fa1f46ac8960ed",
+      "bytes": 610
+    },
+    "Source/MODEL/couplings.f": {
+      "sha256": "e732847aa93cdcae502cd37808eb68b45d7dc3c9665bdd5d4de443be19747936",
+      "bytes": 3242
+    },
+    "Source/MODEL/couplings1.f": {
+      "sha256": "4e2b9a7a1e729a14bc7b5ce2cb1f94f638bc64ec35d60bdf8e8f4f8a94db0575",
+      "bytes": 621
+    },
+    "Source/MODEL/couplings2.f": {
+      "sha256": "28b4eefe950545be8c834979488b7bc11ef89ca3c8799a3e0e59f08ae902b65e",
+      "bytes": 464
+    },
+    "Source/MODEL/couplings3.f": {
+      "sha256": "02723645da86ed68814a15029b6ef0413aee83862c9ebc5c52cdf7643adce3df",
+      "bytes": 1118
+    },
+    "Source/MODEL/flavor_couplings.f": {
+      "sha256": "863fa39462bb4b32dd09835ce5ca74624a4b08ee98be94fa756cd8a488ef6de7",
+      "bytes": 741
+    },
+    "Source/MODEL/formats.inc": {
+      "sha256": "1d0c8b3a81b5c4ed3cc50e16edc2d7fa09fa2c2694b9eef3790bff2abc42c3a3",
+      "bytes": 958
+    },
+    "Source/MODEL/get_color.f": {
+      "sha256": "e1b3eb173aa5a721e4f1dfb518987b5581edf4ddc63ed98fa14eab1daca71bcf",
+      "bytes": 3048
+    },
+    "Source/MODEL/input.inc": {
+      "sha256": "33035c12743a589a8969c936f986f213ff10d948031fd89d833704bbd708b899",
+      "bytes": 2173
+    },
+    "Source/MODEL/intparam_definition.inc": {
+      "sha256": "070818de0c63285381525563b6f00a243bd56285ad3dd728669ebe09f98e4c57",
+      "bytes": 4292
+    },
+    "Source/MODEL/ldme.inc": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "Source/MODEL/lha_read.f": {
+      "sha256": "7cfd5b14731c599bab2be71fabf3fc5566e293117fb927a6dad495c61154aef2",
+      "bytes": 13600
+    },
+    "Source/MODEL/makefile": {
+      "sha256": "b1e0415f75ba427d9589313a65082f0b3901e5cf4051a3f9fecc80bd8b2b32ed",
+      "bytes": 1340
+    },
+    "Source/MODEL/makeinc.inc": {
+      "sha256": "b4474380dce602789c4749045fc5e726d3431039ae354b8d17405dce2c223090",
+      "bytes": 380
+    },
+    "Source/MODEL/model_functions.f": {
+      "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3",
+      "bytes": 32184
+    },
+    "Source/MODEL/model_functions.inc": {
+      "sha256": "be48cc65d552043c1569e2144501aa3d1c16e69834f20090aceca8ea818bb58f",
+      "bytes": 883
+    },
+    "Source/MODEL/mp_coupl.inc": {
+      "sha256": "a8d8a6e1bda2ea0b12493519f809b4fd1aa1182c31001af902b01c18a89eb882",
+      "bytes": 943
+    },
+    "Source/MODEL/mp_coupl_same_name.inc": {
+      "sha256": "a02fe73ff8db539d309748afc28ad697c9e5bfaff777ae404c3fdc85f5312f71",
+      "bytes": 751
+    },
+    "Source/MODEL/mp_couplings1.f": {
+      "sha256": "5095f73fbea8966f69d241402cc9b29b05652d301059bc28e7e9114248ac3da9",
+      "bytes": 716
+    },
+    "Source/MODEL/mp_couplings2.f": {
+      "sha256": "b4e39fa7fffc4d210b9cb075a9a96e6498c067a45ac97db19a852597d64896e6",
+      "bytes": 500
+    },
+    "Source/MODEL/mp_couplings3.f": {
+      "sha256": "e2e7d2831f694b6533f9bee2436415a24410bca39ca657887a892ac39acb2d5c",
+      "bytes": 1316
+    },
+    "Source/MODEL/mp_input.inc": {
+      "sha256": "9270deab941bad705ccc2c2b860ffedc105af91c9e9fd55f2028aa0de9581e79",
+      "bytes": 2800
+    },
+    "Source/MODEL/mp_intparam_definition.inc": {
+      "sha256": "47de1b9be2472b7c217046b0edbaa7324394810c16b1feb847dfe80dc244b9f7",
+      "bytes": 5379
+    },
+    "Source/MODEL/onia_read.inc": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "Source/MODEL/param_read.inc": {
+      "sha256": "cf1ee670ea7e139344fdc4096cc81b88315a49f961314d04b43b544f40122f22",
+      "bytes": 2835
+    },
+    "Source/MODEL/param_write.inc": {
+      "sha256": "513a9a6c2bcfdd1579784e09ec9931849e82a283c2e7e250d031f47b2ee3606b",
+      "bytes": 4242
+    },
+    "Source/MODEL/printout.f": {
+      "sha256": "e4c1687b5b7938a0cf6119f897036208f945c4a8b8c71603f8d9d127c1ad7b40",
+      "bytes": 1841
+    },
+    "Source/MODEL/rw_para.f": {
+      "sha256": "6f5b82b34634f8b50f489614bbdea0f92f1edb66d9f7a443a26a72cfe440491c",
+      "bytes": 2707
+    },
+    "Source/MODEL/testprog.f": {
+      "sha256": "7570c7961bd45365561047df5a3bd0c529204fb03f4e3562680d3b90e0042c89",
+      "bytes": 2394
+    },
+    "Source/coupl.inc": {
+      "sha256": "0dbc6b6f62d453b0526f30f78d3bbaa303d0259cdea654ba7f5efe120b3cd125",
+      "bytes": 1074
+    },
+    "Source/cuts.inc": {
+      "sha256": "0592f71fe875db3892c3c9f4179ba09627b3a241cc4090253eab42481a8618f2",
+      "bytes": 116
+    },
+    "Source/ldme.inc": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "Source/make_opts": {
+      "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+      "bytes": 2781
+    },
+    "Source/makefile": {
+      "sha256": "368c731e36ff93aaa532228fa2e6e98856fcefb8521dd87226364df29c43db16",
+      "bytes": 5853
+    },
+    "Source/maxparticles.inc": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "Source/run.inc": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "SubProcesses/MadLoopCommons.f": {
+      "sha256": "80448c792b21fe9f5a969d8118c30c50ca2d23b465ae366c82c947d2daedeaf6",
+      "bytes": 23152
+    },
+    "SubProcesses/MadLoopParamReader.f": {
+      "sha256": "5ddc8637085eaa2b03c65d6c67a4c01d83100deb65b89cf20d037a7a2b166c6a",
+      "bytes": 12816
+    },
+    "SubProcesses/MadLoopParams.inc": {
+      "sha256": "4cf7efebe5780c791f4aaaa1665a6fdd17919cda083feddd4de185c57b5f4265",
+      "bytes": 1626
+    },
+    "SubProcesses/MadLoop_makefile_definitions": {
+      "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c",
+      "bytes": 2392
+    },
+    "SubProcesses/P0_gg_hh/COLLIER_interface.f": {
+      "sha256": "0401ad52e510c76b3164f92adcb583cf1ce0d756f1e569aca359d94922ee3560",
+      "bytes": 26863
+    },
+    "SubProcesses/P0_gg_hh/CT_interface.f": {
+      "sha256": "db4b697c83d9cf50ec13cbf36322196d2f44efb180ba48fc483a09d327a2dc44",
+      "bytes": 45319
+    },
+    "SubProcesses/P0_gg_hh/MadLoopCommons.f": {
+      "sha256": "80448c792b21fe9f5a969d8118c30c50ca2d23b465ae366c82c947d2daedeaf6",
+      "bytes": 23152
+    },
+    "SubProcesses/P0_gg_hh/MadLoopParamReader.f": {
+      "sha256": "5ddc8637085eaa2b03c65d6c67a4c01d83100deb65b89cf20d037a7a2b166c6a",
+      "bytes": 12816
+    },
+    "SubProcesses/P0_gg_hh/MadLoopParams.inc": {
+      "sha256": "4cf7efebe5780c791f4aaaa1665a6fdd17919cda083feddd4de185c57b5f4265",
+      "bytes": 1626
+    },
+    "SubProcesses/P0_gg_hh/TIR_interface.f": {
+      "sha256": "0d621467506305c9aa0371f187e04ab4963d5155ddd64da2ce2019555694cf7e",
+      "bytes": 21563
+    },
+    "SubProcesses/P0_gg_hh/check_sa.f": {
+      "sha256": "d1a8df92ed855db3225aa64e635f9bf70ec825e4296fdd52b94cbb6454557bcc",
+      "bytes": 4948
+    },
+    "SubProcesses/P0_gg_hh/coef_construction_1.f": {
+      "sha256": "fa1f615a33ab28a20238ab33203576f6420d37be643827459cdc3ab74543c131",
+      "bytes": 10219
+    },
+    "SubProcesses/P0_gg_hh/coef_specs.inc": {
+      "sha256": "29b2b6762f337b47d7bb8c145b162e0c9862ef3db2446a4382be23ee21f369d2",
+      "bytes": 120
+    },
+    "SubProcesses/P0_gg_hh/compute_color_flows.f": {
+      "sha256": "50c529298f9afdc12c69b18c4728a94d6ee6e777c4d32db0973bad4842db43b2",
+      "bytes": 16870
+    },
+    "SubProcesses/P0_gg_hh/coupl.inc": {
+      "sha256": "0dbc6b6f62d453b0526f30f78d3bbaa303d0259cdea654ba7f5efe120b3cd125",
+      "bytes": 1074
+    },
+    "SubProcesses/P0_gg_hh/cts_mpc.h": {
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "bytes": 24
+    },
+    "SubProcesses/P0_gg_hh/cts_mprec.h": {
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "bytes": 20
+    },
+    "SubProcesses/P0_gg_hh/f2py_wrapper.f": {
+      "sha256": "4446bfff3ee103cd3b5b94f30ec0956d19eb9460b38aa83242bdf3fdc75abe3f",
+      "bytes": 3924
+    },
+    "SubProcesses/P0_gg_hh/global_specs.inc": {
+      "sha256": "5eb5044d09d93463d1513a9c9984af5bf17329d56805e22c3cba88d46938f1f4",
+      "bytes": 168
+    },
+    "SubProcesses/P0_gg_hh/helas_calls_ampb_1.f": {
+      "sha256": "1932fb0760db2b91bfb3a2f776410f3bd6c48c141a1e45c01b2e3c4e2c05be8e",
+      "bytes": 3455
+    },
+    "SubProcesses/P0_gg_hh/improve_ps.f": {
+      "sha256": "5a94f7625454f18f2aefd0d70cb7119e06dbcf574e32d8bc87fc2f47a4523f03",
+      "bytes": 28416
+    },
+    "SubProcesses/P0_gg_hh/loop_CT_calls_1.f": {
+      "sha256": "4c401e24a17982b862b73675a4245d838cbc697b7a20eac0facd71bdec2e8f06",
+      "bytes": 4868
+    },
+    "SubProcesses/P0_gg_hh/loop_matrix.f": {
+      "sha256": "6be24f645fa951ed32475886860cb4be5818ccf2203ca312f625dca6c8ac1f55",
+      "bytes": 107408
+    },
+    "SubProcesses/P0_gg_hh/loop_max_coefs.inc": {
+      "sha256": "1dca06ff691666dab8f666692137cd040e407c276417611d5fcc744f5f82f19d",
+      "bytes": 61
+    },
+    "SubProcesses/P0_gg_hh/loop_num.f": {
+      "sha256": "961e8b8adc1192ce12c6477324b9e545166ca9a0982a450039a420776222cfce",
+      "bytes": 2862
+    },
+    "SubProcesses/P0_gg_hh/makefile": {
+      "sha256": "08f9b0dcb559450aad987e2d1dd449bedd511fa8243e0f2bdd84a0df99c050da",
+      "bytes": 9612
+    },
+    "SubProcesses/P0_gg_hh/mg5_citation.f": {
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "bytes": 2867
+    },
+    "SubProcesses/P0_gg_hh/mp_coef_construction_1.f": {
+      "sha256": "3d95710ece0858214f73c7d523555f39e3ee65f1cefdf69baf69fdf163c8d787",
+      "bytes": 12176
+    },
+    "SubProcesses/P0_gg_hh/mp_compute_loop_coefs.f": {
+      "sha256": "d8b118f86afe2ab1d5dc91cd900548af83e331252b68216f4a2e51fea71489a6",
+      "bytes": 21409
+    },
+    "SubProcesses/P0_gg_hh/mp_coupl.inc": {
+      "sha256": "a8d8a6e1bda2ea0b12493519f809b4fd1aa1182c31001af902b01c18a89eb882",
+      "bytes": 943
+    },
+    "SubProcesses/P0_gg_hh/mp_coupl_same_name.inc": {
+      "sha256": "a02fe73ff8db539d309748afc28ad697c9e5bfaff777ae404c3fdc85f5312f71",
+      "bytes": 751
+    },
+    "SubProcesses/P0_gg_hh/mp_helas_calls_ampb_1.f": {
+      "sha256": "7a9ce19ede393f563841fe0b95752f055f60603f695d3f69f433fb03af2a485c",
+      "bytes": 3188
+    },
+    "SubProcesses/P0_gg_hh/nexternal.inc": {
+      "sha256": "74fd71600ab057b2329dd63d20970faad5acc6b19819e455d0bbe4cf75680b28",
+      "bytes": 114
+    },
+    "SubProcesses/P0_gg_hh/ngraphs.inc": {
+      "sha256": "0ac4e610682a658873bf8f20da3b8304a4d95211ee473534c49d675793979c03",
+      "bytes": 56
+    },
+    "SubProcesses/P0_gg_hh/nsquaredSO.inc": {
+      "sha256": "39a4a2d2392d3c4975b88951d0a3e4c86e3c626fe5b0846fb29350301a389bdf",
+      "bytes": 56
+    },
+    "SubProcesses/P0_gg_hh/pmass.inc": {
+      "sha256": "03fc80bf3ad07d425359321f62edf27a31257671637f1955a8d908f22ce32a23",
+      "bytes": 94
+    },
+    "SubProcesses/P0_gg_hh/polynomial.f": {
+      "sha256": "2669af47e397a3077a379e5ee7aaf80254ef59491bd473f9bb788bff880cec20",
+      "bytes": 144100
+    },
+    "SubProcesses/P0_gg_hh/process_info.inc": {
+      "sha256": "a2163706175ae47c77e94b49ffd225a0335bed2f42f67185fd104f817719d920",
+      "bytes": 176
+    },
+    "SubProcesses/P0_gg_hh/tir_cache_size.inc": {
+      "sha256": "80240c21b3172063d4f3cbabd4d2e5b36fe7c3cbc517d7922ea6492b5441c060",
+      "bytes": 34
+    },
+    "SubProcesses/P0_gg_hh/unique_id.inc": {
+      "sha256": "d60a49c61df4c28973b15a4f965abf3b8fd524c9f59fa91b630abdae15124a2e",
+      "bytes": 52
+    },
+    "SubProcesses/coupl.inc": {
+      "sha256": "0dbc6b6f62d453b0526f30f78d3bbaa303d0259cdea654ba7f5efe120b3cd125",
+      "bytes": 1074
+    },
+    "SubProcesses/cts_mpc.h": {
+      "sha256": "a24d058052bd53469e901f299fbea1f76f3b8b212f047da78566bbadfadb9b3f",
+      "bytes": 24
+    },
+    "SubProcesses/cts_mprec.h": {
+      "sha256": "45be6d16f28d8d577e7d3552d9cc1f244b7834157e9d0e4143432c62d5c1ac8e",
+      "bytes": 20
+    },
+    "SubProcesses/global_specs.inc": {
+      "sha256": "5eb5044d09d93463d1513a9c9984af5bf17329d56805e22c3cba88d46938f1f4",
+      "bytes": 168
+    },
+    "SubProcesses/ldme.inc": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "SubProcesses/makefile": {
+      "sha256": "08f9b0dcb559450aad987e2d1dd449bedd511fa8243e0f2bdd84a0df99c050da",
+      "bytes": 9612
+    },
+    "SubProcesses/makefileP": {
+      "sha256": "35afefa36a49041f54034da719b5832622f6ad47da348ab4e3bb54130d4d1962",
+      "bytes": 2296
+    },
+    "SubProcesses/mg5_citation.f": {
+      "sha256": "6cfc39685f352849a5429b9bea8b4383126815633ca15e29dae9bc952809b44b",
+      "bytes": 2867
+    },
+    "SubProcesses/mp_coupl.inc": {
+      "sha256": "a8d8a6e1bda2ea0b12493519f809b4fd1aa1182c31001af902b01c18a89eb882",
+      "bytes": 943
+    },
+    "SubProcesses/mp_coupl_same_name.inc": {
+      "sha256": "a02fe73ff8db539d309748afc28ad697c9e5bfaff777ae404c3fdc85f5312f71",
+      "bytes": 751
+    },
+    "SubProcesses/nsquaredSO.inc": {
+      "sha256": "39a4a2d2392d3c4975b88951d0a3e4c86e3c626fe5b0846fb29350301a389bdf",
+      "bytes": 56
+    }
+  },
+  "files_sha256": "a4fea3dc8dc8253566892568cbde5dbe1fc9eefdb0edbea37ec31f4646561cea",
+  "scope": "Generated Source/SubProcesses source, include and make files; external library trees are covered by dependency provenance."
+}

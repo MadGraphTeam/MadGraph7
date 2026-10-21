@@ -835,3 +835,21 @@ resume metadata. The earlier pause note is a historical checkpoint.
   controls, final profiling and the reproducible final PDF remain outstanding.
   Generation, installation, representative checks and diagnostic timings do
   not certify those final gates. Do not open a PR before the user's instruction.
+- Candidate/helper loop-induced and threshold diagnostics pass all 35,616
+  comparisons at the fixed 100/100/12 points. Complex-mass and mixed-order
+  controls pass all 11,760 comparisons, including every split order and fresh
+  candidate parity. Rotation, mass/scale rebinding, context reset and near-
+  singular controls pass a further 1,600 comparisons.
+- A separate explicit-quadruple Fortran mass/scale test passes 240 comparisons:
+  retained and finalized contexts agree exactly and agree with the ordinary
+  DP results. Its documented direct mode reports 120 with accuracy -1; it is
+  a precision/state test, with no stability or performance acceptance claim.
+  Normal benchmark rescue and stability settings remain unchanged.
+- Actual Collier data exposed a postprocessing mismatch: its shared-setting
+  comparison incorrectly included a derived precision annotation absent for
+  that backend. Preserve the first rejection and raw data. A bounded reader
+  correction follows the existing core-policy rule, validates every applicable
+  QP flag and preserves all physical settings. Eighty-one software regressions
+  and an independent source review pass. Keep this analysis-only change
+  separate from the frozen numerical source and retain its exact patch for
+  reproduction; final assembly still requires the actual core dataset.

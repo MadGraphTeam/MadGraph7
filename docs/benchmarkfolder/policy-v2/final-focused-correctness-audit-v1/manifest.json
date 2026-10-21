@@ -1,0 +1,59 @@
+{
+  "bytes": 137021,
+  "compiler_calls": 0,
+  "count": 10,
+  "created_utc": "2026-10-21T02:19:23.306130+00:00",
+  "files": {
+    "docs/benchmarkfolder/policy-v2/final-focused-correctness-audit-v1/README.md": {
+      "bytes": 3178,
+      "sha256": "5be7ba4d8305ce0040833dfe0b0c1135c436768af464c0e372034cb7a20b53dc"
+    },
+    "docs/benchmarkfolder/policy-v2/final-focused-correctness-audit-v1/audit-v2.py": {
+      "bytes": 13192,
+      "sha256": "39491a8f7b20c1360d1f232a168436d64a390ed5f45c98dc997338866f566934"
+    },
+    "docs/benchmarkfolder/policy-v2/final-focused-correctness-audit-v1/audit-v2.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/final-focused-correctness-audit-v1/audit-v2.stdout": {
+      "bytes": 193,
+      "sha256": "1a84e5041cb9202507f0d8b913032c19ab625b795c8a4cdd701086fe054e0e26"
+    },
+    "docs/benchmarkfolder/policy-v2/final-focused-correctness-audit-v1/audit.py": {
+      "bytes": 12984,
+      "sha256": "daf894a435e61d4abde00ce2beabc086a3d99a4efb4ea2ae890b18dc417d5b73"
+    },
+    "docs/benchmarkfolder/policy-v2/final-focused-correctness-audit-v1/audit.stderr": {
+      "bytes": 606,
+      "sha256": "236fa9fc9e89cb5e6d97335172e2742b04fd4137528dc646031c7160bb3ccbfc"
+    },
+    "docs/benchmarkfolder/policy-v2/final-focused-correctness-audit-v1/audit.stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/final-focused-correctness-audit-v1/failure.json": {
+      "bytes": 696,
+      "sha256": "5025466ca4059e1b648b5c8f8d274614271ca2b2dfb5656b56ddc09158fba82f"
+    },
+    "docs/benchmarkfolder/policy-v2/final-focused-correctness-audit-v1/receipt.json": {
+      "bytes": 105298,
+      "sha256": "0e243a717489a9cad197672c5545f2c50df5e247cbb5a27c863c3225a74ec036"
+    },
+    "docs/benchmarkfolder/policy-v2/final-focused-correctness-audit-v1/retained-files.txt": {
+      "bytes": 874,
+      "sha256": "18599401e94d1dd03debe74a3f728aab6b553559159cf50e073ed70e7776e6b3"
+    }
+  },
+  "numerical_executions": 0,
+  "old_evidence_rewritten": false,
+  "read_only_attempts": {
+    "first": "Metadata reporting KeyError retained in failure.json; no physical comparison failed.",
+    "second": "audit-v2.py completed all existing validators and11760scalar comparisons successfully."
+  },
+  "receipt_identity_sha256": "9aab9dd1393b4cddb48e415be61caa3e27766002f6cb9db7bfa336962d0eecec",
+  "retained_file_list": "docs/benchmarkfolder/policy-v2/final-focused-correctness-audit-v1/retained-files.txt",
+  "schema": "final-focused-correctness-audit-retention-v1",
+  "self_not_hashed": true,
+  "tests_or_worker_reruns": 0
+}

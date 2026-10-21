@@ -1,0 +1,25 @@
+{
+  "schema": "final-focused-collection-launch-v1",
+  "collection": "mixed-legacy",
+  "started_utc": "2026-10-21T02:05:56.938954+00:00",
+  "controller": {
+    "pid": 1386492,
+    "pgid": 1386492,
+    "start_ticks": 58205796
+  },
+  "authorization": "Root focused numerical handoff 2026-10-21",
+  "orchestration_revision": "295f0c63cb694ea0b2a134323ad3a0f7ef8aa12b",
+  "generation_revision": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "numerical_revision": "d05b59f3277ce0d727cb2816d8b7ad45107e58c4",
+  "spec": {
+    "path": "docs/benchmarkfolder/policy-v2/final-focused-controls-v1/specs/mixed-legacy.json",
+    "sha256": "8d90b2116055706d1af890a13a881a61956f38ef0ee7f3c34a378a6080ac7e7c"
+  },
+  "cpu": 188,
+  "backends": [
+    1,
+    6,
+    7
+  ],
+  "phase_timeout_seconds": 21600
+}

@@ -1,0 +1,38 @@
+{
+  "bytes": 32780,
+  "compiler_calls": 0,
+  "count": 6,
+  "files": {
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-audit-v1/README.md": {
+      "bytes": 2475,
+      "sha256": "781d912488456d97186579df20878686520c37bac41f00e90813bdeefbaeecec"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-audit-v1/audit.py": {
+      "bytes": 14860,
+      "sha256": "5f9fee0ae6932572bdd54acb99b472b9beed8112fabede227b47af6f55b1e645"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-audit-v1/audit.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-audit-v1/audit.stdout": {
+      "bytes": 191,
+      "sha256": "6840fd31ad5a0f2fea15194f7ba8a7710a6d351c0ce5b4ef7bef2f9d307c733f"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-audit-v1/receipt.json": {
+      "bytes": 14750,
+      "sha256": "df79e74088dc38469845e80cf1f24be1e1a704864b26a52ee746f62f60ad2ff6"
+    },
+    "docs/benchmarkfolder/policy-v2/final-mp-rebinding-audit-v1/retained-files.txt": {
+      "bytes": 504,
+      "sha256": "d8d29caa1f221c2da9eba28fb1146352ddce45b2568c6b59ba7196474a525bf6"
+    }
+  },
+  "manifest_not_self_hashed": true,
+  "numerical_executions": 0,
+  "old_evidence_rewritten": false,
+  "receipt_identity_sha256": "6151c02b3cbb8c535afc50daeb9c6864e64aa190185151b6627aea2df8da9c09",
+  "retained_file_list": "docs/benchmarkfolder/policy-v2/final-mp-rebinding-audit-v1/retained-files.txt",
+  "schema": "final-mp-rebinding-independent-audit-retention-v1",
+  "tests_or_worker_reruns": 0
+}
