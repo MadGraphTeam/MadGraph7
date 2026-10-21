@@ -11,6 +11,16 @@ engine's Born) has no partials and is checked on totals. Processes with
 electroweak triple-gauge vertices (u u~ > d d~ e+ e- beyond QCD^4 QED^4) are
 checked on the eager lane only: the recurrence lane disagrees with MadGraph
 and with its own eager lane there, independently of coupling orders.
+
+u u~ > d d~ s s~ (three quark lines, W exchange) is a strict xfail on both
+lanes: a triple-gauge vertex whose three legs carry three different quark
+lines is counted twice, once in each cyclic order of the lines (halving the
+WWA and WWZ couplings, or removing them, reproduces MadGraph in every squared
+order). The squared orders without the pure-electroweak amplitude, QCD^8 and
+QCD^6 QED^2, have no such vertex and are checked: they include the
+interference of the W pairing with the neutral pairing of the three lines.
+MadGraph 3.7 leaves colour-flow amplitudes of this process unassigned; the
+tool zeroes them (``_zero_colour_amplitudes``).
 """
 
 from __future__ import annotations
@@ -146,9 +156,24 @@ _MADGRAPH_PROCESSES = (
     "g g > t t~",
     "u u~ > e- e+ g",
 )
+_THREE_LINE_TRIPLE_GAUGE = "u u~ > d d~ s s~"
+_DOUBLE_COUNTED_TRIPLE_GAUGE = pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "both tree lanes count a triple-gauge vertex joining three quark lines "
+        "once per cyclic order of the lines (twice): QED^8 is up to 15x "
+        "MadGraph; needs its own package with the recurrence-lane TGC issue"
+    ),
+)
 
 
-@pytest.mark.parametrize("process", _MADGRAPH_PROCESSES)
+@pytest.mark.parametrize(
+    "process",
+    [
+        *_MADGRAPH_PROCESSES,
+        pytest.param(_THREE_LINE_TRIPLE_GAUGE, marks=_DOUBLE_COUNTED_TRIPLE_GAUGE),
+    ],
+)
 def test_partials_match_madgraph_and_keep_the_total(
     sm_model: ModelSource, tmp_path: Path, process: str
 ) -> None:
@@ -179,7 +204,13 @@ _LEADING_COLOUR_PROCESSES = (
 )
 
 
-@pytest.mark.parametrize("process", _LEADING_COLOUR_PROCESSES)
+@pytest.mark.parametrize(
+    "process",
+    [
+        *_LEADING_COLOUR_PROCESSES,
+        pytest.param(_THREE_LINE_TRIPLE_GAUGE, marks=_DOUBLE_COUNTED_TRIPLE_GAUGE),
+    ],
+)
 def test_leading_colour_partials_match_madgraph(
     sm_model: ModelSource, tmp_path: Path, process: str
 ) -> None:
@@ -187,6 +218,34 @@ def test_leading_colour_partials_match_madgraph(
     reference = _reference(process, LC_REFERENCE)
 
     _assert_matches_madgraph(runtime.evaluate_orders(reference["points"]), reference)
+
+
+@pytest.mark.parametrize("accuracy", ["full", "lc"])
+def test_three_line_orders_without_triple_gauge_vertices_match_madgraph(
+    sm_model: ModelSource, tmp_path: Path, accuracy: str
+) -> None:
+    """QCD x electroweak interference of three distinct quark lines, including
+    the W pairing (u d)(u~ d~)(s s~) against the neutral pairing."""
+
+    reference = _reference(
+        _THREE_LINE_TRIPLE_GAUGE, REFERENCE if accuracy == "full" else LC_REFERENCE
+    )
+    runtime = _runtime(
+        sm_model, _THREE_LINE_TRIPLE_GAUGE, tmp_path / "artifact", accuracy=accuracy
+    )
+    result = runtime.evaluate_orders(reference["points"])
+    checked = ((("QCD", 8),), (("QCD", 6), ("QED", 2)))
+    for point, partials in enumerate(reference["partials"]):
+        scale = math.fsum(abs(value) for value in partials)
+        for label, expected in zip(reference["squared_orders"], partials, strict=True):
+            order = tuple(
+                sorted((name, power) for name, power in label.items() if power)
+            )
+            if order not in checked:
+                continue
+            actual = complex(result.for_order(order)[point])
+            assert actual.imag == 0.0
+            assert abs(actual.real - expected) <= 1e-12 * scale, (point, order)
 
 
 # QCD x electroweak interference between quark lines (s/t channels, identical
@@ -205,6 +264,9 @@ def test_leading_colour_partials_match_madgraph(
         ("u u~ > d d~ e+ e-", "full"),
         ("u u~ > d d~ e+ e-", "lc"),
         ("u u~ > u u~ u u~", "full"),
+        pytest.param(
+            _THREE_LINE_TRIPLE_GAUGE, "full", marks=_DOUBLE_COUNTED_TRIPLE_GAUGE
+        ),
         pytest.param(
             "u u~ > u u~ u u~",
             "lc",
