@@ -2,8 +2,10 @@
 """Loop kernel catalogue of the v2 engine against independent UFO lowerings.
 
 Oracles: the UFO Lorentz structure contracted numerically with spenso, the
-tree engine's own full-variant oriented kernels, and the model-declared UFO
-propagator numerators (not the tree propagator rules the catalogue uses).
+tree engine's own full-variant oriented kernels or, for the quartic vertices
+it has no kernel for, the raw UFO Metric structures evaluated by hand, and the
+model-declared UFO propagator numerators (not the tree propagator rules the
+catalogue uses). Segments are checked at several random exact points.
 """
 
 from __future__ import annotations
@@ -126,17 +128,30 @@ def _apply_kernel(kernel, entries, dimension, values, q, loop, block_values=()):
     return [value.expand() for value in outputs]
 
 
+def _ufo_axes(spin: int, leg: int):
+    """(representation, index) of a UFO leg, named as in the lowered expressions.
+
+    Kept local so that the oracle shares only the slot names of the lowered
+    expression with the implementation, not its axis bookkeeping. Scalars and
+    ghosts (UFO spin 1, -1) have none; tensor lines (spin 5) are refused.
+    """
+
+    from pyamplicol.models import compiler_symbolica as sym
+
+    if spin == 2:
+        return ((sym.Representation.bis(4), f"ufo_s_1_{leg}"),)
+    if spin == 3:
+        return ((sym.Representation.mink(4), f"ufo_l_1_{leg}"),)
+    if spin in (-1, 1):
+        return ()
+    raise ValueError(f"no oracle slots for UFO spin {spin}")
+
+
 def _ufo_contraction(compiled, lorentz, spins, currents, momenta, open_leg):
     """Numerically contract a normalized UFO Lorentz tensor with spenso."""
 
     from pyamplicol._internal.physics.symbols import symbols
     from pyamplicol.models import compiler_symbolica as sym
-    from pyamplicol.models.compiler_kernels import (
-        _ordered_dense_tensor_components,
-        _spin_axis_labels,
-        _spin_representations,
-        _spin_slots,
-    )
 
     model_symbols = symbols.model(compiled.name)
     library = sym.TensorLibrary.hep_lib_atom()
@@ -146,30 +161,28 @@ def _ufo_contraction(compiled, lorentz, spins, currents, momenta, open_leg):
     ]
     expression = sym.E(lorentz)
     for leg, values in currents.items():
-        representations = _spin_representations(spins[leg])
-        if not representations:
+        axes = _ufo_axes(spins[leg], leg + 1)
+        if not axes:
             expression *= values[0]
             continue
         name = sym.TensorName(f"loop_v2_oracle::current_{leg}")
-        library.register(sym.Tensor.dense(name(*representations), list(values)))
-        expression *= name(*_spin_slots(spins[leg], leg + 1)).to_expression()
+        library.register(
+            sym.Tensor.dense(name(*(rep for rep, _ in axes)), list(values))
+        )
+        expression *= name(*(rep(index) for rep, index in axes)).to_expression()
     for leg, values in momenta.items():
         library.register(
             sym.Tensor.dense(names[leg](sym.Representation.mink(4)), list(values))
         )
-    labels = (
-        () if open_leg is None else _spin_axis_labels(spins[open_leg], open_leg + 1)
-    )
+    # At most one open axis, so the dense components are in index order.
+    open_axes = () if open_leg is None else _ufo_axes(spins[open_leg], open_leg + 1)
     network = sym.TensorNetwork(
-        sym.as_tensor(expression) if labels else expression, library
+        sym.as_tensor(expression) if open_axes else expression, library
     )
     network.execute(library=library)
-    return [
-        (sym.E("0") + value).expand()
-        for value in _ordered_dense_tensor_components(
-            network.result_tensor(library), labels
-        ).values
-    ]
+    result = network.result_tensor(library).to_dense()
+    assert len(result) == (4 if open_axes else 1)
+    return [(sym.E("0") + result[index]).expand() for index in range(len(result))]
 
 
 def _ufo_numerator(compiled, model, pdg, value, momentum, point):
@@ -221,6 +234,68 @@ def _particle(compiled, name):
     return next(particle for particle in compiled.ir.particles if particle.name == name)
 
 
+def _ufo_lorentz_structures(ufo) -> dict[str, str]:
+    """Raw UFO Lorentz structures by name, parsed from lorentz.py, not imported."""
+
+    import ast
+
+    structures = {}
+    for node in ast.walk(ast.parse((ufo / "lorentz.py").read_text())):
+        if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "Lorentz":
+            fields = {keyword.arg: keyword.value for keyword in node.keywords}
+            name = ast.literal_eval(fields["name"])
+            structures[name] = ast.literal_eval(fields["structure"])
+    return structures
+
+
+class _NotMetric(Exception):
+    pass
+
+
+def _metric_vertex(structure: str, vectors, open_leg: int):
+    """A pure-Metric UFO structure applied to explicit vectors, by hand.
+
+    The second oracle for vertices the tree engine has no kernel for (the
+    quartic V_4): Metric(a, b) contracts two closed legs with diag(1,-1,-1,-1)
+    and passes the partner's component through on the open leg. Legs are
+    1-based UFO positions; returns None for anything but Metric products.
+    """
+
+    import ast
+
+    from symbolica import E
+
+    signature = (1, -1, -1, -1)
+
+    def evaluate(node, component):
+        match node:
+            case ast.BinOp(op=ast.Add()):
+                return evaluate(node.left, component) + evaluate(node.right, component)
+            case ast.BinOp(op=ast.Sub()):
+                return evaluate(node.left, component) - evaluate(node.right, component)
+            case ast.BinOp(op=ast.Mult()):
+                return evaluate(node.left, component) * evaluate(node.right, component)
+            case ast.UnaryOp(op=ast.USub()):
+                return -evaluate(node.operand, component)
+            case ast.Constant(value=int() as value):
+                return E(str(value))
+            case ast.Call(
+                func=ast.Name(id="Metric"),
+                args=[ast.Constant(value=int() as a), ast.Constant(value=int() as b)],
+            ):
+                if open_leg in (a, b):
+                    return vectors[b if a == open_leg else a][component]
+                pairs = zip(signature, vectors[a], vectors[b], strict=True)
+                return sum((s * x * y for s, x, y in pairs), E("0"))
+        raise _NotMetric
+
+    try:
+        tree = ast.parse(structure, mode="eval").body
+        return [evaluate(tree, component).expand() for component in range(4)]
+    except _NotMetric:
+        return None
+
+
 def _segment_point(model, binding, point):
     shift = point.vector(4, real=True)
     q = point.vector(4, real=True)
@@ -242,19 +317,25 @@ def _segment_point(model, binding, point):
     return shift, q, loop, blocks, momenta, embedded
 
 
+@pytest.mark.parametrize("seed", (7, 101, 202))
 def test_segments_equal_ufo_vertex_times_propagator_numerator(
-    compiled, catalogue, full_model
+    compiled, catalogue, full_model, loop_sm_ufo, seed
 ):
-    """Every segment equals UFO vertex x UFO propagator numerator, exactly."""
+    """Every segment equals UFO vertex x UFO propagator numerator, exactly.
 
-    point = ExactPoint(compiled, seed=7)
+    The second oracle is the tree engine's full-variant kernel where one
+    exists, else (quartic vertices) the raw UFO Metric structure by hand.
+    """
+
+    point = ExactPoint(compiled, seed=seed)
     model = full_model.with_runtime_parameters(point.parameters)
     terms = {term.id: term for term in compiled.ir.vertex_terms}
+    structures = _ufo_lorentz_structures(loop_sm_ufo)
     tree_kernels = {
         (kernel.term_ids, kernel.source_particle_legs): kernel
         for kernel in full_model.compiled.ir.oriented_kernels
     }
-    checked_against_tree = 0
+    checked_against_tree = checked_by_hand = 0
     for binding in catalogue.segments:
         term = terms[binding.key.term_id]
         kernel = catalogue.kernels[binding.kernel_id]
@@ -320,6 +401,28 @@ def test_segments_equal_ufo_vertex_times_propagator_numerator(
         )
         tree = tree_kernels.get(((term.id,), legs))
         if tree is None:
+            if set(spins) != {3}:
+                continue
+            by_hand = _metric_vertex(
+                structures[term.lorentz_name],
+                {leg + 1: current for leg, current in currents.items()},
+                binding.key.loop_out_leg + 1,
+            )
+            if by_hand is None:
+                continue
+            expected = _ufo_numerator(
+                compiled,
+                model,
+                binding.loop_out_species,
+                [coupling * value for value in by_hand],
+                out_momentum,
+                point,
+            )
+            assert all(
+                _zero(left - right)
+                for left, right in zip(actual, expected, strict=True)
+            ), binding.key
+            checked_by_hand += 1
             continue
         # Tree couplings may be derived runtime parameters of the model.
         tree_parameters = {
@@ -352,6 +455,9 @@ def test_segments_equal_ufo_vertex_times_propagator_numerator(
         ), binding.key
         checked_against_tree += 1
     assert checked_against_tree > len(catalogue.segments) // 3
+    assert checked_by_hand == sum(
+        binding.vertex == "V_4" for binding in catalogue.segments
+    )
 
 
 def test_propagator_numerators_equal_the_ufo_declaration(compiled, catalogue):
