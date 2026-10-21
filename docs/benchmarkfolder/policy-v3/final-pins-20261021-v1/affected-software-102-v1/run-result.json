@@ -1,0 +1,439 @@
+{
+  "cpu_affinity": [
+    5
+  ],
+  "elapsed_seconds": 2.829033585032448,
+  "errors": 0,
+  "failures": 0,
+  "ignored_parents_before_discovery": {
+    ".benchmark-work": false,
+    ".ninjars-build": false
+  },
+  "loaded_test_files": {
+    "tests.unit_tests.loop.test_ninjars_dp_stability": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-102-v1/archive/tests/unit_tests/loop/test_ninjars_dp_stability.py",
+    "tests.unit_tests.loop.test_ninjars_paper_report_v3": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/affected-software-102-v1/archive/tests/unit_tests/loop/test_ninjars_paper_report_v3.py"
+  },
+  "passed": 101,
+  "python": "3.14.7 (main, Aug  5 2026, 10:29:49) [GCC 15.3.0]",
+  "records": [
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_binomial_resolution_no_pseudocount_and_strict_threshold"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_direction_and_rotation_use_distinct_values_and_failure_scope"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_failed_three_zero_results_never_stable_for_all_four_tools"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_fpe_and_nonfinite_and_higher_precision_never_hidden"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_hardware_flags_retained_separately_from_numerical_rejection"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_other_backend_and_initialization_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_true_zero_results_preserved_and_expected_untested_accuracy_accepted"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.Classification.test_zero_mean_nonzero_and_large_finite_values"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.NativeGuardReader.test_forbidden_precision_missing_boundary_and_counter_drift_fail"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.NativeGuardReader.test_lifecycle_errors_and_missing_native_status_fail"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.NativeGuardReader.test_native_error_return_is_retained_without_success_relabelling"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.ObserverSources.test_born_and_loop_induced_restore_original_bytes"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.ObserverSources.test_compiled_control_shares_exact_observer_and_is_pending"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.ObserverSources.test_driver_uses_explicit_dp_and_preserves_complete_coefficients"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.ObserverSources.test_idempotence_and_unknown_dispatch_fail_closed"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.ObserverSources.test_mismatched_result_stable_indices_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.ObserverSources.test_observer_after_call_before_next_overwrite"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.ObserverSources.test_signature_and_orphan_continuation_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.OriginResolution.test_core_resolution_preserves_original_authority"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.OriginResolution.test_loop_alias_graft_and_wrong_actual_cohort_fail"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.OriginResolution.test_loop_empty_cohort_and_short_point_override_fail"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.OriginResolution.test_loop_measurement_count_is_separate_from_export_smoke"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.OriginResolution.test_stress_changed_fixed_stream_or_export_process_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.OriginResolution.test_stress_resolution_keeps_declared_small_denominator"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.OriginResolution.test_unknown_origin_authority_does_not_fallback_to_core"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RandomMeasurementAuthority.test_card_drift_and_denominator_drift_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RandomMeasurementAuthority.test_grafted_case_and_unknown_override_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RandomMeasurementAuthority.test_model_or_mass_or_source_authority_drift_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RandomMeasurementAuthority.test_random_measurement_overrides_only_stream_and_labels_n1_descriptive"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RandomRunnerQualification.test_failed_science_warmup_is_separate_and_never_qualified_safe"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RandomRunnerQualification.test_grafted_prefix_and_missing_science_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RandomRunnerQualification.test_prefix_parity_and_full_science_are_distinct_bound_streams"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RandomRunnerQualification.test_science_cannot_swap_its_qualified_executable_or_initial_filters"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RawReader.test_complete_raw_retains_all_physical_orders_and_zeros"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RawReader.test_duplicate_wrong_header_nonfinite_and_missing_row"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RawReader.test_empty_runs_cannot_be_reported_complete"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RawReader.test_report_revalidates_raw_sources_and_keeps_matching_four_tool_denominators"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RawReader.test_rescued_manifest_cannot_be_relabelled_dp"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RawReader.test_truncation_retains_missing_slots_as_failures"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RawReader.test_unbound_or_boolean_manifest_never_promotes_a_summary"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RecorderParityPrefix.test_checkpoint_driver_strips_to_exact_numerical_driver"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RecorderParityPrefix.test_exact_serialized_first_events_without_numeric_rounding"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.RecorderParityPrefix.test_short_trailing_nonfinite_and_boolean_dimensions_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.ResourceCustody.test_filter_log_order_absence_and_changed_environment_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.ResourceCustody.test_restamped_static_change_and_grafted_snapshot_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.ResourceCustody.test_static_origin_and_present_absent_filter_snapshots_qualified"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.ResourceCustody.test_wrong_initial_filter_and_boolean_lengths_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.SemanticQualification.test_actual_target_semantics_are_required_not_a_passed_flag"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.SemanticQualification.test_changed_native_runtime_and_model_libraries_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.SemanticQualification.test_changed_selector_and_grafted_cohort_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.SemanticQualification.test_control_settings_001_are_not_publication_settings"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.SemanticQualification.test_nonfinite_parity_is_token_equality_not_finite_bit_accuracy"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.SemanticQualification.test_numerical_source_changes_and_restamped_manifests_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.SemanticQualification.test_reserialized_raw_disagreement_cannot_use_retained_parity_boolean"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.SemanticQualification.test_zero_parity_preserves_sign_and_failed_zeros_stay_numerical_failures"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.WarmInitialization.test_duplicate_negative_mismatched_and_misplaced_warm_records_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.WarmInitialization.test_every_warm_iteration_and_failure_retained_outside_point_scores"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.WarmInitialization.test_missing_historical_record_never_claims_new_initializer_safe"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.WarmInitialization.test_warm_parity_keeps_rejections_without_success_conditioning"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.WarmMetadataCustody.test_full_raw_drives_retained_warm_metadata_and_exact_parser_view"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.WarmMetadataCustody.test_restamped_extra_point_line_removal_is_not_a_warm_only_view"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_dp_stability.WarmMetadataCustody.test_retained_safety_boolean_is_not_authority"
+    },
+    {
+      "reason": "Actual final generated source is not retained in this checkout",
+      "status": "skipped",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_actual_generated_qcd2_count_definitions_agree"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_case_tool_helicity_index_tuple_table_or_policy_disagreement_rejects"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_changed_count_source_or_contradictory_log_is_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_changed_source_manifest_digest_is_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_construction_requires_selected_timing_before_importing_reader"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_construction_retains_negative_residual_ci_failed_status_and_source"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_construction_without_parent_binding_or_with_acceptance_claim_rejects"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_cost_tables_preserve_failed_backend_counts_and_pending_numerator"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_declared_two_tool_curves_have_no_unrequested_cells"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_deterministic_synthetic_svg_labels_zeros_and_ratio_gaps"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_failed_points_and_all_zero_stay_in_denominator"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_full_sum_helicity_caption_stays_separate_from_single_loop_diagnostics"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_group_render_propagates_validated_two_tool_selection"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_historical_controls_do_not_acquire_random_sampling_metadata"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_invalid_helicity_caption_structure_cannot_invent_a_sum_or_single_tuple"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_invalid_reordered_or_noninteger_tool_selection_is_rejected"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_loop_classes_are_not_helas_amplitudes_or_flavor_copies"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_loop_random_helicity_tuple_table_and_policy_are_retained_and_labelled"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_missing_count_evidence_stays_missing"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_missing_or_extra_construction_case_cannot_be_mixed_with_timing"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_ninja_zero_ratios_are_null_and_positive_denominator_allows_zero"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_nonfinite_and_unbounded_failures_count_at_every_threshold"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_nonsoftware_group_render_requires_physical_qualification"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_observed_jumps_enter_grid_and_absent_tool_has_no_curve"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_on_shell_caption_uses_validated_invariant_energy_not_proposal_energy"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_other_construction_parent_path_or_hash_cannot_populate_timing_table"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_parameter_filter_ignores_unrelated_local_parameters"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_random_metadata_is_retained_without_aliasing"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_ratio_panels_cannot_use_truncated_tool_denominator"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_ratios_reject_changed_points_or_thresholds"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_rescued_summary_cannot_supply_dp_figures"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_summary_is_revalidated_and_its_transitive_input_map_is_retained"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_synthetic_svg_exposes_sampling_scope_seed_and_cuts"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_timing_reader_receives_exact_expected_runtime_and_map"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_timing_reader_rejection_blocks_construction_import"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_tool_sampling_authority_or_physical_metadata_mismatch_rejects"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_two_tool_svg_has_only_selected_legends"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_unattempted_requested_tool_remains_pending_without_extra_tools"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_undeclared_tools_or_case_selection_cannot_enter_two_tool_plot"
+    },
+    {
+      "status": "passed",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_zero_event_bound_is_not_empirical_fraction"
+    }
+  ],
+  "scope": "Software fixtures only; no native evaluations, generated-process smoke, or scientific render",
+  "skipped": [
+    {
+      "reason": "Actual final generated source is not retained in this checkout",
+      "status": "skipped",
+      "test_id": "tests.unit_tests.loop.test_ninjars_paper_report_v3.NinjaRSPaperReportV3Test.test_actual_generated_qcd2_count_definitions_agree"
+    }
+  ],
+  "source_unchanged": true,
+  "tests_run": 102
+}

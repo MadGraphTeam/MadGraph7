@@ -259,6 +259,17 @@ def parse_raw(path, expected_points, expected_tool, expected_nso):
             if warm is not None or len(fields) != 3:
                 raise ValueError("Invalid warm marker")
             warm = {"calls": int(fields[1]), "seconds": _number(fields[2])}
+        elif tag == "WARMDIAG":
+            if header is None or warm is None or "diagnostics" in warm or observed or done is not None or len(fields)!=21:
+                raise ValueError("Missing, duplicate or misplaced warm diagnostics")
+            if any(not re.fullmatch(r"[0-9]+",field) for field in fields[1:]):
+                raise ValueError("Warm diagnostics require nonnegative integer records")
+            values = list(map(int,fields[1:]))
+            if (values[0]<=0 or any(value<0 for value in values) or values[0]!=warm["calls"] or
+                    any(flag>values[0] for flag in values[16:20])):
+                raise ValueError("Warm diagnostic counters differ from original warm iterations")
+            warm["diagnostics"]={"iterations":values[0],"reduction_counters":values[1:16],
+                                 "common_flags":values[16:20]}
         elif tag == "BEGIN":
             if len(fields) != 3 or active is not None:
                 raise ValueError("Invalid observation start")
@@ -306,6 +317,63 @@ def parse_raw(path, expected_points, expected_tool, expected_nso):
                 len(observed) == 3*expected_points and all(x["complete"] for x in observed.values()))
     return {"header": header, "warm": warm, "done": done,
             "complete": complete, "observations": observed}
+
+
+def warm_failure(warm, tool, required=False):
+    """Warm failures invalidate initialization, rather than 100 point scores."""
+    diagnostic = (warm or {}).get("diagnostics")
+    if diagnostic is None:
+        return "missing_warm_diagnostics" if required else None
+    counts,flags=diagnostic["reduction_counters"],diagnostic["common_flags"]
+    total,rejected,nonfinite,qp=counts[:4]
+    if sum(counts[4:12])!=total or any(c for i,c in enumerate(counts[4:12],1) if i!=tool):
+        return "warm_unexpected_backend"
+    if qp or counts[13] or flags[1]:
+        return "warm_unexpected_higher_precision"
+    if counts[14] or flags[2] or flags[3]:
+        return "warm_unexpected_compensated_dp"
+    if rejected:
+        return "warm_reduction_rejected"
+    if nonfinite:
+        return "warm_nonfinite_reduction"
+    if counts[12] or flags[0]:
+        return "warm_reduction_fpe"
+    return None
+
+
+def validate_warm_records(result, parsed, inputs=None):
+    """Recompute metadata and the sole-line parser view from authoritative raw."""
+    diagnostic=(parsed.get("warm") or {}).get("diagnostics")
+    if diagnostic is None:
+        raise ValueError("New random result lacks its authoritative warm aggregate")
+    names=("reductions","rejected","nonfinite_reductions","qp_reductions",
+        *["backend_"+str(i) for i in range(1,9)],"observer_fpe_dp","observer_fpe_qp","compensated_dp")
+    flag_names=("fpe_dp","fpe_qp","nrs_retry_mode","nrs_retry_used")
+    counts=dict(zip(names,diagnostic["reduction_counters"]))
+    flags=dict(zip(flag_names,diagnostic["common_flags"]))
+    if any(value>counts["reductions"] for name,value in counts.items() if name!="reductions"):
+        raise ValueError("Warm observer subset exceeds its recorded calls")
+    if sum(counts["backend_"+str(i)] for i in range(1,9))!=counts["reductions"]:
+        raise ValueError("Warm observer dispatch coverage differs")
+    unsafe=("rejected","nonfinite_reductions","qp_reductions","observer_fpe_dp","observer_fpe_qp","compensated_dp")
+    reasons=[name for name in unsafe if counts[name]]+["common_"+name for name,value in flags.items() if value]
+    expected={"schema":"dp-warm-diagnostics-v1","iterations":diagnostic["iterations"],
+        "counts":counts,"flags":flags,"initialization_safe":not reasons,"unsafe_reasons":reasons,
+        "score_denominator_contribution":0,"limitations":"No warm ANS read; observer counters unavailable in plain variant"}
+    if result.get("warm_diagnostics")!=expected:
+        raise ValueError("Retained warm classification differs from authoritative raw")
+    raw=_bound(ROOT,result["raw"],inputs);data=raw.read_bytes();lines=data.splitlines(keepends=True)
+    indices=[i for i,line in enumerate(lines) if line.split() and line.split()[0]==b"WARMDIAG"]
+    if len(indices)!=1 or indices[0]<1 or lines[indices[0]-1].split()[0]!=b"WARM":
+        raise ValueError("The sole warm diagnostic must immediately follow WARM")
+    index=indices[0];stripped=b"".join(lines[:index]+lines[index+1:])
+    view=_bound(ROOT,result["parser_view"],inputs)
+    derivation={"schema":"dp-warmdiag-only-parser-view-v1","removed_record":"WARMDIAG",
+        "removed_line_number":index+1,"removed_line_sha256":hashlib.sha256(lines[index]).hexdigest(),
+        "original_sha256":hashlib.sha256(data).hexdigest(),"parser_view_sha256":hashlib.sha256(stripped).hexdigest()}
+    if view.read_bytes()!=stripped or result.get("parser_view_derivation")!=derivation:
+        raise ValueError("Frozen parser view differs from exact sole WARMDIAG removal")
+    return expected
 
 
 def observation_failure(observation, tool):
@@ -414,7 +482,12 @@ def validate_run_sources(run, inputs=None):
     instrumented, receipt = instrument_interface(paths["original_interface"].read_text())
     if paths["instrumented_interface"].read_text() != instrumented:
         raise ValueError("Private interface differs from exact observer transformation")
-    expected_driver = render_driver(receipt["prefix"],int(run["nexternal"]),int(run["nso"]))
+    renderer = render_driver
+    if run.get("resource_protocol") is not None:
+        if run["resource_protocol"] != "dp-resource-custody-v1" or not run.get("measurement_authority"):
+            raise ValueError("Unknown or undeclared private DP resource protocol")
+        renderer = render_custody_driver
+    expected_driver = renderer(receipt["prefix"],int(run["nexternal"]),int(run["nso"]))
     if paths["driver"].read_text() != expected_driver:
         raise ValueError("Private DP driver differs from bound producer")
     with paths["executable"].open("rb") as stream:
@@ -470,6 +543,13 @@ def validate_recorder_parity(plain, observed, tool):
     """Recompute the control from raw rows, never its retained passed boolean."""
     if not plain["complete"] or not observed["complete"] or plain["header"] != observed["header"]:
         raise ValueError("Recorder parity has incomplete or different raw streams")
+    left_warm,right_warm=plain["warm"].get("diagnostics"),observed["warm"].get("diagnostics")
+    if (left_warm is None)!=(right_warm is None):
+        raise ValueError("Recorder parity warm diagnostic coverage differs")
+    if left_warm is not None:
+        if (any(left_warm["reduction_counters"]) or left_warm["iterations"]!=right_warm["iterations"] or
+                left_warm["common_flags"]!=right_warm["common_flags"]):
+            raise ValueError("Recorder parity warm flags/iterations differ or plain has observer calls")
     physical, accuracy, zero, nonfinite = 0, 0, 0, 0
     failures = Counter()
     for key,left in plain["observations"].items():
@@ -499,7 +579,8 @@ def validate_recorder_parity(plain, observed, tool):
     return {"physical_coefficients_compared":physical,
             "internal_accuracies_compared":accuracy,"zero_coefficients_compared":zero,
             "f64_bitexact":nonfinite == 0, "finite_values_f64_bitexact":True,
-            "matching_nonfinite_tokens":nonfinite,"numerical_failure_observations":dict(failures)}
+            "matching_nonfinite_tokens":nonfinite,"numerical_failure_observations":dict(failures),
+            "warm_failure":warm_failure(observed["warm"],tool)}
 
 
 def validate_dp_settings(origin, target, tool):
@@ -686,6 +767,184 @@ def resolve_measurement(run, release, resolved, inputs=None):
                 declared["masses"][2] if definition["nfinal"] == 1 else config["energy_gev"])}
 
 
+def point_prefix_bytes(path, nexternal, n):
+    """Derive a declared event prefix without reserializing any momentum."""
+    if type(n) is not int or type(nexternal) is not int or n < 1 or nexternal < 3:
+        raise ValueError("Invalid recorder parity prefix dimensions")
+    rows = Path(path).read_bytes().splitlines(keepends=True)
+    if not rows or len(rows[0].split()) != 1:
+        raise ValueError("Invalid parent point stream header")
+    parent_n = int(rows[0].strip())
+    if parent_n < n or len(rows) != 1+parent_n*nexternal:
+        raise ValueError("Recorder parity prefix exceeds its complete parent stream")
+    for row in rows[1:]:
+        fields = row.split()
+        if len(fields) != 4 or any(_number(value.decode("ascii")) is None for value in fields):
+            raise ValueError("Malformed or nonfinite parent point stream")
+    return str(n).encode("ascii")+b"\n"+b"".join(rows[1:1+n*nexternal])
+
+
+def render_custody_driver(prefix, nexternal, nso):
+    """Exact integer-only warm and IO checkpoints around the frozen driver."""
+    if digest(ROOT/"tools/ninjars_dp_stability_driver.f")!="3d8d06325dd955408771b94873ee34ad438c0ba4a459e48bbfbbf69ed33d7dc7":
+        raise ValueError("Public diagnostic driver changed")
+    rendered=render_driver(prefix,nexternal,nso)
+    SUFFIX="DPSTAB_CUSTODY_CHECKPOINT"
+    BEGIN,END="C DPSTAB_CUSTODY_BEGIN\n","C DPSTAB_CUSTODY_END\n"
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*",prefix) or len(prefix+SUFFIX)>63:
+        raise ValueError("Invalid custody process prefix")
+    reset = "      WARM=0\n      CALL SYSTEM_CLOCK(CLOCK0,RATE)\n"
+    capture = ("        CALL "+prefix+"SLOOPMATRIXHEL(P,HEL,ANS)\n"
+        "        IF(.NOT.CHECKPHASE.AND.HELDOUBLECHECKED) THEN\n")
+    warm = "      FLUSH(74)\n      CALL SYSTEM_CLOCK(CLOCK0)\n      DO K=1,NP\n"
+    final = '      CALL '+prefix+'EXIT_MADLOOP()\n'
+    if any(rendered.count(item)!=1 for item in (reset,capture,warm,final)):
+        raise ValueError('Unknown warm/final boundary')
+    result=rendered.replace(reset,BEGIN+'      CALL '+prefix+'DPSTAB_WARM_RESET()\n'+END+reset,1)
+    result=result.replace(capture,'        CALL '+prefix+'SLOOPMATRIXHEL(P,HEL,ANS)\n'+BEGIN+
+        '        CALL '+prefix+'DPSTAB_WARM_CAPTURE(COUNTS,\n'+
+        '     $    FPE_DP,FPE_QP,NRS_RETRY_MODE,NRS_RETRY_USED)\n'+END+
+        '        IF(.NOT.CHECKPHASE.AND.HELDOUBLECHECKED) THEN\n',1)
+    result=result.replace(warm,'      FLUSH(74)\n'+BEGIN+
+        '      CALL '+prefix+'DPSTAB_WARM_WRITE()\n'+
+        '      CALL '+prefix+SUFFIX+'(1)\n'+END+
+        '      CALL SYSTEM_CLOCK(CLOCK0)\n      DO K=1,NP\n',1)
+    result=result.replace(final,final+BEGIN+'      CALL '+prefix+SUFFIX+'(2)\n'+END,1)
+    shim = ("\n      SUBROUTINE "+prefix+SUFFIX+"(PHASE)\n"
+        "      USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_INT\n"
+        "      IMPLICIT NONE\n"
+        "      INTEGER PHASE\n"
+        "      INTERFACE\n"
+        "        SUBROUTINE DPSTAB_CUSTODY_C(PHASE) BIND(C,\n"
+        "     $   NAME='dpstab_custody_checkpoint')\n"
+        "          IMPORT C_INT\n"
+        "          INTEGER(C_INT), VALUE :: PHASE\n"
+        "        END SUBROUTINE\n"
+        "      END INTERFACE\n"
+        "      CALL DPSTAB_CUSTODY_C(INT(PHASE,C_INT))\n"
+        "      END\n")
+    warm_helpers = ("\n      SUBROUTINE "+prefix+"DPSTAB_WARM_RESET()\n"
+        "      IMPLICIT NONE\n"
+        "      INTEGER*8 WARM_COUNTS(20)\n"
+        "      COMMON/"+prefix+"DPSTAB_WARM_STATE/WARM_COUNTS\n"
+        "      SAVE /"+prefix+"DPSTAB_WARM_STATE/\n"
+        "      WARM_COUNTS=0\n"
+        "      END\n"
+        "\n      SUBROUTINE "+prefix+"DPSTAB_WARM_CAPTURE(COUNTS,\n"
+        "     $ FPE_DP,FPE_QP,RETRY_MODE,RETRY_USED)\n"
+        "      IMPLICIT NONE\n"
+        "      INTEGER*8, INTENT(IN) :: COUNTS(18)\n"
+        "      LOGICAL, INTENT(IN) :: FPE_DP,FPE_QP\n"
+        "      LOGICAL, INTENT(IN) :: RETRY_MODE,RETRY_USED\n"
+        "      INTEGER*8 WARM_COUNTS(20)\n"
+        "      COMMON/"+prefix+"DPSTAB_WARM_STATE/WARM_COUNTS\n"
+        "      SAVE /"+prefix+"DPSTAB_WARM_STATE/\n"
+        "      WARM_COUNTS(1)=WARM_COUNTS(1)+1\n"
+        "      WARM_COUNTS(2:16)=WARM_COUNTS(2:16)+COUNTS(1:15)\n"
+        "      WARM_COUNTS(17)=WARM_COUNTS(17)+MERGE(1,0,FPE_DP)\n"
+        "      WARM_COUNTS(18)=WARM_COUNTS(18)+MERGE(1,0,FPE_QP)\n"
+        "      WARM_COUNTS(19)=WARM_COUNTS(19)+MERGE(1,0,RETRY_MODE)\n"
+        "      WARM_COUNTS(20)=WARM_COUNTS(20)+MERGE(1,0,RETRY_USED)\n"
+        "      END\n"
+        "\n      SUBROUTINE "+prefix+"DPSTAB_WARM_WRITE()\n"
+        "      IMPLICIT NONE\n"
+        "      INTEGER*8 WARM_COUNTS(20)\n"
+        "      COMMON/"+prefix+"DPSTAB_WARM_STATE/WARM_COUNTS\n"
+        "      SAVE /"+prefix+"DPSTAB_WARM_STATE/\n"
+        "      WRITE(74,'(A,20(1X,I0))') 'WARMDIAG',WARM_COUNTS\n"
+        "      FLUSH(74)\n"
+        "      END\n")
+    if any(len(line)>72 for line in (shim+warm_helpers).splitlines() if line and line[0]!='C'):
+        raise ValueError('Checkpoint prefix exceeds fixed-form line capacity')
+    return result+BEGIN+shim+warm_helpers+END
+
+
+def parse_custody_log(path):
+    """Require both exact postwarm/final filter checkpoints in order."""
+    pattern = re.compile(r"SNAPSHOT phase=([12]) stage=(postwarm|final) "
+        r"file=(HelFilter.dat|LoopFilter.dat) available=([01]) bytes=(\d+)")
+    lines = Path(path).read_text().splitlines()
+    order = [(1,"postwarm","HelFilter.dat"),(1,"postwarm","LoopFilter.dat"),
+             (2,"final","HelFilter.dat"),(2,"final","LoopFilter.dat")]
+    if len(lines)!=len(order):
+        raise ValueError("Missing or extra resource checkpoint records")
+    states = {"postwarm":{},"final":{}}
+    for line,expected in zip(lines,order):
+        match = pattern.fullmatch(line)
+        if not match or (int(match[1]),match[2],match[3])!=expected:
+            raise ValueError("Malformed or reordered resource checkpoint record")
+        available,amount = bool(int(match[4])),int(match[5])
+        if not available and amount:
+            raise ValueError("An absent filter checkpoint cannot contain bytes")
+        states[match[2]][match[3]] = {"available":available,"bytes":amount}
+    return states
+
+
+def validate_resource_custody(result, origin, output, prefix, inputs=None):
+    """Bind static tables and exact initial/postwarm/final filter snapshots."""
+    custody = result.get("custody",{})
+    resource = output/"SubProcesses/MadLoop5_resources"
+    origin_resource = origin/"SubProcesses/MadLoop5_resources"
+    root = _local_path(custody["root"])
+    if (custody.get("schema")!="dp-resource-custody-v1" or custody.get("prefix")!=prefix or
+            _local_path(custody["resource_directory"])!=resource.resolve() or
+            _local_path(result["execution"]["cwd"]+"/MadLoop5_resources")!=resource.resolve()):
+        raise ValueError("Resource custody target differs from the compiled process")
+    log = _bound(ROOT,custody["checkpoint_log"],inputs)
+    if result["execution"].get("custody_environment")!={
+            "DPSTAB_CUSTODY_DIR":str(root),"DPSTAB_PROCESS_PREFIX":prefix,
+            "DPSTAB_CUSTODY_LOG":str(log)}:
+        raise ValueError("Resource checkpoint environment differs from its bound target")
+    source = _bound(ROOT,custody["helper_source"],inputs)
+    obj = _bound(ROOT,custody["helper_object"],inputs)
+    if digest(source)!="766d47e5ad6d092bbd159651f739c838c18829b57d85a1167416fa4c382e9a10":
+        raise ValueError("Unknown resource checkpoint C source")
+    if obj.read_bytes()[:4]!=b"\x7fELF":
+        raise ValueError("Resource checkpoint object is not an ELF build")
+    static_names = {"HelConfigs.dat","ColorNumFactors.dat","ColorDenomFactors.dat"}
+    filter_names = {"HelFilter.dat","LoopFilter.dat"}
+    if set(custody.get("static",{}))!=static_names or set(custody.get("filters",{}))!={"initial","postwarm","final"}:
+        raise ValueError("Incomplete static table/filter custody")
+    for name,records in custody["static"].items():
+        if set(records)!={"origin","initial","final","live"}:
+            raise ValueError("Incomplete static resource snapshots")
+        paths = {key:_bound(ROOT,record,inputs) for key,record in records.items()}
+        expected = {"origin":origin_resource/(prefix+name),"initial":root/"initial"/(prefix+name),
+                    "final":root/"final"/(prefix+name),"live":resource/(prefix+name)}
+        if any(paths[key].resolve()!=path.resolve() for key,path in expected.items()) or len({p.read_bytes() for p in paths.values()})!=1:
+            raise ValueError("Static numerical resource differs from its actual origin")
+    checkpoint = parse_custody_log(log)
+    normalized = {}
+    for phase,states in custody["filters"].items():
+        if set(states)!=filter_names:
+            raise ValueError("Incomplete filter checkpoint states")
+        normalized[phase] = {}
+        for name,state in states.items():
+            if (set(state)!={"available","snapshot","bytes"} or type(state["available"]) is not bool or
+                    type(state["bytes"]) is not int or state["bytes"]<0):
+                raise ValueError("Malformed filter checkpoint state")
+            snapshot_path = root/phase/(prefix+name)
+            if state["available"]:
+                snapshot = _bound(ROOT,state["snapshot"],inputs)
+                if snapshot.resolve()!=snapshot_path.resolve() or snapshot.stat().st_size!=state["bytes"]:
+                    raise ValueError("Filter snapshot path/length differs")
+                normalized[phase][name] = {"available":True,"bytes":state["bytes"],"sha256":digest(snapshot)}
+            else:
+                if state["snapshot"] is not None or state["bytes"] or snapshot_path.exists():
+                    raise ValueError("An absent filter has a snapshot or bytes")
+                normalized[phase][name] = {"available":False,"bytes":0,"sha256":None}
+            if phase=="initial":
+                original = origin_resource/(prefix+name)
+                if original.exists()!=state["available"] or (original.exists() and digest(original)!=normalized[phase][name]["sha256"]):
+                    raise ValueError("Initial filter differs from the actual origin/reset state")
+                if original.exists():
+                    _bound(ROOT,{"path":str(original),"sha256":digest(original)},inputs)
+            elif {key:state[key] for key in ("available","bytes")}!=checkpoint[phase][name]:
+                raise ValueError("Filter snapshot contradicts the exact checkpoint log")
+    return {"schema":"dp-resource-custody-v1","filters":normalized,
+            "helper_source":custody["helper_source"],"helper_object":custody["helper_object"]}
+
+
 def parse_native_guard(path):
     """Verify the audited native-only guard, including failed native statuses."""
     names = ("create","dp","compensated","mp","destroy","nonnull")
@@ -756,6 +1015,21 @@ def validate_target_qualification(run, release, runpaths, inputs=None):
         raise ValueError("Parity CPU/thread settings are not bound")
     resolved = resolve_origin(run,release,inputs)
     case,origin,retained,records = (resolved[key] for key in ("case","origin","retained","records"))
+    resource_protocol = run.get("resource_protocol")=="dp-resource-custody-v1"
+    if run.get("measurement_authority") and not resource_protocol:
+        raise ValueError("Random DP physical qualification requires the declared resource custody protocol")
+    if resource_protocol:
+        declared = start["cases"][run["case"]]
+        if (not run.get("measurement_authority") or run["tool"] not in (6,8) or
+                type(declared["N"]) is not int or type(declared["parity_N"]) is not int or
+                type(run["N"]) is not int or declared["N"]!=run["N"] or declared["parity_N"]!=3 or run["N"]<3):
+            raise ValueError("Undeclared random DP prefix/science scope")
+        parity_points = _bound(ROOT,declared["parity_points"],inputs)
+        if (_bound(ROOT,declared["points"],inputs).read_bytes()!=resolved["points"].read_bytes() or
+                parity_points.read_bytes()!=point_prefix_bytes(resolved["points"],run["nexternal"],3)):
+            raise ValueError("Recorder parity points are not the exact declared science prefix")
+        if not proof.get("science_result"):
+            raise ValueError("Random DP science requires its separate full-stream execution")
     manifest = records["compiled-sources.json"]
     identity = pair.validate_origin_records("candidate",origin,records["generation.json"],
                                           records["compilation.json"],manifest)
@@ -775,6 +1049,7 @@ def validate_target_qualification(run, release, runpaths, inputs=None):
     source_dir = source_dirs[0]
     original_interface = source_dir/"CT_interface.f"
     transformed, receipt = instrument_interface(original_interface.read_text())
+    renderer = render_custody_driver if resource_protocol else render_driver
     if runpaths["original_interface"].read_bytes() != original_interface.read_bytes():
         raise ValueError("DP original interface was grafted from another source")
     if run["nso"] != int(re.search(r"NSQUAREDSO\s*=\s*(\d+)",
@@ -790,11 +1065,37 @@ def validate_target_qualification(run, release, runpaths, inputs=None):
     origin_settings = MadLoopParam(str(origin/"Cards/MadLoopParams.dat"))
     if dict(origin_settings) != dict(committed_settings):
         raise ValueError("Actual CLI origin MadLoop settings differ from its committed template")
-    results, parsed = {}, {}
-    for variant in ("plain","observed"):
-        result = _read_bound(proof[variant+"_result"],inputs)
+    if resource_protocol:
+        selection = declared["helicity"]
+        table = _bound(ROOT,selection["table"],inputs)
+        if table.resolve()!=(origin/"SubProcesses/MadLoop5_resources"/(receipt["prefix"]+"HelConfigs.dat")).resolve():
+            raise ValueError("Random diagnostic helicity table differs from its actual origin")
+        rows = [list(map(int,line.split())) for line in table.read_text().splitlines()]
+        if (any(len(row)!=run["nexternal"] for row in rows) or type(selection["argument"]) is not int or
+                selection["argument"]!=run["helicity"]):
+            raise ValueError("Random diagnostic helicity selection differs")
+        if "sqrvirt=" in run["process"]:
+            physical = [-1,-1]+[0]*(run["nexternal"]-2)
+            matches = [i+1 for i,row in enumerate(rows) if row==physical]
+            if (len(matches)!=1 or selection["physical_tuple"]!=physical or
+                    selection["one_based_index"]!=matches[0] or run["helicity"]!=matches[0]):
+                raise ValueError("Loop-induced diagnostic requires the declared physical all-minus tuple")
+        elif run["helicity"]!=-1 or selection["one_based_index"] is not None or selection["physical_tuple"] is not None:
+            raise ValueError("Born diagnostic requires the complete helicity/color sum")
+    results, parsed, resources = {}, {}, {}
+    roles = ("plain","observed","science") if resource_protocol else ("plain","observed")
+    for role in roles:
+        variant = "observed" if role=="science" else role
+        result = _read_bound(proof[role+"_result"],inputs)
         if result.get("variant") != variant or result.get("tool") != run["tool"]:
             raise ValueError("Parity target variant/backend differs")
+        result_points,result_n = points,run["N"]
+        if resource_protocol:
+            result_n = run["N"] if role=="science" else 3
+            result_points = _bound(ROOT,result["points"],inputs)
+            expected_points = points if role=="science" else parity_points
+            if result["N"]!=result_n or result_points.read_bytes()!=expected_points.read_bytes():
+                raise ValueError("Prefix/science execution point scope differs")
         execution, build = result["execution"],result["build"]
         _successful_command(execution,inputs)
         _successful_command(build,inputs)
@@ -812,7 +1113,7 @@ def validate_target_qualification(run, release, runpaths, inputs=None):
             raise ValueError("Unreviewed numerical/build source change in DP target")
         expected_interface = transformed if variant == "observed" else original_interface.read_text()
         if ((directory/"CT_interface.f").read_text() != expected_interface or
-                (directory/"check_sa.f").read_text() != render_driver(receipt["prefix"],run["nexternal"],run["nso"])):
+                (directory/"check_sa.f").read_text() != renderer(receipt["prefix"],run["nexternal"],run["nso"])):
             raise ValueError("Parity driver/interface differs from exact source transformation")
         for name,key in (("check_sa.f","driver_sha256"),("CT_interface.f","interface_sha256"),("check","executable_sha256")):
             _bound(ROOT,{"path":str(directory/name),"sha256":result[key]},inputs)
@@ -840,13 +1141,14 @@ def validate_target_qualification(run, release, runpaths, inputs=None):
                 raise ValueError("Private subprocess reads a different DP card")
             _bound(ROOT,{"path":str(card),"sha256":digest(card)},inputs)
         rawpath = _bound(ROOT,result["raw"],inputs)
-        expected_command = [str(directory/"check"),str(points),str(run["tool"]),str(run["helicity"]),str(rawpath)]
+        expected_command = [str(directory/"check"),str(result_points),str(run["tool"]),str(run["helicity"]),str(rawpath)]
         if execution["command"] != expected_command:
             raise ValueError("Physical DP executable/point/selector command differs")
         if run["tool"] == 8 and not result.get("additional_link_flags"):
             raise ValueError("Native NinjaRS DP qualification requires the startup-through-teardown guard")
         if result.get("additional_link_flags"):
-            guard = _bound(ROOT,start["guard_source"],inputs)
+            guard_record = start["guards"][str(run["tool"])]["source"] if resource_protocol else start["guard_source"]
+            guard = _bound(ROOT,guard_record,inputs)
             expected_guard_source = ("88cfb41cf17a545665e30563c39f0bd58ae9b9c0075203e0e5c27531d5e0c06c" if run["tool"] == 8
                 else "13f5702a530ede39a74333d266bb3078799e7b3f9889a29c9c2fdd2683176477")
             if digest(guard) != expected_guard_source:
@@ -855,6 +1157,12 @@ def validate_target_qualification(run, release, runpaths, inputs=None):
             symbols = ("ninjars_context_create","ninjars_evaluate_dp","ninjars_evaluate_dp_compensated",
                        "ninjars_evaluate_mp","ninjars_context_destroy")
             flags = str(obj)+" -L$(LIBDIR) -ldhelas -lmodel $(LINK_LOOP_LIBS) $(LDFLAGS) "+" ".join("-Wl,--wrap="+s for s in symbols)
+            if resource_protocol:
+                resources[role] = validate_resource_custody(result,origin,output,receipt["prefix"],inputs)
+                helper_object = _bound(ROOT,result["custody"]["helper_object"],inputs)
+                if result["guard_object"]!=start["guards"][str(run["tool"])]["object"]:
+                    raise ValueError("Random DP guard object differs from its declared startup boundary")
+                flags = str(helper_object)+" "+flags
             expected_guard = "GUARD_FINAL create=0 dp=0 compensated=0 mp=0 destroy=1 nonnull=0"
             guard_path = _bound(ROOT,result["guard"],inputs)
             if result["additional_link_flags"] != flags:
@@ -867,14 +1175,18 @@ def validate_target_qualification(run, release, runpaths, inputs=None):
                 raise ValueError("Legacy parity entered a numerical NinjaRS path")
             expected_build = ["make","-j1","check","LINKLIBS="+flags]
         else:
+            if resource_protocol:
+                raise ValueError("Random DP diagnostics require the declared link guard")
             expected_build = ["make","-j1","check"]
         if build["command"] != expected_build:
             raise ValueError("DP parity build has undeclared compiler/link flags")
-        parsed[variant] = parse_raw(rawpath,run["N"],run["tool"],run["nso"])
-        if parsed[variant]["header"][4] != run["helicity"]:
+        parsed[role] = parse_raw(rawpath,result_n,run["tool"],run["nso"])
+        if resource_protocol:
+            validate_warm_records(result,parsed[role],inputs)
+        if parsed[role]["header"][4] != run["helicity"]:
             raise ValueError("Parity raw helicity differs")
-        results[variant] = result
-        if variant == "observed":
+        results[role] = result
+        if role == ("science" if resource_protocol else "observed"):
             expected_paths = {"instrumented_interface":directory/"CT_interface.f",
                 "driver":directory/"check_sa.f","executable":directory/"check",
                 "parameter_card":physical,"madloop_card":cardpath}
@@ -882,8 +1194,8 @@ def validate_target_qualification(run, release, runpaths, inputs=None):
                 raise ValueError("DP observations are not the qualified private target")
             normalized_execution = json.loads(runpaths["execution"].read_text())
             normalized_build = json.loads(runpaths["build"].read_text())
-            if (normalized_execution.get("source_record") != proof["observed_result"] or
-                    normalized_build.get("source_record") != proof["observed_result"] or
+            if (normalized_execution.get("source_record") != proof[role+"_result"] or
+                    normalized_build.get("source_record") != proof[role+"_result"] or
                     normalized_execution.get("exit_code") != execution["exit_code"] or
                     normalized_execution.get("cpu") != start["cpu"][0] or
                     normalized_execution.get("thread_environment") != thread_environment):
@@ -899,6 +1211,23 @@ def validate_target_qualification(run, release, runpaths, inputs=None):
     receipt_keys = ("physical_coefficients_compared","zero_coefficients_compared","f64_bitexact")
     if any(retained_parity.get(key) != parity[key] for key in receipt_keys):
         raise ValueError("Retained parity receipt contradicts independently replayed raw rows")
+    if resource_protocol:
+        if resources["plain"]["filters"]!=resources["observed"]["filters"]:
+            raise ValueError("Plain and observed recorder prefix filter states differ")
+        if resources["science"]["filters"]["initial"]!=resources["observed"]["filters"]["initial"]:
+            raise ValueError("Full science process did not restore the exact initial filters")
+        for key in ("compiled_manifest","driver_sha256","interface_sha256","executable_sha256",
+                    "runtime","physical_card_sha256","madloop_card_sha256","additional_link_flags","guard_object","build"):
+            if results["science"][key]!=results["observed"][key]:
+                raise ValueError("Science execution differs from its recorder-qualified observed target")
+        if (resources["science"]["helper_object"]!=resources["observed"]["helper_object"] or
+                resources["plain"]["helper_object"]!=resources["observed"]["helper_object"]):
+            raise ValueError("Recorder/science checkpoint object differs")
+    warm_information = ({role:{"diagnostics":parsed[role]["warm"].get("diagnostics"),
+                         "failure":warm_failure(parsed[role]["warm"],run["tool"],required=True)}
+                         for role in roles} if resource_protocol else {})
+    initialization_safe = (all(warm_information[role]["failure"] is None for role in ("observed","science"))
+                           if resource_protocol else True)
     return {"source_runtime_qualified":True,"recorder_parity_qualified":True,
             "benchmark_case":run["case"],"generation_case":resolved["generation_case"],
             "measurement_points":resolved["point_record"],
@@ -906,10 +1235,14 @@ def validate_target_qualification(run, release, runpaths, inputs=None):
             "sample_kind":resolved.get("sample_kind",run.get("sample_kind","fixed-core-pilot")),
             "seed":resolved.get("seed"),"cuts":resolved.get("cuts"),
             "center_of_mass_energy_gev":resolved.get("center_of_mass_energy_gev"),
+            "helicity_selection":declared["helicity"] if resource_protocol else None,
             "settings":settings,"runtime_identity_sha256":release["runtime_identity_sha256"],
             "source_manifest_sha256":results["observed"]["compiled_manifest"]["files_sha256"],
             "executable_sha256":results["observed"]["executable_sha256"],
-            "parity":parity,"scope":"this declared process/tool/point/selector stream only"}
+            "parity":parity,"parity_N":3 if resource_protocol else run["N"],
+            "resource_protocol":run.get("resource_protocol"),"resource_custody":resources if resource_protocol else None,
+            "initialization_safe":initialization_safe,"warm_diagnostics":warm_information,
+            "scope":"this declared process/tool/point/selector stream only"}
 
 
 def report_snapshot(manifest_or_summary, expected=None, inputs=None):
@@ -1011,13 +1344,19 @@ def report_snapshot(manifest_or_summary, expected=None, inputs=None):
             if not cohort_validated:
                 raise ValueError("Physical DP qualification requires a validated explicit cohort")
             entry["qualification"] = validate_target_qualification(run,release,runpaths,inputs)
-            entry["physical_qualified"] = True
+            entry["physical_qualified"] = entry["qualification"].get("initialization_safe",True)
+            if not entry["physical_qualified"]:
+                entry["status"]="unsafe_initialization"
+            entry["initialization"]={"safe":entry["physical_qualified"],
+                                     "warm_diagnostics":entry["qualification"].get("warm_diagnostics",{})}
+            entry["helicity_selection"]=entry["qualification"].get("helicity_selection")
             for name in ("sample_kind","measurement_authority","seed","cuts","center_of_mass_energy_gev"):
                 entry[name] = entry["qualification"][name]
         group = cases.setdefault(case,{"id":case,"tools":{},"group":run.get("group","unspecified"),
                  "process":run.get("process",case),"sample_kind":entry["sample_kind"],
                  "seed":entry["seed"],"cuts":entry["cuts"],"measurement_authority":entry["measurement_authority"],
                  "center_of_mass_energy_gev":entry["center_of_mass_energy_gev"],
+                 "helicity_selection":entry.get("helicity_selection"),
                  "N":n,"helicity":run["helicity"],"requested_tools":requested_tools})
         if group["tools"] and any(v["N"] != n for v in group["tools"].values()):
             raise ValueError("Different point denominators for tools")
@@ -1025,7 +1364,8 @@ def report_snapshot(manifest_or_summary, expected=None, inputs=None):
                 v["helicity"] != run["helicity"] for v in group["tools"].values()):
             raise ValueError("Tools use different points or helicities")
         if group["tools"] and any(v["measurement_authority"] != entry["measurement_authority"] or
-                v["sample_kind"] != entry["sample_kind"] for v in group["tools"].values()):
+                v["sample_kind"] != entry["sample_kind"] or v.get("helicity_selection")!=entry.get("helicity_selection")
+                for v in group["tools"].values()):
             raise ValueError("Tools use different measurement/sample authorities")
         group["tools"][str(tool)] = entry
     for case in cases.values():

@@ -1,0 +1,6 @@
+{
+  "tests/unit_tests/loop/test_ninjars_dp_stability.py": "3d4f394bcdafe4117c3b5a8d86d74df58d189b00907ba0c28090f9725d82abb2",
+  "tests/unit_tests/loop/test_ninjars_paper_report_v3.py": "65efec48ce6f91a13d424d8bff3460bb8cafcaddafdaac1fbe0bfc4ffcf22e29",
+  "tools/ninjars_dp_stability.py": "af91583643ae64e7922290cd08cf823eb5133ceafb07bf6d8fc23f6e60f2d0dd",
+  "tools/ninjars_paper_report_v3.py": "8a137adbd5d629ab45d6aa091d9ef4ec9f788ae68dd59900a76757f810dac4a2"
+}

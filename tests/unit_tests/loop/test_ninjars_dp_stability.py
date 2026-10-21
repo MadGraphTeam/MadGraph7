@@ -447,6 +447,118 @@ class SemanticQualification(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"nonfinite output token"):dp.validate_recorder_parity(plain,observed,1)
 
 
+class RandomRunnerQualification(unittest.TestCase):
+    """Whole-method prefix/science controls with explicitly mocked authorities."""
+    def setUp(self):
+        f=SemanticQualification();f.setUp();self.addCleanup(f.doCleanups);self.f=f
+        f.points.write_text("4\n"+"0 0 0 0\n"*12)
+        parent={"path":str(f.points),"sha256":dp.digest(f.points)}
+        prefix=f.root/"prefix.dat";prefix.write_bytes(dp.point_prefix_bytes(f.points,3,3))
+        prefix_record={"path":str(prefix),"sha256":dp.digest(prefix)}
+        status=json.loads((f.root/"generation/status.json").read_text())
+        status["cases"]["fixture"]["physical_inputs"]["points"]=parent
+        f.put(f.root/"generation/status.json",status)
+        resolved=dp.resolve_origin(f.run,f.release)
+        self.resolve_patch=mock.patch.object(dp,"resolve_origin",return_value={**resolved,
+            "measurement_authority":{"kind":"random-dp-v1"},"sample_kind":"preregistered-random-SM-DP"})
+        self.resolve_patch.start();self.addCleanup(self.resolve_patch.stop)
+        guard=f.root/"guard.c";guard.write_text("audited guard software fixture")
+        old_digest=dp.digest
+        patch=mock.patch.object(dp,"digest",side_effect=lambda p:(
+            "13f5702a530ede39a74333d266bb3078799e7b3f9889a29c9c2fdd2683176477" if Path(p)==guard else old_digest(p)))
+        patch.start();self.addCleanup(patch.stop)
+        obj=f.root/"guard.o";obj.write_bytes(b"\x7fELF software fixture")
+        helper=f.root/"checkpoint.o";helper.write_bytes(b"\x7fELF checkpoint fixture")
+        def bound(p):return {"path":str(p),"sha256":dp.digest(p)}
+        guard_source,guard_object=bound(guard),bound(obj)
+        table=f.origin/"SubProcesses/MadLoop5_resources/ML5_0_HelConfigs.dat"
+        f.put(table,"-1 -1 0\n-1 1 0\n1 -1 0\n1 1 0\n")
+        start=json.loads(Path(f.proof["start"]["path"]).read_text())
+        start["guards"]={"6":{"source":guard_source,"object":guard_object}}
+        start["cases"]={"fixture":{"points":parent,"parity_points":prefix_record,"N":4,"parity_N":3,
+            "helicity":{"argument":-1,"one_based_index":None,"physical_tuple":None,"table":bound(table),"policy":"full-helicity-color-sum"}}}
+        f.proof["start"]=f.put(f.root/"start.json",start)
+        symbols=("ninjars_context_create","ninjars_evaluate_dp","ninjars_evaluate_dp_compensated","ninjars_evaluate_mp","ninjars_context_destroy")
+        flags=str(helper)+" "+str(obj)+" -L$(LIBDIR) -ldhelas -lmodel $(LINK_LOOP_LIBS) $(LDFLAGS) "+" ".join("-Wl,--wrap="+s for s in symbols)
+        for variant,result in f.results.items():
+            directory=Path(result["execution"]["cwd"]);output=f.outputs[variant]
+            f.put(directory/"check_sa.f",dp.render_custody_driver("ML5_0_",3,1))
+            card=json.loads((output/"Cards/MadLoopParams.dat").read_text());card["MLReductionLib"]="6"
+            f.put(output/"Cards/MadLoopParams.dat",card)
+            raw=raw_text(tool=6,n=3)
+            warm_counts=[0]*15 if variant=="plain" else [20,0,0,0]+[20*int(i==6) for i in range(1,9)]+[0,0,0]
+            warm_record="WARMDIAG "+" ".join(map(str,[20,*warm_counts,0,0,0,0]))+"\n"
+            raw=raw.replace("WARM 20 1.0\n","WARM 20 1.0\n"+warm_record)
+            if variant=="plain":raw="\n".join(" ".join(line.split()[:8]+["0"]*15+line.split()[-3:]) if line.startswith("OBS ") else line for line in raw.splitlines())+"\n"
+            result.update(tool=6,N=3,points=prefix_record,raw=f.put(f.root/(variant+".raw"),raw),
+                compiled_manifest=f.manifest(output),driver_sha256=dp.digest(directory/"check_sa.f"),
+                madloop_card_sha256=dp.digest(output/"Cards/MadLoopParams.dat"),
+                guard_object=guard_object,additional_link_flags=flags,custody={"helper_object":bound(helper)})
+            expected_guard="GUARD_FINAL create=0 dp=0 compensated=0 mp=0 destroy=1 nonnull=0"
+            result["guard"]=f.put(f.root/(variant+".guard"),expected_guard.replace("GUARD_FINAL","NULL_TEARDOWN_FORWARDED")+"\n"+expected_guard+"\n")
+            result["execution"]["command"]=[str(directory/"check"),str(prefix),"6","-1",result["raw"]["path"]]
+            result["build"]["command"]=["make","-j1","check","LINKLIBS="+flags]
+            f.rewrite_result(variant)
+        science_raw=raw_text(tool=6,n=4).replace("WARM 20 1.0\n","WARM 20 1.0\n"+warm_record)
+        science=copy.deepcopy(f.results["observed"]);science.update(N=4,points=parent,raw=f.put(f.root/"science.raw",science_raw))
+        science["execution"]["command"][1]=str(f.points);science["execution"]["command"][-1]=science["raw"]["path"]
+        f.results["science"]=science;f.proof["science_result"]=f.put(f.root/"science.json",science)
+        f.proof["parity_receipt"]=f.put(f.root/"parity.json",dp.validate_recorder_parity(
+            dp.parse_raw(Path(f.results["plain"]["raw"]["path"]),3,6,1),dp.parse_raw(Path(f.results["observed"]["raw"]["path"]),3,6,1),6))
+        f.run.update(tool=6,N=4,raw=science["raw"],resource_protocol="dp-resource-custody-v1",measurement_authority={"kind":"random-dp-v1"})
+        artifacts=f.run["artifacts"];artifacts["points"]=parent
+        directory=Path(science["execution"]["cwd"])
+        for name,path in (("driver",directory/"check_sa.f"),("madloop_card",f.outputs["observed"]/"Cards/MadLoopParams.dat")):
+            artifacts[name]=bound(path)
+        normalized=json.loads(Path(artifacts["execution"]["path"]).read_text());normalized.update(requested_tool=6,source_record=f.proof["science_result"])
+        artifacts["execution"]=f.put(f.root/"normalized-execution.json",normalized)
+        artifacts["build"]=f.put(f.root/"normalized-build.json",dict(source_record=f.proof["science_result"],
+            driver_sha256=artifacts["driver"]["sha256"],instrumented_interface_sha256=artifacts["instrumented_interface"]["sha256"],executable_sha256=artifacts["executable"]["sha256"]))
+        self.resources={"filters":{"initial":{},"postwarm":{},"final":{}},"helper_object":bound(helper)}
+        patch=mock.patch.object(dp,"validate_resource_custody",return_value=self.resources)
+        patch.start();self.addCleanup(patch.stop)
+        patch=mock.patch.object(dp,"validate_warm_records",return_value={"software_only":True})
+        patch.start();self.addCleanup(patch.stop)
+
+    def test_prefix_parity_and_full_science_are_distinct_bound_streams(self):
+        qualified=self.f.qualify()
+        self.assertEqual(qualified["parity_N"],3)
+        self.assertEqual(qualified["parity"]["physical_coefficients_compared"],72)
+        self.assertTrue(qualified["initialization_safe"])
+
+    def test_failed_science_warmup_is_separate_and_never_qualified_safe(self):
+        f=self.f;path=Path(f.results["science"]["raw"]["path"])
+        rows=path.read_text().splitlines()
+        fields=next(row.split() for row in rows if row.startswith("WARMDIAG "));fields[3]="1"
+        path.write_text("\n".join(" ".join(fields) if row.startswith("WARMDIAG ") else row for row in rows)+"\n")
+        f.results["science"]["raw"]={"path":str(path),"sha256":dp.digest(path)}
+        f.run["raw"]=f.results["science"]["raw"]
+        f.proof["science_result"]=f.put(f.root/"science.json",f.results["science"])
+        for key in ("execution","build"):
+            record=f.run["artifacts"][key];value=json.loads(Path(record["path"]).read_text())
+            value["source_record"]=f.proof["science_result"]
+            f.run["artifacts"][key]=f.put(Path(record["path"]),value)
+        qualified=f.qualify()
+        self.assertTrue(qualified["source_runtime_qualified"])
+        self.assertFalse(qualified["initialization_safe"])
+        self.assertEqual(qualified["warm_diagnostics"]["science"]["failure"],"warm_reduction_rejected")
+        self.assertEqual(len(dp.parse_raw(path,4,6,1)["observations"]),12)
+
+    def test_grafted_prefix_and_missing_science_rejected(self):
+        f=self.f;start=json.loads(Path(f.proof["start"]["path"]).read_text())
+        path=Path(start["cases"]["fixture"]["parity_points"]["path"]);path.write_text(path.read_text().replace("0 0 0 0","1 0 0 0",1))
+        start["cases"]["fixture"]["parity_points"]["sha256"]=dp.digest(path);f.proof["start"]=f.put(f.root/"start.json",start)
+        with self.assertRaises(ValueError):f.qualify()
+        path.write_bytes(dp.point_prefix_bytes(f.points,3,3));start["cases"]["fixture"]["parity_points"]["sha256"]=dp.digest(path)
+        f.proof["start"]=f.put(f.root/"start.json",start);del f.proof["science_result"]
+        with self.assertRaises(ValueError):f.qualify()
+
+    def test_science_cannot_swap_its_qualified_executable_or_initial_filters(self):
+        f=self.f;f.results["science"]["executable_sha256"]="restamped-other-executable"
+        f.proof["science_result"]=f.put(f.root/"science.json",f.results["science"])
+        with self.assertRaises(ValueError):f.qualify()
+
+
 class OriginResolution(unittest.TestCase):
     def setUp(self):
         SemanticQualification.setUp(self)
@@ -595,6 +707,194 @@ class NativeGuardReader(unittest.TestCase):
         for lines in [[original[0],original[1].replace("status=0","status=1"),*original[2:]],
                       [*original[:2],original[2].replace("status=0 ",""),*original[3:]]]:
             with self.assertRaises(ValueError):self.parse(lines)
+
+
+class RecorderParityPrefix(unittest.TestCase):
+    def test_checkpoint_driver_strips_to_exact_numerical_driver(self):
+        import re
+        for prefix,nx,nso in (("ML5_0_",3,1),("ML5_12_",6,3)):
+            original=dp.render_driver(prefix,nx,nso)
+            augmented=dp.render_custody_driver(prefix,nx,nso)
+            restored=re.sub(r"C DPSTAB_CUSTODY_BEGIN\n.*?C DPSTAB_CUSTODY_END\n","",augmented,flags=re.S)
+            self.assertEqual(restored,original)
+            self.assertEqual(augmented.count("C DPSTAB_CUSTODY_BEGIN\n"),5)
+            self.assertIn("INTEGER(C_INT), VALUE :: PHASE",augmented)
+            self.assertIn("CALL "+prefix+"DPSTAB_CUSTODY_CHECKPOINT(1)\n",augmented)
+        for prefix in ("1bad_","x"*64,"bad-name"):
+            with self.assertRaises(ValueError):dp.render_custody_driver(prefix,3,1)
+
+    def test_exact_serialized_first_events_without_numeric_rounding(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"parent.dat"
+            event=b"1.00000000000000001E+00 0.0 -0.0 1.0\n"*3
+            path.write_bytes(b"2\n"+event+event)
+            self.assertEqual(dp.point_prefix_bytes(path,3,1),b"1\n"+event)
+            self.assertEqual(dp.point_prefix_bytes(path,3,2),path.read_bytes())
+
+    def test_short_trailing_nonfinite_and_boolean_dimensions_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"parent.dat"
+            event=b"1.0 0.0 0.0 1.0\n"*3
+            for data in (b"2\n"+event,b"1\n"+event+b"extra\n",b"1\n"+event.replace(b"1.0",b"NaN",1)):
+                path.write_bytes(data)
+                with self.assertRaises(ValueError):dp.point_prefix_bytes(path,3,1)
+            path.write_bytes(b"1\n"+event)
+            for nx,n in ((3,True),(3,1.0),(True,1),(3,2),(2,1)):
+                with self.assertRaises(ValueError):dp.point_prefix_bytes(path,nx,n)
+
+
+class WarmInitialization(unittest.TestCase):
+    def raw(self,tool=6,plain=False,rejected=0,flags=None):
+        counts=[20,rejected,0,0]+[20*int(i==tool) for i in range(1,9)]+[0,0,0]
+        if plain:counts=[0]*15
+        record="WARMDIAG "+" ".join(map(str,[20,*counts,*(flags or [0]*4)]))+"\n"
+        text=raw_text(tool=tool).replace("WARM 20 1.0\n","WARM 20 1.0\n"+record)
+        if plain:text="\n".join(" ".join(line.split()[:8]+["0"]*15+line.split()[-3:]) if line.startswith("OBS ") else line for line in text.splitlines())+"\n"
+        return text
+
+    def parse(self,text,tool=6):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"raw";path.write_text(text)
+            return dp.parse_raw(path,1,tool,1)
+
+    def test_every_warm_iteration_and_failure_retained_outside_point_scores(self):
+        parsed=self.parse(self.raw(rejected=1))
+        self.assertEqual(parsed["warm"]["diagnostics"]["iterations"],20)
+        self.assertEqual(dp.warm_failure(parsed["warm"],6,required=True),"warm_reduction_rejected")
+        obs={t:parsed["observations"][(1,t)] for t in (1,2,3)}
+        self.assertEqual(dp.estimator(obs,6,(1,2,3))["classification"],"all_zero")
+        self.assertEqual(len(parsed["observations"]),3)
+
+    def test_warm_parity_keeps_rejections_without_success_conditioning(self):
+        left=self.parse(self.raw(plain=True));right=self.parse(self.raw(rejected=1))
+        receipt=dp.validate_recorder_parity(left,right,6)
+        self.assertEqual(receipt["warm_failure"],"warm_reduction_rejected")
+        self.assertTrue(receipt["f64_bitexact"])
+        right["warm"]["diagnostics"]["common_flags"][0]=1
+        with self.assertRaises(ValueError):dp.validate_recorder_parity(left,right,6)
+
+    def test_duplicate_negative_mismatched_and_misplaced_warm_records_rejected(self):
+        text=self.raw();record=next(l for l in text.splitlines() if l.startswith("WARMDIAG "))
+        for changed in (text.replace(record,record+"\n"+record),text.replace("WARMDIAG 20","WARMDIAG -1"),
+                        text.replace("WARMDIAG 20","WARMDIAG 21"),text.replace(record+"\n","")+record+"\n"):
+            with self.assertRaises(ValueError):self.parse(changed)
+
+    def test_missing_historical_record_never_claims_new_initializer_safe(self):
+        parsed=self.parse(raw_text(tool=6))
+        self.assertIsNone(dp.warm_failure(parsed["warm"],6))
+        self.assertEqual(dp.warm_failure(parsed["warm"],6,required=True),"missing_warm_diagnostics")
+        for tool in (6,8):
+            parsed=self.parse(self.raw(tool=tool,flags=[0,1,0,0]),tool)
+            self.assertEqual(dp.warm_failure(parsed["warm"],tool,required=True),"warm_unexpected_higher_precision")
+
+
+class WarmMetadataCustody(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.root=Path(self.tmp.name);self.raw=self.root/"full.raw"
+        self.raw.write_text(WarmInitialization().raw())
+        lines=self.raw.read_bytes().splitlines(keepends=True);index=next(i for i,line in enumerate(lines) if line.startswith(b"WARMDIAG "))
+        self.view=self.root/"view.raw";self.view.write_bytes(b"".join(lines[:index]+lines[index+1:]))
+        counts={"reductions":20,"rejected":0,"nonfinite_reductions":0,"qp_reductions":0,
+            **{"backend_"+str(i):20*int(i==6) for i in range(1,9)},
+            "observer_fpe_dp":0,"observer_fpe_qp":0,"compensated_dp":0}
+        self.result={"raw":self.bound(self.raw),"parser_view":self.bound(self.view),
+            "warm_diagnostics":{"schema":"dp-warm-diagnostics-v1","iterations":20,"counts":counts,
+            "flags":{"fpe_dp":0,"fpe_qp":0,"nrs_retry_mode":0,"nrs_retry_used":0},
+            "initialization_safe":True,"unsafe_reasons":[],"score_denominator_contribution":0,
+            "limitations":"No warm ANS read; observer counters unavailable in plain variant"},
+            "parser_view_derivation":{"schema":"dp-warmdiag-only-parser-view-v1","removed_record":"WARMDIAG",
+                "removed_line_number":index+1,"removed_line_sha256":__import__("hashlib").sha256(lines[index]).hexdigest(),
+                "original_sha256":dp.digest(self.raw),"parser_view_sha256":dp.digest(self.view)}}
+    def bound(self,path):return {"path":str(path),"sha256":dp.digest(path)}
+    def validate(self):return dp.validate_warm_records(self.result,dp.parse_raw(self.raw,1,6,1))
+    def test_full_raw_drives_retained_warm_metadata_and_exact_parser_view(self):
+        self.assertTrue(self.validate()["initialization_safe"])
+        self.assertNotIn(b"WARMDIAG",self.view.read_bytes())
+        self.assertIn(b"WARMDIAG",self.raw.read_bytes())
+    def test_restamped_extra_point_line_removal_is_not_a_warm_only_view(self):
+        self.view.write_bytes(self.view.read_bytes().replace(b"BEGIN 1 1\n",b"",1))
+        self.result["parser_view"]=self.bound(self.view)
+        self.result["parser_view_derivation"]["parser_view_sha256"]=dp.digest(self.view)
+        with self.assertRaises(ValueError):self.validate()
+    def test_retained_safety_boolean_is_not_authority(self):
+        self.result["warm_diagnostics"]["initialization_safe"]=False
+        self.result["warm_diagnostics"]["score_denominator_contribution"]=100
+        with self.assertRaises(ValueError):self.validate()
+
+
+class ResourceCustody(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.base=Path(self.tmp.name);self.origin=self.base/"origin";self.output=self.base/"output"
+        self.resources=self.output/"SubProcesses/MadLoop5_resources"
+        self.original=self.origin/"SubProcesses/MadLoop5_resources"
+        self.directory=self.output/"SubProcesses/P0_fixture"
+        self.root=self.base/"custody"
+        for path in (self.resources,self.original,self.directory,self.root/"initial",self.root/"postwarm",self.root/"final"):
+            path.mkdir(parents=True,exist_ok=True)
+        (self.directory/"MadLoop5_resources").symlink_to("../MadLoop5_resources")
+        self.helper=self.base/"checkpoint.c";self.helper.write_text("software fixture only")
+        old_digest=dp.digest
+        self.patch=mock.patch.object(dp,"digest",side_effect=lambda p:(
+            "766d47e5ad6d092bbd159651f739c838c18829b57d85a1167416fa4c382e9a10"
+            if Path(p)==self.helper else old_digest(p)))
+        self.patch.start();self.addCleanup(self.patch.stop)
+        obj=self.base/"checkpoint.o";obj.write_bytes(b"\x7fELFsoftware-only fixture")
+        static={}
+        for name in ("HelConfigs.dat","ColorNumFactors.dat","ColorDenomFactors.dat"):
+            paths={"origin":self.original/("ML5_0_"+name),"live":self.resources/("ML5_0_"+name),
+                   "initial":self.root/"initial"/("ML5_0_"+name),"final":self.root/"final"/("ML5_0_"+name)}
+            for p in paths.values():p.write_bytes(name.encode())
+            static[name]={key:self.bound(p) for key,p in paths.items()}
+        states={}
+        for phase in ("initial","postwarm","final"):
+            states[phase]={}
+            for name in ("HelFilter.dat","LoopFilter.dat"):
+                available=phase!="initial" and name=="HelFilter.dat"
+                path=self.root/phase/("ML5_0_"+name)
+                if available:path.write_bytes(b"1 2\n")
+                states[phase][name]={"available":available,"snapshot":self.bound(path) if available else None,
+                                     "bytes":4 if available else 0}
+        self.log=self.base/"checkpoint.log"
+        self.log.write_text("".join(f"SNAPSHOT phase={i} stage={phase} file={name} available={int(state['available'])} bytes={state['bytes']}\n"
+            for i,phase in ((1,"postwarm"),(2,"final")) for name,state in states[phase].items()))
+        self.result={"execution":{"cwd":str(self.directory),"custody_environment":{
+            "DPSTAB_CUSTODY_DIR":str(self.root),"DPSTAB_PROCESS_PREFIX":"ML5_0_","DPSTAB_CUSTODY_LOG":str(self.log)}},
+            "custody":{"schema":"dp-resource-custody-v1","resource_directory":str(self.resources),
+            "root":str(self.root),"prefix":"ML5_0_","static":static,"filters":states,
+            "helper_source":self.bound(self.helper),"helper_object":self.bound(obj),"checkpoint_log":self.bound(self.log)}}
+
+    def bound(self,path):return {"path":str(path),"sha256":dp.digest(path)}
+    def validate(self):return dp.validate_resource_custody(self.result,self.origin,self.output,"ML5_0_")
+
+    def test_static_origin_and_present_absent_filter_snapshots_qualified(self):
+        value=self.validate()
+        self.assertFalse(value["filters"]["initial"]["HelFilter.dat"]["available"])
+        self.assertEqual(value["filters"]["postwarm"]["HelFilter.dat"]["bytes"],4)
+
+    def test_restamped_static_change_and_grafted_snapshot_rejected(self):
+        path=self.resources/"ML5_0_ColorNumFactors.dat";path.write_bytes(b"changed")
+        self.result["custody"]["static"]["ColorNumFactors.dat"]["live"]=self.bound(path)
+        with self.assertRaises(ValueError):self.validate()
+
+    def test_filter_log_order_absence_and_changed_environment_rejected(self):
+        rows=self.log.read_text().splitlines();self.log.write_text("\n".join(reversed(rows))+"\n")
+        self.result["custody"]["checkpoint_log"]=self.bound(self.log)
+        with self.assertRaises(ValueError):self.validate()
+        self.log.write_text("\n".join(rows)+"\n");self.result["custody"]["checkpoint_log"]=self.bound(self.log)
+        self.result["custody"]["filters"]["final"]["LoopFilter.dat"]["bytes"]=1
+        with self.assertRaises(ValueError):self.validate()
+        self.result["custody"]["filters"]["final"]["LoopFilter.dat"]["bytes"]=0
+        self.result["execution"]["custody_environment"]["DPSTAB_PROCESS_PREFIX"]="OTHER_"
+        with self.assertRaises(ValueError):self.validate()
+
+    def test_wrong_initial_filter_and_boolean_lengths_rejected(self):
+        (self.original/"ML5_0_LoopFilter.dat").write_bytes(b"initial origin state")
+        with self.assertRaises(ValueError):self.validate()
+        (self.original/"ML5_0_LoopFilter.dat").unlink()
+        self.result["custody"]["filters"]["final"]["HelFilter.dat"]["bytes"]=True
+        with self.assertRaises(ValueError):self.validate()
 
 
 class RandomMeasurementAuthority(unittest.TestCase):

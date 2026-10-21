@@ -5,6 +5,7 @@ must validate their raw observations before this module consumes their summaries
 """
 import argparse
 from collections import Counter
+import copy
 import hashlib
 import importlib
 import json
@@ -19,6 +20,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 TOOLS = {"1": "CutTools", "6": "Ninja", "7": "COLLIER", "8": "NinjaRS"}
 COLORS = {"1": "#356b92", "6": "#c78320", "7": "#8064a2", "8": "#2e8b57"}
 SCHEMA = "ninjars-paper-comparison-report-v1"
+SAMPLING_FIELDS = ("measurement_authority", "seed", "cuts", "center_of_mass_energy_gev", "helicity_selection")
 
 
 class Inputs(dict):
@@ -192,6 +194,50 @@ def selected_tools(requested_tools=None):
     return {str(tool): TOOLS[str(tool)] for tool in requested}
 
 
+def sampling_caption(case):
+    """Describe validated sampling metadata, without inferring an energy."""
+    kind = case.get("sample_kind")
+    if kind == "random-boosted-on-shell-descriptive":
+        parts = ["on-shell boosted frames; one physical invariant"]
+    elif kind == "preregistered-random-SM-DP":
+        parts = ["massive RAMBO proposal, not uniform massive phase space"]
+    else:
+        parts = []
+    energy, seed, cuts = (case.get(name) for name in ("center_of_mass_energy_gev", "seed", "cuts"))
+    if energy is not None:
+        require(type(energy) in (int, float) and math.isfinite(energy) and energy > 0,
+                "Invalid validated sampling center-of-mass energy")
+        parts.append(f"Ecm={energy:g} GeV")
+    if seed is not None:
+        require(type(seed) is int, "Invalid validated sampling seed")
+        parts.append(f"seed={seed}")
+    lines = ["; ".join(parts)] if parts else []
+    if cuts is not None:
+        require(isinstance(cuts, dict), "Invalid validated sampling cuts")
+        selected = []
+        for name, label, units in (("pt_min_gev", "pT >", " GeV"), ("delta_r_min", "ΔR >", "")):
+            value = cuts.get(name)
+            if value is not None:
+                require(type(value) in (int, float) and math.isfinite(value) and value >= 0,
+                        "Invalid validated sampling cut value")
+                selected.append(f"{label} {value:g}{units}")
+        lines.append("cuts: " + "; ".join(selected) if selected else "no final-state cuts")
+    helicity = case.get("helicity_selection")
+    if helicity is not None:
+        require(isinstance(helicity, dict) and type(helicity.get("argument")) is int,
+                "Invalid validated helicity selection")
+        argument, index, physical = (helicity.get(name) for name in ("argument", "one_based_index", "physical_tuple"))
+        if argument == -1:
+            require(index is None and physical is None, "Summed helicity caption cannot name a selected tuple")
+            lines.append("full helicity/color sum; selector -1")
+        else:
+            require(argument > 0 and type(index) is int and index == argument and isinstance(physical, list) and
+                    physical and all(type(value) is int for value in physical), "Invalid validated single-helicity tuple/index")
+            label = "single all-minus helicity" if len(physical) >= 3 and physical[:2] == [-1, -1] and all(value == 0 for value in physical[2:]) else "single helicity"
+            lines.append(f"{label}; tuple ({', '.join(map(str, physical))}); index {index}")
+    return "\n".join(lines) if lines else None
+
+
 def figure_data(cases, thresholds, estimator="combined", requested_tools=None):
     """Prepare plotting arrays; production summaries are revalidated upstream."""
     prepared = {}
@@ -203,6 +249,11 @@ def figure_data(cases, thresholds, estimator="combined", requested_tools=None):
         require(selected_tools(case.get("requested_tools", requested_tools)) == selection,
                 "Case and figure requested tool selections differ")
         require(set(case.get("tools", {})) <= set(selection), "Undeclared tool observations in selected figure")
+        metadata = {name: copy.deepcopy(case.get(name)) for name in SAMPLING_FIELDS}
+        for tool in case.get("tools", {}).values():
+            for name in ("sample_kind", *SAMPLING_FIELDS):
+                require(name not in tool or tool[name] == case.get(name),
+                        "Case and tool sampling metadata differ: " + name)
         grid = sorted(set(declared + [row["delta"] for tool in case.get("tools", {}).values()
             for row in tool.get("scores", {}).get(estimator, [])
             if row.get("classification") == "finite" and type(row.get("delta")) in (int, float)
@@ -225,6 +276,7 @@ def figure_data(cases, thresholds, estimator="combined", requested_tools=None):
                          "requested_tools": [int(tool) for tool in selection],
                          "group": case.get("group", "unspecified"), "declared_thresholds": declared,
                          "sample_kind": case.get("sample_kind", "fixed pilot stream"),
+                         **metadata, "sampling_caption": sampling_caption(case),
                          "helicity": case.get("helicity", "not supplied"), "tools": tools}
     return prepared
 
@@ -276,7 +328,9 @@ def plot_stability(cases, thresholds, destination, estimator="combined", title="
                 top.set_ylim(min(.5/case["N"], .005), 1.15)
                 top.axhline(1/case["N"], color="#808080", linewidth=.7, linestyle=":")
                 top.set_xlim(thresholds[0], thresholds[-1]); top.tick_params(labelbottom=False)
-                top.set_title(f"{case['process']} · N={case['N']} · {case['helicity']}", fontsize=9)
+                caption = "\n" + case["sampling_caption"] if case["sampling_caption"] else ""
+                top.set_title(f"{case['process']} · N={case['N']} · {case['helicity']}" + caption,
+                              fontsize=8 if caption else 9)
                 top.set_ylabel("tail fraction (failures included)"); top.legend(fontsize=6.8, loc="upper right")
                 ratio.axhline(1, color="#808080", linewidth=.7, linestyle="--")
                 ratio.set_ylabel("/ Ninja"); ratio.set_xlabel("relative spread threshold Δ")

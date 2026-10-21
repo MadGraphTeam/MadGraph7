@@ -1,0 +1,58 @@
+{
+  "schema": "dp-resource-warm-software-capsule-v1",
+  "software_tests": 62,
+  "source_only_export_cases": 12,
+  "amplitude_evaluations": 0,
+  "compilations": 0,
+  "physical_random_campaign_qualified": false,
+  "payloads": [
+    {
+      "path": "ninjars_dp_stability.py",
+      "original": ".benchmark-work/paper-dp-stability-20261021-v1/random-runner-qualification-v2/ninjars_dp_stability.py",
+      "sha256": "af91583643ae64e7922290cd08cf823eb5133ceafb07bf6d8fc23f6e60f2d0dd",
+      "bytes": 85522
+    },
+    {
+      "path": "test_ninjars_dp_stability.py",
+      "original": ".benchmark-work/paper-dp-stability-20261021-v1/random-runner-qualification-v2/test_ninjars_dp_stability.py",
+      "sha256": "3d4f394bcdafe4117c3b5a8d86d74df58d189b00907ba0c28090f9725d82abb2",
+      "bytes": 63834
+    },
+    {
+      "path": "check.py",
+      "original": ".benchmark-work/paper-dp-stability-20261021-v1/random-runner-qualification-v2/check.py",
+      "sha256": "dc75259af45152ad5f8e3e9ac273d3e950ceee70274ec54feb0dad8e64bedd61",
+      "bytes": 2204
+    },
+    {
+      "path": "check_renderer.py",
+      "original": ".benchmark-work/paper-dp-stability-20261021-v1/random-runner-qualification-v2/check_renderer.py",
+      "sha256": "a679c3869af5d88b113337b2819a665c34acc33b6d9463901f3cfea783785b33",
+      "bytes": 3693
+    },
+    {
+      "path": "software-final.json",
+      "original": ".benchmark-work/paper-dp-stability-20261021-v1/random-runner-qualification-v2/software-final.json",
+      "sha256": "038fa602051623b352c9afbd0121bf85fb52868819b62b8ce1eb61047ede1495",
+      "bytes": 2096
+    },
+    {
+      "path": "renderer-preflight-final.json",
+      "original": ".benchmark-work/paper-dp-stability-20261021-v1/random-runner-qualification-v2/renderer-preflight-final.json",
+      "sha256": "d3f36eca122e5ec1832d0ee6ac9396933b7e457af6825b4c704acc8961477a92",
+      "bytes": 21853
+    },
+    {
+      "path": "unittest-final.log",
+      "original": ".benchmark-work/paper-dp-stability-20261021-v1/random-runner-qualification-v2/unittest-final.log",
+      "sha256": "4c18eac48ce1b83c875794e65bba1bb05bdfe8a757c40712881053795746f821",
+      "bytes": 10075
+    },
+    {
+      "path": "independent-source-review-final.json",
+      "original": ".benchmark-work/paper-dp-stability-20261021-v1/random-runner-qualification-v2/independent-source-review-final.json",
+      "sha256": "d62d8b3c27954138d4779cea165b206df98939836fa47d8ddbf16f42d074728c",
+      "bytes": 4303
+    }
+  ]
+}

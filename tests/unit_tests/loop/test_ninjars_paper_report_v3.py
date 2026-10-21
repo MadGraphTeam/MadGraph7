@@ -342,6 +342,115 @@ class NinjaRSPaperReportV3Test(unittest.TestCase):
         self.assertNotIn("CutTools", svg); self.assertNotIn("COLLIER", svg)
         self.assertFalse(data["qualification_eligible"])
 
+    def random_cases(self, on_shell=False):
+        cases = self.two_tool_cases(); case = cases["fixture"]
+        case.update(sample_kind="random-boosted-on-shell-descriptive" if on_shell else "preregistered-random-SM-DP",
+                    seed=20261021, center_of_mass_energy_gev=91.188 if on_shell else 1000.,
+                    helicity_selection=None,
+                    cuts={"pt_min_gev": None if on_shell else 50., "delta_r_min": None if on_shell else .5,
+                          "eta_definition": "pseudorapidity"},
+                    measurement_authority={"kind": "random-dp-v1", "case": "fixture",
+                        "manifest": {"path": "synthetic/manifest.json", "sha256": "a"*64}})
+        for tool in case["tools"].values():
+            tool.update({name: copy.deepcopy(case[name]) for name in ("sample_kind", *report.SAMPLING_FIELDS)})
+        return cases
+
+    def test_random_metadata_is_retained_without_aliasing(self):
+        cases = self.random_cases()
+        result = report.figure_data(cases, [1e-9, 1e-5], requested_tools=[6, 8])["fixture"]
+        for name in report.SAMPLING_FIELDS:
+            self.assertEqual(result[name], cases["fixture"][name])
+        cases["fixture"]["cuts"]["pt_min_gev"] = 999
+        cases["fixture"]["measurement_authority"]["manifest"]["sha256"] = "b"*64
+        self.assertEqual(result["cuts"]["pt_min_gev"], 50.)
+        self.assertEqual(result["measurement_authority"]["manifest"]["sha256"], "a"*64)
+        for text in ("not uniform massive phase space", "Ecm=1000 GeV", "seed=20261021", "pT > 50 GeV", "ΔR > 0.5"):
+            self.assertIn(text, result["sampling_caption"])
+
+    def test_on_shell_caption_uses_validated_invariant_energy_not_proposal_energy(self):
+        cases = self.random_cases(on_shell=True)
+        cases["fixture"]["energy_gev"] = 1000.  # Proposal argument is not physical 2->1 Ecm.
+        result = report.figure_data(cases, [1e-9, 1e-5], requested_tools=[6, 8])["fixture"]
+        for text in ("one physical invariant", "on-shell boosted frames", "Ecm=91.188 GeV", "no final-state cuts"):
+            self.assertIn(text, result["sampling_caption"])
+        self.assertNotIn("1000", result["sampling_caption"])
+        cases["fixture"].pop("center_of_mass_energy_gev")
+        for tool in cases["fixture"]["tools"].values(): tool.pop("center_of_mass_energy_gev")
+        absent = report.figure_data(cases, [1e-9, 1e-5], requested_tools=[6, 8])["fixture"]
+        self.assertIsNone(absent["center_of_mass_energy_gev"])
+        self.assertNotIn("Ecm=", absent["sampling_caption"])
+
+    def test_tool_sampling_authority_or_physical_metadata_mismatch_rejects(self):
+        for key, changed in (("seed", 9), ("center_of_mass_energy_gev", 1000.), ("cuts", {}),
+                             ("measurement_authority", None), ("sample_kind", "fixed-core-pilot")):
+            cases = self.random_cases(on_shell=True); cases["fixture"]["tools"]["8"][key] = changed
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, "sampling metadata differ"):
+                report.figure_data(cases, [1e-9, 1e-5], requested_tools=[6, 8])
+
+    def test_historical_controls_do_not_acquire_random_sampling_metadata(self):
+        result = report.figure_data(self.two_tool_cases(), [1e-9, 1e-5], requested_tools=[6, 8])["fixture"]
+        for name in report.SAMPLING_FIELDS: self.assertIsNone(result[name])
+        self.assertIsNone(result["sampling_caption"])
+        for energy in (0., -1., float("nan"), True):
+            with self.subTest(energy=energy), self.assertRaises(ValueError):
+                report.sampling_caption({"center_of_mass_energy_gev": energy})
+
+    def test_synthetic_svg_exposes_sampling_scope_seed_and_cuts(self):
+        filename = self.directory / "random-metadata-layout.svg"
+        plotted = report.plot_stability(self.random_cases(), [1e-9, 1e-5], filename,
+            software_fixture=True, requested_tools=[6, 8])
+        svg = filename.read_text()
+        for text in ("SOFTWARE FIXTURE, no physics", "not uniform massive phase space", "seed=20261021",
+                     "Ecm=1000 GeV", "pT &gt; 50 GeV"):
+            self.assertIn(text, svg)
+        self.assertEqual(plotted["cases"]["fixture"]["seed"], 20261021)
+
+    @staticmethod
+    def helicity_selection(physical=None):
+        return {"argument": 1 if physical else -1, "one_based_index": 1 if physical else None,
+            "physical_tuple": physical, "table": {"path": "synthetic/HelConfigs.dat", "sha256": "c"*64},
+            "policy": "single-all-minus-loop-diagnostic" if physical else "full-helicity-color-sum"}
+
+    def test_loop_random_helicity_tuple_table_and_policy_are_retained_and_labelled(self):
+        for physical in ([-1, -1, 0], [-1, -1, 0, 0]):
+            cases = self.two_tool_cases(); case = cases["fixture"]
+            case["helicity_selection"] = self.helicity_selection(physical)
+            for tool in case["tools"].values(): tool["helicity_selection"] = copy.deepcopy(case["helicity_selection"])
+            result = report.figure_data(cases, [1e-9, 1e-5], requested_tools=[6, 8])["fixture"]
+            self.assertEqual(result["helicity_selection"], case["helicity_selection"])
+            self.assertIn("single all-minus helicity", result["sampling_caption"])
+            self.assertIn("tuple ("+", ".join(map(str, physical))+"); index 1", result["sampling_caption"])
+            self.assertNotIn("full helicity", result["sampling_caption"])
+            case["helicity_selection"]["table"]["sha256"] = "d"*64
+            self.assertEqual(result["helicity_selection"]["table"]["sha256"], "c"*64)
+
+    def test_full_sum_helicity_caption_stays_separate_from_single_loop_diagnostics(self):
+        cases = self.two_tool_cases(); case = cases["fixture"]
+        case["helicity_selection"] = self.helicity_selection()
+        for tool in case["tools"].values(): tool["helicity_selection"] = copy.deepcopy(case["helicity_selection"])
+        result = report.figure_data(cases, [1e-9, 1e-5], requested_tools=[6, 8])["fixture"]
+        self.assertIn("full helicity/color sum; selector -1", result["sampling_caption"])
+        self.assertNotIn("single", result["sampling_caption"])
+        self.assertIsNone(result["helicity_selection"]["physical_tuple"])
+
+    def test_case_tool_helicity_index_tuple_table_or_policy_disagreement_rejects(self):
+        for key, changed in (("argument", 2), ("one_based_index", 2), ("physical_tuple", [1, -1, 0]),
+                             ("table", {"path": "other/table", "sha256": "d"*64}), ("policy", "full-helicity-color-sum")):
+            cases = self.two_tool_cases(); case = cases["fixture"]
+            case["helicity_selection"] = self.helicity_selection([-1, -1, 0])
+            for tool in case["tools"].values(): tool["helicity_selection"] = copy.deepcopy(case["helicity_selection"])
+            case["tools"]["8"]["helicity_selection"][key] = changed
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, "sampling metadata differ: helicity_selection"):
+                report.figure_data(cases, [1e-9, 1e-5], requested_tools=[6, 8])
+
+    def test_invalid_helicity_caption_structure_cannot_invent_a_sum_or_single_tuple(self):
+        wrong = [self.helicity_selection([-1, -1, 0]) for _ in range(5)]
+        for value, (key, changed) in zip(wrong, (("argument", True), ("one_based_index", 2),
+            ("physical_tuple", None), ("physical_tuple", [True, -1, 0]), ("argument", -1))): value[key] = changed
+        for selection in wrong:
+            with self.subTest(selection=selection), self.assertRaises(ValueError):
+                report.sampling_caption({"helicity_selection": selection})
+
     def test_deterministic_synthetic_svg_labels_zeros_and_ratio_gaps(self):
         first, second = self.directory / "first.svg", self.directory / "second.svg"
         one = report.plot_stability(self.cases(), [1e-9, 1e-5], first, software_fixture=True)

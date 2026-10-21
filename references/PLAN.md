@@ -1045,3 +1045,27 @@ push them after those runs release the source hold. Run the requested actual
 CLI profiles against that committed diagnostic revision, retaining the separate
 source identities in the report. Do not weaken the guards or relabel earlier
 measurements to accommodate the later CLI change.
+
+### Finalization checkpoint — 21 October 2026
+
+The final pinned NinjaRS core correctness campaign has completed all eight
+processes, with 100 fixed points per process and calibration plus two repeated
+traversals. Born, Laurent and split-order results pass the retained numerical
+comparison; repeated rows are identical. Each traversal uses native DP at 768
+of the 800 points and genuine higher-precision rescue at the other 32. The
+terminal correctness receipt is retained under
+`docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/`.
+This certifies numerical correctness for those inputs, not performance.
+
+The optimized legacy Ninja campaign has also completed all eight processes;
+its independent final audit is pending. A separate 100-point random boosted
+Z-production pilot passes Ninja/NinjaRS agreement and recorder parity, with safe
+initialization and no higher-precision calls. The remaining random processes,
+focused controls, challenging processes and full-sum loop-induced checks still
+need their final evidence. Pilot sample sizes are not the final stability study.
+
+Keep the seven-pair quiet timing gates, actual MG7 CLI profiles, final scientific
+figures and reproducible PDF outstanding until they have actually run and been
+audited. Do not claim goal completion or open a PR from these intermediate
+correctness results. The latest upstream NinjaRS main adds report/documentation
+changes only; the retained numerical pin has identical source/build inputs.

@@ -1,0 +1,33 @@
+{
+  "schema": "dp-random-custody-warm-software-check-v1",
+  "source_before": {
+    ".benchmark-work/paper-dp-stability-20261021-v1/random-runner-qualification-v2/ninjars_dp_stability.py": "af91583643ae64e7922290cd08cf823eb5133ceafb07bf6d8fc23f6e60f2d0dd",
+    ".benchmark-work/paper-dp-stability-20261021-v1/random-runner-qualification-v2/test_ninjars_dp_stability.py": "3d4f394bcdafe4117c3b5a8d86d74df58d189b00907ba0c28090f9725d82abb2",
+    "tools/ninjars_dp_stability.py": "fb819599e3734b37f6a40b8a9a6797609f842c3addd393aa946bc9d6b0edd8f6",
+    "tests/unit_tests/loop/test_ninjars_dp_stability.py": "5d1882e242ffe7dfacb1fc2ff7ad0c17f533f833c2a3647510262aa358bf3cb8",
+    "tools/ninjars_dp_stability_driver.f": "3d8d06325dd955408771b94873ee34ad438c0ba4a459e48bbfbbf69ed33d7dc7"
+  },
+  "source_after": {
+    ".benchmark-work/paper-dp-stability-20261021-v1/random-runner-qualification-v2/ninjars_dp_stability.py": "af91583643ae64e7922290cd08cf823eb5133ceafb07bf6d8fc23f6e60f2d0dd",
+    ".benchmark-work/paper-dp-stability-20261021-v1/random-runner-qualification-v2/test_ninjars_dp_stability.py": "3d4f394bcdafe4117c3b5a8d86d74df58d189b00907ba0c28090f9725d82abb2",
+    "tools/ninjars_dp_stability.py": "fb819599e3734b37f6a40b8a9a6797609f842c3addd393aa946bc9d6b0edd8f6",
+    "tests/unit_tests/loop/test_ninjars_dp_stability.py": "5d1882e242ffe7dfacb1fc2ff7ad0c17f533f833c2a3647510262aa358bf3cb8",
+    "tools/ninjars_dp_stability_driver.f": "3d8d06325dd955408771b94873ee34ad438c0ba4a459e48bbfbbf69ed33d7dc7"
+  },
+  "software_tests": 62,
+  "failures": 0,
+  "errors": 0,
+  "python": "3.14.7 (main, Aug  5 2026, 10:29:49) [GCC 15.3.0]",
+  "executable": "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+  "cpu": [
+    4
+  ],
+  "pid": 2844174,
+  "renderer_preflight": {
+    "path": ".benchmark-work/paper-dp-stability-20261021-v1/random-runner-qualification-v2/renderer-preflight-final.json",
+    "sha256": "d3f36eca122e5ec1832d0ee6ac9396933b7e457af6825b4c704acc8961477a92"
+  },
+  "amplitude_evaluations": 0,
+  "compilations": 0,
+  "physical_random_campaign_complete": false
+}
