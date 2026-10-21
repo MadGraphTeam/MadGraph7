@@ -395,14 +395,16 @@ def family_trie(
 class StateGraph:
     """Prefix states of schedule F or M.
 
-    ``entries`` are the states seeded at the cut; an edge (parent, child,
-    content) dresses one position. Closures scatter a state into family
-    accumulators, one entry per skeleton (with its weight).
+    ``entries`` are the states seeded at the cut and ``starts`` the entry of
+    each skeleton; an edge (parent, child, content) dresses one position.
+    Closures scatter a state into family accumulators, one entry per skeleton
+    (with its weight).
     """
 
     states: dict[Hashable, int] = field(default_factory=dict)
     edges: set[tuple[int, int, Hashable]] = field(default_factory=set)
     entries: set[int] = field(default_factory=set)
+    starts: dict[Skeleton, int] = field(default_factory=dict)
     closures: dict[int, list[Skeleton]] = field(
         default_factory=lambda: defaultdict(list)
     )
@@ -426,6 +428,7 @@ def forward_graph(skeletons: Iterable[Skeleton]) -> StateGraph:
         prefix: tuple = ()
         state = graph.state(prefix)
         graph.entries.add(state)
+        graph.starts[skeleton] = state
         for content in skeleton.contents:
             prefix = (*prefix, content.label)
             child = graph.state(prefix)
@@ -442,6 +445,13 @@ def merged_graph(skeletons: Iterable[Skeleton]) -> StateGraph:
     merge across families and seed orderings whenever the dressed leg sets,
     species, prefix orders and the undressed word agree (design §3.5), so a
     state can have several parents.
+
+    Rings of N <= 2 positions merge only among themselves, and each closes
+    in its own state. Their F reading is the one whose contents sort first,
+    not a leg-set rule: a prefix of a longer ring followed by the remainder
+    of a bubble can be the mirror reading of another bubble (counted twice),
+    and two bubbles of one family can be read in opposite directions, so
+    their closures must not share a frame.
     """
     graph = StateGraph()
     for skeleton in skeletons:
@@ -449,14 +459,17 @@ def merged_graph(skeletons: Iterable[Skeleton]) -> StateGraph:
         if not all(isinstance(word, tuple) for word in words):
             raise TypeError("schedule M needs colour-ordered (word) contents")
         cut = skeleton.cut
-        state = graph.state((cut, (), sum(words, ()), ()))
+        short = len(words) <= 2
+        state = graph.state((cut, short, (), sum(words, ()), ()))
         graph.entries.add(state)
+        graph.starts[skeleton] = state
         dressed: tuple = ()
         orders = ()
         for index, content in enumerate(skeleton.contents):
             dressed = (*dressed, (content.mask, content.loop_out))
             orders = add_orders(orders, content.orders)
-            child = graph.state((cut, dressed, sum(words[index + 1 :], ()), orders))
+            remainder = sum(words[index + 1 :], ())
+            child = graph.state((cut, short, dressed, remainder, orders))
             graph.edges.add((state, child, content.label))
             state = child
         graph.closures[state].append(skeleton)
