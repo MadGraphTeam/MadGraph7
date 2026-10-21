@@ -40,13 +40,14 @@ from dataclasses import replace
 
 from ..color.plan_types import LCColorSector
 from ..models.base import Model
-
-# The colour-flow compiler owns the U(1) subtraction current's auxiliary kind.
-# It stays private there: every ``models/*.py`` file is hashed into the
-# compiled-model fingerprint, so exporting it would invalidate compiled models.
-from ..models.compiler_color_flow import _U1_SUBTRACTION_AUXILIARY
 from ..processes.ir import CanonicalProcessIR, ProcessLegIR
 from .dag_types import AmplitudeRoot, CurrentIndex, GenericDAG, InteractionNode
+
+# Auxiliary kind of the U(1) subtraction current, as the colour-flow compiler
+# (``models/compiler_color_flow.py``) writes it. Generation must not import the
+# model compilers (``test_injected_license_plan_avoids_model_compilers``), and
+# exporting it from ``models/`` would change the compiled-model fingerprint.
+_U1_SUBTRACTION_AUXILIARY = "u1-subtraction-color-flow-vector"
 
 
 def _external_fermion_requires_exterior_sign(
