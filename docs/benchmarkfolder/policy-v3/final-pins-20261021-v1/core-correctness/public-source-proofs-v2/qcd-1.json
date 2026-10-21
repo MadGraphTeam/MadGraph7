@@ -1,0 +1,46 @@
+{
+  "case": {
+    "id": "qcd-1",
+    "model": "loop_sm",
+    "process": "u u~ > z [virt=QCD]",
+    "nfinal": 1
+  },
+  "output": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1",
+  "generation": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-1/generation.json",
+    "sha256": "b2d4304c94ac02e950c0bac4039d590e6fb57fca4ae71914b67aafceb1f3e031",
+    "bytes": 171447
+  },
+  "compilation": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-1/compilation.json",
+    "sha256": "f2f060db98928104bc9bda1f4d019032b51a331fbe9941709c9db6c097d8e823",
+    "bytes": 177254
+  },
+  "compiled_manifest": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-1/compiled-sources.json",
+    "sha256": "a16812249d466842d96233064e1c3df2a24995663dab8b0ec28c3088ecd3af9f",
+    "bytes": 16774
+  },
+  "physical_card": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-1/param_card.dat",
+    "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "bytes": 2471
+  },
+  "madloop_card": {
+    "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1/Cards/MadLoopParams.dat",
+    "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+    "bytes": 13357
+  },
+  "points": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-1.dat",
+    "sha256": "bd8a00c863710123dd62cb5e079dcd11d2aebdcf49d8128313bbd6ecc6de1099",
+    "bytes": 29223
+  },
+  "point_metadata": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-1.json",
+    "sha256": "02aa21db269db26e655d531bb29c8bd307e50c434a3bb01891442248c1b0a3ac",
+    "bytes": 190
+  },
+  "full_runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+  "executable_sha256": "ca0d8941a8d38bbb883b244ef3819d03f6302d4efe8622018a5a13dc28706039"
+}

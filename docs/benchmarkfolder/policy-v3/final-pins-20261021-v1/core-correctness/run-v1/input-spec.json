@@ -1,0 +1,756 @@
+{
+  "schema": "final-pins-core-correctness-spec-v1",
+  "status": "held-unattempted",
+  "user_priority_amendment": "Continue as planned, but focus first on getting a validated MadLoop+NinjaRS version. Then if you uncovered issues with other reduction tools (e.g. COLLIER), then just post an issue with an MRE to the corresponding github",
+  "configuration": {
+    "schema_version": 1,
+    "seed": 410083,
+    "points_per_case": 100,
+    "repetitions": 2,
+    "energy_gev": 1000.0,
+    "relative_tolerance": 1e-07,
+    "scale_tolerance": 1e-10,
+    "max_runtime_ratio": 1.05,
+    "madloop_parameters": {
+      "MLStabThres": 1e-09,
+      "COLLIERRequiredAccuracy": 1e-12
+    },
+    "cases": [
+      {
+        "id": "qcd-4",
+        "model": "loop_sm",
+        "process": "u u~ > z z g g [virt=QCD]",
+        "nfinal": 4
+      },
+      {
+        "id": "ew-4",
+        "model": "loop_qcd_qed_sm_Gmu",
+        "process": "e+ e- > mu+ mu- a a [virt=QED]",
+        "nfinal": 4
+      },
+      {
+        "id": "qcd-1",
+        "model": "loop_sm",
+        "process": "u u~ > z [virt=QCD]",
+        "nfinal": 1
+      },
+      {
+        "id": "ew-1",
+        "model": "loop_qcd_qed_sm_Gmu",
+        "process": "u d~ > w+ [virt=QED]",
+        "nfinal": 1
+      },
+      {
+        "id": "qcd-2",
+        "model": "loop_sm",
+        "process": "g g > t t~ [virt=QCD]",
+        "nfinal": 2
+      },
+      {
+        "id": "ew-2",
+        "model": "loop_qcd_qed_sm_Gmu",
+        "process": "e+ e- > mu+ mu- [virt=QED]",
+        "nfinal": 2
+      },
+      {
+        "id": "qcd-3",
+        "model": "loop_sm",
+        "process": "u u~ > z g g [virt=QCD]",
+        "nfinal": 3
+      },
+      {
+        "id": "ew-3",
+        "model": "loop_qcd_qed_sm_Gmu",
+        "process": "e+ e- > t t~ a [virt=QED]",
+        "nfinal": 3
+      }
+    ]
+  },
+  "original_policy": {
+    "path": "docs/benchmarkfolder/policy-v2/cases.json",
+    "sha256": "f7fdf15ae6e0b20852144ce484a02ddc98ce13ff84bddb57154e77e1e7fbbbd3",
+    "bytes": 1338
+  },
+  "cpu": 190,
+  "controller_allowed_cpus": [
+    6,
+    7,
+    190
+  ],
+  "evaluation_thread_environment": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "sources": {
+    "ninjars_benchmark_worker.f": {
+      "path": "tools/ninjars_benchmark_worker.f",
+      "sha256": "984e3cda0706bdf8bfbe07fe54c924c0b40fd0b94028db262b08506b606b1c79",
+      "bytes": 4704
+    },
+    "ninjars_benchmark_workers.py": {
+      "path": "tools/ninjars_benchmark_workers.py",
+      "sha256": "251c49aae30a5471ef40ea6e140a8c9572417d01b1dcfc0c98daabafece5c9ca",
+      "bytes": 44582
+    },
+    "ninjars_benchmark.py": {
+      "path": "tools/ninjars_benchmark.py",
+      "sha256": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
+      "bytes": 49893
+    },
+    "ninjars_stress_v2.py": {
+      "path": "tools/ninjars_stress_v2.py",
+      "sha256": "82a23b54720b48dd21a2373f389f55a7e8b98923637a88ddfd72045f69f4ca55",
+      "bytes": 41089
+    },
+    "ninjars_supplement_v2.py": {
+      "path": "tools/ninjars_supplement_v2.py",
+      "sha256": "a598932bb1404e433777d82e82a49311b17f2850d4d563f8fcf6f033da73e5e8",
+      "bytes": 60858
+    },
+    "ninjars_benchmark_policy_v2.py": {
+      "path": "tools/ninjars_benchmark_policy_v2.py",
+      "sha256": "defdfef693cee50e8bb000a4393f507799d7eb0b4da5275e23e18f893678cd6a",
+      "bytes": 53416
+    },
+    "ninjars_precision_v2.py": {
+      "path": "tools/ninjars_precision_v2.py",
+      "sha256": "6f7a4ec0a0744ef816e38d6f6a5bb45844d3e9bc264c617bbc22da01a1bb9cb5",
+      "bytes": 24996
+    },
+    "early_build.py": {
+      "path": "docs/benchmarkfolder/policy-v2/final-stress-execution-v1/early_build.py",
+      "sha256": "8e942ae716672c7c329e4dfb6fc68349822938a09b556040879c6aeed8513363",
+      "bytes": 15423
+    },
+    "collect.py": {
+      "path": "docs/benchmarkfolder/policy-v2/final-stress-raw-collection-v1/collect.py",
+      "sha256": "bc429dd08f3eb5afd8d0b8fabade043cadad850722bbf79b3353f14129f9f268",
+      "bytes": 19810
+    },
+    "core_collect.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/core_collect.py",
+      "sha256": "cd07ad5cbbaf8cb155388752cc77e82f266ffe30798fbfaecb9b68f0af3bff9a",
+      "bytes": 18767
+    },
+    "launch.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/launch.py",
+      "sha256": "7da1387416c11bcb235a3c1d6a24ea0f08cf685298686fc17448b46e7548244c",
+      "bytes": 7405
+    },
+    "owned_operations.py": {
+      "path": "docs/benchmarkfolder/policy-v2/final-stress-raw-collection-v1/collect.py",
+      "sha256": "bc429dd08f3eb5afd8d0b8fabade043cadad850722bbf79b3353f14129f9f268",
+      "bytes": 19810
+    },
+    "ninjars_benchmark_pair_v3.py": {
+      "path": "tools/ninjars_benchmark_pair_v3.py",
+      "sha256": "1e5fb83daa6021fc7c74350df60d16f64204a93887c7e511ac3347a513e78484",
+      "bytes": 34216
+    },
+    "ninjars_benchmark_references_v2.py": {
+      "path": "tools/ninjars_benchmark_references_v2.py",
+      "sha256": "8777e1464dad1685df87cb0440b72073e7bae7bba0cbc169a15a7a53fbd6f51c",
+      "bytes": 18761
+    }
+  },
+  "cohort": {
+    "source_state": {
+      "orchestration_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+      "generator_identity_sha256": "77b16df0251af4104a2c541bab913c11f4e67496a290495ce1a1c5fc526dfe3c",
+      "numerical_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+      "retained_untracked_diagnostics": [
+        "vendor/StdHEP/fail"
+      ]
+    },
+    "runtime_signature": {
+      "schema": "reducer-runtime-signature-v2",
+      "libraries": {
+        "collier_lib/COLLIER-1.2.9/libcollier.a": "4f7d89154b89d771aef3533a078ee618a301442d0353f1b18d0a2365bb989949",
+        "collier_lib/COLLIER-1.2.9/libcollier.so": "1753ed686ab3021c149d6ecf80fe8c46cd4276bf8b5f891820c535603d39e127",
+        "collier_lib/libcollier.a": "4f7d89154b89d771aef3533a078ee618a301442d0353f1b18d0a2365bb989949",
+        "collier_lib/libcollier.so": "1753ed686ab3021c149d6ecf80fe8c46cd4276bf8b5f891820c535603d39e127",
+        "libcts.a": "802f2c821e381244df0bb7d6533de2c01f77bdce62c15a13569b0874cce1d216",
+        "libiregi.a": "2486b785e34ee6b2cce856659cbfd7de000f633e5edcb3b9e557ac93ee2dfbdf",
+        "ninja_lib/libavh_olo.a": "8469cc93665ba24c2ca0b848d61fead56a517f78c4a1672a110d64177568aa8d",
+        "ninja_lib/libninja.a": "42866021f93004c143e0a49de8c420a6bebbcd4eb26242eef556ad71296e57c0",
+        "ninja_lib/libninja.so": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128",
+        "ninja_lib/libninja.so.0": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128",
+        "ninja_lib/libninja.so.0.0.0": "ed7053f92d726bb50120bef7c45275c092d8aa0f094b410481fa6a8926bed128",
+        "ninjars_include/libninjars.a": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c",
+        "ninjars_lib/libninjars.a": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c"
+      },
+      "metadata": {
+        "collier_include/avh_olo.mod": "480ae0ec46da72712f11a062703ccf42d2263a21c028666694e87e134ce37097",
+        "collier_include/avh_olo_dp.mod": "c241ff91e1bdd9fa48b79152e1be5ca0780c50edb06aa36e97ce8cacd60ecd30",
+        "collier_include/avh_olo_dp_arrays.mod": "f7361ad389c713b4a3e24e746e14a9a52124811c4eda3d98b6c7341d30880e6e",
+        "collier_include/avh_olo_dp_auxfun.mod": "4bb27901c41bb8dedb23ad0b21a558035bca187e49b3887bdd2ac380761a219a",
+        "collier_include/avh_olo_dp_bnlog.mod": "81d8eaaa21820a82310230b602bcc4d1ef0e61263f34ba16a32f38206d5aa9e6",
+        "collier_include/avh_olo_dp_box.mod": "b824cee1cf0f073a3539a1641bd7a4c119b7c085f2dc472998d680eb1bb6ec68",
+        "collier_include/avh_olo_dp_boxc.mod": "8b90d8fc7e69711269c9fd653f23f71ffedfce5daa2d34b184c1473f1d0c50dc",
+        "collier_include/avh_olo_dp_bub.mod": "c52a30b9799efee24b9694c77b243a10bb30207bff815d9477f22f1ea41fc6a9",
+        "collier_include/avh_olo_dp_dilog.mod": "e4ff9d233847012e79961cfe18796cd7a1c536dcb9d1dff3adc5abe37f3ec9ec",
+        "collier_include/avh_olo_dp_kinds.mod": "616070cb4e7e6c91934fa4979564de79ca6c7abc7957a64480d993296293a7a4",
+        "collier_include/avh_olo_dp_olog.mod": "c563daa223a5c90616f9d454007784588549d9a056608cbf8c911fc38f7fe354",
+        "collier_include/avh_olo_dp_prec.mod": "8e1cffe587a2b99de25806b09945ad20323701f7814c54f403689ecfbd2137a2",
+        "collier_include/avh_olo_dp_print.mod": "bf5e2a19a4e9b51dbc7778039dff57a1ae4bbf6a32ec9d3e6d1e89533b238ee4",
+        "collier_include/avh_olo_dp_qmplx.mod": "d7e2ad1bd20079dc5fc55097e4ea299125b96a9f06a3ccdb8cdfcf265db34744",
+        "collier_include/avh_olo_dp_tri.mod": "f4447f400edaa133de935201d475a29ac34a3c457f0392019feb1016e449832f",
+        "collier_include/avh_olo_qp.mod": "261d42eae361ec8717e14e44a6b1626eef5bee01253385b60e44234c145febbf",
+        "collier_include/avh_olo_qp_arrays.mod": "97f78211cebd1fdc9d6f7b5458f87449bb33cdfe2802b810fb95c0995d3d83d7",
+        "collier_include/avh_olo_qp_auxfun.mod": "f85a71617876eac06aaba798d5698a9df6a1b76343cb0d167c01c58c53b0333e",
+        "collier_include/avh_olo_qp_bnlog.mod": "bbeac2898f098cc455d54b1b02b2675373a52c1acfffa1bf13b02741594dc7fe",
+        "collier_include/avh_olo_qp_box.mod": "8d7c6f9b64b6c35c273b8654992d7b373579e948fd48f2a45dfade84f5bf382f",
+        "collier_include/avh_olo_qp_boxc.mod": "fa496a8518109c4d140d4d1d50a54b3dc7eadc4aaded81f12b99fe2b8ed69558",
+        "collier_include/avh_olo_qp_bub.mod": "bbd262dad025186fd45be8a0d5677503eb7ae2e571c9c88c84e3c01433c97ab7",
+        "collier_include/avh_olo_qp_dilog.mod": "59f2ad263faa93e042e3ee06ce5cdede3b5bcebe7df17ff90b453a2149441a34",
+        "collier_include/avh_olo_qp_kinds.mod": "f88627b976e437ffdc54b495de3276d1769788286768180badbd90eba98ec7fd",
+        "collier_include/avh_olo_qp_olog.mod": "4fad3ccb5e8ef2f7488f014ae59dfc5aed4c1169ed2f6c33cf3f8d846ff2b321",
+        "collier_include/avh_olo_qp_prec.mod": "ad7fcc81fc70e00e232879f7fa6c420e10b4ba085ef04e7ea1ec01f8eab7330d",
+        "collier_include/avh_olo_qp_print.mod": "c897fc66433cee92d7aecd0d674a24e7d07ad663695bf82245137756ab0778c5",
+        "collier_include/avh_olo_qp_qmplx.mod": "ff03e071481e226fbe1928ae8a3518193f062ec91ec3ae6c2b74758974d5a49c",
+        "collier_include/avh_olo_qp_tri.mod": "9300ff558e8b9c6330da1acf64fa05b20e027637cc84c3caa6bde5703f1dd8b6",
+        "collier_include/avh_olo_units.mod": "9f977df7b60e5f453932521dcb8aa701e0101aa9ef7978bc58a4bc40a6e3d45d",
+        "collier_include/avh_olo_version.mod": "cbfc937544003076d0526267bb66aaae9e13b029a2bcc9bca72066be5fc161b7",
+        "collier_include/buildtensors.mod": "e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193",
+        "collier_include/cache.mod": "ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2",
+        "collier_include/coli_aux2.mod": "bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7",
+        "collier_include/coli_stat.mod": "fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397",
+        "collier_include/collier.mod": "f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4",
+        "collier_include/collier_aux.mod": "966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66",
+        "collier_include/collier_coefs.mod": "e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41",
+        "collier_include/collier_global.mod": "acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d",
+        "collier_include/collier_init.mod": "56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83",
+        "collier_include/collier_tensors.mod": "d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63",
+        "collier_include/combinatorics.mod": "e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1",
+        "collier_include/dd_2pt.mod": "36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d",
+        "collier_include/dd_3pt.mod": "ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83",
+        "collier_include/dd_4pt.mod": "67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e",
+        "collier_include/dd_5pt.mod": "ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d",
+        "collier_include/dd_6pt.mod": "f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb",
+        "collier_include/dd_global.mod": "c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6",
+        "collier_include/dd_statistics.mod": "5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492",
+        "collier_include/globalc.mod": "ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc",
+        "collier_include/globald.mod": "cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c",
+        "collier_include/inittensors.mod": "0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975",
+        "collier_include/master.mod": "015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721",
+        "collier_include/mninja.mod": "8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830",
+        "collier_include/ninjago_module.mod": "5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9",
+        "collier_include/ninjavholo.mod": "6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8",
+        "collier_include/quadninjago_module.mod": "f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316",
+        "collier_include/reductionab.mod": "9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5",
+        "collier_include/reductionc.mod": "3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7",
+        "collier_include/reductiond.mod": "cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80",
+        "collier_include/reductionefg.mod": "98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9",
+        "collier_include/reductiontn.mod": "a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383",
+        "collier_include/tensorreduction.mod": "df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad",
+        "collier_lib/COLLIER-1.2.9/modules/buildtensors.mod": "e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193",
+        "collier_lib/COLLIER-1.2.9/modules/cache.mod": "ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2",
+        "collier_lib/COLLIER-1.2.9/modules/coli_aux2.mod": "bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7",
+        "collier_lib/COLLIER-1.2.9/modules/coli_stat.mod": "fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397",
+        "collier_lib/COLLIER-1.2.9/modules/collier.mod": "f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4",
+        "collier_lib/COLLIER-1.2.9/modules/collier_aux.mod": "966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66",
+        "collier_lib/COLLIER-1.2.9/modules/collier_coefs.mod": "e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41",
+        "collier_lib/COLLIER-1.2.9/modules/collier_global.mod": "acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d",
+        "collier_lib/COLLIER-1.2.9/modules/collier_init.mod": "56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83",
+        "collier_lib/COLLIER-1.2.9/modules/collier_tensors.mod": "d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63",
+        "collier_lib/COLLIER-1.2.9/modules/combinatorics.mod": "e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1",
+        "collier_lib/COLLIER-1.2.9/modules/dd_2pt.mod": "36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d",
+        "collier_lib/COLLIER-1.2.9/modules/dd_3pt.mod": "ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83",
+        "collier_lib/COLLIER-1.2.9/modules/dd_4pt.mod": "67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e",
+        "collier_lib/COLLIER-1.2.9/modules/dd_5pt.mod": "ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d",
+        "collier_lib/COLLIER-1.2.9/modules/dd_6pt.mod": "f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb",
+        "collier_lib/COLLIER-1.2.9/modules/dd_global.mod": "c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6",
+        "collier_lib/COLLIER-1.2.9/modules/dd_statistics.mod": "5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492",
+        "collier_lib/COLLIER-1.2.9/modules/globalc.mod": "ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc",
+        "collier_lib/COLLIER-1.2.9/modules/globald.mod": "cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c",
+        "collier_lib/COLLIER-1.2.9/modules/inittensors.mod": "0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975",
+        "collier_lib/COLLIER-1.2.9/modules/master.mod": "015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721",
+        "collier_lib/COLLIER-1.2.9/modules/reductionab.mod": "9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5",
+        "collier_lib/COLLIER-1.2.9/modules/reductionc.mod": "3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7",
+        "collier_lib/COLLIER-1.2.9/modules/reductiond.mod": "cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80",
+        "collier_lib/COLLIER-1.2.9/modules/reductionefg.mod": "98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9",
+        "collier_lib/COLLIER-1.2.9/modules/reductiontn.mod": "a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383",
+        "collier_lib/COLLIER-1.2.9/modules/tensorreduction.mod": "df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad",
+        "collier_lib/include/buildtensors.mod": "e2303b4a948f7d6c6ce0b03f3d9f600a8674099b24501041d2ccae2881408193",
+        "collier_lib/include/cache.mod": "ed4a4204bd01d7c4c7347ceb731a2571b2c896ea90b5396cad1160ff1fa33fc2",
+        "collier_lib/include/coli_aux2.mod": "bd2359c51edc4d3ac660abf032498328acddd797f69ec14c8f62df10c6ede9f7",
+        "collier_lib/include/coli_stat.mod": "fbf11fb43c8a2d72fbe5726fdff71dc05e5aa7b3e7fe22c2c64c81b3f6e6b397",
+        "collier_lib/include/collier.mod": "f15e98cc6a5cc55e2379b0ffb0b98afcf41a5600fa54a74d88ca42260eecafe4",
+        "collier_lib/include/collier_aux.mod": "966dc23a397edb09f43b39a4f2f45d676eb8cf06a496983e4d33f2e60a9bdb66",
+        "collier_lib/include/collier_coefs.mod": "e636133dea74e0b842cc66a209d1f1ef369067248c694171d7288d9e649fbb41",
+        "collier_lib/include/collier_global.mod": "acc64c56d3152463b9cabbe6b9f990783a83a743628b16546d8adc4faf312d1d",
+        "collier_lib/include/collier_init.mod": "56a6ffc493d5d801fffa28efc071b6c6d4d60b3adcfe29f3d61498aeb8cdbb83",
+        "collier_lib/include/collier_tensors.mod": "d7c5d6c3c36dd3bf8fcb440f865fa968204432059dc760cad25b0a0b4203df63",
+        "collier_lib/include/combinatorics.mod": "e5c8bfe3785875f4fb94cfb50059386cbda2404cba04b48e4d476927db77d2d1",
+        "collier_lib/include/dd_2pt.mod": "36ec9639c94ff43fbe8546d1f06088a0b40c19f22a82c593a42328aa7c92b53d",
+        "collier_lib/include/dd_3pt.mod": "ba95761cc5cdd0d102a89b2c50e5dd26f9c6b43b5ff17be0b7439709f1374c83",
+        "collier_lib/include/dd_4pt.mod": "67a1606059ede9c79ef8234a38ea9405b5c914ee106f268c819710e2a9277e1e",
+        "collier_lib/include/dd_5pt.mod": "ad394fc0a9d74b310dc26b91d8d233da953312d9ae039798add7cfa22388ea7d",
+        "collier_lib/include/dd_6pt.mod": "f6a1b7ce1f4316111cee9ad9424da0aa19f75487c8701eae653281f4279539eb",
+        "collier_lib/include/dd_global.mod": "c12cccc1c8e2e8b8527a3d02e0ad3265dc51ab517b036b84ab60ea49f71c1fa6",
+        "collier_lib/include/dd_statistics.mod": "5886267367868ebf803e89a820f5f3428b840631e39f04b42c299046e85ed492",
+        "collier_lib/include/globalc.mod": "ae75e436d554bc9033647dfa1e48911a192e6b513d00910c041b497798a735dc",
+        "collier_lib/include/globald.mod": "cc6bd246c8ce57a811ddbfa620ca93bd3b1523407b37b99406a98d7ab821268c",
+        "collier_lib/include/inittensors.mod": "0e8e9a192794364c62212ad67a649f06d919ca1fc3281a2ae6041abfc863c975",
+        "collier_lib/include/master.mod": "015759ac225836f4dc33825abf3184f68756e7593f8d5d6e08c08e4ca36ba721",
+        "collier_lib/include/reductionab.mod": "9dddc5afdd932230c2ca1ec846a394674eade8a2d6f894dad25939e6b04604c5",
+        "collier_lib/include/reductionc.mod": "3eb588857067dc5b52f3d8e249129b88f9dfca8830613f2339b5d5363f829db7",
+        "collier_lib/include/reductiond.mod": "cf4a7c96fe4b26f0e1c06af8c70501a53a5af4531099ceb39f478b59dc51ea80",
+        "collier_lib/include/reductionefg.mod": "98aaff3d9ae9d8f19936da47875ab8c6f28e0b18f938082ef1e602eea0cad4e9",
+        "collier_lib/include/reductiontn.mod": "a8bff994d4eb7dbe28cb8861c1b56fe97ff076ddf81b0ea7f48000c555bd8383",
+        "collier_lib/include/tensorreduction.mod": "df878679de21544e9e575cf8c809f93815063b2c3a62a99e876f3dc2cc04b7ad",
+        "mpmodule.mod": "b8a883c9a27983dc9a57fdc1f064980886b246772ee359c9edecf91ce7eaa14f",
+        "ninja_include/mninja.mod": "8cd6c2bf649d1ab7f8accfe9ac438c549f6f2149b84c060d3ceae32805bb9830",
+        "ninja_include/ninjago_module.mod": "5c93fe8d7cfc3f76ad03fbd0386a9d4ba52d0de0a3dcd01efa9e7ed3197584f9",
+        "ninja_include/ninjavholo.mod": "6bda89881c81ddbcfeb2674e2d44855ecd1bf0bfdb7a0d7d84ae6a9d73ac54d8",
+        "ninja_include/quadninjago_module.mod": "f6b1613ae7c65cabbec8b7261391e4a591e73f94e7ba10435760ccf08b30c316",
+        "ninjars_include/mninjars.mod": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+        "ninjars_include/ninjars-config.json": "a2b427c4e1c766180cec068ca716e2ff3d035226b06864c50156202bcfa4617f",
+        "ninjars_include/ninjars-link-before.txt": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+        "ninjars_include/ninjars-native-libs.txt": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+        "ninjars_lib/mninjars.mod": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+        "ninjars_lib/ninjars-config.json": "a2b427c4e1c766180cec068ca716e2ff3d035226b06864c50156202bcfa4617f",
+        "ninjars_lib/ninjars-link-before.txt": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+        "ninjars_lib/ninjars-native-libs.txt": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871"
+      },
+      "link_inputs": {
+        "Source/make_opts": {
+          "sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1",
+          "bytes": 2781
+        },
+        "SubProcesses/MadLoop_makefile_definitions": {
+          "sha256": "a117715aa84da9bdccce0700303b4e36921edb5a99a345a40f970045abcc234c",
+          "bytes": 2392
+        }
+      },
+      "identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008"
+    },
+    "cases": {
+      "qcd-4": {
+        "case": {
+          "id": "qcd-4",
+          "model": "loop_sm",
+          "process": "u u~ > z z g g [virt=QCD]",
+          "nfinal": 4
+        },
+        "output": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-4",
+        "generation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-4/generation.json",
+          "sha256": "83dee96d6d94a7c973a8c325f65adb55bf41b2fc5754d69ce7825d3fc82748cc",
+          "bytes": 171447
+        },
+        "compilation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-4/compilation.json",
+          "sha256": "d34e4d95eab55dfebf58405ba689fdeb3bbb5eac562416088febec1a7ce70423",
+          "bytes": 177255
+        },
+        "compiled_manifest": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-4/compiled-sources.json",
+          "sha256": "6d60816497e34f7fe21893a47b348c0f4a7ccb22bc295b1f4741da09d53543a1",
+          "bytes": 31147
+        },
+        "physical_card": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-4/param_card.dat",
+          "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+          "bytes": 2471
+        },
+        "madloop_card": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-4/Cards/MadLoopParams.dat",
+          "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+          "bytes": 13357
+        },
+        "points": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-4.dat",
+          "sha256": "d66b0c04ee3d8e6ed90ef1fbf97abb9cd444d9ea1f84a508850688bff317b52d",
+          "bytes": 58316
+        },
+        "point_metadata": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-4.json",
+          "sha256": "3fe89adca7af12f2fdadba12e47161929fd8faef2228e8aef804766565e30644",
+          "bytes": 220
+        },
+        "full_runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+        "executable_sha256": "5879b1551a50c69b91166a3731bd409c2486869d244ca05e0d35d1655f4a50a4"
+      },
+      "ew-4": {
+        "case": {
+          "id": "ew-4",
+          "model": "loop_qcd_qed_sm_Gmu",
+          "process": "e+ e- > mu+ mu- a a [virt=QED]",
+          "nfinal": 4
+        },
+        "output": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-4",
+        "generation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-4/generation.json",
+          "sha256": "c236b555dd361ce9e08359969378d0c9f95081aac62cff385dcb369eac92d86d",
+          "bytes": 171448
+        },
+        "compilation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-4/compilation.json",
+          "sha256": "357edd9e637d50ff1262551a53e58affddcc8f73fa57b209fa6fd03273a2c014",
+          "bytes": 177255
+        },
+        "compiled_manifest": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-4/compiled-sources.json",
+          "sha256": "02f6cef8b093bd6462c0f1b680a36df791ab7687963b10351fe063fe05675af9",
+          "bytes": 56343
+        },
+        "physical_card": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-4/param_card.dat",
+          "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+          "bytes": 4537
+        },
+        "madloop_card": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-4/Cards/MadLoopParams.dat",
+          "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+          "bytes": 13357
+        },
+        "points": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-4.dat",
+          "sha256": "75a3765dca97afa14e5efb795cb1a9fa1ff9e0475ebcb79a883b6a2a4e84ba5a",
+          "bytes": 58298
+        },
+        "point_metadata": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-4.json",
+          "sha256": "55779b55b2031bb47e6393f1c42d09c67626546eb3e277d9a104c466342f30be",
+          "bytes": 214
+        },
+        "full_runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+        "executable_sha256": "8b2678a72df65efe2d1d0716e370f4947f0afb783bbfd6af24aeb1093e6b6a2b"
+      },
+      "qcd-1": {
+        "case": {
+          "id": "qcd-1",
+          "model": "loop_sm",
+          "process": "u u~ > z [virt=QCD]",
+          "nfinal": 1
+        },
+        "output": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1",
+        "generation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1/generation.json",
+          "sha256": "b2d4304c94ac02e950c0bac4039d590e6fb57fca4ae71914b67aafceb1f3e031",
+          "bytes": 171447
+        },
+        "compilation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1/compilation.json",
+          "sha256": "f2f060db98928104bc9bda1f4d019032b51a331fbe9941709c9db6c097d8e823",
+          "bytes": 177254
+        },
+        "compiled_manifest": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-1/compiled-sources.json",
+          "sha256": "a16812249d466842d96233064e1c3df2a24995663dab8b0ec28c3088ecd3af9f",
+          "bytes": 16774
+        },
+        "physical_card": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-1/param_card.dat",
+          "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+          "bytes": 2471
+        },
+        "madloop_card": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1/Cards/MadLoopParams.dat",
+          "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+          "bytes": 13357
+        },
+        "points": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-1.dat",
+          "sha256": "bd8a00c863710123dd62cb5e079dcd11d2aebdcf49d8128313bbd6ecc6de1099",
+          "bytes": 29223
+        },
+        "point_metadata": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-1.json",
+          "sha256": "02aa21db269db26e655d531bb29c8bd307e50c434a3bb01891442248c1b0a3ac",
+          "bytes": 190
+        },
+        "full_runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+        "executable_sha256": "ca0d8941a8d38bbb883b244ef3819d03f6302d4efe8622018a5a13dc28706039"
+      },
+      "ew-1": {
+        "case": {
+          "id": "ew-1",
+          "model": "loop_qcd_qed_sm_Gmu",
+          "process": "u d~ > w+ [virt=QED]",
+          "nfinal": 1
+        },
+        "output": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-1",
+        "generation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-1/generation.json",
+          "sha256": "f3a9f15597564cb7c94d6db4de70fe97720f0319f41a9c79f7fdd1219880511c",
+          "bytes": 171448
+        },
+        "compilation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-1/compilation.json",
+          "sha256": "d030a020f8552c6314b685fcfe61a379ea7b19be3eab1dcc1fee5797c08007c8",
+          "bytes": 177254
+        },
+        "compiled_manifest": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-1/compiled-sources.json",
+          "sha256": "ccd77aa360296ac5fd5b06976b6409e7c21c6c0401773b1e2a0ff620afaed06a",
+          "bytes": 23655
+        },
+        "physical_card": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-1/param_card.dat",
+          "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+          "bytes": 4537
+        },
+        "madloop_card": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-1/Cards/MadLoopParams.dat",
+          "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+          "bytes": 13357
+        },
+        "points": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-1.dat",
+          "sha256": "5869f48fc0546031f7c50ee8f68a4b0104fa6da66bc3b434e47d1422edcbb576",
+          "bytes": 29269
+        },
+        "point_metadata": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-1.json",
+          "sha256": "f126362207bc1560dc9a7b851f464c2f9b1ca3c82c93c793e0a0d3880223b157",
+          "bytes": 190
+        },
+        "full_runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+        "executable_sha256": "834ea4ce27d1b62a08d98b30eeb9dcdb25789a88ac0414c79efd573a0e14db73"
+      },
+      "qcd-2": {
+        "case": {
+          "id": "qcd-2",
+          "model": "loop_sm",
+          "process": "g g > t t~ [virt=QCD]",
+          "nfinal": 2
+        },
+        "output": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-2",
+        "generation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-2/generation.json",
+          "sha256": "1856d941276660e428656071a162bc3bb2f3bff17349b4c25d647bcdcef9ab68",
+          "bytes": 171448
+        },
+        "compilation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-2/compilation.json",
+          "sha256": "d96781fa2b9371f098e59af0bd654a5d8fb6c7d516a583a4bea6484690fe7a6d",
+          "bytes": 177255
+        },
+        "compiled_manifest": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-2/compiled-sources.json",
+          "sha256": "72b6ca92e627aeb8717918e28046d82f9bcf2e379b2d7fb9b23b3aace51ca159",
+          "bytes": 22497
+        },
+        "physical_card": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-2/param_card.dat",
+          "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+          "bytes": 2471
+        },
+        "madloop_card": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-2/Cards/MadLoopParams.dat",
+          "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+          "bytes": 13357
+        },
+        "points": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-2.dat",
+          "sha256": "6efb8cb1752f37badd187e17aff2103eb6814402dbaeaa598165a83d22bd0b63",
+          "bytes": 38804
+        },
+        "point_metadata": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-2.json",
+          "sha256": "dbde7aad1084ae47a61ed252628a709b5c5cb28611dd2ac402931c45e7f99105",
+          "bytes": 200
+        },
+        "full_runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+        "executable_sha256": "d2b3e93bcffa3c2108db0f715c6bcb33a7d977bdbb28a9ee9be51bb3f8ad6cf7"
+      },
+      "ew-2": {
+        "case": {
+          "id": "ew-2",
+          "model": "loop_qcd_qed_sm_Gmu",
+          "process": "e+ e- > mu+ mu- [virt=QED]",
+          "nfinal": 2
+        },
+        "output": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-2",
+        "generation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-2/generation.json",
+          "sha256": "af2ae7a3bc46fb259507fc9ba32519e039ee077cbb66eefd64a98fa1a67c5c4b",
+          "bytes": 171447
+        },
+        "compilation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-2/compilation.json",
+          "sha256": "b187573584bcc5a7f9fca87cfca1e9b1db28cd04a3933c35a4c7815aadea2841",
+          "bytes": 177255
+        },
+        "compiled_manifest": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-2/compiled-sources.json",
+          "sha256": "1c914a290bd440eee00e4cffe9f3cadb7a5d9d149c1851f6e5432951758460c5",
+          "bytes": 40557
+        },
+        "physical_card": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-2/param_card.dat",
+          "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+          "bytes": 4537
+        },
+        "madloop_card": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-2/Cards/MadLoopParams.dat",
+          "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+          "bytes": 13357
+        },
+        "points": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-2.dat",
+          "sha256": "ed6f3f83033372061ed6de45c05a366aeeb68a63ddd006998682f406174e7b53",
+          "bytes": 38804
+        },
+        "point_metadata": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-2.json",
+          "sha256": "b80d47abd7982b32c6a9e910272cf91cfe108e7a9ec5741dba3007ca15b7238a",
+          "bytes": 196
+        },
+        "full_runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+        "executable_sha256": "4303c31bcd9c4ef8bc377eeb79274de9f97acb99f7fa99ea7b3a396b88d2ce97"
+      },
+      "qcd-3": {
+        "case": {
+          "id": "qcd-3",
+          "model": "loop_sm",
+          "process": "u u~ > z g g [virt=QCD]",
+          "nfinal": 3
+        },
+        "output": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-3",
+        "generation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-3/generation.json",
+          "sha256": "c1447f1d9984e8b420978ccf425eedd08354fe6c7758ecc9267a0d85a8afaa10",
+          "bytes": 171448
+        },
+        "compilation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-3/compilation.json",
+          "sha256": "2bc74a25a3707fd871d489200d2f7365b575ccbf42541455436ef84479cb45dd",
+          "bytes": 177255
+        },
+        "compiled_manifest": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-3/compiled-sources.json",
+          "sha256": "daeee170fe56e4755300826d805dcbce46dba407c39b5b43d22ba20dbacb3f24",
+          "bytes": 29259
+        },
+        "physical_card": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-3/param_card.dat",
+          "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+          "bytes": 2471
+        },
+        "madloop_card": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-3/Cards/MadLoopParams.dat",
+          "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+          "bytes": 13357
+        },
+        "points": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-3.dat",
+          "sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41",
+          "bytes": 48552
+        },
+        "point_metadata": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/qcd-3.json",
+          "sha256": "4a8633b45f2f6020af0f4c529276795e6663ca0b86662b647834a8d9bad23880",
+          "bytes": 208
+        },
+        "full_runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+        "executable_sha256": "269483ed67b1556d20dd2bf58d3d3cd43081e7242701537884735189a1225a00"
+      },
+      "ew-3": {
+        "case": {
+          "id": "ew-3",
+          "model": "loop_qcd_qed_sm_Gmu",
+          "process": "e+ e- > t t~ a [virt=QED]",
+          "nfinal": 3
+        },
+        "output": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-3",
+        "generation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-3/generation.json",
+          "sha256": "287d0604fb2fc6f7207a551dfc5d11f73444dcad792521b291139792ae78921b",
+          "bytes": 171448
+        },
+        "compilation": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-3/compilation.json",
+          "sha256": "be0e04cef7658d9e0a1e3b38c894d4effdd9eaa12733d7df0defd765bfd213e9",
+          "bytes": 177255
+        },
+        "compiled_manifest": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-3/compiled-sources.json",
+          "sha256": "fac4550e389b0543f86d639166d31a705c567ca2a09800842c6a307ac56b19be",
+          "bytes": 63908
+        },
+        "physical_card": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-3/param_card.dat",
+          "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+          "bytes": 4537
+        },
+        "madloop_card": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-3/Cards/MadLoopParams.dat",
+          "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+          "bytes": 13357
+        },
+        "points": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-3.dat",
+          "sha256": "c030e6c68d53e9ecc1e2ac5ee99e4f81d97a80268dcbe3a0dc76065655a492a1",
+          "bytes": 48558
+        },
+        "point_metadata": {
+          "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-3.json",
+          "sha256": "0605b14aa85f769b5ca08e4e31796e934cc3ac56b9837e0dd49dac93b27e59d4",
+          "bytes": 209
+        },
+        "full_runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+        "executable_sha256": "d7adf958540759cf0cc85b2462d1de4cd1f1e12631ddcc900c54171b006acc7e"
+      }
+    },
+    "candidate_cohort": {
+      "numerical_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+      "generation_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+      "generator_identity_sha256": "77b16df0251af4104a2c541bab913c11f4e67496a290495ce1a1c5fc526dfe3c",
+      "runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+      "archive_sha256": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c"
+    },
+    "executed_freeze": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/executed-freeze.json",
+      "sha256": "1f6e9fb21096e5c83df0e51b264151985f9bb4ca9bf2d7bd5190c6761a23cea9",
+      "bytes": 1309
+    },
+    "generation_status": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/status.json",
+      "sha256": "036113c34f4894c4508bf217a454749d4cdcccdfe5d739b53f835090e837b565",
+      "bytes": 4626169
+    },
+    "runtime_inventory": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/runtime-inventory.json",
+      "sha256": "828928197d9a76f4cf0ec5cded0a9df271cc8f8671efcc853964bf23cf72952a",
+      "bytes": 1723824
+    },
+    "representative_proof": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/representative/representative-proof.json",
+      "sha256": "809037ae1e58dff05a52c37c770919e0e1f58935021b9066b6a85122b122db81",
+      "bytes": 4838169
+    },
+    "representative_identity_sha256": "a9d736aab3778a3abfbf2ef5aade2d8f3b3636c3c8d28b6c0d21e7172ebc1da4"
+  },
+  "source_roles": {
+    "candidate": "candidate_corrected"
+  },
+  "scheduled_sources": [
+    "candidate"
+  ],
+  "backends": [
+    8
+  ],
+  "report": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1",
+  "work": ".benchmark-work/policy-v3/final-pins-20261021-v1/core-correctness/run-v1",
+  "fresh_parity": false,
+  "fresh_parity_scope": "New-runtime representative proof only; no100-point fresh-process claim",
+  "repetitions": 2,
+  "minimum_seconds": 1e-12,
+  "worker_timeout_seconds": 86400.0,
+  "build_timeout_seconds": 21600.0,
+  "strict_statuses": [
+    218,
+    228,
+    322
+  ],
+  "acceptance_eligible": false,
+  "performance_acceptance_gate": false,
+  "seven_repetition_timing_gate": false,
+  "final_dataset_claim": false,
+  "identity_sha256": "527efd02957d699cf3222ca51a28a50e66d729a0dc1ce4eab6dad196584d4829"
+}

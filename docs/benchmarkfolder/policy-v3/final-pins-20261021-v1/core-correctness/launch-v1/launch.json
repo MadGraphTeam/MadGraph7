@@ -1,0 +1,62 @@
+{
+  "status": "started",
+  "controller_identity": {
+    "pid": 3476105,
+    "ppid": 3476101,
+    "pgid": 3476105,
+    "start_ticks": 63770685,
+    "state": "R",
+    "affinity": [
+      6,
+      7,
+      190
+    ],
+    "command": "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python -B /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/core_collect.py collect docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/specification-v1.json --execute-numerical --handoff docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/root-handoff.json "
+  },
+  "launcher_identity": {
+    "pid": 3476101,
+    "ppid": 3475988,
+    "pgid": 3475988,
+    "start_ticks": 63770676,
+    "state": "R",
+    "affinity": [
+      6,
+      7,
+      190
+    ],
+    "command": "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python -B docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/launch.py docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/specification-v1.json --handoff docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/root-handoff.json --attempt docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/launch-v1 --execute-numerical "
+  },
+  "command": [
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+    "-B",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/core_collect.py",
+    "collect",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/specification-v1.json",
+    "--execute-numerical",
+    "--handoff",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/root-handoff.json"
+  ],
+  "specification": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/specification-v1.json",
+    "sha256": "e73a005d642c935fdb9b9546639979edafb35f5fa42a608a49864f95a2fed888",
+    "bytes": 44184
+  },
+  "handoff": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/root-handoff.json",
+    "sha256": "a928e1e4841b48df744a35492ffe805325d3e52e20042ecfc981f94b55fd7596",
+    "bytes": 180
+  },
+  "orchestration_head_at_launch": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+  "started_utc": "2026-10-21T17:33:25.738831+00:00",
+  "thread_environment": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "RAYON_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1"
+  },
+  "worker_cpu": 190,
+  "worker_phase_timeout_seconds": 86400,
+  "build_timeout_seconds": 21600,
+  "automatic_retry": false,
+  "performance_acceptance_gate": false
+}

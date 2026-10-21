@@ -1,0 +1,57 @@
+qcd-4 candidate 8 ready 23.391936395490003
+qcd-4 candidate 8 0 23.50511787779
+qcd-4 candidate 8 1 23.358602693930003
+ew-4 candidate 8 ready 2.43795605232
+ew-4 candidate 8 0 2.42108113659
+ew-4 candidate 8 1 2.4738460936499997
+qcd-1 candidate 8 ready 3.9677239999999996e-05
+qcd-1 candidate 8 0 4.0429740000000006e-05
+qcd-1 candidate 8 1 4.0622239999999995e-05
+ew-1 candidate 8 ready 0.00018968388
+ew-1 candidate 8 0 0.00019506099999999998
+ew-1 candidate 8 1 0.00019436058999999998
+qcd-2 candidate 8 ready 0.00122776219
+qcd-2 candidate 8 0 0.00123440051
+qcd-2 candidate 8 1 0.00123002299
+ew-2 candidate 8 ready 0.00084008391
+ew-2 candidate 8 0 0.0008457965200000001
+ew-2 candidate 8 1 0.00087250113
+qcd-3 candidate 8 ready 0.12794874905
+qcd-3 candidate 8 0 0.12605920043
+qcd-3 candidate 8 1 0.12440980144
+ew-3 candidate 8 ready 0.20754045427
+ew-3 candidate 8 0 0.20783668975000003
+ew-3 candidate 8 1 0.20178822143000003
+{
+  "schema": "final-pins-core-correctness-result-v1",
+  "status": "complete",
+  "input_specification": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/input-spec.json",
+    "sha256": "e73a005d642c935fdb9b9546639979edafb35f5fa42a608a49864f95a2fed888",
+    "bytes": 44184
+  },
+  "run_status": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/run-status.json",
+    "sha256": "7f52bc5218c18dc004d7aa01b79208c7b61e48877d8d00ed966c9b5cea8ab6d3",
+    "bytes": 3813
+  },
+  "protocol": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/protocol.json",
+    "sha256": "ef5c25c14033f50bc24881a10ebf689e96f7637a4a254f78ba0b10fa54615ff9",
+    "bytes": 3907
+  },
+  "bindings": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/source-bindings.json",
+    "sha256": "a726fff3c246ec98b0db31093e8a5c0651300a9c545116de00104c03e11851de",
+    "bytes": 2287121
+  },
+  "process_ledger": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/process-ledger.jsonl",
+    "sha256": "6aa5f7a496777c91253990ee569de69f5555f3812b967361c990cf22ac5d3091",
+    "bytes": 15275
+  },
+  "performance_acceptance_gate": false,
+  "seven_repetition_timing_gate": false,
+  "final_dataset_claim": false,
+  "identity_sha256": "31e2d297efcef7efc0be5ae50c4daec87af8c5ca01479fea9363b3575eaef33f"
+}

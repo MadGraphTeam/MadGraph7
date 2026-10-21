@@ -1,0 +1,362 @@
+{
+  "schema": "final-core-public-source-view-v1",
+  "utc": "2026-10-21T20:49:49.935634+00:00",
+  "purpose": "Replace only16 source-proof paths with byte-identical already-public generation/compilation records; preserve original actual measured authority.",
+  "original_binding": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/source-bindings.json",
+    "sha256": "a726fff3c246ec98b0db31093e8a5c0651300a9c545116de00104c03e11851de",
+    "bytes": 2287121
+  },
+  "public_binding": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/source-bindings-public-v2.json",
+    "sha256": "aa32ec9ff7d39922a26f43c02147837320c6092e93f69795d1fedf81da740d54",
+    "bytes": 2286937
+  },
+  "original_dataset": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/dataset-correctness-only-v1.json",
+    "sha256": "c8aafda63d1c06535fe986dbdcb6b9bd23a694e913d1e04bfa3d463b4870924e",
+    "bytes": 103461
+  },
+  "public_dataset": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/dataset-correctness-only-public-v2.json",
+    "sha256": "82ec747c1dc1b4e2624a4d7c2b90e7d69b72e589027dbb8e84951057d21b6e7d",
+    "bytes": 100483
+  },
+  "changes": [
+    {
+      "case": "qcd-4",
+      "original_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/source-anchors/qcd-4-candidate-8/source-proof.json",
+        "sha256": "2e15b0f6bf6f343a3a4788cf3f008ed62ab9b33039f806a5c38e8dfba279dead",
+        "bytes": 2087
+      },
+      "public_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/public-source-proofs-v2/qcd-4.json",
+        "sha256": "ca6aee6ebd19a07bfa97e5b737e175d4a625bae5b78d44ffbfd34491ee2725b2",
+        "bytes": 2095
+      },
+      "exactly_changed_fields": [
+        {
+          "field": "generation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-4/generation.json",
+            "sha256": "83dee96d6d94a7c973a8c325f65adb55bf41b2fc5754d69ce7825d3fc82748cc",
+            "bytes": 171447
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-4/generation.json",
+            "sha256": "83dee96d6d94a7c973a8c325f65adb55bf41b2fc5754d69ce7825d3fc82748cc",
+            "bytes": 171447
+          }
+        },
+        {
+          "field": "compilation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-4/compilation.json",
+            "sha256": "d34e4d95eab55dfebf58405ba689fdeb3bbb5eac562416088febec1a7ce70423",
+            "bytes": 177255
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-4/compilation.json",
+            "sha256": "d34e4d95eab55dfebf58405ba689fdeb3bbb5eac562416088febec1a7ce70423",
+            "bytes": 177255
+          }
+        }
+      ]
+    },
+    {
+      "case": "ew-4",
+      "original_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/source-anchors/ew-4-candidate-8/source-proof.json",
+        "sha256": "cd567bf710a809ae68c9a93ee0c49f5f2ffdfe294bbb0b94ba40c82958130c82",
+        "bytes": 2095
+      },
+      "public_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/public-source-proofs-v2/ew-4.json",
+        "sha256": "28280375de9250631020950b604729d0ffb8b9efc1af4c7945d035b0985de7c8",
+        "bytes": 2103
+      },
+      "exactly_changed_fields": [
+        {
+          "field": "generation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-4/generation.json",
+            "sha256": "c236b555dd361ce9e08359969378d0c9f95081aac62cff385dcb369eac92d86d",
+            "bytes": 171448
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-4/generation.json",
+            "sha256": "c236b555dd361ce9e08359969378d0c9f95081aac62cff385dcb369eac92d86d",
+            "bytes": 171448
+          }
+        },
+        {
+          "field": "compilation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-4/compilation.json",
+            "sha256": "357edd9e637d50ff1262551a53e58affddcc8f73fa57b209fa6fd03273a2c014",
+            "bytes": 177255
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-4/compilation.json",
+            "sha256": "357edd9e637d50ff1262551a53e58affddcc8f73fa57b209fa6fd03273a2c014",
+            "bytes": 177255
+          }
+        }
+      ]
+    },
+    {
+      "case": "qcd-1",
+      "original_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/source-anchors/qcd-1-candidate-8/source-proof.json",
+        "sha256": "5f816c109d789e2f0fde19effaa36233e5d4fc1db18ab4c850ef0de15bfc79ad",
+        "bytes": 2081
+      },
+      "public_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/public-source-proofs-v2/qcd-1.json",
+        "sha256": "8862760fcde9b6ddc45e4162ab900fa0f8e3dab060c4dc90baa064cd67f0687e",
+        "bytes": 2089
+      },
+      "exactly_changed_fields": [
+        {
+          "field": "generation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1/generation.json",
+            "sha256": "b2d4304c94ac02e950c0bac4039d590e6fb57fca4ae71914b67aafceb1f3e031",
+            "bytes": 171447
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-1/generation.json",
+            "sha256": "b2d4304c94ac02e950c0bac4039d590e6fb57fca4ae71914b67aafceb1f3e031",
+            "bytes": 171447
+          }
+        },
+        {
+          "field": "compilation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-1/compilation.json",
+            "sha256": "f2f060db98928104bc9bda1f4d019032b51a331fbe9941709c9db6c097d8e823",
+            "bytes": 177254
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-1/compilation.json",
+            "sha256": "f2f060db98928104bc9bda1f4d019032b51a331fbe9941709c9db6c097d8e823",
+            "bytes": 177254
+          }
+        }
+      ]
+    },
+    {
+      "case": "ew-1",
+      "original_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/source-anchors/ew-1-candidate-8/source-proof.json",
+        "sha256": "5bbb91333bb2f210c6cac0270311002915bebfeae0756420a4deb02e5f0fe5a4",
+        "bytes": 2085
+      },
+      "public_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/public-source-proofs-v2/ew-1.json",
+        "sha256": "6ddf731838aa64d00e08e4d36074816cc02c3ca398f6fe03a7d71357114d9d02",
+        "bytes": 2093
+      },
+      "exactly_changed_fields": [
+        {
+          "field": "generation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-1/generation.json",
+            "sha256": "f3a9f15597564cb7c94d6db4de70fe97720f0319f41a9c79f7fdd1219880511c",
+            "bytes": 171448
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-1/generation.json",
+            "sha256": "f3a9f15597564cb7c94d6db4de70fe97720f0319f41a9c79f7fdd1219880511c",
+            "bytes": 171448
+          }
+        },
+        {
+          "field": "compilation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-1/compilation.json",
+            "sha256": "d030a020f8552c6314b685fcfe61a379ea7b19be3eab1dcc1fee5797c08007c8",
+            "bytes": 177254
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-1/compilation.json",
+            "sha256": "d030a020f8552c6314b685fcfe61a379ea7b19be3eab1dcc1fee5797c08007c8",
+            "bytes": 177254
+          }
+        }
+      ]
+    },
+    {
+      "case": "qcd-2",
+      "original_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/source-anchors/qcd-2-candidate-8/source-proof.json",
+        "sha256": "dfb93b4da3569963bb3846f6289196c59b6262191b9dbc2135c693d443853125",
+        "bytes": 2083
+      },
+      "public_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/public-source-proofs-v2/qcd-2.json",
+        "sha256": "038663e3a42637011f655225607bfa6d5ed79e0462ae5376d7a7321ca8ee840a",
+        "bytes": 2091
+      },
+      "exactly_changed_fields": [
+        {
+          "field": "generation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-2/generation.json",
+            "sha256": "1856d941276660e428656071a162bc3bb2f3bff17349b4c25d647bcdcef9ab68",
+            "bytes": 171448
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-2/generation.json",
+            "sha256": "1856d941276660e428656071a162bc3bb2f3bff17349b4c25d647bcdcef9ab68",
+            "bytes": 171448
+          }
+        },
+        {
+          "field": "compilation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-2/compilation.json",
+            "sha256": "d96781fa2b9371f098e59af0bd654a5d8fb6c7d516a583a4bea6484690fe7a6d",
+            "bytes": 177255
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-2/compilation.json",
+            "sha256": "d96781fa2b9371f098e59af0bd654a5d8fb6c7d516a583a4bea6484690fe7a6d",
+            "bytes": 177255
+          }
+        }
+      ]
+    },
+    {
+      "case": "ew-2",
+      "original_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/source-anchors/ew-2-candidate-8/source-proof.json",
+        "sha256": "e7f844da7cd09753f43a1793fa3f7e14d62c9e7d695d160af916a7cf070a5117",
+        "bytes": 2091
+      },
+      "public_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/public-source-proofs-v2/ew-2.json",
+        "sha256": "34d1f88e89ae9441dbe0272c8c3f8c39ab892bf5b7a3ad8855e6224ae12ad4d2",
+        "bytes": 2099
+      },
+      "exactly_changed_fields": [
+        {
+          "field": "generation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-2/generation.json",
+            "sha256": "af2ae7a3bc46fb259507fc9ba32519e039ee077cbb66eefd64a98fa1a67c5c4b",
+            "bytes": 171447
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-2/generation.json",
+            "sha256": "af2ae7a3bc46fb259507fc9ba32519e039ee077cbb66eefd64a98fa1a67c5c4b",
+            "bytes": 171447
+          }
+        },
+        {
+          "field": "compilation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-2/compilation.json",
+            "sha256": "b187573584bcc5a7f9fca87cfca1e9b1db28cd04a3933c35a4c7815aadea2841",
+            "bytes": 177255
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-2/compilation.json",
+            "sha256": "b187573584bcc5a7f9fca87cfca1e9b1db28cd04a3933c35a4c7815aadea2841",
+            "bytes": 177255
+          }
+        }
+      ]
+    },
+    {
+      "case": "qcd-3",
+      "original_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/source-anchors/qcd-3-candidate-8/source-proof.json",
+        "sha256": "0e7ed0278cea629361a0e0a3c3cd9f916072ab5bf9706e18231b936b83ea31a5",
+        "bytes": 2085
+      },
+      "public_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/public-source-proofs-v2/qcd-3.json",
+        "sha256": "390eed54f2c7b1c54a2da16b98172761ef76645d8cebca1e1f733d5b24677823",
+        "bytes": 2093
+      },
+      "exactly_changed_fields": [
+        {
+          "field": "generation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-3/generation.json",
+            "sha256": "c1447f1d9984e8b420978ccf425eedd08354fe6c7758ecc9267a0d85a8afaa10",
+            "bytes": 171448
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-3/generation.json",
+            "sha256": "c1447f1d9984e8b420978ccf425eedd08354fe6c7758ecc9267a0d85a8afaa10",
+            "bytes": 171448
+          }
+        },
+        {
+          "field": "compilation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/qcd-3/compilation.json",
+            "sha256": "2bc74a25a3707fd871d489200d2f7365b575ccbf42541455436ef84479cb45dd",
+            "bytes": 177255
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/qcd-3/compilation.json",
+            "sha256": "2bc74a25a3707fd871d489200d2f7365b575ccbf42541455436ef84479cb45dd",
+            "bytes": 177255
+          }
+        }
+      ]
+    },
+    {
+      "case": "ew-3",
+      "original_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/source-anchors/ew-3-candidate-8/source-proof.json",
+        "sha256": "d721e443b8e95e53b3046aa82c21e6bc5541ebbaa0a1549f3e42860f298ce2b9",
+        "bytes": 2090
+      },
+      "public_proof": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/public-source-proofs-v2/ew-3.json",
+        "sha256": "dbfd86e8f7c25fd8b69dba37ad502f18cfca0ac99311b9b3a005a1f369cb1221",
+        "bytes": 2098
+      },
+      "exactly_changed_fields": [
+        {
+          "field": "generation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-3/generation.json",
+            "sha256": "287d0604fb2fc6f7207a551dfc5d11f73444dcad792521b291139792ae78921b",
+            "bytes": 171448
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-3/generation.json",
+            "sha256": "287d0604fb2fc6f7207a551dfc5d11f73444dcad792521b291139792ae78921b",
+            "bytes": 171448
+          }
+        },
+        {
+          "field": "compilation",
+          "before": {
+            "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-3/compilation.json",
+            "sha256": "be0e04cef7658d9e0a1e3b38c894d4effdd9eaa12733d7df0defd765bfd213e9",
+            "bytes": 177255
+          },
+          "after": {
+            "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-3/compilation.json",
+            "sha256": "be0e04cef7658d9e0a1e3b38c894d4effdd9eaa12733d7df0defd765bfd213e9",
+            "bytes": 177255
+          }
+        }
+      ]
+    }
+  ],
+  "only_binding_target_source_proof_records_changed": true,
+  "all_scientific_case_conclusions_identical": true,
+  "v3_unchanged_reader_actual_validation_passed": true,
+  "private_generated_tree_inputs_remaining": false,
+  "retained_artifact_prerequisite": "The exact installed b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c native archive and a2b427c4 config remain required; they are not committed as build products.",
+  "final_goal_claim": false,
+  "identity_sha256": "f1127025cbf576a067f63bf21b21ab57f4aa1cde5cc7703144ff8a4917becf4e"
+}

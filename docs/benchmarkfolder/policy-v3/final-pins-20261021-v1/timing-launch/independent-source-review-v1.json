@@ -1,0 +1,39 @@
+{
+  "schema": "bounded-final-launcher-independent-source-review-v1",
+  "reviewer": "/root/audit_final",
+  "reviewed_utc": "2026-10-21T20:52:02.866552+00:00",
+  "status": "passed-source-only",
+  "inputs": [
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/timing-launch/launch.py",
+      "sha256": "df9cbbbf96a1f08ce6c377fafa5265afe28b6c00bb5e9c3c5c2bd637fe8e143c",
+      "bytes": 13024
+    },
+    {
+      "path": "tests/unit_tests/loop/test_ninjars_final_timing_launch.py",
+      "sha256": "68b3bf4f4a9e681f7c3390865101d930c0676c3718001a99d77d8008ca033e65",
+      "bytes": 10265
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/timing-launch/software-tests-v1.stderr",
+      "sha256": "43c0e59ebaa684a232e60de376f2ed6ade9ee43c3e822ab27552c1277387f2ec",
+      "bytes": 2174
+    }
+  ],
+  "owner_software_tests": 11,
+  "audit_reran_tests": false,
+  "findings": [
+    "Only canonical core/loop specifications with exactly7 baselineNinja6/candidateNinjaRS8 pairs can launch.",
+    "Root quiet authorization binds stage,CPU207,exactspec,collectorhand-off and retained release evidence; report/work/attempt cannot be reused.",
+    "Interruption is deferred from Popen creation through durable controller PID/start/PGID capture; inherited exact identity-based emergency cleanup remains in use.",
+    "Terminal success requires all child identities matched/reaped0, completed requestedcases and absent controller/worker groups.",
+    "Launcher records execution custody only; existing scientific pair authority decides correctness,confidenceintervals and <=1.05 gates."
+  ],
+  "native_calls": 0,
+  "compiler_calls": 0,
+  "process_launches": 0,
+  "limitations": [
+    "Actual launch still requires root exact resource/phase handoff.",
+    "No actual numerical,stability or performance outcome is certified by this source review."
+  ]
+}

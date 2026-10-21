@@ -1,0 +1,46 @@
+{
+  "case": {
+    "id": "ew-3",
+    "model": "loop_qcd_qed_sm_Gmu",
+    "process": "e+ e- > t t~ a [virt=QED]",
+    "nfinal": 3
+  },
+  "output": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-3",
+  "generation": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-3/generation.json",
+    "sha256": "287d0604fb2fc6f7207a551dfc5d11f73444dcad792521b291139792ae78921b",
+    "bytes": 171448
+  },
+  "compilation": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-3/compilation.json",
+    "sha256": "be0e04cef7658d9e0a1e3b38c894d4effdd9eaa12733d7df0defd765bfd213e9",
+    "bytes": 177255
+  },
+  "compiled_manifest": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-3/compiled-sources.json",
+    "sha256": "fac4550e389b0543f86d639166d31a705c567ca2a09800842c6a307ac56b19be",
+    "bytes": 63908
+  },
+  "physical_card": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-3/param_card.dat",
+    "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+    "bytes": 4537
+  },
+  "madloop_card": {
+    "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-3/Cards/MadLoopParams.dat",
+    "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+    "bytes": 13357
+  },
+  "points": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-3.dat",
+    "sha256": "c030e6c68d53e9ecc1e2ac5ee99e4f81d97a80268dcbe3a0dc76065655a492a1",
+    "bytes": 48558
+  },
+  "point_metadata": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-3.json",
+    "sha256": "0605b14aa85f769b5ca08e4e31796e934cc3ac56b9837e0dd49dac93b27e59d4",
+    "bytes": 209
+  },
+  "full_runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+  "executable_sha256": "d7adf958540759cf0cc85b2462d1de4cd1f1e12631ddcc900c54171b006acc7e"
+}

@@ -1,0 +1,6 @@
+{
+  "root_authorized": true,
+  "phase": "final-pins-core-correctness",
+  "cpu": 190,
+  "specification_sha256": "e73a005d642c935fdb9b9546639979edafb35f5fa42a608a49864f95a2fed888"
+}

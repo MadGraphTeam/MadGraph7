@@ -1,0 +1,46 @@
+{
+  "case": {
+    "id": "ew-2",
+    "model": "loop_qcd_qed_sm_Gmu",
+    "process": "e+ e- > mu+ mu- [virt=QED]",
+    "nfinal": 2
+  },
+  "output": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-2",
+  "generation": {
+    "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-2/generation.json",
+    "sha256": "af2ae7a3bc46fb259507fc9ba32519e039ee077cbb66eefd64a98fa1a67c5c4b",
+    "bytes": 171447
+  },
+  "compilation": {
+    "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-2/compilation.json",
+    "sha256": "b187573584bcc5a7f9fca87cfca1e9b1db28cd04a3933c35a4c7815aadea2841",
+    "bytes": 177255
+  },
+  "compiled_manifest": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-2/compiled-sources.json",
+    "sha256": "1c914a290bd440eee00e4cffe9f3cadb7a5d9d149c1851f6e5432951758460c5",
+    "bytes": 40557
+  },
+  "physical_card": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/inputs/candidate/ew-2/param_card.dat",
+    "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+    "bytes": 4537
+  },
+  "madloop_card": {
+    "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/generation/outputs/candidate/ew-2/Cards/MadLoopParams.dat",
+    "sha256": "01fa0635b39291570782dc0ffec572502b335f8b6c7f064059ae252af42a4c59",
+    "bytes": 13357
+  },
+  "points": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-2.dat",
+    "sha256": "ed6f3f83033372061ed6de45c05a366aeeb68a63ddd006998682f406174e7b53",
+    "bytes": 38804
+  },
+  "point_metadata": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/generation/points/ew-2.json",
+    "sha256": "b80d47abd7982b32c6a9e910272cf91cfe108e7a9ec5741dba3007ca15b7238a",
+    "bytes": 196
+  },
+  "full_runtime_identity_sha256": "a7577a9a33292ffb5d675ccf1b9c3667db3ab3613d77ccd270f1efc9e9802008",
+  "executable_sha256": "4303c31bcd9c4ef8bc377eeb79274de9f97acb99f7fa99ea7b3a396b88d2ce97"
+}

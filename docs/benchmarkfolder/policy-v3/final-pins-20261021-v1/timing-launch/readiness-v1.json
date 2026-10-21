@@ -1,0 +1,64 @@
+{
+  "schema": "final-owned-timing-launch-readiness-v1",
+  "utc": "2026-10-21T20:53:16.232882+00:00",
+  "status": "reviewed-and-software-tested-held-awaiting-root-quiet-handoff",
+  "specifications": {
+    "core": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/timing-pair/specification-held-v1.json",
+      "sha256": "de65bb6bb168bf427be3fc5c9fc1cb2eb2dc77a386c24528015228a1c4e8f813",
+      "bytes": 619977
+    },
+    "loop": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/loop-execution/specification-pair-held-v2.json",
+      "sha256": "56cee094b28452ba481c998410d6095b0f46d4737f6b200dea31587cf08c2d47",
+      "bytes": 382138
+    }
+  },
+  "launcher": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/timing-launch/launch.py",
+    "sha256": "df9cbbbf96a1f08ce6c377fafa5265afe28b6c00bb5e9c3c5c2bd637fe8e143c",
+    "bytes": 13024
+  },
+  "software": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/timing-launch/software-proof-v1.json",
+    "sha256": "a883dc21f681c7e2e2a189df1abee2c1071a67c9f77d2896c643b3615b0bc4e7",
+    "bytes": 1962
+  },
+  "independent_source_review": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/timing-launch/independent-source-review-v1.json",
+    "sha256": "67c5736d8e70546b80165cf7056ec9903da2346812bcce9e52e5a8d5d5069572",
+    "bytes": 1885
+  },
+  "instructions": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/timing-launch/README.md",
+    "sha256": "d564a9c6d612c8a96ecdeab26f442b234c02b49a98ea85e608d8aebf647a9005",
+    "bytes": 2985
+  },
+  "bound_cost_and_actual_source_preflight": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/timing-queue-readiness-post-core-v1.json",
+    "sha256": "2878cec53312650e6cf4cb2c02fff362355925ad6de96b2904e9e7b410916061",
+    "bytes": 14819
+  },
+  "readiness_delta": "The narrow outer controller launcher is now reviewed and software tested; the earlier queue planning/source/runtime evidence is unchanged. No actual handoff or timing launch has occurred.",
+  "targets": [
+    [
+      "baseline",
+      6
+    ],
+    [
+      "candidate",
+      8
+    ]
+  ],
+  "repetitions": 7,
+  "points": 100,
+  "cpu": 207,
+  "actual_measured_pairs": 0,
+  "quiet_root_handoff_pending": true,
+  "requires_no_other_engines_or_compilers": true,
+  "source_hold": "All GEN/vendor bytes remain numerical856e/gen77b through actual core+loop7-pair/stress/focused completion; apply the privateCLIpatch afterward.",
+  "ordinary_loop100_requirement": "Both ggH and HH100 normal fullsum outputs remain required. Separate10-point focused anchors do not substitute.",
+  "automatic_retry": false,
+  "in_place_resume": false,
+  "performance_passed": false
+}
