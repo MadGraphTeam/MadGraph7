@@ -572,14 +572,19 @@ class WholeRuleTerm:
     def coefficients(self, values: Mapping[str, Any], numbers: _Numbers) -> dict:
         """The grade coefficients at the bound model ``values`` (name -> number)."""
 
-        from symbolica import Replacement, S
+        from symbolica import Replacement
+
+        from pyamplicol._internal.physics.symbols import symbols
 
         digits = numbers.precision.working_digits
         out = {}
         for degree, expression in self.grades:
             bound = expression.replace_multiple(
                 [
-                    Replacement(S(f"UFO::{name}"), _number_expression(values[name]))
+                    Replacement(
+                        symbols.qualified(f"UFO::{name}"),
+                        _number_expression(values[name]),
+                    )
                     for name in self.parameters
                 ]
             )

@@ -11,6 +11,8 @@ four-dimensional boundary is not a dimensional gamma5 prescription.
 
 from __future__ import annotations
 
+from .._internal.physics.symbols import symbols
+
 
 def validate_vertex_spinor_frame(frame):
     if frame not in (None, "ufo", "native-physical"):
@@ -60,9 +62,11 @@ def native_physical_vertex(graph, vertex_id, lorentz):
         # checked on directed FFS -> propagator -> chiral FFV ALOHA currents.
         # Simultaneous native replacements retain all scalar coefficients and
         # leave the propagator (including its mass term) untouched.
-        from symbolica import Replacement, S
+        from symbolica import Replacement
 
-        left, right = S("loop_vertex_frame::left_", "loop_vertex_frame::right_")
+        left, right = symbols.qualified(
+            "loop_vertex_frame::left_", "loop_vertex_frame::right_"
+        )
         minus = t.TensorExpression.projm(4)(left, right).to_expression()
         plus = t.TensorExpression.projp(4)(left, right).to_expression()
         result = result.replace_multiple(

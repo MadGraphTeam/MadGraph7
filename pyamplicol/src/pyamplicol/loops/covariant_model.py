@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from types import MappingProxyType, SimpleNamespace
 from typing import Any
 
+from .._internal.physics.symbols import symbols
 from ..processes.model import ufo_goldstone_flag
 from .model_color import prepare_color_expression
 from .model_expressions import epsilon_symbol, parse_exact_ufo
@@ -216,7 +217,6 @@ def build_covariant_structure(
     binding, including diagnostics. Custom propagators and unspecified gauges
     require separate certification and are rejected by this bounded adapter.
     """
-    from symbolica import S
     from symbolica.community import hepkit as hep
     from ufo_model_loader.model import Propagator, SerializableParticle
     from ufo_model_loader.symbolica_processing import wrap_indices
@@ -303,7 +303,7 @@ def build_covariant_structure(
                 expression = resolved[record["name"]].value
             else:
                 required.append(record["name"])
-                expression = S(
+                expression = symbols.qualified(
                     f"pyamplicol_structural::required_parameter_{record['id']}"
                 )
         elif fields["nature"] != "internal":

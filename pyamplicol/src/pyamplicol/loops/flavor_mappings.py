@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from functools import cache
 from typing import Any
 
+from .._internal.physics.symbols import symbols
 from ..processes.model import GOLDSTONE_FLAG_SPELLINGS, ufo_goldstone_flag
 from .graphs import _rule_orders, _species_orders
 from .model_expressions import LaurentExpression, epsilon_symbol, parse_exact_ufo
@@ -210,7 +211,6 @@ def prove_flavor_relabeling(
     ):
         raise TypeError("species relabeling requires integer PDGs")
     source, structure = plan.counterterms.source, plan.structure
-    from symbolica import S
 
     raw = source.raw
     particles = {
@@ -323,9 +323,9 @@ def prove_flavor_relabeling(
     }
     field_symbols.update(propagator_symbols)
     for record in raw.collections["parameters"]:
-        if S(f"UFO::{record['name']}") in propagator_symbols:
+        if symbols.qualified(f"UFO::{record['name']}") in propagator_symbols:
             ordinary_parameters.add(record["name"])
-        if S(f"UFO::{record['name']}") in field_symbols:
+        if symbols.qualified(f"UFO::{record['name']}") in field_symbols:
             parameter_names.add(record["name"])
     for name in sorted(parameter_names):
         outputs[name, 0] = None
@@ -416,7 +416,7 @@ def prove_flavor_relabeling(
     @cache
     def resolve_native(expression):
         for name in parameter_names:
-            symbol = S(f"UFO::{name}")
+            symbol = symbols.qualified(f"UFO::{name}")
             if symbol not in expression.get_all_symbols():
                 continue
             replacement = resolved[name, 0]
@@ -665,7 +665,7 @@ def prove_flavor_relabeling(
         if record["name"] not in parameter_names:
             continue
         value = resolved[record["name"], 0]
-        parameter_values.append((S(f"UFO::{record['name']}"), value))
+        parameter_values.append((symbols.qualified(f"UFO::{record['name']}"), value))
 
     def field_signature(rule, permutation):
         if plan.source_color is not None:

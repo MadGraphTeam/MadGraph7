@@ -17,6 +17,8 @@ from graphlib import TopologicalSorter
 from types import MappingProxyType
 from typing import Any
 
+from .._internal.physics.symbols import symbols
+
 
 def parse_exact_ufo(expression: str) -> Any:
     """Parse the UFO expression language with exact numeric literal spelling.
@@ -95,9 +97,8 @@ def parse_exact_ufo(expression: str) -> Any:
 
 
 def epsilon_symbol() -> Any:
-    from symbolica import S
 
-    return S("pyamplicol_loop::epsilon")
+    return symbols.qualified("pyamplicol_loop::epsilon")
 
 
 def _value_expression(value: Any) -> Any:
@@ -149,14 +150,13 @@ def lower_scalar_definitions(raw: Any) -> Any:
     substituted as well, so they cannot conceal a Laurent pole. Symbolic names
     must be unique across scalar declarations; vertex display names need not be.
     """
-    from symbolica import S
 
     definitions = {}
     by_symbol = {}
     ct_symbols = set()
     for collection in ("parameters", "counterterm_parameters", "couplings"):
         for record in raw.collections[collection]:
-            symbol = S(f"UFO::{record['name']}")
+            symbol = symbols.qualified(f"UFO::{record['name']}")
             if symbol in by_symbol:
                 raise ValueError(f"ambiguous UFO scalar name {record['name']!r}")
             expression = _value_expression(raw.exact_value(collection, record["id"]))

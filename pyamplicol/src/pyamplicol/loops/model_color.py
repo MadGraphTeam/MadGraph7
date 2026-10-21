@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from .._internal.physics.symbols import symbols
 from .model_expressions import parse_exact_ufo
 
 
@@ -24,7 +25,7 @@ def prepare_color_expression(source: str, particle_colors: Sequence[int]) -> Any
     unsupported here. This does not certify a model's general-Nc continuation.
     Unknown UFO function heads fail before they can become unresolved scalars.
     """
-    from symbolica import AtomType, S
+    from symbolica import AtomType
     from symbolica.community import hepkit as hep
     from symbolica.community import tensor
 
@@ -63,7 +64,9 @@ def prepare_color_expression(source: str, particle_colors: Sequence[int]) -> Any
             )
         # Public tensor constructors require atomic spectator labels. Native UFO
         # idx wrappers are inserted afterward, then localized by HepKit itself.
-        labels = tuple(S(f"pyamplicol_color_trace::leg{leg}") for leg in legs)
+        labels = tuple(
+            symbols.qualified(f"pyamplicol_color_trace::leg{leg}") for leg in legs
+        )
         replacement = tensor.trace(
             tensor.Representation.cof(3),
             *(generator(label, tensor.AUTO, tensor.AUTO) for label in labels),

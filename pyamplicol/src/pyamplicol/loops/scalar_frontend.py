@@ -20,6 +20,8 @@ from graphlib import TopologicalSorter
 from types import MappingProxyType
 from typing import Any
 
+from .._internal.physics.symbols import symbols
+
 
 @dataclass(frozen=True, slots=True)
 class ScalarExpression:
@@ -65,9 +67,8 @@ def real_scalar_part(value: Any) -> Any:
     after evaluator reassociation. Native execution rebinds this existing
     scalar primitive separately for double, DoubleFloat and arbitrary precision.
     """
-    from symbolica import S
 
-    return S(
+    return symbols.qualified(
         "pyamplicol_scalar_v1::real_part",
         eval={"complex": _producer_predicate("real_part")},
     )(value)
@@ -77,13 +78,13 @@ class ScalarFunctionLibrary:
     """A source-bound helper library; raw registry order never chooses a helper."""
 
     def __init__(self, raw: Any):
-        from symbolica import E, FunctionDefinition, S
+        from symbolica import E, FunctionDefinition
 
         self.raw = raw
         self.zero, self.one, self.imaginary = E("0"), E("1"), E("1i")
-        self.choose = S("symbolica::if")
+        self.choose = symbols.qualified("symbolica::if")
         self.predicates = {
-            name: S(
+            name: symbols.qualified(
                 f"pyamplicol_scalar_v1::{name}",
                 eval={"complex": _producer_predicate(name)},
             )
@@ -146,8 +147,8 @@ class ScalarFunctionLibrary:
         self.namespace = f"pyamplicol_scalar_model_{identity}"
         self.helpers = {
             name: (
-                S(f"{self.namespace}::value_{record_id}"),
-                S(f"{self.namespace}::diagnostic_{record_id}"),
+                symbols.qualified(f"{self.namespace}::value_{record_id}"),
+                symbols.qualified(f"{self.namespace}::diagnostic_{record_id}"),
                 arguments,
             )
             for name, (record_id, arguments, _body) in selected.items()
@@ -173,7 +174,7 @@ class ScalarFunctionLibrary:
                 bodies[name] = by_record[record_id]
                 continue
             parameters = [
-                S(f"{self.namespace}::arg_{record_id}_{i}")
+                symbols.qualified(f"{self.namespace}::arg_{record_id}_{i}")
                 for i in range(len(arguments))
             ]
             lowered = self.lower(
@@ -202,7 +203,7 @@ class ScalarFunctionLibrary:
         self, source: str, *, locals: dict[str, Any] | None = None, closed: bool = False
     ) -> ScalarExpression:
         """Lower supported scalar syntax, retaining Python and/or return values."""
-        from symbolica import E, S
+        from symbolica import E
 
         lines = source.splitlines()
         numeric_tokens = {
@@ -252,7 +253,7 @@ class ScalarFunctionLibrary:
                     raise ValueError(f"unsupported free helper symbol {node.id!r}")
                 if node.id in {"math", "cmath"}:
                     raise NotImplementedError("math modules are not scalar values")
-                return ScalarExpression(S(f"UFO::{node.id}"), zero)
+                return ScalarExpression(symbols.qualified(f"UFO::{node.id}"), zero)
             if isinstance(node, ast.UnaryOp):
                 part = lower(node.operand)
                 if isinstance(node.op, ast.Not):
@@ -550,7 +551,6 @@ def lower_scalar_program(raw: Any) -> ScalarProgram:
     Ordinary parameter definitions remain separate for exact binding by a caller.
     This preparation function does not enable an EW process factory.
     """
-    from symbolica import S
 
     from .model_expressions import LaurentExpression, epsilon_symbol
 
@@ -560,7 +560,7 @@ def lower_scalar_program(raw: Any) -> ScalarProgram:
 
     for collection in ("parameters", "counterterm_parameters", "couplings"):
         for record in raw.collections[collection]:
-            symbol = S(f"UFO::{record['name']}")
+            symbol = symbols.qualified(f"UFO::{record['name']}")
             if symbol in by_symbol:
                 raise ValueError(f"ambiguous UFO scalar name {record['name']!r}")
             key = (collection, record["id"])

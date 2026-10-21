@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .._internal.physics.symbols import symbols
+
 
 @dataclass(frozen=True, slots=True)
 class _Support:
@@ -59,7 +61,7 @@ def scalar_alias_incidence(dag, output_nodes, aliases):
     an alias that cancels only after substituting whole currents. This cannot
     remove a valid colour contribution. Zero outputs have empty support.
     """
-    from symbolica import AtomType, E, S
+    from symbolica import AtomType, E
 
     aliases, output_nodes = tuple(aliases), tuple(output_nodes)
     if len(set(aliases)) != len(aliases) or any(
@@ -82,7 +84,9 @@ def scalar_alias_incidence(dag, output_nodes, aliases):
         inputs, labels, input_support = [], [], []
         for position, dependency in enumerate(node.dependencies):
             for column, label in enumerate(dag.nodes[dependency].output_labels):
-                inputs.append(S(f"loop_coefficient::input_{position}_{column}"))
+                inputs.append(
+                    symbols.qualified(f"loop_coefficient::input_{position}_{column}")
+                )
                 labels.append((dependency, label))
                 input_support.append(supports[dependency][column])
         if tuple(labels) != node.input_labels or set(inputs) & set(aliases):
@@ -152,7 +156,7 @@ def scalar_grade_term_mask(dag, output_nodes, aliases, coefficients):
     define structural support independently of numerical parameter/helicity
     cancellations; this is not a whole-current symbolic identity solver.
     """
-    from symbolica import AtomType, E, Replacement, S
+    from symbolica import AtomType, E, Replacement
 
     from .exact import require_exact_numbers
 
@@ -187,7 +191,7 @@ def scalar_grade_term_mask(dag, output_nodes, aliases, coefficients):
             continue
         inputs = tuple(
             Replacement(
-                S(f"loop_coefficient::input_{position}_{column}"),
+                symbols.qualified(f"loop_coefficient::input_{position}_{column}"),
                 references[dependency][column],
             )
             for position, dependency in enumerate(node.dependencies)
@@ -206,7 +210,9 @@ def scalar_grade_term_mask(dag, output_nodes, aliases, coefficients):
             else:
                 if expression not in canonical:
                     while True:
-                        reference = S(f"loop_grade_incidence::current_{next_reference}")
+                        reference = symbols.qualified(
+                            f"loop_grade_incidence::current_{next_reference}"
+                        )
                         next_reference += 1
                         if reference not in occupied:
                             break

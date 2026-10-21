@@ -8,6 +8,7 @@ scheme, and validate the complete result before enabling direct R2 generation.
 
 from __future__ import annotations
 
+from .._internal.physics.symbols import symbols
 from .evanescent import BoundClosedFermionKernels, ClosedVectorlikeFermionKernels
 from .evanescent_gauge import BoundYangMillsKernels, DimensionalYangMillsKernels
 
@@ -34,7 +35,6 @@ def closed_reduction_powers(recurrence, node=None):
     can be selected explicitly with ``node``. No numerical cancellation or
     small-coefficient threshold participates in this interpretation.
     """
-    from symbolica import S
 
     if node is None:
         if hasattr(recurrence, "final_node"):
@@ -44,7 +44,10 @@ def closed_reduction_powers(recurrence, node=None):
         else:
             raise ValueError("select a closed node for a multi-colour recurrence")
     current = recurrence.dag.nodes[node]
-    expected = (S("loop_evanescent::mu"), S("loop_evanescent::epsilon"))
+    expected = (
+        symbols.qualified("loop_evanescent::mu"),
+        symbols.qualified("loop_evanescent::epsilon"),
+    )
     if (
         current.axes
         or tuple(recurrence.dag.variables[4:]) != expected

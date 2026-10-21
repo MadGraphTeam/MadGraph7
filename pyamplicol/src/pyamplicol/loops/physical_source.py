@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
+from .._internal.physics.symbols import symbols as symbol_registry
 from .graphs import build_loop_process
 from .physical_process import NativeBareProcessProgram
 from .request import LoopExternalRequest, prepare_loop_external_request
@@ -72,7 +73,7 @@ def source_bare_program(
         from .native import load_loop_native
 
         backend = load_loop_native()
-    from symbolica import E, S
+    from symbolica import E
 
     if structure.scalars.library.raw is not structure.raw:
         raise ValueError("source structure and scalar owner differ")
@@ -140,13 +141,16 @@ def source_bare_program(
                 raise NotImplementedError(
                     f"source fermion tensor {name} lacks physical frame conformance"
                 )
-            if S("UFO::Epsilon") in expression.get_all_symbols():
+            if (
+                symbol_registry.qualified("UFO::Epsilon")
+                in expression.get_all_symbols()
+            ):
                 raise NotImplementedError(
                     "source epsilon tensors require the certified native phase adapter"
                 )
     symbols = {model.coupling(name).symbol.get_name(): name for name in coupling_names}
     source_parameters = {
-        S(f"UFO::{record['name']}"): record["name"]
+        symbol_registry.qualified(f"UFO::{record['name']}"): record["name"]
         for record in structure.raw.collections["parameters"]
     }
     for graph in graphs:

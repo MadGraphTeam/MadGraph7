@@ -117,6 +117,25 @@ class SymbolRegistry:
     def real_symbol(self, name: str) -> Any:
         return _symbol(self.qualified_name(name), is_real=True)
 
+    def qualified(self, *names: str, **attributes: Any) -> Any:
+        """Return heads named exactly as given, outside this namespace.
+
+        This serves established external and loop namespaces such as ``UFO::``,
+        ``symbolica::`` and the loop helpers' own. Construction still shares
+        the process-wide lock, and plain or real heads share the cache. Like
+        ``S``, one name gives one head and several names give a tuple.
+        """
+
+        if set(attributes) <= {"is_real"}:
+            is_real = bool(attributes.get("is_real", False))
+            heads = tuple(_symbol(name, is_real=is_real) for name in names)
+        else:
+            from symbolica import S
+
+            with _SYMBOL_CONSTRUCTION_LOCK:
+                heads = tuple(S(name, **attributes) for name in names)
+        return heads[0] if len(heads) == 1 else heads
+
     def parameter(self, name: str) -> Any:
         return self.symbol(f"param::{name}")
 
