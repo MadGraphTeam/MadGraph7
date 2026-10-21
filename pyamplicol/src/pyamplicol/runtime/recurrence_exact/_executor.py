@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from pathlib import Path
@@ -212,6 +213,8 @@ class RecurrenceExactExecutor:
         self._union_destination_by_color: tuple[_AmplitudeDestination, ...] = ()
         self._union_helicity_by_physics: tuple[_ResolvedHelicity | None, ...] = ()
         self._contracted_destination_helicity: tuple[int, ...] = ()
+        self._squared_order_pairs: tuple[tuple[tuple[int, int], ...], ...] | None = None
+        self._amplitude_component_count = 0
         if self._plan.sections.strategy == "topology-replay":
             self._replay_by_color = self._replay_targets_by_color()
             self._destination_helicities = self._destination_helicity_maps()
@@ -267,6 +270,107 @@ class RecurrenceExactExecutor:
         color_flows: Sequence[str] | None,
         precision: int,
     ) -> ResolvedEvaluation:
+        return self._evaluate(
+            momenta,
+            helicities=helicities,
+            color_flows=color_flows,
+            precision=precision,
+            orders=False,
+        )[0]
+
+    def evaluate_orders(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str] | None,
+        color_flows: Sequence[str] | None,
+        precision: int,
+    ) -> tuple[ResolvedEvaluation, tuple[tuple[Decimal, ...], ...]]:
+        """Resolved values and squared coupling-order partials per point.
+
+        Partial columns follow the native ``_amplitude_orders_json`` squared
+        catalogue. The resolved values are those of :meth:`evaluate_resolved`.
+        """
+
+        resolved, partials = self._evaluate(
+            momenta,
+            helicities=helicities,
+            color_flows=color_flows,
+            precision=precision,
+            orders=True,
+        )
+        assert partials is not None
+        return resolved, partials
+
+    def _order_pairs(self) -> tuple[tuple[tuple[int, int], ...], ...]:
+        if self._squared_order_pairs is None:
+            catalog = _mapping(
+                json.loads(str(self._native_runtime._amplitude_orders_json())),
+                "amplitude coupling orders",
+            )
+            components = _sequence(catalog.get("components"), "amplitude orders")
+            pairs = tuple(
+                tuple(
+                    _order_pair(pair)
+                    for pair in _sequence(
+                        _mapping(order, "squared order").get("pairs"), "order pairs"
+                    )
+                )
+                for order in _sequence(catalog.get("squared"), "squared orders")
+            )
+            if (
+                any(
+                    not 0 <= index < len(components)
+                    for order in pairs
+                    for pair in order
+                    for index in pair
+                )
+                or len(self._plan.sections.closure_amplitude_orders)
+                != len(self._plan.sections.closures)
+                or any(
+                    component >= len(components)
+                    for component in self._plan.sections.closure_amplitude_orders
+                )
+            ):
+                raise ArtifactError("recurrence amplitude coupling orders are invalid")
+            self._amplitude_component_count = len(components)
+            self._squared_order_pairs = pairs
+        return self._squared_order_pairs
+
+    def _new_order_amplitudes(
+        self, destination_count: int
+    ) -> list[list[tuple[Decimal, Decimal]]]:
+        return [
+            [(_ZERO, _ZERO)] * destination_count
+            for _ in range(self._amplitude_component_count)
+        ]
+
+    def _lc_order_partials(
+        self,
+        order_amplitudes: Sequence[Sequence[tuple[Decimal, Decimal]]],
+        destination_id: int,
+    ) -> tuple[Decimal, ...]:
+        """``sum_{(a,b)} Re(A_a conj(A_b))`` of one destination per squared order."""
+
+        values = []
+        for pairs in self._order_pairs():
+            value = _ZERO
+            for left, right in pairs:
+                left_re, left_im = order_amplitudes[left][destination_id]
+                right_re, right_im = order_amplitudes[right][destination_id]
+                value += left_re * right_re + left_im * right_im
+            values.append(value)
+        return tuple(values)
+
+    def _evaluate(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str] | None,
+        color_flows: Sequence[str] | None,
+        precision: int,
+        orders: bool,
+    ) -> tuple[ResolvedEvaluation, tuple[tuple[Decimal, ...], ...] | None]:
         if (
             isinstance(precision, bool)
             or not isinstance(precision, int)
@@ -333,10 +437,13 @@ class RecurrenceExactExecutor:
                 working_precision,
             )
             values = []
+            partials = []
+            squared_count = len(self._order_pairs()) if orders else 0
             for point in points:
                 point_values = [
                     [_ZERO for _ in selected_colors] for _ in selected_helicities
                 ]
+                order_values = [_ZERO] * squared_count if orders else None
                 if self._plan.sections.strategy == "topology-replay":
                     self._evaluate_replay_resolved_point(
                         point,
@@ -348,6 +455,7 @@ class RecurrenceExactExecutor:
                         working_precision,
                         normalization,
                         point_values,
+                        order_values,
                     )
                 elif self._plan.sections.strategy == "all-flow-union":
                     self._evaluate_union_resolved_point(
@@ -360,6 +468,7 @@ class RecurrenceExactExecutor:
                         working_precision,
                         normalization,
                         point_values,
+                        order_values,
                     )
                 else:
                     self._evaluate_contracted_resolved_point(
@@ -370,8 +479,11 @@ class RecurrenceExactExecutor:
                         working_precision,
                         normalization,
                         point_values,
+                        order_values,
                     )
                 values.append(tuple(tuple(colors) for colors in point_values))
+                if order_values is not None:
+                    partials.append(order_values)
 
         with localcontext() as context:
             context.prec = precision
@@ -380,12 +492,17 @@ class RecurrenceExactExecutor:
                 tuple(tuple(+entry for entry in colors) for colors in point)
                 for point in values
             )
+            rounded_partials = (
+                tuple(tuple(+entry for entry in point) for point in partials)
+                if orders
+                else None
+            )
         return ResolvedEvaluation(
             values=rounded,
             helicity_ids=tuple(helicity_ids[index] for index in selected_helicities),
             color_ids=tuple(color_ids[index] for index in selected_colors),
             color_accuracy=cast(Any, str(self._physics["color_accuracy"])),
-        )
+        ), rounded_partials
 
     def _evaluate_replay_resolved_point(
         self,
@@ -398,15 +515,24 @@ class RecurrenceExactExecutor:
         working_precision: int,
         normalization: Decimal,
         point_values: list[list[Decimal]],
+        order_values: list[Decimal] | None = None,
     ) -> None:
         for color_position, color_index in enumerate(selected_colors):
             target = self._replay_by_color[color_index]
+            order_amplitudes = (
+                None
+                if order_values is None
+                else self._new_order_amplitudes(
+                    self._plan.sections.amplitude_destination_count
+                )
+            )
             amplitudes = _evaluate_replay_point(
                 self._plan,
                 cast(Any, point),
                 target,
                 prepared_parameters,
                 working_precision,
+                **_order_keywords(order_amplitudes),
             )
             destination_helicities = self._destination_helicities[color_index]
             color_weight = _decimal(
@@ -425,6 +551,13 @@ class RecurrenceExactExecutor:
                     continue
                 amplitude = amplitudes[destination.destination_id]
                 squared = amplitude[0] * amplitude[0] + amplitude[1] * amplitude[1]
+                order_squared = (
+                    ()
+                    if order_amplitudes is None
+                    else self._lc_order_partials(
+                        order_amplitudes, destination.destination_id
+                    )
+                )
                 for physical_helicity in self._helicity_orbit_members[physics_helicity]:
                     helicity_position = helicity_positions.get(physical_helicity)
                     if helicity_position is None:
@@ -436,6 +569,10 @@ class RecurrenceExactExecutor:
                     point_values[helicity_position][color_position] += (
                         normalization * color_weight * helicity_weight * squared
                     )
+                    for index, value in enumerate(order_squared):
+                        cast(list[Decimal], order_values)[index] += (
+                            normalization * color_weight * helicity_weight * value
+                        )
 
     def _evaluate_union_resolved_point(
         self,
@@ -448,6 +585,7 @@ class RecurrenceExactExecutor:
         working_precision: int,
         normalization: Decimal,
         point_values: list[list[Decimal]],
+        order_values: list[Decimal] | None = None,
     ) -> None:
         for helicity_position, physics_helicity in enumerate(selected_helicities):
             helicity_record = helicity_records[physics_helicity]
@@ -461,12 +599,20 @@ class RecurrenceExactExecutor:
                 raise ArtifactError(
                     "all-flow-union plan is missing a retained physical helicity"
                 )
+            order_amplitudes = (
+                None
+                if order_values is None
+                else self._new_order_amplitudes(
+                    self._plan.sections.amplitude_destination_count
+                )
+            )
             amplitudes = _evaluate_union_point(
                 self._plan,
                 cast(Any, point),
                 direct_helicity,
                 prepared_parameters,
                 working_precision,
+                **_order_keywords(order_amplitudes),
             )
             helicity_weight = _decimal(
                 helicity_record.get("coefficient", 1),
@@ -485,6 +631,15 @@ class RecurrenceExactExecutor:
                     * helicity_weight
                     * (amplitude[0] * amplitude[0] + amplitude[1] * amplitude[1])
                 )
+                if order_values is not None and order_amplitudes is not None:
+                    for index, value in enumerate(
+                        self._lc_order_partials(
+                            order_amplitudes, destination.destination_id
+                        )
+                    ):
+                        order_values[index] += (
+                            normalization * color_weight * helicity_weight * value
+                        )
 
     def _evaluate_contracted_resolved_point(
         self,
@@ -495,16 +650,23 @@ class RecurrenceExactExecutor:
         working_precision: int,
         normalization: Decimal,
         point_values: list[list[Decimal]],
+        order_values: list[Decimal] | None = None,
     ) -> None:
         contraction = self._plan.color_contraction
         if contraction is None:
             raise ArtifactError(
                 "contracted exact execution has no color-contraction payload"
             )
+        order_amplitudes = (
+            None
+            if order_values is None
+            else self._new_order_amplitudes(contraction.destination_count)
+        )
         amplitudes = self._contracted_amplitudes(
             point,
             prepared_parameters,
             working_precision,
+            **_order_keywords(order_amplitudes),
         )
         selected = {
             self._helicity_representative[physical] for physical in selected_helicities
@@ -527,13 +689,43 @@ class RecurrenceExactExecutor:
             point_values[helicity_position][0] = (
                 normalization * helicity_weight * contracted.get(representative, _ZERO)
             )
+        if order_values is None or order_amplitudes is None:
+            return
+        for index, pairs in enumerate(self._order_pairs()):
+            for left, right in pairs:
+                contracted = _contract_color_amplitudes(
+                    contraction,
+                    order_amplitudes[left],
+                    self._contracted_destination_helicity,
+                    selected,
+                    right_amplitudes=order_amplitudes[right],
+                )
+                for physics_helicity in selected_helicities:
+                    helicity_record = helicity_records[physics_helicity]
+                    if helicity_record.get("structural_zero") is True:
+                        continue
+                    helicity_weight = _decimal(
+                        helicity_record.get("coefficient", 1),
+                        "helicity coefficient",
+                    )
+                    order_values[index] += (
+                        normalization
+                        * helicity_weight
+                        * contracted.get(
+                            self._helicity_representative[physics_helicity], _ZERO
+                        )
+                    )
 
     def _contracted_amplitudes(
         self,
         point: object,
         prepared_parameters: Sequence[tuple[Decimal, Decimal]],
         working_precision: int,
+        *,
+        order_amplitudes: list[list[tuple[Decimal, Decimal]]] | None = None,
     ) -> tuple[tuple[Decimal, Decimal], ...]:
+        """Physical-destination amplitudes; optionally their order components."""
+
         sections = self._plan.sections
         contraction = self._plan.color_contraction
         if contraction is None:
@@ -546,6 +738,7 @@ class RecurrenceExactExecutor:
                 cast(Any, point),
                 prepared_parameters,
                 working_precision,
+                **_order_keywords(order_amplitudes),
             )
 
         destination_by_coordinate: dict[tuple[int, int], int] = {}
@@ -571,12 +764,18 @@ class RecurrenceExactExecutor:
                 raise ArtifactError(
                     "contracted replay helicity mapping has incomplete coverage"
                 )
+            replayed_orders = (
+                None
+                if order_amplitudes is None
+                else self._new_order_amplitudes(sections.amplitude_destination_count)
+            )
             replayed = _evaluate_replay_point(
                 self._plan,
                 cast(Any, point),
                 target,
                 prepared_parameters,
                 working_precision,
+                **_order_keywords(replayed_orders),
             )
             for destination in sections.amplitude_destinations:
                 if destination.target_sector_id != target.representative_id:
@@ -604,6 +803,12 @@ class RecurrenceExactExecutor:
                     )
                 covered.add(physical_destination)
                 amplitudes[physical_destination] = amplitude
+                for component, replayed_component in zip(
+                    order_amplitudes or (), replayed_orders or (), strict=True
+                ):
+                    component[physical_destination] = replayed_component[
+                        destination.destination_id
+                    ]
         if len(covered) != contraction.destination_count:
             raise ArtifactError(
                 "contracted replay routes do not cover every physical destination"
@@ -946,6 +1151,19 @@ class RecurrenceExactExecutor:
                 "contracted recurrence does not map every direct helicity"
             )
         return tuple(result)
+
+
+def _order_keywords(
+    order_amplitudes: list[list[tuple[Decimal, Decimal]]] | None,
+) -> dict[str, Any]:
+    """Request coupling-order splitting only for order evaluation."""
+
+    return {} if order_amplitudes is None else {"order_amplitudes": order_amplitudes}
+
+
+def _order_pair(value: object) -> tuple[int, int]:
+    left, right = _sequence(value, "amplitude order pair")
+    return _signed_integer(left, "order pair"), _signed_integer(right, "order pair")
 
 
 def _signed_integer(value: object, context: str) -> int:

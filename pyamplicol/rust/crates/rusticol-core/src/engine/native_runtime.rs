@@ -2966,6 +2966,110 @@ impl NativeRuntime {
         Ok(())
     }
 
+    /// Amplitude and squared coupling-order axes of a recurrence artifact.
+    pub fn amplitude_order_catalog(&self) -> RusticolResult<&AmplitudeOrderCatalog> {
+        match &self.execution_lane {
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Recurrence(runtime) => Ok(runtime.amplitude_order_catalog()),
+            _ => Err(RusticolError::compatibility(
+                "squared coupling-order partials require a recurrence artifact",
+            )),
+        }
+    }
+
+    /// Amplitude and squared coupling-order axes as compact JSON.
+    ///
+    /// The `rusticol-amplitude-orders-v1` object lists the coupling-order
+    /// `names`, the amplitude `components` (powers per name) and the
+    /// `squared` orders with their ordered component `pairs`; partial output
+    /// columns follow `squared`.
+    pub fn amplitude_orders_json(&self) -> RusticolResult<String> {
+        let catalog = self.amplitude_order_catalog()?;
+        let squared = catalog
+            .squared_orders()
+            .iter()
+            .map(|order| serde_json::json!({"powers": order.powers(), "pairs": order.pairs()}))
+            .collect::<Vec<_>>();
+        Ok(serde_json::json!({
+            "kind": "rusticol-amplitude-orders-v1",
+            "names": catalog.names(),
+            "components": catalog.components(),
+            "squared": squared,
+        })
+        .to_string())
+    }
+
+    /// Evaluate totals and squared coupling-order partials in one pass.
+    ///
+    /// `partials` is point-major with one column per squared order of
+    /// [`Self::amplitude_order_catalog`]. Totals are bitwise those of
+    /// [`Self::evaluate_f64_into_with_selectors`] with the same global
+    /// selectors; partials sum to them up to rounding.
+    pub fn evaluate_orders_f64_into_with_selectors(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+        totals: &mut [f64],
+        partials: &mut [f64],
+    ) -> RusticolResult<()> {
+        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        if totals.len() != point_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "evaluation output has length {}, expected {point_count}",
+                totals.len()
+            )));
+        }
+        self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
+        let color_ids = self.execution_color_ids(color_ids);
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        {
+            let NativeExecutionLane::Recurrence(runtime) = &mut self.execution_lane else {
+                return Err(RusticolError::compatibility(
+                    "squared coupling-order partials require a recurrence artifact",
+                ));
+            };
+            let crossing_lookup = std::mem::take(&mut self.input_crossing_map);
+            let mut selector_scratch = std::mem::take(&mut self.point_selector_scratch);
+            let result = (|| {
+                let selected_helicities = selector_scratch
+                    .helicity_selector_sets
+                    .resolve(helicity_ids, "helicity")?;
+                let selected_colors = selector_scratch
+                    .color_selector_sets
+                    .resolve(color_ids.as_deref(), "color component")?;
+                let batch = F64MomentumBatchView::from_contiguous_prevalidated(
+                    momenta,
+                    point_count,
+                    self.runtime.external_count,
+                    crossing_lookup.as_deref(),
+                )?;
+                runtime.run_order_partials_f64_view_into(
+                    &mut self.runtime,
+                    batch,
+                    selected_helicities,
+                    selected_colors,
+                    totals,
+                    partials,
+                )
+            })();
+            self.input_crossing_map = crossing_lookup;
+            self.point_selector_scratch = selector_scratch;
+            result?;
+            self.apply_process_group_factor(totals);
+            self.apply_process_group_factor(partials);
+            Ok(())
+        }
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
+        {
+            let _ = (color_ids, partials);
+            Err(RusticolError::compatibility(
+                "squared coupling-order partials require a recurrence artifact",
+            ))
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn evaluate_representative_f64_into_with_selectors(
         &mut self,

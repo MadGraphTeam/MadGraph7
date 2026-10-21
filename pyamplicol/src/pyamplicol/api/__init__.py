@@ -61,6 +61,7 @@ if TYPE_CHECKING:
         ProcessPhysics,
         ReductionGroup,
         ResolvedEvaluation,
+        TreeOrderEvaluation,
         WarmUpResult,
     )
     from .services import (
@@ -76,10 +77,10 @@ if TYPE_CHECKING:
         LaurentCoefficients,
         ResolvedVirtualEvaluation,
         VirtualArithmeticSpec,
+        VirtualColorContraction,
         VirtualEvaluation,
         VirtualFailureDiagnostic,
         VirtualLaneDiagnostic,
-        VirtualColorContraction,
         VirtualStabilityPolicy,
         VirtualVerificationAttempt,
         VirtualVerificationDiagnostic,
@@ -137,11 +138,12 @@ __all__ = [
     "Runtime",
     "RuntimeBackend",
     "RuntimeLoader",
+    "TreeOrderEvaluation",
     "VirtualArithmeticSpec",
+    "VirtualColorContraction",
     "VirtualEvaluation",
     "VirtualFailureDiagnostic",
     "VirtualLaneDiagnostic",
-    "VirtualColorContraction",
     "VirtualStabilityPolicy",
     "VirtualVerificationAttempt",
     "VirtualVerificationDiagnostic",
@@ -208,6 +210,7 @@ _RESULT_EXPORTS = (
     "ProcessPhysics",
     "ReductionGroup",
     "ResolvedEvaluation",
+    "TreeOrderEvaluation",
     "WarmUpResult",
 )
 _SERVICE_EXPORTS = (

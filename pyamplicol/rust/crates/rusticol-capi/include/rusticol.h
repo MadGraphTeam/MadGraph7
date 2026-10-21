@@ -413,6 +413,42 @@ int rusticol_runtime_evaluate_resolved_f64(
     size_t *output_color_count
 );
 
+/*
+ * Squared coupling-order partials of recurrence artifacts. The JSON object
+ * ("rusticol-amplitude-orders-v1") lists the coupling-order "names", the
+ * amplitude "components" (powers per name) and the "squared" orders with
+ * their ordered component "pairs". Partials use [point][squared order] in that
+ * order, the canonical one of pyAmpliCol's Python API: nonzero (name, power)
+ * pairs over the sorted names, compared lexicographically (QCD2QED2, QCD4,
+ * QED4). Totals equal rusticol_runtime_evaluate_selected_f64 bitwise.
+ */
+int rusticol_runtime_coupling_orders_json(
+    const RusticolRuntimeHandle *handle,
+    char *buffer,
+    size_t capacity,
+    size_t *required
+);
+
+int rusticol_runtime_squared_order_count(
+    const RusticolRuntimeHandle *handle,
+    size_t *output
+);
+
+int rusticol_runtime_evaluate_orders_f64(
+    RusticolRuntimeHandle *handle,
+    const double *momenta,
+    size_t momentum_count,
+    size_t point_count,
+    const char *const *helicity_ids,
+    size_t helicity_count,
+    const char *const *color_ids,
+    size_t color_count,
+    double *totals,
+    size_t totals_capacity,
+    double *partials,
+    size_t partials_capacity
+);
+
 int rusticol_runtime_set_model_parameters(
     RusticolRuntimeHandle *handle,
     const char *const *names,

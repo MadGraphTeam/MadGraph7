@@ -252,6 +252,23 @@ public:
     }
 };
 
+// Totals and squared coupling-order partials; the order axis follows
+// Runtime::coupling_orders_json().
+class OrderedEvaluation {
+public:
+    std::vector<double> totals;
+    std::vector<double> partials;
+    std::size_t point_count{};
+    std::size_t order_count{};
+
+    double operator()(std::size_t point, std::size_t order) const {
+        if (point >= point_count || order >= order_count) {
+            throw std::out_of_range("ordered Rusticol result index is out of range");
+        }
+        return partials[point * order_count + order];
+    }
+};
+
 class Runtime {
 public:
     Runtime(const std::string &process_dir,
@@ -312,6 +329,9 @@ public:
     std::string execution_mode() const { return get_string(rusticol_runtime_execution_mode); }
     std::string metadata_json() const { return get_string(rusticol_runtime_metadata_json); }
     std::string physics_json() const { return get_string(rusticol_runtime_physics_json); }
+    std::string coupling_orders_json() const {
+        return get_string(rusticol_runtime_coupling_orders_json);
+    }
 
     std::vector<ExternalParticle> external_particles() const {
         std::size_t count = 0;
@@ -588,6 +608,37 @@ public:
             select_helicities(all_helicities, helicity_ids),
             select_colors(all_colors, color_ids),
         };
+    }
+
+    OrderedEvaluation evaluate_orders(
+        const std::vector<double> &momenta,
+        std::size_t point_count,
+        const std::vector<std::string> &helicity_ids = {},
+        const std::vector<std::string> &color_ids = {}) {
+        const auto helicity_ptrs = c_string_pointers(helicity_ids);
+        const auto color_ptrs = c_string_pointers(color_ids);
+        std::size_t order_count = 0;
+        check(rusticol_runtime_squared_order_count(handle_, &order_count));
+        OrderedEvaluation result{
+            std::vector<double>(point_count),
+            std::vector<double>(point_count * order_count),
+            point_count,
+            order_count,
+        };
+        check(rusticol_runtime_evaluate_orders_f64(
+            handle_,
+            momenta.data(),
+            momenta.size(),
+            point_count,
+            helicity_ptrs.empty() ? nullptr : helicity_ptrs.data(),
+            helicity_ptrs.size(),
+            color_ptrs.empty() ? nullptr : color_ptrs.data(),
+            color_ptrs.size(),
+            result.totals.data(),
+            result.totals.size(),
+            result.partials.data(),
+            result.partials.size()));
+        return result;
     }
 
     void set_model_parameter(const std::string &name, double real, double imaginary = 0.0) {

@@ -41,7 +41,8 @@ pub use color::{
     LCColorPortBinding, LCColorPortWiring, LCColorSourceSeed, LCColorSourceSeedOperation,
     LCColorTransitionWitness,
 };
-pub(crate) use color_contraction::RuntimeSymmetricGroupColorWorkspace;
+#[cfg(test)]
+pub(crate) use color_contraction::tests::klein_four_walsh_fixture as klein_four_walsh_color_contraction_fixture;
 pub use color_contraction::{
     CanonicalColorContractionEntries, CanonicalColorContractionEntry, FactorizedColorContraction,
     FactorizedColorContractionKind, RECURRENCE_COLOR_CONTRACTION_CODEC_ABI,
@@ -51,6 +52,9 @@ pub use color_contraction::{
     RuntimeFactorizedColorContractionEntry, RuntimeSymmetricGroupColorContraction,
     RuntimeSymmetricGroupKernel, decode_recurrence_color_contraction_v3,
     recurrence_color_contraction_digest,
+};
+pub(crate) use color_contraction::{
+    RuntimeSymmetricGroupColorWorkspace, RuntimeSymmetricGroupPairWorkspace,
 };
 pub use construct::RecurrenceBuildProgress;
 #[doc(hidden)]
@@ -88,15 +92,16 @@ pub(crate) use direct_plan::tests::{
 };
 pub use direct_plan::{
     DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE, DIRECT_NONE_U32,
-    DirectAmplitudeDestinationDescriptor, DirectClosureRow, DirectContributionRow,
-    DirectCurrentDescriptor, DirectDestinationOperation, DirectExecutorRole, DirectFinalizationRow,
-    DirectMomentumFormDescriptor, DirectMomentumTerm, DirectNodeKind, DirectRecurrencePlan,
-    DirectRecurrencePlanParts, DirectReplayTargetDescriptor, DirectResolvedHelicityDescriptor,
-    DirectResolvedSourceSelection, DirectRowGroupDescriptor, DirectSelectorDomainDescriptor,
-    DirectSelectorWorkSummary, DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow,
-    DirectSourceProjectionRow, DirectSourceRow, DirectSourceStateAssignment,
-    RECURRENCE_DIRECT_PLAN_ABI, RECURRENCE_DIRECT_RUNTIME_CAPABILITY,
-    RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI, RECURRENCE_DIRECT_TEMPLATE_ABI,
+    DirectAmplitudeDestinationDescriptor, DirectAmplitudeOrders, DirectClosureRow,
+    DirectContributionRow, DirectCurrentDescriptor, DirectDestinationOperation, DirectExecutorRole,
+    DirectFinalizationRow, DirectMomentumFormDescriptor, DirectMomentumTerm, DirectNodeKind,
+    DirectRecurrencePlan, DirectRecurrencePlanParts, DirectReplayTargetDescriptor,
+    DirectResolvedHelicityDescriptor, DirectResolvedSourceSelection, DirectRowGroupDescriptor,
+    DirectSelectorDomainDescriptor, DirectSelectorWorkSummary,
+    DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow, DirectSourceProjectionRow,
+    DirectSourceRow, DirectSourceStateAssignment, RECURRENCE_DIRECT_PLAN_ABI,
+    RECURRENCE_DIRECT_RUNTIME_CAPABILITY, RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI,
+    RECURRENCE_DIRECT_TEMPLATE_ABI,
 };
 pub use exact::{ExactComplexRational, ExactRational};
 pub use helicity_support::{

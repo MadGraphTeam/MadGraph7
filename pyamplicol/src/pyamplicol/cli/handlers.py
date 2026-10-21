@@ -498,6 +498,18 @@ class DefaultCliServices:
                 helicities=evaluation.helicity_ids or None,
                 arithmetic=evaluation.arithmetic,
             )
+        if evaluation.orders:
+            if virtual or requests is not None:
+                raise ConfigurationError(
+                    "--orders applies to tree evaluation; virtual results already "
+                    "carry their squared-order axes"
+                )
+            return runtime.evaluate_orders(
+                cast("Momenta", momenta),
+                precision=evaluation.precision,
+                helicities=evaluation.helicity_ids or None,
+                color_flows=evaluation.color_flow_ids or None,
+            )
         operation = (
             runtime.evaluate_resolved if evaluation.resolved else runtime.evaluate
         )

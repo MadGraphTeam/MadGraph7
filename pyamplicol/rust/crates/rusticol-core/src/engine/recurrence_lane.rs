@@ -5,14 +5,16 @@
 use super::recurrence_backend::{
     NativeOnTheFlyPreparedExecutorResolver, NativeRecurrenceDirectExecutorOwners,
 };
+use super::recurrence_orders::{AmplitudeOrderCatalog, RecurrenceOrderState, order_component};
 use super::*;
 use crate::direct_arena::DirectArenaTrafficCounters;
 use crate::recurrence::direct_backend::{
     DirectExecutionCounters, DirectExecutionRoleTimings, DirectExecutorCatalog,
 };
 use crate::recurrence::direct_runtime::{
-    DirectRecurrenceExecutionRuntime, DirectRecurrenceTileOutput, DirectReplaySelectorPlan,
-    DirectRuntimeActivityCounters, DirectRuntimePhaseTimings, DirectUnionHelicitySelectorPlan,
+    DirectAmplitudeOrderSplit, DirectRecurrenceExecutionRuntime, DirectRecurrenceTileOutput,
+    DirectReplaySelectorPlan, DirectRuntimeActivityCounters, DirectRuntimePhaseTimings,
+    DirectUnionHelicitySelectorPlan,
 };
 use crate::recurrence::on_the_fly::{
     PersistedHelicityAmplitudeTileV1, PersistedHelicityFamilyCacheCensusV1,
@@ -60,6 +62,8 @@ pub(super) struct RecurrenceNativeRuntime {
         BTreeMap<BTreeSet<String>, BTreeMap<usize, Arc<DirectReplaySelectorPlan>>>,
     selected_replay_programs: BTreeMap<(u32, Vec<u32>), Arc<DirectReplaySelectorPlan>>,
     helicity_selector_companion: Option<RecurrencePersistedHelicitySelectorRuntime>,
+    order_catalog: AmplitudeOrderCatalog,
+    order_state: Option<RecurrenceOrderState>,
 }
 
 pub(super) struct RecurrencePersistedHelicitySelectorRuntime {
@@ -703,6 +707,7 @@ impl RecurrenceNativeRuntime {
         }
         let backend_name = backend_owner.summary().backend.clone();
         let strategy = plan.strategy();
+        let order_catalog = AmplitudeOrderCatalog::from_plan(plan.amplitude_orders())?;
         let has_color_contraction = color_contraction.is_some();
         if public_flow_ids.is_empty() && strategy != RecurrenceStrategy::ContractedColorUnion {
             return Err(RusticolError::integrity(
@@ -909,7 +914,161 @@ impl RecurrenceNativeRuntime {
             selected_replay_cache: BTreeMap::new(),
             selected_replay_programs: BTreeMap::new(),
             helicity_selector_companion,
+            order_catalog,
+            order_state: None,
         })
+    }
+
+    pub(super) fn amplitude_order_catalog(&self) -> &AmplitudeOrderCatalog {
+        &self.order_catalog
+    }
+
+    /// Totals and squared coupling-order partials from one recurrence pass.
+    ///
+    /// `partials` is point-major with one column per squared order of
+    /// [`Self::amplitude_order_catalog`]. Totals are bitwise those of
+    /// [`Self::run_f64_view_into_unprofiled`]: a single amplitude component
+    /// delegates to it, and otherwise its tile paths run unchanged while the
+    /// mixed-order closures are replayed into separate order slots.
+    pub(super) fn run_order_partials_f64_view_into(
+        &mut self,
+        common: &mut ExecutionRuntime,
+        batch: F64MomentumBatchView<'_>,
+        selected_helicities: Option<&BTreeSet<String>>,
+        selected_colors: Option<&BTreeSet<String>>,
+        totals: &mut [f64],
+        partials: &mut [f64],
+    ) -> RusticolResult<()> {
+        let squared_count = self.order_catalog.squared_orders().len();
+        if totals.len() != batch.point_count()
+            || Some(partials.len()) != batch.point_count().checked_mul(squared_count)
+        {
+            return Err(RusticolError::invalid_argument(format!(
+                "recurrence order output has lengths {} and {}, expected {} totals with {squared_count} squared orders each",
+                totals.len(),
+                partials.len(),
+                batch.point_count(),
+            )));
+        }
+        if self.order_catalog.is_single() {
+            self.run_f64_view_into_unprofiled(
+                common,
+                batch,
+                selected_helicities,
+                selected_colors,
+                totals,
+            )?;
+            partials.copy_from_slice(totals);
+            return Ok(());
+        }
+        if batch.external_count() != self.external_source_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "recurrence input has {} external momenta, expected {}",
+                batch.external_count(),
+                self.external_source_count
+            )));
+        }
+        let physics = common.physics.as_ref().ok_or_else(|| {
+            RusticolError::artifact("recurrence execution requires physics metadata")
+        })?;
+        self.validate_global_selectors(physics, selected_helicities, selected_colors)?;
+        totals.fill(0.0);
+        partials.fill(0.0);
+        if selected_helicities.is_some_and(BTreeSet::is_empty) {
+            return Ok(());
+        }
+        let companion =
+            self.companion_singleton_selection(physics, selected_helicities, selected_colors)?;
+        if companion == Some(CompanionSingletonSelection::StructuralZero) {
+            return Ok(());
+        }
+        self.prepare_parameters(common)?;
+        self.ensure_order_state()?;
+        let physics = common.physics.as_ref().ok_or_else(|| {
+            RusticolError::artifact("recurrence execution requires physics metadata")
+        })?;
+        match &self.selectors {
+            RecurrenceNativeSelectors::TopologyReplay { .. } => self
+                .run_replay_view_into_unprofiled(
+                    physics.lc_selector_reduction_view(),
+                    common.normalization_factor,
+                    batch,
+                    selected_helicities,
+                    selected_colors,
+                    totals,
+                    Some(partials),
+                ),
+            RecurrenceNativeSelectors::AllFlowUnion { .. } => self.run_union_view_into_unprofiled(
+                physics,
+                common.normalization_factor,
+                batch,
+                selected_helicities,
+                selected_colors,
+                totals,
+                Some(partials),
+            ),
+            RecurrenceNativeSelectors::ContractedColorUnion { .. } => self
+                .run_contracted_view_into_unprofiled(
+                    physics,
+                    common.normalization_factor,
+                    batch,
+                    selected_helicities,
+                    selected_colors,
+                    totals,
+                    Some(partials),
+                ),
+        }?;
+        if companion.is_some() {
+            // The persisted single-helicity companion owns the totals path.
+            self.run_f64_view_into_unprofiled(
+                common,
+                batch,
+                selected_helicities,
+                selected_colors,
+                totals,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn ensure_order_state(&mut self) -> RusticolResult<()> {
+        if self.order_state.is_some() {
+            return Ok(());
+        }
+        let point_stride = self.scheduler.point_tile_size() as usize;
+        let mut state =
+            RecurrenceOrderState::new(DirectAmplitudeOrderSplit::new(self.scheduler.plan())?);
+        if let RecurrenceNativeSelectors::ContractedColorUnion { contraction, .. } = &self.selectors
+        {
+            let parts = self.order_catalog.components().len();
+            let plane_len = (contraction.destination_count() as usize)
+                .checked_mul(point_stride)
+                .and_then(|value| value.checked_mul(parts))
+                .ok_or_else(|| {
+                    RusticolError::artifact("order-resolved colour workspace overflows usize")
+                })?;
+            let transform_len = (contraction.local_group_count() as usize)
+                .checked_mul(point_stride)
+                .and_then(|value| value.checked_mul(parts))
+                .ok_or_else(|| {
+                    RusticolError::artifact("order-resolved colour workspace overflows usize")
+                })?;
+            state.components_re = vec![0.0; plane_len];
+            state.components_im = vec![0.0; plane_len];
+            state.transform_re = vec![0.0; transform_len];
+            state.transform_im = vec![0.0; transform_len];
+            if let Some(RuntimeColorContractionReducer::SymmetricGroupFourier(reducer)) =
+                contraction.runtime_reducer()
+            {
+                state.symmetric_pairs = Some(reducer.pair_workspace(
+                    parts,
+                    self.order_catalog.squared_orders().len(),
+                    point_stride,
+                )?);
+            }
+        }
+        self.order_state = Some(state);
+        Ok(())
     }
 
     pub(super) fn backend_name(&self) -> &str {
@@ -1324,6 +1483,7 @@ impl RecurrenceNativeRuntime {
                     selected_helicities,
                     selected_colors,
                     output,
+                    None,
                 ),
             RecurrenceNativeSelectors::AllFlowUnion { .. } => self.run_union_view_into_unprofiled(
                 physics,
@@ -1332,6 +1492,7 @@ impl RecurrenceNativeRuntime {
                 selected_helicities,
                 selected_colors,
                 output,
+                None,
             ),
             RecurrenceNativeSelectors::ContractedColorUnion { .. } => self
                 .run_contracted_view_into_unprofiled(
@@ -1341,10 +1502,14 @@ impl RecurrenceNativeRuntime {
                     selected_helicities,
                     selected_colors,
                     output,
+                    None,
                 ),
         }
     }
 
+    // The optional partials hook keeps one authenticated selector/reduction
+    // path for totals and squared-order partials.
+    #[allow(clippy::too_many_arguments)]
     fn run_replay_view_into_unprofiled(
         &mut self,
         reduction: LcSelectorReductionView<'_>,
@@ -1353,6 +1518,7 @@ impl RecurrenceNativeRuntime {
         selected_helicities: Option<&BTreeSet<String>>,
         selected_colors: Option<&BTreeSet<String>>,
         output: &mut [f64],
+        mut partials: Option<&mut [f64]>,
     ) -> RusticolResult<()> {
         let Some(selected_colors) = selected_colors else {
             return visit_replay_color_indices(
@@ -1365,6 +1531,7 @@ impl RecurrenceNativeRuntime {
                         batch,
                         selected_helicities,
                         output,
+                        partials.as_deref_mut(),
                         color_index,
                     )
                 },
@@ -1384,6 +1551,7 @@ impl RecurrenceNativeRuntime {
                         batch,
                         selected_helicities,
                         output,
+                        partials.as_deref_mut(),
                         color_index,
                     )
                 },
@@ -1472,6 +1640,7 @@ impl RecurrenceNativeRuntime {
         batch: F64MomentumBatchView<'_>,
         selected_helicities: Option<&BTreeSet<String>>,
         output: &mut [f64],
+        mut partials: Option<&mut [f64]>,
         color_index: usize,
     ) -> RusticolResult<()> {
         if !reduction.color_is_computed(color_index) {
@@ -1511,6 +1680,13 @@ impl RecurrenceNativeRuntime {
                     direct_point_count(point_count)?,
                     &self.external_momenta[..input_len],
                 )?;
+            let mut order_weights = partials
+                .is_some()
+                .then(|| self.order_state.as_mut().map(|state| &mut state.lc_weights))
+                .flatten();
+            if let Some(weights) = order_weights.as_deref_mut() {
+                weights.clear();
+            }
 
             for amplitude in direct_output.selected_amplitudes() {
                 let amplitude = amplitude?;
@@ -1535,12 +1711,27 @@ impl RecurrenceNativeRuntime {
                     |point| (amplitude.real[point], amplitude.imaginary[point]),
                     |point, value| output[tile_start + point] += value,
                 );
+                if let Some(weights) = order_weights.as_deref_mut() {
+                    weights.push((amplitude.destination.id, weight));
+                }
+            }
+            if let Some(partials) = partials.as_deref_mut() {
+                let squared_count = self.order_catalog.squared_orders().len();
+                accumulate_lc_order_partials(
+                    &mut self.scheduler,
+                    self.order_state.as_mut(),
+                    &self.order_catalog,
+                    Some(replay_selector),
+                    point_count,
+                    &mut partials[tile_start * squared_count..tile_stop * squared_count],
+                )?;
             }
             tile_start = tile_stop;
         }
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn run_union_view_into_unprofiled(
         &mut self,
         physics: &PhysicsRuntime,
@@ -1549,6 +1740,7 @@ impl RecurrenceNativeRuntime {
         selected_helicities: Option<&BTreeSet<String>>,
         selected_colors: Option<&BTreeSet<String>>,
         output: &mut [f64],
+        mut partials: Option<&mut [f64]>,
     ) -> RusticolResult<()> {
         for helicity_index in 0..physics.manifest.helicities.len() {
             if !recurrence_helicity_is_selected(physics, selected_helicities, helicity_index) {
@@ -1581,6 +1773,13 @@ impl RecurrenceNativeRuntime {
                         direct_point_count(point_count)?,
                         &self.external_momenta[..input_len],
                     )?;
+                let mut order_weights = partials
+                    .is_some()
+                    .then(|| self.order_state.as_mut().map(|state| &mut state.lc_weights))
+                    .flatten();
+                if let Some(weights) = order_weights.as_deref_mut() {
+                    weights.clear();
+                }
 
                 for color_index in 0..physics.manifest.color_components.len() {
                     if !physics.color_is_computed(color_index)
@@ -1617,6 +1816,20 @@ impl RecurrenceNativeRuntime {
                             * values_re[point]
                                 .mul_add(values_re[point], values_im[point] * values_im[point]);
                     }
+                    if let Some(weights) = order_weights.as_deref_mut() {
+                        weights.push((destination_id, weight));
+                    }
+                }
+                if let Some(partials) = partials.as_deref_mut() {
+                    let squared_count = self.order_catalog.squared_orders().len();
+                    accumulate_lc_order_partials(
+                        &mut self.scheduler,
+                        self.order_state.as_mut(),
+                        &self.order_catalog,
+                        None,
+                        point_count,
+                        &mut partials[tile_start * squared_count..tile_stop * squared_count],
+                    )?;
                 }
                 tile_start = tile_stop;
             }
@@ -1624,6 +1837,7 @@ impl RecurrenceNativeRuntime {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn run_contracted_view_into_unprofiled(
         &mut self,
         physics: &PhysicsRuntime,
@@ -1632,6 +1846,7 @@ impl RecurrenceNativeRuntime {
         selected_helicities: Option<&BTreeSet<String>>,
         selected_colors: Option<&BTreeSet<String>>,
         output: &mut [f64],
+        mut partials: Option<&mut [f64]>,
     ) -> RusticolResult<()> {
         reject_contracted_color_selector(selected_colors)?;
         let mut tile_start = 0usize;
@@ -1641,6 +1856,7 @@ impl RecurrenceNativeRuntime {
             let point_count =
                 self.flatten_external_tile_view::<true>(batch.subview(tile_start, tile_stop)?)?;
             let input_len = self.external_tile_input_len(point_count)?;
+            let squared_count = self.order_catalog.squared_orders().len();
             self.execute_and_contract_contracted_tile(
                 point_count,
                 input_len,
@@ -1648,6 +1864,9 @@ impl RecurrenceNativeRuntime {
                 selected_helicities,
                 normalization_factor,
                 false,
+                partials.as_deref_mut().map(|partials| {
+                    &mut partials[tile_start * squared_count..tile_stop * squared_count]
+                }),
                 |point, _helicity, value| output[tile_start + point] += value,
             )?;
             tile_start = tile_stop;
@@ -2024,6 +2243,7 @@ impl RecurrenceNativeRuntime {
                 selected_helicities,
                 common.normalization_factor,
                 true,
+                None,
                 |point, _helicity, value| values[tile_start + point] += value,
             )?;
             tile_start = tile_stop;
@@ -2137,6 +2357,7 @@ impl RecurrenceNativeRuntime {
                 selected_helicities,
                 common.normalization_factor,
                 true,
+                None,
                 |point, helicity, value| {
                     let position = helicity_position[helicity]
                         .expect("selected contracted helicity has a result position");
@@ -2552,6 +2773,7 @@ impl RecurrenceNativeRuntime {
         selected_helicities: Option<&BTreeSet<String>>,
         normalization_factor: f64,
         profiled: bool,
+        partials: Option<&mut [f64]>,
         accumulate: impl FnMut(usize, usize, f64),
     ) -> RusticolResult<Duration> {
         {
@@ -2594,6 +2816,8 @@ impl RecurrenceNativeRuntime {
             color_transform_re,
             color_transform_im,
             symmetric_group_color_workspace,
+            order_catalog,
+            order_state,
             ..
         } = self
         else {
@@ -2603,6 +2827,15 @@ impl RecurrenceNativeRuntime {
         };
         let input = &external_momenta[..input_len];
         let point_count_u32 = direct_point_count(point_count)?;
+        let mut orders = match partials {
+            Some(partials) => Some((
+                partials,
+                order_state.as_mut().ok_or_else(|| {
+                    RusticolError::integrity("order-resolved recurrence state is absent")
+                })?,
+            )),
+            None => None,
+        };
 
         if replay_routes.is_empty() {
             let direct_output = if profiled {
@@ -2625,6 +2858,31 @@ impl RecurrenceNativeRuntime {
                 symmetric_group_color_workspace.as_mut(),
                 accumulate,
             )?;
+            if let Some((partials, state)) = orders.as_mut() {
+                state.ensure_slot_capacity(scheduler.point_stride() as usize)?;
+                scheduler.execute_amplitude_order_split(
+                    &state.split,
+                    None,
+                    point_count_u32,
+                    &mut state.slots_re,
+                    &mut state.slots_im,
+                    &mut state.rows,
+                )?;
+                let identity = (0..contraction.destination_count()).map(|id| (id, id));
+                copy_order_components(state, scheduler, identity, contraction, point_count)?;
+                contract_color_tile_orders(
+                    state,
+                    order_catalog,
+                    contraction,
+                    destination_physics_helicity,
+                    physics,
+                    selected_helicities,
+                    normalization_factor,
+                    point_count,
+                    scheduler.point_tile_size() as usize,
+                    partials,
+                )?;
+            }
             return Ok(reduction_started.map_or(Duration::ZERO, |started| started.elapsed()));
         }
 
@@ -2680,6 +2938,24 @@ impl RecurrenceNativeRuntime {
             if let Some(started) = replay_output_copy_started {
                 replay_output_copy += started.elapsed();
             }
+            if let Some((_, state)) = orders.as_mut() {
+                state.ensure_slot_capacity(scheduler.point_stride() as usize)?;
+                scheduler.execute_amplitude_order_split(
+                    &state.split,
+                    Some(&route.selector),
+                    point_count_u32,
+                    &mut state.slots_re,
+                    &mut state.slots_im,
+                    &mut state.rows,
+                )?;
+                copy_order_components(
+                    state,
+                    scheduler,
+                    route.destination_copies.iter().copied(),
+                    contraction,
+                    point_count,
+                )?;
+            }
         }
         let tile = ContractedReplayTile {
             values_re: contracted_replay_re,
@@ -2701,6 +2977,20 @@ impl RecurrenceNativeRuntime {
             symmetric_group_color_workspace.as_mut(),
             accumulate,
         )?;
+        if let Some((partials, state)) = orders {
+            contract_color_tile_orders(
+                state,
+                order_catalog,
+                contraction,
+                destination_physics_helicity,
+                physics,
+                selected_helicities,
+                normalization_factor,
+                point_count,
+                point_stride,
+                partials,
+            )?;
+        }
         Ok(replay_output_copy
             + reduction_started.map_or(Duration::ZERO, |started| started.elapsed()))
     }
@@ -3820,77 +4110,7 @@ fn contract_factorized_color_tile<T: ContractedAmplitudeTile>(
             transform_im[start..start + point_count].copy_from_slice(source_im);
         }
 
-        if factorization.subgroup_order() == 4 {
-            let amplitude_scale = factorization.amplitude_scale();
-            for coset in factorization.cosets() {
-                let [g0, g1, g2, g3] = <[u32; 4]>::try_from(coset.as_slice()).map_err(|_| {
-                    RusticolError::integrity(
-                        "rank-two recurrence color factorization has a malformed coset",
-                    )
-                })?;
-                let starts = [
-                    g0 as usize * point_count,
-                    g1 as usize * point_count,
-                    g2 as usize * point_count,
-                    g3 as usize * point_count,
-                ];
-                for point in 0..point_count {
-                    let re0 = transform_re[starts[0] + point];
-                    let re1 = transform_re[starts[1] + point];
-                    let re2 = transform_re[starts[2] + point];
-                    let re3 = transform_re[starts[3] + point];
-                    let im0 = transform_im[starts[0] + point];
-                    let im1 = transform_im[starts[1] + point];
-                    let im2 = transform_im[starts[2] + point];
-                    let im3 = transform_im[starts[3] + point];
-                    let re01 = re0 + re1;
-                    let re23 = re2 + re3;
-                    let re01_difference = re0 - re1;
-                    let re23_difference = re2 - re3;
-                    let im01 = im0 + im1;
-                    let im23 = im2 + im3;
-                    let im01_difference = im0 - im1;
-                    let im23_difference = im2 - im3;
-                    transform_re[starts[0] + point] = (re01 + re23) * amplitude_scale;
-                    transform_re[starts[1] + point] =
-                        (re01_difference + re23_difference) * amplitude_scale;
-                    transform_re[starts[2] + point] = (re01 - re23) * amplitude_scale;
-                    transform_re[starts[3] + point] =
-                        (re01_difference - re23_difference) * amplitude_scale;
-                    transform_im[starts[0] + point] = (im01 + im23) * amplitude_scale;
-                    transform_im[starts[1] + point] =
-                        (im01_difference + im23_difference) * amplitude_scale;
-                    transform_im[starts[2] + point] = (im01 - im23) * amplitude_scale;
-                    transform_im[starts[3] + point] =
-                        (im01_difference - im23_difference) * amplitude_scale;
-                }
-            }
-        } else {
-            for coset in factorization.cosets() {
-                let mut stride = 1usize;
-                while stride < factorization.subgroup_order() {
-                    for start in (0..factorization.subgroup_order()).step_by(stride * 2) {
-                        for offset in 0..stride {
-                            let left_group = coset[start + offset] as usize;
-                            let right_group = coset[start + stride + offset] as usize;
-                            let left_start = left_group * point_count;
-                            let right_start = right_group * point_count;
-                            for point in 0..point_count {
-                                let left_re = transform_re[left_start + point];
-                                let right_re = transform_re[right_start + point];
-                                let left_im = transform_im[left_start + point];
-                                let right_im = transform_im[right_start + point];
-                                transform_re[left_start + point] = left_re + right_re;
-                                transform_re[right_start + point] = left_re - right_re;
-                                transform_im[left_start + point] = left_im + right_im;
-                                transform_im[right_start + point] = left_im - right_im;
-                            }
-                        }
-                    }
-                    stride *= 2;
-                }
-            }
-        }
+        walsh_transform_in_place(factorization, transform_re, transform_im, point_count)?;
 
         for entry in factorization.entries() {
             let left_start = entry.left_group_index as usize * point_count;
@@ -3918,6 +4138,423 @@ fn contract_factorized_color_tile<T: ContractedAmplitudeTile>(
                     let scale = physics.manifest.helicities[*physical_helicity].coefficient
                         * normalization_factor;
                     accumulate(point, *physical_helicity, scale * contracted);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Apply the factorized colour basis' Walsh transform to local-group planes.
+fn walsh_transform_in_place(
+    factorization: &crate::recurrence::RuntimeFactorizedColorContraction,
+    transform_re: &mut [f64],
+    transform_im: &mut [f64],
+    point_count: usize,
+) -> RusticolResult<()> {
+    if factorization.subgroup_order() == 4 {
+        let amplitude_scale = factorization.amplitude_scale();
+        for coset in factorization.cosets() {
+            let [g0, g1, g2, g3] = <[u32; 4]>::try_from(coset.as_slice()).map_err(|_| {
+                RusticolError::integrity(
+                    "rank-two recurrence color factorization has a malformed coset",
+                )
+            })?;
+            let starts = [
+                g0 as usize * point_count,
+                g1 as usize * point_count,
+                g2 as usize * point_count,
+                g3 as usize * point_count,
+            ];
+            for point in 0..point_count {
+                let re0 = transform_re[starts[0] + point];
+                let re1 = transform_re[starts[1] + point];
+                let re2 = transform_re[starts[2] + point];
+                let re3 = transform_re[starts[3] + point];
+                let im0 = transform_im[starts[0] + point];
+                let im1 = transform_im[starts[1] + point];
+                let im2 = transform_im[starts[2] + point];
+                let im3 = transform_im[starts[3] + point];
+                let re01 = re0 + re1;
+                let re23 = re2 + re3;
+                let re01_difference = re0 - re1;
+                let re23_difference = re2 - re3;
+                let im01 = im0 + im1;
+                let im23 = im2 + im3;
+                let im01_difference = im0 - im1;
+                let im23_difference = im2 - im3;
+                transform_re[starts[0] + point] = (re01 + re23) * amplitude_scale;
+                transform_re[starts[1] + point] =
+                    (re01_difference + re23_difference) * amplitude_scale;
+                transform_re[starts[2] + point] = (re01 - re23) * amplitude_scale;
+                transform_re[starts[3] + point] =
+                    (re01_difference - re23_difference) * amplitude_scale;
+                transform_im[starts[0] + point] = (im01 + im23) * amplitude_scale;
+                transform_im[starts[1] + point] =
+                    (im01_difference + im23_difference) * amplitude_scale;
+                transform_im[starts[2] + point] = (im01 - im23) * amplitude_scale;
+                transform_im[starts[3] + point] =
+                    (im01_difference - im23_difference) * amplitude_scale;
+            }
+        }
+    } else {
+        for coset in factorization.cosets() {
+            let mut stride = 1usize;
+            while stride < factorization.subgroup_order() {
+                for start in (0..factorization.subgroup_order()).step_by(stride * 2) {
+                    for offset in 0..stride {
+                        let left_group = coset[start + offset] as usize;
+                        let right_group = coset[start + stride + offset] as usize;
+                        let left_start = left_group * point_count;
+                        let right_start = right_group * point_count;
+                        for point in 0..point_count {
+                            let left_re = transform_re[left_start + point];
+                            let right_re = transform_re[right_start + point];
+                            let left_im = transform_im[left_start + point];
+                            let right_im = transform_im[right_start + point];
+                            transform_re[left_start + point] = left_re + right_re;
+                            transform_re[right_start + point] = left_re - right_re;
+                            transform_im[left_start + point] = left_im + right_im;
+                            transform_im[right_start + point] = left_im - right_im;
+                        }
+                    }
+                }
+                stride *= 2;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Replay the latest tile's mixed-order closures and accumulate the LC
+/// squared-order partials of the destinations recorded with their weights.
+fn accumulate_lc_order_partials(
+    scheduler: &mut DirectRecurrenceExecutionRuntime,
+    state: Option<&mut RecurrenceOrderState>,
+    catalog: &AmplitudeOrderCatalog,
+    selector: Option<&DirectReplaySelectorPlan>,
+    point_count: usize,
+    partials: &mut [f64],
+) -> RusticolResult<()> {
+    let state = state
+        .ok_or_else(|| RusticolError::integrity("order-resolved recurrence state is absent"))?;
+    state.ensure_slot_capacity(scheduler.point_stride() as usize)?;
+    scheduler.execute_amplitude_order_split(
+        &state.split,
+        selector,
+        direct_point_count(point_count)?,
+        &mut state.slots_re,
+        &mut state.slots_im,
+        &mut state.rows,
+    )?;
+    let output = scheduler
+        .outputs()
+        .ok_or_else(|| RusticolError::integrity("order-resolved recurrence tile is absent"))?;
+    let point_stride = output.point_stride() as usize;
+    for &(destination_id, weight) in &state.lc_weights {
+        state.accumulate_lc_destination(
+            catalog,
+            output.storage_re(),
+            output.storage_im(),
+            destination_id,
+            weight,
+            point_stride,
+            point_count,
+            partials,
+        )?;
+    }
+    Ok(())
+}
+
+/// Copy every amplitude component of the latest tile's `(source, physical)`
+/// destinations into the dense contracted component planes, whose point
+/// pitch is the scheduler's tile size whatever the tile's active layout.
+fn copy_order_components(
+    state: &mut RecurrenceOrderState,
+    scheduler: &DirectRecurrenceExecutionRuntime,
+    copies: impl Iterator<Item = (u32, u32)>,
+    contraction: &RecurrenceColorContraction,
+    point_count: usize,
+) -> RusticolResult<()> {
+    let output = scheduler
+        .outputs()
+        .ok_or_else(|| RusticolError::integrity("order-resolved recurrence tile is absent"))?;
+    let point_stride = output.point_stride() as usize;
+    let plane_stride = scheduler.point_tile_size() as usize;
+    let component_stride = contraction.destination_count() as usize * plane_stride;
+    let RecurrenceOrderState {
+        split,
+        slots_re,
+        slots_im,
+        components_re,
+        components_im,
+        ..
+    } = state;
+    for (source, physical) in copies {
+        for component in 0..split.component_count() {
+            let start = component as usize * component_stride + physical as usize * plane_stride;
+            let (target_re, target_im) = (
+                components_re
+                    .get_mut(start..start + point_count)
+                    .ok_or_else(|| RusticolError::integrity("order component plane is absent"))?,
+                components_im
+                    .get_mut(start..start + point_count)
+                    .ok_or_else(|| RusticolError::integrity("order component plane is absent"))?,
+            );
+            match order_component(
+                split,
+                (slots_re, slots_im),
+                (output.storage_re(), output.storage_im()),
+                source,
+                component,
+                point_stride,
+                point_count,
+            )? {
+                Some((real, imaginary)) => {
+                    target_re.copy_from_slice(real);
+                    target_im.copy_from_slice(imaginary);
+                }
+                None => {
+                    target_re.fill(0.0);
+                    target_im.fill(0.0);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Helicity weight of one contracted colour component, or `None` when the
+/// total path skips it.
+fn contracted_helicity_scale(
+    physics: &PhysicsRuntime,
+    selected_helicities: Option<&BTreeSet<String>>,
+    helicity_index: usize,
+    normalization_factor: f64,
+) -> RusticolResult<Option<f64>> {
+    let helicity = physics
+        .manifest
+        .helicities
+        .get(helicity_index)
+        .ok_or_else(|| {
+            RusticolError::integrity("contracted color entry references an absent public helicity")
+        })?;
+    if !helicity.computed
+        || helicity.structural_zero
+        || helicity.coefficient == 0.0
+        || recurrence_helicity_orbit_weight(physics, selected_helicities, helicity_index) == 0.0
+    {
+        return Ok(None);
+    }
+    Ok(Some(
+        physics
+            .helicity_orbit_members(helicity_index)
+            .iter()
+            .filter(|member| {
+                recurrence_helicity_is_selected(physics, selected_helicities, **member)
+            })
+            .map(|member| physics.manifest.helicities[*member].coefficient * normalization_factor)
+            .sum(),
+    ))
+}
+
+/// Squared coupling-order partials of one contracted tile from its dense
+/// component planes, using each colour reducer's real-bilinear form on the
+/// ordered amplitude-component pairs of every squared order.
+#[allow(clippy::too_many_arguments)]
+fn contract_color_tile_orders(
+    state: &mut RecurrenceOrderState,
+    catalog: &AmplitudeOrderCatalog,
+    contraction: &RecurrenceColorContraction,
+    destination_physics_helicity: &[usize],
+    physics: &PhysicsRuntime,
+    selected_helicities: Option<&BTreeSet<String>>,
+    normalization_factor: f64,
+    point_count: usize,
+    point_stride: usize,
+    partials: &mut [f64],
+) -> RusticolResult<()> {
+    let squared = catalog.squared_orders();
+    let squared_count = squared.len();
+    let destination_count = contraction.destination_count() as usize;
+    let component_stride = destination_count * point_stride;
+    let RecurrenceOrderState {
+        components_re,
+        components_im,
+        transform_re,
+        transform_im,
+        symmetric_pairs,
+        ..
+    } = state;
+    let parts = (0..catalog.components().len())
+        .map(|part| ContractedReplayTile {
+            values_re: &components_re[part * component_stride..(part + 1) * component_stride],
+            values_im: &components_im[part * component_stride..(part + 1) * component_stride],
+            point_count,
+            point_stride,
+            destination_count,
+        })
+        .collect::<Vec<_>>();
+    let plane = |part: u32, destination_id: u32| {
+        let tile = &parts[part as usize];
+        tile.destination_re(destination_id)
+            .zip(tile.destination_im(destination_id))
+            .ok_or_else(|| RusticolError::integrity("order component destination is absent"))
+    };
+    let helicity_of = |destination_id: u32| {
+        destination_physics_helicity
+            .get(destination_id as usize)
+            .copied()
+            .ok_or_else(|| {
+                RusticolError::integrity("contracted destination has no public helicity mapping")
+            })
+    };
+    match contraction.runtime_reducer() {
+        None => {
+            for entry in contraction.runtime_entries() {
+                let helicity_index = helicity_of(entry.left_destination_id)?;
+                if helicity_of(entry.right_destination_id)? != helicity_index {
+                    return Err(RusticolError::integrity(
+                        "contracted color entry mixes public helicities",
+                    ));
+                }
+                let Some(scale) = contracted_helicity_scale(
+                    physics,
+                    selected_helicities,
+                    helicity_index,
+                    normalization_factor,
+                )?
+                else {
+                    continue;
+                };
+                for (squared_index, order) in squared.iter().enumerate() {
+                    for &(left, right) in order.pairs() {
+                        let (left_re, left_im) = plane(left, entry.left_destination_id)?;
+                        let (right_re, right_im) = plane(right, entry.right_destination_id)?;
+                        for point in 0..point_count {
+                            partials[point * squared_count + squared_index] += scale
+                                * entry.contract_real_bilinear(
+                                    left_re[point],
+                                    left_im[point],
+                                    right_re[point],
+                                    right_im[point],
+                                );
+                        }
+                    }
+                }
+            }
+        }
+        Some(RuntimeColorContractionReducer::Walsh(factorization)) => {
+            let local_group_count = contraction.local_group_count() as usize;
+            let part_stride = local_group_count * point_count;
+            for component_index in 0..contraction.component_count() as usize {
+                let representative = contraction
+                    .ordered_destination_id(0, component_index)
+                    .ok_or_else(|| {
+                        RusticolError::integrity(
+                            "factorized recurrence component has no amplitude destination",
+                        )
+                    })?;
+                let Some(scale) = contracted_helicity_scale(
+                    physics,
+                    selected_helicities,
+                    helicity_of(representative)?,
+                    normalization_factor,
+                )?
+                else {
+                    continue;
+                };
+                for part in 0..parts.len() {
+                    let region = part * part_stride..(part + 1) * part_stride;
+                    let (region_re, region_im) =
+                        (&mut transform_re[region.clone()], &mut transform_im[region]);
+                    for local_group in 0..local_group_count {
+                        let destination_id = contraction
+                            .ordered_destination_id(local_group, component_index)
+                            .ok_or_else(|| {
+                                RusticolError::integrity(
+                                    "factorized recurrence local group has no amplitude destination",
+                                )
+                            })?;
+                        let (source_re, source_im) = plane(part as u32, destination_id)?;
+                        let start = local_group * point_count;
+                        region_re[start..start + point_count].copy_from_slice(source_re);
+                        region_im[start..start + point_count].copy_from_slice(source_im);
+                    }
+                    walsh_transform_in_place(factorization, region_re, region_im, point_count)?;
+                }
+                for entry in factorization.entries() {
+                    for (squared_index, order) in squared.iter().enumerate() {
+                        for &(left, right) in order.pairs() {
+                            let left_start = left as usize * part_stride
+                                + entry.left_group_index as usize * point_count;
+                            let right_start = right as usize * part_stride
+                                + entry.right_group_index as usize * point_count;
+                            for point in 0..point_count {
+                                let (left_re, left_im) = (
+                                    transform_re[left_start + point],
+                                    transform_im[left_start + point],
+                                );
+                                let (right_re, right_im) = (
+                                    transform_re[right_start + point],
+                                    transform_im[right_start + point],
+                                );
+                                let product_re = left_re.mul_add(right_re, left_im * right_im);
+                                let product_im = left_im.mul_add(right_re, -left_re * right_im);
+                                partials[point * squared_count + squared_index] += scale
+                                    * entry
+                                        .coefficient_re
+                                        .mul_add(product_re, -entry.coefficient_im * product_im);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Some(RuntimeColorContractionReducer::SymmetricGroupFourier(reducer)) => {
+            let workspace = symmetric_pairs.as_mut().ok_or_else(|| {
+                RusticolError::integrity("symmetric-group order workspace is absent")
+            })?;
+            let pairs = squared
+                .iter()
+                .map(|order| order.pairs())
+                .collect::<Vec<_>>();
+            for component_index in 0..contraction.component_count() as usize {
+                let representative = contraction
+                    .ordered_destination_id(0, component_index)
+                    .ok_or_else(|| {
+                        RusticolError::integrity(
+                            "symmetric-group recurrence component has no amplitude destination",
+                        )
+                    })?;
+                let Some(scale) = contracted_helicity_scale(
+                    physics,
+                    selected_helicities,
+                    helicity_of(representative)?,
+                    normalization_factor,
+                )?
+                else {
+                    continue;
+                };
+                reducer.reduce_lane_pairs(workspace, point_count, &pairs, |part, group, lane| {
+                    let destination_id = contraction
+                        .ordered_destination_id(group, component_index)
+                        .ok_or_else(|| {
+                            RusticolError::integrity(
+                                "symmetric-group recurrence local group has no amplitude destination",
+                            )
+                        })?;
+                    let (real, imaginary) = plane(part as u32, destination_id)?;
+                    Ok((real[lane], imaginary[lane]))
+                })?;
+                for squared_index in 0..squared_count {
+                    for (point, value) in workspace
+                        .reduced(squared_index, point_count)?
+                        .iter()
+                        .enumerate()
+                    {
+                        partials[point * squared_count + squared_index] += scale * value;
+                    }
                 }
             }
         }
@@ -5258,6 +5895,206 @@ pub(super) fn direct_profile_from_delta(
         reduction_s: profile_duration_seconds(reduction),
         total_s: profile_duration_seconds(total),
         ..RuntimeProfile::default()
+    }
+}
+
+#[cfg(test)]
+mod order_partial_tests {
+    use super::*;
+    use crate::recurrence::{
+        DirectAmplitudeOrders, klein_four_walsh_color_contraction_fixture,
+        valid_direct_plan_fixture,
+    };
+
+    fn contracted_physics(helicity_count: usize) -> PhysicsRuntime {
+        let helicities = (0..helicity_count)
+            .map(|index| crate::Helicity {
+                id: format!("h{index}"),
+                index,
+                values: Vec::new(),
+                representative_id: format!("h{index}"),
+                computed: true,
+                structural_zero: false,
+                coefficient: 0.5 + index as f64,
+            })
+            .collect();
+        PhysicsRuntime {
+            binding_id: 0,
+            manifest: ProcessPhysicsV1 {
+                schema_version: crate::RUNTIME_PHYSICS_SCHEMA_VERSION,
+                kind: "pyamplicol-resolved-physics".to_string(),
+                process_id: "order-partials".to_string(),
+                process: "u u~ > d d~".to_string(),
+                color_accuracy: crate::ColorAccuracy::Full,
+                coverage: crate::Coverage {
+                    helicities: "complete".to_string(),
+                    color: "contracted".to_string(),
+                    color_kind: "contracted-color".to_string(),
+                    structural_zero_helicity_count: 0,
+                },
+                external_particles: Vec::new(),
+                helicities,
+                color_components: vec![crate::ColorComponent::ContractedColor(
+                    crate::ContractedColor {
+                        id: "contracted".to_string(),
+                        index: 0,
+                        description: "contracted color".to_string(),
+                    },
+                )],
+                reduction: crate::Reduction {
+                    kind: crate::ReductionKind::ContractedColor,
+                    groups: Vec::new(),
+                },
+                model_parameters: Vec::new(),
+                selectors: crate::SelectorCapabilities {
+                    helicity: true,
+                    color_flow: false,
+                    contracted_color: false,
+                },
+                extensions: BTreeMap::new(),
+            },
+            helicity_index_by_id: (0..helicity_count)
+                .map(|index| (format!("h{index}"), index))
+                .collect(),
+            helicity_members_by_representative: (0..helicity_count)
+                .map(|index| vec![index])
+                .collect(),
+            color_index_by_id: BTreeMap::from([("contracted".to_string(), 0)]),
+            reduction_by_group_id: BTreeMap::new(),
+            numeric_reduction_by_group_id: BTreeMap::new(),
+        }
+    }
+
+    /// Partials of two amplitude parts reproduce the diagonal contractions
+    /// of each part and sum to the contraction of their sum, for the dense,
+    /// Walsh and symmetric-group reducers.
+    #[test]
+    fn order_partials_polarize_every_color_reducer() {
+        let catalog = AmplitudeOrderCatalog::from_plan(&DirectAmplitudeOrders {
+            names: vec!["QCD".into(), "QED".into()],
+            component_count: 2,
+            powers: vec![0, 2, 2, 0],
+            closure_components: vec![0, 1],
+        })
+        .unwrap();
+        let contractions = [
+            (
+                RecurrenceColorContraction::expanded_identity_for_runtime_test(),
+                1,
+            ),
+            (klein_four_walsh_color_contraction_fixture(), 2),
+            (
+                RecurrenceColorContraction::symmetric_group_s3_for_runtime_test(
+                    (0..13).map(|group| group + 2).collect(),
+                    20,
+                ),
+                1,
+            ),
+        ];
+        for (contraction, helicity_count) in contractions {
+            let helicities = (0..helicity_count).collect::<Vec<_>>();
+            let destination_physics_helicity =
+                contracted_destination_helicity_map(&contraction, &helicities).unwrap();
+            let physics = contracted_physics(helicity_count);
+            let point_count = 3;
+            let point_stride = 4;
+            let destinations = contraction.destination_count() as usize;
+            let mut state = RecurrenceOrderState::new(
+                DirectAmplitudeOrderSplit::new(&valid_direct_plan_fixture()).unwrap(),
+            );
+            let plane_len = 2 * destinations * point_stride;
+            state.components_re = (0..plane_len)
+                .map(|index| ((index * 7 + 3) % 17) as f64 / 8.0 - 1.0)
+                .collect();
+            state.components_im = (0..plane_len)
+                .map(|index| ((index * 5 + 1) % 13) as f64 / 6.0 - 1.0)
+                .collect();
+            let transform_len = 2 * contraction.local_group_count() as usize * point_stride;
+            state.transform_re = vec![0.0; transform_len];
+            state.transform_im = vec![0.0; transform_len];
+            if let Some(RuntimeColorContractionReducer::SymmetricGroupFourier(reducer)) =
+                contraction.runtime_reducer()
+            {
+                state.symmetric_pairs = Some(reducer.pair_workspace(2, 3, point_stride).unwrap());
+            }
+            let mut partials = vec![0.0; point_count * 3];
+            contract_color_tile_orders(
+                &mut state,
+                &catalog,
+                &contraction,
+                &destination_physics_helicity,
+                &physics,
+                None,
+                1.0,
+                point_count,
+                point_stride,
+                &mut partials,
+            )
+            .unwrap();
+
+            let component_len = destinations * point_stride;
+            let summed_re = (0..component_len)
+                .map(|index| {
+                    state.components_re[index] + state.components_re[component_len + index]
+                })
+                .collect::<Vec<_>>();
+            let summed_im = (0..component_len)
+                .map(|index| {
+                    state.components_im[index] + state.components_im[component_len + index]
+                })
+                .collect::<Vec<_>>();
+            let contract = |values_re: &[f64], values_im: &[f64]| {
+                let tile = ContractedReplayTile {
+                    values_re,
+                    values_im,
+                    point_count,
+                    point_stride,
+                    destination_count: destinations,
+                };
+                let mut workspace = match contraction.runtime_reducer() {
+                    Some(RuntimeColorContractionReducer::SymmetricGroupFourier(reducer)) => {
+                        Some(reducer.workspace(point_count).unwrap())
+                    }
+                    _ => None,
+                };
+                let mut transform_re = vec![0.0; transform_len];
+                let mut transform_im = vec![0.0; transform_len];
+                let mut values = vec![0.0; point_count];
+                contract_color_tile(
+                    &tile,
+                    &contraction,
+                    &destination_physics_helicity,
+                    &physics,
+                    None,
+                    1.0,
+                    &mut transform_re,
+                    &mut transform_im,
+                    workspace.as_mut(),
+                    |point, _, value| values[point] += value,
+                )
+                .unwrap();
+                values
+            };
+            let first = contract(
+                &state.components_re[..component_len],
+                &state.components_im[..component_len],
+            );
+            let second = contract(
+                &state.components_re[component_len..],
+                &state.components_im[component_len..],
+            );
+            let total = contract(&summed_re, &summed_im);
+            // Canonical squared orders: QCD^2 QED^2, QCD^4 (component 1), QED^4
+            // (component 0).
+            for point in 0..point_count {
+                let row = &partials[point * 3..point * 3 + 3];
+                let scale = row.iter().map(|value| value.abs()).sum::<f64>().max(1.0);
+                assert!((row[2] - first[point]).abs() <= 1e-13 * scale);
+                assert!((row[1] - second[point]).abs() <= 1e-13 * scale);
+                assert!((row.iter().sum::<f64>() - total[point]).abs() <= 1e-13 * scale);
+                assert!(row[0] != 0.0);
+            }
+        }
     }
 }
 

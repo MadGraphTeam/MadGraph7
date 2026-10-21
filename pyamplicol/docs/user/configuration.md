@@ -455,7 +455,8 @@ progress = "off"                # auto, tty, log, off
 ```
 
 `helicity_ids` and `color_flow_ids` may be added under `[evaluation]`. Empty
-lists mean complete retained coverage.
+lists mean complete retained coverage. `orders = true` (instead of `resolved`)
+splits recurrence tree totals by squared coupling order.
 
 For a saved virtual artifact, use the same card with `resolved = false` and
 explicit scale input. The optional arithmetic choice applies before model

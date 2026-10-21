@@ -124,6 +124,7 @@ module rusticol
     procedure, public :: execution_mode => rusticol_execution_mode
     procedure, public :: metadata_json => rusticol_metadata_json
     procedure, public :: physics_json => rusticol_physics_json
+    procedure, public :: coupling_orders_json => rusticol_coupling_orders_json
     procedure, public :: external_particles => rusticol_external_particles
     procedure, public :: external_permutation => rusticol_external_permutation
     procedure, public :: load_kinematics_json => rusticol_load_kinematics_json
@@ -139,6 +140,7 @@ module rusticol
     procedure, public :: warm_up => rusticol_warm_up
     procedure, public :: evaluate_selected => rusticol_evaluate_selected
     procedure, public :: evaluate_resolved => rusticol_evaluate_resolved
+    procedure, public :: evaluate_orders => rusticol_evaluate_orders
     procedure, public :: set_model_parameter => rusticol_set_model_parameter
     procedure, public :: set_model_parameters => rusticol_set_model_parameters
     procedure, public :: set_model_parameters_json => rusticol_set_model_parameters_json
@@ -217,6 +219,34 @@ module rusticol
       integer(c_size_t) :: required
       integer(c_int) :: status
     end function c_rusticol_runtime_physics_json
+
+    function c_rusticol_runtime_coupling_orders_json(handle, buffer, capacity, required) &
+        bind(C, name="rusticol_runtime_coupling_orders_json") result(status)
+      import :: c_ptr, c_size_t, c_int
+      type(c_ptr), value :: handle, buffer
+      integer(c_size_t), value :: capacity
+      integer(c_size_t) :: required
+      integer(c_int) :: status
+    end function c_rusticol_runtime_coupling_orders_json
+
+    function c_rusticol_runtime_squared_order_count(handle, output) &
+        bind(C, name="rusticol_runtime_squared_order_count") result(status)
+      import :: c_ptr, c_size_t, c_int
+      type(c_ptr), value :: handle
+      integer(c_size_t) :: output
+      integer(c_int) :: status
+    end function c_rusticol_runtime_squared_order_count
+
+    function c_rusticol_runtime_evaluate_orders_f64(handle, momenta, momentum_count, &
+        point_count, helicity_ids, helicity_count, color_ids, color_count, totals, &
+        totals_capacity, partials, partials_capacity) &
+        bind(C, name="rusticol_runtime_evaluate_orders_f64") result(status)
+      import :: c_ptr, c_size_t, c_int
+      type(c_ptr), value :: handle, momenta, helicity_ids, color_ids, totals, partials
+      integer(c_size_t), value :: momentum_count, point_count, helicity_count, color_count
+      integer(c_size_t), value :: totals_capacity, partials_capacity
+      integer(c_int) :: status
+    end function c_rusticol_runtime_evaluate_orders_f64
 
     function c_rusticol_runtime_process(handle, buffer, capacity, required) &
         bind(C, name="rusticol_runtime_process") result(status)
@@ -796,6 +826,14 @@ contains
     value = runtime_string(self, c_rusticol_runtime_physics_json, ierr)
   end function rusticol_physics_json
 
+  ! Amplitude and squared coupling-order axes; partial columns follow "squared".
+  function rusticol_coupling_orders_json(self, ierr) result(value)
+    class(rusticol_runtime), intent(in) :: self
+    integer(c_int), intent(out), optional :: ierr
+    character(len=:), allocatable :: value
+    value = runtime_string(self, c_rusticol_runtime_coupling_orders_json, ierr)
+  end function rusticol_coupling_orders_json
+
   function rusticol_external_particles(self, ierr) result(particles)
     class(rusticol_runtime), intent(in) :: self
     integer(c_int), intent(out), optional :: ierr
@@ -1352,6 +1390,49 @@ contains
         size(values, kind=c_size_t), helicity_count, color_count)
     if (.not. status_ok(status, ierr)) values = 0.0_c_double
   end subroutine rusticol_evaluate_resolved
+
+  ! Totals(point) and partials(squared order, point) in coupling_orders_json order.
+  subroutine rusticol_evaluate_orders(self, momenta, point_count, totals, partials, &
+      helicity_ids, color_ids, ierr)
+    class(rusticol_runtime), intent(inout) :: self
+    real(c_double), intent(in), target :: momenta(:)
+    integer(c_size_t), intent(in) :: point_count
+    real(c_double), allocatable, intent(out), target :: totals(:), partials(:, :)
+    character(len=*), intent(in), optional :: helicity_ids(:), color_ids(:)
+    integer(c_int), intent(out), optional :: ierr
+    character(kind=c_char), allocatable, target :: helicity_storage(:, :), color_storage(:, :)
+    type(c_ptr), allocatable, target :: helicity_pointers(:), color_pointers(:)
+    type(c_ptr) :: helicity_pointer, color_pointer
+    integer(c_size_t) :: order_count
+    integer(c_int) :: status
+
+    if (.not. argument_ok(point_count > 0_c_size_t .and. size(momenta) > 0, &
+        "Rusticol order evaluation requires positive point and momentum counts", ierr)) then
+      allocate(totals(0), partials(0, 0))
+      return
+    end if
+    status = c_rusticol_runtime_squared_order_count(self%handle, order_count)
+    if (.not. status_ok(status, ierr)) then
+      allocate(totals(0), partials(0, 0))
+      return
+    end if
+    call build_c_string_array(helicity_ids, helicity_storage, helicity_pointers)
+    call build_c_string_array(color_ids, color_storage, color_pointers)
+    helicity_pointer = c_null_ptr
+    if (size(helicity_pointers) > 0) helicity_pointer = c_loc(helicity_pointers(1))
+    color_pointer = c_null_ptr
+    if (size(color_pointers) > 0) color_pointer = c_loc(color_pointers(1))
+    allocate(totals(point_count), partials(order_count, point_count))
+    status = c_rusticol_runtime_evaluate_orders_f64( &
+        self%handle, c_loc(momenta(1)), size(momenta, kind=c_size_t), point_count, &
+        helicity_pointer, size(helicity_pointers, kind=c_size_t), color_pointer, &
+        size(color_pointers, kind=c_size_t), c_loc(totals(1)), &
+        size(totals, kind=c_size_t), c_loc(partials(1, 1)), size(partials, kind=c_size_t))
+    if (.not. status_ok(status, ierr)) then
+      totals = 0.0_c_double
+      partials = 0.0_c_double
+    end if
+  end subroutine rusticol_evaluate_orders
 
   subroutine rusticol_set_model_parameter(self, name, real, imaginary, ierr)
     class(rusticol_runtime), intent(inout) :: self

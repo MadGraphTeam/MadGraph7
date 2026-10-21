@@ -594,9 +594,20 @@ def _contract_color_amplitudes(
     amplitudes: Sequence[tuple[Decimal, Decimal]],
     destination_physics_helicity: Sequence[int],
     selected_helicities: set[int] | None = None,
+    *,
+    right_amplitudes: Sequence[tuple[Decimal, Decimal]] | None = None,
 ) -> dict[int, Decimal]:
+    """Contract per public helicity; distinct right amplitudes give interference.
+
+    With ``right_amplitudes`` every entry is the same real-bilinear term with
+    its right factor taken from them; summing ordered pairs of amplitude parts
+    reproduces the contraction of their sum.
+    """
+
+    right = amplitudes if right_amplitudes is None else right_amplitudes
     if (
         len(amplitudes) != contraction.destination_count
+        or len(right) != contraction.destination_count
         or len(destination_physics_helicity) != contraction.destination_count
     ):
         raise ArtifactError(
@@ -619,7 +630,7 @@ def _contract_color_amplitudes(
         if selected_helicities is not None and left_helicity not in selected_helicities:
             continue
         left_re, left_im = amplitudes[entry.left_destination_id]
-        right_re, right_im = amplitudes[entry.right_destination_id]
+        right_re, right_im = right[entry.right_destination_id]
         product_re = left_re * right_re + left_im * right_im
         product_im = left_im * right_re - left_re * right_im
         value = entry.coefficient_re * product_re - entry.coefficient_im * product_im

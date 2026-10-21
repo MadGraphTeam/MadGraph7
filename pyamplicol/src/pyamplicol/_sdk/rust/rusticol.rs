@@ -4,11 +4,11 @@
 /// Additive binary64 Born–loop interfaces, using the same installed archive.
 pub mod virtual_amplitudes {
     use super::{
-        checked_cstring, optional_cstring, optional_pointer, path_cstring, read_string_checked,
-        Error, ErrorKind, Result,
+        Error, ErrorKind, Result, checked_cstring, optional_cstring, optional_pointer,
+        path_cstring, read_string_checked,
     };
     use std::{
-        ffi::{c_char, c_int, c_void, CStr},
+        ffi::{CStr, c_char, c_int, c_void},
         marker::PhantomData,
         path::Path,
         ptr::{self, NonNull},
@@ -300,7 +300,10 @@ pub mod virtual_amplitudes {
                 |out, len, needed| unsafe {
                     // SAFETY: helper owns the writable queried buffer.
                     ffi::rusticol_virtual_spin_correlation_classes_json(
-                        self.handle.as_ptr(), out, len, needed,
+                        self.handle.as_ptr(),
+                        out,
+                        len,
+                        needed,
                     )
                 },
                 check,
@@ -316,8 +319,15 @@ pub mod virtual_amplitudes {
             strategy: Option<&str>,
             verification_json: Option<&str>,
         ) -> Result<CorrelatedEvaluation> {
-            self.evaluate_correlated_inputs(momenta, point_count, point_ids, mu_r2, None,
-                strategy, verification_json)
+            self.evaluate_correlated_inputs(
+                momenta,
+                point_count,
+                point_ids,
+                mu_r2,
+                None,
+                strategy,
+                verification_json,
+            )
         }
         /// Literal complex vectors in row/selected-leg/component order. One row
         /// broadcasts, or supply one row per point. Legs are one-based labels.
@@ -332,8 +342,15 @@ pub mod virtual_amplitudes {
             strategy: Option<&str>,
             verification_json: Option<&str>,
         ) -> Result<CorrelatedEvaluation> {
-            self.evaluate_correlated_inputs(momenta, point_count, point_ids, mu_r2,
-                Some((legs, vectors)), strategy, verification_json)
+            self.evaluate_correlated_inputs(
+                momenta,
+                point_count,
+                point_ids,
+                mu_r2,
+                Some((legs, vectors)),
+                strategy,
+                verification_json,
+            )
         }
         fn evaluate_correlated_inputs(
             &mut self,
@@ -361,19 +378,36 @@ pub mod virtual_amplitudes {
             };
             let mut result = ptr::null_mut();
             if let Some((legs, vectors)) = sources {
-                let pairs: Vec<_> = vectors.iter().map(|v| ComplexPair { real: v.re, imag: v.im }).collect();
-                let sources = ffi::SpinSources { legs: legs.as_ptr(), leg_count: legs.len(),
-                    values: pairs.as_ptr(), value_count: pairs.len() };
+                let pairs: Vec<_> = vectors
+                    .iter()
+                    .map(|v| ComplexPair {
+                        real: v.re,
+                        imag: v.im,
+                    })
+                    .collect();
+                let sources = ffi::SpinSources {
+                    legs: legs.as_ptr(),
+                    leg_count: legs.len(),
+                    values: pairs.as_ptr(),
+                    value_count: pairs.len(),
+                };
                 // SAFETY: all input slices remain borrowed through the single call;
                 // explicit pairs avoid assuming the Rust complex memory layout.
-                check(unsafe { ffi::rusticol_virtual_evaluate_correlated_with_sources(
-                    self.handle.as_ptr(), &request, &sources, &mut result,
-                ) })?;
+                check(unsafe {
+                    ffi::rusticol_virtual_evaluate_correlated_with_sources(
+                        self.handle.as_ptr(),
+                        &request,
+                        &sources,
+                        &mut result,
+                    )
+                })?;
             } else {
                 // SAFETY: inputs stay borrowed, output is initialized by the native call.
                 check(unsafe {
                     ffi::rusticol_virtual_evaluate_correlated(
-                        self.handle.as_ptr(), &request, &mut result,
+                        self.handle.as_ptr(),
+                        &request,
+                        &mut result,
                     )
                 })?;
             }
@@ -563,8 +597,8 @@ pub mod virtual_amplitudes {
     }
     mod ffi {
         use super::{
-            c_char, c_int, c_void, ComplexPair, CorrelatedResultShape, CorrelatedShape,
-            ResultShape, Shape,
+            ComplexPair, CorrelatedResultShape, CorrelatedShape, ResultShape, Shape, c_char, c_int,
+            c_void,
         };
         #[repr(C)]
         pub(super) struct BatchRequest {
@@ -593,10 +627,16 @@ pub mod virtual_amplitudes {
                 output: *mut *mut c_void,
             ) -> c_int;
             pub(super) fn rusticol_virtual_spin_correlation_classes_json(
-                handle: *const c_void, out: *mut c_char, len: usize, needed: *mut usize,
+                handle: *const c_void,
+                out: *mut c_char,
+                len: usize,
+                needed: *mut usize,
             ) -> c_int;
             pub(super) fn rusticol_virtual_correlated_result_spin_legs_json(
-                handle: *const c_void, out: *mut c_char, len: usize, needed: *mut usize,
+                handle: *const c_void,
+                out: *mut c_char,
+                len: usize,
+                needed: *mut usize,
             ) -> c_int;
             pub(super) fn rusticol_virtual_correlated_shape(
                 handle: *const c_void,
@@ -735,10 +775,10 @@ pub mod virtual_amplitudes {
 
 use std::any::Any;
 use std::error;
-use std::ffi::{c_char, c_int, c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::fmt;
 use std::marker::PhantomData;
-use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::path::Path;
 use std::ptr::{self, NonNull};
 use std::rc::Rc;
@@ -1116,6 +1156,37 @@ impl ParameterUpdate {
     }
 }
 
+/// Owned totals and squared coupling-order partials `[point][order]`.
+///
+/// The order axis follows [`Runtime::coupling_orders_json`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct OrderedEvaluation {
+    totals: Vec<f64>,
+    partials: Vec<f64>,
+    order_count: usize,
+}
+
+impl OrderedEvaluation {
+    pub fn totals(&self) -> &[f64] {
+        &self.totals
+    }
+
+    pub fn partials(&self) -> &[f64] {
+        &self.partials
+    }
+
+    pub fn order_count(&self) -> usize {
+        self.order_count
+    }
+
+    pub fn get(&self, point: usize, order: usize) -> Option<f64> {
+        if point >= self.totals.len() || order >= self.order_count {
+            return None;
+        }
+        self.partials.get(point * self.order_count + order).copied()
+    }
+}
+
 /// Owned resolved f64 matrix elements with typed physical axes.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ResolvedEvaluation {
@@ -1254,6 +1325,11 @@ impl Runtime {
 
     pub fn physics_json(&self) -> Result<String> {
         self.get_string(ffi::runtime_physics_json)
+    }
+
+    /// Amplitude and squared coupling-order axes (`rusticol-amplitude-orders-v1`).
+    pub fn coupling_orders_json(&self) -> Result<String> {
+        self.get_string(ffi::runtime_coupling_orders_json)
     }
 
     pub fn external_particles(&self) -> Result<Vec<ExternalParticle>> {
@@ -1781,6 +1857,52 @@ impl Runtime {
             point_count,
             helicities,
             colors,
+        })
+    }
+
+    /// Evaluate totals and squared coupling-order partials with global selectors.
+    pub fn evaluate_orders_f64(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        selectors: &Selectors,
+    ) -> Result<OrderedEvaluation> {
+        self.validate_momenta(momenta, point_count)?;
+        let helicity_strings = cstring_list(&selectors.helicity_ids, "helicity selector")?;
+        let color_strings = cstring_list(&selectors.color_ids, "color selector")?;
+        let helicity_pointers = cstring_pointers(&helicity_strings);
+        let color_pointers = cstring_pointers(&color_strings);
+        let (helicity_pointer, helicity_count) = selector_parts(&helicity_pointers);
+        let (color_pointer, color_count) = selector_parts(&color_pointers);
+        let mut order_count = 0;
+        // SAFETY: The handle and output count remain live for the call.
+        check(unsafe { ffi::runtime_squared_order_count(self.handle.as_ptr(), &mut order_count) })?;
+        let partial_count = point_count
+            .checked_mul(order_count)
+            .ok_or_else(|| Error::new(ErrorKind::SizeOverflow, "order output shape overflow"))?;
+        let mut totals = vec![0.0; point_count];
+        let mut partials = vec![0.0; partial_count];
+        // SAFETY: Every pointer refers to a live, disjoint, correctly sized allocation.
+        check(unsafe {
+            ffi::runtime_evaluate_orders_f64(
+                self.handle.as_ptr(),
+                momenta.as_ptr(),
+                momenta.len(),
+                point_count,
+                helicity_pointer,
+                helicity_count,
+                color_pointer,
+                color_count,
+                totals.as_mut_ptr(),
+                totals.len(),
+                partials.as_mut_ptr(),
+                partials.len(),
+            )
+        })?;
+        Ok(OrderedEvaluation {
+            totals,
+            partials,
+            order_count,
         })
     }
 
@@ -2346,6 +2468,30 @@ mod ffi {
             capacity: usize,
             required: *mut usize,
         ) -> c_int;
+        pub(super) fn rusticol_runtime_coupling_orders_json(
+            handle: *const RuntimeHandle,
+            buffer: *mut c_char,
+            capacity: usize,
+            required: *mut usize,
+        ) -> c_int;
+        pub(super) fn rusticol_runtime_squared_order_count(
+            handle: *const RuntimeHandle,
+            output: *mut usize,
+        ) -> c_int;
+        pub(super) fn rusticol_runtime_evaluate_orders_f64(
+            handle: *mut RuntimeHandle,
+            momenta: *const f64,
+            momentum_count: usize,
+            point_count: usize,
+            helicity_ids: *const *const c_char,
+            helicity_count: usize,
+            color_ids: *const *const c_char,
+            color_count: usize,
+            totals: *mut f64,
+            totals_capacity: usize,
+            partials: *mut f64,
+            partials_capacity: usize,
+        ) -> c_int;
         pub(super) fn rusticol_runtime_process(
             handle: *const RuntimeHandle,
             buffer: *mut c_char,
@@ -2542,7 +2688,9 @@ mod ffi {
     pub(super) use rusticol_runtime_color_id as runtime_color_id;
     pub(super) use rusticol_runtime_color_kind as runtime_color_kind;
     pub(super) use rusticol_runtime_color_word as runtime_color_word;
+    pub(super) use rusticol_runtime_coupling_orders_json as runtime_coupling_orders_json;
     pub(super) use rusticol_runtime_evaluate_f64 as runtime_evaluate_f64;
+    pub(super) use rusticol_runtime_evaluate_orders_f64 as runtime_evaluate_orders_f64;
     pub(super) use rusticol_runtime_evaluate_resolved_f64 as runtime_evaluate_resolved_f64;
     pub(super) use rusticol_runtime_evaluate_selected_f64 as runtime_evaluate_selected_f64;
     pub(super) use rusticol_runtime_execution_mode as runtime_execution_mode;
@@ -2569,6 +2717,7 @@ mod ffi {
     pub(super) use rusticol_runtime_set_model_parameter as runtime_set_model_parameter;
     pub(super) use rusticol_runtime_set_model_parameters as runtime_set_model_parameters;
     pub(super) use rusticol_runtime_set_model_parameters_json as runtime_set_model_parameters_json;
+    pub(super) use rusticol_runtime_squared_order_count as runtime_squared_order_count;
     pub(super) use rusticol_runtime_take_warnings_json as runtime_take_warnings_json;
     pub(super) use rusticol_runtime_warm_up_f64_with_cores as runtime_warm_up_f64_with_cores;
     pub(super) use rusticol_supported_runtime_capabilities_json as supported_runtime_capabilities_json;

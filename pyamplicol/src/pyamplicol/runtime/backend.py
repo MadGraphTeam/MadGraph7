@@ -43,11 +43,14 @@ from pyamplicol.api.results import (
     ProcessPhysics,
     ReductionGroup,
     ResolvedEvaluation,
+    TreeOrderEvaluation,
     WarmUpResult,
 )
 from pyamplicol.api.virtual_results import VirtualStabilityPolicy
 from pyamplicol.artifacts import MANIFEST_NAME, ArtifactManifest, load_manifest
 from pyamplicol.config import R2Strategy
+from pyamplicol.loops.orders import canonical_order
+from pyamplicol.loops.physical_orders import BornSquaredSector
 from pyamplicol.reporting import (
     ProgressEnd,
     ProgressSink,
@@ -60,6 +63,8 @@ from pyamplicol.runtime._native_selection import (
 )
 
 if TYPE_CHECKING:
+    from pyamplicol.models.base import CouplingOrders
+
     from .eager_exact import EagerExactExecutor
     from .recurrence_exact import RecurrenceExactExecutor
     from .symbolica_exact import SymbolicaExactExecutor
@@ -538,6 +543,44 @@ def _scalar_from_native(value: Any) -> complex | Decimal:
     return value if isinstance(value, Decimal) else complex(value)
 
 
+def _tree_order_axes(
+    raw: object,
+) -> tuple[tuple[CouplingOrders, ...], tuple[BornSquaredSector, ...], tuple[int, ...]]:
+    """Canonical amplitude orders, squared sectors and each sector's native column."""
+
+    try:
+        payload = json.loads(str(raw))
+        if payload.get("kind") != "rusticol-amplitude-orders-v1":
+            raise ValueError("unexpected kind")
+        names = tuple(str(name) for name in payload["names"])
+        amplitude = tuple(
+            canonical_order(tuple(zip(names, powers, strict=True)))
+            for powers in payload["components"]
+        )
+        squared = sorted(
+            (
+                canonical_order(tuple(zip(names, entry["powers"], strict=True))),
+                column,
+                tuple(
+                    sorted(
+                        (amplitude[left], amplitude[right])
+                        for left, right in entry["pairs"]
+                    )
+                ),
+            )
+            for column, entry in enumerate(payload["squared"])
+        )
+    except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
+        raise ArtifactError(
+            f"native amplitude coupling orders are invalid: {exc}"
+        ) from exc
+    return (
+        tuple(sorted(amplitude)),
+        tuple(BornSquaredSector(order, pairs) for order, _, pairs in squared),
+        tuple(column for _, column, _ in squared),
+    )
+
+
 def _native_runtime_metadata(runtime: Any) -> Mapping[str, object]:
     metadata_json = getattr(runtime, "metadata_json", None)
     if not callable(metadata_json):
@@ -578,6 +621,14 @@ class RusticolRuntimeBackend:
         self._execution_mode = _native_execution_mode(self._native_metadata)
         self._physics: ProcessPhysics | None = None
         self._exact_executor: _ExactExecutor | None = None
+        self._order_axes: (
+            tuple[
+                tuple[CouplingOrders, ...],
+                tuple[BornSquaredSector, ...],
+                tuple[int, ...],
+            ]
+            | None
+        ) = None
         self._required_runtime_capabilities: tuple[str, ...] = ()
         self._supports_per_point_selectors = _accepts_keyword_arguments(
             runtime.evaluate,
@@ -1072,6 +1123,67 @@ class RusticolRuntimeBackend:
             **selector_arguments,
         )
         return tuple(_scalar_from_native(value) for value in values)
+
+    def evaluate_orders(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str] | None = None,
+        color_flows: Sequence[str] | None = None,
+        precision: int = 16,
+    ) -> TreeOrderEvaluation:
+        """Split tree values by squared coupling order in one recurrence pass.
+
+        Totals are exactly those of :meth:`evaluate` with the same selectors.
+        """
+
+        if self._execution_mode != "recurrence":
+            raise CompatibilityError(
+                "squared coupling-order partials require a recurrence artifact; "
+                "regenerate with evaluator.execution_mode='recurrence'"
+            )
+        self._require_supported_precision(precision)
+        helicities = _normalized_selectors(helicities)
+        color_flows = self._resolve_color_flows(_normalized_selectors(color_flows))
+        if self._order_axes is None:
+            self._order_axes = _tree_order_axes(
+                _invoke(self._native_module, self._runtime._amplitude_orders_json)
+            )
+        amplitude_orders, sectors, columns = self._order_axes
+        partials: Sequence[Sequence[complex | Decimal]]
+        if precision != 16:
+            exact = cast(
+                "RecurrenceExactExecutor | _ProcessGroupExactExecutor", self._exact()
+            )
+            resolved, partials = exact.evaluate_orders(
+                momenta,
+                helicities=helicities,
+                color_flows=color_flows,
+                precision=precision,
+            )
+            total = resolved.total()
+        else:
+            native_total, native_partials = _invoke(
+                self._native_module,
+                self._runtime.evaluate_orders,
+                momenta,
+                helicities=helicities,
+                color_flows=color_flows,
+                precision=precision,
+            )
+            total = tuple(_scalar_from_native(value) for value in native_total)
+            partials = tuple(
+                tuple(_scalar_from_native(value) for value in point)
+                for point in native_partials
+            )
+        return TreeOrderEvaluation(
+            values=tuple(
+                tuple(point[column] for column in columns) for point in partials
+            ),
+            total=total,
+            sectors=sectors,
+            amplitude_orders=amplitude_orders,
+        )
 
     def _point_selector_indices(
         self,
@@ -1733,6 +1845,30 @@ class _ProcessGroupExactExecutor:
             color_flows=self._color_ids(color_flows),
             precision=precision,
         )
+        return self._member_resolved(resolved, precision)
+
+    def evaluate_orders(
+        self,
+        momenta: Momenta,
+        *,
+        helicities: Sequence[str] | None,
+        color_flows: Sequence[str] | None,
+        precision: int,
+    ) -> tuple[ResolvedEvaluation, tuple[tuple[complex | Decimal, ...], ...]]:
+        resolved, partials = self._inner.evaluate_orders(
+            momenta,
+            helicities=helicities,
+            color_flows=self._color_ids(color_flows),
+            precision=precision,
+        )
+        return self._member_resolved(resolved, precision), tuple(
+            tuple(self._scaled(value, precision) for value in point)
+            for point in partials
+        )
+
+    def _member_resolved(
+        self, resolved: ResolvedEvaluation, precision: int
+    ) -> ResolvedEvaluation:
         return ResolvedEvaluation(
             values=tuple(
                 tuple(

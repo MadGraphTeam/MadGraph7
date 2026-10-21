@@ -596,6 +596,23 @@ one-point OTF warm-up, cache save/restore, and total/resolved f64 methods.
 Resolved Fortran storage is `(color, helicity, point)`, the column-major view
 of the C ABI sequence `(point, helicity, color)`.
 
+### Squared coupling-order partials
+
+Recurrence artifacts split totals by squared coupling order in one pass.
+`rusticol_runtime_coupling_orders_json` describes the axes
+(`rusticol-amplitude-orders-v1`: coupling-order `names`, amplitude
+`components` and `squared` orders with their ordered component `pairs`),
+`rusticol_runtime_squared_order_count` sizes the output and
+`rusticol_runtime_evaluate_orders_f64` fills `totals[point]` (bitwise the
+selected total) and `partials[point][squared order]`. Squared orders, here and
+in every binding, follow the canonical order of Python's `TreeOrderEvaluation`
+(nonzero `(name, power)` pairs over the sorted names, compared
+lexicographically: `QCD2 QED2`, `QCD4`, `QED4`); map columns through `squared`
+rather than assuming a layout shared with other result types. C++ exposes
+`Runtime::coupling_orders_json()` and `Runtime::evaluate_orders()`, Fortran
+`coupling_orders_json` and `evaluate_orders` (`partials(order, point)`), and
+Rust `coupling_orders_json()` and `evaluate_orders_f64()`.
+
 ## Rust 2021
 
 `rusticol.rs` is a dependency-free safe wrapper over C ABI v1. It owns the

@@ -660,6 +660,13 @@ def _add_evaluation_options(
         default=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--orders",
+        dest="evaluation.orders",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help="split tree values by squared coupling order alongside the total",
+    )
+    parser.add_argument(
         "--helicity",
         dest="evaluation.helicity_ids",
         action="append",

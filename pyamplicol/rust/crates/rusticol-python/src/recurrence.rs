@@ -2866,6 +2866,7 @@ fn exact_sections_from_direct_plan(
         contributions: plan.contributions().to_vec(),
         finalizations: plan.finalizations().to_vec(),
         closures: plan.closures().to_vec(),
+        closure_amplitude_orders: plan.amplitude_orders().closure_components().to_vec(),
         row_groups: plan.row_groups().to_vec(),
         momentum_forms: plan.momentum_forms().to_vec(),
         momentum_terms: plan.momentum_terms().to_vec(),

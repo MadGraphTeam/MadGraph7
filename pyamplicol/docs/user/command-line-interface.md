@@ -392,6 +392,18 @@ pyamplicol evaluate artifacts/pp_zjj \
   --resolved
 ```
 
+Split recurrence totals by squared coupling order with `--orders`; the JSON
+output carries `values` `[point][order]`, the unchanged `total`, the squared
+`orders` with their contributing amplitude-order pairs, and
+`amplitude_orders`:
+
+```console
+pyamplicol evaluate artifacts/pp_zjj \
+  --process 'd d~ > g z g' \
+  --momenta data/pp_zjj_momenta.json \
+  --orders
+```
+
 Global selectors may be repeated:
 
 ```console
