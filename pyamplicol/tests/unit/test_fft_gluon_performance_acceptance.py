@@ -361,6 +361,11 @@ def test_observed_default_bg_n4_protocol_times_one_cell_but_retains_ten_mes() ->
             for batch in range(1, 11)
         ),
     ]
+    if not acceptance.REFERENCE_DRIVER.is_file():
+        pytest.skip(
+            "needs the optional reference-fft checkout "
+            "(just dev-install --with-reference-fft)"
+        )
     reference = acceptance._load_reference_module()
     run = reference.parse_driver_output(
         "\n".join(rows) + "\n",
@@ -1250,6 +1255,14 @@ def test_candidate_probe_compiles_and_links_against_public_sdk() -> None:
     compiler = acceptance.shlex.split(os.environ.get("CXX", "c++"))
     if not compiler or shutil.which(compiler[0]) is None:
         pytest.skip("no C++ compiler is available for the public-SDK smoke test")
+    sdk_root = acceptance.ROOT / "src" / "pyamplicol" / "_sdk"
+    if not (sdk_root / "metadata.json").is_file():
+        if os.environ.get("PYAMPLICOL_REQUIRE_NATIVE_TESTS") == "1":
+            pytest.fail("the source runtime has no staged public SDK")
+        pytest.skip(
+            "needs the staged public SDK of the source runtime "
+            "(tools/developer/prepare_source_runtime.py or just dev-install)"
+        )
     run_root = (
         acceptance.PERFORMANCE_ROOT
         / "test-native-smoke"
@@ -1257,7 +1270,6 @@ def test_candidate_probe_compiles_and_links_against_public_sdk() -> None:
     )
     try:
         acceptance._create_workspace_directories(run_root)
-        sdk_root = acceptance.ROOT / "src" / "pyamplicol" / "_sdk"
         metadata = json.loads((sdk_root / "metadata.json").read_text(encoding="utf-8"))
         link = json.loads((sdk_root / "link.json").read_text(encoding="utf-8"))
         probe = run_root / "candidate-probe" / "fft-gluon-candidate-probe"
