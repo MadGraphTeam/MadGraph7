@@ -148,6 +148,14 @@ class Precision:
         return cls("arbitrary", digits)
 
     @property
+    def rounding_floor(self) -> float:
+        """The relative rounding no stability check samples (``stability``):
+        eight units of the last binary64 bit, or ten of the last digit."""
+        if self.digits is None:
+            return 2.0**-50
+        return 10.0 ** (1 - self.digits)
+
+    @property
     def working_digits(self) -> int:
         """Decimal digits of the Python arithmetic and of the tree replay."""
         if self.digits is None:
@@ -953,7 +961,11 @@ class LoopSlice:
                 }
             )
         estimate = StabilityEstimate.from_checks(
-            virtual, rotations, reference.retest_budget, reference.family_deviations
+            virtual,
+            rotations,
+            reference.retest_budget,
+            reference.family_deviations,
+            floor=precision.rounding_floor,
         )
         return PointResult(
             reference.result.born,
