@@ -951,6 +951,7 @@ The plan keeps the (k_μ², ε) monomial labels and the `MuTensorNumerator` ingr
 
   With compression the per-point seed cost for gg→ggggg FC is ≈1.2×10⁸ complex MAC for 4 loop classes × 360 orderings [V-s Design 1 §5.1], about 2 % of dressing.
 - **Proportional classes (WP2.4).** With compression, the seed table also merges classes whose colour vectors are proportional (`colour._ClassKeys`). These are quark rings of different arc words, and generic seeds equal to them. On uu~→ggg this cuts 315 classes to 99.
+  - A quark ring is reduced once per relabelling of its external gluon labels (`_ring_relabelling`); keys, tensors and cells of the other members are relabelled. Measured compressed seed tables (Python, exact) [M]: uu~→gggg 828 classes on a 24-element basis in 10 s (53 s before); uu~→ggggg 7,620 classes on 120 elements from 103,770 skeletons in 176 s plus 11 s for the 74 certified FFT loop orbits (more than 40 min before; stopped).
 - **Certificate predicate (WP2.4, interface to WP2.8).** `SeedTable.certified(combination)` is true when every class of a seed is a `Primitive` whose compression is certified in the table; `ColourSeeds.certified` applies it per skeleton and is what `ReferenceExecutor.run(..., certified=...)` takes to admit schedule M at NLC and full colour. All gg→gg skeletons pass, uu~→dd~g only partly. Today M then still falls back to B on its structural check, because seed contents are not colour-ordered; colour-ordered certified contents are WP2.8's.
 - **Closed-fermion orientation folding** (Tr(σ) + (−1)ⁿ Tr(σᵀ) in one class) is used only when the attached vertices carry a C-parity certificate.
   - It is not used with Z or W attachments (judge finding 11). Those classes keep both orientations, and their dressing doubles.
@@ -1609,6 +1610,10 @@ Total ≈ 270 agent-days [I].
   - *Depends:* S1.
   - *Accept:* LC/NLC values and degrees equal O1 on gg→gg, uu~→ggg, DY, uu~→e⁻e⁺gg and tt in three carriers; O14; FFT = direct; pruning counts equal Appendix B; 7-gluon seed tables in < 5 min.
   - *Size:* L (13).
+  - *Status (branch `work/v2-colour-production`):*
+    - done: (1) DDM adjoint-ring and fundamental-trace certificates; (2) the q̄q ring as a certified quark-ring compression (generalised arc-letter form, proportional classes merged, one reduction per gluon relabelling); (3) NLC, graded U(1), structural LC/NLC pruning; (4) the exact BDK colour sum (O14 identity); (5) seed FFT (`auto | direct | fft`) and cap removal (§7.3, §7.8); the certificate predicate for schedule M (§7.2).
+    - acceptance: LC/NLC values and degrees equal O1 on gg→gg, uu~→ggg, uu~→dd~g, DY and tt in binary64 and at 200 bits (`test_colour_projections_equal_legacy`); FFT = direct (gg→gg, uu~→ggg, gg→ggggg); Appendix B leading-colour rows; gg→ggggg seed table and FFT orbits within 5 min (nightly).
+    - open: DoubleFloat is the third carrier only of the native executor (WP2.1, not integrated), so the LC/NLC O1 comparison runs there once it lands. uu~→e⁻e⁺gg does not generate until the closed-quark A g g triangles have CertifiedZero witnesses (WP3.5; pinned by a strict xfail). O14 with resolved-colour seed columns (partial amplitudes on the BDK structures) belongs to the directed seed columns of WP2.5. The DDM L/R re-expression of quark rings is not adopted for seeds: rings already share one row per colour vector, and a linear re-expression would trade fewer class contractions for more terms per skeleton.
 - **WP2.5 Observables.**
   - *Goal:* §7.7, §8.4, §8.5, §9: mixed sectors; directed seed columns; spin sources including the asymmetric Ward mode (full kernels); resolved outputs; flavour members and aliases.
   - *Owns:* `loops/v2/observables.py`, `loop_v2/observables.rs`, `runtime/virtual.py` wiring.
