@@ -1,0 +1,40 @@
+{
+  "schema": "stress-early-operational-provenance-v1",
+  "early_registration": {
+    "path": "docs/benchmarkfolder/policy-v2/final-stress-generation-v1/early-registration.json",
+    "sha256": "a74b26d4a9ec9ad081ee325d17995143d09cae352cd7d1dee5f995d16d6fa5ce",
+    "bytes": 376857
+  },
+  "executed_controller": {
+    "path": "docs/benchmarkfolder/policy-v2/final-stress-generation-v1/sources/early_build.py",
+    "sha256": "8e942ae716672c7c329e4dfb6fc68349822938a09b556040879c6aeed8513363",
+    "bytes": 15423
+  },
+  "committed_controller_sha256": "6df2786a59c4cc11ff5e931a22edd15a7f6bcdc0c2c80bbb2e635451662d274c",
+  "root_authorized_dirty_docs_patch": {
+    "path": "docs/benchmarkfolder/policy-v2/final-stress-execution-v1/operational-source-null-fix.patch",
+    "sha256": "931b5114d04e665829e744d62a5f5b3a72c9317c3ddd45ded93fa1914df64627",
+    "bytes": 1168
+  },
+  "root_correction_receipt": {
+    "path": "docs/benchmarkfolder/policy-v2/final-stress-execution-v1/operational-source-null-fix.json",
+    "sha256": "b0723125fab79a06f8f76f26e364e575f29d8af80e484589f11cf41ce66a14f8",
+    "bytes": 764
+  },
+  "first_failure": {
+    "path": "docs/benchmarkfolder/policy-v2/final-stress-execution-v1/early-spec-attempt-1.json",
+    "sha256": "f072a0620757eb8b4a3ffdba10d1d36f11422c728aeff9964fe247f893d063f8",
+    "bytes": 1021
+  },
+  "launcher_receipt": {
+    "path": "docs/benchmarkfolder/policy-v2/final-stress-early-launch-attempt-2/started.json",
+    "sha256": "3da81a1c6d0f4911ebe4465015c75766590d907e154f66a0f1db883fe417e7a4",
+    "bytes": 3965
+  },
+  "production_source_commits_unchanged": [
+    "b0ea105a04afa34304d437d2956e4d4672360670",
+    "d05b59f3277ce0d727cb2816d8b7ad45107e58c4"
+  ],
+  "scope": "Only operational docs controller non-file inventory corrected; no numerical source/reader/policy changed",
+  "identity_sha256": "a5f300ef550fa43e8e62f9d926cb11c880667e377fd1f0a3f12a3674744d102b"
+}

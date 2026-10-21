@@ -1,0 +1,25 @@
+{
+  "run_id": "final-representative-ninja-near-singular-b0ea",
+  "configuration": "docs/benchmarkfolder/policy-v2/controls.json",
+  "report": "docs/benchmarkfolder/policy-v2/final-representative-v1/runs/ninja-near-singular",
+  "work": ".benchmark-work/policy-v2/final-representative-v1/ninja-near-singular",
+  "output_roots": {
+    "baseline": ".benchmark-work/outputs/baseline",
+    "candidate": ".benchmark-work/policy-v2/final-representative-generation-v1/outputs/candidate"
+  },
+  "points_root": "docs/benchmarkfolder/policy-v2/representative-point-streams/near-singular",
+  "cases": [
+    "control-forced-qp"
+  ],
+  "sources": [
+    "candidate"
+  ],
+  "backends": [
+    6
+  ],
+  "cpu": 190,
+  "representative": true,
+  "fresh_parity": true,
+  "timeout": 7200,
+  "minimum_seconds": 1e-12
+}

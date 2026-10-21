@@ -1,0 +1,42 @@
+{
+  "stage": "threshold-candidate",
+  "utc": "2026-10-21T01:57:30.515263+00:00",
+  "launcher": {
+    "pid": 1218912,
+    "ppid": 1218910,
+    "pgid": 1218910,
+    "sid": 1218910,
+    "state": "R",
+    "start_ticks": 58134440,
+    "command": "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python -u -",
+    "affinity": [
+      190
+    ]
+  },
+  "owned_processes": [
+    {
+      "pid": 1251835,
+      "ppid": 1218912,
+      "pgid": 1251835,
+      "sid": 1251835,
+      "state": "S",
+      "start_ticks": 58149851,
+      "command": "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python tools/ninjars_supplement_v2.py collect --spec /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/collection-specs/threshold-candidate-cpu190-v1.json --execute-numerical",
+      "affinity": [
+        190
+      ]
+    },
+    {
+      "pid": 1259775,
+      "ppid": 1251835,
+      "pgid": 1251835,
+      "sid": 1251835,
+      "state": "S",
+      "start_ticks": 58154155,
+      "command": "make -j4 check",
+      "affinity": [
+        190
+      ]
+    }
+  ]
+}

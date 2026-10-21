@@ -1,0 +1,20 @@
+{
+  "points": 8,
+  "external_masses": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "sha256": "9398583c66b9b8aa79a4556355a6c437145cf60b7f409272f436dfc34186a6d6",
+  "serialized_distinct_configurations": 2,
+  "physical_distinct_invariant_s": null,
+  "serialized_invariant_s_min": 1000000.0,
+  "serialized_invariant_s_max": 1000000.0,
+  "invariant_interpretation": "RAMBO orientations at fixed center-of-mass energy",
+  "max_relative_conservation_residual": 9.094947017729283e-16,
+  "max_relative_mass_shell_residual": 5.820766091346741e-16,
+  "storage": "binary64 values serialized as 17 digits after decimal in exponential notation"
+}

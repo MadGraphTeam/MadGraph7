@@ -1,0 +1,25 @@
+{
+  "status": "passed",
+  "seconds": 48.149473475059494,
+  "runtime_binding": {
+    "path": "docs/benchmarkfolder/policy-v2/final-representative-v1/runtime-bindings/ninja-near-singular.json",
+    "sha256": "9acc7dd6cebae20baf24568eb5e9d9b5111117287d571f7b0256fb7b06519f2f",
+    "bytes": 273317
+  },
+  "targets": {
+    "control-forced-qp-candidate-6": {
+      "status_counts": {
+        "328": 10
+      },
+      "runtime": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+      "executable": "e96db728555c1da6ed01b1fd6958019ca82dc02a9e5202c2df57e47a55353a3d",
+      "generation": "34aed45638a2e18b18135179e749317c3cf9a0fdd3bb404e43fe68d23837c6de",
+      "parity": {
+        "passed": true,
+        "exact_rows": true,
+        "status_counts_match": true
+      }
+    }
+  },
+  "records": 2
+}

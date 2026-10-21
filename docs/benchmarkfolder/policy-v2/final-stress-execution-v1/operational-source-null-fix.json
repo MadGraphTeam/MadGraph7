@@ -1,0 +1,17 @@
+{
+  "schema": "stress-operational-null-source-correction-v1",
+  "root_authorization": "OPERATIONALONLY tracked file=>digest elseNone; frozen HEAD/numerics",
+  "head": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "before_source_sha256": "6df2786a59c4cc11ff5e931a22edd15a7f6bcdc0c2c80bbb2e635451662d274c",
+  "after_source_sha256": "8e942ae716672c7c329e4dfb6fc68349822938a09b556040879c6aeed8513363",
+  "patch_sha256": "931b5114d04e665829e744d62a5f5b3a72c9317c3ddd45ded93fa1914df64627",
+  "ast_parse": "passed",
+  "actual_source_precheck": "passed",
+  "tracked_production_entries": 2601,
+  "tracked_nonfiles": [
+    "Template/NLO/MCatNLO/include/pineappl_maxproc.inc",
+    "vendor/SudGen/NNPDFDriver.f"
+  ],
+  "madgraph_cli_and_build_calls": 0,
+  "engine_calls": 0
+}

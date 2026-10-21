@@ -1,0 +1,25 @@
+{
+  "status": "passed",
+  "seconds": 17.152650519041345,
+  "runtime_binding": {
+    "path": "docs/benchmarkfolder/policy-v2/final-representative-v1/runtime-bindings/mixed.json",
+    "sha256": "239cfed902dda0cb353551ef7905eacce11e613d3e72ea33cd7fd37929915284",
+    "bytes": 298184
+  },
+  "targets": {
+    "control-mixed-candidate-8": {
+      "status_counts": {
+        "218": 10
+      },
+      "runtime": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+      "executable": "32771f36b8604202a123b07392d4163a2777eab95862cd4bd439653fb21d4c51",
+      "generation": "34aed45638a2e18b18135179e749317c3cf9a0fdd3bb404e43fe68d23837c6de",
+      "parity": {
+        "passed": true,
+        "exact_rows": true,
+        "status_counts_match": true
+      }
+    }
+  },
+  "records": 2
+}

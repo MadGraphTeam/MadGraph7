@@ -1,0 +1,172 @@
+Running MG7 in debug mode
+********************************************************************************
+*                                                                              *
+*                               W E L C O M E to                               *
+*                              M A D G R A P H 7                               *
+*                                                                              *
+*                                                                              *
+*                                  ..........                                  *
+*                                @          ....                               *
+*                              @               ...                             *
+*                            @    M         M    .                             *
+*                           @     MM       MM    ..                            *
+*                           .     M  M   M  M  ..                              *
+*                           ..    M   M M   M ..                               *
+*                            .    M    M    M.                                 *
+*                            ...               7777777                         *
+*                              ....                 7                          *
+*                                 ................ 7                           *
+*                                                 7                            *
+*                                                7                             *
+*                                                                              *
+*                   VERSION 0.2.1                 2026-09-24                   *
+*                  GIT v0.2.1-549-gb0ea105a0  madloop_ninjars                  *
+*                                                                              *
+*                 The MadGraph7 Development Team - Find us at                  *
+*                        http://madgraph.phys.ucl.ac.be/                       *
+*                                      and                                     *
+*                      http://amcatnlo.web.cern.ch/amcatnlo/                   *
+*                                                                              *
+*                         Type 'help' for in-line help.                        *
+*                 Type 'tutorial' to learn how MadGraph7 works                 *
+*                                                                              *
+********************************************************************************
+load MG7 configuration from input/mg7_configuration.txt 
+fastjet-config does not seem to correspond to a valid fastjet-config executable (v3+). We will use fjcore instead.
+ Please set the 'fastjet'variable to the full (absolute) /PATH/TO/fastjet-config (including fastjet-config).
+ MadGraph7> set fastjet /PATH/TO/fastjet-config
+
+eMELA-config does not seem to correspond to a valid eMELA-config executable.
+ Please set the 'fastjet'variable to the full (absolute) /PATH/TO/eMELA-config (including eMELA-config).
+ MadGraph7> set eMELA /PATH/TO/eMELA-config
+
+set ninja to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib
+set ninjars to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/HEPTools/ninjars/lib
+set collier to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier
+lhapdf-config does not seem to correspond to a valid lhapdf-config executable. 
+Please set the 'lhapdf' variable to the (absolute) /PATH/TO/lhapdf-config (including lhapdf-config).
+Note that you can still compile and run aMC@NLO with the built-in PDFs
+ MadGraph7> set lhapdf /PATH/TO/lhapdf-config
+
+No valid eps viewer found. Please set in ./input/mg7_configuration.txt
+No valid web browser found. Please set in ./input/mg7_configuration.txt
+Using default gzip "gzip". Set another one in ./input/mg7_configuration.txt
+import /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-stress-generation-v1/commands/candidate-stress-qcd-4-gg-ttgg.mg5
+The import format was not given, so we guess it as command
+set automatic_html_opening False
+This option will be the default in any output that you are going to create in this session.
+In order to keep this changes permanent please run 'save options'
+set auto_update 0
+save options auto_update
+save configuration file to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/input/mg7_configuration.txt
+set nb_core 4
+This option will be the default in any output that you are going to create in this session.
+In order to keep this changes permanent please run 'save options'
+set loop_optimized_output True
+set loop optimized output to True
+set output_dependencies external
+save options output_dependencies
+save configuration file to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/input/mg7_configuration.txt
+set complex_mass_scheme False
+Complex mass already desactivated.
+set ninja /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib
+set ninja to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib
+save options ninja
+save configuration file to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/input/mg7_configuration.txt
+set collier /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier
+set collier to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier
+save options collier
+save configuration file to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/input/mg7_configuration.txt
+set ninjars /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/HEPTools/ninjars/lib
+set ninjars to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/HEPTools/ninjars/lib
+save options ninjars
+save configuration file to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/input/mg7_configuration.txt
+import model loop_sm
+INFO: Details of the model import are written in /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/models/loop_sm/loop_sm_debug.log 
+INFO: failed to load model from pickle file. Try importing UFO from File 
+[1;60mINFO: This model [version 1.2] is provided by V. Hirschi (email: valentin.hirschi@gmail.com). Please cite n/a [0m
+INFO: load particles 
+INFO: load vertices 
+INFO: Restrict model loop_sm with file models/loop_sm/restrict_default.dat . 
+INFO: Use 'explain_restriction' to see what that card removes from the model. 
+INFO: Change particles name to pass to MG7 convention 
+Defined multiparticle p = g u c d s u~ c~ d~ s~
+Defined multiparticle j = g u c d s u~ c~ d~ s~
+Defined multiparticle l+ = e+ mu+
+Defined multiparticle l- = e- mu-
+Defined multiparticle vl = ve vm vt
+Defined multiparticle vl~ = ve~ vm~ vt~
+Defined multiparticle all = g gh gh~ d u s c d~ u~ s~ c~ a ve vm vt e- mu- ve~ vm~ vt~ e+ mu+ b t b~ t~ z w+ h w- ta- ta+
+generate g g > t t~ g g [virt=QCD]
+[1;32mDEBUG: Generating process: g g > t t~ g g [ virt = QCD ]  [0m
+INFO: Chosen coupling orders configuration: (QCD=*,QED=0) 
+[1;32mDEBUG: Coupling order combinations considered: (QCD,QED,WEIGHTED) [0m
+[1;32mDEBUG:  > Born : (8,0,W8) [0m
+[1;32mDEBUG:  > loop : (10,0,W10) [0m
+[1;32mDEBUG: A total of 1809 loop diagrams were identified with equivalent ones. [0m
+INFO: Contributing diagrams generated: 123 Born, 5547(+1809) loops, 2853 R2, 7090 UV 
+Process generated in 101.749 s
+output standalone /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/final-stress-generation-v1/outputs/candidate/stress-qcd-4-gg-ttgg
+INFO: initialize a new standalone directory: stress-qcd-4-gg-ttgg 
+INFO: Generating Helas calls for process: g g > t t~ g g [ virt = QCD ] 
+[1;32mDEBUG: 10706 loop wavefunctions have been reused, for a total of 11041 ones [0m
+[1;32mDEBUG: Computing the loop and Born color basis [0m
+INFO: Processing color information for loop process: g g > t t~ g g [ virt = QCD ] 
+INFO: Processing color information for born process: g g > t t~ g g [ virt = QCD ] 
+INFO: Creating color matrix  loop process: g g > t t~ g g [ virt = QCD ] 
+INFO: Creating files in directory /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/final-stress-generation-v1/outputs/candidate/stress-qcd-4-gg-ttgg/SubProcesses/P0_gg_ttxgg 
+[1;32mDEBUG: adding in aloha model 1 lorentz struct [0m
+ALOHA: aloha creates VVV1 set of routines with options: L2,P0[0m
+ALOHA: aloha creates VVVV1 set of routines with options: L2,P0[0m
+ALOHA: aloha creates VVVV3 set of routines with options: L2,P0[0m
+ALOHA: aloha creates VVVV4 set of routines with options: L2,P0[0m
+ALOHA: aloha creates FFV1 set of routines with options: L2,P0[0m
+ALOHA: aloha creates FFV1 set of routines with options: L3[0m
+ALOHA: aloha creates FFV1 set of routines with options: L1,P0[0m
+ALOHA: aloha creates FFV1 set of routines with options: L3[0m
+ALOHA: aloha creates FFV1 set of routines with options: L1[0m
+ALOHA: aloha creates FFV1 set of routines with options: L2[0m
+ALOHA: aloha creates GHGHG set of routines with options: L2[0m
+ALOHA: aloha creates GHGHG set of routines with options: L1[0m
+INFO: Computing diagram color coefficients 
+INFO: The color factors computation will take  about 0:01:09 to run. Started on 21-10-2026 01:42. 
+Color computation:  0% |                                      | ETA:  00:00:00 Color computation:  1% |                                      | ETA:  00:00:49 Color computation:  2% |                                      | ETA:  00:00:43 Color computation:  3% |#                                     | ETA:  00:00:39 Color computation:  4% |#                                     | ETA:  00:00:35 Color computation:  5% |#                                     | ETA:  00:00:32 Color computation:  6% |##                                    | ETA:  00:00:29 Color computation:  7% |##                                    | ETA:  00:00:28 Color computation:  8% |###                                   | ETA:  00:00:28 Color computation:  9% |###                                   | ETA:  00:00:26 Color computation: 10% |###                                   | ETA:  00:00:26 Color computation: 11% |####                                  | ETA:  00:00:26 Color computation: 12% |####                                  | ETA:  00:00:27 Color computation: 13% |####                                  | ETA:  00:00:27 Color computation: 14% |#####                                 | ETA:  00:00:27 Color computation: 15% |#####                                 | ETA:  00:00:28 Color computation: 16% |######                                | ETA:  00:00:28 Color computation: 17% |######                                | ETA:  00:00:27 Color computation: 18% |######                                | ETA:  00:00:26 Color computation: 19% |#######                               | ETA:  00:00:27 Color computation: 20% |#######                               | ETA:  00:00:27 Color computation: 21% |#######                               | ETA:  00:00:27 Color computation: 22% |########                              | ETA:  00:00:27 Color computation: 23% |########                              | ETA:  00:00:28 Color computation: 24% |#########                             | ETA:  00:00:27 Color computation: 25% |#########                             | ETA:  00:00:26 Color computation: 26% |#########                             | ETA:  00:00:26 Color computation: 27% |##########                            | ETA:  00:00:25 Color computation: 28% |##########                            | ETA:  00:00:25 Color computation: 29% |###########                           | ETA:  00:00:25 Color computation: 30% |###########                           | ETA:  00:00:25 Color computation: 31% |###########                           | ETA:  00:00:25 Color computation: 32% |############                          | ETA:  00:00:24 Color computation: 33% |############                          | ETA:  00:00:24 Color computation: 34% |############                          | ETA:  00:00:24 Color computation: 35% |#############                         | ETA:  00:00:24 Color computation: 36% |#############                         | ETA:  00:00:24 Color computation: 37% |##############                        | ETA:  00:00:23 Color computation: 38% |##############                        | ETA:  00:00:23 Color computation: 39% |##############                        | ETA:  00:00:23 Color computation: 40% |###############                       | ETA:  00:00:23 Color computation: 41% |###############                       | ETA:  00:00:23 Color computation: 42% |###############                       | ETA:  00:00:23 Color computation: 43% |################                      | ETA:  00:00:22 Color computation: 44% |################                      | ETA:  00:00:22 Color computation: 45% |#################                     | ETA:  00:00:22 Color computation: 46% |#################                     | ETA:  00:00:22 Color computation: 47% |#################                     | ETA:  00:00:21 Color computation: 48% |##################                    | ETA:  00:00:21 Color computation: 49% |##################                    | ETA:  00:00:21 Color computation: 50% |###################                   | ETA:  00:00:20 Color computation: 51% |###################                   | ETA:  00:00:20 Color computation: 52% |###################                   | ETA:  00:00:20 Color computation: 53% |####################                  | ETA:  00:00:19 Color computation: 54% |####################                  | ETA:  00:00:19 Color computation: 55% |####################                  | ETA:  00:00:19 Color computation: 56% |#####################                 | ETA:  00:00:18 Color computation: 57% |#####################                 | ETA:  00:00:18 Color computation: 58% |######################                | ETA:  00:00:18 Color computation: 59% |######################                | ETA:  00:00:17 Color computation: 60% |######################                | ETA:  00:00:17 Color computation: 61% |#######################               | ETA:  00:00:16 Color computation: 62% |#######################               | ETA:  00:00:16 Color computation: 63% |#######################               | ETA:  00:00:15 Color computation: 64% |########################              | ETA:  00:00:15 Color computation: 65% |########################              | ETA:  00:00:15 Color computation: 66% |#########################             | ETA:  00:00:14 Color computation: 67% |#########################             | ETA:  00:00:14 Color computation: 68% |#########################             | ETA:  00:00:13 Color computation: 69% |##########################            | ETA:  00:00:13 Color computation: 70% |##########################            | ETA:  00:00:13 Color computation: 71% |##########################            | ETA:  00:00:12 Color computation: 72% |###########################           | ETA:  00:00:12 Color computation: 73% |###########################           | ETA:  00:00:11 Color computation: 74% |############################          | ETA:  00:00:11 Color computation: 75% |############################          | ETA:  00:00:11 Color computation: 76% |############################          | ETA:  00:00:10 Color computation: 77% |#############################         | ETA:  00:00:10 Color computation: 78% |#############################         | ETA:  00:00:10 Color computation: 79% |##############################        | ETA:  00:00:09 Color computation: 80% |##############################        | ETA:  00:00:09 Color computation: 81% |##############################        | ETA:  00:00:08 Color computation: 82% |###############################       | ETA:  00:00:08 Color computation: 83% |###############################       | ETA:  00:00:07 Color computation: 84% |###############################       | ETA:  00:00:07 Color computation: 85% |################################      | ETA:  00:00:06 Color computation: 86% |################################      | ETA:  00:00:06 Color computation: 87% |#################################     | ETA:  00:00:06 Color computation: 88% |#################################     | ETA:  00:00:05 Color computation: 89% |#################################     | ETA:  00:00:05 Color computation: 90% |##################################    | ETA:  00:00:04 Color computation: 91% |##################################    | ETA:  00:00:04 Color computation: 92% |##################################    | ETA:  00:00:03 Color computation: 93% |###################################   | ETA:  00:00:03 Color computation: 94% |###################################   | ETA:  00:00:02 Color computation: 95% |####################################  | ETA:  00:00:02 Color computation: 96% |####################################  | ETA:  00:00:01 Color computation: 97% |####################################  | ETA:  00:00:01 Color computation: 98% |##################################### | ETA:  00:00:00 Color computation: 99% |##################################### | ETA:  00:00:00 Color computation:100% |######################################| Time: 00:00:45 
+INFO: Finished on 21-10-2026 01:42. 
+INFO: Particles with .true. are generated off-shell: ['.false.', '.false.', '.false.', '.false.', '.false.', '.false.'] 
+INFO: There are more than 5000 loop diagrams.Only the first 5000 are drawn. 
+INFO: Drawing loop Feynman diagrams for Process: g g > t t~ g g [ virt = QCD ] 
+INFO: Generating born Feynman diagrams for Process: g g > t t~ g g [ virt = QCD ] 
+Generated helas calls for 1 subprocesses (5916 diagrams) in 51.478 s
+Wrote files for 222 OPP calls in 75.260 s
+Export UFO model to MG4 format
+[1;32mDEBUG: wanted_couplings: CTparan not supporting merging -> will be problematic for NLO [0m
+[1;32mDEBUG: No PDF directory do not cfeate ElectroweakFlux.inc [0m
+ALOHA: aloha starts to compute helicity amplitudes
+ALOHA: aloha creates VVV1 routines[0m
+ALOHA: aloha creates FFV1 routines[0m
+ALOHA: aloha creates VVVV1 routines[0m
+ALOHA: aloha creates VVVV3 routines[0m
+ALOHA: aloha creates VVVV4 routines[0m
+ALOHA: aloha creates GHGHG set of routines with options: L2[0m
+ALOHA: aloha creates R2_GG_1 routines[0m
+ALOHA: aloha creates R2_GG_2 routines[0m
+ALOHA: aloha creates R2RGA_VVVV1 routines[0m
+ALOHA: aloha creates R2RGA_VVVV2 routines[0m
+ALOHA: aloha creates R2RGA_VVVV3 routines[0m
+ALOHA: aloha creates R2RGA_VVVV5 routines[0m
+ALOHA: aloha creates R2RGA_VVVV10 routines[0m
+ALOHA: aloha creates R2_QQ_1 routines[0m
+ALOHA: aloha creates R2_QQ_2 routines[0m
+ALOHA: aloha creates R2_GG_3 routines[0m
+ALOHA: aloha creates R2_GG_1_R2_GG_2 routines[0m
+ALOHA: aloha creates R2RGA_VVVV2_R2RGA_VVVV3 routines[0m
+ALOHA: aloha creates R2RGA_VVVV2_R2RGA_VVVV3_R2RGA_VVVV5 routines[0m
+ALOHA: aloha creates R2_QQ_1_R2_QQ_2 routines[0m
+ALOHA: aloha creates R2_GG_1_R2_GG_3 routines[0m
+ALOHA: aloha creates 33 routines in  0.737 s
+INFO: Use Fortran compiler gfortran 
+INFO: Use c++ compiler g++ 
+INFO: Running make for Source directory 
+Output to directory /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/final-stress-generation-v1/outputs/candidate/stress-qcd-4-gg-ttgg done.
+quit
+quit

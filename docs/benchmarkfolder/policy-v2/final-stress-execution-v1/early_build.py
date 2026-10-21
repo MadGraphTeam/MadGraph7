@@ -42,7 +42,7 @@ def sources(numerical_revision):
     outside = [name for name in changes if name and not any(name == p or name.startswith(p+"/") for p in PATHS)]
     if any(not name.startswith(("docs/", "tests/", "references/")) for name in outside):
         raise ValueError("Unreviewed non-document/test source differs from numerical freeze")
-    return {"production": {name: supplement.digest(ROOT / name) for name in names if name},
+    return {"production": {name: supplement.digest(ROOT / name) if (ROOT / name).is_file() else None for name in names if name},
             "document_test_changes": {name: supplement.digest(ROOT / name) if (ROOT / name).is_file() else None for name in outside},
             "retained_untracked_diagnostics": {name: supplement.digest(ROOT / name) for name in additions}}
 

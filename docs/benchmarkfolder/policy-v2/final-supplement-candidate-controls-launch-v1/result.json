@@ -1,0 +1,123 @@
+{
+  "schema": "final-supplement-candidate-control-launch-v1",
+  "status": "passed",
+  "started_utc": "2026-10-21T01:54:04.567453+00:00",
+  "launcher": {
+    "pid": 1218912,
+    "ppid": 1218910,
+    "pgid": 1218910,
+    "sid": 1218910,
+    "state": "R",
+    "start_ticks": 58134440,
+    "command": "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python -u -",
+    "affinity": [
+      190
+    ]
+  },
+  "affinity": [
+    190
+  ],
+  "generation_revision": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "orchestration_head_before": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "numerical_revision": "d05b59f3277ce0d727cb2816d8b7ad45107e58c4",
+  "generator_before_sha256": "34aed45638a2e18b18135179e749317c3cf9a0fdd3bb404e43fe68d23837c6de",
+  "installed_before": {
+    "install.log": "d85f20930f293758488dca0afdc0f6918696a153dcf8150deff37bb9eeb19b25",
+    "Cargo.toml": "a025c54a99707cf3f950c1a24aaa4144f3f78941f2c00472dc83122ff39360e4",
+    "Cargo.lock": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25",
+    "lib/ninjars-config.json": "2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7",
+    "lib/ninjars-native-libs.txt": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+    "lib/mninjars.mod": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+    "lib/ninjars-link-before.txt": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+    "lib/libninjars.a": "800a941faf3cdfdab764fdffe1d5ab73f84984a786aa194596b753af6b6f5d42",
+    "include/ninjars.h": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+    "include/mninjars.f90": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05"
+  },
+  "runtime_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+  "root_handoff": "ROOT_CANDIDATE_NUMERICAL_MP_HANDOFF_CPU190_SOLE_20261021",
+  "permitted_backends": [
+    1,
+    6,
+    7,
+    8
+  ],
+  "source_role": "candidate_corrected",
+  "timing_acceptance_evidence": false,
+  "docs_only_commits_permitted": true,
+  "phases": [
+    {
+      "stage": "loop-candidate-diagnostic",
+      "command": [
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+        "tools/ninjars_supplement_v2.py",
+        "collect",
+        "--spec",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/collection-specs/loop-candidate-diagnostic-cpu190-v1.json",
+        "--execute-numerical"
+      ],
+      "spec_sha256": "b3ec2bc2a415a14f7f02a37cbdc3d493cb11f73ca5510fe275a1201a4458e559",
+      "started_utc": "2026-10-21T01:54:04.570724+00:00",
+      "process": {
+        "pid": 1219155,
+        "ppid": 1218912,
+        "pgid": 1219155,
+        "sid": 1219155,
+        "state": "R",
+        "start_ticks": 58134569,
+        "command": "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python tools/ninjars_supplement_v2.py collect --spec /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/collection-specs/loop-candidate-diagnostic-cpu190-v1.json --execute-numerical",
+        "affinity": [
+          190
+        ]
+      },
+      "exit_code": 0,
+      "finished_utc": "2026-10-21T01:56:36.685918+00:00",
+      "status": "passed",
+      "remaining_owned_processes": []
+    },
+    {
+      "stage": "threshold-candidate",
+      "command": [
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+        "tools/ninjars_supplement_v2.py",
+        "collect",
+        "--spec",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/collection-specs/threshold-candidate-cpu190-v1.json",
+        "--execute-numerical"
+      ],
+      "spec_sha256": "1596cea92c39ad66d067b7678e4e50b00b65b724d39086948579bc2da572f60c",
+      "started_utc": "2026-10-21T01:56:37.392071+00:00",
+      "process": {
+        "pid": 1251835,
+        "ppid": 1218912,
+        "pgid": 1251835,
+        "sid": 1251835,
+        "state": "R",
+        "start_ticks": 58149851,
+        "command": "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python tools/ninjars_supplement_v2.py collect --spec /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/collection-specs/threshold-candidate-cpu190-v1.json --execute-numerical",
+        "affinity": [
+          190
+        ]
+      },
+      "exit_code": 0,
+      "finished_utc": "2026-10-21T01:57:40.244811+00:00",
+      "status": "passed",
+      "remaining_owned_processes": []
+    }
+  ],
+  "orchestration_head_after": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "generator_unchanged": true,
+  "installed_after": {
+    "install.log": "d85f20930f293758488dca0afdc0f6918696a153dcf8150deff37bb9eeb19b25",
+    "Cargo.toml": "a025c54a99707cf3f950c1a24aaa4144f3f78941f2c00472dc83122ff39360e4",
+    "Cargo.lock": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25",
+    "lib/ninjars-config.json": "2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7",
+    "lib/ninjars-native-libs.txt": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+    "lib/mninjars.mod": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec",
+    "lib/ninjars-link-before.txt": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+    "lib/libninjars.a": "800a941faf3cdfdab764fdffe1d5ab73f84984a786aa194596b753af6b6f5d42",
+    "include/ninjars.h": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+    "include/mninjars.f90": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05"
+  },
+  "wall_seconds": 217.01773159008007,
+  "finished_utc": "2026-10-21T01:57:41.588376+00:00"
+}

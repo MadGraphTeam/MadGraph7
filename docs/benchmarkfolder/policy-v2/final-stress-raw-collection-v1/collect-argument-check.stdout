@@ -1,0 +1,10 @@
+usage: collect.py collect [-h] [--execute-numerical] --handoff HANDOFF
+                          specification
+
+positional arguments:
+  specification
+
+options:
+  -h, --help           show this help message and exit
+  --execute-numerical
+  --handoff HANDOFF

@@ -810,3 +810,28 @@ resume metadata. The earlier pause note is a historical checkpoint.
   correctness, stability, original-Ninja runtime gates and the final report
   remain outstanding; no goal-completion or PR claim is authorized by these
   installation checks alone.
+- Fresh CLI exports and clean builds for all eight core processes pass from
+  generation revision `b0ea105a04afa34304d437d2956e4d4672360670`. All physical
+  cards, fixed points, model correction postimages, dependencies and 6,009
+  literal-original archive members remain unchanged. Every process shares the
+  complete runtime descriptor
+  `8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff`.
+  Independent re-execution of the inventory audit reproduces it exactly.
+- All sixty-four public C ABI precision calls against the installed library
+  pass. The beyond-double complex control reproduces its final-source 256-bit
+  outputs and passes the independent 384-bit convergence comparison. The
+  refreshed Fortran representative proof passes eight new candidate targets
+  with exact persistent/fresh parity, genuine rescue, loop-induced amplitudes
+  and mixed split orders; original/helper roles are revalidated separately.
+- Both challenging two-to-four processes, both loop-induced processes and the
+  complex-mass control have fresh actual CLI exports and clean builds. Retain
+  the stress preparation's first failed path precheck and the one-line
+  operational correction for existing broken template links. It changes no
+  generator or numerical code. Subsequent source-bound numerical collections
+  may retain raw stress streams before the core dataset exists, with no
+  placeholder core identity; attach the real identity in a new manifest and
+  validate through the unchanged final reader before any campaign claim.
+- Full core numerical comparisons, warmed timing gates, remaining focused
+  controls, final profiling and the reproducible final PDF remain outstanding.
+  Generation, installation, representative checks and diagnostic timings do
+  not certify those final gates. Do not open a PR before the user's instruction.

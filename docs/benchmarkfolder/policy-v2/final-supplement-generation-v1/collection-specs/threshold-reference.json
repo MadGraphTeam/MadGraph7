@@ -1,0 +1,45 @@
+{
+  "timeout": 86400.0,
+  "configuration": {
+    "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/threshold.json",
+    "sha256": "37e5dfbbb58fa52e5cf0ac6cd6fda3aa6ab700dfbda6ba7cf4c2430043a5f088",
+    "bytes": 455
+  },
+  "points": {
+    "supplement-gg-hh-threshold": {
+      "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/points/supplement-gg-hh-threshold.dat",
+      "sha256": "14fa79666ef3448a3d90d7d0b001b45188e62acb2783fac64b17e8da8f6ec299",
+      "bytes": 4647
+    }
+  },
+  "role_map": {
+    "baseline": "original_helper_corrected"
+  },
+  "cpu": 2,
+  "repetitions": 2,
+  "timing": false,
+  "threshold": true,
+  "run_id": "final-supplement-threshold-reference-v1",
+  "report": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/runs/threshold-reference",
+  "work": ".benchmark-work/policy-v2/final-supplement-generation-v1/runs/threshold-reference",
+  "output_roots": {
+    "baseline": ".benchmark-work/policy-v2/final-supplement-generation-v1/helpers/outputs/baseline"
+  },
+  "source_proofs": {
+    "baseline": {
+      "supplement-gg-h": {
+        "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/helpers/supplement-gg-h-source.json",
+        "sha256": "732fd0f1020f05cca3487e266c7a3d5caa3964f678495cdc7917332047a3e90c",
+        "bytes": 34579
+      },
+      "supplement-gg-hh": {
+        "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/helpers/supplement-gg-hh-source.json",
+        "sha256": "dc178c75685dd7ddd259fe0dcacff36a242cc01eeed34f1855b22d7c9accd1ef",
+        "bytes": 35889
+      }
+    }
+  },
+  "case_aliases": {
+    "supplement-gg-hh-threshold": "supplement-gg-hh"
+  }
+}

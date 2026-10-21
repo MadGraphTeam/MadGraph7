@@ -1,0 +1,271 @@
+{
+  "bytes": 1087794,
+  "candidate_runtime_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+  "categories": {
+    "required-small-fortran-module-metadata": 1,
+    "retained-evidence": 42
+  },
+  "count": 43,
+  "created_utc": "2026-10-21T01:54:29.535016+00:00",
+  "excluded_private_products": {
+    "kinds": [
+      "ELF executables",
+      "objects",
+      "static/shared libraries",
+      "Cargo targets and caches",
+      "generated-process work trees"
+    ],
+    "retention_policy": "Retain commands, settings, generated/compiled-source manifests, raw results, all logs, source snapshots and PID/start-tick/PGID ledgers. Compiled products remain in ignored work and can be rebuilt.",
+    "trees": [
+      ".benchmark-work/policy-v2/final-installed-precision-v1",
+      ".benchmark-work/policy-v2/final-representative-v1",
+      ".benchmark-work/policy-v2/final-representative-generation-v1"
+    ]
+  },
+  "existing_evidence_rewritten": false,
+  "files": {
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/README.md": {
+      "bytes": 5263,
+      "category": "retained-evidence",
+      "sha256": "747f042ac8faf84d2469386df0e32c29bdd1d0e9bf6c9face2e58d7587d4f0dc"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/derive_installation.py": {
+      "bytes": 4481,
+      "category": "retained-evidence",
+      "sha256": "964804e58922b148fa68f9004eba4e34a13c8af91af7dbc5a8b98150a8edc7a5"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/execute-process.json": {
+      "bytes": 655,
+      "category": "retained-evidence",
+      "sha256": "81a2e000c69c83359ffb1ed582fc5daae8192715fa77d6a4468eefccb9d65d77"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/execute-start.json": {
+      "bytes": 527,
+      "category": "retained-evidence",
+      "sha256": "d7a3faa076d5522719aeb0cbbfadd8ef417e6cdb1a2d04ed3322e040de5a7578"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/execute.stderr.log": {
+      "bytes": 0,
+      "category": "retained-evidence",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/execute.stdout.log": {
+      "bytes": 24721,
+      "category": "retained-evidence",
+      "sha256": "72fd2ee9d38302930315fbcab0e8666b76127dba19a6664e58d10fb54d63b9a1"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/install-cli.log": {
+      "bytes": 7059,
+      "category": "retained-evidence",
+      "sha256": "d4fc86ac36ccc82fedadc1c8998466bd722e5cb3115bd7429e86da588abc1ebb"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/install.mg5": {
+      "bytes": 264,
+      "category": "retained-evidence",
+      "sha256": "9baee1aa7ea45e425200ba85448d1fbba7a27f87c5da011b593aa31fe601ffb0"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/installation.json": {
+      "bytes": 8974,
+      "category": "retained-evidence",
+      "sha256": "85f1cfdea4a7701e3b204d22985fa2e14e9d72f147854ca59ad96f7221ae6da4"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/launch-result.json": {
+      "bytes": 167,
+      "category": "retained-evidence",
+      "sha256": "351dbce05f1c403535835a92d2010f2241331151be646ff8ad8f495bd2504621"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/launch.json": {
+      "bytes": 463,
+      "category": "retained-evidence",
+      "sha256": "b958ef0f464205f3033fca8b03fb3f29b37145749cb886a389d726e9387695b6"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/launch.py": {
+      "bytes": 3061,
+      "category": "retained-evidence",
+      "sha256": "e86404a97af6f4005c6f249b0ee948f7dd56cba5b4c330f54ff7d8c37941cc09"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/precision-spec.json": {
+      "bytes": 17973,
+      "category": "retained-evidence",
+      "sha256": "a8a92008f52fe05f37983b1db215acb2d89b1ef389b3689c7c690799db97f320"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/precision-spec.template.json": {
+      "bytes": 676,
+      "category": "retained-evidence",
+      "sha256": "dd23ed2f312a2f053f74bad08980f39feb6e4ec69e95a6ff89eaf225def95b9f"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/prepare-process.json": {
+      "bytes": 602,
+      "category": "retained-evidence",
+      "sha256": "6cb0b6c4f5ceab3317bcbdbd3bec2fb7aedce7c71b1ff98730e02d5055590d3e"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/prepare-start.json": {
+      "bytes": 475,
+      "category": "retained-evidence",
+      "sha256": "d7a873415b0098af62e9689eb5c748e7a87223648795c321215a39515fb55da6"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/prepare.stderr.log": {
+      "bytes": 0,
+      "category": "retained-evidence",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/prepare.stdout.log": {
+      "bytes": 26291,
+      "category": "retained-evidence",
+      "sha256": "85314d757c77e2568838268391fe5c665b55a5c09851b8e75048091ed095ca66"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/retained-files.txt": {
+      "bytes": 3652,
+      "category": "retained-evidence",
+      "sha256": "90fe064789b3a0c604487186125b5c30278d590941fa5a253ba39f376864b76a"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/build.log": {
+      "bytes": 322,
+      "category": "retained-evidence",
+      "sha256": "7870622fc8bfa44e4efb2a3a1425de9c77c6d5dac70aa9eab4c56d763b4d75d9"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/input-spec.json": {
+      "bytes": 17973,
+      "category": "retained-evidence",
+      "sha256": "a8a92008f52fe05f37983b1db215acb2d89b1ef389b3689c7c690799db97f320"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/inputs/install-cli.log": {
+      "bytes": 7059,
+      "category": "retained-evidence",
+      "sha256": "d4fc86ac36ccc82fedadc1c8998466bd722e5cb3115bd7429e86da588abc1ebb"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/inputs/install.mg5": {
+      "bytes": 264,
+      "category": "retained-evidence",
+      "sha256": "9baee1aa7ea45e425200ba85448d1fbba7a27f87c5da011b593aa31fe601ffb0"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/inputs/installation.json": {
+      "bytes": 8974,
+      "category": "retained-evidence",
+      "sha256": "85f1cfdea4a7701e3b204d22985fa2e14e9d72f147854ca59ad96f7221ae6da4"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/inputs/mninjars.mod": {
+      "bytes": 1986,
+      "category": "required-small-fortran-module-metadata",
+      "sha256": "33ac359d582224a06596f9060e1b37ddaf45e9c66085454cf7e0e693b1c02dec"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/inputs/ninjars-config.json": {
+      "bytes": 354,
+      "category": "retained-evidence",
+      "sha256": "2ed117b2b8ab4401be2eb5b82e0b86e9eac316c9bf60ad37cbe347462209e1a7"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/inputs/ninjars-link-before.txt": {
+      "bytes": 8,
+      "category": "retained-evidence",
+      "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/inputs/ninjars-native-libs.txt": {
+      "bytes": 48,
+      "category": "retained-evidence",
+      "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/inputs/unit-proof.json": {
+      "bytes": 38237,
+      "category": "retained-evidence",
+      "sha256": "fc0733051d49495222fee2fb655d468d0860f841fb35f698d4f1dadf40adc932"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/loaded-libraries.json": {
+      "bytes": 1578,
+      "category": "retained-evidence",
+      "sha256": "087203c86ee126fe53d760bec271eb593c070dd9adb17e12913936145fc2583a"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/prepared.json": {
+      "bytes": 26291,
+      "category": "retained-evidence",
+      "sha256": "85314d757c77e2568838268391fe5c665b55a5c09851b8e75048091ed095ca66"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/requests.json": {
+      "bytes": 387121,
+      "category": "retained-evidence",
+      "sha256": "7823cf0078beafd7be00f456254c83aba91a90063371c496887531cee696b102"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/requests.txt": {
+      "bytes": 330186,
+      "category": "retained-evidence",
+      "sha256": "fd738fbb56cac98dd9e10b0531ab5c122811e00c90424ecc6a9176fa2b60da87"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/result.json": {
+      "bytes": 26349,
+      "category": "retained-evidence",
+      "sha256": "23783edfbbf1b74f16e84c33e9b0500e4638eda916ab6354e2fe0d477677df71"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/sources/ninjars_precision_driver.c": {
+      "bytes": 5056,
+      "category": "retained-evidence",
+      "sha256": "8ce7d7f55d6a118f344ca785dc0ce60772b6a096474064dbf923f7c42a5c69a6"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/sources/ninjars_precision_v2.py": {
+      "bytes": 24996,
+      "category": "retained-evidence",
+      "sha256": "6f7a4ec0a0744ef816e38d6f6a5bb45844d3e9bc264c617bbc22da01a1bb9cb5"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/sources/ninjars_supplement_v2.py": {
+      "bytes": 59665,
+      "category": "retained-evidence",
+      "sha256": "8775d50b657d6dff7d44ee2e27c83917283137e5b4fdcc5ff4f7a165c6816585"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/stderr.log": {
+      "bytes": 754,
+      "category": "retained-evidence",
+      "sha256": "e096203c68f3fab07a40f8b25a7c3ebd47f0d7b6fa1b64aa9228a693df4e3c40"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/stdout.log": {
+      "bytes": 19468,
+      "category": "retained-evidence",
+      "sha256": "0ffbe04282424e86c77cc884c29ecd6f180ec1d116d571ac7709df257087a240"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/validate-process.json": {
+      "bytes": 604,
+      "category": "retained-evidence",
+      "sha256": "1d4fc33eac77e0df3eebeeaef40ce42fc63ef1e3a56ca29f362d99744f5ddc18"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/validate-start.json": {
+      "bytes": 476,
+      "category": "retained-evidence",
+      "sha256": "1452f04dff28dd48579f4321caa03e7ec1c91d7ba6b67bae436e8af257759157"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/validate.stderr.log": {
+      "bytes": 0,
+      "category": "retained-evidence",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/validate.stdout.log": {
+      "bytes": 24721,
+      "category": "retained-evidence",
+      "sha256": "72fd2ee9d38302930315fbcab0e8666b76127dba19a6664e58d10fb54d63b9a1"
+    }
+  },
+  "installed_archive_sha256": "800a941faf3cdfdab764fdffe1d5ab73f84984a786aa194596b753af6b6f5d42",
+  "intentional_reader_metadata": {
+    "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/inputs/mninjars.mod": {
+      "original_names": [
+        "mninjars.mod"
+      ],
+      "reason": "Existing strict reducer_signature/check_file reader requires these exact retained metadata bytes; no linked code is retained."
+    }
+  },
+  "launcher_copy": {
+    "copy": "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/launch.py",
+    "sha256": "e86404a97af6f4005c6f249b0ee948f7dd56cba5b4c330f54ff7d8c37941cc09",
+    "source": ".ninjars-build/final-installed-precision-b0ea.py"
+  },
+  "manifest_not_self_hashed": true,
+  "namespace": "docs/benchmarkfolder/policy-v2/final-installed-precision-v1",
+  "numerical_source_revision": "d05b59f3277ce0d727cb2816d8b7ad45107e58c4",
+  "precision_result": {
+    "actual_calls": 64,
+    "identity_sha256": "ea3eb90156238ff71dd5a313056fa271a178f56dd831e584f722f4ed948444d9",
+    "note": "Readiness README and null template are retained unchanged as historical setup. The actual completed result is run-v1/result.json.",
+    "path": "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/result.json"
+  },
+  "retained_count_including_manifest": 44,
+  "retained_file_list": "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/retained-files.txt",
+  "schema": "final-campaign-retention-v1",
+  "source_revision": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "source_scopes_clean_against_revision": true
+}

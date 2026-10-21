@@ -1,0 +1,10 @@
+{
+  "report": "docs/benchmarkfolder/policy-v2/final-representative-v1/runs/mixed",
+  "outputs": {
+    "control-mixed-candidate-8": ".benchmark-work/policy-v2/final-representative-v1/mixed/workers/control-mixed-candidate-8/outputs/candidate/control-mixed"
+  },
+  "role_map": {
+    "baseline": "original",
+    "candidate": "candidate_corrected"
+  }
+}

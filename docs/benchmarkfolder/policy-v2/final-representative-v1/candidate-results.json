@@ -1,0 +1,169 @@
+{
+  "schema": "final-candidate-representative-results-v1",
+  "finished_utc": "2026-10-21T01:48:02.809274+00:00",
+  "runtime": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+  "collections": {
+    "ggh": {
+      "status": "passed",
+      "seconds": 67.50982475397177,
+      "runtime_binding": {
+        "path": "docs/benchmarkfolder/policy-v2/final-representative-v1/runtime-bindings/ggh.json",
+        "sha256": "1f5f0ae8c3f82b6607480fd2e243c85e70a132e81b9a2b84e54fd3bf8167eacd",
+        "bytes": 1049855
+      },
+      "targets": {
+        "control-gg-h-candidate-1": {
+          "status_counts": {
+            "329": 1,
+            "211": 9
+          },
+          "runtime": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+          "executable": "96296935b2777113874ab76b9a5c8aadd79b0ae1b3eba6df186214a61d581aef",
+          "generation": "34aed45638a2e18b18135179e749317c3cf9a0fdd3bb404e43fe68d23837c6de",
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          }
+        },
+        "control-gg-h-candidate-6": {
+          "status_counts": {
+            "216": 10
+          },
+          "runtime": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+          "executable": "96296935b2777113874ab76b9a5c8aadd79b0ae1b3eba6df186214a61d581aef",
+          "generation": "34aed45638a2e18b18135179e749317c3cf9a0fdd3bb404e43fe68d23837c6de",
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          }
+        },
+        "control-gg-h-candidate-7": {
+          "status_counts": {
+            "217": 10
+          },
+          "runtime": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+          "executable": "96296935b2777113874ab76b9a5c8aadd79b0ae1b3eba6df186214a61d581aef",
+          "generation": "34aed45638a2e18b18135179e749317c3cf9a0fdd3bb404e43fe68d23837c6de",
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          }
+        },
+        "control-gg-h-candidate-8": {
+          "status_counts": {
+            "218": 10
+          },
+          "runtime": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+          "executable": "96296935b2777113874ab76b9a5c8aadd79b0ae1b3eba6df186214a61d581aef",
+          "generation": "34aed45638a2e18b18135179e749317c3cf9a0fdd3bb404e43fe68d23837c6de",
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          }
+        }
+      },
+      "records": 8
+    },
+    "mixed": {
+      "status": "passed",
+      "seconds": 17.152650519041345,
+      "runtime_binding": {
+        "path": "docs/benchmarkfolder/policy-v2/final-representative-v1/runtime-bindings/mixed.json",
+        "sha256": "239cfed902dda0cb353551ef7905eacce11e613d3e72ea33cd7fd37929915284",
+        "bytes": 298184
+      },
+      "targets": {
+        "control-mixed-candidate-8": {
+          "status_counts": {
+            "218": 10
+          },
+          "runtime": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+          "executable": "32771f36b8604202a123b07392d4163a2777eab95862cd4bd439653fb21d4c51",
+          "generation": "34aed45638a2e18b18135179e749317c3cf9a0fdd3bb404e43fe68d23837c6de",
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          }
+        }
+      },
+      "records": 2
+    },
+    "forced-qp": {
+      "status": "passed",
+      "seconds": 138.47762881603558,
+      "runtime_binding": {
+        "path": "docs/benchmarkfolder/policy-v2/final-representative-v1/runtime-bindings/forced-qp.json",
+        "sha256": "b3f8eaf08ebd305cbfc9433db332738cc72e4ed587d11d2f688502993a498879",
+        "bytes": 542769
+      },
+      "targets": {
+        "control-forced-qp-candidate-1": {
+          "status_counts": {
+            "329": 10
+          },
+          "runtime": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+          "executable": "e96db728555c1da6ed01b1fd6958019ca82dc02a9e5202c2df57e47a55353a3d",
+          "generation": "34aed45638a2e18b18135179e749317c3cf9a0fdd3bb404e43fe68d23837c6de",
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          }
+        },
+        "control-forced-qp-candidate-8": {
+          "status_counts": {
+            "322": 10
+          },
+          "runtime": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+          "executable": "e96db728555c1da6ed01b1fd6958019ca82dc02a9e5202c2df57e47a55353a3d",
+          "generation": "34aed45638a2e18b18135179e749317c3cf9a0fdd3bb404e43fe68d23837c6de",
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          }
+        }
+      },
+      "records": 4
+    },
+    "ninja-near-singular": {
+      "status": "passed",
+      "seconds": 48.149473475059494,
+      "runtime_binding": {
+        "path": "docs/benchmarkfolder/policy-v2/final-representative-v1/runtime-bindings/ninja-near-singular.json",
+        "sha256": "9acc7dd6cebae20baf24568eb5e9d9b5111117287d571f7b0256fb7b06519f2f",
+        "bytes": 273317
+      },
+      "targets": {
+        "control-forced-qp-candidate-6": {
+          "status_counts": {
+            "328": 10
+          },
+          "runtime": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+          "executable": "e96db728555c1da6ed01b1fd6958019ca82dc02a9e5202c2df57e47a55353a3d",
+          "generation": "34aed45638a2e18b18135179e749317c3cf9a0fdd3bb404e43fe68d23837c6de",
+          "parity": {
+            "passed": true,
+            "exact_rows": true,
+            "status_counts_match": true
+          }
+        }
+      },
+      "records": 2
+    }
+  },
+  "runtime_bindings": [
+    "docs/benchmarkfolder/policy-v2/final-representative-v1/runtime-bindings/ggh.json",
+    "docs/benchmarkfolder/policy-v2/final-representative-v1/runtime-bindings/mixed.json",
+    "docs/benchmarkfolder/policy-v2/final-representative-v1/runtime-bindings/forced-qp.json",
+    "docs/benchmarkfolder/policy-v2/final-representative-v1/runtime-bindings/ninja-near-singular.json"
+  ],
+  "targets": 8,
+  "status": "passed",
+  "final_role_proof_pending": true
+}

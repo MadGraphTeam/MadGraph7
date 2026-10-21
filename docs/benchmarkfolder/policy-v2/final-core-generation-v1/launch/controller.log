@@ -1,0 +1,27 @@
+EW model source checksum verified: 5dd9a66ef0b501f643251a65d9fa21a8be744b04959e1fcecd13eea51476a0e1
+qcd-1 started
+ew-1 started
+qcd-1 building
+qcd-1 complete
+qcd-2 started
+qcd-2 building
+ew-1 building
+ew-1 complete
+ew-2 started
+qcd-2 complete
+qcd-3 started
+qcd-3 building
+qcd-3 complete
+ew-3 started
+ew-2 building
+ew-2 complete
+qcd-4 started
+qcd-4 building
+qcd-4 complete
+ew-4 started
+ew-3 building
+ew-3 complete
+ew-4 building
+ew-4 complete
+Indexed 8 complete exports; original inputs unchanged.
+8e1175b334118de13d79527372f523a44a66651cf92554f401f4dab5edcddca3

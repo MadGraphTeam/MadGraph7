@@ -1,0 +1,18 @@
+{
+  "stage": "generation",
+  "command": [
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-stress-execution-v1/early_build.py",
+    "docs/benchmarkfolder/policy-v2/final-stress-execution-v1/early-spec.json"
+  ],
+  "started_utc": "2026-10-21T01:39:29.457010+00:00",
+  "process": {
+    "pid": 1004928,
+    "pgid": 1004928,
+    "sid": 1004928,
+    "start_ticks": 58047057
+  },
+  "exit_code": 0,
+  "finished_utc": "2026-10-21T01:46:05.020296+00:00",
+  "remaining_descendants": []
+}

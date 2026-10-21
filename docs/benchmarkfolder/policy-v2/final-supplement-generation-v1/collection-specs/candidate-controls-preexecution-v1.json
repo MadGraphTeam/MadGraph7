@@ -1,0 +1,51 @@
+{
+  "schema": "supplement-candidate-control-preexecution-v1",
+  "utc": "2026-10-21T01:52:17.213058+00:00",
+  "root_authorization": "Prepare only candidate loop diagnostic100x2 and preexecution threshold CPU190 variant; no MP launch yet",
+  "superseded_unexecuted_spec": {
+    "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/collection-specs/threshold-candidate.json",
+    "sha256": "893b5e94d00c690ec2752ad29956fe370f31659d50eef5137aafe654640693a2",
+    "bytes": 1725
+  },
+  "loop_timing_spec_preserved": {
+    "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/collection-specs/loop-timing.json",
+    "sha256": "b01af5d109784802c96b13780d725897dcf19fcc908758d08b70369ee2f8a056",
+    "bytes": 2556
+  },
+  "new_specs": [
+    {
+      "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/collection-specs/loop-candidate-diagnostic-cpu190-v1.json",
+      "sha256": "b3ec2bc2a415a14f7f02a37cbdc3d493cb11f73ca5510fe275a1201a4458e559",
+      "bytes": 1894
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/collection-specs/threshold-candidate-cpu190-v1.json",
+      "sha256": "1596cea92c39ad66d067b7678e4e50b00b65b724d39086948579bc2da572f60c",
+      "bytes": 1734
+    }
+  ],
+  "full_runtime_signature": {
+    "path": "docs/benchmarkfolder/policy-v2/final-stress-execution-v1/core-qcd1-runtime-signature.json",
+    "sha256": "56edda786aeb51de0b4fce9a5291e01b935f79b77a6c751b43bb10103a49329c",
+    "bytes": 16543
+  },
+  "literal_baseline_revision": "27147b3300f556a75661a886e92bdbe00558ee25",
+  "frozen_generation_revision": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "numerical_revision": "d05b59f3277ce0d727cb2816d8b7ad45107e58c4",
+  "candidate_backends": [
+    1,
+    6,
+    7,
+    8
+  ],
+  "amplitude_evaluations": 0,
+  "engine_initializations": 0,
+  "seven_repetition_timing_gate_unchanged": true,
+  "loop_diagnostic_is_performance_gate": false,
+  "threshold_changes": [
+    "cpu:2->190",
+    "run_id:explicitCPU190"
+  ],
+  "interpretation": "The original unexecuted CPU2 threshold spec remains immutable. The new CPU190 spec retains its exact raw output namespace, physical configuration,12point bytes, two traversals, roots, aliases and source proofs. Loop diagnostics use a distinct fresh namespace; mandatory7repetitionCPU207timings remain held.",
+  "identity_sha256": "ba059aa4efdb59ee0c6dd794eb9b82fbbfe600e76e92743c2ae11047b1b0dc3d"
+}

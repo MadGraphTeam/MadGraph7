@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "requested_cases": [
+    "supplement-gg-h",
+    "supplement-gg-hh"
+  ],
+  "completed_cases": [
+    "supplement-gg-h",
+    "supplement-gg-hh"
+  ],
+  "acceptance_eligible": false
+}

@@ -1,0 +1,367 @@
+{
+  "affinity": [
+    3
+  ],
+  "amplitude_or_performance_claim": false,
+  "checks": [
+    {
+      "case_count": 8,
+      "identity_sha256": "8e1175b334118de13d79527372f523a44a66651cf92554f401f4dab5edcddca3",
+      "name": "Existing audit_core.audit actual8generation/build/runtime inventory equals full sealed record",
+      "passed": true,
+      "reader": {
+        "bytes": 5242,
+        "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/audit_core.py",
+        "sha256": "9bae1bd4b122f6e3cc1e9c1b91fd5ec71dbf83f6340bd0b87332bd27a51f40ba"
+      },
+      "runtime_inventory": {
+        "bytes": 1723363,
+        "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/runtime-inventory.json",
+        "sha256": "78de320a136ad627599080b20d9ea231a1bc7a10fe21ec38314e986bda783dbb"
+      }
+    },
+    {
+      "baseline_preservation_evidence": {
+        "bytes": 1143499,
+        "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/baseline-integrity-before.json",
+        "sha256": "eb209c9058bb030e7c2993383db76f6db614827bd3685c499c7d7b2c3de6e6d4"
+      },
+      "baseline_scope": "Rehashed existing before/after integrity evidence and successful completion flags; no additional full baseline tree scan",
+      "cases": [
+        {
+          "build_kind": "clean-subprocess",
+          "case": "ew-1",
+          "command_card": {
+            "bytes": 787,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-ew-1.mg5",
+            "sha256": "76af961d3d2477fc885b85538f40d3f6a662ae9d2a64844bc7b95fab368d4a1e"
+          },
+          "compile_log": {
+            "bytes": 9389,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-1.log",
+            "sha256": "bed09b305e24bc3c45cc1d01a041f1f8ac4d52a51275b6d268c1d481d7ce070e"
+          },
+          "generation_log": {
+            "bytes": 11463,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-ew-1.log",
+            "sha256": "d1439c806e20afb2bb76eaacb92022789acccc8f2dc0f3e6e9fc0a032bf5bc2d"
+          },
+          "model": "loop_qcd_qed_sm_Gmu",
+          "model_postimages_match_correction": true,
+          "parameter_card": {
+            "bytes": 4537,
+            "path": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-1/Cards/param_card.dat",
+            "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715"
+          },
+          "points": {
+            "bytes": 29269,
+            "path": "docs/benchmarkfolder/points/ew-1.dat",
+            "sha256": "5869f48fc0546031f7c50ee8f68a4b0104fa6da66bc3b434e47d1422edcbb576"
+          },
+          "process": "u d~ > w+ [virt=QED]",
+          "source_revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        },
+        {
+          "build_kind": "clean-subprocess",
+          "case": "ew-2",
+          "command_card": {
+            "bytes": 793,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-ew-2.mg5",
+            "sha256": "7819417979240c3e7e79d10b012df3a7bb912e733c9001edbc68ee40ca92d147"
+          },
+          "compile_log": {
+            "bytes": 9389,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-2.log",
+            "sha256": "ec91eb8c9b4d79dcd55c1b9fb685f7bcce7eae6e22a9d26ac9af273b6d6bf6fd"
+          },
+          "generation_log": {
+            "bytes": 13904,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-ew-2.log",
+            "sha256": "62ed47ccda103f563fe499cc3db3f4c311eb51965584c2335037fc760abf1940"
+          },
+          "model": "loop_qcd_qed_sm_Gmu",
+          "model_postimages_match_correction": true,
+          "parameter_card": {
+            "bytes": 4537,
+            "path": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-2/Cards/param_card.dat",
+            "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715"
+          },
+          "points": {
+            "bytes": 38804,
+            "path": "docs/benchmarkfolder/points/ew-2.dat",
+            "sha256": "ed6f3f83033372061ed6de45c05a366aeeb68a63ddd006998682f406174e7b53"
+          },
+          "process": "e+ e- > mu+ mu- [virt=QED]",
+          "source_revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        },
+        {
+          "build_kind": "clean-subprocess",
+          "case": "ew-3",
+          "command_card": {
+            "bytes": 792,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-ew-3.mg5",
+            "sha256": "915319a56d17ef4d8f4351d050ed0d5ad279d6b156ebe00c8546403c6c3e3ec5"
+          },
+          "compile_log": {
+            "bytes": 10308,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-3.log",
+            "sha256": "fef676c05de790c00901c64dc810b08c7202969e76a6e7c759c2f1850caf3a19"
+          },
+          "generation_log": {
+            "bytes": 17751,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-ew-3.log",
+            "sha256": "50bd4ff8f6421a7bab8f58259046eab3c88dca703c7fe2e8b4234cdbaef0bdec"
+          },
+          "model": "loop_qcd_qed_sm_Gmu",
+          "model_postimages_match_correction": true,
+          "parameter_card": {
+            "bytes": 4537,
+            "path": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-3/Cards/param_card.dat",
+            "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715"
+          },
+          "points": {
+            "bytes": 48558,
+            "path": "docs/benchmarkfolder/points/ew-3.dat",
+            "sha256": "c030e6c68d53e9ecc1e2ac5ee99e4f81d97a80268dcbe3a0dc76065655a492a1"
+          },
+          "process": "e+ e- > t t~ a [virt=QED]",
+          "source_revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        },
+        {
+          "build_kind": "clean-subprocess",
+          "case": "ew-4",
+          "command_card": {
+            "bytes": 797,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-ew-4.mg5",
+            "sha256": "bdc07f589fa880d40348b36d61bd5dce89052985138668d56911b6f772de59d0"
+          },
+          "compile_log": {
+            "bytes": 18097,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-4.log",
+            "sha256": "621ceaa347c337dda65ce286f42ec33280a7352347c6e0aec5897979c2348a07"
+          },
+          "generation_log": {
+            "bytes": 15824,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-ew-4.log",
+            "sha256": "49f18f73e550660cf9221bc471ed56a892bb22fc8279126f641b99479c36e56d"
+          },
+          "model": "loop_qcd_qed_sm_Gmu",
+          "model_postimages_match_correction": true,
+          "parameter_card": {
+            "bytes": 4537,
+            "path": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/ew-4/Cards/param_card.dat",
+            "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715"
+          },
+          "points": {
+            "bytes": 58298,
+            "path": "docs/benchmarkfolder/points/ew-4.dat",
+            "sha256": "75a3765dca97afa14e5efb795cb1a9fa1ff9e0475ebcb79a883b6a2a4e84ba5a"
+          },
+          "process": "e+ e- > mu+ mu- a a [virt=QED]",
+          "source_revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        },
+        {
+          "build_kind": "clean-subprocess",
+          "case": "qcd-1",
+          "command_card": {
+            "bytes": 684,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-qcd-1.mg5",
+            "sha256": "a9e657efda55775a4239cbcae6861cda8f155a3165cd6e218ebd2d19368cab8a"
+          },
+          "compile_log": {
+            "bytes": 9392,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-1.log",
+            "sha256": "09226de93534c0bb7eb08316518f43102bb20e3fb1ae15eb907c7e618413f3cd"
+          },
+          "generation_log": {
+            "bytes": 9765,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-qcd-1.log",
+            "sha256": "4dd7fa3c91e0550f68395ef1f9373c231e83df74dbccd1f91072a684ef50e18b"
+          },
+          "model": "loop_sm",
+          "model_postimages_match_correction": true,
+          "parameter_card": {
+            "bytes": 2471,
+            "path": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-1/Cards/param_card.dat",
+            "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+          },
+          "points": {
+            "bytes": 29223,
+            "path": "docs/benchmarkfolder/points/qcd-1.dat",
+            "sha256": "bd8a00c863710123dd62cb5e079dcd11d2aebdcf49d8128313bbd6ecc6de1099"
+          },
+          "process": "u u~ > z [virt=QCD]",
+          "source_revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        },
+        {
+          "build_kind": "clean-subprocess",
+          "case": "qcd-2",
+          "command_card": {
+            "bytes": 686,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-qcd-2.mg5",
+            "sha256": "ceba140360590b13b480b71264ea2b468ce369151585bb5e142964390add78a5"
+          },
+          "compile_log": {
+            "bytes": 10305,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-2.log",
+            "sha256": "5f694f58d151bbbcc09b716761513819c9221405e5297bde47231f92403a2c75"
+          },
+          "generation_log": {
+            "bytes": 10934,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-qcd-2.log",
+            "sha256": "53612362e4ea6d1ca2aee3356f9d0c4f04f5134e6853e594290f007dffec889b"
+          },
+          "model": "loop_sm",
+          "model_postimages_match_correction": true,
+          "parameter_card": {
+            "bytes": 2471,
+            "path": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-2/Cards/param_card.dat",
+            "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+          },
+          "points": {
+            "bytes": 38804,
+            "path": "docs/benchmarkfolder/points/qcd-2.dat",
+            "sha256": "6efb8cb1752f37badd187e17aff2103eb6814402dbaeaa598165a83d22bd0b63"
+          },
+          "process": "g g > t t~ [virt=QCD]",
+          "source_revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        },
+        {
+          "build_kind": "clean-subprocess",
+          "case": "qcd-3",
+          "command_card": {
+            "bytes": 688,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-qcd-3.mg5",
+            "sha256": "b29210f5433442c2966e80513841b0ce998105e68b3b88d7e5de603ac3e39c6f"
+          },
+          "compile_log": {
+            "bytes": 10305,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-3.log",
+            "sha256": "65965c3f94c102bedd3556abe51b445e4d9ffbf9848d236bfd0b2064885fda77"
+          },
+          "generation_log": {
+            "bytes": 11606,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-qcd-3.log",
+            "sha256": "ef560a77483bb87e75a5aba823f35ee0d73f70ac23f40bd0c4784f11dcf8cc55"
+          },
+          "model": "loop_sm",
+          "model_postimages_match_correction": true,
+          "parameter_card": {
+            "bytes": 2471,
+            "path": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-3/Cards/param_card.dat",
+            "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+          },
+          "points": {
+            "bytes": 48552,
+            "path": "docs/benchmarkfolder/points/qcd-3.dat",
+            "sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41"
+          },
+          "process": "u u~ > z g g [virt=QCD]",
+          "source_revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        },
+        {
+          "build_kind": "clean-subprocess",
+          "case": "qcd-4",
+          "command_card": {
+            "bytes": 690,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-qcd-4.mg5",
+            "sha256": "581a34d73273c94c61fe606980d47ba46c55ba56cc010b16bc2599b502c8bf51"
+          },
+          "compile_log": {
+            "bytes": 12143,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-4.log",
+            "sha256": "bbadd67c804800bc0503d17851c55bc481e6dc034475b76114907ae096453ebe"
+          },
+          "generation_log": {
+            "bytes": 11871,
+            "path": "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-qcd-4.log",
+            "sha256": "64352317bc9109bffc32594290f8dd90baacc250d3ce54a7df509df2e9a20085"
+          },
+          "model": "loop_sm",
+          "model_postimages_match_correction": true,
+          "parameter_card": {
+            "bytes": 2471,
+            "path": ".benchmark-work/policy-v2/final-core-generation-v1/outputs/candidate/qcd-4/Cards/param_card.dat",
+            "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+          },
+          "points": {
+            "bytes": 58316,
+            "path": "docs/benchmarkfolder/points/qcd-4.dat",
+            "sha256": "d66b0c04ee3d8e6ed90ef1fbf97abb9cd444d9ea1f84a508850688bff317b52d"
+          },
+          "process": "u u~ > z z g g [virt=QCD]",
+          "source_revision": "b0ea105a04afa34304d437d2956e4d4672360670"
+        }
+      ],
+      "literal_original_files_previously_verified": 6009,
+      "model_correction": {
+        "bytes": 1630314,
+        "path": "docs/benchmarkfolder/policy-v2/model-correction.json",
+        "sha256": "20d24a3f19c03b6f7c6c3eda4ef209e2e46cd69ab67990504602028ae3dfb526"
+      },
+      "name": "Eight exact physical cards/100pointstreams/modelpostimages/actualCLI and clean-build evidence",
+      "passed": true
+    },
+    {
+      "all8_beyondDP_outputfields_equal_final256": true,
+      "archive_sha256": "800a941faf3cdfdab764fdffe1d5ab73f84984a786aa194596b753af6b6f5d42",
+      "calls": 64,
+      "convergence": {
+        "field_errors": [
+          "0",
+          "0",
+          "5.09781836300708167978250780121825401109264744567810351514992303489942893460716128503245477375184624505282125919670007825914249022564934962361252971374790879767071528267770795065491E-77",
+          "2.01273995940312641211677207790390315307286497088312711153657648219064446405656286753557745461877354791291928181661912210224821921277445134418489090354499894667168227110208296842632E-76",
+          "0E+41",
+          "0E+41",
+          "0E-17",
+          "1.16778218007210681651405465049933572061101744515410098744850994257758768435687661525325245244121816165639618378644738629742603259996797200253238046939703361861846418787005389399461E-77"
+        ],
+        "fields": 8,
+        "maximum_scaled_error": "2.01273995940312641211677207790390315307286497088312711153657648219064446405656286753557745461877354791291928181661912210224821921277445134418489090354499894667168227110208296842632E-76",
+        "normalization_scope": "largest complete finite/single/double Laurent component; excludes R1",
+        "passed": true,
+        "rational_comparison": "same generic basis at256/384bits, checked separately with the stricter physical Laurent scale",
+        "rational_maximum_scaled_difference": "1.16778218007210681651405465049933572061101744515410098744850994257758768435687661525325245244121816165639618378644738629742603259996797200253238046939703361861846418787005389399461E-77",
+        "tolerance": "1e-31"
+      },
+      "full_runtime_descriptor_matches_all_eight": true,
+      "input_fields_with_beyondDP_information": 68,
+      "maximum_fixture_scaled_error": 3.2325729277235547e-12,
+      "mode_counts": {
+        "0": 21,
+        "1": 21,
+        "2": 22
+      },
+      "name": "Existing installed precision reader with complete actual8backend8signature and all64rawstatuses",
+      "passed": true,
+      "rational_scope": "Different-basis MP R1 reported separately, excluded from physical fixture tolerance; same-basis256/384 R1 checked using strict physical Laurent scale",
+      "raw_status_counts": {
+        "0": 64
+      },
+      "reader": {
+        "bytes": 24996,
+        "path": "tools/ninjars_precision_v2.py",
+        "sha256": "6f7a4ec0a0744ef816e38d6f6a5bb45844d3e9bc264c617bbc22da01a1bb9cb5"
+      },
+      "result": {
+        "bytes": 26349,
+        "path": "docs/benchmarkfolder/policy-v2/final-installed-precision-v1/run-v1/result.json",
+        "sha256": "23783edfbbf1b74f16e84c33e9b0500e4638eda916ab6354e2fe0d477677df71"
+      },
+      "result_identity_sha256": "ea3eb90156238ff71dd5a313056fa271a178f56dd831e584f722f4ed948444d9",
+      "runtime_signature_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+      "source_bound_ordinary_tests": 24
+    }
+  ],
+  "finished_utc": "2026-10-21T01:43:22.418344+00:00",
+  "head_after": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "head_before": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "passed": true,
+  "reviewer": "allocation_final",
+  "schema": "final-generation-precision-independent-audit-v1",
+  "scope": "Existing audit_core.audit and installed precision validate readers plus bounded eight-case physical-input/model-postimage and64raw-status inspection; no new validator family, no compiler/engine/test rerun or full baseline rescan",
+  "source_or_installation_mutated": false,
+  "started_utc": "2026-10-21T01:43:08.252004+00:00",
+  "status": "passed"
+}

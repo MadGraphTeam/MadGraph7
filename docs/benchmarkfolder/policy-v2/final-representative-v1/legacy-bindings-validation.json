@@ -1,0 +1,179 @@
+{
+  "schema": "final-legacy-representative-revalidation-v1",
+  "status": "passed",
+  "checked_utc": "2026-10-21T01:44:36.613150+00:00",
+  "bindings": [
+    {
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-original-qcd1-20261020.json",
+        "sha256": "4aaf407ad2bd01764992e3364e426719c2bb8bf93059551372ad31244cdfa9fb"
+      },
+      "roles": [
+        "original"
+      ],
+      "targets": 3,
+      "live_sources_libraries_modules_executables_verified": true,
+      "runtime_identities": [
+        "89f360275eda554ee99199d031121d367e722445dc1f47b6d6880496accf2872"
+      ]
+    },
+    {
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-original-controls-20261020.json",
+        "sha256": "a214a89a368d96db4167911d83b6d40610cb154bebf2238791b3ba1e956ca246"
+      },
+      "roles": [
+        "original"
+      ],
+      "targets": 6,
+      "live_sources_libraries_modules_executables_verified": true,
+      "runtime_identities": [
+        "aa999ad2e5021586a1e59219d67c24c6a8bde49a768926fd7bd320c3807f88cf"
+      ]
+    },
+    {
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-original-ct-qp-20261020.json",
+        "sha256": "4eb472d8a07bd52cd65da23604019fc3fbced9c19e43f9b79a52587a44f60859"
+      },
+      "roles": [
+        "original"
+      ],
+      "targets": 1,
+      "live_sources_libraries_modules_executables_verified": true,
+      "runtime_identities": [
+        "aa999ad2e5021586a1e59219d67c24c6a8bde49a768926fd7bd320c3807f88cf"
+      ]
+    },
+    {
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-original-ct-qcd1-qp-20261020.json",
+        "sha256": "9759b9947245e3bd6401c1eeaac057b8c305449f9201d03f5a8adc9fce0dbc35"
+      },
+      "roles": [
+        "original"
+      ],
+      "targets": 1,
+      "live_sources_libraries_modules_executables_verified": true,
+      "runtime_identities": [
+        "89f360275eda554ee99199d031121d367e722445dc1f47b6d6880496accf2872"
+      ]
+    },
+    {
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-original-ninja-qcd3-20261020.json",
+        "sha256": "7bad6cdaea58ee421f1fce51861aeb5ded4fe0be7899e70d7dc0e2c14ac2594b"
+      },
+      "roles": [
+        "original"
+      ],
+      "targets": 1,
+      "live_sources_libraries_modules_executables_verified": true,
+      "runtime_identities": [
+        "89f360275eda554ee99199d031121d367e722445dc1f47b6d6880496accf2872"
+      ]
+    },
+    {
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-original-ninja-near-singular-20261020.json",
+        "sha256": "ac85fd3b1248d13ec98e7ea362fd616cc88b37076edfcc9e5021ee553eca6f86"
+      },
+      "roles": [
+        "original"
+      ],
+      "targets": 1,
+      "live_sources_libraries_modules_executables_verified": true,
+      "runtime_identities": [
+        "aa999ad2e5021586a1e59219d67c24c6a8bde49a768926fd7bd320c3807f88cf"
+      ]
+    },
+    {
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/reference-smoke-qcd1-serial-20261020.json",
+        "sha256": "f612365c85f73667f425436d25e81b93b20a1608b4e5e009fa7f75f915defba1"
+      },
+      "roles": [
+        "original_helper_corrected"
+      ],
+      "targets": 3,
+      "live_sources_libraries_modules_executables_verified": true,
+      "runtime_identities": [
+        "89f360275eda554ee99199d031121d367e722445dc1f47b6d6880496accf2872"
+      ]
+    },
+    {
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-reference-controls-20261020.json",
+        "sha256": "8e8298961ccb30c5abb038a875b2fee9d6513440919499baa256b04a39e13f4e"
+      },
+      "roles": [
+        "original_helper_corrected"
+      ],
+      "targets": 6,
+      "live_sources_libraries_modules_executables_verified": true,
+      "runtime_identities": [
+        "aa999ad2e5021586a1e59219d67c24c6a8bde49a768926fd7bd320c3807f88cf"
+      ]
+    },
+    {
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-reference-ct-qp-20261020.json",
+        "sha256": "354913b8a9dc58b80288a0755a733984d1be7e74216a45508362734f6c2d8f8f"
+      },
+      "roles": [
+        "original_helper_corrected"
+      ],
+      "targets": 1,
+      "live_sources_libraries_modules_executables_verified": true,
+      "runtime_identities": [
+        "aa999ad2e5021586a1e59219d67c24c6a8bde49a768926fd7bd320c3807f88cf"
+      ]
+    },
+    {
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-reference-ct-qcd1-qp-20261020.json",
+        "sha256": "af9e7c7b1489bc8ffe7389ac3b6637e0fa411da0f9bc152f95326f18c455dee8"
+      },
+      "roles": [
+        "original_helper_corrected"
+      ],
+      "targets": 1,
+      "live_sources_libraries_modules_executables_verified": true,
+      "runtime_identities": [
+        "89f360275eda554ee99199d031121d367e722445dc1f47b6d6880496accf2872"
+      ]
+    },
+    {
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-reference-ninja-qcd3-20261020.json",
+        "sha256": "13ff2276f67453f76bb4d92dc2dd7b9af6ea1415d0afbbae1eef95e3e8d8b4c1"
+      },
+      "roles": [
+        "original_helper_corrected"
+      ],
+      "targets": 1,
+      "live_sources_libraries_modules_executables_verified": true,
+      "runtime_identities": [
+        "89f360275eda554ee99199d031121d367e722445dc1f47b6d6880496accf2872"
+      ]
+    },
+    {
+      "binding": {
+        "path": "docs/benchmarkfolder/policy-v2/runtime-bindings-20261020/representative-reference-ninja-near-singular-20261020.json",
+        "sha256": "46e0b466c524d7c5a0695f7320eca272c1c371fea5a59a56e14c737b12fdd5f8"
+      },
+      "roles": [
+        "original_helper_corrected"
+      ],
+      "targets": 1,
+      "live_sources_libraries_modules_executables_verified": true,
+      "runtime_identities": [
+        "aa999ad2e5021586a1e59219d67c24c6a8bde49a768926fd7bd320c3807f88cf"
+      ]
+    }
+  ],
+  "binding_count": 12,
+  "targets": 26,
+  "numerical_executions": 0,
+  "old_proof_relabelled": false
+}

@@ -1,0 +1,30 @@
+{
+  "schema": "supplement-built-runtime-v1",
+  "cases": {
+    "supplement-gg-h": {
+      "runtime_signature": {
+        "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/candidate-runtime-v1/supplement-gg-h.json",
+        "sha256": "56edda786aeb51de0b4fce9a5291e01b935f79b77a6c751b43bb10103a49329c",
+        "bytes": 16543
+      },
+      "identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+      "ninjars_archive": {
+        "ninjars_include/libninjars.a": "800a941faf3cdfdab764fdffe1d5ab73f84984a786aa194596b753af6b6f5d42",
+        "ninjars_lib/libninjars.a": "800a941faf3cdfdab764fdffe1d5ab73f84984a786aa194596b753af6b6f5d42"
+      }
+    },
+    "supplement-gg-hh": {
+      "runtime_signature": {
+        "path": "docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/candidate-runtime-v1/supplement-gg-hh.json",
+        "sha256": "56edda786aeb51de0b4fce9a5291e01b935f79b77a6c751b43bb10103a49329c",
+        "bytes": 16543
+      },
+      "identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+      "ninjars_archive": {
+        "ninjars_include/libninjars.a": "800a941faf3cdfdab764fdffe1d5ab73f84984a786aa194596b753af6b6f5d42",
+        "ninjars_lib/libninjars.a": "800a941faf3cdfdab764fdffe1d5ab73f84984a786aa194596b753af6b6f5d42"
+      }
+    }
+  },
+  "amplitude_evaluations": 0
+}

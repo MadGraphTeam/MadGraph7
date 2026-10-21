@@ -1,0 +1,16 @@
+{
+  "stage": "prepare",
+  "started_utc": "2026-10-21T01:38:47.150359+00:00",
+  "process": {
+    "pid": 992723,
+    "pgid": 992723,
+    "start_ticks": "58042826"
+  },
+  "command": [
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+    "-B",
+    "tools/ninjars_precision_v2.py",
+    "prepare",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-installed-precision-v1/precision-spec.json"
+  ]
+}

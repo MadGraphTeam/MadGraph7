@@ -1,0 +1,34 @@
+{
+  "schema": "one-shot-final-core-generation-launch-v1",
+  "utc": "2026-10-21T01:33:53.957384+00:00",
+  "root_explicitly_authorized": true,
+  "frozen_head": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "supervisor": {
+    "pid": 919606,
+    "ppid": 1,
+    "pgid": 919606,
+    "state": "R",
+    "start_ticks": 58013503,
+    "cpu": 95,
+    "cpu_seconds": 0.03,
+    "argv": "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python -B .benchmark-work/policy-v2/final-core-generation-launch-v1/supervise.py "
+  },
+  "child": {
+    "pid": 919614,
+    "ppid": 919606,
+    "pgid": 919614,
+    "state": "R",
+    "start_ticks": 58013507,
+    "cpu": 293,
+    "cpu_seconds": 0.0,
+    "argv": "bash docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands.sh "
+  },
+  "argv": [
+    "bash",
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands.sh"
+  ],
+  "generation_cpus": "180,181,182,183,184,185,186,187",
+  "freeze_sha256": "fb0ad20a6eb7487e17f5f508ba0ccf00ad1d6f37d8b6dbb82f4deba7c291d795",
+  "log": ".benchmark-work/policy-v2/final-core-generation-launch-v1/controller.log",
+  "retry_policy": "None; preserve any failed attempt; root reviews before a new namespace."
+}

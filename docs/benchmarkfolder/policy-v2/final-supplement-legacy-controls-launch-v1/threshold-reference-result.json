@@ -1,0 +1,22 @@
+{
+  "stage": "threshold-reference",
+  "command": [
+    "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+    "tools/ninjars_supplement_v2.py",
+    "collect",
+    "--spec",
+    "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-supplement-generation-v1/collection-specs/threshold-reference.json",
+    "--execute-numerical"
+  ],
+  "spec_sha256": "21ab2a6da41ca306a1ca69a8b61e818d117e1325035854eb91625be3683ae650",
+  "started_utc": "2026-10-21T01:47:20.155563+00:00",
+  "process": {
+    "pid": 1111074,
+    "pgid": 1111074,
+    "sid": 1111074,
+    "start_ticks": 58094127
+  },
+  "exit_code": 0,
+  "finished_utc": "2026-10-21T01:47:32.240607+00:00",
+  "status": "passed"
+}

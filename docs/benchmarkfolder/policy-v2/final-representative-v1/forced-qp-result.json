@@ -1,0 +1,38 @@
+{
+  "status": "passed",
+  "seconds": 138.47762881603558,
+  "runtime_binding": {
+    "path": "docs/benchmarkfolder/policy-v2/final-representative-v1/runtime-bindings/forced-qp.json",
+    "sha256": "b3f8eaf08ebd305cbfc9433db332738cc72e4ed587d11d2f688502993a498879",
+    "bytes": 542769
+  },
+  "targets": {
+    "control-forced-qp-candidate-1": {
+      "status_counts": {
+        "329": 10
+      },
+      "runtime": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+      "executable": "e96db728555c1da6ed01b1fd6958019ca82dc02a9e5202c2df57e47a55353a3d",
+      "generation": "34aed45638a2e18b18135179e749317c3cf9a0fdd3bb404e43fe68d23837c6de",
+      "parity": {
+        "passed": true,
+        "exact_rows": true,
+        "status_counts_match": true
+      }
+    },
+    "control-forced-qp-candidate-8": {
+      "status_counts": {
+        "322": 10
+      },
+      "runtime": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+      "executable": "e96db728555c1da6ed01b1fd6958019ca82dc02a9e5202c2df57e47a55353a3d",
+      "generation": "34aed45638a2e18b18135179e749317c3cf9a0fdd3bb404e43fe68d23837c6de",
+      "parity": {
+        "passed": true,
+        "exact_rows": true,
+        "status_counts_match": true
+      }
+    }
+  },
+  "records": 4
+}

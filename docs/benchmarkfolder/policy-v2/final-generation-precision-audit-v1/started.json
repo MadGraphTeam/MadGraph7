@@ -1,0 +1,13 @@
+{
+  "affinity": [
+    3
+  ],
+  "amplitude_or_performance_claim": false,
+  "checks": [],
+  "head_before": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "reviewer": "allocation_final",
+  "schema": "final-generation-precision-independent-audit-v1",
+  "scope": "Existing audit_core.audit and installed precision validate readers plus bounded eight-case physical-input/model-postimage and64raw-status inspection; no new validator family, no compiler/engine/test rerun or full baseline rescan",
+  "source_or_installation_mutated": false,
+  "started_utc": "2026-10-21T01:43:08.252004+00:00"
+}

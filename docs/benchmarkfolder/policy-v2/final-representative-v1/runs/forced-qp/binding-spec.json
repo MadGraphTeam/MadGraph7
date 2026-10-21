@@ -1,0 +1,11 @@
+{
+  "report": "docs/benchmarkfolder/policy-v2/final-representative-v1/runs/forced-qp",
+  "outputs": {
+    "control-forced-qp-candidate-1": ".benchmark-work/policy-v2/final-representative-v1/forced-qp/workers/control-forced-qp-candidate-1/outputs/candidate/control-forced-qp",
+    "control-forced-qp-candidate-8": ".benchmark-work/policy-v2/final-representative-v1/forced-qp/workers/control-forced-qp-candidate-8/outputs/candidate/control-forced-qp"
+  },
+  "role_map": {
+    "baseline": "original",
+    "candidate": "candidate_corrected"
+  }
+}

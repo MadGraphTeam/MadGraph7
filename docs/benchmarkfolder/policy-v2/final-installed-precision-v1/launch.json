@@ -1,0 +1,17 @@
+{
+  "schema": "final-installed-precision-launch-v1",
+  "started_utc": "2026-10-21T01:38:47.147262+00:00",
+  "controller": {
+    "pid": 992719,
+    "pgid": 992719,
+    "start_ticks": "58042821"
+  },
+  "parent_pid": 1542103,
+  "cpu_affinity": [
+    190
+  ],
+  "root_mp_handoff": true,
+  "revision": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "runtime_identity": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+  "expected_public_calls": 64
+}

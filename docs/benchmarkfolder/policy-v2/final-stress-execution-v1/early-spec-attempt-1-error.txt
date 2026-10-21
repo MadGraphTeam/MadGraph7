@@ -1,0 +1,18 @@
+Verbatim exception transcript retained from the first tool invocation; no CLI or build ran.
+
+Traceback (most recent call last):
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-stress-execution-v1/write_specs.py", line 161, in <module>
+    main()
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-stress-execution-v1/write_specs.py", line 156, in main
+    result = early(args) if args.action == "early" else prepare(args) if args.action == "prepare" else bind(args)
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-stress-execution-v1/write_specs.py", line 75, in early
+    early_build.sources(args.numerical_revision)
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-stress-execution-v1/early_build.py", line 45, in sources
+    return {"production": {name: supplement.digest(ROOT / name) for name in names if name},
+  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tools/ninjars_supplement_v2.py", line 46, in digest
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+  File "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/pathlib/__init__.py", line 777, in read_bytes
+    with self.open(mode='rb', buffering=0) as f:
+  File "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/pathlib/__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+FileNotFoundError: [Errno 2] No such file or directory: '/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/Template/NLO/MCatNLO/include/pineappl_maxproc.inc'

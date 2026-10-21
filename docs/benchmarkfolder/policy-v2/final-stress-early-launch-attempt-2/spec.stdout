@@ -1,0 +1,9 @@
+{
+  "early_spec": {
+    "path": "docs/benchmarkfolder/policy-v2/final-stress-execution-v1/early-spec.json",
+    "sha256": "21864b9d9bd2a14e2478a64e33909807d10a97ba3ee470751664da7ddd013d1e",
+    "bytes": 18014
+  },
+  "core_dataset_identity_asserted": false,
+  "cli_or_compiler_or_engine_executions": 0
+}

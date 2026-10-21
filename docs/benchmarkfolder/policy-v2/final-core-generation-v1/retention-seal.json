@@ -1,0 +1,741 @@
+{
+  "schema": "final-core-generation-retention-v1",
+  "file_count": 183,
+  "bytes": 20298672,
+  "files": {
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/README.md": {
+      "sha256": "461dc2f268a23ff98eb5014b333c0d06fd754e59a49585336f88af9c3b2220bc",
+      "bytes": 5082
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/audit_core.py": {
+      "sha256": "9bae1bd4b122f6e3cc1e9c1b91fd5ec71dbf83f6340bd0b87332bd27a51f40ba",
+      "bytes": 5242
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/baseline-integrity-before.json": {
+      "sha256": "eb209c9058bb030e7c2993383db76f6db614827bd3685c499c7d7b2c3de6e6d4",
+      "bytes": 1143499
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/cases.json": {
+      "sha256": "f7fdf15ae6e0b20852144ce484a02ddc98ce13ff84bddb57154e77e1e7fbbbd3",
+      "bytes": 1338
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-ew-1.mg5": {
+      "sha256": "76af961d3d2477fc885b85538f40d3f6a662ae9d2a64844bc7b95fab368d4a1e",
+      "bytes": 787
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-ew-2.mg5": {
+      "sha256": "7819417979240c3e7e79d10b012df3a7bb912e733c9001edbc68ee40ca92d147",
+      "bytes": 793
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-ew-3.mg5": {
+      "sha256": "915319a56d17ef4d8f4351d050ed0d5ad279d6b156ebe00c8546403c6c3e3ec5",
+      "bytes": 792
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-ew-4.mg5": {
+      "sha256": "bdc07f589fa880d40348b36d61bd5dce89052985138668d56911b6f772de59d0",
+      "bytes": 797
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-qcd-1.mg5": {
+      "sha256": "a9e657efda55775a4239cbcae6861cda8f155a3165cd6e218ebd2d19368cab8a",
+      "bytes": 684
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-qcd-2.mg5": {
+      "sha256": "ceba140360590b13b480b71264ea2b468ce369151585bb5e142964390add78a5",
+      "bytes": 686
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-qcd-3.mg5": {
+      "sha256": "b29210f5433442c2966e80513841b0ce998105e68b3b88d7e5de603ac3e39c6f",
+      "bytes": 688
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands/candidate-qcd-4.mg5": {
+      "sha256": "581a34d73273c94c61fe606980d47ba46c55ba56cc010b16bc2599b502c8bf51",
+      "bytes": 690
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/commands.sh": {
+      "sha256": "c6dec418665127ddc9dfae1b59f988008e20466da03f7324e0dd1cb8b577f70d",
+      "bytes": 1061
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/executed-freeze.json": {
+      "sha256": "fb0ad20a6eb7487e17f5f508ba0ccf00ad1d6f37d8b6dbb82f4deba7c291d795",
+      "bytes": 1367
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/freeze.json": {
+      "sha256": "fb0ad20a6eb7487e17f5f508ba0ccf00ad1d6f37d8b6dbb82f4deba7c291d795",
+      "bytes": 1367
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/freeze.template.json": {
+      "sha256": "c05cc89e3c003cbac579bf69cf30bff2fbe54e426b1ed37878e6ee92d5e8da5e",
+      "bytes": 575
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-1/compilation.json": {
+      "sha256": "1e68c2d203063f604582b7075561b52d9a1b6f473189a953efbd5e866ec43976",
+      "bytes": 177254
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-1/compiled-source-manifests/1b6812f9869aeba23d0285fac148d31e1a06795472cdf2eaa6f984eb66f25be4.json": {
+      "sha256": "d32cbfcd902a224a103c6a4fa75b4fa102e96f3f9c5f2510fdc00af450cfad84",
+      "bytes": 23655
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-1/compiled-sources.json": {
+      "sha256": "d32cbfcd902a224a103c6a4fa75b4fa102e96f3f9c5f2510fdc00af450cfad84",
+      "bytes": 23655
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-1/generation.json": {
+      "sha256": "9f297cfa5d8c0837b7891b522b074117865adad75b5b44dccda236c030111eb4",
+      "bytes": 171448
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-1/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-2/compilation.json": {
+      "sha256": "b2928cbc96669a2a270e2ad86ebd1f6e0b447c145f7301e4d9d689179d122adb",
+      "bytes": 177254
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-2/compiled-source-manifests/32c23d138d3a223a99cafaa0a6a45f43aa45c523e1be94e1a84266163c123ba4.json": {
+      "sha256": "cb8ab2e345887f3a0d5e860cef21fb90cbb643887bf584c57e6936b38c542568",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-2/compiled-sources.json": {
+      "sha256": "cb8ab2e345887f3a0d5e860cef21fb90cbb643887bf584c57e6936b38c542568",
+      "bytes": 40557
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-2/generation.json": {
+      "sha256": "610c6cd4dcdf79f1078d97d66d61be7711b865b55996d84bbada03089381ea84",
+      "bytes": 171447
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-2/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-3/compilation.json": {
+      "sha256": "8fd1acd792efebe1ca3ae222c7eb9b9bffd019088ff95d7cb9f28439ee5a8aed",
+      "bytes": 177255
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-3/compiled-source-manifests/340604a0a77a0aaa1e3e28cde3e7072a0540b419672a39958c68d9b856d95a97.json": {
+      "sha256": "c778d13b1ecfc511aead2d2eb415b83b7fceda05c3ec43ecb31c14dcaedbacee",
+      "bytes": 63908
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-3/compiled-sources.json": {
+      "sha256": "c778d13b1ecfc511aead2d2eb415b83b7fceda05c3ec43ecb31c14dcaedbacee",
+      "bytes": 63908
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-3/generation.json": {
+      "sha256": "b1d902c7b1dd0bb0153272878a443649baa2b26c7aef59481198ae33cbb39012",
+      "bytes": 171448
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-3/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-4/compilation.json": {
+      "sha256": "799f7143bdfc54788080a41c43f8695e9475d578d11deda7308f6b14b5e94bb0",
+      "bytes": 177254
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-4/compiled-source-manifests/463d3884c38a5f276385e911cb54a08bf66c459f8c796034303811682103549e.json": {
+      "sha256": "f4b1783f1f9501164e6226ff77b0b7c982ced88f0fc394f94b82c59597f3a3f9",
+      "bytes": 56343
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-4/compiled-sources.json": {
+      "sha256": "f4b1783f1f9501164e6226ff77b0b7c982ced88f0fc394f94b82c59597f3a3f9",
+      "bytes": 56343
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-4/generation.json": {
+      "sha256": "a26b08be7e83a692eb958f477499b13af040c5b516b5dc131fbb94f42acae32b",
+      "bytes": 171448
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/ew-4/param_card.dat": {
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+      "bytes": 4537
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-1/compilation.json": {
+      "sha256": "880659ab878b8ca25c5003a70f2ad207a8ac0e1832151c4171750691d4d8be6a",
+      "bytes": 177254
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-1/compiled-source-manifests/8b65d1215499a7b58df58d27d14fa70648b83af50ce9a1a497448411d77f1a53.json": {
+      "sha256": "10981f8038f31257fc67078a270e7a6dcf6fae756926fa8b5c6e26a1e9168b82",
+      "bytes": 16774
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-1/compiled-sources.json": {
+      "sha256": "10981f8038f31257fc67078a270e7a6dcf6fae756926fa8b5c6e26a1e9168b82",
+      "bytes": 16774
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-1/generation.json": {
+      "sha256": "7a43b17e8c00d66b0a150b56323827efc1f6b590141dd77a8a159e5f596d96b7",
+      "bytes": 171447
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-1/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-2/compilation.json": {
+      "sha256": "bb1a1bccaa8725c783dac23e28151f1e9d5fa75f41345dffad86300ea3067593",
+      "bytes": 177254
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-2/compiled-source-manifests/556daaef892961505729fab571c05296193a135ec90da83057c2d87934f3e19f.json": {
+      "sha256": "80661d99ec7262e5023352ca23549f2371195efcb073337af5b8b8b34f30ef29",
+      "bytes": 22497
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-2/compiled-sources.json": {
+      "sha256": "80661d99ec7262e5023352ca23549f2371195efcb073337af5b8b8b34f30ef29",
+      "bytes": 22497
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-2/generation.json": {
+      "sha256": "a3fd2cb877ffe38134eb454ac3c9ff085f76091810c748b26d2510c41f4789c5",
+      "bytes": 171447
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-2/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-3/compilation.json": {
+      "sha256": "9c173edfa80168eacba808aac15665925613458559d241d3bdc2b949afe20edc",
+      "bytes": 177255
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-3/compiled-source-manifests/64caed0ff2da60cf11de9b56eadf4f5f3a42fb9a6ae3a380ddb7949256603452.json": {
+      "sha256": "a01ae243f059cae087d061b01b45b6fb212159b8dfdcf2fd6b6f484c295f98ff",
+      "bytes": 29259
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-3/compiled-sources.json": {
+      "sha256": "a01ae243f059cae087d061b01b45b6fb212159b8dfdcf2fd6b6f484c295f98ff",
+      "bytes": 29259
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-3/generation.json": {
+      "sha256": "06835c0efb4063bb4d017db03065e301cf3793b4867c86a2d6858bca6cc9a027",
+      "bytes": 171448
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-3/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-4/compilation.json": {
+      "sha256": "84945bc02c03190ca6e6ba6b29c81d6f66880d850b908905cdb3718fd2b9497c",
+      "bytes": 177255
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-4/compiled-source-manifests/b4c523b1a544da13f8ab51f8010a01b1b24baa651a69c25cac4c3893be12a607.json": {
+      "sha256": "ee3b27d2926484f45b566f8fb9da004c8ecbf05f89250014db473363180d6edf",
+      "bytes": 31147
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-4/compiled-sources.json": {
+      "sha256": "ee3b27d2926484f45b566f8fb9da004c8ecbf05f89250014db473363180d6edf",
+      "bytes": 31147
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-4/generation.json": {
+      "sha256": "56ce86cca35930954e1158d4a68151f2b97236859e754541c2a08ac8180fbe26",
+      "bytes": 171448
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/candidate/qcd-4/param_card.dat": {
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+      "bytes": 2471
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/136b8c317fef96c698f1ded8679a10a58c3e74623be353b3112df758c7c1f45e.json": {
+      "sha256": "230fe8ca4c138211970d4fb765905d72a7c884ba4db33f5239fc57ef0e7d97e1",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/24eef818c9341b3d86f5cfbb18bab2a2212a399b8c5640ad8e7dbe6d39e9395d.json": {
+      "sha256": "d648d6cb2dc451f12dec76920d1d9a3ccec52262e9783eaa95ab25b7ee0ff5ac",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/37597bbd038ae951537e3421ed8e9e955a7bb4820b9387bdca5427355d3bdf28.json": {
+      "sha256": "953e2947d2dd4bc7692e402f58680c6d3deb38f36801f9b36524143529fa243c",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/52b2923b00f46abd23059ab60e2039a8eede285db62793a72b28a035db9605fc.json": {
+      "sha256": "d9bfc1596d816a6d5623b27b45c8dc5ac62cf7ab9af7e72366399bbdf97ed2ae",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/5386d2793d2a061ca7af9ff93f1acde685ac5b6337e7d9372e2eb05bd4f73200.json": {
+      "sha256": "71b8aa415bf3cbf21de4e37a9226e9c71663b6b11551c65de1a4140c7033dd66",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/5ab897645cffcb30e8bca89ebce369c39ac253a9fc776c7176be9c4bd7fc7287.json": {
+      "sha256": "dc10ef04bf1cee4c0f926944a63756cacb94d3b08751a9808bb88e5571c7aac9",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/6ea6c03dc69ce8a16f7b0965420bb875713c9737dd32753af88a8f897f739d00.json": {
+      "sha256": "9647d4d1c8a170a6c33b2c28d581b519575dd0ef844fb71965d8d75c2f9c9a97",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/84dadc0188264a9616a0da148cd91c2a8f03f05cdadff4ae4f6f379752656e75.json": {
+      "sha256": "5df06776af99861a6fee607bfb3f2fb72dae5a9eb8a451cd0d1d7a3f3bbab971",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/93a78b9a569d734cd5eac3bc1f277afe09ebacfc6353ef3d00c0af08645e5d74.json": {
+      "sha256": "a2b7dab4af1039d982d1d8d542c5be87df3822f9021ef266e0f6c0d56d51d142",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/95fa07500c8b9edd0666df6ed81837c2ae510f7e1fb9dc3f3866dd990e9b5274.json": {
+      "sha256": "1da800ce0f6d6171074a36b55d27b125c1b99da667a6d4867cf915a95ee8d406",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/a22d2cd2a30b473c399d9b344aa57281a29b811d85194cb5eca2f0d3e084030d.json": {
+      "sha256": "c9e3a920dc9b4b762e75fb9188711d7f6ded2cbb6707c6a8119d03fc3a3fe560",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/a3e4bc2dde3f4054d879aef8374cdb3bdc543806d1a664c87b9bc2e21240bf53.json": {
+      "sha256": "43a303a7bf700b9a8ed59328a98da74afb178b88f8253d622e611f2a5033cf46",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/c68a3f987785276788f8a6d43dc10444c00c9254965a5b3e7c5bccd18897050e.json": {
+      "sha256": "0e288a611d33273d13e3d8a347c50177fb51b5e7a3990e51ec28040596052928",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/cf4733a244f0538c8d19be6e9a8e2b60782b8f82f844f54bbf85142365aa46b9.json": {
+      "sha256": "0c9952acb1619fc2c358577add26ed659735a31f6b01bfc954381d89548858ca",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/d81f309d5b84a5039b25f8a72276ba471014263d1ea13e9f9d75796555c7776f.json": {
+      "sha256": "46ae0593a50ecbb778ac068ce9f7a620db3318247daed68a42e0259540bc26ff",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/inputs/source-identities/f0b12344bf03dfa579ad5db56a648a547bc03b88b4433da1b6e5a44d1235b973.json": {
+      "sha256": "b8d44d64cb1171b59de22a5e94ab24a55b71588dc86d0b4f901a3d870c91aad5",
+      "bytes": 168525
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/launch/controller.log": {
+      "sha256": "505f1e1e124332d04af81d34b07a4c6aef952eebb564f64411fe49983ab08fa1",
+      "bytes": 560
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/launch/launch.json": {
+      "sha256": "c25fba351ababd2e7fe36f3fceb04929270ccc622d131db39929df440e62d48e",
+      "bytes": 1206
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/launch/process-history.jsonl": {
+      "sha256": "ddaf3cdcfcd18a3b4153ec41c235f2796193e2ef6718051c555fea21fc0740e9",
+      "bytes": 1032321
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/launch/result.json": {
+      "sha256": "69b1bb562f33105520e2f1fd8744feef0b4649b2416bd99979acd7396953c5be",
+      "bytes": 350
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/launch/supervise.py": {
+      "sha256": "43e6212714a101412c4593130ff3e7e60aa9bcc57735766d87fe295c08272fd8",
+      "bytes": 2812
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/launch/supervisor.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-1.log": {
+      "sha256": "bed09b305e24bc3c45cc1d01a041f1f8ac4d52a51275b6d268c1d481d7ce070e",
+      "bytes": 9389
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-2.log": {
+      "sha256": "ec91eb8c9b4d79dcd55c1b9fb685f7bcce7eae6e22a9d26ac9af273b6d6bf6fd",
+      "bytes": 9389
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-3.log": {
+      "sha256": "fef676c05de790c00901c64dc810b08c7202969e76a6e7c759c2f1850caf3a19",
+      "bytes": 10308
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-ew-4.log": {
+      "sha256": "621ceaa347c337dda65ce286f42ec33280a7352347c6e0aec5897979c2348a07",
+      "bytes": 18097
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-1.log": {
+      "sha256": "09226de93534c0bb7eb08316518f43102bb20e3fb1ae15eb907c7e618413f3cd",
+      "bytes": 9392
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-2.log": {
+      "sha256": "5f694f58d151bbbcc09b716761513819c9221405e5297bde47231f92403a2c75",
+      "bytes": 10305
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-3.log": {
+      "sha256": "65965c3f94c102bedd3556abe51b445e4d9ffbf9848d236bfd0b2064885fda77",
+      "bytes": 10305
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/compile-candidate-qcd-4.log": {
+      "sha256": "bbadd67c804800bc0503d17851c55bc481e6dc034475b76114907ae096453ebe",
+      "bytes": 12143
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-ew-1.log": {
+      "sha256": "d1439c806e20afb2bb76eaacb92022789acccc8f2dc0f3e6e9fc0a032bf5bc2d",
+      "bytes": 11463
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-ew-2.log": {
+      "sha256": "62ed47ccda103f563fe499cc3db3f4c311eb51965584c2335037fc760abf1940",
+      "bytes": 13904
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-ew-3.log": {
+      "sha256": "50bd4ff8f6421a7bab8f58259046eab3c88dca703c7fe2e8b4234cdbaef0bdec",
+      "bytes": 17751
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-ew-4.log": {
+      "sha256": "49f18f73e550660cf9221bc471ed56a892bb22fc8279126f641b99479c36e56d",
+      "bytes": 15824
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-qcd-1.log": {
+      "sha256": "4dd7fa3c91e0550f68395ef1f9373c231e83df74dbccd1f91072a684ef50e18b",
+      "bytes": 9765
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-qcd-2.log": {
+      "sha256": "53612362e4ea6d1ca2aee3356f9d0c4f04f5134e6853e594290f007dffec889b",
+      "bytes": 10934
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-qcd-3.log": {
+      "sha256": "ef560a77483bb87e75a5aba823f35ee0d73f70ac23f40bd0c4784f11dcf8cc55",
+      "bytes": 11606
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/generate-candidate-qcd-4.log": {
+      "sha256": "64352317bc9109bffc32594290f8dd90baacc250d3ce54a7df509df2e9a20085",
+      "bytes": 11871
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/masses-candidate-ew-1.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/masses-candidate-ew-2.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/masses-candidate-ew-3.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/masses-candidate-ew-4.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/masses-candidate-qcd-1.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/masses-candidate-qcd-2.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/masses-candidate-qcd-3.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/logs/masses-candidate-qcd-4.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/make_freeze.py": {
+      "sha256": "f8cb790b24be9c543434de275f2b64d3b8b3414ebbd9e913440cc5344b6d9e35",
+      "bytes": 3075
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/manifests/ew-1-generated.json": {
+      "sha256": "31a9bdd0a857446001407e28fd0d9b18601adcf196ec603c35147b739eacab70",
+      "bytes": 23656
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/manifests/ew-2-generated.json": {
+      "sha256": "7c49f7eaf9863af8b8bff8583acdb5a0a3510d9fab404c9689c591d97c727d6a",
+      "bytes": 40558
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/manifests/ew-3-generated.json": {
+      "sha256": "8f48d799a3cba93454c95d7d8643767fd6069ec3ab93d207e37aec4db330ce43",
+      "bytes": 63909
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/manifests/ew-4-generated.json": {
+      "sha256": "b0231705c42ded5c18b37e546f44abc4da810e55ead6bd16a29433246f440f08",
+      "bytes": 56344
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/manifests/qcd-1-generated.json": {
+      "sha256": "d0a26c7abe6753427a72effa27e7b10b0a30f064677e135d51611dde31cb5717",
+      "bytes": 16775
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/manifests/qcd-2-generated.json": {
+      "sha256": "203af349eb9acca3fb5954ce6d532a8a785f60c0def2f257505ccd00a1a07335",
+      "bytes": 22498
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/manifests/qcd-3-generated.json": {
+      "sha256": "fc2712ea4856264c60cbf793335f80a9359a13e9781679e52346b9c1950f533f",
+      "bytes": 29260
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/manifests/qcd-4-generated.json": {
+      "sha256": "800fe803c682f9fb3f88b0769c6e14d946f6bdce549dcabd58ee4530ec368f22",
+      "bytes": 31148
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-1/after/Source/MODEL/model_functions.f": {
+      "sha256": "540fa790dd74fd4f5a9bed7b2e3be0d1fe5c7ae3a3512dbf1f735312bf418a82",
+      "bytes": 32826
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-1/after/Source/MODEL/mp_intparam_definition.inc": {
+      "sha256": "b3425f1dbeeb6cf64173bce645a69e82fa10e583e0d54e1be600b6552c47de70",
+      "bytes": 153933
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-1/before/Source/MODEL/model_functions.f": {
+      "sha256": "2e83c5986a2fab8d2672eb7c3e9d948da3cbfaa250f1c5bb18803535aa08c01b",
+      "bytes": 32608
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-1/before/Source/MODEL/mp_intparam_definition.inc": {
+      "sha256": "831feec539d13a55894e76d9a36617f9d82e28fc633577e001261f061e1d3bf5",
+      "bytes": 151467
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-1/manifest.json": {
+      "sha256": "92a69671694efcb5682e7758c5b3f07266c2b038d6c5100cf349a4921d46f677",
+      "bytes": 10823
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-1/model_functions.f.patch": {
+      "sha256": "c1a29d007e2366846b7fffc262cc03b18f4726d92f4455f84a27ca5961c6d93a",
+      "bytes": 7277
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-1/mp_intparam_definition.inc.patch": {
+      "sha256": "6a216e29d873d2a3e13b13fed7861e113d1af5da179478c9d82d6172d1d8fba9",
+      "bytes": 126652
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-2/after/Source/MODEL/model_functions.f": {
+      "sha256": "540fa790dd74fd4f5a9bed7b2e3be0d1fe5c7ae3a3512dbf1f735312bf418a82",
+      "bytes": 32826
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-2/after/Source/MODEL/mp_intparam_definition.inc": {
+      "sha256": "a0f95c22b3aeef58c3f1692f58a60550525a54dcedb1056a8321becf3c4082e1",
+      "bytes": 240121
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-2/before/Source/MODEL/model_functions.f": {
+      "sha256": "2e83c5986a2fab8d2672eb7c3e9d948da3cbfaa250f1c5bb18803535aa08c01b",
+      "bytes": 32608
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-2/before/Source/MODEL/mp_intparam_definition.inc": {
+      "sha256": "5f1cbe08f23b2f1e20b5afc25bc35295a0517deb0e5972d170afe83f37c04fa8",
+      "bytes": 235631
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-2/manifest.json": {
+      "sha256": "b7c692e71bf8ed0cac01ce985dc822c1fa886cf2f3150baa6af8d88cf585ec36",
+      "bytes": 10835
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-2/model_functions.f.patch": {
+      "sha256": "c1a29d007e2366846b7fffc262cc03b18f4726d92f4455f84a27ca5961c6d93a",
+      "bytes": 7277
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-2/mp_intparam_definition.inc.patch": {
+      "sha256": "79275602cf33ae2924f7dddd6146bd957a785a5dc0e06c023749228c986bf5b2",
+      "bytes": 220495
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-3/after/Source/MODEL/model_functions.f": {
+      "sha256": "540fa790dd74fd4f5a9bed7b2e3be0d1fe5c7ae3a3512dbf1f735312bf418a82",
+      "bytes": 32826
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-3/after/Source/MODEL/mp_intparam_definition.inc": {
+      "sha256": "258ecab1758b539252a4843e97a81accadf77a491e29ec06a25b4419def7cced",
+      "bytes": 418463
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-3/before/Source/MODEL/model_functions.f": {
+      "sha256": "2e83c5986a2fab8d2672eb7c3e9d948da3cbfaa250f1c5bb18803535aa08c01b",
+      "bytes": 32608
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-3/before/Source/MODEL/mp_intparam_definition.inc": {
+      "sha256": "4a76de68e37b83360f3ac8f61b490e5eff49413c46a099c6a2f52abe9cf33ab1",
+      "bytes": 409989
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-3/manifest.json": {
+      "sha256": "e7c508f1fe0f20eeabb876d1cc563e144130be7dfb547aa71fffa7e2c41eeb45",
+      "bytes": 11429
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-3/model_functions.f.patch": {
+      "sha256": "c1a29d007e2366846b7fffc262cc03b18f4726d92f4455f84a27ca5961c6d93a",
+      "bytes": 7277
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-3/mp_intparam_definition.inc.patch": {
+      "sha256": "1176f3273aeefb2bb6f60e7bf162de11d130d1e75d2b439557e01674e7bb1e5d",
+      "bytes": 430977
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-4/after/Source/MODEL/model_functions.f": {
+      "sha256": "540fa790dd74fd4f5a9bed7b2e3be0d1fe5c7ae3a3512dbf1f735312bf418a82",
+      "bytes": 32826
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-4/after/Source/MODEL/mp_intparam_definition.inc": {
+      "sha256": "05405216127e4f21d6f9cfca8f0864c6c228ad5262a5222f8f0329fc44e8ba13",
+      "bytes": 240179
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-4/before/Source/MODEL/model_functions.f": {
+      "sha256": "2e83c5986a2fab8d2672eb7c3e9d948da3cbfaa250f1c5bb18803535aa08c01b",
+      "bytes": 32608
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-4/before/Source/MODEL/mp_intparam_definition.inc": {
+      "sha256": "e7a785fd086ebf040f04d00a0447271cdcaf9d4502ebed8ff28e8a49c52d38f5",
+      "bytes": 235689
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-4/manifest.json": {
+      "sha256": "6511feea7ba9aff08d3206e914666a16ab5ba49f8b76a25a8e9108a40d2005d2",
+      "bytes": 11427
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-4/model_functions.f.patch": {
+      "sha256": "c1a29d007e2366846b7fffc262cc03b18f4726d92f4455f84a27ca5961c6d93a",
+      "bytes": 7277
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/ew-4/mp_intparam_definition.inc.patch": {
+      "sha256": "87ac6e38742fddfc23280c64bdab04a1f9cc5ff180bc97d9da8c0c7fe70d3a8d",
+      "bytes": 220495
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-1/after/Source/MODEL/model_functions.f": {
+      "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3",
+      "bytes": 32184
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-1/before/Source/MODEL/model_functions.f": {
+      "sha256": "a9678291451097495295fb6f894f3fd4c162addca0844f82393db59b69bc981e",
+      "bytes": 31974
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-1/manifest.json": {
+      "sha256": "efebbb2b7583e77ae3bd076fdf4c319ea6e1ada503a1e26e37439abd2c0b6ac9",
+      "bytes": 9897
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-1/model_functions.f.patch": {
+      "sha256": "690234b29b5c1e3d67f939da2250ae6332588bd24e29f6adeadf0864b43a58a3",
+      "bytes": 6960
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-2/after/Source/MODEL/model_functions.f": {
+      "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3",
+      "bytes": 32184
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-2/before/Source/MODEL/model_functions.f": {
+      "sha256": "a9678291451097495295fb6f894f3fd4c162addca0844f82393db59b69bc981e",
+      "bytes": 31974
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-2/manifest.json": {
+      "sha256": "6ac747d665546981acaa63bf31bc3210e2901a860c331a3617a0f4bc26b8e6bc",
+      "bytes": 9907
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-2/model_functions.f.patch": {
+      "sha256": "690234b29b5c1e3d67f939da2250ae6332588bd24e29f6adeadf0864b43a58a3",
+      "bytes": 6960
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-3/after/Source/MODEL/model_functions.f": {
+      "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3",
+      "bytes": 32184
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-3/before/Source/MODEL/model_functions.f": {
+      "sha256": "a9678291451097495295fb6f894f3fd4c162addca0844f82393db59b69bc981e",
+      "bytes": 31974
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-3/manifest.json": {
+      "sha256": "7682f8f6ae058523c1e61f89edf28e9ef6db1ef8c613976ac2731d826dcae4c9",
+      "bytes": 9907
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-3/model_functions.f.patch": {
+      "sha256": "690234b29b5c1e3d67f939da2250ae6332588bd24e29f6adeadf0864b43a58a3",
+      "bytes": 6960
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-4/after/Source/MODEL/model_functions.f": {
+      "sha256": "56f6f36266d05e79ab339421852462213b9598ddd6a7e354472857c5c19ddfc3",
+      "bytes": 32184
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-4/before/Source/MODEL/model_functions.f": {
+      "sha256": "a9678291451097495295fb6f894f3fd4c162addca0844f82393db59b69bc981e",
+      "bytes": 31974
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-4/manifest.json": {
+      "sha256": "7afba8f51366d8881886c60efc92afd4b7e4abcee05a253b517258d8c20743a7",
+      "bytes": 9909
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/model-deltas/qcd-4/model_functions.f.patch": {
+      "sha256": "690234b29b5c1e3d67f939da2250ae6332588bd24e29f6adeadf0864b43a58a3",
+      "bytes": 6960
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/plan.json": {
+      "sha256": "0742648eac54c8d2614e8badb1e00e479f431dba794f59a4a3bab0c2390727d5",
+      "bytes": 2087
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/ew-1.dat": {
+      "sha256": "5869f48fc0546031f7c50ee8f68a4b0104fa6da66bc3b434e47d1422edcbb576",
+      "bytes": 29269
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/ew-1.json": {
+      "sha256": "f126362207bc1560dc9a7b851f464c2f9b1ca3c82c93c793e0a0d3880223b157",
+      "bytes": 190
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/ew-2.dat": {
+      "sha256": "ed6f3f83033372061ed6de45c05a366aeeb68a63ddd006998682f406174e7b53",
+      "bytes": 38804
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/ew-2.json": {
+      "sha256": "b80d47abd7982b32c6a9e910272cf91cfe108e7a9ec5741dba3007ca15b7238a",
+      "bytes": 196
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/ew-3.dat": {
+      "sha256": "c030e6c68d53e9ecc1e2ac5ee99e4f81d97a80268dcbe3a0dc76065655a492a1",
+      "bytes": 48558
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/ew-3.json": {
+      "sha256": "0605b14aa85f769b5ca08e4e31796e934cc3ac56b9837e0dd49dac93b27e59d4",
+      "bytes": 209
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/ew-4.dat": {
+      "sha256": "75a3765dca97afa14e5efb795cb1a9fa1ff9e0475ebcb79a883b6a2a4e84ba5a",
+      "bytes": 58298
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/ew-4.json": {
+      "sha256": "55779b55b2031bb47e6393f1c42d09c67626546eb3e277d9a104c466342f30be",
+      "bytes": 214
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/qcd-1.dat": {
+      "sha256": "bd8a00c863710123dd62cb5e079dcd11d2aebdcf49d8128313bbd6ecc6de1099",
+      "bytes": 29223
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/qcd-1.json": {
+      "sha256": "02aa21db269db26e655d531bb29c8bd307e50c434a3bb01891442248c1b0a3ac",
+      "bytes": 190
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/qcd-2.dat": {
+      "sha256": "6efb8cb1752f37badd187e17aff2103eb6814402dbaeaa598165a83d22bd0b63",
+      "bytes": 38804
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/qcd-2.json": {
+      "sha256": "dbde7aad1084ae47a61ed252628a709b5c5cb28611dd2ac402931c45e7f99105",
+      "bytes": 200
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/qcd-3.dat": {
+      "sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41",
+      "bytes": 48552
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/qcd-3.json": {
+      "sha256": "4a8633b45f2f6020af0f4c529276795e6663ca0b86662b647834a8d9bad23880",
+      "bytes": 208
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/qcd-4.dat": {
+      "sha256": "d66b0c04ee3d8e6ed90ef1fbf97abb9cd444d9ea1f84a508850688bff317b52d",
+      "bytes": 58316
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/points/qcd-4.json": {
+      "sha256": "3fe89adca7af12f2fdadba12e47161929fd8faef2228e8aef804766565e30644",
+      "bytes": 220
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/preparation-seal.json": {
+      "sha256": "1e003a07acc6c53b51d8e0f7f595af395dbdce17fb5fadb8d83f1f12c2fa7b4d",
+      "bytes": 3808
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/preparation.patch": {
+      "sha256": "174f50b342987ac753f8c27f75d6d336f1dcfe5984cecf29a45119e92f72c687",
+      "bytes": 14680
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/protected-inputs-before.json": {
+      "sha256": "b3c37fed969d21d126db94444c462db20bb5e64df92aae904f3a30671bbf17cb",
+      "bytes": 729407
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/regenerate.py": {
+      "sha256": "9c42ae22d39d346a8223f973152eabdd61edc72d16bb6a8588e433e587d61115",
+      "bytes": 19606
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/retention-summary.json": {
+      "sha256": "eabae2e64984fa459631ff417e0954a8e56d9fb337dd37a1dd76741f10cf692f",
+      "bytes": 990
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/runtime-inventory.json": {
+      "sha256": "78de320a136ad627599080b20d9ea231a1bc7a10fe21ec38314e986bda783dbb",
+      "bytes": 1723363
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/runtime-readiness-qcd1.json": {
+      "sha256": "d954ff055439678d28136d34e13e6a6ffd2d3c710752303bb3f7c3878861f184",
+      "bytes": 271623
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/status.json": {
+      "sha256": "2969000120b0d820e4a3f8db638894910a9b3c77265b5448fc79ba7dce620d07",
+      "bytes": 4621984
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/summarize.py": {
+      "sha256": "9553eae90d3df21f9c3596c277c45a91eb27000b628dc3f8c89e61e0d7b92198",
+      "bytes": 4451
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/summary.json": {
+      "sha256": "08e53481a281621af7dd98d924a33c9f64e9c0e89551dad04c7c728607ebbd42",
+      "bytes": 45789
+    },
+    "docs/benchmarkfolder/policy-v2/final-core-generation-v1/verify_preparation.py": {
+      "sha256": "b2fd0f75d6d03e6dd562782e487569e34ebce1c5f251a68f1690e54c4d4b9240",
+      "bytes": 1198
+    }
+  },
+  "accepted_numerical_or_performance_claim": false,
+  "identity_sha256": "e81c3d9b062727c04e727940e09eab70acefe187992b8311b292545bad2213eb"
+}

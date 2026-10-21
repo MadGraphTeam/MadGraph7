@@ -1,0 +1,50 @@
+{
+  "amplitude_evaluations": 0,
+  "ast_parse_passed": true,
+  "checked_utc": "2026-10-21T01:56:39.407166+00:00",
+  "corrected_driver_byte_identical": true,
+  "files": {
+    "README.md": {
+      "bytes": 3383,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/README.md",
+      "sha256": "fdd194afbe2877e57953e6a5598ea76dc86230b8a49077d89f6b22f2f5e6c323"
+    },
+    "controls_driver.py": {
+      "bytes": 18486,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/controls_driver.py",
+      "sha256": "93e41b821058e89c04d01f72070406ede09a55cb37021b5995cb27635897ff9c"
+    },
+    "execute.py": {
+      "bytes": 17725,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/execute.py",
+      "sha256": "981f02419a931d34c6ba3afaeb5de5aeed8c59ae685a62f65a77777f44146f41"
+    },
+    "parent-bindings.json": {
+      "bytes": 609583,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/parent-bindings.json",
+      "sha256": "6e96a1b8826283d785f0d52da9b67e010e0e5c773d354d13829ceb2553889407"
+    },
+    "prefix-equivalence.json": {
+      "bytes": 707,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/prefix-equivalence.json",
+      "sha256": "f6f10fad6760195e4ac7d57132f662c6017012c75f3bb9e87f7020ad988136c4"
+    },
+    "retarget.patch": {
+      "bytes": 12780,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/retarget.patch",
+      "sha256": "8b0da5979b419cf725b4f71798755fc63c57ec0ebc2d61597f4441a7ebdd9ae7"
+    },
+    "source-provenance.json": {
+      "bytes": 1361,
+      "path": "docs/benchmarkfolder/policy-v2/final-variant-controls-v1/source-provenance.json",
+      "sha256": "3261f278cecb38b5e02bb4cbe715d1625046e5bdabd7862d134f74c2565666da"
+    }
+  },
+  "first_ten_hh_inputs_byte_equivalent": true,
+  "full_parent_runtime_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+  "initialized_symbolica_workers": 0,
+  "numerical_results_claimed": false,
+  "schema": "final-variant-source-readiness-v1",
+  "source_only": true,
+  "variant_compilations": 0
+}

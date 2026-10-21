@@ -1,0 +1,267 @@
+{
+  "bytes": 3191554,
+  "candidate_runtime_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+  "categories": {
+    "retained-evidence": 46
+  },
+  "count": 46,
+  "created_utc": "2026-10-21T01:54:29.702110+00:00",
+  "excluded_private_products": {
+    "kinds": [
+      "ELF executables",
+      "objects",
+      "static/shared libraries",
+      "Cargo targets and caches",
+      "generated-process work trees"
+    ],
+    "retention_policy": "Retain commands, settings, generated/compiled-source manifests, raw results, all logs, source snapshots and PID/start-tick/PGID ledgers. Compiled products remain in ignored work and can be rebuilt.",
+    "trees": [
+      ".benchmark-work/policy-v2/final-installed-precision-v1",
+      ".benchmark-work/policy-v2/final-representative-v1",
+      ".benchmark-work/policy-v2/final-representative-generation-v1"
+    ]
+  },
+  "existing_evidence_rewritten": false,
+  "files": {
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/commands/candidate-control-forced-qp.mg5": {
+      "bytes": 708,
+      "category": "retained-evidence",
+      "sha256": "58172483e78b70b96be9879e0fd73c0d0269e85178ad8a4898daa959f6efbd8a"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/commands/candidate-control-gg-h.mg5": {
+      "bytes": 703,
+      "category": "retained-evidence",
+      "sha256": "99b9b2241e3dbea0b8162e73e3ff37384fe836832c182de4e86648f3d3179a8c"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/commands/candidate-control-mixed.mg5": {
+      "bytes": 824,
+      "category": "retained-evidence",
+      "sha256": "82800857a7b3975d041b7afed3d3d40b875be77f5cbef9a972e6fd60ab5eb1cc"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/controls.json": {
+      "bytes": 1164,
+      "category": "retained-evidence",
+      "sha256": "e623e89f58e048efdc9b6f79075cb12b61fb5c8d3abc432b8e37f9cbc51602cb"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/descendant-starts.jsonl": {
+      "bytes": 22221,
+      "category": "retained-evidence",
+      "sha256": "f2952e2f851e4938833e03a6cef65e3524a667b2b2c91286711071851aa37c4b"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/generator-state.json": {
+      "bytes": 165303,
+      "category": "retained-evidence",
+      "sha256": "88ad75ca12e337947e4cfb9ecc75896b00f1674bd49971a62cd2187f1478f73c"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/candidate/control-forced-qp/compilation.json": {
+      "bytes": 177254,
+      "category": "retained-evidence",
+      "sha256": "9cade619e573fb004d82727d0d415150288a2aabc42692a0f2b7aa94719faefb"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/candidate/control-forced-qp/compiled-source-manifests/a0e4fa0120debdbcc95bf4281524043e6a55e955bc47e22ad1def8ed09b57924.json": {
+      "bytes": 22497,
+      "category": "retained-evidence",
+      "sha256": "f5958664a2f882c2c31358d9c44739c16ea8971070ecf8d3223bb50c2966a1a6"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/candidate/control-forced-qp/compiled-sources.json": {
+      "bytes": 22497,
+      "category": "retained-evidence",
+      "sha256": "f5958664a2f882c2c31358d9c44739c16ea8971070ecf8d3223bb50c2966a1a6"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/candidate/control-forced-qp/generation.json": {
+      "bytes": 171447,
+      "category": "retained-evidence",
+      "sha256": "589c1ea3e9462ff58d81502104d25a5aab2e2cce7782be0786824db33588fefe"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/candidate/control-forced-qp/param_card.dat": {
+      "bytes": 2471,
+      "category": "retained-evidence",
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/candidate/control-gg-h/compilation.json": {
+      "bytes": 177255,
+      "category": "retained-evidence",
+      "sha256": "f8802972a598f9c9c0f4b06ca42267b744714d0e83d8b00a233ffa8129401079"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/candidate/control-gg-h/compiled-source-manifests/e90bc3654b5478296533b19fe4e01ed4fd7da7fd257080908729c939bf723f32.json": {
+      "bytes": 15697,
+      "category": "retained-evidence",
+      "sha256": "1030c1c22e6cb2e3a685758f6b1b0ef804f1a0d82c4b086d823fdd8e6e7d16fc"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/candidate/control-gg-h/compiled-sources.json": {
+      "bytes": 15697,
+      "category": "retained-evidence",
+      "sha256": "1030c1c22e6cb2e3a685758f6b1b0ef804f1a0d82c4b086d823fdd8e6e7d16fc"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/candidate/control-gg-h/generation.json": {
+      "bytes": 171447,
+      "category": "retained-evidence",
+      "sha256": "befca7ff8624b4acd12fc4e2b404f3b72dac57014afa1314dd68790ef4999a7c"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/candidate/control-gg-h/param_card.dat": {
+      "bytes": 2471,
+      "category": "retained-evidence",
+      "sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/candidate/control-mixed/compilation.json": {
+      "bytes": 177254,
+      "category": "retained-evidence",
+      "sha256": "e0d056b35107124f187d6d404a15aeb3abed917076d01f06696c23603801f908"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/candidate/control-mixed/compiled-source-manifests/7472b9c9a2f6c1ce44ceef0a04448eb928831dd06339b57b35d77216e1c502f6.json": {
+      "bytes": 44420,
+      "category": "retained-evidence",
+      "sha256": "6361b85c0c33b1120b8909fd3625ddd2be829efe40f2d5c7aae67dafb20d8ba8"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/candidate/control-mixed/compiled-sources.json": {
+      "bytes": 44420,
+      "category": "retained-evidence",
+      "sha256": "6361b85c0c33b1120b8909fd3625ddd2be829efe40f2d5c7aae67dafb20d8ba8"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/candidate/control-mixed/generation.json": {
+      "bytes": 171447,
+      "category": "retained-evidence",
+      "sha256": "8bb3f6913bc1799f2bce98f59594d32712dc848f5b3a57e1c01853f93c4f73e7"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/candidate/control-mixed/param_card.dat": {
+      "bytes": 4537,
+      "category": "retained-evidence",
+      "sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/source-identities/1672c4b5e0bc755ea2113b555ea590ba92bd9f03581927dd0d9a8a0cb0df3554.json": {
+      "bytes": 168525,
+      "category": "retained-evidence",
+      "sha256": "2cc6463453f6329e303ad5038954e5ea4042d121ffcc615281cf93990be18541"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/source-identities/a16b5703e1d3872682e076bad0d037e70f516e52facfdb2aed6c86c8ce5b7974.json": {
+      "bytes": 168525,
+      "category": "retained-evidence",
+      "sha256": "235ee37be6d1f7e09b8ad205fba2699a30f934f402adc845428c1688a00b0290"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/inputs/source-identities/f785b92913a8b0c6b39fb661b6561997285cedf3665a59fa1120f8679d1d437d.json": {
+      "bytes": 168525,
+      "category": "retained-evidence",
+      "sha256": "d5817ae5b747557878fc6193f48c45e9f97ebc1971a5f166929172220d0b4b8a"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/launch.json": {
+      "bytes": 377,
+      "category": "retained-evidence",
+      "sha256": "45f02ec9e0ffb83e6cc55a271afd09eaa48a062cacc861ada1e79ed4b56a71f3"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/launch.py": {
+      "bytes": 8006,
+      "category": "retained-evidence",
+      "sha256": "0a3aa041e3845f61bb4310d78050b118dbb4cc1c552be2887aa834b414ddbc1a"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/logs/compile-candidate-control-forced-qp.log": {
+      "bytes": 10371,
+      "category": "retained-evidence",
+      "sha256": "c4d44c32ab60c255629e17d504784ec1b668a4ececa52063bb846fa7c5035ce2"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/logs/compile-candidate-control-gg-h.log": {
+      "bytes": 9467,
+      "category": "retained-evidence",
+      "sha256": "aad1f946c91616c2eee1a7366529d24e1c77dd3deb606d6e2cd3a4cb87dfa319"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/logs/compile-candidate-control-mixed.log": {
+      "bytes": 9446,
+      "category": "retained-evidence",
+      "sha256": "8bbe10b6881458558058c65e9744ceaef6d8d3aeaf13abdb60100ea0bfa0517b"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/logs/generate-candidate-control-forced-qp.log": {
+      "bytes": 11034,
+      "category": "retained-evidence",
+      "sha256": "817b593224154af9c6ec74236b078d0f7c34ace577a2ed9db536c3ba5a7c27b9"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/logs/generate-candidate-control-gg-h.log": {
+      "bytes": 9811,
+      "category": "retained-evidence",
+      "sha256": "ac23e3077a5f687089e2d173432b67b43a9be406acbcba2bd92856f53dcc17c6"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/logs/generate-candidate-control-mixed.log": {
+      "bytes": 14783,
+      "category": "retained-evidence",
+      "sha256": "4f83549776740a7fc11945fc3865586a45b08f8be2b8eec94246df8ff9328dc6"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/logs/masses-candidate-control-forced-qp.log": {
+      "bytes": 0,
+      "category": "retained-evidence",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/logs/masses-candidate-control-gg-h.log": {
+      "bytes": 0,
+      "category": "retained-evidence",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/logs/masses-candidate-control-mixed.log": {
+      "bytes": 0,
+      "category": "retained-evidence",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/manifests/control-forced-qp-generated.json": {
+      "bytes": 22498,
+      "category": "retained-evidence",
+      "sha256": "dda801815be88058d57ed38a1c15e9b3f61d9dc7cd0b871da25e4bb8c3e1a717"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/manifests/control-gg-h-generated.json": {
+      "bytes": 15698,
+      "category": "retained-evidence",
+      "sha256": "60bd4ac350bd64884442ddc1b4d51472d0d0181ff590533e5834dfc64d466694"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/manifests/control-mixed-generated.json": {
+      "bytes": 44421,
+      "category": "retained-evidence",
+      "sha256": "479f5901544f455e5f201f2a76cdb4324d3786621aa2a94d667a6b10c18bea85"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/points/control-forced-qp.dat": {
+      "bytes": 3883,
+      "category": "retained-evidence",
+      "sha256": "ff50a8b1cd8a2149a4fe0445a2f1776f120dfefcd73bc647e73af9061616031e"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/points/control-forced-qp.json": {
+      "bytes": 199,
+      "category": "retained-evidence",
+      "sha256": "912a857be2c9b5ab1d5b7576f471b5d073335372822ac8c7abdd2826012fc2e3"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/points/control-gg-h.dat": {
+      "bytes": 2937,
+      "category": "retained-evidence",
+      "sha256": "bccf515472fc9e4526ace2243c2a65afdc4fc040b85d9c88eced34bbe7e5b6ba"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/points/control-gg-h.json": {
+      "bytes": 188,
+      "category": "retained-evidence",
+      "sha256": "4be5d7e553fab561a298db33b0223fa8baffb16c3db572951716991cfed236c2"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/points/control-mixed.dat": {
+      "bytes": 3883,
+      "category": "retained-evidence",
+      "sha256": "c0640d8258fea3bec32d28da8eb7a9bb8bbc50210efd2e22bf030c3dabf35527"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/points/control-mixed.json": {
+      "bytes": 195,
+      "category": "retained-evidence",
+      "sha256": "d287d41e1ff36d348c2abf712630652cae502bf78a1ff3fb35d41a78997154ef"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/retained-files.txt": {
+      "bytes": 5272,
+      "category": "retained-evidence",
+      "sha256": "ba5febcc73843691275f93215f853d269644ea84c92032980ea00804f78f424c"
+    },
+    "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/status.json": {
+      "bytes": 1101776,
+      "category": "retained-evidence",
+      "sha256": "e84c89efb6efa2937fffa8a1c6288a51dba2569b7945b0b6128b22a418bffaa4"
+    }
+  },
+  "installed_archive_sha256": "800a941faf3cdfdab764fdffe1d5ab73f84984a786aa194596b753af6b6f5d42",
+  "intentional_reader_metadata": {},
+  "manifest_not_self_hashed": true,
+  "namespace": "docs/benchmarkfolder/policy-v2/final-representative-generation-v1",
+  "numerical_source_revision": "d05b59f3277ce0d727cb2816d8b7ad45107e58c4",
+  "retained_count_including_manifest": 47,
+  "retained_file_list": "docs/benchmarkfolder/policy-v2/final-representative-generation-v1/retained-files.txt",
+  "schema": "final-campaign-retention-v1",
+  "source_revision": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "source_scopes_clean_against_revision": true
+}

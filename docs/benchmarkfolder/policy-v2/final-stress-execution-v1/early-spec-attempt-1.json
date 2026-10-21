@@ -1,0 +1,17 @@
+{
+  "schema": "stress-early-spec-attempt-v1",
+  "status": "failed-before-cli-or-build",
+  "generation_revision": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "numerical_revision": "d05b59f3277ce0d727cb2816d8b7ad45107e58c4",
+  "archive_sha256": "800a941faf3cdfdab764fdffe1d5ab73f84984a786aa194596b753af6b6f5d42",
+  "runtime_identity_sha256": "8b454519cb6818ef1fafe37378930c276f7e85394a2333ebc9fdb00e75726cff",
+  "command": "write_specs.py early with root-approved final revisions/archive/descriptor/publication/cards",
+  "failure": "FileNotFoundError reading tracked non-file Template/NLO/MCatNLO/include/pineappl_maxproc.inc in early_build.sources production inventory",
+  "cause": "Operational source inventory did not apply the existing generator_tree_state non-file-to-null rule",
+  "cli_calls": 0,
+  "compiler_calls": 0,
+  "engine_calls": 0,
+  "production_changed": false,
+  "automatic_retry": false,
+  "next_action": "Await root authorization for minimal operational-harness correction during frozen HEAD window"
+}

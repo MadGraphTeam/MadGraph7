@@ -1,0 +1,18 @@
+{
+  "schema": "final-control-generation-launch-v1",
+  "started_utc": "2026-10-21T01:36:34.852036+00:00",
+  "revision": "b0ea105a04afa34304d437d2956e4d4672360670",
+  "controller": {
+    "pid": 962673,
+    "pgid": 962673,
+    "start_ticks": "58029588"
+  },
+  "parent_pid": 1542103,
+  "cpu_affinity": [
+    194,
+    195
+  ],
+  "jobs": 2,
+  "amplitude_calls": 0,
+  "mp_calls": 0
+}
