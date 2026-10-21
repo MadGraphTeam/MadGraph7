@@ -1,0 +1,532 @@
+// SPDX-License-Identifier: 0BSD
+
+//! Batch inputs, fused factors and dressing steps of the v2 executor
+//! (DESIGN.md §5.1–5.3).
+//!
+//! **Carriers.** Every value is a [`Carrier`]: `f64`, `DoubleFloat`, `Float`
+//! (any precision) or exact `Rational`. Momenta, scales and masses enter as
+//! exact rationals and are cast once per lane, so frame shifts, block momenta
+//! and invariants are exact until cast (contracts K4, K6). Block-current
+//! rows, Born components and kernel constants enter in the carrier.
+//!
+//! **Lanes.** A chunk of `L` points is evaluated in lockstep: a complex value
+//! is a lane vector of `L` real parts followed by `L` imaginary parts
+//! ([`super::kernels::lane_vector_len`]). A chunk with fewer points repeats
+//! its last point; padded lanes are never returned.
+//!
+//! **Fused factors.** `X(J)` of a (content, frame shift) holds, per content
+//! row, one lane vector per fused entry: the sum over the content's routing
+//! terms and kernel bindings of each kernel output, a polynomial in the loop
+//! shift, the slots' block momenta and block-current components with exact
+//! catalogue terms and numbered model constants. The order of every sum and
+//! product is that of the Python reference executor.
+
+use super::kernels::{RowLink, Segment, clear, fused_edge, lane_vector_len};
+use super::plan::{Content, KernelInput, LoopProgramV4};
+use super::poly::MonomialProductTable;
+use crate::{RusticolError, RusticolResult};
+use std::collections::HashMap;
+use symbolica::domains::float::{Complex, RealLike, SingleFloat};
+use symbolica::domains::integer::Integer;
+use symbolica::domains::rational::Rational;
+
+/// A real number type of the executor.
+pub trait Carrier: SingleFloat + RealLike + Send + Sync + 'static {}
+impl<T: SingleFloat + RealLike + Send + Sync + 'static> Carrier for T {}
+
+/// Parse an exact decimal (`-1.25e-3`) or fraction (`-3/7`) literal.
+pub fn parse_rational(value: &str) -> RusticolResult<Rational> {
+    let value = value.trim();
+    if let Some((numerator, denominator)) = value.split_once('/') {
+        let parse = |text: &str| {
+            text.trim()
+                .parse::<Integer>()
+                .map_err(|e| RusticolError::invalid_argument(format!("{text:?}: {e}")))
+        };
+        let denominator = parse(denominator)?;
+        if denominator.is_zero() {
+            return Err(RusticolError::invalid_argument("zero denominator"));
+        }
+        return Ok(Rational::new(parse(numerator)?, denominator));
+    }
+    crate::source_scalar::decimal_rational(value).map_err(RusticolError::invalid_argument)
+}
+
+/// The carrier value nearest to `value`.
+///
+/// Every carrier rounds once: numerica's binary64 cast divides two rounded
+/// integers, which double-rounds numerators or denominators beyond 2^53
+/// (17-digit decimal momenta), so binary64 goes through one MPFR rounding
+/// like Python's `float(Fraction)`.
+pub fn cast<T: Carrier>(zero: &T, value: &Rational) -> T {
+    if (zero as &dyn std::any::Any).is::<f64>() {
+        let rounded = value.to_multi_prec_float(f64::MANTISSA_DIGITS).to_f64();
+        return (&rounded as &dyn std::any::Any)
+            .downcast_ref::<T>()
+            .expect("binary64 carrier")
+            .clone();
+    }
+    zero.from_rational(value)
+}
+
+/// One batch of points: exact kinematics, carrier inputs.
+#[derive(Clone)]
+pub struct V2Batch<T> {
+    /// Per point, `4 × legs` all-incoming momentum components.
+    pub momenta: Vec<Vec<Rational>>,
+    /// Per point, `mu_R²`.
+    pub scales: Vec<Rational>,
+    /// Squared mass per plan mass id.
+    pub masses: Vec<Rational>,
+    /// Model constants of the kernel terms.
+    pub constants: Vec<Complex<T>>,
+    /// Per point, the components of every block row, in plan order.
+    pub block_rows: Vec<Vec<Complex<T>>>,
+    /// Per point, Born components per (helicity row, component).
+    pub born: Vec<Vec<Complex<T>>>,
+}
+
+impl<T: Carrier> V2Batch<T> {
+    pub fn points(&self) -> usize {
+        self.momenta.len()
+    }
+
+    /// Check every shape against the plan.
+    pub fn validate(&self, plan: &LoopProgramV4) -> RusticolResult<()> {
+        let points = self.points();
+        let block = plan.block_rows.iter().sum::<usize>();
+        let bad = |message: &str| Err(RusticolError::invalid_argument(message.to_string()));
+        if points == 0 {
+            return bad("a batch needs at least one point");
+        }
+        if self.scales.len() != points
+            || self.block_rows.len() != points
+            || self.born.len() != points
+        {
+            return bad("batch inputs disagree in their number of points");
+        }
+        if self.momenta.iter().any(|p| p.len() != 4 * plan.legs) {
+            return bad("momenta need four components per leg");
+        }
+        if self.masses.len() != plan.masses || self.constants.len() != plan.constants {
+            return bad("masses or kernel constants do not match the plan");
+        }
+        if self.block_rows.iter().any(|rows| rows.len() != block) {
+            return bad("block rows do not match the plan");
+        }
+        if self
+            .born
+            .iter()
+            .any(|born| born.len() != plan.rows * plan.born_components)
+        {
+            return bad("Born components do not match the plan");
+        }
+        Ok(())
+    }
+}
+
+// --------------------------------------------------------------- lane algebra
+
+/// `out = a * b` on complex lane vectors.
+#[inline]
+pub(super) fn cmul_into<T: Carrier, const L: usize>(out: &mut [T], a: &[T], b: &[T]) {
+    for l in 0..L {
+        let re = a[l].clone() * &b[l] - a[L + l].clone() * &b[L + l];
+        let im = a[l].clone() * &b[L + l] + a[L + l].clone() * &b[l];
+        out[l] = re;
+        out[L + l] = im;
+    }
+}
+
+/// `acc += a` on complex lane vectors.
+#[inline]
+pub(super) fn cadd<T: Carrier, const L: usize>(acc: &mut [T], a: &[T]) {
+    for (x, y) in acc[..2 * L].iter_mut().zip(&a[..2 * L]) {
+        *x += y;
+    }
+}
+
+// ------------------------------------------------------------------ chunk data
+
+/// The inputs of one chunk of `L` lanes as lane vectors.
+pub struct LaneData<T, const L: usize> {
+    /// Batch point of each lane (padded lanes repeat the last point).
+    pub points: [usize; L],
+    /// Number of real (unpadded) lanes.
+    pub active: usize,
+    pub zero: T,
+    momenta: Vec<Vec<Rational>>,
+    /// Exact `mu_R²` per lane.
+    pub scales: Vec<Rational>,
+    momentum: std::sync::Mutex<HashMap<u64, std::sync::Arc<Vec<T>>>>,
+    constants: Vec<Complex<T>>,
+    /// Per block row, its components as lane vectors.
+    block_rows: Vec<Vec<T>>,
+    /// Per (helicity row, component), the Born component as a lane vector.
+    pub born: Vec<T>,
+}
+
+impl<T: Carrier, const L: usize> LaneData<T, L> {
+    /// Gather the lanes `points` (at most `L`) of `batch`; `zero` fixes the
+    /// carrier precision.
+    pub fn new(
+        plan: &LoopProgramV4,
+        batch: &V2Batch<T>,
+        points: &[usize],
+        zero: &T,
+    ) -> RusticolResult<Self> {
+        if points.is_empty() || points.len() > L {
+            return Err(RusticolError::invalid_argument(
+                "a chunk holds 1..=L points",
+            ));
+        }
+        let last = *points.last().expect("non-empty");
+        let lanes: [usize; L] = std::array::from_fn(|l| points.get(l).copied().unwrap_or(last));
+        let v = lane_vector_len(L);
+        let zero = zero.zero();
+        let mut block_offsets = Vec::with_capacity(plan.block_rows.len());
+        let mut offset = 0;
+        for &dimension in &plan.block_rows {
+            block_offsets.push(offset);
+            offset += dimension;
+        }
+        let block_rows = (0..plan.block_rows.len())
+            .map(|row| {
+                let dimension = plan.block_rows[row];
+                let mut out = vec![zero.clone(); dimension * v];
+                for k in 0..dimension {
+                    for (l, &point) in lanes.iter().enumerate() {
+                        let z = &batch.block_rows[point][block_offsets[row] + k];
+                        out[k * v + l] = z.re.clone();
+                        out[k * v + L + l] = z.im.clone();
+                    }
+                }
+                out
+            })
+            .collect();
+        let width = plan.rows * plan.born_components;
+        let mut born = vec![zero.clone(); width * v];
+        for slot in 0..width {
+            for (l, &point) in lanes.iter().enumerate() {
+                let z = &batch.born[point][slot];
+                born[slot * v + l] = z.re.clone();
+                born[slot * v + L + l] = z.im.clone();
+            }
+        }
+        Ok(Self {
+            points: lanes,
+            active: points.len(),
+            momenta: lanes.iter().map(|&p| batch.momenta[p].clone()).collect(),
+            scales: lanes.iter().map(|&p| batch.scales[p].clone()).collect(),
+            momentum: std::sync::Mutex::new(HashMap::new()),
+            constants: batch.constants.clone(),
+            block_rows,
+            born,
+            zero,
+        })
+    }
+
+    pub fn cast(&self, value: &Rational) -> T {
+        cast(&self.zero, value)
+    }
+
+    /// Exact summed incoming momentum of the legs in `mask`, per lane.
+    pub fn exact_momentum(&self, lane: usize, mask: u64) -> [Rational; 4] {
+        let momenta = &self.momenta[lane];
+        std::array::from_fn(|mu| {
+            let mut total = Rational::from(0);
+            for leg in 0..momenta.len() / 4 {
+                if mask >> leg & 1 == 1 {
+                    total += &momenta[4 * leg + mu];
+                }
+            }
+            total
+        })
+    }
+
+    /// The momentum of `mask` as four complex lane vectors `[mu][re | im]`
+    /// (exact sums cast once, zero imaginary parts).
+    pub fn momentum(&self, mask: u64) -> std::sync::Arc<Vec<T>> {
+        if let Some(found) = self.momentum.lock().expect("momentum cache").get(&mask) {
+            return found.clone();
+        }
+        let v = lane_vector_len(L);
+        let mut out = vec![self.zero.clone(); 4 * v];
+        for l in 0..L {
+            let p = self.exact_momentum(l, mask);
+            for mu in 0..4 {
+                out[mu * v + l] = self.cast(&p[mu]);
+            }
+        }
+        let out = std::sync::Arc::new(out);
+        self.momentum
+            .lock()
+            .expect("momentum cache")
+            .insert(mask, out.clone());
+        out
+    }
+
+    pub fn constant(&self, index: usize) -> &Complex<T> {
+        &self.constants[index]
+    }
+
+    /// Component `k` of block row `row` as a lane vector.
+    pub fn block_component(&self, row: usize, k: usize) -> &[T] {
+        let v = lane_vector_len(L);
+        &self.block_rows[row][k * v..][..v]
+    }
+}
+
+// --------------------------------------------------------------- fused factors
+
+/// Fused factors of one chunk, built on demand per factor id.
+pub struct FactorStore<T> {
+    values: Vec<Option<Vec<T>>>,
+}
+
+impl<T: Carrier> FactorStore<T> {
+    pub fn new(plan: &LoopProgramV4) -> Self {
+        Self {
+            values: (0..plan.factors.len()).map(|_| None).collect(),
+        }
+    }
+
+    /// Build every factor of `ids` that is not built yet (in parallel).
+    pub fn build<const L: usize>(
+        &mut self,
+        plan: &LoopProgramV4,
+        data: &LaneData<T, L>,
+        ids: &[usize],
+    ) {
+        use rayon::prelude::*;
+        let missing: Vec<usize> = ids
+            .iter()
+            .copied()
+            .filter(|&id| self.values[id].is_none())
+            .collect();
+        let built: Vec<(usize, Vec<T>)> = missing
+            .par_iter()
+            .map(|&id| (id, build_factor::<T, L>(plan, id, data)))
+            .collect();
+        for (id, values) in built {
+            self.values[id] = Some(values);
+        }
+    }
+
+    pub fn get(&self, id: usize) -> &[T] {
+        self.values[id].as_deref().expect("factor built before use")
+    }
+
+    /// Drop the factors not in `keep` (sorted ascending).
+    pub fn retain(&mut self, keep: &[usize]) {
+        for (id, value) in self.values.iter_mut().enumerate() {
+            if value.is_some() && keep.binary_search(&id).is_err() {
+                *value = None;
+            }
+        }
+    }
+
+    /// Reals held by built factors.
+    pub fn reals(&self) -> usize {
+        self.values.iter().flatten().map(Vec::len).sum()
+    }
+}
+
+/// `X(J)` of factor `id`: per content row, one lane vector per fused entry.
+pub fn build_factor<T: Carrier, const L: usize>(
+    plan: &LoopProgramV4,
+    id: usize,
+    data: &LaneData<T, L>,
+) -> Vec<T> {
+    let (content_index, shift) = plan.factors[id];
+    let content = &plan.contents[content_index];
+    let v = lane_vector_len(L);
+    let row_len = content.factor_row() * v;
+    let mut out = vec![data.zero.clone(); content.rows * row_len];
+    let loop_momentum = data.momentum(shift);
+    let mut scratch = Scratch::<T>::new(&data.zero, v);
+    for term in &content.terms {
+        let slot_momenta: Vec<_> = term.slots.iter().map(|&mask| data.momentum(mask)).collect();
+        for (row, blocks) in &term.rows {
+            let target = &mut out[row * row_len..][..row_len];
+            for binding in &term.bindings {
+                let kernel = &plan.kernels[binding.kernel];
+                let inputs: Vec<Option<&[T]>> = binding
+                    .inputs
+                    .iter()
+                    .map(|input| match *input {
+                        KernelInput::Loop(mu) => Some(&loop_momentum[mu * v..][..v]),
+                        KernelInput::Current { slot, component } => {
+                            Some(data.block_component(blocks[slot], component))
+                        }
+                        KernelInput::Momentum { slot, mu } => {
+                            Some(&slot_momenta[slot][mu * v..][..v])
+                        }
+                        KernelInput::Parameter => None,
+                    })
+                    .collect();
+                for (terms, &entry) in kernel.outputs.iter().zip(&binding.entries) {
+                    scratch.total_clear();
+                    for term in terms {
+                        scratch.value_set(data.constant(term.constant));
+                        for &(position, power) in &term.monomial {
+                            let factor = inputs[position].expect("parameter in a monomial");
+                            for _ in 0..power {
+                                scratch.value_mul::<L>(factor);
+                            }
+                        }
+                        scratch.total_add::<L>();
+                    }
+                    cadd::<T, L>(&mut target[entry * v..][..v], &scratch.total);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Work vectors of the factor builder.
+struct Scratch<T> {
+    value: Vec<T>,
+    product: Vec<T>,
+    total: Vec<T>,
+}
+
+impl<T: Carrier> Scratch<T> {
+    fn new(zero: &T, v: usize) -> Self {
+        Self {
+            value: vec![zero.clone(); v],
+            product: vec![zero.clone(); v],
+            total: vec![zero.clone(); v],
+        }
+    }
+
+    fn total_clear(&mut self) {
+        clear(&mut self.total);
+    }
+
+    fn value_set(&mut self, constant: &Complex<T>) {
+        let half = self.value.len() / 2;
+        for l in 0..half {
+            self.value[l] = constant.re.clone();
+            self.value[half + l] = constant.im.clone();
+        }
+    }
+
+    fn value_mul<const L: usize>(&mut self, factor: &[T]) {
+        cmul_into::<T, L>(&mut self.product, &self.value, factor);
+        std::mem::swap(&mut self.value, &mut self.product);
+    }
+
+    fn total_add<const L: usize>(&mut self) {
+        cadd::<T, L>(&mut self.total, &self.value);
+    }
+}
+
+// ----------------------------------------------------------------------- pool
+
+/// Reused object buffers of one family walk, with the peak of live reals.
+pub struct Pool<T> {
+    free: Vec<Vec<T>>,
+    zero: T,
+    live: usize,
+    pub peak: usize,
+}
+
+impl<T: Carrier> Pool<T> {
+    pub fn new(zero: &T) -> Self {
+        Self {
+            free: Vec::new(),
+            zero: zero.zero(),
+            live: 0,
+            peak: 0,
+        }
+    }
+
+    /// A zeroed buffer of `len` reals.
+    pub fn take(&mut self, len: usize) -> Vec<T> {
+        let mut buffer = self.free.pop().unwrap_or_default();
+        if buffer.len() >= len {
+            buffer.truncate(len);
+            clear(&mut buffer);
+        } else {
+            clear(&mut buffer);
+            buffer.resize(len, self.zero.clone());
+        }
+        self.live += len;
+        self.peak = self.peak.max(self.live);
+        buffer
+    }
+
+    pub fn give(&mut self, buffer: Vec<T>) {
+        self.live -= buffer.len();
+        self.free.push(buffer);
+    }
+}
+
+// --------------------------------------------------------------------- steps
+
+/// One dressing edge: `output += input · X(J)` over the edge's row links.
+///
+/// `seeded` inputs hold one lane vector per object row (a seed times
+/// `δ_ab`) and use the content's seeded layout; open-loop inputs hold
+/// `d_alpha × d_in × C(r+4,4)` lane vectors per row.
+#[allow(clippy::too_many_arguments)]
+pub fn dress_edge<T: Carrier, const L: usize>(
+    content: &Content,
+    seeded: bool,
+    d_alpha: usize,
+    products: &MonomialProductTable,
+    rank_out: usize,
+    input: &[T],
+    factor: &[T],
+    links: &[RowLink],
+    output: &mut [T],
+) {
+    if seeded {
+        let segment = Segment::new(1, 1, 1, content.d_in * content.d_out, products, rank_out);
+        fused_edge::<T, L>(&segment, &content.seeded, input, factor, links, output);
+    } else {
+        let segment = Segment::new(d_alpha, content.d_in, 1, content.d_out, products, rank_out);
+        fused_edge::<T, L>(&segment, &content.open, input, factor, links, output);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rationals_parse_from_fractions_and_decimals() {
+        assert_eq!(parse_rational("-3/7").unwrap(), Rational::from((-3, 7)));
+        assert_eq!(parse_rational("1.25e-1").unwrap(), Rational::from((1, 8)));
+        assert_eq!(parse_rational("42").unwrap(), Rational::from(42));
+        assert!(parse_rational("1/0").is_err());
+        assert!(parse_rational("x").is_err());
+    }
+
+    #[test]
+    fn binary64_casts_round_once() {
+        // 17-digit decimals have numerators beyond 2^53: numerica's direct
+        // binary64 cast rounds numerator and quotient separately.
+        for text in ["434.25236936308625", "-57.655920542748461", "0.1", "1e-300"] {
+            let exact = parse_rational(text).unwrap();
+            assert_eq!(cast(&0.0, &exact), text.parse::<f64>().unwrap(), "{text}");
+        }
+        let third = Rational::from((1, 3));
+        assert_eq!(cast(&Rational::from(0), &third), third);
+    }
+
+    #[test]
+    fn lane_products_match_complex_arithmetic() {
+        const L: usize = 2;
+        let a = [1.0, 2.0, 3.0, -1.0];
+        let b = [0.5, -2.0, 4.0, 1.5];
+        let mut out = [0.0; 4];
+        cmul_into::<f64, L>(&mut out, &a, &b);
+        // lane 0: (1 + 3i)(0.5 + 4i) = 0.5 - 12 + (4 + 1.5)i
+        assert_eq!((out[0], out[2]), (0.5 - 12.0, 4.0 + 1.5));
+        // lane 1: (2 - i)(-2 + 1.5i) = -4 + 1.5 + (3 + 2)i
+        assert_eq!((out[1], out[3]), (-4.0 + 1.5, 3.0 + 2.0));
+    }
+}
