@@ -1,5 +1,5 @@
 {
- "description": "Exact operation counts of the v2 schedules F, B and M for gate G1 (WP1.5).\n\nThe Python reference executor (``pyamplicol.loops.v2.reference_executor``)\nwalks every schedule without numerics and counts the complex multiply-adds a\nnumeric run performs per point and observable column, for both kernel forms\nof every dressing step (DESIGN.md \u00a75.2): ``fused`` (X(J) per block row) and\n``split`` (``split-accumulate`` T = sum O x J, then ``split-vertex`` once per\nvertex group); ``best`` takes the cheaper form per step. ``seed`` steps start\nfrom a Born seed (rank 0, diagonal in the cut index), ``step`` from an open-\nloop object. ``closure`` traces the cut index (F also contracts the seeds\nthere) and ``frame-map`` re-expands F/M closures in the family frame; G1\nmultiplies these counts by G0's measured kernel throughput (DESIGN.md \u00a72.2).\n\nConfiguration (the providers', ``loop_sm-no_b_mass``): loop_sm with MB = 0,\nQCD corrections, kernels of the WP1.1 catalogue (their structural entries),\ncolour-ordered contents (``PlanarWords``; the colour-singlet legs form one\nletter), helicity rows two per leg except one for a massless fermion whose\nincoming field is a particle (helicity conservation, as Appendix B), B frames\ncost-optimal per family by the default cost model. Every ghost and quark-loop\norientation is its own skeleton (no C-parity folding). LC keeps the skeletons\nwithout a closed quark loop (the all-gluon face rule, DESIGN.md \u00a77.5).",
+ "description": "Exact operation counts of the v2 schedules F, B and M for gate G1 (WP1.5).\n\nThe Python reference executor (``pyamplicol.loops.v2.reference_executor``)\nwalks every schedule without numerics and counts the complex multiply-adds a\nnumeric run performs per point and observable column, for both kernel forms\nof every dressing step (DESIGN.md \u00a75.2): ``fused`` (X(J) per block row) and\n``split`` (``split-accumulate`` T = sum O x J, then ``split-vertex`` once per\nvertex group); ``best`` takes the cheaper form per step. ``seed`` steps start\nfrom a Born seed (rank 0, diagonal in the cut index), ``step`` from an open-\nloop object. ``closure`` traces the cut index (F also contracts the seeds\nthere) and ``frame-map`` re-expands F/M closures in the family frame; G1\nmultiplies these counts by G0's measured kernel throughput (DESIGN.md \u00a72.2).\n\nConfiguration (the providers', ``loop_sm-no_b_mass``): loop_sm with MB = 0,\nQCD corrections, kernels of the WP1.1 catalogue (their structural entries),\ncolour-ordered contents (``PlanarWords``; the colour-singlet legs form one\nletter), helicity rows two per leg except one for a massless fermion whose\nincoming field is a particle (helicity conservation, as Appendix B), B frames\ncost-optimal per family by the default cost model. Every ghost and quark-loop\norientation is its own skeleton (no C-parity folding). LC keeps the skeletons\nwithout a closed quark loop (the all-gluon face rule, DESIGN.md \u00a77.5).\n\nBlock chiralities are synthetic (``SyntheticBlockRows``): each helicity row of\na massless-quark block has one Weyl chirality, the rows cycling through\nthem, as a tree-engine block does; which row has which chirality is not the\ntree engine's. Kernel entry counts per chirality are equal for the two Weyl\nchiralities, so the counts depend only on how many rows each has.\n\nSchedule M is admissible at LC and, in full colour, only for classes with a\nloop-level colour certificate (DESIGN.md \u00a72.2); none exists yet (WP2.4), so\n``M`` in FC records B's fallback. ``M-uncertified`` records what M would\ncount once WP2.4 certifies the class (gluon and ghost rings, one quark line);\nit is not admissible for G1 today. Several quark lines (uu~ -> e-e+dd~g) are\na generic class that stays on B, so they have no such record.",
  "units": "complex multiply-adds per point and observable column",
  "processes": [
   {
@@ -70,17 +70,7 @@
       "split-vertex/step": 213698240
      },
      "M": {
-      "best/seed": 8196608,
-      "best/step": 250374520,
-      "closure": 1150635,
-      "dress-steps": 12590,
-      "edges": 24747,
-      "fused/seed": 21067776,
-      "fused/step": 314798160,
-      "split-accumulate/seed": 4964352,
-      "split-accumulate/step": 179091520,
-      "split-vertex/seed": 3602912,
-      "split-vertex/step": 184034520
+      "fallback": "full colour: M needs loop-level colour certificates of every skeleton class"
      },
      "F": {
       "best/seed": 1107948,
@@ -94,6 +84,19 @@
       "split-accumulate/step": 2631992000,
       "split-vertex/seed": 2788752,
       "split-vertex/step": 13850423680
+     },
+     "M-uncertified": {
+      "best/seed": 8196608,
+      "best/step": 250374520,
+      "closure": 1150635,
+      "dress-steps": 12590,
+      "edges": 24747,
+      "fused/seed": 21067776,
+      "fused/step": 314798160,
+      "split-accumulate/seed": 4964352,
+      "split-accumulate/step": 179091520,
+      "split-vertex/seed": 3602912,
+      "split-vertex/step": 184034520
      }
     }
    }
@@ -110,39 +113,29 @@
      "skeletons": 4380,
      "trie_nodes": 1804,
      "B": {
-      "best/seed": 450272,
-      "best/step": 4707280,
+      "best/seed": 483488,
+      "best/step": 4985168,
       "closure": 56655,
       "dress-steps": 1969,
       "edges": 5942,
-      "fused/seed": 2268544,
-      "fused/step": 5070832,
+      "fused/seed": 2756992,
+      "fused/step": 5626992,
       "split-accumulate/seed": 248576,
       "split-accumulate/step": 2382784,
-      "split-vertex/seed": 201952,
-      "split-vertex/step": 5775880
+      "split-vertex/seed": 235168,
+      "split-vertex/step": 5993928
      },
      "M": {
-      "best/seed": 588088,
-      "best/step": 8053700,
-      "closure": 54680,
-      "dress-steps": 1916,
-      "edges": 5460,
-      "fused/seed": 2013056,
-      "fused/step": 10645308,
-      "split-accumulate/seed": 194816,
-      "split-accumulate/step": 5126480,
-      "split-vertex/seed": 405688,
-      "split-vertex/step": 7058528
+      "fallback": "full colour: M needs loop-level colour certificates of every skeleton class"
      },
      "F": {
-      "best/seed": 177424,
-      "best/step": 117784992,
+      "best/seed": 187024,
+      "best/step": 124791328,
       "closure": 6147200,
       "dress-steps": 7626,
       "edges": 7626,
-      "fused/seed": 177424,
-      "fused/step": 117784992,
+      "fused/seed": 215824,
+      "fused/step": 127886752,
       "split-accumulate/seed": 18388,
       "split-accumulate/step": 51274656,
       "split-vertex/seed": 365720,
@@ -163,43 +156,46 @@
      "skeletons": 8022,
      "trie_nodes": 4077,
      "B": {
-      "best/seed": 1724816,
-      "best/step": 30212532,
+      "best/seed": 1833728,
+      "best/step": 30718964,
       "closure": 245815,
       "dress-steps": 4616,
       "edges": 11636,
-      "fused/seed": 8683776,
-      "fused/step": 31038140,
+      "fused/seed": 10459392,
+      "fused/step": 32041340,
       "split-accumulate/seed": 953088,
       "split-accumulate/step": 14631504,
-      "split-vertex/seed": 771728,
-      "split-vertex/step": 40874808
+      "split-vertex/seed": 880640,
+      "split-vertex/step": 41289400
      },
      "M": {
-      "best/seed": 1279856,
-      "best/step": 36319760,
-      "closure": 243840,
-      "dress-steps": 3589,
-      "edges": 9139,
-      "fused/seed": 6393216,
-      "fused/step": 41048536,
-      "split-accumulate/seed": 633088,
-      "split-accumulate/step": 20595424,
-      "split-vertex/seed": 675952,
-      "split-vertex/step": 39345856
+      "fallback": "full colour: M needs loop-level colour certificates of every skeleton class"
      },
      "F": {
-      "best/seed": 622656,
-      "best/step": 849464064,
+      "best/seed": 633792,
+      "best/step": 857392128,
       "closure": 36497280,
       "dress-steps": 16588,
       "edges": 16588,
-      "fused/seed": 622656,
-      "fused/step": 849464064,
+      "fused/seed": 667200,
+      "fused/step": 859218624,
       "split-accumulate/seed": 65604,
       "split-accumulate/step": 360432064,
       "split-vertex/seed": 1397240,
       "split-vertex/step": 2018770176
+     },
+     "M-uncertified": {
+      "best/seed": 1428784,
+      "best/step": 37284368,
+      "closure": 243840,
+      "dress-steps": 3589,
+      "edges": 9139,
+      "fused/seed": 7628160,
+      "fused/step": 45783256,
+      "split-accumulate/seed": 633088,
+      "split-accumulate/step": 20595424,
+      "split-vertex/seed": 824880,
+      "split-vertex/step": 40026304
      }
     }
    }

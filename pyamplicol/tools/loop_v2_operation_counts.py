@@ -22,6 +22,19 @@ cost-optimal per family by the default cost model. Every ghost and quark-loop
 orientation is its own skeleton (no C-parity folding). LC keeps the skeletons
 without a closed quark loop (the all-gluon face rule, DESIGN.md §7.5).
 
+Block chiralities are synthetic (``SyntheticBlockRows``): each helicity row of
+a massless-quark block has one Weyl chirality, the rows cycling through
+them, as a tree-engine block does; which row has which chirality is not the
+tree engine's. Kernel entry counts per chirality are equal for the two Weyl
+chiralities, so the counts depend only on how many rows each has.
+
+Schedule M is admissible at LC and, in full colour, only for classes with a
+loop-level colour certificate (DESIGN.md §2.2); none exists yet (WP2.4), so
+``M`` in FC records B's fallback. ``M-uncertified`` records what M would
+count once WP2.4 certifies the class (gluon and ghost rings, one quark line);
+it is not admissible for G1 today. Several quark lines (uu~ -> e-e+dd~g) are
+a generic class that stays on B, so they have no such record.
+
 Usage:
     python tools/loop_v2_operation_counts.py [--output PATH] [--ufo PATH]
 """
@@ -30,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 from collections.abc import Mapping
@@ -39,8 +53,13 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "tests" / "fixtures" / "loop" / "v2" / "operation_counts.json"
+# As the tests' loop_sm_ufo input: the environment variable, else the
+# checkout's MadGraph copy.
 UFO = Path(
-    "/shared/external/pyLoopAmpliCol/pyamplicol/FOR_REFERENCE_ONLY/MG5_aMC_v3_7_0/models/loop_sm"
+    os.environ.get(
+        "PYAMPLICOL_NLO_UFO_REFERENCE",
+        ROOT / "FOR_REFERENCE_ONLY" / "MG5_aMC_v3_7_0" / "models" / "loop_sm",
+    )
 )
 
 PROCESSES = (
@@ -148,7 +167,7 @@ def count_process(prepared: Mapping[str, Any], entry: Mapping[str, Any]) -> dict
 
     blocks = rx.SyntheticBlockRows(
         [helicities(leg) for leg in legs],
-        chirality=rx.segment_chiralities(prepared["kernels"]),
+        chiralities=rx.block_chiralities(prepared["kernels"]),
     )
     kinematics = rx.CatalogueKinematics(
         prepared["kernels"],
@@ -170,6 +189,7 @@ def count_process(prepared: Mapping[str, Any], entry: Mapping[str, Any]) -> dict
             abs(catalogue.species(name).colour) == 3 for name in skeleton.species
         )
 
+    quark_lines = sum(abs(leg.colour) == 3 for leg in legs) // 2
     out: dict[str, Any] = {}
     for accuracy in entry["colour"]:
         view = SkeletonView(
@@ -183,14 +203,21 @@ def count_process(prepared: Mapping[str, Any], entry: Mapping[str, Any]) -> dict
             "skeletons": len(rx.plan_skeletons(plan)),
             "trie_nodes": sum(len(s.trie.nodes) for s in plan.schedules.values()),
         }
+        colour_accuracy = "lc" if accuracy == "LC" else "full"
         for schedule in SCHEDULES:
-            execution = executor.run(plan, schedule)
-            counts = dict(sorted(execution.counts.items()))
-            if execution.fallback:
-                counts = {"fallback": execution.fallback}
-            record[schedule] = counts
+            record[schedule] = _counts(executor.run(plan, schedule, colour_accuracy))
+        if accuracy == "FC" and quark_lines <= 1:
+            record["M-uncertified"] = _counts(
+                executor.run(plan, "M", colour_accuracy, certified=lambda s: True)
+            )
         out[accuracy] = record
     return out
+
+
+def _counts(execution: Any) -> dict[str, Any]:
+    if execution.fallback:
+        return {"fallback": execution.fallback}
+    return dict(sorted(execution.counts.items()))
 
 
 def operation_counts(prepared: Mapping[str, Any]) -> dict[str, Any]:

@@ -722,18 +722,22 @@ class SyntheticBlockRows:
     """Exact random block currents with every helicity row of their legs.
 
     ``helicities[leg]`` lists the helicities of external leg ``leg`` and
-    ``chirality(field)`` the current chirality a block of ``field`` uses.
-    Any current is a valid input of the schedule, frame and form identities.
+    ``chiralities(field)`` the current chiralities blocks of ``field`` come
+    in. Like a tree-engine block, each row has one chirality: the rows of a
+    leg set (``row_set`` order) cycle through the chiralities, so a massless
+    fermion leg's two helicities are its two chiralities and every chirality
+    combination of a loop line occurs. Any current is a valid input of the
+    schedule, frame and form identities.
     """
 
     def __init__(
         self,
         helicities: Sequence[Sequence[int]],
-        chirality: Callable[[str], int] = lambda field: 0,
+        chiralities: Callable[[str], Sequence[int]] = lambda field: (0,),
         seed: int = 0,
     ):
         self.helicities = tuple(tuple(h) for h in helicities)
-        self.chirality = chirality
+        self.chiralities = chiralities
         self.seed = seed
         self._values: dict[Hashable, tuple[Complex, ...]] = {}
 
@@ -747,7 +751,10 @@ class SyntheticBlockRows:
     def rows(
         self, block: BlockCurrent, word: Hashable
     ) -> Mapping[int, tuple[Row, ...]]:
-        return {self.chirality(block.field): self.row_set(block.mask)}
+        rows = self.row_set(block.mask)
+        options = tuple(self.chiralities(block.field))
+        split = {c: rows[k :: len(options)] for k, c in enumerate(options)}
+        return {chirality: part for chirality, part in split.items() if part}
 
     def value(self, block, word, chirality, row, dimension):
         key = (block, word, chirality, row, dimension)
@@ -767,8 +774,12 @@ def _random_complex(generator: random.Random) -> Complex:
     return Complex(rational(), rational())
 
 
-def segment_chiralities(catalogue: LoopKernelCatalogue) -> Callable[[str], int]:
-    """The lowest block chirality the catalogue's segments accept per field."""
+def block_chiralities(
+    catalogue: LoopKernelCatalogue,
+) -> Callable[[str], tuple[int, ...]]:
+    """The chiralities of tree blocks per field, as the catalogue's segments
+    accept them: the Weyl chiralities (+-1) of a massless fermion, else the
+    full state (0)."""
 
     found: dict[str, set[int]] = defaultdict(set)
     for binding in catalogue.segments:
@@ -776,7 +787,12 @@ def segment_chiralities(catalogue: LoopKernelCatalogue) -> Callable[[str], int]:
         names = [binding.particles[leg] for leg in binding.attached_legs]
         for name, chirality in zip(names, legs, strict=True):
             found[name].add(chirality)
-    return lambda field: min(found[field])
+
+    def chiralities(field: str) -> tuple[int, ...]:
+        weyl = tuple(sorted(c for c in found[field] if c))
+        return weyl or (0,)
+
+    return chiralities
 
 
 # --------------------------------------------------------------- kinematics
@@ -1481,13 +1497,24 @@ class ReferenceExecutor:
 
     # -- public ------------------------------------------------------------------
 
-    def run(self, plan: LoopSchedules, schedule: Literal["B", "F", "M"]) -> Execution:
+    def run(
+        self,
+        plan: LoopSchedules,
+        schedule: Literal["B", "F", "M"],
+        accuracy: ColourAccuracy = "full",
+        certified: Callable[[Skeleton], bool] | None = None,
+    ) -> Execution:
         """Run one schedule on the skeletons of ``plan`` in its own frames.
 
         B accumulates in each family's trie frame, F and M in the F reading
-        of the family's first skeleton (``forward_targets``). M falls back to
-        B where it does not apply (``Execution.fallback`` says why). To
-        compare F with B family by family, run F with ``trie_targets``.
+        of the family's first skeleton (``forward_targets``). To compare F
+        with B family by family, run F with ``trie_targets``.
+
+        M is admissible at leading colour and, at ``accuracy`` NLC or full,
+        only where every skeleton's colour class carries a loop-level
+        certificate (``certified``, WP2.4; design §2.2). It falls back to B
+        otherwise and where its structural checks fail (``run_m``);
+        ``Execution.fallback`` says why.
         """
 
         if schedule == "B":
@@ -1498,14 +1525,21 @@ class ReferenceExecutor:
         )
         if schedule == "F":
             return self.run_f(skeletons, targets)
-        if schedule == "M":
-            try:
-                return self.run_m(skeletons, targets)
-            except MScheduleUnavailable as error:
-                execution = self.run_b(plan)
-                execution.fallback = str(error)
-                return execution
-        raise ValueError(f"unknown schedule {schedule!r}")
+        if schedule != "M":
+            raise ValueError(f"unknown schedule {schedule!r}")
+        try:
+            if accuracy != "lc" and not (
+                certified is not None and all(map(certified, skeletons))
+            ):
+                raise MScheduleUnavailable(
+                    f"{accuracy} colour: M needs loop-level colour certificates "
+                    "of every skeleton class"
+                )
+            return self.run_m(skeletons, targets)
+        except MScheduleUnavailable as error:
+            execution = self.run_b(plan)
+            execution.fallback = str(error)
+            return execution
 
     def run_b(self, plan: LoopSchedules) -> Execution:
         counts: Counter = Counter()
@@ -1560,7 +1594,12 @@ class ReferenceExecutor:
     def run_m(
         self, skeletons: Sequence[Skeleton], targets: Mapping[Skeleton, Target]
     ) -> Execution:
-        """Schedule M; raises ``MScheduleUnavailable`` where it does not apply."""
+        """Schedule M; raises ``MScheduleUnavailable`` where it does not apply.
+
+        Checks the structure only (colour-ordered contents, one seed per
+        entry state, one skeleton per path): the colour admissibility of
+        ``run`` is the caller's, so algebraic oracles may run any contents.
+        """
 
         counts: Counter = Counter()
         try:
@@ -2258,13 +2297,13 @@ __all__ = [
     "SyntheticBlockRows",
     "SyntheticSeeds",
     "automorphism_weight",
+    "block_chiralities",
     "canonical_vertex_legs",
     "direct_family_value",
     "exact",
     "forward_targets",
     "plan_skeletons",
     "reading_skeletons",
-    "segment_chiralities",
     "trie_targets",
     "word_seed_key",
 ]

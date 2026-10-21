@@ -49,6 +49,8 @@ from pyamplicol.loops.v2.skeletons import PlanarWords, family_skeletons
 
 GLUONS = ("g g > g g", {"QCD": 2, "QED": 0}, {"QCD": 4, "QED": 0})
 QUARKS = ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, {"QCD": 5, "QED": 0})
+# An electroweak boson on a loop quark line (couplings with nested roots).
+DRELL_YAN = ("u u~ > e- e+ g", {"QCD": 1, "QED": 2}, {"QCD": 3, "QED": 2})
 
 
 def _rational(generator: random.Random) -> Fraction:
@@ -261,9 +263,6 @@ def test_merged_paths_are_exactly_the_skeletons(incoming, outgoing, born):
     longer ring's prefix with a bubble's remainder would count the mirror
     reading of another bubble twice."""
 
-    symbolica = pytest.importorskip("symbolica")
-    if not symbolica.is_licensed():
-        pytest.skip("loop v2 generation requires a licensed Symbolica runtime")
     from pyamplicol.loops.control_models import qcd_qed_control_model
 
     model = qcd_qed_control_model()
@@ -345,7 +344,7 @@ class _Case:
         self.momenta = _momenta(legs, 7)
         generator = random.Random(3)
         self.block_rows = rx.SyntheticBlockRows(
-            [(-1, 1)] * legs, chirality=rx.segment_chiralities(kernels), seed=3
+            [(-1, 1)] * legs, chiralities=rx.block_chiralities(kernels), seed=3
         )
         full = self.block_rows.row_set((1 << legs) - 1)
         if colour_model == "seed":
@@ -445,6 +444,14 @@ def _assert_equal(left: rx.Execution, right: rx.Execution) -> None:
             assert a == b, key
 
 
+def _assert_nonzero(execution: rx.Execution) -> None:
+    """Every compared family numerator is nonzero (no vacuous identity)."""
+
+    assert execution.numerators
+    for key, numerator in execution.numerators.items():
+        assert any(any(column) for column in numerator.columns), key
+
+
 def _assert_o5(case: _Case, executor, execution: rx.Execution) -> None:
     generator = random.Random(17)
     q = [rx.exact(_rational(generator)) for _ in range(4)]
@@ -459,7 +466,9 @@ def _assert_o5(case: _Case, executor, execution: rx.Execution) -> None:
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("process", [GLUONS, QUARKS], ids=["gg_gg", "uux_ddxg"])
+@pytest.mark.parametrize(
+    "process", [GLUONS, QUARKS, DRELL_YAN], ids=["gg_gg", "uux_ddxg", "uux_emepg"]
+)
 def test_generic_colour_schedules_agree_exactly(
     compiled, kernels, layout, loop_native, process
 ):
@@ -471,7 +480,7 @@ def test_generic_colour_schedules_agree_exactly(
     case = _Case(compiled, kernels, layout, process, "seed")
     fused = case.executor()
     b = fused.run_b(case.plan)
-    assert b.numerators
+    _assert_nonzero(b)
     _assert_equal(b, case.executor(form="split").run_b(case.plan))
     skeletons = rx.plan_skeletons(case.plan)
     _assert_equal(b, fused.run_f(skeletons, rx.trie_targets(case.plan)))
@@ -491,9 +500,17 @@ def test_colour_word_schedules_agree_exactly(
     executor = case.executor()
     skeletons = rx.plan_skeletons(case.plan)
     b = executor.run_b(case.plan)
+    _assert_nonzero(b)
     _assert_equal(b, executor.run_f(skeletons, rx.trie_targets(case.plan)))
     _assert_equal(b, executor.run_m(skeletons, rx.trie_targets(case.plan)))
-    m = executor.run(case.plan, "M")  # in the F frames of the families
+    accuracy = "lc" if lc else "full"
+    if not lc:  # no FC certificate exists yet (WP2.4): M falls back to B
+        gated = executor.run(case.plan, "M", accuracy)
+        assert "certificates" in gated.fallback
+        _assert_equal(gated, b)
+    # The word identities are algebraic: run M as if every class were
+    # certified, in the F frames of the families.
+    m = executor.run(case.plan, "M", accuracy, certified=lambda skeleton: True)
     assert m.fallback is None
     forward = rx.forward_targets(skeletons, case.masses)
     _assert_equal(m, case.executor(form="split").run_m(skeletons, forward))
@@ -554,7 +571,8 @@ def test_counts_need_no_numerics(compiled, kernels, layout, loop_native):
 @pytest.mark.loop_physics
 def test_operation_counts_regenerate(compiled):
     """The G1 operation counts (gg -> gggg LC and FC, uu~ -> e-e+dd~g and
-    uu~ -> e-e+ggg) regenerate exactly; every schedule runs, M included."""
+    uu~ -> e-e+ggg) regenerate exactly. B and F always run; M runs at LC and
+    falls back to B in full colour until WP2.4 certifies the class."""
 
     from pathlib import Path
 
@@ -565,7 +583,13 @@ def test_operation_counts_regenerate(compiled):
     )
     expected = json.loads(fixture.read_text())
     assert counts.operation_counts(counts.prepare(compiled)) == expected
+    pending = set()
     for entry in expected["processes"]:
-        for record in entry["counts"].values():
-            assert all("fallback" not in record[s] for s in counts.SCHEDULES)
+        for accuracy, record in entry["counts"].items():
+            assert "fallback" not in record["B"] and "fallback" not in record["F"]
+            assert ("fallback" in record["M"]) == (accuracy == "FC")
             assert record["F"]["best/step"] > record["B"]["best/step"]
+            if "M-uncertified" in record:
+                assert "fallback" not in record["M-uncertified"]
+                pending.add(entry["process"])
+    assert pending == {"g g > g g g g", "u u~ > e- e+ g g g"}
