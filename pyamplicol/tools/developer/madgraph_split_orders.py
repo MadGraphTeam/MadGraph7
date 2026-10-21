@@ -21,6 +21,9 @@ Example::
 MadGraph standalone output per process. T-channel widths are kept
 (``zerowidth_tchannel False``) so propagators match a fixed-width recursion.
 
+Colour-flow amplitudes ``JAMP`` are zeroed before MadGraph assigns them:
+MadGraph 3.7 leaves the entries no diagram feeds unset (u u~ > d d~ s s~).
+
 ``--colour lc`` records pyAmpliCol's leading colour instead: the diagonal of
 MadGraph's colour matrix, off-diagonal entries set to zero. That is the
 colour-flow leading colour only where MadGraph's colour basis is the colour-flow
@@ -43,6 +46,11 @@ _CF_RE = re.compile(
     r"(DATA \(CF\(I\),I=\s*\d+,\s*\d+\) /)([^/]*)(/\n)((?:C\s+-?\d.*\n)+)"
 )
 _DELTA_RE = re.compile(r"T\(\d+,\d+\)")
+# The declaration of the colour-flow amplitudes and the first statement that
+# assigns one of them, in each MATRIX routine.
+_JAMP_RE = re.compile(
+    r"(COMPLEX\*16 JAMP\(NCOLOR,NAMPSO\)\n.*?\n)(      (?:TMP_)?JAMP\()", re.S
+)
 _DRIVER = """      PROGRAM PYAMPLICOL_SPLIT_ORDERS
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
@@ -106,6 +114,21 @@ def _squared_orders(matrix: str) -> list[dict[str, int]]:
         dict(zip(_SPLIT_ORDER_NAMES, rows[index], strict=True))
         for index in range(1, len(rows) + 1)
     ]
+
+
+def _zero_colour_amplitudes(matrix: str) -> str:
+    """Zero ``JAMP`` before it is assigned.
+
+    MadGraph 3.7 skips the assignment of colour-flow amplitudes that no
+    diagram of an amplitude order feeds (u u~ > d d~ s s~ leaves three entries
+    of the pure-electroweak order unset), so they would hold whatever the
+    stack held and the squared orders would differ between identical runs.
+    """
+
+    matrix, count = _JAMP_RE.subn(r"\1      JAMP(:,:) = (0D0,0D0)\n\2", matrix)
+    if count == 0:
+        raise SystemExit("MadGraph colour-flow amplitudes JAMP not found")
+    return matrix
 
 
 def _leading_colour(matrix: str) -> str:
@@ -190,9 +213,12 @@ def main(argv: list[str] | None = None) -> int:
             options.work.resolve() / f"process-{index}",
         )
         matrix = subprocess_dir / "matrix.f"
-        orders = _squared_orders(matrix.read_text())
+        source = matrix.read_text()
+        orders = _squared_orders(source)
+        source = _zero_colour_amplitudes(source)
         if options.colour == "lc":
-            matrix.write_text(_leading_colour(matrix.read_text()))
+            source = _leading_colour(source)
+        matrix.write_text(source)
         values = _evaluate(subprocess_dir, points[process])
         if any(len(row) != len(orders) + 1 for row in values):
             raise SystemExit("MadGraph split-order output has the wrong width")
