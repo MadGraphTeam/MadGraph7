@@ -26,6 +26,10 @@ analyze_process_groups = "none"
 [loop]
 r2_strategy = "auto"
 
+[loop.model]
+
+[loop.model.scheme]
+
 [color]
 accuracy = "lc"
 contraction = "direct"
@@ -89,8 +93,14 @@ workspace_mib = 256
 [evaluation]
 precision = 16
 resolved = false
+orders = false
+on_failure = "raise"
 helicity_ids = []
 color_flow_ids = []
+
+[evaluation.stability]
+higher = []
+verify_successful = false
 
 [benchmark]
 target_runtime = 10.0
