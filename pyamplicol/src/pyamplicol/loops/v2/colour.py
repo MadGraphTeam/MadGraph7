@@ -44,7 +44,11 @@ Conventions a consumer relies on:
 * **Leading colour** (design §7.5). The face degree of a class is the U(N_c)
   index-loop count of its colour flow glued to the Born basis (integer cycle
   counting, no numerics). ``certify_leading_colour`` proves for a sector that
-  the face rule keeps exactly the classes whose exact degree is P.
+  the face rule keeps exactly the classes whose exact degree is P. It runs on
+  the full seed table, after generation; nothing prunes skeletons before
+  numerics yet. A generic content keeps its vertex's full UFO colour, so LC
+  drops whole seed classes only (in QCD the quark loops); dropping gluon
+  contents structurally needs colour-ordered contents (WP2.4).
 
 LC and NLC need N_c-exact blocks: a process whose tree program uses numeric
 U(1)-subtraction currents is refused (design §3.2 item 4); FC is always
@@ -69,16 +73,18 @@ from pyamplicol.color.connections import (
     OpenColorString,
     TensorTerm,
     contract_connected_tensor_nc_terms,
+    overlap_traces,
 )
 from pyamplicol.color.contraction_trace import (
-    _combine_nc_power_terms,
-    _trace_duplicate_simplify_nc_power,
-    _trace_pair_simplify_nc_power,
+    combine_nc_power_terms,
+    trace_duplicate_simplify_nc_power,
+    trace_pair_simplify_nc_power,
 )
 from pyamplicol.color.contraction_types import NC
 from pyamplicol.color.correlator_matrices import (
     process_color_legs,
     sector_color_tensor,
+    selected_color_sectors,
 )
 
 from .blocks import Block, BlockColourFlow, TreeBlocks, _NativeFields
@@ -365,13 +371,13 @@ def _fierz(
                     tuple(row for row in rows if row),
                 )
             )
-        return _combine_nc_power_terms(out)
+        return combine_nc_power_terms(out)
 
     terms = trivial([(Fraction(1), 0, traces)])
     while True:
-        terms, paired = _trace_pair_simplify_nc_power(terms)
+        terms, paired = trace_pair_simplify_nc_power(terms)
         terms = trivial(terms)
-        terms, duplicated = _trace_duplicate_simplify_nc_power(terms)
+        terms, duplicated = trace_duplicate_simplify_nc_power(terms)
         terms = trivial(terms)
         if not paired and not duplicated:
             return tuple(terms)
@@ -769,10 +775,8 @@ class BornBasis:
 def born_basis(blocks: TreeBlocks) -> BornBasis:
     """The Born colour basis of a loop request (complete, full colour)."""
 
-    from pyamplicol.color.correlator_matrices import _selected_sectors
-
     plan = blocks.born_dag.color_plan
-    sectors = _selected_sectors(plan, None)
+    sectors = selected_color_sectors(plan, None)
     orders: dict[int, set[Orders]] = {sector.id: set() for sector in sectors}
     for root in blocks.born_roots:
         sector_id = root.color_sector_id
@@ -945,28 +949,6 @@ def build_seed_table(
 # --------------------------------------------------------------- leading colour
 
 
-def _glued_traces(left: ColorTensor, right: ColorTensor) -> list[tuple[int, ...]]:
-    """<left|right> as closed traces (``color.connections`` orientation)."""
-
-    traces = list(right.traces) + [tuple(reversed(trace)) for trace in left.traces]
-    by_fundamental = {s.fundamental_label: s for s in right.open_strings}
-    by_antifundamental = {s.antifundamental_label: s for s in left.open_strings}
-    visited: set[int] = set()
-    for start in sorted(by_fundamental):
-        if start in visited:
-            continue
-        current, word = start, []
-        while current not in visited:
-            visited.add(current)
-            string = by_fundamental[current]
-            partner = by_antifundamental[string.antifundamental_label]
-            word.extend(string.adjoint_labels)
-            word.extend(reversed(partner.adjoint_labels))
-            current = partner.fundamental_label
-        traces.append(tuple(word))
-    return traces
-
-
 def face_count(left: ColorTensor, right: ColorTensor) -> int:
     """U(N_c) index loops of <left|right>: its N_c power without U(1) parts.
 
@@ -974,7 +956,7 @@ def face_count(left: ColorTensor, right: ColorTensor) -> int:
     the cycles of (next in trace) o (other occurrence of the label).
     """
 
-    traces = _glued_traces(left, right)
+    traces = overlap_traces(left, right)
     following, partner, seen = {}, {}, {}
     faces = 0
     for t, trace in enumerate(traces):
