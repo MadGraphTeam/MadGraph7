@@ -77,6 +77,8 @@ PROCESSES = {
         (),
         "required/uux_ddxg.json",
     ),
+    "uux_uux": ("u u~ > u u~", {"QCD": 2, "QED": 0}, (), "legacy/uux_uux.json"),
+    "uux_uuxg": ("u u~ > u u~ g", {"QCD": 3, "QED": 0}, (), "legacy/uux_uuxg.json"),
     "gg_ggg": ("g g > g g g", {"QCD": 3, "QED": 0}, (), "quark_three_gluon_qcd"),
     "uux_ggg": ("u u~ > g g g", {"QCD": 3, "QED": 0}, (), "quark_three_gluon_qcd"),
     # Photon exchange only (``test_loop_v2_executor.IGNORED``).

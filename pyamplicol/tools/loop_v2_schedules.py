@@ -51,6 +51,7 @@ PROCESSES = {
     "gg_ggg": ("g g > g g g", {"QCD": 3, "QED": 0}, ()),
     "uux_ggg": ("u u~ > g g g", {"QCD": 3, "QED": 0}, ()),
     "gg_gggg": ("g g > g g g g", {"QCD": 4, "QED": 0}, ()),
+    "uux_emepgg": ("u u~ > e- e+ g g", {"QCD": 2, "QED": 2}, (23,)),
     "uux_emepggg": ("u u~ > e- e+ g g g", {"QCD": 3, "QED": 2}, (23,)),
 }
 ACCURACIES = {"fc": "full", "nlc": "nlc", "lc": "lc"}

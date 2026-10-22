@@ -743,7 +743,7 @@ class NativeExecutor:
     ``forms`` picks each schedule-B step's kernel form: gate G0's rule,
     or every step fused or split (where it can). ``merged`` adds schedule M
     (``merged.merged_graph``; True builds it with its default chunks), which
-    ``schedule="M"`` runs for its certified families.
+    ``schedule="M"`` runs for its certified families, and B for the others.
     """
 
     def __init__(
@@ -768,6 +768,9 @@ class NativeExecutor:
         self.forms = forms
         self._plan_json = self.exported.json()
         self._native: dict[tuple[str, int | None, int], Any] = {}
+        # The point inputs of the last ``family_numerators`` call (schedules
+        # and carriers compared on one batch share them).
+        self._last_points: tuple[Any, Any] | None = None
 
     def native(
         self,
@@ -925,12 +928,16 @@ class NativeExecutor:
         and Born amplitudes read as exact rationals and the exact kernel
         constants (``reference_executor.KernelConstants`` stand-ins);
         ``double_double`` runs the native DoubleFloat carrier on the inputs
-        of an arbitrary ``precision``.
+        of an arbitrary ``precision``. Consecutive calls on the same points,
+        scales, parameters and precision share the slice's point inputs.
         """
 
-        precision, evaluations = self._points(
-            points, scales, parameters, precision, True
-        )
+        key = repr((points, scales, sorted((parameters or {}).items()), precision))
+        if self._last_points is None or self._last_points[0] != key:
+            self._last_points = key, self._points(
+                points, scales, parameters, precision, True
+            )
+        precision, evaluations = self._last_points[1]
         arithmetic, digits = self._arithmetic(precision, exact)
         inputs = self._inputs(evaluations, arithmetic)
         if double_double:

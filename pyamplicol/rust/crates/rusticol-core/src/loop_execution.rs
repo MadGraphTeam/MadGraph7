@@ -2084,7 +2084,7 @@ pub mod v2 {
     use crate::loop_v2::dress::{Carrier, ChunkInputs, LaneData, Reads, V2Batch};
     use crate::loop_v2::forward::{forward_factors, run_forward};
     use crate::loop_v2::merged::{DEFAULT_PART_CHUNKS, MergedStats, parts, run_merged};
-    use crate::loop_v2::plan::LoopProgramV4;
+    use crate::loop_v2::plan::{LoopProgramV4, Merged};
     use crate::loop_v2::retest::{ReductionCheck, add_to_budget, deviation};
     use crate::loop_v2::seeds::seeds;
     use crate::loop_v2::trie::run_family;
@@ -2110,7 +2110,8 @@ pub mod v2 {
         /// The forward prefix tree (oracle).
         F,
         /// The merged planar state graph for the plan's certified families,
-        /// schedule B for the others (WP2.8).
+        /// schedule B for the others, and for every family of a plan without
+        /// certified families (WP2.8).
         M,
     }
 
@@ -2347,20 +2348,21 @@ pub mod v2 {
         live: Reads,
     }
 
-    /// The families schedule B dresses: all, or those schedule M leaves.
-    fn b_families(plan: &LoopProgramV4, schedule: Schedule) -> RusticolResult<Vec<usize>> {
+    /// The schedule-M graph an evaluation runs: the plan's, under schedule
+    /// M (a plan without certified families has none).
+    fn merged_of(plan: &LoopProgramV4, schedule: Schedule) -> Option<&Merged> {
         match schedule {
-            Schedule::M => {
-                let merged = plan
-                    .merged
-                    .as_ref()
-                    .ok_or_else(|| RusticolError::invalid_argument("the plan has no schedule M"))?;
-                Ok((0..plan.families.len())
-                    .filter(|f| merged.families.binary_search(f).is_err())
-                    .collect())
-            }
-            _ => Ok((0..plan.families.len()).collect()),
+            Schedule::M => plan.merged.as_ref(),
+            _ => None,
         }
+    }
+
+    /// The families schedule B dresses: all, or those schedule M leaves.
+    fn b_families(plan: &LoopProgramV4, schedule: Schedule) -> Vec<usize> {
+        let merged = merged_of(plan, schedule);
+        (0..plan.families.len())
+            .filter(|f| merged.is_none_or(|m| m.families.binary_search(f).is_err()))
+            .collect()
     }
 
     /// Bucket chunks of at most `size` of `families` (ascending) in bucket
@@ -2475,7 +2477,7 @@ pub mod v2 {
             let mut inputs = ChunkInputs::new(plan);
             let numerators = match schedule {
                 Schedule::B | Schedule::M => {
-                    let families = b_families(plan, schedule)?;
+                    let families = b_families(plan, schedule);
                     let reads = Reads::of(plan, &families);
                     let chunk = BucketChunk {
                         families,
@@ -2484,8 +2486,7 @@ pub mod v2 {
                     };
                     let mut numerators =
                         dress_families(plan, &chunk, &mut inputs, &seeds, &data, &mut report)?;
-                    if schedule == Schedule::M {
-                        let merged = plan.merged.as_ref().expect("checked by b_families");
+                    if let Some(merged) = merged_of(plan, schedule) {
                         let parts = parts(merged, DEFAULT_PART_CHUNKS, plan);
                         run_merged(plan, &parts, &mut inputs, &seeds, &data, |done| {
                             numerators.extend(done);
@@ -2742,20 +2743,16 @@ pub mod v2 {
             real_bytes: std::mem::size_of::<T>(),
             ..Report::default()
         };
-        let b_families = b_families(plan, options.schedule)?;
+        if options.schedule == Schedule::F {
+            return Err(RusticolError::invalid_argument(
+                "schedule F is an oracle of family numerators only",
+            ));
+        }
+        let b_families = b_families(plan, options.schedule);
         let chunks_of_buckets = bucket_chunks(plan, options.chunk_families, &b_families);
-        let merged_parts = match options.schedule {
-            Schedule::M => {
-                let merged = plan.merged.as_ref().expect("checked by b_families");
-                parts(merged, options.part_chunks, plan)
-            }
-            Schedule::B => Vec::new(),
-            Schedule::F => {
-                return Err(RusticolError::invalid_argument(
-                    "schedule F is an oracle of family numerators only",
-                ));
-            }
-        };
+        let merged_parts = merged_of(plan, options.schedule)
+            .map(|merged| parts(merged, options.part_chunks, plan))
+            .unwrap_or_default();
         let mut sink = Lanes {
             failures: vec![Vec::new(); points],
             families: vec![Vec::new(); points],

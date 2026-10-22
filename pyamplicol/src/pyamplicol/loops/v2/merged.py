@@ -296,8 +296,9 @@ def merged_graph(
     design §4.2, so closures land in the trie frame), or the skeleton's own
     reading (closures mapped into the trie frame per family frame map).
 
-    Raises ``MergedUnavailable`` when no family qualifies or the graph fails
-    its path certificate (module docstring).
+    A slice without certified families has an empty graph (every family in
+    ``fallback``). Raises ``MergedUnavailable`` when the graph fails its path
+    certificate (module docstring).
     """
 
     plan = slice_.plan
@@ -325,7 +326,7 @@ def merged_graph(
         families.add(family)
         paths.extend(found)
     if not paths:
-        raise MergedUnavailable("no family has certified colour-ordered paths")
+        return MergedGraph(frozenset(), 0, [], [], [], fallback)
     entries: dict[Hashable, int] = {}
     entry_records: list[tuple[int, Orders, ExactColorCoefficient, Content]] = []
     index: dict[Hashable, int] = {}
