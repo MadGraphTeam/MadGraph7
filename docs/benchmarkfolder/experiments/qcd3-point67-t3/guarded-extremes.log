@@ -1,9 +1,0 @@
-   Compiling madloop-ninjars v0.1.0 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/qcd3-point67-t3/guarded-bridge)
-    Finished `release` profile [optimized] target(s) in 3m 33s
-     Running unittests src/lib.rs (/common/build-cache/external/f7/d00a3ee9585371/release/deps/madloop_ninjars-5133f6c9476c7d48)
-
-running 1 test
-test guarded_tests::guarded_unsafe_domains_and_rounding_use_native_flags_and_values ... ok
-
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.00s
-

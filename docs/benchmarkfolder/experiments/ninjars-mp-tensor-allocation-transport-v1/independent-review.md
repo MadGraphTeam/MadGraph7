@@ -1,3 +1,0 @@
-Independent review by /root/audit_fortran: PASS.
-
-Inspected run.py gates and source checks, and ran summarize.py read-only: 22 tests, 21 golden lanes, 1,392 callback requests / 86,436 exact complex outputs, and 1,392 reusable MpState rows with all 11,136 ASCII fields exact. Source, dense-oracle and raw hashes and unchanged original production snapshots are checked. There is no new arithmetic beyond the reviewed finite zero/one resets, borrowed products, and signed-zero transport. Full-process performance remains unmeasured. No engine or build was launched by this review, and its child process exited.

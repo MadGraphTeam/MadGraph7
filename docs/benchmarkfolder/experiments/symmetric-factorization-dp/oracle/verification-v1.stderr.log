@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle/verify.py", line 155, in <module>
-    print(json.dumps(verify(args.recompute),indent=2,sort_keys=True))
-                     ~~~~~~^^^^^^^^^^^^^^^^
-  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/oracle/verify.py", line 25, in verify
-    assert bind_sources.bind()==proof
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^
-AssertionError

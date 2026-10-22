@@ -1,8 +1,0 @@
-[
-  "tests.unit_tests.loop.test_ninjars_dp_stability",
-  "tests.unit_tests.loop.test_ninjars_paper_report_v3",
-  "tests.unit_tests.loop.test_ninjars_paper_numerator_v3",
-  "tests.unit_tests.loop.test_ninjars_dp_random_points",
-  "tests.unit_tests.loop.test_ninjars_final_loop_pair",
-  "tests.unit_tests.loop.test_ninjars_final_loop_preparation"
-]

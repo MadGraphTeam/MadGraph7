@@ -1,4 +1,0 @@
-set automatic_html_opening False
-set nb_core 1
-compile FO -f
-quit

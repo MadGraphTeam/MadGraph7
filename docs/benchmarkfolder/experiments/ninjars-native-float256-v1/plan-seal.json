@@ -1,8 +1,0 @@
-{
-  "schema": "native-float256-held-plan-v1",
-  "files": {
-    "PLAN.md": "94e01d9a8a164eaf7a89ba9ba00917afb31a788eba0263be0e19a2e3ef80551a",
-    "source-review.md": "08bad82593d9ef92ee5f098692b94d72791c2e08343248be6b6337729bf744c4",
-    "execution-state.json": "d5a9bbe64f893f403428f6d5eb3f6abac6cbd92d62f412f0ef75d936e43e3ea2"
-  }
-}

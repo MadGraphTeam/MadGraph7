@@ -50,8 +50,10 @@ genuine higher-precision rescue.
 their actual Float256 callback references, and compensated full-reduction
 results. They were captured during the retained point-67 diagnosis. Complete
 commands, input provenance, independent Ninja comparisons and sealed hashes
-are recorded under `docs/benchmarkfolder/experiments/qcd3-point67-{dp,masters,t3}`
-and `t3-dp-retry`. These fixtures do not require sibling reference clones.
+are preserved in the [immutable measurement archive](https://github.com/MadGraphTeam/MadGraph7/tree/19d67c8605337c176680878a521b3a014176a7fb/docs/benchmarkfolder/experiments)
+under `qcd3-point67-{dp,masters,t3}` and `t3-dp-retry`. These fixtures do not
+require sibling reference clones. The final measured report and its offline
+reproduction instructions are in [`doc/benchmarkfolder`](../../doc/benchmarkfolder/README.md).
 
 The `fenv-test-support` Cargo feature compiles test-only floating-point flag and
 rounding mutators. Normal installation leaves this feature disabled and builds

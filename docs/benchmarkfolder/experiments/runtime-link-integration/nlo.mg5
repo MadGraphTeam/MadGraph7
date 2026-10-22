@@ -1,9 +1,0 @@
-set automatic_html_opening False
-set ninja ./.benchmark-work/original/HEPTools/ninja/lib
-set collier ./.benchmark-work/original/HEPTools/collier
-set ninjars ./HEPTools/ninjars/lib
-set output_dependencies external
-import model loop_sm
-generate u u~ > z [QCD]
-output .benchmark-work/experiments/runtime-link-integration/nlo -f
-quit

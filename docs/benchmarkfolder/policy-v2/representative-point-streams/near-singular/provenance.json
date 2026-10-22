@@ -1,9 +1,0 @@
-{
-  "scope": "Representative runtime-signature coverage only; all10 retained near-singular points, no selection or new kinematics.",
-  "generated_process_case": "control-forced-qp",
-  "original_point_file": "docs/benchmarkfolder/points/control-near-singular.dat",
-  "source_sha256": "1810d50e8b67fcebfabdeb132a84ee2c5df1cf7333e55b6f38a9115291f9ed57",
-  "alias_reason": "Reuse the anchored original ggtt export and exact model correction with a separately retained complete near-singular stream.",
-  "core_points_modified": false,
-  "core_thresholds_modified": false
-}

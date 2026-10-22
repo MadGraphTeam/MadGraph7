@@ -1,9 +1,0 @@
-{
-  "passed": true,
-  "tests": 2,
-  "seconds": 12.36961060599424,
-  "prototype_sha256": "959bad5370566bc31fcf9d1139ccc130a6b9891e9088298c49dfa472a50ee6e8",
-  "production_generator_sha256": "d7e6ece70afca5cdc2bcaa626b4afe6bd77f7449ea44b49888c60b0bf1852712",
-  "independent_regression_sha256": "82947d0674bf3e7c33b78d2caa1c7181d55e68db9fa702a4c0045d6120fe3874",
-  "scope": "30,000 comparisons of complete output/input bits and IEEE exception flags against independent frozen dense references; both updater modes, all four rounding modes, finite/extreme/subnormal/nonfinite/signaling-NaN inputs, signed zeros, empty dimensions, and forced layout rejection."
-}

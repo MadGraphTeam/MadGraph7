@@ -1,9 +1,0 @@
-# Lightweight focused Ninja/NinjaRS controls
-
-This is the root-authorized corrected successor to the preserved metadata-only failed `focused-light-controls-v1` attempt. The only correction is strict verification of a schema-less sealed preparation with `schema=None`, factored into a real preflight before any output/configuration/native path. Three software controls exercise that real API, every declared compiled target, missing identity and tampered binding rejection.
-
-The actual run completed at 2026-10-21 21:29:53 UTC with all nine serial traversals on CPU190. Every traversal used exactly the first two declared fixed events, the existing compiled current-cohort executable, full bound physical card and runtime, and all four thread settings equal to one. No compilation, generator or production-source change occurred. All controller and numerical process identities and isolated groups were absent before resource release.
-
-Ordinary HH state tests return 216 (Ninja) or 218 (NinjaRS). All six explicit-QP traversals return 120 with accuracy -1 on every total and split row; their sole backend, true-QP integrand flag, mode, executable and runtime are retained. Explicit mode120 is a precision diagnostic; it is not automatic rescue or a stability acceptance. State/context, complex-QP versus existing normal complex rows, and QP direction comparisons pass 272 returned coefficient components using the existing common-point tolerance.
-
-This short run covers two states, not ten-state restoration or a physical rotation campaign. NINJARS_FINALIZE resets only NinjaRS; no fresh Ninja context is claimed. Normal HH agreement remains pending the actual light ten-point normal calibration; only unchanged-state direction rows can supply that later cross-check. These runs are not timing/performance acceptance. All raw rows, cards, counters, errors, owned-process ledgers and exact source/specification/root authorization are retained.

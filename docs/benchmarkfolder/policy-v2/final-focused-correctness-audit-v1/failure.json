@@ -1,5 +1,0 @@
-{
-  "error": "'tree_state_sha256'",
-  "traceback": "Traceback (most recent call last):\n  File \"/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-focused-correctness-audit-v1/audit.py\", line 193, in <module>\n    main()\n    ~~~~^^\n  File \"/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/final-focused-correctness-audit-v1/audit.py\", line 116, in main\n    'generation_tree_identity_sha256': item['generation_source_identity']['tree_state_sha256'],\n                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^\nKeyError: 'tree_state_sha256'\n",
-  "type": "KeyError"
-}

@@ -1,8 +1,0 @@
-Actual MG7 CLI local-source installation, ABI2
-Rust static library and Fortran module compiled from staged copies of both reference checkouts.
-Installed Fortran smoke: NinjaRS DP and genuine binary128-input rescue passed
-DP tadpole: finite=4, single pole=4, double pole=0 (tolerance 1e-12).
-QP single pole: 4*(1+2**(-100)), distinct from 4 (tolerance 1e-32).
-QP double pole=0 and rational=0 (tolerance 1e-32); context finalization succeeded.
-Primary archive/config hashes and reference checkout status/revision/manifest/lock hashes unchanged.
-Global NinjaRS configuration restored to HEPTools/ninjars/lib.

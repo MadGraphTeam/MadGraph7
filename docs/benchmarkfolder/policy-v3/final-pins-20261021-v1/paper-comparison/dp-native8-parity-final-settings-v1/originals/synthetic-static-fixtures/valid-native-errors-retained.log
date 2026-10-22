@@ -1,7 +1,0 @@
-GUARD_BEGIN create=0 dp=0 compensated=0 mp=0 destroy=0 nonnull=0
-CREATE_RETURN status=0 create=1 dp=0 compensated=0 mp=0 destroy=0 nonnull=0
-NATIVE_DP_RETURN status=0 create=1 dp=1 compensated=0 mp=0 destroy=0 nonnull=0
-NATIVE_DP_RETURN status=1 create=1 dp=2 compensated=0 mp=0 destroy=0 nonnull=0
-NATIVE_DP_RETURN status=2 create=1 dp=3 compensated=0 mp=0 destroy=0 nonnull=0
-DESTROY_RETURN status=0 create=1 dp=3 compensated=0 mp=0 destroy=1 nonnull=1
-GUARD_FINAL create=1 dp=3 compensated=0 mp=0 destroy=1 nonnull=1

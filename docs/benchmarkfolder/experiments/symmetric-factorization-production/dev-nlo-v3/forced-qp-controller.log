@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-production/dev-nlo-v3/forced_qp.py", line 73, in <module>
-    if __name__=='__main__': main()
-                             ~~~~^^
-  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-production/dev-nlo-v3/forced_qp.py", line 50, in main
-    assert child.returncode==0
-           ^^^^^^^^^^^^^^^^^^^
-AssertionError

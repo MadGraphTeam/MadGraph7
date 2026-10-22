@@ -1,9 +1,0 @@
-{
-  "schema": "fresh-process-v1",
-  "sources": {
-    "ninjars_benchmark.py": "60ed8ae57eb15e6fff0133fad07330882f179f955aa08693f0c4f3b02815b237",
-    "ninjars_benchmark_driver.f": "7fde7bd50af7604424bdeab028616cb6c861251fbe748c0748dfe7be17a3fee4"
-  },
-  "initialization": "New process, full warmed stream and untimed numerical pass",
-  "measurement": "Full evaluation and status every call; output after timing"
-}

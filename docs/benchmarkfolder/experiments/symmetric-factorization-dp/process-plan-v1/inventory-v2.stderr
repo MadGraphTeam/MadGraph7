@@ -1,7 +1,0 @@
-Traceback (most recent call last):
-  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-plan-v1/inventory.py", line 106, in <module>
-    main()
-    ~~~~^^
-  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-plan-v1/inventory.py", line 73, in main
-    old_executable = next(i for i, (_, row) in enumerate(old_rows) if row.startswith('P2(0)='))
-StopIteration

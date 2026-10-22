@@ -1,2 +1,0 @@
-{"event": "spawn", "pid": 219124, "pgid": 219124, "start_ticks": 65021971, "command": ["taskset", "-c", "6", "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3", "-B", "-u", "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/final-focused-ninja-nrs-execution-readiness-v1/prepare.py", "--prepare-compile-only"], "cwd": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars"}
-{"event": "reaped", "pid": 219124, "pgid": 219124, "start_ticks": 65021971, "reaped": true, "returncode": 0}

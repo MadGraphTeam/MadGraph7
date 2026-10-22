@@ -1,6 +1,0 @@
-{
-  "status": "failed",
-  "reason": "Raw git ls-tree includes export-ignored .bzrignore absent from original git archive",
-  "baseline_changed": false,
-  "correction": "Verify exactly git archive members, respecting original export-ignore attributes"
-}

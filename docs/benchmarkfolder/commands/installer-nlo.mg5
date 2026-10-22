@@ -1,9 +1,0 @@
-set output_dependencies external
-set automatic_html_opening False
-set ninja ./.benchmark-work/original/HEPTools/ninja/lib
-set collier ./.benchmark-work/original/HEPTools/collier
-set ninjars ./HEPTools/ninjars/lib
-import model loop_sm
-generate u u~ > z [QCD]
-output .ninjars-build/ninjars-nlo-smoke -f
-quit

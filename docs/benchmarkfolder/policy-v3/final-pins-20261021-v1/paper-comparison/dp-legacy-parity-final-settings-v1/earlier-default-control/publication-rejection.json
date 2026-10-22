@@ -1,7 +1,0 @@
-{
-  "status": "REJECTED",
-  "error_type": "ValueError",
-  "error": "DP publication settings differ: collierrequiredaccuracy,mlstabthres",
-  "complete": false,
-  "physical_qualified": false
-}

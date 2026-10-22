@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/run_pairs.py", line 179, in <module>
-    main()
-    ~~~~^^
-  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/experiments/symmetric-factorization-dp/process-timing21-v2/run_pairs.py", line 97, in main
-    assert passed,'CPU preflight rejected; no amplitude launched'
-           ^^^^^^
-AssertionError: CPU preflight rejected; no amplitude launched

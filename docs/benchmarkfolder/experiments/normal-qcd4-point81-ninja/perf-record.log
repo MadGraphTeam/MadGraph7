@@ -1,2 +1,0 @@
-[ perf record: Woken up 1057 times to write data ]
-[ perf record: Captured and wrote 263.939 MB /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/logs/normal-qcd4-point81-ninja.perf (4223 samples) ]

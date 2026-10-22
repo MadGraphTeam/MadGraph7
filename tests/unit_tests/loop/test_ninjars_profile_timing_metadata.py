@@ -7,7 +7,6 @@ import logging
 import os
 import glob
 import shutil
-import sys
 from pathlib import Path
 import re
 from types import SimpleNamespace
@@ -262,51 +261,56 @@ class TimingMetadataTests(unittest.TestCase):
         self.assertEqual(metadata['profile_timing_result']['Diagrams_generation'],.123456789)
         self.assertEqual(returned['run_unpolarized_total'],999)
 
-    def consume(self, result, tool):
-        sys.path.insert(0,str(ROOT/'tools'))
-        import ninjars_profile_cli_v3 as cli
-        tree = ast.parse(NEW.read_text())
-        nodes = [n for n in tree.body if isinstance(n,ast.FunctionDef) and
-                 n.name in ('format_output','output_timings')]
-        namespace = {'bannermod':__import__('madgraph.various.banner',fromlist=['MadLoopParam'])}
-        exec(compile(ast.Module(body=nodes,type_ignores=[]),str(NEW),'exec'),namespace)
-        timing = dict(result)
-        timing.update(loop_optimized_output=True,reduction_tool=tool,
-            Diagrams_generation=.1,HelasDiagrams_generation=.1,n_contrib_hel=1,n_tot_hel=1,
-            n_loops=1,n_loop_groups=1,n_loop_wfs=1,loop_wfs_ranks=[1])
-        printed = cli.parse_profile(namespace['output_timings'](Process(),timing),tool)
-        metadata = json.loads(Path(result['timing_metadata']['path']).read_text())
-        return cli.metadata_timing(metadata,tool,printed),metadata
+    def assert_card_record(self, record, expected):
+        contents = expected.read_bytes()
+        self.assertEqual(Path(record['path']).resolve(),expected.resolve())
+        self.assertEqual(record['realpath'],str(expected.resolve()))
+        self.assertNotEqual(record.get('available'),False)
+        self.assertEqual(record['bytes'],len(contents))
+        self.assertEqual(record['sha256'],hashlib.sha256(contents).hexdigest())
+        self.assertEqual(record['text'],contents.decode('utf-8'))
 
-    def test_modern_resource_only_card_passes_actual_whole_observer_and_consumer(self):
+    def test_modern_resource_only_card_is_observed_by_actual_timing_method(self):
         for tool in (6,8):
-            result,_,_ = exercise('consumer-modern-%d'%tool,NEW,tool=tool,real_card=True,
+            result,_,_ = exercise('modern-%d'%tool,NEW,tool=tool,real_card=True,
                                  physical_layout='modern',base_root=self.work)
-            observed,metadata = self.consume(result,tool)
+            metadata = json.loads(Path(result['timing_metadata']['path']).read_text())
             directory = Path(metadata['subprocess_dir'])
             self.assertFalse((directory/'param_card.dat').exists())
             self.assertTrue((directory/'MadLoop5_resources/param_card.dat').is_file())
-            self.assertTrue(observed['scope_complete'])
-            self.assertEqual(observed['metadata_stage_count'],6)
+            self.assertEqual(metadata['reduction_backends'],[tool])
+            self.assertEqual(len(metadata['stages']),6)
+            expected = Path(metadata['export_dir'])/'Cards/param_card.dat'
+            for stage in metadata['stages']:
+                self.assert_card_record(stage['parameter_card'],expected)
+                self.assert_card_record(stage['subprocess_parameter_card'],expected)
 
     def test_native_flat_card_priority_beats_lower_cards_decoy(self):
-        result,_,_ = exercise('consumer-flat',NEW,real_card=True,
+        result,_,_ = exercise('flat',NEW,real_card=True,
                              physical_layout='flat-first',base_root=self.work)
-        observed,metadata = self.consume(result,8)
-        self.assertTrue(observed['scope_complete'])
+        metadata = json.loads(Path(result['timing_metadata']['path']).read_text())
         expected = Path(metadata['subprocess_dir'])/'param_card.dat'
-        self.assertTrue(all(Path(stage['subprocess_parameter_card']['path']) == expected
-                            for stage in metadata['stages']))
+        decoy = expected.parent/'Cards/param_card.dat'
+        self.assertNotEqual(expected.read_bytes(),decoy.read_bytes())
+        for stage in metadata['stages']:
+            self.assertEqual(Path(stage['subprocess_parameter_card']['path']),expected)
+            self.assert_card_record(stage['subprocess_parameter_card'],expected)
+            self.assertEqual(stage['subprocess_parameter_card']['sha256'],
+                             stage['parameter_card']['sha256'])
 
-    def test_intervening_ancestor_card_is_captured_and_consumer_rejects_different_physics(self):
-        result,_,_ = exercise('consumer-ancestor',NEW,real_card=True,
+    def test_intervening_ancestor_card_records_different_effective_physics(self):
+        result,_,_ = exercise('ancestor',NEW,real_card=True,
                              physical_layout='ancestor-first',base_root=self.work)
         metadata = json.loads(Path(result['timing_metadata']['path']).read_text())
-        expected = (Path(metadata['export_dir'])/'SubProcesses/Cards/param_card.dat').resolve()
-        self.assertTrue(all(Path(stage['subprocess_parameter_card']['path']).resolve() == expected
-                            for stage in metadata['stages']))
-        with self.assertRaisesRegex(ValueError,'Different effective physical cards'):
-            self.consume(result,8)
+        export = Path(metadata['export_dir'])
+        expected = export/'SubProcesses/Cards/param_card.dat'
+        canonical = export/'Cards/param_card.dat'
+        self.assertNotEqual(expected.read_bytes(),canonical.read_bytes())
+        for stage in metadata['stages']:
+            self.assert_card_record(stage['parameter_card'],canonical)
+            self.assert_card_record(stage['subprocess_parameter_card'],expected)
+            self.assertNotEqual(stage['subprocess_parameter_card']['sha256'],
+                                stage['parameter_card']['sha256'])
 
 if __name__ == '__main__':
     unittest.main()

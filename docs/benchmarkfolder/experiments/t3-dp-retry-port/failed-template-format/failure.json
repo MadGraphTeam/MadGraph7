@@ -1,8 +1,0 @@
-{
-  "reason": "Three manually continued IF conditions in the production template confused FortranWriter indentation; subsequent ELSE statements entered fixed-form label columns. Fresh generated production-template compilation failed. Fixed by supplying each template IF on one line and allowing FortranWriter to wrap it; unchanged control-flow semantics.",
-  "sources": {
-    "loop_matrix.f": "9fe9e6809a96c3131a38a37ff830427dd83f8c88d8a303d6e5c208f3df7eb35e",
-    "CT_interface.f": "f93d65469090d89269e50b4540ccca34b70807d7fddea4f08e0134d851c132fa"
-  },
-  "log_note": "The retained build.log is the actual fixed-form compilation failure. The first CLI generation transcript was overwritten during a follow-up invocation typo; tooling-invocation-error.log records that typo, not the original successful generation. The failed generated source bytes are retained."
-}

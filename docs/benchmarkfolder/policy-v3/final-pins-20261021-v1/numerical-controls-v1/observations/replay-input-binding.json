@@ -1,7 +1,0 @@
-{
-  "path": ".benchmark-work/policy-v2/final-rust-abi3-v2/original-replay.jsonl",
-  "sha256": "1fafb19d4b534c3e222e5b265dfd8b139f262d3353f847a5c39955c468fa9f4d",
-  "bytes": 7241132,
-  "records": 1392,
-  "historical_outputs": "Diagnostic baseline only; final-source256/384 convergence retained separately."
-}

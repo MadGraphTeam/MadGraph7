@@ -1,7 +1,0 @@
-{
-  "attempt1": "Read-only comparison stopped before receipt because authentic LIGHT6 calibration uses repetition=\"calibration\", not old integer -1 convention",
-  "physics_failure": false,
-  "native_calls": 0,
-  "correction": "Assert exact actual string calibration; no rows/tolerance/input binding altered",
-  "failed_source_sha256": "fab417993cfe482c34ed7f8efbad8525c1923474eddaec1200165068dc66f467"
-}

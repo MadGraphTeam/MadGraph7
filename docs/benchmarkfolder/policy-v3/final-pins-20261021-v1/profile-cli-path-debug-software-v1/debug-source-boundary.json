@@ -1,7 +1,0 @@
-{
-  "scope": "Whole producer AST equals original after removal of sole added exact MG5_debug glob; no timer/math/reader/command change",
-  "original_sha256": "8aed579e7bb3130651cf4fb585c5b701d60b35e2de2c7d79960301396882b20d",
-  "candidate_sha256": "c8f2bd5dc63ec20b9dfa74ff7af1f84fbfcfdc04aa33d080f9078f82d611075c",
-  "only_added_expression": "*work.glob('MG5_debug')",
-  "all_other_AST_unchanged": true
-}

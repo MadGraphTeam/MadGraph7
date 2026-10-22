@@ -1,7 +1,0 @@
-docs/benchmarkfolder/policy-v2/final-mp-rebinding-audit-v1/README.md
-docs/benchmarkfolder/policy-v2/final-mp-rebinding-audit-v1/audit.py
-docs/benchmarkfolder/policy-v2/final-mp-rebinding-audit-v1/audit.stderr
-docs/benchmarkfolder/policy-v2/final-mp-rebinding-audit-v1/audit.stdout
-docs/benchmarkfolder/policy-v2/final-mp-rebinding-audit-v1/manifest.json
-docs/benchmarkfolder/policy-v2/final-mp-rebinding-audit-v1/receipt.json
-docs/benchmarkfolder/policy-v2/final-mp-rebinding-audit-v1/retained-files.txt

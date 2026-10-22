@@ -1,6 +1,0 @@
-test_unavailable_ninjars_only_is_actionable_and_fallback_is_preserved (tests.unit_tests.loop.test_ninjars_fortran.NinjaRSFortranTest.test_unavailable_ninjars_only_is_actionable_and_fallback_is_preserved) ... ok
-
-----------------------------------------------------------------------
-Ran 1 test in 0.809s
-
-OK

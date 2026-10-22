@@ -1,4 +1,0 @@
-{
-  "reason": "Harness expected initial coefficient construction to enter label 200; actual initial entry is 208. Corrected expected explicit rebuild count from 1 to 0. Production control flow unchanged.",
-  "validation_failure": "AssertionError at rebuild count"
-}

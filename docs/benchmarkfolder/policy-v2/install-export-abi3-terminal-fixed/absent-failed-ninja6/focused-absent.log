@@ -1,9 +1,0 @@
-Traceback (most recent call last):
-  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/install-export-abi3-terminal-fixed/focused_validator.py", line 208, in <module>
-    {"units": units, "absent": absent, "local-source": local_source}[action]()
-    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
-  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/install-export-abi3-terminal-fixed/focused_validator.py", line 119, in absent
-    values = runtime.parse_check((REPORT / "absent-runtime.log").read_text())
-  File "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v2/install-export-abi3-terminal-fixed/runtime_validator.py", line 220, in parse_check
-    raise RuntimeError(f"Missing {label} in standalone output")
-RuntimeError: Missing Born in standalone output

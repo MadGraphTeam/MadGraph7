@@ -1,2 +1,0 @@
-   Compiling madloop-ninjars v0.1.0 (/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/experiments/ninjars-mp-tensor-allocation-v1/bridge)
-error: could not compile `madloop-ninjars` (lib test) due to 1 previous error

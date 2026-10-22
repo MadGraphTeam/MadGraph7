@@ -1,7 +1,0 @@
-test_fast_paths_fallback_bits_flags_and_enabled_traps (tests.unit_tests.various.test_q_polynomial_factorized.FactorizedWavefunctionUpdateTest.test_fast_paths_fallback_bits_flags_and_enabled_traps) ... ok
-test_supported_private_names_and_rejected_domains (tests.unit_tests.various.test_q_polynomial_factorized.FactorizedWavefunctionUpdateTest.test_supported_private_names_and_rejected_domains) ... ok
-
-----------------------------------------------------------------------
-Ran 2 tests in 26.940s
-
-OK

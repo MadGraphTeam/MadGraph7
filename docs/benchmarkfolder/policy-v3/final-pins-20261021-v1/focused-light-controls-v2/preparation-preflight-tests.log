@@ -1,8 +1,0 @@
-test_missing_sealed_identity_rejects_even_with_matching_file_checksum (__main__.PreparationPreflight.test_missing_sealed_identity_rejects_even_with_matching_file_checksum) ... ok
-test_real_identity_and_all_nine_asset_guards_before_any_output_or_native_path (__main__.PreparationPreflight.test_real_identity_and_all_nine_asset_guards_before_any_output_or_native_path) ... ok
-test_tampered_declared_executable_binding_rejects_before_native_path (__main__.PreparationPreflight.test_tampered_declared_executable_binding_rejects_before_native_path) ... ok
-
-----------------------------------------------------------------------
-Ran 3 tests in 21.543s
-
-OK

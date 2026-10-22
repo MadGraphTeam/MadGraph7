@@ -1,6 +1,0 @@
-set automatic_html_opening False
-set auto_update 0
-set nb_core 1
-set fortran_compiler gfortran
-install ninjars --update --prefix=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/install-export/source/HEPTools --jobs=1
-quit

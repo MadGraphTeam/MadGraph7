@@ -1,5 +1,0 @@
-{
-  "source": "docs/benchmarkfolder/experiments/runtime-link-integration/validate.py",
-  "sha256": "cb471a68076c10684f2ad5b8a2e38fc79f55067a24d1897244835f8c32adc584",
-  "adaptation": "Fresh archived candidate; both SA and NLO relocated with internal dependencies, no runtime library path, require copied mninjars.f90, common Collier accuracy1e-12, hidden private installation"
-}

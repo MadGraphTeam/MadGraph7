@@ -1,2 +1,0 @@
-[ perf record: Woken up 103 times to write data ]
-[ perf record: Captured and wrote 25.586 MB /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v2/profiles/profile-controller-original-qcd1-retry1-20261020/profile.perf ]

@@ -87,15 +87,9 @@ tests/input_files/IOTestsComparison/**/*.BackUp
 # output of ./tests/test_manager.py
 UNITTEST_proc/
 
-# Executables produced by the retained MadLoop benchmark experiments.
-/docs/benchmarkfolder/experiments/**/fallback
-/docs/benchmarkfolder/experiments/**/traps
-/docs/benchmarkfolder/experiments/**/timing
-/docs/benchmarkfolder/experiments/**/oracle-check
-/docs/benchmarkfolder/experiments/**/guards
-/docs/benchmarkfolder/experiments/**/sticky
-/docs/benchmarkfolder/experiments/**/zero-work
-/docs/benchmarkfolder/experiments/**/kernel
+# Local development references and report plotting caches.
+/references/
+/doc/benchmarkfolder/final-report-v1/.mpl-cache/
 
 # models/ only holds UFO models: downloaded ones are ignored, shipped ones kept
 models/*
@@ -107,10 +101,3 @@ models/*
 
 debug
 
-# Recreated plaintext copies of sealed native-study gzip evidence.
-/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/convergence-analysis.json
-/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/replay-analysis.json
-/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-convergence/raw.jsonl
-/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/run-replay/raw.jsonl
-/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/screening-analysis.json
-/docs/benchmarkfolder/experiments/ninjars-native-float256-v1/supplement/run-screening/raw.jsonl

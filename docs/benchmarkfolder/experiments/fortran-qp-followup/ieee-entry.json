@@ -1,9 +1,0 @@
-{
-  "passed": true,
-  "returncode": 0,
-  "stdout": " HALTING_PRESERVED T T T T\n STICKY_FLAGS T F F T\n",
-  "source_sha256": "688b178f735c9ef053ce5315c2a2e8231e3657efefd7f6980a918e9ada79e78d",
-  "executable_sha256": "8fb7243291924506ee82fcf9879ed540eb4528d5493678a280dc50b7c765bd19",
-  "gfortran_runtime": "/nix/store/d17h7hf0qr99v6fadj50ybzgyvbsds81-gfortran-15.3.0-lib/lib/libgfortran.so",
-  "interpretation": "Nested IEEE procedures preserve enabled INEXACT halting. They clear sticky flags internally and restore/merge them on return."
-}

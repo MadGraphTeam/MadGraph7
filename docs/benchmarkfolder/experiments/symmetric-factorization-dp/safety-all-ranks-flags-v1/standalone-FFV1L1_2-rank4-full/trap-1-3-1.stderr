@@ -1,9 +1,0 @@
-
-Program received signal SIGFPE: Floating-point exception - erroneous arithmetic operation.
-
-Backtrace for this error:
-#0  0x79f04c7e219f in ???
-#1  0x65359559c46f in test_update_wl_4_1_
-#2  0x65359559c5e3 in test_update_wl_4_1_factor_
-#3  0x65359559ee65 in MAIN__
-#4  0x65359559c1de in main

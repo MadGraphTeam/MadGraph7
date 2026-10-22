@@ -1,8 +1,0 @@
-{
-  "root_authorized": true,
-  "phase": "final-focused-light-controls-v1",
-  "cpu": 190,
-  "source_sha256": "e1b35f2b841e8692afc99e51af9a87907e31271f778ccc626b0e661f3d314217",
-  "specification_sha256": "d1449e8e6ea99671787439e6dc83bdf97444a418a814918508847c379c0c2207",
-  "compiled_preparation_sha256": "d39d358ab0a030d7ec320aaac99b92de97afb5ed472be82a28adeaf2045cdc78"
-}

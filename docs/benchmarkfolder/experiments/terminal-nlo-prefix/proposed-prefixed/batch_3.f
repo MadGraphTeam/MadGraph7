@@ -1,5 +1,0 @@
-      SUBROUTINE BATCH_3()
-      IMPLICIT NONE
-      CALL FULL()
-      END
-

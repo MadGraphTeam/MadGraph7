@@ -1,9 +1,0 @@
-/target/
-/.cargo/
-/install/
-/build.log
-/*.o
-/*.mod
-/libninjars.a
-/ninjars-native-libs.txt
-/smoke

@@ -1,7 +1,0 @@
-# Live CLI and timing-metadata software validation
-
-The actual live installed-default/v5 source passed 88 software controls: 45 CLI producer/reader controls, 34 consumer controls, and nine whole-method compiler/engine mocks. The final group executes the live timing/profile methods and compares all original make/run/fix/flag calls and raw timing values against the three exact pre-metadata timer methods retained in the small fixture. It checks native-selector parsing, one-time runtime hashing, mutation rejection, stage flags/counts/raw values, partial failure records and profile capture before stability mutates its input.
-
-These are software tests only; no compiler, reducer, executable profile or physical amplitude is run. The nine private predecessor tests were promoted with portable repository discovery, temporary directories and the actual has_born mock API. Every original test assertion scope is preserved. The existing 45-test CLI fixture now supplies genuine generated/reused has_born data; producer bytes and all its assertions remain unchanged. Independent source review of this promotion is retained.
-
-The older software evidence is preserved. Actual stock CLI profiles, including the newly requested two-to-four SM and ggHHH/HHHH extensions, remain pending separate tested-source publication, an exact specification and root resource authorization. No software result is timing or numerical acceptance.

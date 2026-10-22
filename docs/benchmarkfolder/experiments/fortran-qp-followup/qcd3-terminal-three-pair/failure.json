@@ -1,7 +1,0 @@
-{
-  "complete": false,
-  "stage": "compilation",
-  "numerical_evaluations_started": false,
-  "reason": "The initial isolated batch renderer discarded fixed-form statement labels, so generated GOTO targets were undefined. The revised adapter changes only original call spans and preserves all other bytes.",
-  "build_log_sha256": "88c2edd2d2c755d4ab2bdeae133e031ecd7236f2cc5a59f9da67231e18d0e8e5"
-}

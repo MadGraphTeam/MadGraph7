@@ -1,9 +1,0 @@
-{
-  "source_record": {
-    "path": ".benchmark-work/paper-dp-stability-20261021-v1/nrs8-qcd1-parity-final-settings-v1/8-observed-result.json",
-    "sha256": "b9fe828d94f59709c9e6c7902eb3041d4bfb066d9928e4d42dbd4f22b568a85f"
-  },
-  "driver_sha256": "581ad6e953f5b65e6abbf65a419c429af23e9c6fd70be7f6bb041bb9cf5b2c77",
-  "instrumented_interface_sha256": "0fc70e89451197659237b8162cc4a1d54ebe76f6755dcc1ff61ce991d8bcb7cd",
-  "executable_sha256": "3a5421e87769bea828e431ccbe78c32712c9ac867763f435aa9c8df7d3df3fb9"
-}

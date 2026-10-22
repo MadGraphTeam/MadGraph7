@@ -1,9 +1,0 @@
-test_GEN_vendor_diff_failure_is_not_ignored (__main__.GuardChecks.test_GEN_vendor_diff_failure_is_not_ignored) ... ok
-test_archive_relabeling_is_rejected_before_dispatch (__main__.GuardChecks.test_archive_relabeling_is_rejected_before_dispatch) ... ok
-test_bound_helper_mutation_is_rejected (__main__.GuardChecks.test_bound_helper_mutation_is_rejected) ... ok
-test_unrelated_docs_and_tool_commits_preserve_exact_guard (__main__.GuardChecks.test_unrelated_docs_and_tool_commits_preserve_exact_guard) ... ok
-
-----------------------------------------------------------------------
-Ran 4 tests in 0.405s
-
-OK

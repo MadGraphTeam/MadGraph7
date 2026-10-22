@@ -1,9 +1,0 @@
-{
-  "status": "recorded-before-generation",
-  "revision": "27147b3300f556a75661a886e92bdbe00558ee25",
-  "source_kind": "verified git archive",
-  "verification": "provenance.json:baseline_source_integrity",
-  "captured_utc": "2026-10-20T23:16:22.017368+00:00",
-  "dirty_patch_sha256": null,
-  "identity_sha256": "629161653b509c8d459306ac50f25b247b3aa37982c672f5a8f1b2ec170b8308"
-}

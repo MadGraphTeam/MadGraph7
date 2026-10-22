@@ -1,8 +1,0 @@
-usage: preflight.py [-h] --proof PROOF --references REFERENCES
-
-Fail closed until final runtime proof and complete legacy references exist.
-
-options:
-  -h, --help            show this help message and exit
-  --proof PROOF
-  --references REFERENCES

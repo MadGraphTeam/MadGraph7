@@ -1,9 +1,0 @@
-{
-  "source_record": {
-    "path": ".benchmark-work/paper-dp-stability-20261021-v1/legacy-qcd1-parity-final-settings-v1/6-observed-result.json",
-    "sha256": "d8f1bb3fcb04d3ba3f68ee93173d40db11ec15f941cf66b1a152d807716f3d2d"
-  },
-  "driver_sha256": "581ad6e953f5b65e6abbf65a419c429af23e9c6fd70be7f6bb041bb9cf5b2c77",
-  "instrumented_interface_sha256": "0fc70e89451197659237b8162cc4a1d54ebe76f6755dcc1ff61ce991d8bcb7cd",
-  "executable_sha256": "c17b75aa0fe6430338a38fe99e9b2da54e959376a68b99fc9f530b2d4050ef68"
-}

@@ -1,8 +1,0 @@
-test_mixed_xml_and_aggregation (tests.unit_tests.various.test_ninjars_statistics.TestNinjaRSStatistics.test_mixed_xml_and_aggregation) ... ok
-test_nlo_logs_old_and_mixed (tests.unit_tests.various.test_ninjars_statistics.TestNinjaRSStatistics.test_nlo_logs_old_and_mixed) ... ok
-test_old_xml_is_unchanged (tests.unit_tests.various.test_ninjars_statistics.TestNinjaRSStatistics.test_old_xml_is_unchanged) ... ok
-
-----------------------------------------------------------------------
-Ran 3 tests in 0.005s
-
-OK

@@ -1,8 +1,0 @@
-{
-  "stage": "offline verifier only",
-  "returncode": 1,
-  "engine_calls": 0,
-  "error": "AssertionError: independent.compute() != json.loads(independent/result.json)",
-  "cause": "The independent checker returns tuple maximum_key values, which serialize to JSON lists. Apply the same JSON normalization to its recomputed result as to the owner result. Raw inputs, outputs, exact differences and independent source/result remain unchanged.",
-  "first_manifest_sha256": "688aeddc476aee0d6574cee803b8474bd5fc48e2cb7e6d9f7e977abd859b12b3"
-}

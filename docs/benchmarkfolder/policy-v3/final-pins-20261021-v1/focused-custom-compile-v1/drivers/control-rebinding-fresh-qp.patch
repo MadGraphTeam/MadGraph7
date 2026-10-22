@@ -1,3 +1,0 @@
-{
-  "diff": "--- clone-parent.f\n+++ control-rebinding-fresh-qp.f\n@@ -51,7 +51,7 @@\n       ANS=0D0\n       VALUES=0D0\n       TIMED_CODES=0\n-      CALL ML5_0_FORCE_STABILITY_CHECK(.TRUE.)\n+      CALL ML5_0_FORCE_STABILITY_CHECK(.FALSE.)\n       P=POINTS(:,:,1)\n       TOTAL=P(:,1)+P(:,2)\n       MU_R=SQRT(ABS(TOTAL(0)**2-SUM(TOTAL(1:3)**2)))\n"
-}

@@ -1,6 +1,0 @@
-{
-  "complete": false,
-  "evaluation_started": false,
-  "failure": "cp destination parent did not exist; no compiler, evaluator, or profiler was launched",
-  "retry": "full-profile-v2 creates the work parent; numerical inputs unchanged"
-}

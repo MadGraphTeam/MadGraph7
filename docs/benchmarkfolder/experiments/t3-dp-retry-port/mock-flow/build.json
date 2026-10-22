@@ -1,9 +1,0 @@
-{
-  "executable_sha256": "338bc60123e9e533a2cf3a14780bc90ac1077b5028c5ec558ad0e773c6b9902d",
-  "sources": {
-    "loop_matrix.f": "36249094775584ab297272bc70b605352814446e70cf491c25892e2f606e8706",
-    "CT_interface.f": "114fa7b21b4fc0d1ef14a1c2b836b19400d04a961cc157a39a4ef6ca4b973a7f",
-    "check_sa.f": "079db81a0fb1763d01a6705ae9079f28d718dee3d09cb62e08a86759cbe89ff6"
-  },
-  "note": "Mock reductions only. Both NinjaRS C callbacks are absent from the mocked wrapper bodies."
-}

@@ -1,4 +1,0 @@
-backend 6 original 100 points {'216': 98, '328': 2}
-backend 6 capture-only 100 points {'216': 98, '328': 2}
-backend 6 factor-trace 100 points {'216': 98, '328': 2}
-cohort passed 0.18769007066242113

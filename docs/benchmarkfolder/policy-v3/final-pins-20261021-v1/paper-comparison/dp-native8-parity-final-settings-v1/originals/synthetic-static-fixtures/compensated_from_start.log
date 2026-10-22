@@ -1,2 +1,0 @@
-GUARD_BEGIN create=0 dp=0 compensated=0 mp=0 destroy=0 nonnull=0
-FORBIDDEN_COMPENSATED_DP_ENTRY create=0 dp=0 compensated=1 mp=0 destroy=0 nonnull=0

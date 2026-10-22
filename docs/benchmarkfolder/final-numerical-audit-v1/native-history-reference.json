@@ -1,6 +1,0 @@
-{
-  "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/history-diagnostic.json",
-  "sha256": "32394e8f490f6c7db43ae5d312ec3a9592382da2985b76748ea7844bf960828e",
-  "bytes": 1692677,
-  "review_scope": "Read-only source severity assessment; package owned by native_final and separately sealed"
-}

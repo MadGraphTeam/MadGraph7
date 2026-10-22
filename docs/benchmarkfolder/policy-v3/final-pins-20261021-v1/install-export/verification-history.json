@@ -1,6 +1,0 @@
-{
-  "metadata_only_change": "Expose read-only verify(live=False) API and reject optimized Python; no numerical evidence changed or engine rerun.",
-  "initial_seal_manifest_sha256": "705149742fc6b78899aa6dd4e475e799c9a7f3349ba2387a6f34d1269e84ce7d",
-  "initial_capsule_retained_at": ".benchmark-work/final-pin-install-update-v1-launch/seal-v1-snapshot",
-  "initial_live_check_passed": true
-}

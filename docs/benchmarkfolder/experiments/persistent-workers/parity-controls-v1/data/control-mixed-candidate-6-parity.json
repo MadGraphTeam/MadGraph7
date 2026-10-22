@@ -1,7 +1,0 @@
-{
-  "passed": true,
-  "exact_rows": true,
-  "status_counts_match": true,
-  "worker_executable_sha256": "9b57a12f2d1dd06b02503b760945fb68d7adf80cfbb563a4b6dc51117d236626",
-  "fresh_executable_sha256": "e7128a109e098c7da2ae336af8dd13bed091e1ecdae912e013642de173c592ea"
-}

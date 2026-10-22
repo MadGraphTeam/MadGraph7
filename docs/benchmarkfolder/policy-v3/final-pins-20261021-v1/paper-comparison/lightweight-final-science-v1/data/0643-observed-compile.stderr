@@ -1,2 +1,0 @@
-/nix/store/31gnwsgag5qa14hfblqi5hyn71pyx7py-binutils-2.46/bin/ld.bfd: warning: 2759c6e58623ef3d-x86_64.o: missing .note.GNU-stack section implies executable stack
-/nix/store/31gnwsgag5qa14hfblqi5hyn71pyx7py-binutils-2.46/bin/ld.bfd: NOTE: This behaviour is deprecated and will be removed in a future version of the linker
