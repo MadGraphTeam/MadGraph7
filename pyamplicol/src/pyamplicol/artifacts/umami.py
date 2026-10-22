@@ -347,12 +347,27 @@ def _relabelled_runtime(runtime, relabel):
     }
 
 
-def _intern(table: list, value: Any) -> int:
-    try:
-        return table.index(value)
-    except ValueError:
+class _InternTable(list):
+    """A list with a hash index of its entries, so interning is O(1)."""
+
+    def __init__(self):
+        super().__init__()
+        self.positions: dict[Any, int] = {}
+
+
+def _frozen(value: Any) -> Any:
+    if isinstance(value, list | tuple):
+        return tuple(_frozen(v) for v in value)
+    return value
+
+
+def _intern(table: _InternTable, value: Any) -> int:
+    key = _frozen(value)
+    index = table.positions.get(key)
+    if index is None:
+        index = table.positions[key] = len(table)
         table.append(value)
-        return len(table) - 1
+    return index
 
 
 def _identical_orbit(order, flow, pdgs, incoming, helicities, word_size):
@@ -622,10 +637,10 @@ def _build_provider(
         },
         "grouping": {"assumptions": assumptions},
         "channels": [],
-        "pdg_ids": [],
-        "color_orders": [],
-        "color_flows": [],
-        "helicities": [],
+        "pdg_ids": _InternTable(),
+        "color_orders": _InternTable(),
+        "color_flows": _InternTable(),
+        "helicities": _InternTable(),
         "runtime_processes": [],
         "aliases": [],
         "xml_header": (
