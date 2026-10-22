@@ -426,8 +426,10 @@ class ObservableSlice:
     spin_classes: tuple[tuple[int, ...], ...] = ()
     ward: bool = False
     _directed: dict[Hashable, DirectedColour] = field(default_factory=dict, repr=False)
-    # Complete-family LC/NLC degrees per colour family (design §7.7).
+    # Complete-family LC/NLC degrees per colour family (design §7.7) and
+    # the family of each history (bra, ket).
     _families: dict[tuple, dict] = field(default_factory=dict, repr=False)
+    _family_of: dict[tuple, tuple] = field(default_factory=dict, repr=False)
 
     @classmethod
     def generate(
@@ -497,7 +499,7 @@ class ObservableSlice:
             if not slice_.colour_pruned:
                 criteria: list = []
                 for history in directed:
-                    family = colour_family(slice_.basis.legs, history)
+                    family = out.family(history)
                     if family not in out._families:
                         tables: list[SeedTable] = []
                         degrees = out._families[family] = out._family_degrees(
@@ -530,7 +532,7 @@ class ObservableSlice:
 
         if history is None or not history.bra:
             return self.slice.degrees()
-        family = colour_family(self.slice.basis.legs, history)
+        family = self.family(history)
         found = self._families.get(family)
         if found is None:
             if self.slice.colour_pruned:
@@ -539,6 +541,15 @@ class ObservableSlice:
                     "LC/NLC slice was pruned"
                 )
             found = self._families[family] = self._family_degrees(family)
+        return found
+
+    def family(self, history: ColorCorrelator) -> tuple[ColorConnection, ...]:
+        """The complete colour family of ``history`` (built once)."""
+
+        key = (history.bra, history.ket)
+        found = self._family_of.get(key)
+        if found is None:
+            found = self._family_of[key] = colour_family(self.slice.basis.legs, history)
         return found
 
     def _family_degrees(
