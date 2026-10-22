@@ -648,6 +648,65 @@ pub struct Merged {
     pub variants: Vec<Vec<Option<(i8, u64)>>>,
     /// Per family, the last chunk that closes into it.
     pub last_chunk: Vec<Option<usize>>,
+    /// Per chunk, its parallel layout.
+    pub layout: Vec<ChunkLayout>,
+}
+
+/// The parallel layout of one schedule-M chunk: its seeded states, which
+/// read entries only, and the groups of its other states. A group reads
+/// seeded states of its chunk and states of its own group, so the seeded
+/// states run first and the groups after them, independently. Indices are
+/// ascending (execution order) within the head and within each group;
+/// groups are ordered by their first state.
+#[derive(Clone, Debug, Default)]
+pub struct ChunkLayout {
+    pub head: Vec<usize>,
+    pub groups: Vec<Vec<usize>>,
+}
+
+impl ChunkLayout {
+    /// The layout of the states `range` (no edge leaves the range).
+    fn of(states: &[MergedState], range: std::ops::Range<usize>) -> Self {
+        let start = range.start;
+        let mut parent: Vec<usize> = (0..range.len()).collect();
+        fn root(parent: &mut [usize], mut x: usize) -> usize {
+            while parent[x] != x {
+                parent[x] = parent[parent[x]];
+                x = parent[x];
+            }
+            x
+        }
+        let mut layout = Self::default();
+        for s in range.clone() {
+            let step = &states[s].step;
+            if step.seeded {
+                layout.head.push(s);
+                continue;
+            }
+            for edge in &step.edges {
+                if let Source::Step(p) = edge.source
+                    && !states[p].step.seeded
+                {
+                    let (a, b) = (root(&mut parent, s - start), root(&mut parent, p - start));
+                    parent[a.max(b)] = a.min(b);
+                }
+            }
+        }
+        let mut group_of: HashMap<usize, usize> = HashMap::new();
+        for s in range {
+            if states[s].step.seeded {
+                continue;
+            }
+            let r = root(&mut parent, s - start);
+            let next = layout.groups.len();
+            let g = *group_of.entry(r).or_insert(next);
+            if g == next {
+                layout.groups.push(Vec::new());
+            }
+            layout.groups[g].push(s);
+        }
+        layout
+    }
 }
 
 impl Merged {
@@ -1327,9 +1386,7 @@ impl LoopProgramV4 {
         let merged = file
             .merged
             .as_ref()
-            .map(|merged| {
-                Self::merged(merged, &shared, &families, &mut tables, &mut split_inputs)
-            })
+            .map(|merged| Self::merged(merged, &shared, &families, &mut tables, &mut split_inputs))
             .transpose()?;
         Ok(Self {
             legs: file.legs,
@@ -1638,11 +1695,17 @@ impl LoopProgramV4 {
         let mut chunk_of = Vec::with_capacity(merged.states.len());
         let mut start = 0;
         for (k, &end) in merged.chunks.iter().enumerate() {
-            require(end > start && end <= merged.states.len(), "merged chunk bounds")?;
+            require(
+                end > start && end <= merged.states.len(),
+                "merged chunk bounds",
+            )?;
             chunk_of.extend(std::iter::repeat_n(k, end - start));
             start = end;
         }
-        require(start == merged.states.len(), "merged chunks cover every state")?;
+        require(
+            start == merged.states.len(),
+            "merged chunks cover every state",
+        )?;
         let mut states: Vec<MergedState> = Vec::with_capacity(merged.states.len());
         for (index, s) in merged.states.iter().enumerate() {
             let mut edges = Vec::with_capacity(s.edges.len());
@@ -1728,7 +1791,9 @@ impl LoopProgramV4 {
                             && closure.accumulator < family.orders.len()
                             && s.rows == 1
                             && s.d_alpha == s.d_out
-                            && closure.relabel.is_none_or(|(sign, _)| sign == 1 || sign == -1),
+                            && closure
+                                .relabel
+                                .is_none_or(|(sign, _)| sign == 1 || sign == -1),
                         "merged closure",
                     )?;
                     let list = &mut variants[closure.family];
@@ -1784,6 +1849,12 @@ impl LoopProgramV4 {
                 "a merged family without closures",
             )?;
         }
+        let mut layout = Vec::with_capacity(merged.chunks.len());
+        let mut start = 0;
+        for &end in &merged.chunks {
+            layout.push(ChunkLayout::of(&states, start..end));
+            start = end;
+        }
         Ok(Merged {
             families: merged.families.clone(),
             entries,
@@ -1792,6 +1863,7 @@ impl LoopProgramV4 {
             weights,
             variants,
             last_chunk,
+            layout,
         })
     }
 

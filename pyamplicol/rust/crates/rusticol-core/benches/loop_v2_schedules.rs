@@ -109,14 +109,16 @@ fn batch(plan: &LoopProgramV4, points: usize) -> V2Batch<f64> {
     }
 }
 
-/// Modelled kernel work of the chosen forms (complex MAC per lane).
-fn work<'a>(steps: impl Iterator<Item = &'a Step>) -> u64 {
-    steps
-        .map(|step| match (step.split.is_some(), step.costs) {
+/// Modelled kernel work of the chosen forms (complex MAC per lane): all
+/// steps, and the seeded ones (the seed injection).
+fn work<'a>(steps: impl Iterator<Item = &'a Step>) -> (u64, u64) {
+    steps.fold((0, 0), |(all, seeded), step| {
+        let work = match (step.split.is_some(), step.costs) {
             (true, (_, Some(split))) => split.work,
             (_, (fused, _)) => fused.work,
-        })
-        .sum()
+        };
+        (all + work, seeded + if step.seeded { work } else { 0 })
+    })
 }
 
 struct Args {
@@ -163,7 +165,7 @@ fn main() {
     for path in &args.plans {
         let text = std::fs::read(path).expect("plan file");
         let start = Instant::now();
-        let plan = LoopProgramV4::load(&text).expect("plan v4");
+        let plan = Arc::new(LoopProgramV4::load(&text).expect("plan v4"));
         let load = start.elapsed().as_secs_f64();
         let merged = plan.merged.as_ref().expect("a plan with schedule M");
         let in_m = |f: usize| merged.families.binary_search(&f).is_ok();
@@ -175,10 +177,10 @@ fn main() {
                 .filter(|(f, _)| !in_m(*f))
                 .flat_map(|(_, f)| &f.steps),
         );
-        let m_work = work(merged.states.iter().map(|s| &s.step)) + b_rest;
+        let m_own = work(merged.states.iter().map(|s| &s.step));
+        let m_work = (m_own.0 + b_rest.0, m_own.1 + b_rest.1);
         let b_steps: usize = plan.families.iter().map(|f| f.steps.len()).sum();
         let batch = batch(&plan, args.points);
-        let plan = Arc::new(plan);
         let executor = V2Executor::new(plan.clone(), args.lanes, Some(args.threads)).unwrap();
         let mut record = json!({
             "plan": path,
@@ -192,7 +194,8 @@ fn main() {
             "points": args.points,
             "lanes": args.lanes,
             "threads": args.threads,
-            "work_per_lane": {"B": b_work, "M": m_work},
+            "work_per_lane": {"B": b_work.0, "M": m_work.0},
+            "seeded_work_per_lane": {"B": b_work.1, "M": m_work.1},
         });
         for (name, schedule) in [("B", Schedule::B), ("M", Schedule::M)] {
             let mut options = V2Options {
@@ -247,7 +250,10 @@ fn main() {
         results.push(record);
     }
     if let Some(path) = args.json {
-        std::fs::write(path, serde_json::to_string_pretty(&Value::Array(results)).unwrap())
-            .expect("write the results");
+        std::fs::write(
+            path,
+            serde_json::to_string_pretty(&Value::Array(results)).unwrap(),
+        )
+        .expect("write the results");
     }
 }

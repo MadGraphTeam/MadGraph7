@@ -2351,9 +2351,10 @@ pub mod v2 {
     fn b_families(plan: &LoopProgramV4, schedule: Schedule) -> RusticolResult<Vec<usize>> {
         match schedule {
             Schedule::M => {
-                let merged = plan.merged.as_ref().ok_or_else(|| {
-                    RusticolError::invalid_argument("the plan has no schedule M")
-                })?;
+                let merged = plan
+                    .merged
+                    .as_ref()
+                    .ok_or_else(|| RusticolError::invalid_argument("the plan has no schedule M"))?;
                 Ok((0..plan.families.len())
                     .filter(|f| merged.families.binary_search(f).is_err())
                     .collect())
@@ -2718,7 +2719,11 @@ pub mod v2 {
         report.count("merged states", stats.states);
         report.count("merged split states", stats.split_states);
         report.count("merged chunks", stats.chunks);
-        report.peak("chunk inputs (factors, vertex tensors, currents)", stats.peak_inputs, lanes);
+        report.peak(
+            "chunk inputs (factors, vertex tensors, currents)",
+            stats.peak_inputs,
+            lanes,
+        );
         report.peak("open objects (one merged chunk)", stats.peak_objects, lanes);
         report.peak("merged family accumulators", stats.peak_accumulators, lanes);
     }

@@ -15,25 +15,30 @@
 //! input. Steps run in the kernel form the plan chose (gate G0's rule), with
 //! the same fused and split kernels as schedule B.
 //!
-//! **Chunks.** States are ordered chunk by chunk (the last letters of the cut
-//! word) and no edge crosses a chunk, so a chunk owns its live objects: a
-//! state's output is released after its last reader. Chunks run on separate
-//! threads; each returns its closures summed per (family, loop orders, frame
-//! map) and the sums are added in chunk order, so results do not depend on
-//! the thread count.
+//! **Chunks.** States are ordered chunk by chunk (a cut species and the
+//! first dressed position) and no edge crosses a chunk, so a chunk owns its
+//! live objects. Within a chunk the seeded states run first, in parallel;
+//! the other states form groups ([`super::plan::ChunkLayout`]) that read only
+//! seeded states and their own group, and run in parallel on the seeded
+//! outputs, each releasing a state's output after its last reader. Chunks
+//! of a part run in parallel too. Closures are summed per (family, loop
+//! orders, frame map) within a group and the sums are added in chunk and
+//! group order, so results do not depend on the thread count.
 //!
 //! **Closures and frames.** A full state is traced into its family's
-//! accumulator of its frame map: closures read the ring from the cut, which
-//! is not the family's trie frame in general. Each family keeps one sum per
-//! distinct frame map (at most `2N`) and maps each into the trie frame once,
-//! when the family is complete ([`Accumulators::finish`]), so frame maps cost
-//! per family, not per closure.
+//! accumulator of its frame map. Paths read from the family's trie reading
+//! close in the trie frame itself (the default); paths read from another
+//! reading close in its frame, so each family keeps one sum per distinct
+//! frame map (at most `2N`) and maps each into the trie frame once, when the
+//! family is complete ([`Accumulators::finish`]): frame maps cost per family,
+//! not per closure.
 //!
 //! **Streaming.** Chunks run in parts of consecutive chunks; the inputs of a
 //! part (fused factors, split vertex tensors and currents) are built before it
 //! and kept only while a later part reads them, and every family whose last
-//! closure lies in a finished part is handed to the caller (bucket streaming
-//! into the reduction "where chunk order allows").
+//! closure lies in a finished part is handed to the caller. A family's chunks
+//! are consecutive (they share its first position), so families stream into
+//! the reduction part by part.
 
 use super::closure::{FamilyNumerator, frame_shift, substitute, trace_into};
 use super::dress::{Carrier, ChunkInputs, LaneData, Pool, Reads, cadd, dress_edge};
@@ -53,11 +58,22 @@ pub const DEFAULT_PART_CHUNKS: usize = 64;
 /// A closure target: (family, accumulator, frame-map variant).
 type Target = (usize, usize, usize);
 
-/// Closures of one chunk summed per target, in first-closure order.
-struct ChunkSums<T> {
+/// Closures of a group (or a chunk's seeded states) summed per target, in
+/// first-closure order, and the group's peak live reals.
+struct Sums<T> {
     targets: Vec<Target>,
     sums: Vec<Vec<T>>,
     peak_reals: usize,
+}
+
+impl<T> Default for Sums<T> {
+    fn default() -> Self {
+        Self {
+            targets: Vec::new(),
+            sums: Vec::new(),
+            peak_reals: 0,
+        }
+    }
 }
 
 /// The M accumulators of every family: per (accumulator, variant), `columns
@@ -133,7 +149,9 @@ impl<T: Carrier> Accumulators<T> {
                 }
                 Some((sign, mask)) => {
                     let shift = frame_shift(data, mask);
-                    for (column, values) in target.chunks_exact_mut(width).zip(sum.chunks_exact(width)) {
+                    for (column, values) in
+                        target.chunks_exact_mut(width).zip(sum.chunks_exact(width))
+                    {
                         let mapped = substitute::<T, L>(values, rank, sign, &shift, zero);
                         for (t, x) in column.chunks_exact_mut(v).zip(mapped.chunks_exact(v)) {
                             cadd::<T, L>(t, x);
@@ -177,9 +195,8 @@ pub struct Weights<T> {
 
 impl<T: Carrier> Weights<T> {
     pub fn new<const L: usize>(merged: &Merged, data: &LaneData<T, L>) -> Self {
-        let cast = |[re, im]: &[symbolica::domains::rational::Rational; 2]| {
-            [data.cast(re), data.cast(im)]
-        };
+        let cast =
+            |[re, im]: &[symbolica::domains::rational::Rational; 2]| [data.cast(re), data.cast(im)];
         Self {
             entries: merged.entries.iter().map(|e| cast(&e.weight)).collect(),
             edges: merged.weights.iter().map(cast).collect(),
@@ -187,97 +204,79 @@ impl<T: Carrier> Weights<T> {
     }
 }
 
-/// The object an edge reads: its own (weighted or entry) buffer, or the
-/// parent's output in place.
-fn edge_input<'a, T>(
-    owned: &'a Option<Vec<T>>,
-    outputs: &'a [Option<Vec<T>>],
-    source: Source,
-    start: usize,
-) -> RusticolResult<&'a [T]> {
-    match (owned, source) {
-        (Some(object), _) => Ok(object),
-        (None, Source::Step(parent)) => outputs[parent - start]
-            .as_deref()
-            .ok_or_else(|| RusticolError::internal("a released M state is read")),
-        (None, Source::Leaf(_)) => Err(RusticolError::internal("an entry without its object")),
-    }
+/// Everything a state reads besides its sources' objects.
+struct Context<'a, T, const L: usize> {
+    plan: &'a LoopProgramV4,
+    merged: &'a Merged,
+    inputs: &'a ChunkInputs<T>,
+    seeds: &'a Seeds<T>,
+    weights: &'a Weights<T>,
+    data: &'a LaneData<T, L>,
 }
 
-/// Run the states of chunk `k`; closures summed per target.
-#[allow(clippy::too_many_arguments)]
-fn run_chunk<T: Carrier, const L: usize>(
-    plan: &LoopProgramV4,
-    merged: &Merged,
-    k: usize,
-    inputs: &ChunkInputs<T>,
-    seeds: &Seeds<T>,
-    weights: &Weights<T>,
-    data: &LaneData<T, L>,
-) -> RusticolResult<ChunkSums<T>> {
-    let columns = plan.columns;
-    let v = lane_vector_len(L);
-    let zero = &data.zero;
-    let range = merged.chunk(k);
-    let start = range.start;
-    let mut pool = Pool::new(zero);
-    let mut outputs: Vec<Option<Vec<T>>> = (0..range.len()).map(|_| None).collect();
-    let mut readers: Vec<usize> = merged.states[range.clone()]
-        .iter()
-        .map(|state| state.readers)
-        .collect();
-    let mut index: HashMap<Target, usize> = HashMap::new();
-    let mut sums = ChunkSums {
-        targets: Vec::new(),
-        sums: Vec::new(),
-        peak_reals: 0,
-    };
-    for s in range {
+impl<T: Carrier, const L: usize> Context<'_, T, L> {
+    /// The output of state `s`: every edge dressed from its input, an entry
+    /// object (entry and edge weights folded into the seed) or a source's
+    /// output (`read`), scaled into a buffer when the edge has a weight.
+    fn run_state<'b>(
+        &self,
+        s: usize,
+        read: impl Fn(usize) -> Option<&'b [T]>,
+        pool: &mut Pool<T>,
+    ) -> RusticolResult<Vec<T>>
+    where
+        T: 'b,
+    {
+        let (plan, merged) = (self.plan, self.merged);
         let state = &merged.states[s];
         let step = &state.step;
-        let mut out = pool.take(step.rows * columns * step.out_row() * v);
-        // The input of an edge: an entry object (entry and edge weights
-        // folded into the seed), or a parent's output, scaled into a buffer
-        // when the edge has a weight. `None` reads the parent in place.
-        let input = |e: usize, pool: &mut Pool<T>| -> Option<Vec<T>> {
-            let weight = state.weights[e].map(|w| &weights.edges[w]);
+        let v = lane_vector_len(L);
+        let mut out = pool.take(step.rows * plan.columns * step.out_row() * v);
+        // The input of edge `e`: owned (an entry, or a weighted source) or
+        // the source's output in place.
+        let input = |e: usize, pool: &mut Pool<T>| -> RusticolResult<Input<'b, T>> {
+            let weight = state.weights[e].map(|w| &self.weights.edges[w]);
             match step.edges[e].source {
                 Source::Leaf(entry) => {
-                    let seed = &seeds.values[merged.entries[entry].seed];
+                    let seed = &self.seeds.values[merged.entries[entry].seed];
                     let w = match weight {
-                        Some(w) => product(&weights.entries[entry], w),
-                        None => weights.entries[entry].clone(),
+                        Some(w) => product(&self.weights.entries[entry], w),
+                        None => self.weights.entries[entry].clone(),
                     };
                     let mut object = pool.take(seed.len());
                     scaled::<T, L>(&w, seed, &mut object);
-                    Some(object)
+                    Ok(Input::Owned(object))
                 }
-                Source::Step(parent) => weight.map(|w| {
-                    let source = outputs[parent - start].as_deref().expect("live parent");
-                    let mut object = pool.take(source.len());
-                    scaled::<T, L>(w, source, &mut object);
-                    object
-                }),
+                Source::Step(parent) => {
+                    let source = read(parent)
+                        .ok_or_else(|| RusticolError::internal("a released M state is read"))?;
+                    Ok(match weight {
+                        Some(w) => {
+                            let mut object = pool.take(source.len());
+                            scaled::<T, L>(w, source, &mut object);
+                            Input::Owned(object)
+                        }
+                        None => Input::Shared(source),
+                    })
+                }
             }
         };
         match &step.split {
             None => {
                 for (e, edge) in step.edges.iter().enumerate() {
-                    let owned = input(e, &mut pool);
+                    let source = input(e, pool)?;
                     dress_edge::<T, L>(
                         &plan.contents[edge.content],
                         step.seeded,
                         step.d_alpha,
                         &plan.products[edge.products],
                         step.rank_out,
-                        edge_input(&owned, &outputs, edge.source, start)?,
-                        inputs.factors.get(edge.factor),
+                        source.values(),
+                        self.inputs.factors.get(edge.factor),
                         &edge.links,
                         &mut out,
                     );
-                    if let Some(object) = owned {
-                        pool.give(object);
-                    }
+                    source.release(pool);
                 }
             }
             Some(split) => {
@@ -287,68 +286,167 @@ fn run_chunk<T: Carrier, const L: usize>(
                     .map(|group| {
                         let row = split_segment(plan, step, group.vertex, group.products)
                             .accumulator_row_len();
-                        pool.take(step.rows * columns * row * v)
+                        pool.take(step.rows * plan.columns * row * v)
                     })
                     .collect();
                 for (e, (edge, parts)) in step.edges.iter().zip(&split.parts).enumerate() {
-                    let owned = input(e, &mut pool);
-                    let source = edge_input(&owned, &outputs, edge.source, start)?;
+                    let source = input(e, pool)?;
                     for part in parts {
                         let group = &split.groups[part.group];
                         let segment = split_segment(plan, step, group.vertex, edge.products);
                         split_edge::<T, L>(
                             &segment,
-                            source,
-                            inputs.currents.get(part.current),
+                            source.values(),
+                            self.inputs.currents.get(part.current),
                             &part.links,
                             &mut accumulators[part.group],
                         );
                     }
-                    if let Some(object) = owned {
-                        pool.give(object);
-                    }
+                    source.release(pool);
                 }
-                apply_vertices::<T, L>(plan, step, split, inputs, &accumulators, &mut out);
+                apply_vertices::<T, L>(plan, step, split, self.inputs, &accumulators, &mut out);
                 for accumulator in accumulators {
                     pool.give(accumulator);
                 }
             }
         }
-        for edge in &step.edges {
-            if let Source::Step(parent) = edge.source {
-                let left = &mut readers[parent - start];
-                *left -= 1;
-                if *left == 0 {
-                    let buffer = outputs[parent - start].take().expect("live parent");
-                    pool.give(buffer);
+        Ok(out)
+    }
+
+    /// Trace a full state into `sums` (its target's slot).
+    fn close(&self, s: usize, out: &[T], sums: &mut Sums<T>) -> RusticolResult<()> {
+        let (plan, state) = (self.plan, &self.merged.states[s]);
+        let closure = state.closure.expect("a closing state");
+        let target = (closure.family, closure.accumulator, closure.variant);
+        let rank = plan.families[closure.family].rank;
+        let zero = &self.data.zero;
+        let slot = match sums.targets.iter().position(|t| *t == target) {
+            Some(slot) => slot,
+            None => {
+                sums.targets.push(target);
+                sums.sums.push(vec![
+                    zero.clone();
+                    plan.columns * ncoeff(rank) * lane_vector_len(L)
+                ]);
+                sums.sums.len() - 1
+            }
+        };
+        trace_into::<T, L>(
+            &state.step,
+            out,
+            &mut sums.sums[slot],
+            plan.columns,
+            rank,
+            zero,
+        )
+    }
+
+    /// Run one group of a chunk on the chunk's seeded outputs `head`
+    /// (indexed from the chunk's first state `start`).
+    fn run_group(
+        &self,
+        group: &[usize],
+        head: &[Option<Vec<T>>],
+        start: usize,
+    ) -> RusticolResult<Sums<T>> {
+        let merged = self.merged;
+        let mut pool = Pool::new(&self.data.zero);
+        let mut sums = Sums::default();
+        let mut outputs: HashMap<usize, Vec<T>> = HashMap::new();
+        let mut readers: HashMap<usize, usize> = group
+            .iter()
+            .map(|&s| (s, merged.states[s].readers))
+            .collect();
+        for &s in group {
+            let out = self.run_state(
+                s,
+                |p| {
+                    outputs
+                        .get(&p)
+                        .or(head[p - start].as_ref())
+                        .map(Vec::as_slice)
+                },
+                &mut pool,
+            )?;
+            for edge in &merged.states[s].step.edges {
+                if let Source::Step(parent) = edge.source
+                    && let Some(left) = readers.get_mut(&parent)
+                {
+                    *left -= 1;
+                    if *left == 0 {
+                        pool.give(outputs.remove(&parent).expect("live parent"));
+                    }
                 }
             }
-        }
-        match state.closure {
-            Some(closure) => {
-                let target = (closure.family, closure.accumulator, closure.variant);
-                let slot = *index.entry(target).or_insert_with(|| {
-                    let rank = plan.families[closure.family].rank;
-                    sums.targets.push(target);
-                    sums.sums
-                        .push(vec![zero.clone(); columns * ncoeff(rank) * v]);
-                    sums.sums.len() - 1
-                });
-                trace_into::<T, L>(
-                    step,
-                    &out,
-                    &mut sums.sums[slot],
-                    columns,
-                    plan.families[closure.family].rank,
-                    zero,
-                )?;
+            if merged.states[s].closure.is_some() {
+                self.close(s, &out, &mut sums)?;
                 pool.give(out);
+            } else {
+                outputs.insert(s, out);
             }
-            None => outputs[s - start] = Some(out),
+        }
+        sums.peak_reals = pool.peak;
+        Ok(sums)
+    }
+
+    /// Run chunk `k`: its seeded states in parallel, then its groups in
+    /// parallel on their outputs. Returns the closure sums of the seeded
+    /// states and of every group in group order (thread-count independent).
+    fn run_chunk(&self, k: usize) -> RusticolResult<(Vec<Sums<T>>, usize)> {
+        let merged = self.merged;
+        let range = merged.chunk(k);
+        let start = range.start;
+        let layout = &merged.layout[k];
+        let zero = &self.data.zero;
+        let head: Vec<Vec<T>> = layout
+            .head
+            .par_iter()
+            .map_init(
+                || Pool::new(zero),
+                |pool, &s| self.run_state(s, |_| None, pool),
+            )
+            .collect::<RusticolResult<_>>()?;
+        let mut sums = vec![Sums::default()];
+        let mut outputs: Vec<Option<Vec<T>>> = (0..range.len()).map(|_| None).collect();
+        let mut head_reals = 0;
+        for (&s, out) in layout.head.iter().zip(head) {
+            if merged.states[s].closure.is_some() {
+                self.close(s, &out, &mut sums[0])?;
+            } else {
+                head_reals += out.len();
+                outputs[s - start] = Some(out);
+            }
+        }
+        let groups = layout
+            .groups
+            .par_iter()
+            .map(|group| self.run_group(group, &outputs, start))
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let peak = head_reals + groups.iter().map(|g| g.peak_reals).max().unwrap_or(0);
+        sums.extend(groups);
+        Ok((sums, peak))
+    }
+}
+
+/// An edge's input: a buffer of its own, or a source's output in place.
+enum Input<'a, T> {
+    Owned(Vec<T>),
+    Shared(&'a [T]),
+}
+
+impl<T: Carrier> Input<'_, T> {
+    fn values(&self) -> &[T] {
+        match self {
+            Input::Owned(object) => object,
+            Input::Shared(object) => object,
         }
     }
-    sums.peak_reals = pool.peak;
-    Ok(sums)
+
+    fn release(self, pool: &mut Pool<T>) {
+        if let Input::Owned(object) = self {
+            pool.give(object);
+        }
+    }
 }
 
 /// A part of consecutive chunks with the inputs it reads and those still
@@ -448,17 +546,26 @@ pub fn run_merged<T: Carrier, const L: usize>(
         stats.seconds_inputs += start.elapsed().as_secs_f64();
         stats.peak_inputs = stats.peak_inputs.max(inputs.reals());
         let start = std::time::Instant::now();
-        let shared = &*inputs;
+        let context = Context {
+            plan,
+            merged,
+            inputs: &*inputs,
+            seeds,
+            weights: &weights,
+            data,
+        };
         let runs = part
             .chunks
             .clone()
             .into_par_iter()
-            .map(|k| run_chunk::<T, L>(plan, merged, k, shared, seeds, &weights, data))
+            .map(|k| context.run_chunk(k))
             .collect::<RusticolResult<Vec<_>>>()?;
-        for run in runs {
-            stats.peak_objects = stats.peak_objects.max(run.peak_reals);
-            for (target, values) in run.targets.iter().zip(&run.sums) {
-                accumulators.add::<L>(plan, merged, *target, values, &data.zero);
+        for (run, peak) in runs {
+            stats.peak_objects = stats.peak_objects.max(peak);
+            for sums in &run {
+                for (target, values) in sums.targets.iter().zip(&sums.sums) {
+                    accumulators.add::<L>(plan, merged, *target, values, &data.zero);
+                }
             }
         }
         stats.seconds_dressing += start.elapsed().as_secs_f64();
@@ -473,7 +580,9 @@ pub fn run_merged<T: Carrier, const L: usize>(
         let complete: Vec<FamilyNumerator<T>> = merged
             .families
             .iter()
-            .filter(|&&family| merged.last_chunk[family].is_some_and(|k| k <= last && k >= part.chunks.start))
+            .filter(|&&family| {
+                merged.last_chunk[family].is_some_and(|k| k <= last && k >= part.chunks.start)
+            })
             .map(|&family| accumulators.finish(plan, merged, family, data))
             .collect();
         if !complete.is_empty() {
@@ -545,9 +654,8 @@ mod tests {
     }
 
     fn batch() -> V2Batch<Rational> {
-        let momentum = |e: i64| -> Vec<Rational> {
-            [e, 0, 0, e, e, 0, 0, -e].map(Rational::from).to_vec()
-        };
+        let momentum =
+            |e: i64| -> Vec<Rational> { [e, 0, 0, e, e, 0, 0, -e].map(Rational::from).to_vec() };
         let complex = |re: i64, im: i64| Complex::new(Rational::from(re), Rational::from(im));
         V2Batch {
             momenta: vec![momentum(1), momentum(2)],
@@ -569,6 +677,16 @@ mod tests {
         assert_eq!(merged.weights.len(), 2);
         let readers: Vec<usize> = merged.states.iter().map(|s| s.readers).collect();
         assert_eq!(readers, [1, 1, 0, 1, 0]);
+        // Seeded states first, then the groups that read them.
+        let layout: Vec<_> = merged
+            .layout
+            .iter()
+            .map(|l| (l.head.clone(), l.groups.clone()))
+            .collect();
+        assert_eq!(
+            layout,
+            [(vec![0, 1], vec![vec![2]]), (vec![3], vec![vec![4]])]
+        );
         // An edge into a later chunk's state is refused.
         let crossing = PLAN.replace(r#""chunks":[3,5]"#, r#""chunks":[1,5]"#);
         let text = crossing

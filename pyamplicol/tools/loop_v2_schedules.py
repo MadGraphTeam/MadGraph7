@@ -20,8 +20,9 @@ until the electroweak signs (WP3.2) and the model certifier (WP3.5) land.
 and prints, per plan, the dressing-side time per point (dressing, fused
 factors and split inputs, seeds, scatter; the reduction is the same for both
 schedules and is not run) and modelled kernel work of B and M, their ratios,
-the reals per lane of every live store, and the design's adoption rule
-(§1.6 item 5): M is adopted for a class when it is at least 15 % faster.
+the share of the seed injection in the work, the memory per lane of the
+live stores, and the design's adoption rule (§1.6 item 5): M is adopted for
+a class when it is at least 15 % faster.
 
 Usage:
     python tools/loop_v2_schedules.py export --output DIR [--process KEY ...]
@@ -156,37 +157,57 @@ def export(options: argparse.Namespace) -> int:
     return 0
 
 
-def _mb(reals: int, real_bytes: int) -> str:
-    return f"{reals * real_bytes / 2**20:.2f}"
+def _kb(reals: int, real_bytes: int) -> str:
+    return f"{reals * real_bytes / 1024:.0f}"
+
+
+def _stores(run: dict) -> tuple[int, int, int]:
+    """Reals per lane of a run's chunk inputs, live open-loop objects (one
+    family walk or one M chunk, per thread) and family numerators (one
+    bucket chunk, or M's accumulators)."""
+
+    reals = run["reals_per_lane"]
+    inputs = reals.get("chunk inputs (factors, vertex tensors, currents)", 0)
+    objects = max(
+        reals.get("open objects (one family walk)", 0),
+        reals.get("open objects (one merged chunk)", 0),
+    )
+    numerators = reals.get("family numerators (one bucket chunk)", 0) + reals.get(
+        "merged family accumulators", 0
+    )
+    return inputs, objects, numerators
 
 
 def report(options: argparse.Namespace) -> int:
+    """The adoption table of bench runs (module docstring)."""
+
     rows = []
     for path in options.bench:
         rows.extend(json.loads(Path(path).read_text()))
-    header = (
-        "| plan | families (M) | B steps / M states | B ms/pt | M ms/pt | M/B time "
-        "| M/B work | B dressing | M dressing | memory per lane, MB (B / M) | adopt M |"
+    print(
+        "| plan | threads | families (M) | B ms/pt | M ms/pt | M/B time | M/B work "
+        "| seeded work B / M | kB per lane B (inputs, objects, numerators) "
+        "| kB per lane M | adopt M |"
     )
-    print(header)
     print("|---" * 11 + "|")
     for row in rows:
         b, m = row["B"], row["M"]
         time_ratio = m["seconds_per_point"] / b["seconds_per_point"]
-        work = row["work_per_lane"]
-        work_ratio = work["M"] / work["B"]
+        work, seeded = row["work_per_lane"], row["seeded_work_per_lane"]
         real = b["real_bytes"]
-        b_memory = sum(b["reals_per_lane"].values())
-        m_memory = sum(m["reals_per_lane"].values())
+        memory = {
+            name: ", ".join(_kb(x, real) for x in _stores(run))
+            for name, run in (("B", b), ("M", m))
+        }
         adopt = "yes" if time_ratio <= 1 - ADOPTION_GAIN else "no"
         print(
-            f"| {Path(row['plan']).stem} | {row['families']} ({row['merged_families']}) "
-            f"| {row['b_steps']} / {row['m_states']} "
-            f"| {b['seconds_per_point'] * 1e3:.2f} | {m['seconds_per_point'] * 1e3:.2f} "
-            f"| {time_ratio:.3f} | {work_ratio:.3f} "
-            f"| {b['stages_per_point'].get('dressing', 0) * 1e3:.2f} "
-            f"| {m['stages_per_point'].get('dressing', 0) * 1e3:.2f} "
-            f"| {_mb(b_memory, real)} / {_mb(m_memory, real)} | {adopt} |"
+            f"| {Path(row['plan']).stem} | {row['threads']} "
+            f"| {row['families']} ({row['merged_families']}) "
+            f"| {b['seconds_per_point'] * 1e3:.2f} "
+            f"| {m['seconds_per_point'] * 1e3:.2f} "
+            f"| {time_ratio:.3f} | {work['M'] / work['B']:.3f} "
+            f"| {seeded['B'] / work['B']:.2f} / {seeded['M'] / work['M']:.2f} "
+            f"| {memory['B']} | {memory['M']} | {adopt} |"
         )
     return 0
 
