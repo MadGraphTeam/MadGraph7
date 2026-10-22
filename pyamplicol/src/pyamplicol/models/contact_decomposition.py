@@ -268,6 +268,7 @@ class CompiledContactDecompositionSplit:
         if self.decomposition_kind not in {
             "literal-color-singlet",
             "two-structure-constants",
+            "two-identities",
         }:
             raise ValueError(
                 f"unknown contact decomposition kind {self.decomposition_kind!r}"
@@ -352,6 +353,20 @@ class CompiledContactDecompositionSplit:
             ):
                 raise ValueError(
                     "contact dummy-index mapping disagrees with the chosen factors"
+                )
+        elif self.decomposition_kind == "two-identities":
+            # delta^{pair} delta^{remaining result}: the pair closes into a
+            # colour singlet, the remaining leg's colour passes to the result.
+            if (
+                tuple(sorted(self.outer_color_factor))
+                != tuple(sorted(leg + 1 for leg in self.pair_legs))
+                or tuple(sorted(self.final_color_factor))
+                != tuple(sorted((self.remaining_leg + 1, self.result_leg + 1)))
+                or self.dummy_index_mapping is not None
+            ):
+                raise ValueError(
+                    "two-identity contact proof requires the pair and the "
+                    "remaining-result identities"
                 )
         elif (
             self.outer_color_factor

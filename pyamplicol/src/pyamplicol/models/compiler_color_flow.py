@@ -269,6 +269,18 @@ def compile_lc_color_transition_terms(
                 "-1",
             ),
         )
+    if structure == "adjoint-symmetric-invariant":
+        # d^abc = (tr(abc) + tr(acb)) / sqrt(2) with tau = sqrt(2) t: both
+        # orders with the same sign (the structure constant's differ).
+        if oriented_representations != (8, 8, 8):
+            raise ValueError(
+                f"kernel {kernel.kind} d-symbol has representations "
+                f"{oriented_representations!r}"
+            )
+        return compiled(
+            term((0, 1), "concatenate-join", "adjoint-segment"),
+            term((1, 0), "concatenate-join", "adjoint-segment"),
+        )
     raise ValueError(
         f"kernel {kernel.kind} has unsupported recurrence color projection "
         f"{structure!r}"

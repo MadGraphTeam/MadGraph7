@@ -325,6 +325,11 @@ class ColorEngine:
             for label, representation in self._color_rep_by_label.items()
             if representation == -3
         )
+        self._loop_adjoint_labels = frozenset(
+            label
+            for label, representation in self._color_rep_by_label.items()
+            if representation == 8
+        )
         self._shared_single_trace = False
         self._shared_lc_orderings = bool(self._shared_lc_coloured_labels)
 
@@ -354,14 +359,48 @@ class ColorEngine:
             if result in self._fundamental_line_auxiliary_ids
             else _known_color_representation(self.model, result)
         )
-        open_ends = self._loop_block_word_open_ends(
-            tuple(
-                label
-                for label in ordered_external_labels
-                if label in self._shared_lc_coloured_labels
+        coloured = tuple(
+            label
+            for label in ordered_external_labels
+            if label in self._shared_lc_coloured_labels
+        )
+        open_ends = self._loop_block_word_open_ends(coloured)
+        traces = tuple(sorted({*left.traces, *right.traces}))
+        lines = tuple(sorted({*left.lines, *right.lines}))
+        closing = (
+            open_ends == (True, True)
+            and representation == 1
+            and all(
+                _known_color_representation(self.model, pdg) == 8
+                for pdg in vertex.particles[:2]
             )
         )
-        if open_ends is None or open_ends != _LOOP_BLOCK_OPEN_ENDS.get(
+        if closing:
+            # A colour-identity vertex closing two adjoint currents into a
+            # colour singlet: the joined word becomes a closed trace (the
+            # multi-trace state of counterterm currents, design §6.1). Both
+            # input orders give the same trace; one is kept
+            # (``_loop_block_trace_orientation_allowed``).
+            starts = [
+                index
+                for index, label in enumerate(coloured)
+                if label in self._loop_fundamental_labels
+            ]
+            if not starts:
+                start = coloured.index(min(coloured))
+                traces = tuple(sorted({*traces, coloured[start:] + coloured[:start]}))
+            else:
+                # Joining the open ends merges the last string (from its
+                # fundamental leg to the open end) with the first: the word,
+                # rotated to that leg, is a sequence of closed lines.
+                rotated = coloured[starts[-1] :] + coloured[: starts[-1]]
+                closed: list[tuple[int, ...]] = []
+                for label in rotated:
+                    if label in self._loop_fundamental_labels:
+                        closed.append(())
+                    closed[-1] = (*closed[-1], label)
+                lines = tuple(sorted({*lines, *closed}))
+        elif open_ends is None or open_ends != _LOOP_BLOCK_OPEN_ENDS.get(
             representation  # type: ignore[arg-type]
         ):
             return ()
@@ -371,6 +410,8 @@ class ColorEngine:
                     accuracy=left.accuracy,
                     sector_id=0,
                     line_groups=groups,
+                    traces=traces,
+                    lines=lines,
                 )
             ),
         )
@@ -1096,6 +1137,11 @@ class ColorEngine:
             labels = segment if segment in self._shared_single_trace_segments else None
             self._ordered_combination_labels_cache[cache_key] = labels
             return labels
+        if self._loop_blocks and not self._loop_block_trace_orientation_allowed(
+            left_index, right_index, vertex
+        ):
+            self._ordered_combination_labels_cache[cache_key] = None
+            return None
         if self._shared_lc_orderings:
             labels = (
                 self._shared_lc_ordered_combination_labels(left_index, right_index)
@@ -1133,6 +1179,46 @@ class ColorEngine:
             return labels
         self._ordered_combination_labels_cache[cache_key] = None
         return None
+
+    def _loop_block_trace_orientation_allowed(
+        self,
+        left_index: CurrentIndex,
+        right_index: CurrentIndex,
+        vertex: Vertex,
+    ) -> bool:
+        """One input order of merges whose two orders give one colour state.
+
+        Closing two adjoint words into a colour singlet gives the same trace
+        in both orders; a closed colour singlet carrying traces (an empty open
+        word) inherits the other input's word in both orders. Like colour
+        singlets (``_singlet_order_allowed``), such merges keep one order: the
+        closing with the smaller first label on the left, a closed singlet on
+        the right of a coloured input.
+        """
+
+        left = self._coloured(left_index.ordered_external_labels)
+        right = self._coloured(right_index.ordered_external_labels)
+        state = left_index.color_state
+        if (state.traces or state.lines) and not left and right:
+            return False
+        result = vertex.particles[2]
+        if (
+            left
+            and right
+            and result not in self._fundamental_line_auxiliary_ids
+            and _known_color_representation(self.model, result) == 1
+            and all(
+                _known_color_representation(self.model, pdg) == 8
+                for pdg in vertex.particles[:2]
+            )
+        ):
+            return min(left) < min(right)
+        return True
+
+    def _coloured(self, labels: Iterable[int]) -> tuple[int, ...]:
+        return tuple(
+            label for label in labels if label in self._shared_lc_coloured_labels
+        )
 
     def _singlet_order_allowed(
         self,

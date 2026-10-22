@@ -26,6 +26,10 @@ Conventions a consumer relies on:
   ``(tau^{a_k} ... tau^{a_1})_{e s}`` and an adjoint field closes
   ``out -> in`` with ``tau^X_{in, out}``.
   U(1)-subtraction auxiliaries are separate colour-singlet blocks.
+  A counterterm block may also carry closed components (the multi-trace
+  state of design §6.1; their labels are not in the word): closed traces of
+  adjoint legs (``BlockColourFlow.traces``), each ``tr(tau^a_1 ... tau^a_k)``,
+  and closed lines, which join ``strings`` like the word's inner strings.
 * **N_c grade.** The tree engine weights every U(1)-subtraction auxiliary it
   produces from a fundamental line pair with the numeric 1/N_c of the Fierz
   identity at N_c = 3. A block whose trees produce k auxiliaries has grade
@@ -201,19 +205,25 @@ class BlockColourFlow:
     singlet_labels: tuple[int, ...] = ()
     sign: int = 1
     nc_grade: int | None = 0
+    traces: tuple[tuple[int, ...], ...] = ()
 
 
 def block_colour_flow(
     word: Iterable[int],
     representations: Mapping[int, int],
     field_representation: int,
+    *,
+    lines: Iterable[tuple[int, ...]] = (),
+    traces: Iterable[tuple[int, ...]] = (),
 ) -> BlockColourFlow:
     """Split a block word into its colour-flow strings and pairing sign.
 
     ``representations`` maps leg labels to the colour representation of the
     outgoing particle (1, 3, -3 or 8); ``field_representation`` is that of
     the block's field. A new string starts at every fundamental leg that
-    follows an antifundamental one.
+    follows an antifundamental one. ``lines`` and ``traces`` are the block's
+    closed components (``ColorState``): lines join the strings (and their
+    pairing), traces are kept as they are.
     """
 
     word = tuple(word)
@@ -248,12 +258,14 @@ def block_colour_flow(
             f"word {word} does not match a field in representation "
             f"{field_representation}"
         )
+    strings.extend(list(line) for line in lines)
     return BlockColourFlow(
         strings=tuple(tuple(string) for string in strings),
         incoming_open=incoming_open,
         outgoing_open=outgoing_open,
         singlet_labels=tuple(singlets),
         sign=_pairing_sign(strings, representations),
+        traces=tuple(traces),
     )
 
 
@@ -335,7 +347,9 @@ class BlockKey:
 
     @property
     def labels(self) -> tuple[int, ...]:
-        return tuple(sorted(self.word))
+        """Every leg of the block, its word's and its closed traces'."""
+        mask = self.external_mask
+        return tuple(bit + 1 for bit in range(mask.bit_length()) if mask >> bit & 1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -361,7 +375,7 @@ class Block:
 
     @property
     def is_source(self) -> bool:
-        return len(self.key.word) == 1
+        return self.key.external_mask.bit_count() == 1
 
     @property
     def wick_sign(self) -> int:
@@ -605,7 +619,7 @@ def _blocks(
             else {}
         )
         ends = {
-            **{label: endpoints[label] for label in key.word if label in endpoints},
+            **{label: endpoints[label] for label in key.labels if label in endpoints},
             **open_end,
         }
         parities = {connections[row.current_id] for row in rows}
@@ -617,7 +631,13 @@ def _blocks(
                 id=len(blocks),
                 key=key,
                 colour_flow=replace(
-                    block_colour_flow(key.word, representations, field_representation),
+                    block_colour_flow(
+                        key.word,
+                        representations,
+                        field_representation,
+                        lines=key.color_state.lines,
+                        traces=key.color_state.traces,
+                    ),
                     nc_grade=nc_grades.pop() if len(nc_grades) == 1 else None,
                 ),
                 block_class="plain",

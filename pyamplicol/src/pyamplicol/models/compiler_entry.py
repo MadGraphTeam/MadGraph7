@@ -25,6 +25,8 @@ from .compiler_contacts import (
     _build_contact_decomposition_proof,
     _contact_final_component_expressions,
     _contact_partial_component_expressions,
+    contact_pair_symmetry,
+    projected_contact_partial_components,
     _contact_term_has_literal_color_singlet,
     _fuse_contact_finals,
     _record_contact_decomposition_proofs,
@@ -85,6 +87,7 @@ _SUPPORTED_TRILINEAR_COLOR_PROJECTIONS = frozenset(
         "color-identity",
         "fundamental-generator",
         "adjoint-structure-constant",
+        "adjoint-symmetric-invariant",
     }
 )
 
@@ -544,10 +547,22 @@ def _contact_recurrence_color_contract(
             f"compiler-generated contact kernel {kernel.vertex!r} fuses "
             "incompatible recurrence color decompositions"
         )
-    recurrence_structure = {
-        "literal-color-singlet": "singlet",
-        "two-structure-constants": "adjoint-structure-constant",
-    }[split.decomposition_kind]
+    if split.decomposition_kind == "two-structure-constants":
+        # Each stage carries its own adjoint trilinear tensor: a structure
+        # constant or a d-symbol (counterterm contacts, ``ct_color_flow``).
+        source = split.outer_color_source if stage == "partial" else (
+            split.final_color_source
+        )
+        recurrence_structure = (
+            "adjoint-symmetric-invariant"
+            if "d(" in source
+            else "adjoint-structure-constant"
+        )
+    else:
+        recurrence_structure = {
+            "literal-color-singlet": "singlet",
+            "two-identities": "color-identity",
+        }[split.decomposition_kind]
     return (
         recurrence_structure,
         f"{proof.algorithm}-recurrence-{stage}-v{proof.algorithm_version}",
@@ -939,7 +954,7 @@ def _compile_four_point_contact_kernels(
             for orientation in partial_orientations:
                 left_leg, right_leg = orientation.input_legs
                 kind = start_kind + len(kernels)
-                components = _contact_partial_component_expressions(
+                components = projected_contact_partial_components(
                     term,
                     particle_by_name,
                     left_leg=left_leg,
@@ -947,6 +962,9 @@ def _compile_four_point_contact_kernels(
                     open_legs=open_legs,
                     kind=kind,
                     model_symbols=model_symbols,
+                    symmetry=contact_pair_symmetry(
+                        source_particles, split.pair_legs, split.outer_color_source
+                    ),
                 )
                 kernels.append(
                     CompiledOrientedKernel(
@@ -1003,6 +1021,11 @@ def _compile_four_point_contact_kernels(
                 combined_color_source = (
                     f"{split.outer_color_source}*{split.final_color_source}"
                     if split.decomposition_kind == "two-structure-constants"
+                    # The pair closed into a singlet; the result takes the
+                    # remaining leg's colour with weight 1 (recurrence:
+                    # ``_contact_recurrence_color_contract``).
+                    else "1"
+                    if split.decomposition_kind == "two-identities"
                     else term.color_source
                 )
                 kernels.append(

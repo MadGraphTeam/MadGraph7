@@ -1215,6 +1215,7 @@ def lower_counterterm_vertices(
     parameters: Mapping[str, float] = MappingProxyType({}),
     excluded_particles: Iterable[str] = (),
     tree_kernel_variant: TreeKernelVariant = "full",
+    multi_trace: bool = False,
 ) -> CountertermLoweredModel:
     """Lower CT vertex terms into the tree model of ``compiled`` (design §6.1).
 
@@ -1254,6 +1255,11 @@ def lower_counterterm_vertices(
     The tree kernels are compiled in the ``"full"`` variant by default: a
     CT = 1 current is not conserved, so the transverse Yang-Mills shortcut,
     exact only for conserved inputs, does not apply to it (design §3.2).
+
+    ``multi_trace`` admits the colours whose currents carry closed traces
+    (``ct_color_flow``): only loop-request blocks carry those, so a model
+    lowered with it serves the counterterm closure (``loops.v2.ct_closure``),
+    not complete tree programs.
     """
 
     from .compiler_entry import compile_ufo_model_ir
@@ -1355,7 +1361,10 @@ def lower_counterterm_vertices(
                 "name": f"{_COUNTERTERM_PARAMETER_BLOCK}_V{number}",
                 "particles": list(legs),
                 "color_structures": [
-                    tree_colour_source(colour, representations) for colour in colours
+                    tree_colour_source(
+                        colour, representations, multi_trace=multi_trace
+                    )
+                    for colour in colours
                 ],
                 "lorentz_structures": lorentz,
                 "couplings": [
@@ -1398,6 +1407,7 @@ def lower_counterterm_vertices(
             parameters=parameters,
             excluded_particles=excluded,
             tree_kernel_variant=tree_kernel_variant,
+            multi_trace=multi_trace,
         )
     lowered_vertices = {
         rule["name"]
@@ -1437,6 +1447,7 @@ def lower_counterterm_vertices(
         json.dumps(
             [
                 sorted(excluded),
+                multi_trace,
                 sorted(parameters.items()),
                 [
                     [

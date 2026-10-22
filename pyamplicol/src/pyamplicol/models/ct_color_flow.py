@@ -12,14 +12,24 @@ exactly into that vocabulary:
   normalised as ``tr(t^a t^b) = delta^{ab}/2``, the UFO convention);
 * a numeric factor stays a numeric factor of the colour structure.
 
-Every other form raises ``UnloweredCountertermColour``:
+With ``multi_trace`` (the loop-request blocks of the counterterm closure,
+``loops.v2.ct_closure``, which carry closed traces) three more forms lower:
 
-* the d-symbol (``d(a,b,c)``, ``d*d``, ``d*f``) and products of two
-  ``Identity``/``Tr`` factors on four coloured legs, i.e. the fixed-SU(3)
-  four-gluon R2 and the gluon-gluon-gluon-vector R2. Their colour-flow form
-  has a closed trace beside the open string of a current: the multi-trace
-  colour state of design §6.1, which the tree recursion does not carry yet;
-* ``Tr`` with three or more indices, and any unknown tensor.
+* the d-symbol ``d(a,b,c)`` on three adjoint legs, whose colour flow is both
+  orders of its legs with one sign;
+* a product of two adjoint trilinear tensors sharing one summed index on
+  four adjoint legs (``d*d``, ``d*f``, ``f*f``): the tree compiler's contact
+  split carries the summed index on a U(N) auxiliary line, so ``d*d`` gains
+  the U(1) term ``(2/N_c) delta delta`` (``d_product_u1_term``), which the
+  caller subtracts;
+* ``Identity(a,b)*Identity(c,d)`` (or ``Tr``) on four adjoint legs: the pair
+  closes into a colour singlet carrying the closed trace ``tr(tau^a tau^b)``
+  and the other two legs share one colour line.
+
+Every other form raises ``UnloweredCountertermColour``: without
+``multi_trace`` the forms above (the fixed-SU(3) four-gluon R2), a d-symbol
+on a vertex with colour-singlet legs (the gluon-gluon-gluon-vector R2), ``Tr``
+with three or more indices and any unknown tensor.
 
 Callers close such rules as sites (``loops.v2.ct_sites``) instead; the
 decision is per rule, never per entry, so a rule is either wholly in the
@@ -66,12 +76,15 @@ def _factors(source: str) -> tuple[_Factor, ...]:
     return tuple(factors)
 
 
-def tree_colour_source(source: str, representations: Sequence[int]) -> str:
+def tree_colour_source(
+    source: str, representations: Sequence[int], *, multi_trace: bool = False
+) -> str:
     """The tree-model colour string of one CT entry colour ``source``.
 
     ``representations`` are the colour representations of the vertex legs
     (UFO leg i is ``representations[i - 1]``). The result is in the compiled
-    payload's namespaced form (``UFO::{}::f(1,2,3)``).
+    payload's namespaced form (``UFO::{}::f(1,2,3)``). ``multi_trace`` admits
+    the colours of the module docstring that need closed traces.
     """
 
     representations = tuple(int(value) for value in representations)
@@ -91,6 +104,12 @@ def tree_colour_source(source: str, representations: Sequence[int]) -> str:
             )
         if factor.head in ("Identity", "T", "f"):
             tensors.append(factor)
+        elif factor.head == "d" and multi_trace:
+            if any(representations[index - 1] != 8 for index in legs):
+                raise UnloweredCountertermColour(
+                    f"counterterm colour {source!r}: d-symbol needs adjoint legs"
+                )
+            tensors.append(factor)
         elif factor.head == "Tr" and len(factor.args) == 2:
             if any(representations[index - 1] != 8 for index in legs) or len(
                 legs
@@ -105,8 +124,22 @@ def tree_colour_source(source: str, representations: Sequence[int]) -> str:
                 f"counterterm colour {source!r} needs the multi-trace colour state "
                 "of design §6.1 (d-symbol or a trace of three or more generators)"
             )
-    if len(tensors) > 2 or (
-        len(tensors) == 2 and not _quartic_structure_constants(tensors)
+    if multi_trace and any(factor.head == "d" for factor in tensors):
+        adjoint = all(value == 8 for value in representations)
+        if len(tensors) == 1 and not (adjoint and len(representations) == 3):
+            raise UnloweredCountertermColour(
+                f"counterterm colour {source!r}: a d-symbol on a vertex with "
+                "colour-singlet legs has no contact split"
+            )
+        if len(tensors) == 2 and not (adjoint and _adjoint_trilinears(tensors)):
+            raise UnloweredCountertermColour(
+                f"counterterm colour {source!r} is no product of two adjoint "
+                "trilinear tensors sharing one summed index"
+            )
+    elif len(tensors) > 2 or (
+        len(tensors) == 2
+        and not _quartic_structure_constants(tensors)
+        and not (multi_trace and _adjoint_identities(tensors, representations))
     ):
         raise UnloweredCountertermColour(
             f"counterterm colour {source!r} is a product the tree colour flow "
@@ -148,6 +181,53 @@ def two_point_colour_factor(source: str, representations: Sequence[int]) -> Frac
     return factor
 
 
+def d_product_u1_term(source: str) -> str | None:
+    """``Identity(a,b)*Identity(c,d)`` of ``d(e,a,b)*d(e,c,d)``, else ``None``.
+
+    The tree compiler's contact split of a product of two d-symbols sums the
+    shared index over U(N) (``ct_color_flow`` docstring), which adds
+    ``(2/N_c) delta^{ab} delta^{cd}`` to the SU(N) product; callers subtract
+    it as this colour with ``-2/N_c`` times the product's coefficient. The
+    pairs are listed in ascending order, as UFO models write them.
+    """
+
+    try:
+        factors = _factors(source.strip())
+    except UnloweredCountertermColour:
+        return None
+    if any(factor.head is None for factor in factors):
+        return None
+    if len(factors) != 2 or any(factor.head != "d" for factor in factors):
+        return None
+    if not _adjoint_trilinears(factors):
+        return None
+    pairs = sorted(
+        tuple(sorted(index for index in factor.args if index > 0))
+        for factor in factors
+    )
+    return "*".join(f"Identity({a},{b})" for a, b in pairs)
+
+
+def _adjoint_trilinears(tensors: Sequence[_Factor]) -> bool:
+    """``f``/``d`` products sharing exactly one summed (negative) index."""
+
+    if any(factor.head not in ("f", "d") for factor in tensors):
+        return False
+    left, right = ({index for index in factor.args if index < 0} for factor in tensors)
+    return len(left) == len(right) == 1 and left == right
+
+
+def _adjoint_identities(
+    tensors: Sequence[_Factor], representations: Sequence[int]
+) -> bool:
+    """Two ``Identity`` factors pairing four adjoint legs."""
+
+    if any(factor.head != "Identity" for factor in tensors):
+        return False
+    legs = sorted(index for factor in tensors for index in factor.args)
+    return legs == [1, 2, 3, 4] and all(value == 8 for value in representations)
+
+
 def _quartic_structure_constants(tensors: Sequence[_Factor]) -> bool:
     """``f*f`` sharing exactly one summed (negative) index: a quartic contact."""
 
@@ -159,6 +239,7 @@ def _quartic_structure_constants(tensors: Sequence[_Factor]) -> bool:
 
 __all__ = [
     "UnloweredCountertermColour",
+    "d_product_u1_term",
     "tree_colour_source",
     "two_point_colour_factor",
 ]

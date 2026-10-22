@@ -343,6 +343,9 @@ class _LorentzContext:
         return label
 
 
+_D_SYMBOL_DUMMY_OFFSET = 9000
+
+
 class _ColorContext:
     def __init__(self, color_representations: tuple[int, ...]) -> None:
         _validate_color_representations(color_representations)
@@ -416,13 +419,15 @@ class _ColorContext:
         ]
         suffix = self._dummy_index
         self._dummy_index += 1
-        fundamental = [
-            self.fundamental(f"ufo_c_d_{suffix}_{name}") for name in ("i", "j", "k")
+        # Summed fundamental indices of the generator trace, named like UFO
+        # dummies (``ufo_c_dummy_<n>_fundamental``, n beyond UFO's range) so
+        # that vertex terms with d-symbols keep well-formed index bindings.
+        names = [
+            f"ufo_c_dummy_{_D_SYMBOL_DUMMY_OFFSET + 3 * suffix + offset}_fundamental"
+            for offset in range(3)
         ]
-        antifundamental = [
-            self.fundamental.dual()(f"ufo_c_d_{suffix}_{name}")
-            for name in ("i", "j", "k")
-        ]
+        fundamental = [self.fundamental(name) for name in names]
+        antifundamental = [self.fundamental.dual()(name) for name in names]
 
         def generator(a: Any, row: int, column: int) -> Expression:
             return self.generator_tensor(
@@ -725,11 +730,19 @@ def _classify_trilinear_color_expression_cached(
         return "fundamental-generator", 1.0 + 0.0j
     if re.fullmatch(tensor + r"f\([^()]+\)", compact_source):
         return "adjoint-structure-constant", 1.0 + 0.0j
+    if re.fullmatch(tensor + r"d\([^()]+\)", compact_source):
+        return "adjoint-symmetric-invariant", 1.0 + 0.0j
     factors = compact_source.split("*")
     if len(factors) > 1 and all(
         re.fullmatch(tensor + r"f\([^()]+\)", factor) for factor in factors
     ):
         return "adjoint-structure-constant-product", 1.0 + 0.0j
+    if len(factors) > 1 and all(
+        re.fullmatch(tensor + r"[df]\([^()]+\)", factor) for factor in factors
+    ):
+        # Counterterm contacts (``models.ct_color_flow``): a product of
+        # adjoint trilinear tensors (structure constants and d-symbols).
+        return "adjoint-trilinear-product", 1.0 + 0.0j
     if compact_source in {"1", "UFO::{}::1"}:
         return "singlet", 1.0 + 0.0j
     return projected

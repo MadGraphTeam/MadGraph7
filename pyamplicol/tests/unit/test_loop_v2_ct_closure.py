@@ -46,6 +46,36 @@ from .test_loop_v2_ct_recursion import (  # noqa: F401 (fixtures)
 CT_COMPONENTS = ("uv_local", "r2")
 
 
+@pytest.fixture(scope="module")
+def closure_ct_model(loop_sm_compiled_model):
+    """``forbidden |PDG| codes -> CountertermModel``: loop_sm lowered for the
+    closure's loop-request blocks (multi-trace colours included), per veto."""
+
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+    from pyamplicol.loops.v2.ct_recursion import lower_model_counterterms
+    from pyamplicol.models.loading import load_compiled_model
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    prepared = prepare_loop_request_model(
+        compiled, fixed_parameters=legacy_capture.FIXED_PARAMETERS
+    )
+    built = {}
+
+    def build(forbidden=()):
+        key = tuple(sorted(forbidden))
+        if key not in built:
+            built[key] = lower_model_counterterms(
+                compiled,
+                prepared.counterterms.rules,
+                fixed_parameters=prepared.structure.fixed_parameters,
+                forbidden=key,
+                multi_trace=True,
+            )
+        return built[key]
+
+    return build
+
+
 def _closure(ct, lowered):
     """The CT program, its closure and the source scalar plan, cached."""
 
@@ -399,9 +429,8 @@ def _assert_closure_equals_sites_and_legacy(ct, lowered, label: str) -> None:
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", CONTROLS)
-def test_closure_equals_site_closure(ct_slice, lowered_ct_model, name):
+def test_closure_equals_site_closure(ct_slice, closure_ct_model, name):
     """O6 and O1 of the closed CT amplitudes in binary64."""
 
     ct = ct_slice(name)
-    lowered = lowered_ct_model(ct.vetoed).model
-    _assert_closure_equals_sites_and_legacy(ct, lowered, "double")
+    _assert_closure_equals_sites_and_legacy(ct, closure_ct_model(ct.vetoed), "double")

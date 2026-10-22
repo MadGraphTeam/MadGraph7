@@ -784,7 +784,7 @@ class SiteClosure:
     ) -> ConnectedColorTensor:
         """The vertex colour (a network, or a factory of one) closed on blocks."""
 
-        key = (key, *(b.key.word for b in choice))
+        key = (key, *(b.colour_flow for b in choice))
         cached = self._colours.get(key)
         if cached is not None:
             return cached

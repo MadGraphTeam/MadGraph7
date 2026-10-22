@@ -155,10 +155,15 @@ def rule_terms(rule: Any) -> tuple[tuple[Any, CountertermStructure], ...]:
 
 
 class TreeVocabulary:
-    """What the tree compiler of one compiled model can lower, cached."""
+    """What the tree compiler of one compiled model can lower, cached.
 
-    def __init__(self, compiled: CompiledModel):
+    ``multi_trace`` admits the colours whose currents carry closed traces
+    (``models.ct_color_flow``), which only loop-request blocks carry.
+    """
+
+    def __init__(self, compiled: CompiledModel, *, multi_trace: bool = False):
         self.compiled = compiled
+        self.multi_trace = multi_trace
         self.particles = {
             str(item["name"]): item for item in compiled.model["particles"]
         }
@@ -178,7 +183,11 @@ class TreeVocabulary:
             if any(int(record.get("ghost_number", 0)) for record in records):
                 return "ghost leg"
             try:
-                tree_colour_source(entry.color, [int(r["color"]) for r in records])
+                tree_colour_source(
+                    entry.color,
+                    [int(r["color"]) for r in records],
+                    multi_trace=self.multi_trace,
+                )
             except UnloweredCountertermColour as error:
                 return str(error)
             name = entry.lorentz_name
@@ -402,6 +411,7 @@ def lower_model_counterterms(
     *,
     fixed_parameters: Mapping[str, Any] | None = None,
     forbidden: Iterable[int] = (),
+    multi_trace: bool = False,
 ) -> CountertermModel:
     """The tree model of ``compiled`` with every lowerable rule's CT vertices.
 
@@ -411,9 +421,16 @@ def lower_model_counterterms(
     without order bounds gives every rule, so one lowered model serves every
     process of the model that forbids the same particles (|PDG| codes
     ``forbidden``, removed from the tree model).
+
+    ``multi_trace`` lowers the colours whose currents carry closed traces
+    (the four-gluon R2; ``models.ct_color_flow``): the model then serves the
+    counterterm closure's loop-request blocks (``loops.v2.ct_closure``), not
+    complete tree programs. The U(N) contact split of a ``d*d`` colour adds
+    ``(2/N_c) delta delta``, which is subtracted from the rule exactly
+    (``d_product_u1_term``; N_c = 3, the UFO's fixed-SU(3) colours).
     """
 
-    vocabulary = TreeVocabulary(compiled)
+    vocabulary = TreeVocabulary(compiled, multi_trace=multi_trace)
     coefficients = CoefficientLowering(compiled, fixed_parameters or {})
     residual: dict[RuleKey, str] = {}
     # Exact coefficient of every rule on each of its lowered vertex terms.
@@ -434,6 +451,8 @@ def lower_model_counterterms(
         except CountertermCouplingError as error:
             residual[key] = str(error)
             continue
+        if multi_trace:
+            rows = _without_u1_terms(rows)
         # A coefficient the fixed parameters make vanish has no vertex term.
         values[key] = {s: value for s, value in rows.items() if not _is_zero(value)}
     multiplicities = {
@@ -460,6 +479,7 @@ def lower_model_counterterms(
                 _coupling_expressions(values, multiplicities, switches),
                 parameters=parameters,
                 excluded_particles=excluded,
+                multi_trace=multi_trace,
             )
         except CountertermLoweringError as error:
             if not error.refused or set(error.refused) <= set(refused):
@@ -480,6 +500,29 @@ def lower_model_counterterms(
             assumptions=tuple(sorted(coefficients.assumptions)),
             residual=residual,
         )
+
+
+def _without_u1_terms(
+    rows: Mapping[CountertermStructure, Any],
+) -> dict[CountertermStructure, Any]:
+    """Subtract the U(1) term of every ``d*d`` colour's U(N) contact split.
+
+    ``(2/N_c) delta delta`` times the coefficient, with N_c = 3: UFO colours
+    are those of SU(3) (``models.ct_color_flow.d_product_u1_term``).
+    """
+
+    from pyamplicol.color.contraction_types import NC
+    from pyamplicol.models.ct_color_flow import d_product_u1_term
+
+    out = dict(rows)
+    for structure, value in rows.items():
+        colour = d_product_u1_term(structure.colour)
+        if colour is None:
+            continue
+        term = replace(structure, colour=colour)
+        correction = value * _number((f"-2/{NC}", "0"))
+        out[term] = out[term] + correction if term in out else correction
+    return out
 
 
 def _coupling_expressions(
