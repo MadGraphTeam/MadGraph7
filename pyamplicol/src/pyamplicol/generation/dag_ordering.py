@@ -39,12 +39,35 @@ def _direct_contraction_ir(
     left: CurrentIndex,
     right: CurrentIndex,
 ) -> ContractionIR | None:
-    return model.direct_contraction_ir(
+    """The closure contraction of two colour-compatible currents, or ``None``.
+
+    A fermion current that passed a massive internal fermion is a Dirac
+    (chirality-0) current even on a line of massless, Weyl (chirality +-1)
+    external fermions (b -> t -> b with a massless b, nu_tau -> tau ->
+    nu_tau). Models install no Dirac-Weyl contraction, so such a closure
+    would silently drop its diagrams (b b~ > w+ w- without the t channel);
+    it fails closed instead.
+    """
+
+    contraction = model.direct_contraction_ir(
         left.particle_id,
         right.particle_id,
         left_chirality=left.chirality,
         right_chirality=right.chirality,
     )
+    if (
+        contraction is None
+        and (left.chirality == 0) != (right.chirality == 0)
+        and model.direct_contraction_ir(left.particle_id, right.particle_id) is not None
+    ):
+        raise ValueError(
+            "a Dirac (chirality-0) current cannot close on a Weyl "
+            f"(chirality {left.chirality or right.chirality}) current: particles "
+            f"{left.particle_id} and {right.particle_id}, external labels "
+            f"{left.external_labels} and {right.external_labels}; a massless "
+            "fermion line through a massive internal fermion is not supported"
+        )
+    return contraction
 
 
 def _sector_group_indices_for_label(
