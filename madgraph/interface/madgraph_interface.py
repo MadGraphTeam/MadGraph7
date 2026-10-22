@@ -2840,8 +2840,7 @@ class CompleteForCmd(cmd.CompleteCmd):
 
         if text.startswith('--'):
             filters = ['--diagram_filter=%s' % name for name in
-                       misc.from_plugin_import(self.plugin_path,
-                                'new_diagram_filter', keyname=None) or []]
+                       misc.plugin_diagram_filter(self.plugin_path, None)]
             return self.list_completion(text, ['--no_crossing', 
                                                '--no_warning=duplicate',
                                                '--diagram_filter',
@@ -3984,6 +3983,26 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
 
     # Add a process to the existing multiprocess definition
     # Generate a new amplitude
+    def extract_diagram_filter(self, args):
+        """Remove the --diagram_filter[=PLUGINNAME] option from args and return
+        the filter to use: False if absent, True for the filter of
+        PLUGIN/user_filter.py (bare option, historical behaviour) or the
+        function new_diagram_filter of the plugin PLUGINNAME."""
+
+        diagram_filter = False
+        for arg in list(args):
+            if arg == '--diagram_filter':
+                diagram_filter = True
+                args.remove(arg)
+            elif arg.startswith('--diagram_filter='):
+                args.remove(arg)
+                try:
+                    diagram_filter = misc.plugin_diagram_filter(
+                                      self.plugin_path, arg.split('=', 1)[1])
+                except MadGraph5Error as error:
+                    raise self.InvalidCmd(str(error))
+        return diagram_filter
+
     def do_add(self, line, counter=0):
         """Generate an amplitude for a given process and add to
         existing amplitudes
@@ -4009,25 +4028,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
             warning_duplicate = False
             args.remove('--no_warning=duplicate')
 
-        # '--diagram_filter' uses PLUGIN/user_filter.py (historical behaviour);
-        # '--diagram_filter=NAME' uses the `new_diagram_filter` entry NAME of
-        # a plugin: new_diagram_filter = {'NAME': remove_diag}
-        diagram_filter = False
-        for arg in list(args):
-            if arg == '--diagram_filter':
-                diagram_filter = True
-                args.remove(arg)
-            elif arg.startswith('--diagram_filter='):
-                args.remove(arg)
-                filter_name = arg.split('=', 1)[1]
-                diagram_filter = misc.from_plugin_import(self.plugin_path,
-                                     'new_diagram_filter', filter_name,
-                                     warning=True,
-                                     info='Diagram filter from PLUGIN: %(plug)s')
-                if not diagram_filter:
-                    raise self.InvalidCmd('No plugin provides the diagram '
-                              'filter "%s" (see new_diagram_filter in the '
-                              'plugin __init__.py).' % filter_name)
+        diagram_filter = self.extract_diagram_filter(args)
         
         standalone_only = False
         if '--standalone' in args:
@@ -7075,6 +7076,7 @@ This implies that with decay chains:
             #if not isinstance(self, extended_cmd.CmdShell):
             #    raise self.InvalidCmd, "loop_filter is not allowed in web mode"
         args = [a for a in args if not a.startswith('--loop_filter=')]
+        diagram_filter = self.extract_diagram_filter(args)
         
         if not myprocdef:
             myprocdef = self.extract_process(' '.join(args))
@@ -7128,7 +7130,8 @@ This implies that with decay chains:
                                  collect_mirror_procs = collect_mirror_procs,
                                  ignore_six_quark_processes = ignore_six_quark_processes,
                                  optimize=optimize,
-                                 loop_filter=loop_filter)
+                                 loop_filter=loop_filter,
+                                 diagram_filter=diagram_filter)
             amplitudes = myproc.get('amplitudes')
         except diagram_generation.NoDiagramException:
             if myprocdef.get_interference_mode() != 'LIxtree':

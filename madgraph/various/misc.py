@@ -2912,6 +2912,46 @@ def from_plugin_import(plugin_path, target_type, keyname=None, warning=False,
     
     
 
+def plugin_diagram_filter(plugin_path, name):
+    """return the diagram filter function of the plugin called `name` (the
+    `new_diagram_filter` attribute of its __init__.py, a function
+    remove_diag(diag, model) returning True for the diagrams to remove).
+    If name is None, return the names of the plugins providing one.
+    Raise MadGraph5Error if the plugin does not provide a valid filter."""
+
+    names = []
+    for plugpath in plugin_path:
+        plugindirname = os.path.basename(plugpath)
+        for plug in os.listdir(plugpath):
+            if name and plug != name:
+                continue
+            if not os.path.exists(pjoin(plugpath, plug, '__init__.py')):
+                continue
+            try:
+                with stdchannel_redirected(sys.stdout, os.devnull):
+                    __import__('%s.%s' % (plugindirname, plug))
+            except Exception as error:
+                if name:
+                    raise MadGraph5Error("error detected in plugin %s: %s" % (plug, error))
+                continue
+            plugin = sys.modules['%s.%s' % (plugindirname, plug)]
+            if not hasattr(plugin, 'new_diagram_filter') or \
+                                                 not is_plugin_supported(plugin):
+                continue
+            if not name:
+                names.append(plug)
+                continue
+            filter_fct = plugin.new_diagram_filter
+            if not callable(filter_fct):
+                raise MadGraph5Error("new_diagram_filter of plugin %s must be a "
+                       "function remove_diag(diag, model), not %r" % (plug, filter_fct))
+            logger.info('Using diagram filter from plugin %s' % plug, '$MG:BOLD')
+            return filter_fct
+    if name:
+        raise MadGraph5Error("No plugin '%s' providing a diagram filter "
+                             "(new_diagram_filter in its __init__.py)." % name)
+    return names
+
 #===============================================================================
 # LHAPDF locations
 #===============================================================================

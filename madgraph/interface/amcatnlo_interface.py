@@ -636,6 +636,11 @@ generating the process (see arXiv:1804.10017).""" % (corr, ', '.join(resonances)
                         args.remove(a)
                         break
 
+            if any(a.startswith('--diagram_filter') for a in args):
+                raise self.InvalidCmd("--diagram_filter is not supported for "
+                    "NLO (FKS) generation: use it with the MadLoop modes "
+                    "([virt=QCD], [noborn=QCD]) or at tree level.")
+
             line = ' '.join(args[1:])
 
         # convert the single $ to $$ automatically

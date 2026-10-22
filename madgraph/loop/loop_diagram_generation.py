@@ -640,7 +640,7 @@ class LoopAmplitude(diagram_generation.Amplitude):
         user_orders=copy.copy(self['process']['orders'])
         # First generate the born diagram if the user asked for it
         if self['process']['has_born']:
-            bornsuccessful = self.generate_born_diagrams()
+            bornsuccessful = self.generate_born_diagrams(diagram_filter)
             ldg_debug_info("# born diagrams after first generation",\
                                                      len(self['born_diagrams']))
         else:
@@ -886,6 +886,12 @@ class LoopAmplitude(diagram_generation.Amplitude):
         # Discard diagrams which are zero because of Furry theorem
         self.remove_Furry_loops(model,self['structure_repository'])
        
+        # Filter selected with --diagram_filter (the Born diagrams were already
+        # filtered at generation)
+        if diagram_filter:
+            self['loop_diagrams'] = self.apply_user_filter(
+                                      self['loop_diagrams'], diagram_filter)
+
         # Apply here some user-defined filter.
         # For expert only, you can edit your own filter by modifying the
         # user_filter() function which by default does nothing but in which you
@@ -1118,11 +1124,12 @@ class LoopAmplitude(diagram_generation.Amplitude):
                [sqSO for sqSO in loop_sqSOs if sqSO not in loop_considered])
                   
 
-    def generate_born_diagrams(self):
+    def generate_born_diagrams(self, diagram_filter=False):
         """ Generates all born diagrams relevant to this NLO Process """
 
         bornsuccessful, self['born_diagrams'] = \
-                       diagram_generation.Amplitude.generate_diagrams(self,True)
+                       diagram_generation.Amplitude.generate_diagrams(self,True,
+                                                  diagram_filter=diagram_filter)
         
         return bornsuccessful
 

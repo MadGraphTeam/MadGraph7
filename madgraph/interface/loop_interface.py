@@ -876,6 +876,7 @@ own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': 
             self.validate_model()
 
         loop_filter=None
+        diagram_filter=False
         if args[0] == 'process':
 
             # Extract potential loop_filter          
@@ -890,6 +891,7 @@ own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': 
                 if not isinstance(self, extended_cmd.CmdShell):
                     raise self.InvalidCmd("loop_filter is not allowed in web mode")
             args = [a for a in args if not a.startswith('--loop_filter=')]
+            diagram_filter = self.extract_diagram_filter(args)
 
             # Rejoin line
             line = ' '.join(args[1:])
@@ -945,7 +947,8 @@ own and set the path to its library in the MadGraph7 option '%(p)s'.""" % {'p': 
 
         myproc = multiprocessclass(myprocdef, collect_mirror_procs = False,
                                             ignore_six_quark_processes = False,
-                                            loop_filter = loop_filter)
+                                            loop_filter = loop_filter,
+                                            diagram_filter = diagram_filter)
         
         for amp in myproc.get('amplitudes'):
             if amp not in self._curr_amps:
