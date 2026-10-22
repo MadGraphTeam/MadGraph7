@@ -811,11 +811,13 @@ class PointResult:
 @dataclass(frozen=True)
 class SliceRequest:
     """A loop request of the slice: a process, the bounds of its Born coupling
-    orders and the exact coupling orders of its loop amplitude."""
+    orders and the exact coupling orders of its loop amplitude, or a sequence
+    of several (mixed squared-order sectors, e.g. QCD corrections to QCD and
+    electroweak Born currents)."""
 
     process: str
     born_orders: Mapping[str, int]
-    loop_orders: Mapping[str, int]
+    loop_orders: Mapping[str, int] | Sequence[Mapping[str, int]]
     corrections: tuple[str, ...] = ("QCD",)
     fixed_parameters: Mapping[str, str] = field(default_factory=dict)
     ignored_particle_ids: tuple[int, ...] = ()
@@ -836,6 +838,24 @@ class SliceRequest:
     # refuses a request without such orbits, "direct" never uses it. Other
     # carriers and LC always contract directly.
     colour_contraction: ContractionPolicy = "auto"
+
+    @property
+    def exact_loop_orders(self) -> tuple[Mapping[str, int], ...]:
+        """The exact coupling orders of every admitted loop amplitude."""
+
+        if isinstance(self.loop_orders, Mapping):
+            return (self.loop_orders,)
+        return tuple(self.loop_orders)
+
+    @property
+    def loop_order_bounds(self) -> dict[str, int]:
+        """Per coupling the largest power of any loop amplitude."""
+
+        bounds: dict[str, int] = {}
+        for orders in self.exact_loop_orders:
+            for name, power in orders.items():
+                bounds[name] = max(bounds.get(name, 0), power)
+        return bounds
 
 
 @dataclass
@@ -919,7 +939,7 @@ class LoopSlice:
         prepared = prepare_loop_request_model(
             compiled,
             born_order_bounds=dict(request.born_orders),
-            loop_order_bounds=dict(request.loop_orders),
+            loop_order_bounds=request.loop_order_bounds,
             fixed_parameters=fixed,
         )
         continuation = None
@@ -933,9 +953,9 @@ class LoopSlice:
             )
         structure = prepared.structure
         data = json.loads(structure.native.to_json())
-        loop = add_orders(tuple(request.loop_orders.items()))
         selection = LoopOrderSelection(
-            frozenset(request.corrections), frozenset({loop})
+            frozenset(request.corrections),
+            frozenset(add_orders(tuple(o.items())) for o in request.exact_loop_orders),
         )
         process = build_model_process_ir(
             request.process, compiled.ir, color_accuracy="full"
@@ -944,7 +964,7 @@ class LoopSlice:
             process,
             CompiledUFOModel(compiled),
             born_coupling_orders=dict(request.born_orders),
-            block_coupling_orders=dict(request.loop_orders),
+            block_coupling_orders=request.loop_order_bounds,
             ignored_particle_ids=request.ignored_particle_ids,
         )
         table = blocks.block_table(data)

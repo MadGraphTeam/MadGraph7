@@ -54,7 +54,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from itertools import permutations, product
 from typing import Any, Literal
 
@@ -88,6 +88,7 @@ from .colour import SeedTable
 from .conventions import LOOP_FACTOR_DENOMINATOR
 from .ct_sites import LAURENT_POWERS
 from .families import Orders, add_orders
+from .plan_export import DEFAULT_LANES, NativeExecutor, SeedColumn, export_plan
 
 Resolution = Literal["helicity", "colour", "helicity-colour"]
 ComplexPair = tuple[Decimal, Decimal]
@@ -199,17 +200,6 @@ class DirectedColour:
 # --------------------------------------------------------------------- seeds
 
 
-@dataclass(frozen=True)
-class _SeedColumn:
-    """One numerator column: a seed table, one sector and the Born it reads."""
-
-    table: SeedTable
-    pairs: frozenset[tuple[Orders, Orders]]
-    degree: int | None
-    rows: frozenset[rx.Row] | None
-    basis: frozenset[int] | None
-
-
 class ColumnSeeds:
     """Seeds of observable columns (an ``rx.SeedSource``).
 
@@ -223,7 +213,7 @@ class ColumnSeeds:
 
     def __init__(
         self,
-        columns: Sequence[_SeedColumn],
+        columns: Sequence[SeedColumn],
         class_of: Mapping[Any, Any],
         born: Mapping[rx.Row, Mapping[tuple[int, Orders], Mapping[int, Any]]],
         numbers: _Numbers,
@@ -301,16 +291,20 @@ class ResolvedObservables:
     ``helicities`` lists the rows (``None`` when colour-only), ``components``
     the Born basis elements (``None`` when helicity-only). Every entry keeps
     the inclusive initial average; ``total()`` sums them to the inclusive
-    result.
+    result (at the carrier's ``digits``; binary64 when ``None``).
     """
 
     entries: Mapping[tuple[rx.Row | None, int | None], PointResult]
     helicities: tuple[rx.Row, ...] | None
     components: tuple[int, ...] | None
     component_kind: str = BORN_BASIS_COMPONENTS
+    digits: int | None = None
 
     def total(self) -> PointResult:
-        return _sum_results(list(self.entries.values()))
+        if self.digits is None:
+            return _sum_results(list(self.entries.values()))
+        with localcontext(prec=self.digits):
+            return _sum_results(list(self.entries.values()))
 
 
 def _sum_results(results: Sequence[PointResult]) -> PointResult:
@@ -506,11 +500,23 @@ class ObservableSlice:
     ) -> ResolvedObservables:
         """Helicity- and/or colour-resolved outputs (design §8.5)."""
 
+        columns = self.resolved_columns(resolution, spin)
+        results = self._run(
+            columns, point, scale_squared, parameters, precision, poles, spin, None
+        )
+        return self.resolved_result(columns, results, precision)
+
+    def resolved_columns(
+        self, resolution: Resolution, spin: Mapping[int, Any] | None = None
+    ) -> list[Column]:
+        """One column per (helicity row, Born basis element) of a resolution;
+        a spin source leg keeps its source row only."""
+
         if resolution not in ("helicity", "colour", "helicity-colour"):
             raise ValueError(f"unknown resolution {resolution!r}")
         rows = self._rows_of(spin) if "helicity" in resolution else (None,)
         components = self.components if "colour" in resolution else (None,)
-        columns = [
+        return [
             Column(
                 (row, b),
                 None,
@@ -520,13 +526,23 @@ class ObservableSlice:
             for row in rows
             for b in components
         ]
-        results = self._run(
-            columns, point, scale_squared, parameters, precision, poles, spin, None
-        )
+
+    @staticmethod
+    def resolved_result(
+        columns: Sequence[Column],
+        results: Mapping[Hashable, PointResult],
+        precision: Precision | None = None,
+    ) -> ResolvedObservables:
+        rows = tuple(dict.fromkeys(column.key[0] for column in columns))
+        components = tuple(dict.fromkeys(column.key[1] for column in columns))
+        precision = precision or Precision.double()
         return ResolvedObservables(
             {column.key: results[column.key] for column in columns},
-            None if rows == (None,) else tuple(rows),
-            None if components == (None,) else tuple(components),
+            None if rows == (None,) else rows,
+            None if components == (None,) else components,
+            digits=None
+            if precision.arithmetic == "double"
+            else precision.working_digits,
         )
 
     def _rows_of(self, spin) -> tuple[rx.Row, ...]:
@@ -551,17 +567,38 @@ class ObservableSlice:
     def _run(
         self, columns, point, scale_squared, parameters, precision, poles, spin, ward
     ) -> dict[Hashable, PointResult]:
-        slice_ = self.slice
+        plan = ColumnPlan(self, columns)
+        evaluation = self.point(
+            point, scale_squared, parameters, precision, poles, spin, ward
+        )
+        with evaluation.numbers.scope():
+            execution = evaluation.dress(seeds=plan.seeds(evaluation))
+            evaluation._reduce(
+                execution.numerators, False, columns=list(range(plan.width))
+            )
+            return plan.results(evaluation)
+
+    def point(
+        self,
+        point,
+        scale_squared,
+        parameters=None,
+        precision=None,
+        poles=True,
+        spin=None,
+        ward=None,
+    ):
+        """The slice's point evaluation (trees, Born, counterterm and field
+        vectors per helicity row) with the spin sources or the Ward vector."""
+
         precision = precision or Precision.double()
         spin = dict(spin or {})
         self._spin_legs(spin)
         if ward is not None and not self.ward:
             raise ValueError("the Ward mode was not declared at generation")
         exact_point = tuple(tuple(_fraction(x) for x in momentum) for momentum in point)
-        scale = _fraction(scale_squared)
-        digits = precision.working_digits
         with _Numbers(precision).scope():
-            sources = {leg: _vector(value, digits) for leg, value in spin.items()}
+            sources = {leg: _vector(value) for leg, value in spin.items()}
             loop_sources = None
             if ward is not None:
                 if ward in spin:
@@ -571,9 +608,9 @@ class ObservableSlice:
                         (_to_decimal(x), Decimal(0)) for x in exact_point[ward - 1]
                     )
                 }
-            evaluation = slice_._point(
+            return self.slice._point(
                 exact_point,
-                scale,
+                _fraction(scale_squared),
                 dict(parameters or {}),
                 precision,
                 poles,
@@ -581,10 +618,9 @@ class ObservableSlice:
                 loop_sources=loop_sources,
                 fixed=self._fixed(spin),
             )
-            return _ObservableEvaluation(self, evaluation, columns).results
 
 
-def _vector(value: Any, digits: int) -> tuple[ComplexPair, ...]:
+def _vector(value: Any) -> tuple[ComplexPair, ...]:
     """A literal complex four-vector as decimal (real, imaginary) pairs."""
 
     components = list(value)
@@ -605,53 +641,40 @@ def _vector(value: Any, digits: int) -> tuple[ComplexPair, ...]:
 # --------------------------------------------------------------------- one point
 
 
-class _ObservableEvaluation:
-    """The columns of one point: seeds, dressing, reduction and assembly."""
+class ColumnPlan:
+    """The numerator columns of a set of outputs (point independent).
 
-    def __init__(self, observables: ObservableSlice, evaluation, columns):
+    Per output and squared-order sector one seed column, two for a directed
+    history that is not symmetric (the direct and the swapped table);
+    ``lanes[key, sector]`` gives (direct, swapped) column indices, equal for
+    a single column. ``seeds`` builds the Python seed source of a point and
+    ``results`` assembles the outputs from the point's reduced lanes
+    ``evaluation.families[(family, loop order, column index)]`` (from the
+    Python executor or the native one).
+    """
+
+    def __init__(self, observables: ObservableSlice, columns: Iterable[Column]):
         self.observables = observables
-        self.evaluation = evaluation
-        self.slice = observables.slice
-        self.numbers = evaluation.numbers
+        self.slice = slice_ = observables.slice
         self.columns = list(columns)
-        self._seed_columns: list[_SeedColumn] = []
-        # (column key, sector) -> (direct numerator column, swapped column)
-        self._lanes: dict[tuple[Hashable, Orders], tuple[int, int]] = {}
-        self._plan()
-        execution = evaluation.dress(
-            seeds=ColumnSeeds(
-                self._seed_columns,
-                self.slice.class_of,
-                evaluation.amplitudes,
-                self.numbers,
-                self.slice.request.accuracy,
-            )
-        )
-        evaluation._reduce(
-            execution.numerators, False, columns=list(range(len(self._seed_columns)))
-        )
-        self.results = {column.key: self._result(column) for column in self.columns}
-
-    # -- columns ---------------------------------------------------------------
-
-    def _plan(self) -> None:
-        slice_ = self.slice
+        self.seed_columns: list[SeedColumn] = []
+        self.lanes: dict[tuple[Hashable, Orders], tuple[int, int]] = {}
         accuracy = slice_.request.accuracy
         degrees = slice_.degrees()["virtual"] if accuracy != "full" else {}
         for column in self.columns:
             tables = (slice_.table, slice_.table)
             if column.directed:
-                directed = self.observables.directed(column.history)
+                directed = observables.directed(column.history)
                 tables = (directed.table, directed.swapped)
             for sector, pairs in slice_.sectors:
-                indices = []
+                indices: list[int] = []
                 for k, table in enumerate(tables):
                     if k and tables[1] is tables[0]:
                         indices.append(indices[0])
                         continue
-                    indices.append(len(self._seed_columns))
-                    self._seed_columns.append(
-                        _SeedColumn(
+                    indices.append(len(self.seed_columns))
+                    self.seed_columns.append(
+                        SeedColumn(
                             table,
                             pairs,
                             degrees.get(sector),
@@ -659,11 +682,40 @@ class _ObservableEvaluation:
                             column.basis,
                         )
                     )
-                self._lanes[column.key, sector] = tuple(indices)
+                self.lanes[column.key, sector] = (indices[0], indices[1])
+
+    @property
+    def width(self) -> int:
+        return len(self.seed_columns)
+
+    def seeds(self, evaluation) -> ColumnSeeds:
+        return ColumnSeeds(
+            self.seed_columns,
+            self.slice.class_of,
+            evaluation.amplitudes,
+            evaluation.numbers,
+            self.slice.request.accuracy,
+        )
+
+    def results(self, evaluation) -> dict[Hashable, PointResult]:
+        assembly = _Assembly(self, evaluation)
+        return {column.key: assembly.result(column) for column in self.columns}
+
+
+class _Assembly:
+    """The outputs of one point from its reduced lanes and local vectors."""
+
+    def __init__(self, plan: ColumnPlan, evaluation):
+        self.plan = plan
+        self.observables = plan.observables
+        self.slice = plan.slice
+        self.evaluation = evaluation
+        self.numbers = evaluation.numbers
+        self._lanes = plan.lanes
 
     # -- assembly --------------------------------------------------------------
 
-    def _result(self, column: Column) -> PointResult:
+    def result(self, column: Column) -> PointResult:
         slice_, numbers = self.slice, self.numbers
         evaluation = self.evaluation
         width = 3 if evaluation.poles else 1
@@ -851,6 +903,88 @@ def _add(values: Iterable[Any], zero: Any) -> Any:
     for value in values:
         total = total + value
     return total
+
+
+# --------------------------------------------------------------------- native
+
+
+class NativeObservables:
+    """A fixed set of observable columns run by the native v2 executor.
+
+    The plan is exported with the columns' seed weights (directed tables,
+    Born basis masks) and, for helicity-resolved columns, their helicity rows
+    (``column_rows``); spin sources and the Ward vector change only the batch
+    inputs (Born components and block rows). Assembly is ``ColumnPlan``'s.
+    """
+
+    def __init__(
+        self,
+        observables: ObservableSlice,
+        columns: Iterable[Column],
+        *,
+        lanes: int = DEFAULT_LANES,
+        threads: int | None = None,
+    ):
+        self.observables = observables
+        self.plan = ColumnPlan(observables, columns)
+        exported = export_plan(
+            observables.slice, forward=False, columns=self.plan.seed_columns
+        )
+        self.executor = NativeExecutor(
+            observables.slice, exported=exported, lanes=lanes, threads=threads
+        )
+
+    @classmethod
+    def correlated(
+        cls, observables: ObservableSlice, correlations: Sequence[str], **options
+    ) -> NativeObservables:
+        return cls(
+            observables,
+            [Column(name, observables.history(name)) for name in correlations],
+            **options,
+        )
+
+    @classmethod
+    def resolved(
+        cls,
+        observables: ObservableSlice,
+        resolution: Resolution = "helicity-colour",
+        *,
+        spin_legs: Iterable[int] = (),
+        **options,
+    ) -> NativeObservables:
+        return cls(
+            observables,
+            observables.resolved_columns(resolution, dict.fromkeys(spin_legs)),
+            **options,
+        )
+
+    def evaluate(
+        self,
+        points: Sequence[Sequence[Sequence[Any]]],
+        scales: Sequence[Any],
+        *,
+        spin: Mapping[int, Any] | None = None,
+        ward: int | None = None,
+        parameters: Mapping[str, str] | None = None,
+        precision: Precision | None = None,
+        poles: bool = True,
+    ) -> list[dict[Hashable, PointResult]]:
+        """The outputs of every point (one batch, one source assignment)."""
+
+        precision = precision or Precision.double()
+        evaluations = [
+            self.observables.point(
+                point, scale, parameters, precision, poles, spin, ward
+            )
+            for point, scale in zip(points, scales, strict=True)
+        ]
+        self.executor.reduce(evaluations, precision, poles, False)
+        out = []
+        for evaluation in evaluations:
+            with evaluation.numbers.scope():
+                out.append(self.plan.results(evaluation))
+        return out
 
 
 # --------------------------------------------------------------------- flavour
@@ -1046,10 +1180,12 @@ __all__ = [
     "INCLUSIVE",
     "LAURENT",
     "Column",
+    "ColumnPlan",
     "ColumnSeeds",
     "DirectedColour",
     "FlavourMember",
     "MemberObservables",
+    "NativeObservables",
     "ObservableSlice",
     "ResolvedObservables",
     "admit_member",

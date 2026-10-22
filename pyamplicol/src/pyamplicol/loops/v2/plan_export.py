@@ -102,7 +102,9 @@ class ExportedPlan:
     masses: tuple[Any, ...]
     orders: tuple[Orders, ...]
     families: tuple[FamilyKey, ...]
-    sectors: tuple[Orders, ...]
+    # Lane label of each observable column: its sector for the sector
+    # columns, its index for other observable columns.
+    columns: tuple[Hashable, ...]
 
     def json(self) -> str:
         return json.dumps(self.program, separators=(",", ":"))
@@ -277,37 +279,38 @@ class _Exporter:
             found = self.seeds[key] = len(self.seeds)
         return found
 
-    def seed_records(self) -> list[dict]:
+    def seed_records(self, columns: Sequence[Any]) -> list[dict]:
         """Per seed key and column the exact weights of the Born components,
-        the projection of ``assemble.SectorSeeds`` (``SeedTable.seeds``)."""
+        the projection of ``assemble.SectorSeeds`` (``SeedTable.seeds``).
+
+        A column (``SeedColumn``) has its own seed table (directed colour
+        histories), sector pairs, degree P and Born basis elements; its
+        helicity rows are the plan's ``column_rows``."""
 
         slice_ = self.slice_
-        table = slice_.table
         accuracy = slice_.request.accuracy
-        degrees = slice_.degrees()["virtual"] if accuracy != "full" else {}
         born_grades = slice_._born_grades()
-        sectors = []
-        for sector, pairs in slice_.sectors:
-            degree = degrees.get(sector)
-            if accuracy != "full" and degree is None:
-                degree = table.degree(pairs, born_grades)
-            sectors.append((pairs, degree))
         admitted = {
             (c, order)
-            for pairs, _degree in sectors
-            for c, order, _b, _a in table.admitted(pairs)
+            for column in columns
+            for c, order, _b, _a in column.table.admitted(column.pairs)
         }
         records = []
         for combination, order in self.seeds:
             for c, _x in combination:
                 if (c, order) not in admitted:
                     raise KeyError(f"no sector admits class {c} at {order}")
-            columns = []
-            for pairs, degree in sectors:
+            weights_of = []
+            for column in columns:
+                table, degree = column.table, column.degree
+                if accuracy != "full" and degree is None:
+                    degree = table.degree(column.pairs, born_grades)
                 weights: dict[int, ExactColorCoefficient] = {}
                 for c, x in combination:
-                    for cc, oo, b, born_order in table.admitted(pairs):
+                    for cc, oo, b, born_order in table.admitted(column.pairs):
                         if (cc, oo) != (c, order):
+                            continue
+                        if column.basis is not None and b not in column.basis:
                             continue
                         for grade in sorted(born_grades.get((b, born_order), ())):
                             weight = project(table.cells[c][b], degree, accuracy, grade)
@@ -318,14 +321,14 @@ class _Exporter:
                             )
                             term = x * weight
                             weights[j] = term + weights[j] if j in weights else term
-                columns.append(
+                weights_of.append(
                     [
                         [j, _fraction_text(w.real), _fraction_text(w.imag)]
                         for j, w in weights.items()
                         if w
                     ]
                 )
-            records.append({"columns": columns})
+            records.append({"columns": weights_of})
         return records
 
     # -- schedule B -----------------------------------------------------------
@@ -518,8 +521,39 @@ class _Exporter:
         return {"states": states}
 
 
-def export_plan(slice_: Any, *, forward: bool = True) -> ExportedPlan:
-    """The plan v4 program of a generated slice (structure only, no numerics)."""
+@dataclass(frozen=True)
+class SeedColumn:
+    """One observable column of a plan: its seed table, sector pairs and
+    degree P, and the Born helicity rows and basis elements its seeds keep
+    (``None``: all). The sector columns of the inclusive virtual are
+    ``sector_columns``; ``observables.ColumnPlan`` builds the others."""
+
+    table: Any
+    pairs: frozenset
+    degree: int | None
+    rows: frozenset | None = None
+    basis: frozenset | None = None
+
+
+def sector_columns(slice_: Any) -> tuple[SeedColumn, ...]:
+    """One column per squared-order sector (the inclusive virtual)."""
+
+    degrees = slice_.degrees()["virtual"] if slice_.request.accuracy != "full" else {}
+    return tuple(
+        SeedColumn(slice_.table, pairs, degrees.get(sector))
+        for sector, pairs in slice_.sectors
+    )
+
+
+def export_plan(
+    slice_: Any, *, forward: bool = True, columns: Sequence[Any] | None = None
+) -> ExportedPlan:
+    """The plan v4 program of a generated slice (structure only, no numerics).
+
+    ``columns`` are the observable columns (``SeedColumn``); by default one
+    per squared-order sector. Columns that keep only some helicity rows
+    (helicity-resolved outputs) are listed in the plan's ``column_rows``.
+    """
 
     from .assemble import _BlockRows
 
@@ -547,13 +581,16 @@ def export_plan(slice_: Any, *, forward: bool = True) -> ExportedPlan:
         if forward
         else None
     )
-    seeds = exporter.seed_records()
+    columns_given = columns
+    columns = tuple(sector_columns(slice_) if columns is None else columns)
+    seeds = exporter.seed_records(columns)
     legs = len(slice_.blocks.process.legs)
+    row_index = {row: i for i, row in enumerate(rows)}
     program = {
         "schema": PLAN_SCHEMA,
         "legs": legs,
         "rows": len(rows),
-        "columns": len(slice_.sectors),
+        "columns": len(columns),
         "average": slice_.normalisation.average,
         "born_components": len(exporter.born_components),
         "constants": len(exporter.constants),
@@ -566,6 +603,13 @@ def export_plan(slice_: Any, *, forward: bool = True) -> ExportedPlan:
         "families": families,
         "forward": forward_program,
     }
+    if any(column.rows is not None for column in columns):
+        program["column_rows"] = [
+            None
+            if column.rows is None
+            else sorted(row_index[row] for row in column.rows)
+            for column in columns
+        ]
     return ExportedPlan(
         program=program,
         rows=rows,
@@ -575,7 +619,9 @@ def export_plan(slice_: Any, *, forward: bool = True) -> ExportedPlan:
         masses=tuple(exporter.masses),
         orders=orders,
         families=tuple(keys),
-        sectors=tuple(sector for sector, _pairs in slice_.sectors),
+        columns=tuple(sector for sector, _pairs in slice_.sectors)
+        if columns_given is None
+        else tuple(range(len(columns))),
     )
 
 
@@ -723,7 +769,11 @@ class NativeExecutor:
             batch["block_rows"].append(rows)
             batch["born"].append(
                 [
-                    value(evaluation.amplitudes[row].get((b, order), {}).get(grade, 0))
+                    value(
+                        evaluation.amplitudes.get(row, {})
+                        .get((b, order), {})
+                        .get(grade, 0)
+                    )
                     for row in exported.rows
                     for b, order, grade in exported.born_components
                 ]
@@ -846,11 +896,28 @@ class NativeExecutor:
         return out
 
     def _evaluated(self, points, scales, parameters, precision, poles, retest):
-        from .assemble import Laurent, _Numbers
+        from .assemble import _Numbers
 
         precision, evaluations = self._points(
             points, scales, parameters, precision, poles
         )
+        self.reduce(evaluations, precision, poles, retest)
+        for evaluation in evaluations:
+            with _Numbers(precision).scope():
+                # The native seeds contract the exported exact weights K[c, b]
+                # with the Born components directly (``seed_records``).
+                evaluation.colour_contraction = "direct"
+                evaluation._assemble()
+        return precision, evaluations
+
+    def reduce(self, evaluations, precision, poles: bool, retest: bool) -> None:
+        """Dress and reduce prepared point evaluations (``assemble``'s
+        ``_PointEvaluation``) natively: sets each evaluation's ``families``
+        (and ``retest_families``), lanes labelled (family, loop orders,
+        column label)."""
+
+        from .assemble import Laurent, _Numbers
+
         arithmetic, digits = self._arithmetic(precision, False)
         native = self.native(arithmetic, digits)
         output = native.evaluate(
@@ -884,7 +951,7 @@ class NativeExecutor:
                 return (
                     exported.families[family],
                     exported.orders[order],
-                    exported.sectors[column],
+                    exported.columns[column],
                 )
 
             with _Numbers(precision).scope():
@@ -896,11 +963,6 @@ class NativeExecutor:
                     if checks is None
                     else {label(lane): laurent(values) for lane, values in checks}
                 )
-                # The native seeds contract the exported exact weights K[c, b]
-                # with the Born components directly (``seed_records``).
-                evaluation.colour_contraction = "direct"
-                evaluation._assemble()
-        return precision, evaluations
 
 
 def _carrier_value(z, arithmetic: Arithmetic) -> Any:
