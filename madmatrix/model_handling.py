@@ -3349,7 +3349,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
         call = call + '( momenta,'
         if argument.get('spin') != 1:
             # For non-scalars, need mass and helicity
-            call = call + 'm_pars->%s, cHel[ihel][%d],'
+            call = call + 'm_pars->%s, hel_sv[%d],'
         else:
             # AV This seems to be for scalars (spin==1???), pass neither mass nor helicity (#351)
             ###call = call + 'm_pars->%s,'
