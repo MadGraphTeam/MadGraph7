@@ -735,8 +735,8 @@ class NativeExecutor:
     def _arithmetic(precision, exact: bool) -> tuple[Arithmetic, int | None]:
         if exact:
             return "exact", None
-        if precision.arithmetic == "double":
-            return "double", None
+        if precision.arithmetic in ("double", "double-double"):
+            return precision.arithmetic, None
         return "arbitrary", precision.working_digits
 
     # -- runs -------------------------------------------------------------------

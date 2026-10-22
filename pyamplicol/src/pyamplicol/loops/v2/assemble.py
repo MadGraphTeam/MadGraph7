@@ -148,6 +148,9 @@ LAURENT = ("finite", "single_pole", "double_pole")
 GUARD_DIGITS = 20
 # Interpreted Symbolica replays derive their precision from the inputs' digits.
 _SYMBOLICA_PRECISION_FLOOR = 40
+# Decimal digits of a DoubleFloat (106 bits): the inputs of a double-double
+# evaluation are formed with these plus the guard digits.
+DOUBLE_DOUBLE_DIGITS = 32
 
 
 # --------------------------------------------------------------------- precision
@@ -155,15 +158,23 @@ _SYMBOLICA_PRECISION_FLOOR = 40
 
 @dataclass(frozen=True, slots=True)
 class Precision:
-    """Arithmetic of an evaluation: binary64 or ``digits`` decimal digits."""
+    """Arithmetic of an evaluation: binary64, double-double or ``digits``
+    decimal digits.
 
-    arithmetic: Literal["double", "arbitrary"] = "double"
+    Double-double (``DoubleFloat``) is a carrier of the native executor
+    (``plan_export.NativeExecutor``): its per-point inputs (trees, Born,
+    counterterm scalars) are formed in Decimal arithmetic at
+    ``working_digits``, dressing and reduction run in DoubleFloat. The Python
+    reference path has no double-double arithmetic and refuses it.
+    """
+
+    arithmetic: Literal["double", "double-double", "arbitrary"] = "double"
     digits: int | None = None
 
     def __post_init__(self) -> None:
-        if self.arithmetic == "double":
+        if self.arithmetic in ("double", "double-double"):
             if self.digits is not None:
-                raise ValueError("binary64 takes no digits")
+                raise ValueError(f"{self.arithmetic} takes no digits")
         elif self.arithmetic == "arbitrary":
             if not isinstance(self.digits, int) or self.digits < 1:
                 raise ValueError("arbitrary precision needs a positive digit count")
@@ -175,23 +186,40 @@ class Precision:
         return cls("double")
 
     @classmethod
+    def double_double(cls) -> Precision:
+        return cls("double-double")
+
+    @classmethod
     def arbitrary(cls, digits: int) -> Precision:
         return cls("arbitrary", digits)
 
     @property
     def unit_roundoff(self) -> float:
-        """The unit roundoff: 2^-53 in binary64, half a unit of the last of
-        ``digits`` decimal digits otherwise."""
-        if self.digits is None:
+        """The unit roundoff: 2^-53 in binary64, 2^-104 in double-double (a
+        DoubleFloat operation rounds to about 2^-104 relative, not to its
+        106-bit significand), half a unit of the last of ``digits`` decimal
+        digits otherwise."""
+        if self.arithmetic == "double":
             return 2.0**-53
+        if self.arithmetic == "double-double":
+            return 2.0**-104
         return 0.5 * 10.0 ** (1 - self.digits)
 
     @property
     def working_digits(self) -> int:
         """Decimal digits of the Python arithmetic and of the tree replay."""
-        if self.digits is None:
+        if self.arithmetic == "double":
             return _SYMBOLICA_PRECISION_FLOOR
-        return max(self.digits + GUARD_DIGITS, _SYMBOLICA_PRECISION_FLOOR)
+        digits = DOUBLE_DOUBLE_DIGITS if self.digits is None else self.digits
+        return max(digits + GUARD_DIGITS, _SYMBOLICA_PRECISION_FLOOR)
+
+    def require_reference(self) -> None:
+        """Refuse a carrier the Python reference path has no arithmetic for."""
+        if self.arithmetic == "double-double":
+            raise ValueError(
+                "double-double evaluations run in the native executor "
+                "(plan_export.NativeExecutor)"
+            )
 
 
 class _Numbers:
@@ -1150,6 +1178,7 @@ class LoopSlice:
         """
 
         precision = precision or Precision.double()
+        precision.require_reference()
         stability = stability or StabilityChecks()
         exact_point = tuple(tuple(_fraction(x) for x in momentum) for momentum in point)
         scale = _fraction(scale_squared)
@@ -1219,6 +1248,7 @@ class LoopSlice:
         """
 
         precision = precision or Precision.double()
+        precision.require_reference()
         exact_point = tuple(tuple(_fraction(x) for x in momentum) for momentum in point)
         with _Numbers(precision).scope():
             evaluation = self._point(
