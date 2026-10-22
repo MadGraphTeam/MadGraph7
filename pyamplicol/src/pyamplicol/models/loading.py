@@ -1198,6 +1198,9 @@ def counterterm_lorentz_error(compiled: CompiledModel, name: str) -> str | None:
 def lower_counterterm_vertices(
     compiled: CompiledModel,
     structures: Iterable[CountertermStructure],
+    *,
+    coupling_classes: Mapping[CountertermStructure, object] | None = None,
+    excluded_particles: Iterable[str] = (),
 ) -> CountertermLoweredModel:
     """Lower CT vertex terms into the tree model of ``compiled`` (design §6.1).
 
@@ -1212,6 +1215,17 @@ def lower_counterterm_vertices(
     tree compiler has no colour-flow decomposition for (e.g. two gluons and
     two colour-singlet bosons) raise ``CountertermLoweringError`` naming
     them, so that a caller can close their rules as sites.
+
+    Terms of one slot and orders with the same ``coupling_classes`` value
+    share one coupling (and parameter pair): terms whose coupling is the same
+    in every rule, like the three colour-Lorentz cells of the four-gluon UV
+    counterterm, then fuse into one contact kernel as the ordinary quartic
+    vertex does. By default every term has its own coupling.
+
+    ``excluded_particles`` (UFO names, both charge states) removes every
+    vertex, ordinary or CT, with such a leg: the tree model of a process that
+    forbids those particles (MadGraph's ``/ z``), which the tree generator
+    has no option for.
     """
 
     from .compiler_entry import compile_ufo_model_ir
@@ -1220,8 +1234,16 @@ def lower_counterterm_vertices(
     structures = tuple(sorted(set(structures)))
     payload = json.loads(json.dumps(compiled.model))
     particles = {str(item["name"]): item for item in payload["particles"]}
+    excluded = set(excluded_particles)
+    excluded |= {str(particles[name]["antiname"]) for name in excluded}
+    payload["vertex_rules"] = [
+        rule
+        for rule in payload["vertex_rules"]
+        if not excluded & set(rule["particles"])
+    ]
     lorentz_names = {str(item["name"]) for item in payload["lorentz_structures"]}
     groups: dict[tuple[object, ...], list[CountertermStructure]] = {}
+    structures = tuple(s for s in structures if not excluded & set(s.particles))
     for structure in structures:
         if len(structure.particles) < 3:
             raise ValueError(
@@ -1239,15 +1261,22 @@ def lower_counterterm_vertices(
             ),
             [],
         ).append(structure)
+    classes: dict[tuple[object, ...], list[CountertermStructure]] = {}
+    for structure in structures:
+        identity = (
+            structure if coupling_classes is None else coupling_classes[structure]
+        )
+        classes.setdefault(
+            (structure.orders, structure.component, structure.power, identity), []
+        ).append(structure)
     parameters: dict[CountertermStructure, tuple[str, str]] = {}
     couplings: dict[CountertermStructure, str] = {}
     defaults = dict(compiled.parameter_defaults)
-    for index, structure in enumerate(structures):
+    for index, members in enumerate(classes.values()):
         names = (
             f"{_COUNTERTERM_PARAMETER_BLOCK}_{index}_RE",
             f"{_COUNTERTERM_PARAMETER_BLOCK}_{index}_IM",
         )
-        parameters[structure] = names
         for offset, name in enumerate(names):
             payload["parameters"].append(
                 {
@@ -1261,17 +1290,20 @@ def lower_counterterm_vertices(
                 }
             )
             defaults[name] = (1.0, 0.0)
-        couplings[structure] = f"{_COUNTERTERM_PARAMETER_BLOCK}C_{index}"
+        coupling = f"{_COUNTERTERM_PARAMETER_BLOCK}C_{index}"
+        for member in members:
+            parameters[member] = names
+            couplings[member] = coupling
         payload["couplings"].append(
             {
                 "expression": (
                     f"UFO::{{}}::{names[0]}+{_IMAGINARY_UNIT}*UFO::{{}}::{names[1]}"
                 ),
-                "name": couplings[structure],
+                "name": coupling,
                 "orders": [
-                    *([name, value] for name, value in structure.orders),
+                    *([name, value] for name, value in members[0].orders),
                     [COUNTERTERM_INSERTION_ORDER, 1],
-                    [structure.slot_order, 1],
+                    [members[0].slot_order, 1],
                 ],
                 "value": [1.0, 1.0],
             }
@@ -1346,8 +1378,18 @@ def lower_counterterm_vertices(
     digest = hashlib.sha256(
         json.dumps(
             [
-                [list(s.particles), s.colour, s.lorentz, s.orders, s.component, s.power]
-                for s in structures
+                sorted(excluded),
+                [
+                    [
+                        list(s.particles),
+                        s.colour,
+                        s.lorentz,
+                        s.orders,
+                        s.component,
+                        s.power,
+                    ]
+                    for s in structures
+                ],
             ],
             sort_keys=True,
         ).encode()

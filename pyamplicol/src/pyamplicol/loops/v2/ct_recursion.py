@@ -147,13 +147,17 @@ class TreeVocabulary:
 
 
 def lower_model_counterterms(
-    compiled: CompiledModel, rules: Mapping[str, Any]
+    compiled: CompiledModel,
+    rules: Mapping[str, Any],
+    *,
+    forbidden: Iterable[int] = (),
 ) -> CountertermLoweredModel:
     """The tree model of ``compiled`` with every lowerable rule's CT vertices.
 
     ``rules`` are prepared counterterm rules (``PreparedCountertermModel.rules``)
     of any request; preparing the model without order bounds gives all of
-    them, so one lowered model serves every process of the model.
+    them, so one lowered model serves every process of the model that forbids
+    the same particles (|PDG| codes ``forbidden``, removed from the tree model).
     """
 
     vocabulary = TreeVocabulary(compiled)
@@ -161,6 +165,21 @@ def lower_model_counterterms(
         name: rule_terms(rule)
         for name, rule in rules.items()
         if vocabulary.residual_reason(rule) is None
+    }
+    # Terms of the same slot fed by the same couplings of the same rules share
+    # one lowered coupling.
+    contributions: dict[CountertermStructure, set[tuple[str, str]]] = defaultdict(set)
+    for name, rows in terms.items():
+        for entry, structure in rows:
+            contributions[structure].add((name, entry.coupling.name))
+    classes = {
+        structure: tuple(sorted(rows)) for structure, rows in contributions.items()
+    }
+    forbidden = {abs(int(pdg)) for pdg in forbidden}
+    excluded = {
+        str(item["name"])
+        for item in compiled.model["particles"]
+        if abs(int(item["pdg_code"])) in forbidden
     }
     refused: dict[CountertermStructure, str] = {}
     while True:
@@ -172,7 +191,12 @@ def lower_model_counterterms(
             for _entry, structure in rows
         }
         try:
-            lowered = lower_counterterm_vertices(compiled, structures)
+            lowered = lower_counterterm_vertices(
+                compiled,
+                structures,
+                coupling_classes={s: classes[s] for s in structures},
+                excluded_particles=excluded,
+            )
         except CountertermLoweringError as error:
             if not error.refused or set(error.refused) <= set(refused):
                 raise
@@ -319,9 +343,18 @@ class CountertermRecursion:
     # -- program -----------------------------------------------------------------
 
     def coupling_order_limits(self) -> dict[str, int]:
-        """Order limits of the tree program: Born and loop orders, CT <= 1."""
+        """Order limits of the tree program: Born and loop orders, CT <= 1.
 
-        limits: dict[str, int] = {}
+        Every physical order of the model is bounded (by 0 when no Born or
+        loop order carries it), since the tree generator leaves an unlisted
+        order unbounded.
+        """
+
+        limits: dict[str, int] = {
+            str(item["name"]): 0
+            for item in self.lowered.compiled.model["orders"]
+            if not str(item["name"]).startswith("PYAMPLICOL_CT")
+        }
         for orders in (*self.born_orders, *self.loop_orders):
             for name, power in orders:
                 limits[name] = max(limits.get(name, 0), int(power))
@@ -357,16 +390,23 @@ class CountertermRecursion:
         )
 
     def parameter_values(
-        self, scalars: Mapping[tuple[str, int], Any], *, poles: bool = True
+        self,
+        scalars: Mapping[tuple[str, int], Any],
+        *,
+        poles: bool = True,
+        slots: Iterable[Slot] | None = None,
     ) -> dict[str, Any]:
         """Runtime values of the lowered CT parameters at one point.
 
         ``scalars`` maps ``scalar_outputs()`` to the bound Laurent
         coefficients (any carrier with ``+``, ``*`` by int, ``.real`` and
-        ``.imag``). Without ``poles`` the pole slots are zero. Every lowered
+        ``.imag``). Without ``poles`` the pole slots are zero, and with
+        ``slots`` only those (component, power) slots are bound. Every lowered
         parameter is returned; terms of rules this request does not admit
         are zero.
         """
+
+        selected = None if slots is None else frozenset(slots)
 
         values: dict[CountertermStructure, Any] = {}
         for name, terms in self.terms.items():
@@ -374,12 +414,24 @@ class CountertermRecursion:
             for entry, structure in terms:
                 if not multiplicity or (structure.power and not poles):
                     continue
+                if selected is not None and (
+                    (structure.component, structure.power) not in selected
+                ):
+                    continue
                 term = multiplicity * scalars[entry.coupling.name, structure.power]
                 known = values.get(structure)
                 values[structure] = term if known is None else known + term
         out: dict[str, Any] = {}
-        for structure, (real, imaginary) in self.lowered.parameters.items():
+        bound: dict[tuple[str, str], Any] = {}
+        for structure, names in self.lowered.parameters.items():
             value = values.get(structure)
+            if names in bound and bound[names] != value:
+                raise ValueError(
+                    f"lowered CT coupling {names} is shared by vertex terms whose "
+                    "couplings differ in this request"
+                )
+            bound[names] = value
+            real, imaginary = names
             out[real] = 0 if value is None else value.real
             out[imaginary] = 0 if value is None else value.imag
         return out

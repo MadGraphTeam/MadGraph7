@@ -16,7 +16,6 @@ Python eager compiler.
 
 from __future__ import annotations
 
-import math
 from collections import Counter
 from decimal import Decimal
 from pathlib import Path
@@ -29,6 +28,8 @@ from tools.loop_reference import legacy_capture
 from .test_loop_v2_counterterms import (
     CONTROLS,
     TOLERANCE,
+    WORKING_DIGITS,
+    DecimalComplex,
     _components,
     _scalars,
     _sector_orders,
@@ -46,7 +47,8 @@ def ct_slice(loop_sm_compiled_model):
 
 @pytest.fixture(scope="module")
 def lowered_ct_model(loop_sm_compiled_model, tmp_path_factory):
-    """loop_sm with every lowerable CT rule in its tree model, prepared once."""
+    """``forbidden |PDG| codes -> (lowered model, prepared source)``: loop_sm
+    with every lowerable CT rule in its tree model, prepared once per veto."""
 
     from pyamplicol import ModelSource
     from pyamplicol.config import EvaluatorConfig
@@ -55,17 +57,27 @@ def lowered_ct_model(loop_sm_compiled_model, tmp_path_factory):
     from pyamplicol.models.loading import load_compiled_model
 
     compiled = load_compiled_model(loop_sm_compiled_model)
-    prepared = prepare_loop_request_model(
+    rules = prepare_loop_request_model(
         compiled, fixed_parameters=legacy_capture.FIXED_PARAMETERS
-    )
-    lowered = lower_model_counterterms(compiled, prepared.counterterms.rules)
-    root = tmp_path_factory.mktemp("ct-lowered")
-    path = lowered.compiled.write(root / "loop-sm-ct.pyamplicol-model.json")
-    bundle = root / "loop-sm-ct.pyamplicol-model"
-    ModelSource.from_path(path).compile(
-        cache_dir=root / "cache", prepared_output=bundle, evaluator=EvaluatorConfig()
-    )
-    return lowered, ModelSource.from_path(bundle)
+    ).counterterms.rules
+    built = {}
+
+    def build(forbidden=()):
+        key = tuple(sorted(forbidden))
+        if key not in built:
+            lowered = lower_model_counterterms(compiled, rules, forbidden=key)
+            root = tmp_path_factory.mktemp("ct-lowered")
+            path = lowered.compiled.write(root / "loop-sm-ct.pyamplicol-model.json")
+            bundle = root / "loop-sm-ct.pyamplicol-model"
+            ModelSource.from_path(path).compile(
+                cache_dir=root / "cache",
+                prepared_output=bundle,
+                evaluator=EvaluatorConfig(),
+            )
+            built[key] = (lowered, ModelSource.from_path(bundle))
+        return built[key]
+
+    return build
 
 
 def _recursion(ct, lowered):
@@ -117,7 +129,8 @@ def _program(ct, recursion, source, artifact: Path, lane: str):
             optimization=EvaluatorOptimizationConfig(cores=1),
         ),
     )
-    Generator(config).generate(ct.control.process, artifact, model=source)
+    process = ct.control.process.split(" / ")[0]  # vetoes: in the lowered model
+    Generator(config).generate(process, artifact, model=source)
     return Runtime.load(artifact)
 
 
@@ -131,33 +144,166 @@ def _model_parameters(ct, index: int) -> dict[str, str]:
     return parameters
 
 
-def _recursion_components(ct, recursion, runtime, index: int, *, poles: bool = True):
-    """Born and the recursion's CT partials at one fixture point (binary64)."""
+def _bound_inputs(ct, recursion, index: int, label: str):
+    """Model parameters, CT scalars and momenta of one fixture point."""
 
     parameters = _model_parameters(ct, index)
     plan = ct.prepared.structure.scalar_bindings(recursion.scalar_outputs())
-    scalars = {
-        key: complex(float(re), float(im))
-        for key, (re, im) in _scalars(ct, plan, parameters, "double").items()
-    }
-    runtime.set_model_parameters(
-        {
-            **{name: float(value) for name, value in parameters.items()},
-            **recursion.parameter_values(scalars, poles=poles),
+    bound = _scalars(ct, plan, parameters, label)
+    point = ct.fixture["points"][index]
+    if label == "double":
+        scalars = {
+            key: complex(float(re), float(im)) for key, (re, im) in bound.items()
         }
+        model = {name: float(value) for name, value in parameters.items()}
+        return model, scalars, [[float(x) for x in momentum] for momentum in point]
+    scalars = {key: DecimalComplex(re, im) for key, (re, im) in bound.items()}
+    model = {name: Decimal(value) for name, value in parameters.items()}
+    return model, scalars, [list(momentum) for momentum in point]
+
+
+def _ct_values(recursion, scalars, label: str, **options) -> dict:
+    values = recursion.parameter_values(scalars, **options)
+    if label == "double":
+        return values
+    return {name: Decimal(value) for name, value in values.items()}
+
+
+def _recursion_components(
+    ct, recursion, runtime, index: int, label: str = "double", *, poles: bool = True
+):
+    """Born and the recursion's CT partials at one fixture point.
+
+    ``label`` is the fixture carrier: binary64, or 200 bits evaluated by the
+    tree runtime at ``WORKING_DIGITS`` decimal digits with exact inputs.
+    """
+
+    model, scalars, momenta = _bound_inputs(ct, recursion, index, label)
+    runtime.set_model_parameters(
+        {**model, **_ct_values(recursion, scalars, label, poles=poles)}
     )
-    point = [[float(x) for x in momentum] for momentum in ct.fixture["points"][index]]
-    evaluation = runtime.evaluate_orders([point])
+    evaluation = runtime.evaluate_orders(
+        [momenta], precision=None if label == "double" else WORKING_DIGITS[label]
+    )
     born = {
-        order: complex(evaluation.for_order(order)[0])
+        order: evaluation.for_order(order)[0]
         for order in evaluation.orders
         if not any(name.startswith("PYAMPLICOL_CT_") for name, _ in order)
     }
-    parts = {
-        key: complex(values[0])
-        for key, values in recursion.components(evaluation).items()
-    }
+    parts = {key: values[0] for key, values in recursion.components(evaluation).items()}
     return born, parts
+
+
+def _eager_slot_totals(ct, recursion, runtime, index: int):
+    """Born and Born x CT per slot from totals of an eager (Python) artifact.
+
+    Eager artifacts have no order partials. The CT couplings are linear runtime
+    sources, so with one slot bound to +c and to -c the totals differ by
+    4 Re(Born* CT_slot); 32 digits keep the subtraction exact to binary64.
+    """
+
+    model, scalars, momenta = _bound_inputs(ct, recursion, index, "double")
+    negated = {key: -value for key, value in scalars.items()}
+
+    def total(values):
+        runtime.set_model_parameters({**model, **values})
+        return _real(runtime.evaluate([momenta], precision=32)[0])
+
+    born = total(_ct_values(recursion, scalars, "double", slots=()))
+    parts = {}
+    for slot in recursion.slots:
+        plus = total(_ct_values(recursion, scalars, "double", slots=(slot,)))
+        minus = total(_ct_values(recursion, negated, "double", slots=(slot,)))
+        parts[slot] = (plus - minus) / 2
+    return born, parts
+
+
+def _real(value) -> Decimal:
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, complex):
+        if value.imag:
+            raise AssertionError(f"Born x CT partial {value} is not real")
+        return Decimal(value.real)
+    return Decimal(value.real)
+
+
+def _site_components(ct, label: str, index: int, rules) -> dict:
+    """CT components of the sites of ``rules`` (empty when they have none)."""
+
+    key = ("sites", frozenset(rules))
+    if key not in ct._caches:
+        ct._caches[key] = bool(ct.sites(closed_rules=rules).sites)
+    if not ct._caches[key]:
+        return {}
+    return _components(ct, label, index, closed_rules=rules)[1]
+
+
+def _site_value(rows, key) -> Decimal:
+    return Decimal(rows[key].real) if key in rows else Decimal(0)
+
+
+def _assert_equal_sites_and_legacy(ct, recursion, runtime, label: str) -> None:
+    """Per (component, squared order, power): recursion = sites of its rules,
+    and recursion + remaining sites = O1."""
+
+    fixture = ct.fixture
+    results = fixture["results"][label]
+    sectors = _sector_orders(fixture, "virtual")
+    born_sectors = _sector_orders(fixture, "born")
+    tolerance = TOLERANCE[label]
+    for index in range(len(fixture["points"])):
+        born, parts = _recursion_components(ct, recursion, runtime, index, label)
+        sites = _site_components(ct, label, index, recursion.rules)
+        residual = _site_components(ct, label, index, recursion.residual)
+        scale_born = max(abs(Decimal(row[0])) for row in results["born"][index])
+        for b, order in enumerate(born_sectors):
+            reference = Decimal(results["born"][index][b][0])
+            assert abs(_real(born[order]) - reference) <= tolerance * abs(reference)
+        assert {key[0] for key in parts} <= set(CT_COMPONENTS)
+        for component in CT_COMPONENTS:
+            for s, order in enumerate(sectors):
+                for k, power in enumerate(LAURENT_POWERS):
+                    key = (component, order, power)
+                    reference = Decimal(results[component][index][s][k][0])
+                    scale = abs(reference) or scale_born
+                    mine = _real(parts.get(key, Decimal(0)))
+                    site = _site_value(sites, key)
+                    total = mine + _site_value(residual, key)
+                    assert abs(mine - site) <= tolerance * scale, (key, index)
+                    assert abs(total - reference) <= tolerance * scale, (key, index)
+
+
+def _assert_eager_equal_sites_and_legacy(ct, recursion, runtime) -> None:
+    """The same per slot, summed over squared orders (binary64)."""
+
+    fixture = ct.fixture
+    results = fixture["results"]["double"]
+    sectors = _sector_orders(fixture, "virtual")
+    tolerance = TOLERANCE["double"]
+    for index in range(len(fixture["points"])):
+        born, parts = _eager_slot_totals(ct, recursion, runtime, index)
+        sites = _site_components(ct, "double", index, recursion.rules)
+        residual = _site_components(ct, "double", index, recursion.residual)
+        references = [Decimal(row[0]) for row in results["born"][index]]
+        assert abs(born - sum(references)) <= tolerance * max(map(abs, references))
+        for component in CT_COMPONENTS:
+            for k, power in enumerate(LAURENT_POWERS):
+                keys = [(component, order, power) for order in sectors]
+                reference = sum(
+                    Decimal(results[component][index][s][k][0])
+                    for s in range(len(sectors))
+                )
+                scale = abs(reference) or max(map(abs, references))
+                mine = parts.get((component, power), Decimal(0))
+                site = sum((_site_value(sites, key) for key in keys), Decimal(0))
+                rest = sum((_site_value(residual, key) for key in keys), Decimal(0))
+                assert abs(mine - site) <= tolerance * scale, (component, power, index)
+                assert abs(mine + rest - reference) <= tolerance * scale, (
+                    component,
+                    power,
+                    index,
+                )
 
 
 @pytest.mark.loop_fast
@@ -166,7 +312,7 @@ def test_rules_split_between_recursion_and_sites(ct_slice, lowered_ct_model):
     three-gluon, quark-gluon and four-gluon UV rule is in the recursion with
     its admitted alternatives."""
 
-    lowered, _source = lowered_ct_model
+    lowered, _source = lowered_ct_model()
     ct = ct_slice("gg_gg")
     recursion = _recursion(ct, lowered)
     assert set(recursion.rules) | set(recursion.residual) == set(ct.rules)
@@ -189,6 +335,7 @@ def test_rules_split_between_recursion_and_sites(ct_slice, lowered_ct_model):
     assert recursion.slots == (("r2", 0), ("uv_local", -1), ("uv_local", 0))
     assert recursion.coupling_order_limits() == {
         "QCD": 4,
+        "QED": 0,
         "PYAMPLICOL_CT_INSERTION": 1,
     }
 
@@ -200,48 +347,32 @@ def test_recursion_equals_site_closure(
     ct_slice, lowered_ct_model, loop_native, tmp_path, name, lane
 ):
     """O6: Born x CT per slot equals the sites of the same rules, and with the
-    remaining sites the UV_local and R2 components equal O1 (binary64)."""
+    remaining sites the UV_local and R2 components equal O1 (binary64). The
+    Rust recurrence lane is checked per squared order, the Python eager lane
+    per slot summed over squared orders (it has no order partials)."""
 
-    lowered, source = lowered_ct_model
     ct = ct_slice(name)
+    lowered, source = lowered_ct_model(ct.vetoed)
     recursion = _recursion(ct, lowered)
     runtime = _program(ct, recursion, source, tmp_path / "artifact", lane)
-    fixture = ct.fixture
-    results = fixture["results"]["double"]
-    sectors = _sector_orders(fixture, "virtual")
-    born_sectors = _sector_orders(fixture, "born")
-    tolerance = float(TOLERANCE["double"])
-    for index in range(len(fixture["points"])):
-        born, parts = _recursion_components(ct, recursion, runtime, index)
-        _, sites = _components(ct, "double", index, closed_rules=recursion.rules)
-        _, residual = _components(ct, "double", index, closed_rules=recursion.residual)
-        scale_born = max(abs(float(row[0])) for row in results["born"][index])
-        for b, order in enumerate(born_sectors):
-            reference = float(results["born"][index][b][0])
-            assert math.isclose(born[order].real, reference, rel_tol=1e-12)
-        assert {key[0] for key in parts} <= set(CT_COMPONENTS)
-        for component in CT_COMPONENTS:
-            for s, order in enumerate(sectors):
-                for k, power in enumerate(LAURENT_POWERS):
-                    key = (component, order, power)
-                    mine = parts.get(key, 0j)
-                    site = complex(sites.get(key, 0j))
-                    reference = float(results[component][index][s][k][0])
-                    scale = abs(reference) or scale_born
-                    assert abs(mine.imag) <= tolerance * scale, key
-                    assert abs(mine.real - site.real) <= tolerance * scale, (
-                        key,
-                        index,
-                        mine,
-                        site,
-                    )
-                    total = mine.real + complex(residual.get(key, 0j)).real
-                    assert abs(total - reference) <= tolerance * scale, (
-                        key,
-                        index,
-                        total,
-                        reference,
-                    )
+    if lane == "eager":
+        _assert_eager_equal_sites_and_legacy(ct, recursion, runtime)
+    else:
+        _assert_equal_sites_and_legacy(ct, recursion, runtime, "double")
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("name", ("gg_gg", "uux_ddxg", "uux_ggg"))
+def test_recursion_equals_site_closure_at_200_bits(
+    ct_slice, lowered_ct_model, loop_native, tmp_path, name
+):
+    """O6 and O1 in the 200-bit carrier, with exact inputs (recurrence lane)."""
+
+    ct = ct_slice(name)
+    lowered, source = lowered_ct_model(ct.vetoed)
+    recursion = _recursion(ct, lowered)
+    runtime = _program(ct, recursion, source, tmp_path / "artifact", "recurrence")
+    _assert_equal_sites_and_legacy(ct, recursion, runtime, "arbitrary-200")
 
 
 @pytest.mark.loop_physics
@@ -249,7 +380,7 @@ def test_finite_only_binds_no_pole_slot(ct_slice, lowered_ct_model, tmp_path):
     """Finite-only evaluation of the same program: pole slots are exactly zero
     and the finite slots are unchanged."""
 
-    lowered, source = lowered_ct_model
+    lowered, source = lowered_ct_model()
     ct = ct_slice("uux_ddxg")
     recursion = _recursion(ct, lowered)
     runtime = _program(ct, recursion, source, tmp_path / "artifact", "recurrence")

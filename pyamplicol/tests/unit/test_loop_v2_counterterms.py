@@ -547,7 +547,9 @@ def _components(ct: CountertermSlice, label: str, index: int, closed_rules=None)
     key = ("closure", None if closed_rules is None else frozenset(closed_rules))
     if key not in ct._caches:
         sites, fields = ct.sites(closed_rules=closed_rules), ct.fields()
-        entries = [e for site in sites.sites for e in site.rule.entries]
+        # The catalogue (loop species) is that of every admitted site.
+        every = sites if closed_rules is None else ct.sites()
+        entries = [e for site in every.sites for e in site.rule.entries]
         entries += [e for rows in _ordinary_entries(ct) for e in rows]
         unique = list({id(e): e for e in entries}.values())
         catalogue = build_loop_kernel_catalogue(ct.compiled, counterterm_entries=unique)
