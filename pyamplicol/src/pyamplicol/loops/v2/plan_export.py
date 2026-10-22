@@ -896,6 +896,9 @@ class NativeExecutor:
                     if checks is None
                     else {label(lane): laurent(values) for lane, values in checks}
                 )
+                # The native seeds contract the exported exact weights K[c, b]
+                # with the Born components directly (``seed_records``).
+                evaluation.colour_contraction = "direct"
                 evaluation._assemble()
         return precision, evaluations
 
