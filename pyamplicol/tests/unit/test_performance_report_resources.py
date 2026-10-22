@@ -7,6 +7,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,7 @@ from tools.performance_report.resources import (
     DEFAULT_ATTEMPT_OUTPUT_LIMIT_BYTES,
     DEFAULT_MINIMUM_FREE_DISK_BYTES,
     DEFAULT_SAMPLE_INTERVAL_SECONDS,
+    DEFAULT_STORAGE_SAFETY_INTERVAL_SECONDS,
     PROCESS_TREE_MEMORY_METRIC_ABI,
     ProcessRecord,
     ProcessTreeSampler,
@@ -1198,6 +1200,7 @@ def test_supervisor_enforces_cap_on_first_recovered_probe_sample() -> None:
 
 def test_defaults_and_invalid_limits() -> None:
     assert DEFAULT_SAMPLE_INTERVAL_SECONDS == 1.0
+    assert DEFAULT_STORAGE_SAFETY_INTERVAL_SECONDS == 0.05
     assert DEFAULT_ATTEMPT_OUTPUT_LIMIT_BYTES == 64 * 1024 * 1024
     assert DEFAULT_MINIMUM_FREE_DISK_BYTES == 5 * 1024 * 1024 * 1024
     with pytest.raises(ValueError, match="timeout_seconds"):
@@ -1224,8 +1227,10 @@ def test_defaults_and_invalid_limits() -> None:
 @pytest.mark.skipif(os.name != "posix", reason="process groups require POSIX")
 def test_supervisor_terminates_runaway_append_at_output_cap(tmp_path: Path) -> None:
     output = tmp_path / "runaway.log"
-    # About 4 MB/s: the 8 MiB bound below leaves the 50 ms storage guard two
-    # seconds of scheduling delay, so a loaded host does not overshoot it.
+    # The ordinary poll is dormant (60 s), so only the 50 ms storage guard can
+    # stop the writer within the few seconds allowed below; at about 4 MB/s
+    # the 8 MiB bound leaves that guard two seconds of scheduling delay on a
+    # loaded host.
     script = (
         "import time\n"
         "from pathlib import Path\n"
@@ -1236,13 +1241,15 @@ def test_supervisor_terminates_runaway_append_at_output_cap(tmp_path: Path) -> N
         "    time.sleep(0.001)\n"
     )
 
+    started = time.monotonic()
     result = supervise_worker(
         (sys.executable, "-c", script),
         output_file_limits={output: 32 * 1024},
-        interval_seconds=1.0,
+        interval_seconds=60.0,
         termination_grace_seconds=1.0,
     )
 
+    assert time.monotonic() - started < 10.0
     assert result.reason == "output_limit"
     assert result.returncode < 0
     assert result.output_limit_path == str(output.resolve())
