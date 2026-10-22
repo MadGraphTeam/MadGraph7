@@ -2,16 +2,19 @@
 """The native v2 executor against the Python reference executor (WP2.1).
 
 ``plan_export.export_plan`` writes plan v4 of a generated slice and the
-native ``V2Executor`` runs it: seeds, fused factors, schedule B per family
-on 16 SIMD lanes and family threads, schedule F as its oracle, closures and
+native ``V2Executor`` runs it: seeds, fused factors and split vertex tensors,
+schedule B per family on 16 SIMD lanes and family threads with each step in
+the kernel form of gate G0's rule, schedule F as its oracle, closures and
 the bucket-streamed NinjaRS reduction. Checks:
 
 * family numerators equal the Python reference executor's (schedule B, same
   trie frames): within 1e-13 of each column's largest coefficient in
   binary64 and to the working precision in arbitrary precision, on the slice
-  processes and gg -> ggg, uu~ -> ggg, uu~ -> e-e+gg and uu~ -> uu~g;
+  processes and gg -> ggg, uu~ -> ggg, uu~ -> e-e+gg and uu~ -> uu~g, with
+  every step fused, split where it can, or as the rule chooses;
 * the native rational carrier reproduces the Python exact run bit for bit
-  (identical kernels, seeds and leaf weights), and schedule F equals B;
+  (identical kernels, seeds and leaf weights) in both kernel forms, and
+  schedule F equals B;
 * the native evaluation (reduction included) reproduces the slice's complete
   virtual, finite-only evaluations equal the finite parts with absent poles,
   and the native reduction-direction check gives the slice's estimate;
@@ -57,10 +60,12 @@ ARBITRARY = Precision.arbitrary(60)
 DOUBLE_TOLERANCE = 1e-13
 # Both executors carry the working digits (60 + 20 guard digits).
 ARBITRARY_TOLERANCE = 1e-70
-# Families below these fractions of the point's numerator scale vanish
-# exactly: their size is the carrier's rounding noise.
-DOUBLE_NOISE = 1e-12
+# A family whose 60-digit numerator is below ARBITRARY_NOISE of the point's
+# numerator scale vanishes exactly (e.g. Furry's C-odd quark loops): its
+# size is the carrier's rounding noise, so it is compared on the point's
+# scale only.
 ARBITRARY_NOISE = 1e-60
+FORMS = ("rule", "fused", "split")
 
 
 def _points(source: str) -> tuple[list, list[str]]:
@@ -197,6 +202,14 @@ def _point(name: str, index: int = 0):
     return points[index], scales[index]
 
 
+def _with_forms(executor: NativeExecutor, forms: str) -> NativeExecutor:
+    """The same exported plan with another kernel-form policy."""
+
+    if forms == executor.forms:
+        return executor
+    return NativeExecutor(executor.slice, exported=executor.exported, forms=forms)
+
+
 # ----------------------------------------------------------------- plan
 
 
@@ -224,21 +237,27 @@ def test_plan_v4_round_trips_through_the_native_loader(slices):
 # ----------------------------------------------------------------- numerators
 
 
-def _assert_numerators(native, reference, point, tolerance, noise, label):
+def _assert_numerators(native, reference, point, tolerance, vanishing, label):
     """Deviation on the point's numerator scale for every family, and on each
-    family's own scale except for families that vanish exactly: their size
-    (below ``noise`` times the point scale) is the carrier's rounding of the
-    point, e.g. Furry's C-odd quark loops of uu~ -> e-e+gg."""
+    family's own scale except for the ``vanishing`` families."""
 
     energy = _energy(point)
     deviation = compare_numerators(native, reference, energy=energy, scale="point")
     assert deviation <= tolerance, (label, "point", deviation)
-    floor = noise * _point_size(reference, energy)
-    alone = {k: v for k, v in reference.items() if _size(v, energy) > floor}
+    alone = {k: v for k, v in reference.items() if k not in vanishing}
     deviation = compare_numerators(
         {key: native[key] for key in alone}, alone, energy=energy
     )
     assert deviation <= tolerance, (label, "family", deviation)
+
+
+def _vanishing(arbitrary, point) -> set:
+    """Families whose 60-digit reference numerator is below ARBITRARY_NOISE
+    of the point's numerator scale: they vanish exactly."""
+
+    energy = _energy(point)
+    floor = ARBITRARY_NOISE * _point_size(arbitrary, energy)
+    return {k for k, v in arbitrary.items() if _size(v, energy) <= floor}
 
 
 def _size(numerator, energy) -> float:
@@ -255,30 +274,46 @@ def _point_size(numerators, energy) -> float:
     return max(_size(value, energy) for value in numerators.values())
 
 
+# Processes with exactly vanishing families (Furry), certified at 60 digits.
+CERTIFIED_ZEROS = ("uux_emepgg",)
+
+
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", (*SLICE, *EXTRA))
 def test_numerators_equal_the_reference_in_binary64(slices, name):
-    """Schedules B and F natively equal the Python reference executor's
-    family numerators (one column per sector, the B tries' frames) in
-    binary64."""
+    """Schedules B (every kernel-form policy) and F natively equal the Python
+    reference executor's family numerators (one column per sector, the B
+    tries' frames) in binary64."""
 
     slice_, executor = slices(name)
     point, scale = _point(name)
+    vanishing: set = set()
+    if name in CERTIFIED_ZEROS:
+        arbitrary, _ = slice_.family_numerators(
+            point, scale, parameters=PARAMETERS, precision=ARBITRARY
+        )
+        vanishing = _vanishing(arbitrary.numerators, point)
+        assert vanishing, "the certified zeros of the process are gone"
     for schedule in ("B", "F"):
         reference, _ = slice_.family_numerators(
             point, scale, parameters=PARAMETERS, precision=DOUBLE, schedule=schedule
         )
-        (native,) = executor.family_numerators(
-            [point], [scale], parameters=PARAMETERS, precision=DOUBLE, schedule=schedule
-        )
-        _assert_numerators(
-            native,
-            reference.numerators,
-            point,
-            DOUBLE_TOLERANCE,
-            DOUBLE_NOISE,
-            schedule,
-        )
+        for forms in FORMS if schedule == "B" else ("rule",):
+            (native,) = _with_forms(executor, forms).family_numerators(
+                [point],
+                [scale],
+                parameters=PARAMETERS,
+                precision=DOUBLE,
+                schedule=schedule,
+            )
+            _assert_numerators(
+                native,
+                reference.numerators,
+                point,
+                DOUBLE_TOLERANCE,
+                vanishing,
+                (schedule, forms),
+            )
 
 
 @pytest.mark.loop_physics
@@ -290,21 +325,39 @@ def test_numerators_equal_the_reference_in_arbitrary_precision(slices, name):
         reference, _ = slice_.family_numerators(
             point, scale, parameters=PARAMETERS, precision=ARBITRARY, schedule=schedule
         )
-        (native,) = executor.family_numerators(
-            [point],
-            [scale],
-            parameters=PARAMETERS,
-            precision=ARBITRARY,
-            schedule=schedule,
-        )
-        _assert_numerators(
-            native,
-            reference.numerators,
-            point,
-            ARBITRARY_TOLERANCE,
-            ARBITRARY_NOISE,
-            schedule,
-        )
+        vanishing = _vanishing(reference.numerators, point)
+        assert bool(vanishing) == (name in CERTIFIED_ZEROS), sorted(vanishing)[:3]
+        for forms in ("rule", "split") if schedule == "B" else ("rule",):
+            (native,) = _with_forms(executor, forms).family_numerators(
+                [point],
+                [scale],
+                parameters=PARAMETERS,
+                precision=ARBITRARY,
+                schedule=schedule,
+            )
+            _assert_numerators(
+                native,
+                reference.numerators,
+                point,
+                ARBITRARY_TOLERANCE,
+                vanishing,
+                (schedule, forms),
+            )
+
+
+@pytest.mark.loop_physics
+def test_kernel_forms_follow_the_g0_rule(slices):
+    """Every step can run fused; ``split`` splits every step that can, and
+    the rule picks a subset of those (gate G0's step-time model)."""
+
+    for name in ("gg_gg", "uux_ddxg"):
+        _slice, executor = slices(name)
+        forms = {f: _with_forms(executor, f).native("double").forms for f in FORMS}
+        steps = sum(forms["fused"].values())
+        assert forms["fused"] == {"fused": steps, "split": 0}
+        assert sum(forms["rule"].values()) == sum(forms["split"].values()) == steps
+        assert 0 < forms["split"]["split"]
+        assert forms["rule"]["split"] <= forms["split"]["split"]
 
 
 class _ExactNumbers:
@@ -366,14 +419,15 @@ def _exact_reference(slice_: LoopSlice, point, scale):
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", ["gg_gg", "uux_uux", "uux_ddxg"])
 def test_exact_numerators_equal_the_reference_exactly(slices, name):
-    """In exact arithmetic B (and F) natively equal the Python run bit for
-    bit: kernels, seeds, leaf weights, closures and frame maps agree."""
+    """In exact arithmetic B (in both kernel forms) and F natively equal the
+    Python run bit for bit: kernels, vertex tensors, seeds, leaf weights,
+    closures and frame maps agree."""
 
     slice_, executor = slices(name)
     point, scale = _point(name)
     reference = _exact_reference(slice_, point, scale)
-    for schedule in ("B", "F"):
-        (native,) = executor.family_numerators(
+    for schedule, forms in (("B", "fused"), ("B", "split"), ("F", "rule")):
+        (native,) = _with_forms(executor, forms).family_numerators(
             [point], [scale], parameters=PARAMETERS, schedule=schedule, exact=True
         )
         assert native.keys() == reference.keys()
@@ -383,7 +437,7 @@ def test_exact_numerators_equal_the_reference_exactly(slices, name):
                 width = max(len(x), len(y))
                 left = [rx.exact(v) for v in x] + [0] * (width - len(x))
                 right = [rx.exact(v) for v in y] + [0] * (width - len(y))
-                assert left == right, (schedule, key)
+                assert left == right, (schedule, forms, key)
 
 
 # ----------------------------------------------------------------- evaluation

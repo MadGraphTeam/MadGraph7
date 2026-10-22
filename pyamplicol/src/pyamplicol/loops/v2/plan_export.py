@@ -8,7 +8,10 @@ two run identical programs:
 
 * **contents**: per content its loop-line dimensions, structural q-degree and
   fused entries, and per routing term the kernel bindings that build its fused
-  factor X(J) from block-current rows, block momenta and the loop shift;
+  factor X(J) from block-current rows, block momenta and the loop shift, and
+  its split vertex kernels with the id of their vertex tensor (shared by the
+  terms of one routing key), from which the executor runs steps in the split
+  form where gate G0's rule prefers it;
 * **kernels**: every catalogue kernel as exact polynomial terms over its
   inputs (``reference_executor.ExactKernel``); the model factors of its
   coefficients are numbered kernel constants, valued per batch;
@@ -125,6 +128,7 @@ class _Exporter:
     constants: dict[Hashable, int] = field(default_factory=dict)
     block_rows: dict[tuple, int] = field(default_factory=dict)
     factors: dict[tuple[int, int], int] = field(default_factory=dict)
+    vertices: dict[Hashable, int] = field(default_factory=dict)
     seeds: dict[Hashable, int] = field(default_factory=dict)
     born_components: dict[tuple[int, Orders], int] = field(default_factory=dict)
     orders: dict[Orders, int] = field(default_factory=dict)
@@ -230,6 +234,11 @@ class _Exporter:
                     "slots": [slot.block.mask for slot in term.slots],
                     "dimensions": list(dims),
                     "bindings": bindings,
+                    # Terms of one routing key share their split vertex
+                    # tensor (``reference_executor.SplitShape.key``).
+                    "vertex": self.vertices.setdefault(term.key, len(self.vertices))
+                    if split
+                    else -1,
                     "split": split,
                     "rows": rows,
                 }
@@ -569,6 +578,8 @@ class NativeExecutor:
     NinjaRS fast engine), ``double-double``, ``arbitrary`` (MPFR at the
     precision's working digits, the generic engine) or ``exact`` (rational
     numerators only, the algebraic oracle of the Python exact run).
+    ``forms`` picks each schedule-B step's kernel form: gate G0's rule,
+    or every step fused or split (where it can).
     """
 
     def __init__(
@@ -579,11 +590,13 @@ class NativeExecutor:
         threads: int | None = None,
         forward: bool = True,
         exported: ExportedPlan | None = None,
+        forms: Literal["rule", "fused", "split"] = "rule",
     ):
         self.slice = slice_
         self.exported = exported or export_plan(slice_, forward=forward)
         self.lanes = lanes
         self.threads = threads
+        self.forms = forms
         self._plan_json = self.exported.json()
         self._native: dict[tuple[str, int | None], Any] = {}
 
@@ -599,6 +612,7 @@ class NativeExecutor:
                 digits,
                 lanes=self.lanes,
                 threads=self.threads,
+                forms=self.forms,
             )
         return found
 

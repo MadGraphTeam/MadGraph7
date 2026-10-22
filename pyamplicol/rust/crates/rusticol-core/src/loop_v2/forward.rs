@@ -11,7 +11,7 @@
 //! produce the same numerators in the same frames.
 
 use super::closure::{FamilyNumerator, frame_shift, substitute};
-use super::dress::{Carrier, FactorStore, LaneData, Pool, cadd, cmul_into, dress_edge};
+use super::dress::{Carrier, LaneData, LaneStore, Pool, cadd, cmul_into, dress_edge};
 use super::kernels::lane_vector_len;
 use super::plan::LoopProgramV4;
 use super::seeds::Seeds;
@@ -34,7 +34,7 @@ pub fn forward_factors(plan: &LoopProgramV4) -> Vec<usize> {
 /// Run schedule F on one chunk: every family's numerators in its trie frame.
 pub fn run_forward<T: Carrier, const L: usize>(
     plan: &LoopProgramV4,
-    factors: &FactorStore<T>,
+    factors: &LaneStore<T>,
     seeds: &Seeds<T>,
     data: &LaneData<T, L>,
 ) -> RusticolResult<(Vec<FamilyNumerator<T>>, usize)> {

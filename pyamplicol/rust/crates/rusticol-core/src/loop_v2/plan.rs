@@ -91,6 +91,7 @@ struct TermFile {
     slots: Vec<u64>,
     dimensions: Vec<usize>,
     bindings: Vec<BindingFile>,
+    vertex: i64,
     split: Vec<SplitFile>,
     rows: Vec<(usize, Vec<usize>)>,
 }
@@ -218,23 +219,58 @@ pub struct Kernel {
 }
 
 /// A kernel applied to a routing term's slots: its resolved inputs and the
-/// fused entry each output adds into.
-#[derive(Clone, Debug)]
+/// entry (of the fused factor, or of a split vertex) each output adds into.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Binding {
     pub kernel: usize,
     pub inputs: Vec<KernelInput>,
     pub entries: Vec<usize>,
 }
 
-/// A block-independent vertex kernel of a routing term (the split form):
-/// each output multiplies block component `nu` (flat over the slots'
-/// current components, first slot slowest) into a fused entry.
+/// One entry `(β, ν, β', q exponents)` of a split vertex tensor.
+pub type VertexEntry = (usize, usize, usize, [u32; 4]);
+
+/// A split-form vertex tensor `V[(β, ν), β']` (DESIGN.md §5.2): the
+/// block-independent kernels of every routing term with one vertex key
+/// (rule, couplings, legs, chiralities, block masks and loop species), so
+/// one evaluation per frame shift serves every content and edge of a step
+/// that attaches the same blocks through the same vertex. `ν` runs over the
+/// products of the slots' current components, first slot slowest.
 #[derive(Clone, Debug)]
-pub struct SplitBinding {
-    pub kernel: usize,
-    pub inputs: Vec<KernelInput>,
-    /// (fused entry, nu) per kernel output.
-    pub entries: Vec<(usize, usize)>,
+pub struct Vertex {
+    pub width: usize,
+    pub d_in: usize,
+    pub d_out: usize,
+    pub degree: usize,
+    /// Leg mask of each slot's block (the block momenta of the kernels).
+    pub slots: Vec<u64>,
+    /// Kernels whose outputs add into vertex entries.
+    pub bindings: Vec<Binding>,
+    pub entries: Vec<VertexEntry>,
+    /// `(d_in · width) × d_out` layout for open-loop inputs, loop-in column
+    /// `β · width + ν` ([`super::kernels::Segment::vertex_column`]).
+    pub open: SegmentLayout,
+    /// `width × (d_in · d_out)` layout for seeded inputs (`δ_αβ` seeds).
+    pub seeded: SegmentLayout,
+}
+
+impl Vertex {
+    fn same_kernels(&self, other: &Self) -> bool {
+        self.width == other.width
+            && self.d_in == other.d_in
+            && self.d_out == other.d_out
+            && self.slots == other.slots
+            && self.entries == other.entries
+            && self.bindings == other.bindings
+    }
+}
+
+/// The split vertex of a routing term and, per vertex entry, the fused
+/// entry it feeds (`X[row][fused] += V[entry] J[row][ν]`).
+#[derive(Clone, Debug)]
+pub struct TermVertex {
+    pub id: usize,
+    pub fused: Vec<usize>,
 }
 
 /// One routing term of a content with fixed block chiralities.
@@ -246,10 +282,10 @@ pub struct ContentTerm {
     pub dimensions: Vec<usize>,
     /// Kernels of `X(J)` itself (block currents among their inputs).
     pub bindings: Vec<Binding>,
-    /// The same term as vertex kernels times block components; when present
-    /// the factor builder evaluates the vertex once per (content, shift)
-    /// and contracts it with each row's block components.
-    pub split: Vec<SplitBinding>,
+    /// The term as a vertex tensor times block components, when its kernels
+    /// split; the factor builder then evaluates the vertex once per (content,
+    /// shift) and contracts it with each row's block components.
+    pub vertex: Option<TermVertex>,
     /// (content row, block row id per slot).
     pub rows: Vec<(usize, Vec<usize>)>,
 }
@@ -323,6 +359,98 @@ pub struct Edge {
     pub links: Vec<super::kernels::RowLink>,
 }
 
+/// The kernel form of a dressing step (DESIGN.md §5.2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Form {
+    /// `O' += O · X(J)` per edge with the fused factors.
+    Fused,
+    /// `T += O ⊗ J` per edge, then each vertex tensor once per output row.
+    Split,
+}
+
+/// How [`LoopProgramV4::load_with`] picks each step's form.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FormPolicy {
+    /// Gate G0's rule (production default).
+    Rule,
+    /// Every step fused.
+    Fused,
+    /// Split wherever a step can split (oracle of the split kernels).
+    Split,
+}
+
+/// Gate G0's per-form step-time model (DESIGN.md §5.4 item 4): `t =
+/// per_iteration · iterations + work · lanes / rate`, fitted on the
+/// gg→gggg FC program at 16 lanes in the production code generation
+/// (`workspace/tmp/g0-real-tries/run2/costmodel.json`, `selection_rule`).
+/// Only the ratio of the two forms' times matters.
+struct FormModel {
+    per_iteration: f64,
+    rate: f64,
+}
+
+const FUSED_MODEL: FormModel = FormModel {
+    per_iteration: 4.51e-9,
+    rate: 1.389e9,
+};
+const SPLIT_MODEL: FormModel = FormModel {
+    per_iteration: 0.0,
+    rate: 1.276e9,
+};
+const RULE_LANES: f64 = 16.0;
+
+/// Kernel work of one step in one form: complex multiply-adds per lane and
+/// the kernels' inner-loop iterations (the work without the factor of input
+/// coefficients), counted as the G0 bench counts them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct StepCost {
+    pub work: u64,
+    pub iterations: u64,
+}
+
+impl FormModel {
+    fn seconds(&self, cost: StepCost) -> f64 {
+        self.per_iteration * cost.iterations as f64 + cost.work as f64 * RULE_LANES / self.rate
+    }
+}
+
+/// The split form of a step: its vertex groups and, per edge, one part per
+/// routing term of the edge's content.
+#[derive(Clone, Debug)]
+pub struct SplitStep {
+    pub groups: Vec<SplitGroup>,
+    pub parts: Vec<Vec<SplitPart>>,
+}
+
+/// One vertex tensor of a split step: the edges whose terms share it
+/// accumulate `T = Σ O ⊗ J` into one buffer, and the tensor is applied once
+/// per target row.
+#[derive(Clone, Debug)]
+pub struct SplitGroup {
+    pub vertex: usize,
+    /// Frame shift of the step's position.
+    pub shift: u64,
+    /// Index into [`LoopProgramV4::vertex_instances`] (vertex, shift).
+    pub instance: usize,
+    /// Products table of (step input rank, vertex degree).
+    pub products: usize,
+    /// Object rows (`row × columns + column`) the group writes.
+    pub targets: Vec<u32>,
+}
+
+/// One routing term of one edge in a split step.
+#[derive(Clone, Debug)]
+pub struct SplitPart {
+    pub content: usize,
+    pub term: usize,
+    /// Index into [`LoopProgramV4::currents`] (content, term).
+    pub current: usize,
+    /// The step group of the term's vertex.
+    pub group: usize,
+    /// Row links whose `block` is the term row (its current row).
+    pub links: Vec<super::kernels::RowLink>,
+}
+
 /// One schedule-B step: a dressed trie node, or one cut species of a
 /// family accumulator (`trace`).
 #[derive(Clone, Debug)]
@@ -337,6 +465,10 @@ pub struct Step {
     pub rank_in: usize,
     pub rank_out: usize,
     pub edges: Vec<Edge>,
+    /// Present when the step runs in the split form.
+    pub split: Option<SplitStep>,
+    /// Modelled kernel work in the fused and (when it can split) split form.
+    pub costs: (StepCost, Option<StepCost>),
 }
 
 impl Step {
@@ -355,8 +487,12 @@ pub struct Family {
     pub orders: Vec<usize>,
     pub leaves: Vec<Leaf>,
     pub steps: Vec<Step>,
-    /// Distinct fused factors the steps read, ascending.
+    /// Distinct fused factors the fused steps read, ascending.
     pub factors: Vec<usize>,
+    /// Distinct vertex instances the split steps read, ascending.
+    pub vertices: Vec<usize>,
+    /// Distinct split currents the split steps read, ascending.
+    pub currents: Vec<usize>,
 }
 
 impl Family {
@@ -431,6 +567,12 @@ pub struct LoopProgramV4 {
     pub kernels: Vec<Kernel>,
     pub contents: Vec<Content>,
     pub factors: Vec<(usize, u64)>,
+    pub vertices: Vec<Vertex>,
+    /// Split vertex tensors at a frame shift: (vertex, shift mask).
+    pub vertex_instances: Vec<(usize, u64)>,
+    /// Block currents of the split form: (content, term), one row of `width`
+    /// components per term row.
+    pub currents: Vec<(usize, usize)>,
     pub seeds: Vec<Seed>,
     pub families: Vec<Family>,
     pub forward: Option<Vec<State>>,
@@ -442,6 +584,31 @@ pub struct LoopProgramV4 {
 struct Tables {
     index: HashMap<(usize, usize), usize>,
     tables: Vec<MonomialProductTable>,
+}
+
+/// Ids of the split inputs the chosen split steps read.
+#[derive(Default)]
+struct SplitInputs {
+    instances: HashMap<(usize, u64), usize>,
+    currents: HashMap<(usize, usize), usize>,
+}
+
+impl SplitInputs {
+    fn instance(&mut self, vertex: usize, shift: u64) -> usize {
+        let next = self.instances.len();
+        *self.instances.entry((vertex, shift)).or_insert(next)
+    }
+
+    fn current(&mut self, content: usize, term: usize) -> usize {
+        let next = self.currents.len();
+        *self.currents.entry((content, term)).or_insert(next)
+    }
+
+    fn ordered<K: Copy>(map: &HashMap<K, usize>) -> Vec<K> {
+        let mut out: Vec<(usize, K)> = map.iter().map(|(&key, &id)| (id, key)).collect();
+        out.sort_unstable_by_key(|&(id, _)| id);
+        out.into_iter().map(|(_, key)| key).collect()
+    }
 }
 
 impl Tables {
@@ -515,15 +682,221 @@ fn layouts(file: &ContentFile) -> RusticolResult<(SegmentLayout, SegmentLayout)>
     ))
 }
 
+/// The split vertex of one routing term: its vertex (shared by every term of
+/// equal key) and, per vertex entry, the term's fused entry.
+fn term_vertex(
+    term: &TermFile,
+    content: &ContentFile,
+    split: &[(usize, Vec<KernelInput>, Vec<(usize, usize)>)],
+    width: usize,
+) -> RusticolResult<(Vertex, Vec<usize>)> {
+    let key = |e: usize, nu: usize| -> VertexEntry {
+        let f = content.fused[e];
+        (f[0] as usize, nu, f[1] as usize, [f[2], f[3], f[4], f[5]])
+    };
+    let mut entries: Vec<VertexEntry> = split
+        .iter()
+        .flat_map(|(_, _, outputs)| outputs.iter().map(|&(e, nu)| key(e, nu)))
+        .collect();
+    entries.sort_unstable();
+    entries.dedup();
+    let index: HashMap<VertexEntry, usize> =
+        entries.iter().enumerate().map(|(i, &e)| (e, i)).collect();
+    let fused_index: HashMap<(usize, usize, [u32; 4]), usize> = content
+        .fused
+        .iter()
+        .enumerate()
+        .map(|(i, f)| ((f[0] as usize, f[1] as usize, [f[2], f[3], f[4], f[5]]), i))
+        .collect();
+    let fused = entries
+        .iter()
+        .map(|&(b, _nu, bp, exponents)| {
+            fused_index
+                .get(&(b, bp, exponents))
+                .copied()
+                .ok_or_else(|| invalid("a vertex entry outside its content's fused entries"))
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let bindings = split
+        .iter()
+        .map(|(kernel, inputs, outputs)| Binding {
+            kernel: *kernel,
+            inputs: inputs.clone(),
+            entries: outputs.iter().map(|&(e, nu)| index[&key(e, nu)]).collect(),
+        })
+        .collect();
+    let (d_in, d_out) = (content.d_in, content.d_out);
+    let layout = |seeded: bool| {
+        let entries = entries
+            .iter()
+            .map(|&(b, nu, bp, exponents)| {
+                let (loop_in, out) = if seeded {
+                    (nu, b * d_out + bp)
+                } else {
+                    (b * width + nu, bp)
+                };
+                SegmentEntry {
+                    loop_in,
+                    out,
+                    exponents,
+                }
+            })
+            .collect();
+        if seeded {
+            SegmentLayout::new(width, d_in * d_out, entries)
+        } else {
+            SegmentLayout::new(d_in * width, d_out, entries)
+        }
+    };
+    let degree = entries
+        .iter()
+        .map(|e| e.3.iter().sum::<u32>() as usize)
+        .max()
+        .unwrap_or(0);
+    let vertex = Vertex {
+        width,
+        d_in,
+        d_out,
+        degree,
+        slots: term.slots.clone(),
+        bindings,
+        open: layout(false)?,
+        seeded: layout(true)?,
+        entries,
+    };
+    Ok((vertex, fused))
+}
+
+/// What every family of one plan reads while loading.
+struct Shared<'a> {
+    file: &'a PlanFile,
+    contents: &'a [Content],
+    vertices: &'a [Vertex],
+    seeds: usize,
+    policy: FormPolicy,
+}
+
+/// Cut index and input coefficients of a step's kernels: a seeded step's
+/// input is `δ_αβ` times one value per row.
+fn step_shape(seeded: bool, d_alpha: usize, rank: usize) -> (usize, usize) {
+    if seeded {
+        (1, 1)
+    } else {
+        (d_alpha, ncoeff(rank))
+    }
+}
+
+/// Kernel work of a step in the fused form.
+fn fused_cost(seeded: bool, d_alpha: usize, edges: &[Edge], contents: &[Content]) -> StepCost {
+    let mut cost = StepCost::default();
+    for edge in edges {
+        let (cut, m_in) = step_shape(seeded, d_alpha, edge.source_rank);
+        let iterations = (edge.links.len() * cut * contents[edge.content].factor_row()) as u64;
+        cost.iterations += iterations;
+        cost.work += iterations * m_in as u64;
+    }
+    cost
+}
+
+/// The split form of a step and its kernel work, if the step can split:
+/// every term of every edge's content has a vertex, and every source is
+/// stored at the step's input rank (one accumulator layout per group).
+fn split_candidate(
+    s: &StepFile,
+    edges: &[Edge],
+    shared: &Shared<'_>,
+    tables: &mut Tables,
+) -> RusticolResult<Option<(SplitStep, StepCost)>> {
+    let rank_in = if s.seeded { 0 } else { s.rank_in };
+    let splits = edges.iter().all(|edge| {
+        edge.source_rank == rank_in
+            && shared.contents[edge.content]
+                .terms
+                .iter()
+                .all(|term| term.vertex.is_some())
+    });
+    if !splits {
+        return Ok(None);
+    }
+    let (cut, m_in) = step_shape(s.seeded, s.d_alpha, rank_in);
+    let mut groups: Vec<SplitGroup> = Vec::new();
+    let mut group_of: HashMap<(usize, u64), usize> = HashMap::new();
+    let mut targets: Vec<BTreeSet<u32>> = Vec::new();
+    let mut iterations = 0;
+    let mut parts = Vec::with_capacity(edges.len());
+    for edge in edges {
+        let content = &shared.contents[edge.content];
+        let shift = shared.file.factors[edge.factor].1;
+        let mut edge_parts = Vec::with_capacity(content.terms.len());
+        for (t, term) in content.terms.iter().enumerate() {
+            let vertex = term.vertex.as_ref().expect("checked above").id;
+            let shape = &shared.vertices[vertex];
+            require(
+                shape.d_in == content.d_in && shape.d_out == content.d_out,
+                "a vertex does not fit its content",
+            )?;
+            let group = *group_of.entry((vertex, shift)).or_insert_with(|| {
+                groups.push(SplitGroup {
+                    vertex,
+                    shift,
+                    instance: 0,
+                    products: tables.get(rank_in, shape.degree),
+                    targets: Vec::new(),
+                });
+                targets.push(BTreeSet::new());
+                groups.len() - 1
+            });
+            let mut row_of = vec![None; content.rows];
+            for (k, (row, _blocks)) in term.rows.iter().enumerate() {
+                row_of[*row] = Some(k as u32);
+            }
+            let links: Vec<_> = edge
+                .links
+                .iter()
+                .filter_map(|link| {
+                    row_of[link.block as usize]
+                        .map(|block| super::kernels::RowLink { block, ..*link })
+                })
+                .collect();
+            targets[group].extend(links.iter().map(|link| link.output));
+            let incoming = if s.seeded { 1 } else { content.d_in };
+            iterations += links.len() * cut * incoming * shape.width;
+            edge_parts.push(SplitPart {
+                content: edge.content,
+                term: t,
+                current: 0,
+                group,
+                links,
+            });
+        }
+        parts.push(edge_parts);
+    }
+    for (group, rows) in groups.iter_mut().zip(targets) {
+        group.targets = rows.into_iter().collect();
+        iterations += group.targets.len() * cut * shared.vertices[group.vertex].entries.len();
+    }
+    let cost = StepCost {
+        work: (iterations * m_in) as u64,
+        iterations: iterations as u64,
+    };
+    Ok(Some((SplitStep { groups, parts }, cost)))
+}
+
 impl LoopProgramV4 {
-    /// Parse and validate a plan exported by `plan_export.export_plan`.
+    /// Parse and validate a plan exported by `plan_export.export_plan`,
+    /// choosing kernel forms by gate G0's rule.
     pub fn load(json: &[u8]) -> RusticolResult<Self> {
-        let file: PlanFile =
-            serde_json::from_slice(json).map_err(|error| invalid(error.to_string()))?;
-        Self::from_file(file)
+        Self::load_with(json, FormPolicy::Rule)
     }
 
-    fn from_file(file: PlanFile) -> RusticolResult<Self> {
+    /// [`Self::load`] with an explicit kernel-form policy.
+    pub fn load_with(json: &[u8], policy: FormPolicy) -> RusticolResult<Self> {
+        let file: PlanFile =
+            serde_json::from_slice(json).map_err(|error| invalid(error.to_string()))?;
+        Self::from_file(file, policy)
+    }
+
+    fn from_file(file: PlanFile, policy: FormPolicy) -> RusticolResult<Self> {
         require(file.schema == PLAN_SCHEMA, "unsupported plan schema")?;
         require(
             file.legs > 0 && file.legs < 64 && file.rows > 0 && file.columns > 0,
@@ -562,6 +935,7 @@ impl LoopProgramV4 {
             })
             .collect::<RusticolResult<Vec<_>>>()?;
         let mut contents = Vec::with_capacity(file.contents.len());
+        let mut vertices: Vec<Option<Vertex>> = Vec::new();
         for c in &file.contents {
             let (open, seeded) = layouts(c)?;
             require(
@@ -670,11 +1044,7 @@ impl LoopProgramV4 {
                                 _ => {}
                             }
                         }
-                        Ok(SplitBinding {
-                            kernel: b.kernel,
-                            inputs,
-                            entries: b.entries.clone(),
-                        })
+                        Ok((b.kernel, inputs, b.entries.clone()))
                     })
                     .collect::<RusticolResult<Vec<_>>>()?;
                 for (_row, blocks) in &t.rows {
@@ -685,11 +1055,32 @@ impl LoopProgramV4 {
                         )?;
                     }
                 }
+                let vertex = match usize::try_from(t.vertex) {
+                    Err(_) => {
+                        require(t.split.is_empty(), "split kernels without a vertex")?;
+                        None
+                    }
+                    Ok(id) => {
+                        require(!t.split.is_empty(), "a vertex without split kernels")?;
+                        let (vertex, fused) = term_vertex(t, c, &split, width)?;
+                        if vertices.len() <= id {
+                            vertices.resize(id + 1, None);
+                        }
+                        match &vertices[id] {
+                            Some(known) => require(
+                                known.same_kernels(&vertex),
+                                "one vertex key with different split kernels",
+                            )?,
+                            None => vertices[id] = Some(vertex),
+                        }
+                        Some(TermVertex { id, fused })
+                    }
+                };
                 terms.push(ContentTerm {
                     slots: t.slots.clone(),
                     dimensions: t.dimensions.clone(),
                     bindings,
-                    split,
+                    vertex,
                     rows: t.rows.clone(),
                 });
             }
@@ -706,6 +1097,10 @@ impl LoopProgramV4 {
         for &(content, _shift) in &file.factors {
             require(content < contents.len(), "factor content index")?;
         }
+        let vertices = vertices
+            .into_iter()
+            .map(|vertex| vertex.ok_or_else(|| invalid("a vertex id no term defines")))
+            .collect::<RusticolResult<Vec<_>>>()?;
         let seeds = file
             .seeds
             .iter()
@@ -737,9 +1132,17 @@ impl LoopProgramV4 {
         };
         let mut order_count = 0;
         let mut families = Vec::with_capacity(file.families.len());
+        let mut split_inputs = SplitInputs::default();
+        let shared = Shared {
+            file: &file,
+            contents: &contents,
+            vertices: &vertices,
+            seeds: seeds.len(),
+            policy,
+        };
         for f in &file.families {
             order_count = order_count.max(f.orders.iter().map(|&o| o + 1).max().unwrap_or(0));
-            families.push(Self::family(f, &file, &contents, seeds.len(), &mut tables)?);
+            families.push(Self::family(f, &shared, &mut tables, &mut split_inputs)?);
         }
         let forward = file
             .forward
@@ -758,6 +1161,9 @@ impl LoopProgramV4 {
             kernels,
             contents,
             factors: file.factors,
+            vertices,
+            vertex_instances: SplitInputs::ordered(&split_inputs.instances),
+            currents: SplitInputs::ordered(&split_inputs.currents),
             seeds,
             families,
             forward,
@@ -768,11 +1174,11 @@ impl LoopProgramV4 {
 
     fn family(
         f: &FamilyFile,
-        file: &PlanFile,
-        contents: &[Content],
-        seeds: usize,
+        shared: &Shared<'_>,
         tables: &mut Tables,
+        split_inputs: &mut SplitInputs,
     ) -> RusticolResult<Family> {
+        let (file, contents, seeds) = (shared.file, shared.contents, shared.seeds);
         let full = (1u64 << file.legs) - 1;
         let mut covered = 0u64;
         for &(mask, mass) in &f.sequence {
@@ -801,6 +1207,8 @@ impl LoopProgramV4 {
         let mut steps: Vec<Step> = Vec::with_capacity(f.steps.len());
         let mut consumed = vec![false; f.steps.len()];
         let mut factors = BTreeSet::new();
+        let mut instances = BTreeSet::new();
+        let mut currents = BTreeSet::new();
         for (index, s) in f.steps.iter().enumerate() {
             let rank_out = s.rank_in + s.degree;
             let trace = usize::try_from(s.trace).ok();
@@ -854,7 +1262,6 @@ impl LoopProgramV4 {
                         "row link out of range",
                     )?;
                 }
-                factors.insert(e.factor);
                 edges.push(Edge {
                     source,
                     factor: e.factor,
@@ -865,6 +1272,30 @@ impl LoopProgramV4 {
                 });
             }
             require(!edges.is_empty(), "a step without edges")?;
+            let fused_cost = fused_cost(s.seeded, s.d_alpha, &edges, contents);
+            let candidate = split_candidate(s, &edges, shared, tables)?;
+            let split_cost = candidate.as_ref().map(|(_, cost)| *cost);
+            let split = match (shared.policy, candidate) {
+                (_, None) | (FormPolicy::Fused, _) => None,
+                (FormPolicy::Split, Some((split, _))) => Some(split),
+                (FormPolicy::Rule, Some((split, cost))) => {
+                    (SPLIT_MODEL.seconds(cost) < FUSED_MODEL.seconds(fused_cost)).then_some(split)
+                }
+            };
+            let split = split.map(|mut split| {
+                for group in &mut split.groups {
+                    group.instance = split_inputs.instance(group.vertex, group.shift);
+                    instances.insert(group.instance);
+                }
+                for part in split.parts.iter_mut().flatten() {
+                    part.current = split_inputs.current(part.content, part.term);
+                    currents.insert(part.current);
+                }
+                split
+            });
+            if split.is_none() {
+                factors.extend(edges.iter().map(|edge| edge.factor));
+            }
             steps.push(Step {
                 seeded: s.seeded,
                 trace,
@@ -875,6 +1306,8 @@ impl LoopProgramV4 {
                 rank_in: s.rank_in,
                 rank_out,
                 edges,
+                split,
+                costs: (fused_cost, split_cost),
             });
         }
         for (index, step) in steps.iter().enumerate() {
@@ -890,6 +1323,8 @@ impl LoopProgramV4 {
             leaves,
             steps,
             factors: factors.into_iter().collect(),
+            vertices: instances.into_iter().collect(),
+            currents: currents.into_iter().collect(),
         })
     }
 

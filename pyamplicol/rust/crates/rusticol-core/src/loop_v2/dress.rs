@@ -22,7 +22,7 @@
 //! product is that of the Python reference executor.
 
 use super::kernels::{RowLink, Segment, clear, fused_edge, lane_vector_len};
-use super::plan::{Content, KernelInput, LoopProgramV4};
+use super::plan::{Content, Family, KernelInput, LoopProgramV4};
 use super::poly::MonomialProductTable;
 use crate::{RusticolError, RusticolResult};
 use std::collections::HashMap;
@@ -284,47 +284,42 @@ impl<T: Carrier, const L: usize> LaneData<T, L> {
     }
 }
 
-// --------------------------------------------------------------- fused factors
+// ----------------------------------------------------------- chunk inputs
 
-/// Fused factors of one chunk, built on demand per factor id.
-pub struct FactorStore<T> {
+/// Lane values of one chunk built on demand per id (fused factors, split
+/// vertex tensors or split block currents).
+pub struct LaneStore<T> {
     values: Vec<Option<Vec<T>>>,
 }
 
-impl<T: Carrier> FactorStore<T> {
-    pub fn new(plan: &LoopProgramV4) -> Self {
+impl<T: Carrier> LaneStore<T> {
+    pub fn new(len: usize) -> Self {
         Self {
-            values: (0..plan.factors.len()).map(|_| None).collect(),
+            values: (0..len).map(|_| None).collect(),
         }
     }
 
-    /// Build every factor of `ids` that is not built yet (in parallel).
-    pub fn build<const L: usize>(
-        &mut self,
-        plan: &LoopProgramV4,
-        data: &LaneData<T, L>,
-        ids: &[usize],
-    ) {
+    /// Build every value of `ids` that is not built yet (in parallel).
+    pub fn build(&mut self, ids: &[usize], build: impl Fn(usize) -> Vec<T> + Sync) {
         use rayon::prelude::*;
         let missing: Vec<usize> = ids
             .iter()
             .copied()
             .filter(|&id| self.values[id].is_none())
             .collect();
-        let built: Vec<(usize, Vec<T>)> = missing
-            .par_iter()
-            .map(|&id| (id, build_factor::<T, L>(plan, id, data)))
-            .collect();
+        let built: Vec<(usize, Vec<T>)> = missing.par_iter().map(|&id| (id, build(id))).collect();
         for (id, values) in built {
             self.values[id] = Some(values);
         }
     }
 
     pub fn get(&self, id: usize) -> &[T] {
-        self.values[id].as_deref().expect("factor built before use")
+        self.values[id]
+            .as_deref()
+            .expect("lane input built before use")
     }
 
-    /// Drop the factors not in `keep` (sorted ascending).
+    /// Drop the values not in `keep` (sorted ascending).
     pub fn retain(&mut self, keep: &[usize]) {
         for (id, value) in self.values.iter_mut().enumerate() {
             if value.is_some() && keep.binary_search(&id).is_err() {
@@ -333,18 +328,172 @@ impl<T: Carrier> FactorStore<T> {
         }
     }
 
-    /// Reals held by built factors.
+    /// Reals held by built values.
     pub fn reals(&self) -> usize {
         self.values.iter().flatten().map(Vec::len).sum()
     }
 }
 
+/// Ids of the chunk inputs a set of families reads, each sorted ascending.
+#[derive(Clone, Debug, Default)]
+pub struct Reads {
+    pub factors: Vec<usize>,
+    pub vertices: Vec<usize>,
+    pub currents: Vec<usize>,
+}
+
+impl Reads {
+    /// Everything the schedule-B steps of `families` read.
+    pub fn of(plan: &LoopProgramV4, families: &[usize]) -> Self {
+        let union = |ids: fn(&Family) -> &[usize]| {
+            let mut out: Vec<usize> = families
+                .iter()
+                .flat_map(|&f| ids(&plan.families[f]).iter().copied())
+                .collect();
+            out.sort_unstable();
+            out.dedup();
+            out
+        };
+        Self {
+            factors: union(|f| &f.factors),
+            vertices: union(|f| &f.vertices),
+            currents: union(|f| &f.currents),
+        }
+    }
+}
+
+/// The lane inputs of one chunk: fused factors `X(J)` per (content, shift),
+/// split vertex tensors per (vertex, shift) and split block currents per
+/// (content, term).
+pub struct ChunkInputs<T> {
+    pub factors: LaneStore<T>,
+    pub vertices: LaneStore<T>,
+    pub currents: LaneStore<T>,
+}
+
+impl<T: Carrier> ChunkInputs<T> {
+    pub fn new(plan: &LoopProgramV4) -> Self {
+        Self {
+            factors: LaneStore::new(plan.factors.len()),
+            vertices: LaneStore::new(plan.vertex_instances.len()),
+            currents: LaneStore::new(plan.currents.len()),
+        }
+    }
+
+    /// Keep the inputs in `live`, then build those in `needed`.
+    pub fn prepare<const L: usize>(
+        &mut self,
+        plan: &LoopProgramV4,
+        data: &LaneData<T, L>,
+        needed: &Reads,
+        live: &Reads,
+    ) {
+        self.factors.retain(&live.factors);
+        self.vertices.retain(&live.vertices);
+        self.currents.retain(&live.currents);
+        self.factors
+            .build(&needed.factors, |id| build_factor::<T, L>(plan, id, data));
+        self.vertices
+            .build(&needed.vertices, |id| build_vertex::<T, L>(plan, id, data));
+        self.currents
+            .build(&needed.currents, |id| build_current::<T, L>(plan, id, data));
+    }
+
+    pub fn reals(&self) -> usize {
+        self.factors.reals() + self.vertices.reals() + self.currents.reals()
+    }
+}
+
+/// Lane vector of one kernel input: loop momentum at the frame shift, a
+/// slot's block momentum or block-current component, or `None` for a
+/// parameter (folded into the kernel constants).
+fn kernel_input<'a, T: Carrier, const L: usize>(
+    input: KernelInput,
+    loop_momentum: &'a [T],
+    slot_momenta: &'a [std::sync::Arc<Vec<T>>],
+    blocks: Option<&[usize]>,
+    data: &'a LaneData<T, L>,
+) -> Option<&'a [T]> {
+    let v = lane_vector_len(L);
+    match input {
+        KernelInput::Loop(mu) => Some(&loop_momentum[mu * v..][..v]),
+        KernelInput::Current { slot, component } => {
+            Some(data.block_component(blocks.expect("block rows")[slot], component))
+        }
+        KernelInput::Momentum { slot, mu } => Some(&slot_momenta[slot][mu * v..][..v]),
+        KernelInput::Parameter => None,
+    }
+}
+
+/// `V` of vertex `vertex` at frame shift `shift`: one lane vector per vertex
+/// entry, the sum of its kernels' outputs.
+fn vertex_values<T: Carrier, const L: usize>(
+    plan: &LoopProgramV4,
+    vertex: usize,
+    shift: u64,
+    data: &LaneData<T, L>,
+    scratch: &mut Scratch<T>,
+) -> Vec<T> {
+    let vertex = &plan.vertices[vertex];
+    let v = lane_vector_len(L);
+    let loop_momentum = data.momentum(shift);
+    let slot_momenta: Vec<_> = vertex
+        .slots
+        .iter()
+        .map(|&mask| data.momentum(mask))
+        .collect();
+    let mut out = vec![data.zero.clone(); vertex.entries.len() * v];
+    for binding in &vertex.bindings {
+        let kernel = &plan.kernels[binding.kernel];
+        let inputs: Vec<Option<&[T]>> = binding
+            .inputs
+            .iter()
+            .map(|&i| kernel_input(i, &loop_momentum, &slot_momenta, None, data))
+            .collect();
+        for (terms, &entry) in kernel.outputs.iter().zip(&binding.entries) {
+            scratch.evaluate::<L>(terms, &inputs, data);
+            cadd::<T, L>(&mut out[entry * v..][..v], &scratch.total);
+        }
+    }
+    out
+}
+
+/// Vertex instance `id` of the plan (split form).
+pub fn build_vertex<T: Carrier, const L: usize>(
+    plan: &LoopProgramV4,
+    id: usize,
+    data: &LaneData<T, L>,
+) -> Vec<T> {
+    let (vertex, shift) = plan.vertex_instances[id];
+    let mut scratch = Scratch::<T>::new(&data.zero, lane_vector_len(L));
+    vertex_values(plan, vertex, shift, data, &mut scratch)
+}
+
+/// Split current `id` of the plan: per term row, the `width` products `J[ν]`
+/// of the slots' block components.
+pub fn build_current<T: Carrier, const L: usize>(
+    plan: &LoopProgramV4,
+    id: usize,
+    data: &LaneData<T, L>,
+) -> Vec<T> {
+    let (content, term) = plan.currents[id];
+    let term = &plan.contents[content].terms[term];
+    let v = lane_vector_len(L);
+    let row_len = term.width() * v;
+    let mut out = vec![data.zero.clone(); term.rows.len() * row_len];
+    let mut scratch = vec![data.zero.clone(); v];
+    for ((_row, blocks), target) in term.rows.iter().zip(out.chunks_exact_mut(row_len)) {
+        block_components::<T, L>(term, blocks, data, target, &mut scratch);
+    }
+    out
+}
+
 /// `X(J)` of factor `id`: per content row, one lane vector per fused entry.
 ///
-/// A routing term with split vertex kernels evaluates its vertex tensor
-/// `V[e]` once (loop shift and block momenta only) and contracts it with
-/// each row's block components, `X[row][e] += V[e] J[row][nu(e)]`; a term
-/// without them evaluates its fused kernels per row. Both are the same
+/// A routing term with a split vertex evaluates the vertex tensor `V[e]`
+/// once (loop shift and block momenta only) and contracts it with each
+/// row's block components, `X[row][fused(e)] += V[e] J[row][ν(e)]`; a term
+/// without one evaluates its fused kernels per row. Both are the same
 /// polynomial (the reference executor's fused and split forms agree
 /// exactly).
 pub fn build_factor<T: Carrier, const L: usize>(
@@ -360,43 +509,28 @@ pub fn build_factor<T: Carrier, const L: usize>(
     let loop_momentum = data.momentum(shift);
     let mut scratch = Scratch::<T>::new(&data.zero, v);
     for term in &content.terms {
-        let slot_momenta: Vec<_> = term.slots.iter().map(|&mask| data.momentum(mask)).collect();
-        let input = |input: &KernelInput, blocks: Option<&[usize]>| -> Option<&[T]> {
-            match *input {
-                KernelInput::Loop(mu) => Some(&loop_momentum[mu * v..][..v]),
-                KernelInput::Current { slot, component } => {
-                    Some(data.block_component(blocks.expect("block rows")[slot], component))
-                }
-                KernelInput::Momentum { slot, mu } => Some(&slot_momenta[slot][mu * v..][..v]),
-                KernelInput::Parameter => None,
-            }
-        };
-        if !term.split.is_empty() {
-            // Vertex tensor once, then one complex multiply-add per entry
-            // and row.
-            let mut vertex: Vec<(usize, usize, Vec<T>)> = Vec::new();
-            for binding in &term.split {
-                let kernel = &plan.kernels[binding.kernel];
-                let inputs: Vec<Option<&[T]>> =
-                    binding.inputs.iter().map(|i| input(i, None)).collect();
-                for (terms, &(entry, nu)) in kernel.outputs.iter().zip(&binding.entries) {
-                    scratch.evaluate::<L>(terms, &inputs, data);
-                    vertex.push((entry, nu, scratch.total.clone()));
-                }
-            }
-            let width = term.width();
-            let mut components = vec![data.zero.clone(); width * v];
+        if let Some(split) = &term.vertex {
+            let vertex = &plan.vertices[split.id];
+            let values = vertex_values(plan, split.id, shift, data, &mut scratch);
+            let mut components = vec![data.zero.clone(); term.width() * v];
             let mut product = vec![data.zero.clone(); v];
             for (row, blocks) in &term.rows {
                 block_components::<T, L>(term, blocks, data, &mut components, &mut product);
                 let target = &mut out[row * row_len..][..row_len];
-                for (entry, nu, value) in &vertex {
-                    cmul_into::<T, L>(&mut product, value, &components[nu * v..][..v]);
-                    cadd::<T, L>(&mut target[entry * v..][..v], &product);
+                for (e, (&(_b, nu, _bp, _exponents), &fused)) in
+                    vertex.entries.iter().zip(&split.fused).enumerate()
+                {
+                    cmul_into::<T, L>(
+                        &mut product,
+                        &values[e * v..][..v],
+                        &components[nu * v..][..v],
+                    );
+                    cadd::<T, L>(&mut target[fused * v..][..v], &product);
                 }
             }
             continue;
         }
+        let slot_momenta: Vec<_> = term.slots.iter().map(|&mask| data.momentum(mask)).collect();
         for (row, blocks) in &term.rows {
             let target = &mut out[row * row_len..][..row_len];
             for binding in &term.bindings {
@@ -404,7 +538,7 @@ pub fn build_factor<T: Carrier, const L: usize>(
                 let inputs: Vec<Option<&[T]>> = binding
                     .inputs
                     .iter()
-                    .map(|i| input(i, Some(blocks)))
+                    .map(|&i| kernel_input(i, &loop_momentum, &slot_momenta, Some(blocks), data))
                     .collect();
                 for (terms, &entry) in kernel.outputs.iter().zip(&binding.entries) {
                     scratch.evaluate::<L>(terms, &inputs, data);
@@ -433,10 +567,11 @@ fn block_components<T: Carrier, const L: usize>(
     for x in &mut out[..L] {
         *x = data.zero.one();
     }
+    let mut head = vec![data.zero.clone(); v];
     for (slot, &dimension) in term.dimensions.iter().enumerate() {
         // Expand in place from the back: nu = previous * dimension + k.
         for previous in (0..filled).rev() {
-            let head: Vec<T> = out[previous * v..][..v].to_vec();
+            head.clone_from_slice(&out[previous * v..][..v]);
             for k in (0..dimension).rev() {
                 cmul_into::<T, L>(scratch, &head, data.block_component(blocks[slot], k));
                 out[(previous * dimension + k) * v..][..v].clone_from_slice(scratch);

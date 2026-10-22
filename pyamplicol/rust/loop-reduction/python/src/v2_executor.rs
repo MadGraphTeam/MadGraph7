@@ -15,7 +15,7 @@ use rusticol_core::loop_execution::v2::{
     PointNumerators, PointResult, Report, Schedule, V2Executor as Executor, V2Options,
 };
 use rusticol_core::loop_v2::dress::{Carrier as V2Carrier, V2Batch, parse_rational};
-use rusticol_core::loop_v2::plan::LoopProgramV4;
+use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
 use rusticol_core::loop_v2::retest::ReductionCheck;
 use rusticol_loop_reduction::runtime::{TypedBatch, V2ReductionBackend};
 use std::collections::BTreeMap;
@@ -256,7 +256,9 @@ enum Carriers {
 
 /// The native v2 executor of one plan and carrier. `lanes` is the SIMD
 /// lane count per chunk (default 16, gate G0); `threads` bounds the family
-/// threads (default: all cores).
+/// threads (default: all cores); `forms` picks the kernel form per step:
+/// `rule` (gate G0's selection rule), `fused` or `split` (wherever a step
+/// can split).
 #[pyclass]
 struct V2Executor {
     executor: Executor,
@@ -331,14 +333,21 @@ fn numerators_with<T: Exchanged>(
 #[pymethods]
 impl V2Executor {
     #[new]
-    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None))]
+    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule"))]
     fn new(
         plan: &str,
         arithmetic: &str,
         precision: Option<u32>,
         lanes: usize,
         threads: Option<usize>,
+        forms: &str,
     ) -> PyResult<Self> {
+        let policy = match forms {
+            "rule" => FormPolicy::Rule,
+            "fused" => FormPolicy::Fused,
+            "split" => FormPolicy::Split,
+            _ => return Err(error("forms must be rule, fused or split")),
+        };
         let carrier = match (arithmetic, precision) {
             ("double", None) => Carriers::Double,
             ("double-double", None) => Carriers::DoubleDouble,
@@ -350,7 +359,7 @@ impl V2Executor {
                 ));
             }
         };
-        let plan = Arc::new(LoopProgramV4::load(plan.as_bytes()).map_err(error)?);
+        let plan = Arc::new(LoopProgramV4::load_with(plan.as_bytes(), policy).map_err(error)?);
         Ok(Self {
             executor: Executor::new(plan, lanes, threads).map_err(error)?,
             carrier,
@@ -366,6 +375,27 @@ impl V2Executor {
     #[getter]
     fn families(&self) -> usize {
         self.executor.plan().families.len()
+    }
+
+    /// Schedule-B steps per kernel form: `{"fused": n, "split": m}`.
+    #[getter]
+    fn forms(&self) -> BTreeMap<&'static str, usize> {
+        let steps = self
+            .executor
+            .plan()
+            .families
+            .iter()
+            .flat_map(|family| &family.steps);
+        let mut out = BTreeMap::from([("fused", 0), ("split", 0)]);
+        for step in steps {
+            *out.entry(if step.split.is_some() {
+                "split"
+            } else {
+                "fused"
+            })
+            .or_default() += 1;
+        }
+        out
     }
 
     /// Family numerators per point: `(family, order, rank, columns)` with

@@ -2081,7 +2081,7 @@ fn prepare_states<B: LoopBackend>(
 #[cfg(feature = "loop-v2")]
 pub mod v2 {
     use crate::loop_v2::closure::FamilyNumerator;
-    use crate::loop_v2::dress::{Carrier, FactorStore, LaneData, V2Batch};
+    use crate::loop_v2::dress::{Carrier, ChunkInputs, LaneData, Reads, V2Batch};
     use crate::loop_v2::forward::{forward_factors, run_forward};
     use crate::loop_v2::plan::LoopProgramV4;
     use crate::loop_v2::retest::{ReductionCheck, add_to_budget, deviation};
@@ -2200,8 +2200,10 @@ pub mod v2 {
     }
 
     /// Development measurements of one run: seconds per stage, work counts
-    /// and the reals held per lane (fused factors, live open-loop objects of
-    /// one family walk, numerators of one bucket chunk).
+    /// and the peak reals held per lane (chunk inputs: fused factors, split
+    /// vertex tensors and currents; live open-loop objects of one family
+    /// walk; numerators of one bucket chunk). Bytes per lane are the reals
+    /// times `real_bytes` (heap limbs of arbitrary-precision reals excluded).
     #[derive(Clone, Debug, Default)]
     pub struct Report {
         pub seconds: BTreeMap<&'static str, f64>,
@@ -2325,76 +2327,89 @@ pub mod v2 {
             .collect()
     }
 
-    /// Dress every family of `families` on one chunk (schedule B).
-    /// The fused factors of `families`, ascending.
-    fn chunk_factors(plan: &LoopProgramV4, families: &[usize]) -> Vec<usize> {
-        let mut ids: Vec<usize> = families
-            .iter()
-            .flat_map(|&f| plan.families[f].factors.iter().copied())
-            .collect();
-        ids.sort_unstable();
-        ids.dedup();
-        ids
+    /// A bucket chunk: its families, the inputs they read, and the inputs
+    /// read by it or a later chunk (an input lives from its first to its
+    /// last chunk).
+    struct BucketChunk {
+        families: Vec<usize>,
+        reads: Reads,
+        live: Reads,
     }
 
-    /// Bucket chunks of at most `size` families, and per chunk the factors
-    /// read by it or a later chunk (a factor lives from its first to its
-    /// last chunk).
-    fn bucket_chunks(plan: &LoopProgramV4, size: usize) -> Vec<(Vec<usize>, Vec<usize>)> {
+    /// Bucket chunks of at most `size` families in bucket order.
+    fn bucket_chunks(plan: &LoopProgramV4, size: usize) -> Vec<BucketChunk> {
         let parts: Vec<Vec<usize>> = plan
             .buckets()
             .values()
             .flat_map(|members| members.chunks(size.max(1)).map(<[usize]>::to_vec))
             .collect();
-        let mut last = vec![0; plan.factors.len()];
-        for (k, part) in parts.iter().enumerate() {
-            for id in chunk_factors(plan, part) {
-                last[id] = k;
+        let reads: Vec<Reads> = parts.iter().map(|part| Reads::of(plan, part)).collect();
+        let last = |count: usize, ids: &dyn Fn(&Reads) -> &[usize]| {
+            let mut last = vec![0; count];
+            for (k, chunk) in reads.iter().enumerate() {
+                for &id in ids(chunk) {
+                    last[id] = k;
+                }
             }
-        }
+            last
+        };
+        let factors = last(plan.factors.len(), &|r| &r.factors);
+        let vertices = last(plan.vertex_instances.len(), &|r| &r.vertices);
+        let currents = last(plan.currents.len(), &|r| &r.currents);
+        let alive = |last: &[usize], k: usize| -> Vec<usize> {
+            (0..last.len()).filter(|&id| last[id] >= k).collect()
+        };
         parts
             .into_iter()
+            .zip(reads)
             .enumerate()
-            .map(|(k, part)| {
-                let live = (0..plan.factors.len())
-                    .filter(|&id| last[id] >= k)
-                    .collect();
-                (part, live)
+            .map(|(k, (families, reads))| BucketChunk {
+                families,
+                reads,
+                live: Reads {
+                    factors: alive(&factors, k),
+                    vertices: alive(&vertices, k),
+                    currents: alive(&currents, k),
+                },
             })
             .collect()
     }
 
+    /// Dress every family of `chunk` on one chunk of lanes (schedule B).
     fn dress_families<T: Carrier, const L: usize>(
         plan: &LoopProgramV4,
-        families: &[usize],
-        live: &[usize],
-        factors: &mut FactorStore<T>,
+        chunk: &BucketChunk,
+        inputs: &mut ChunkInputs<T>,
         seeds: &crate::loop_v2::seeds::Seeds<T>,
         data: &LaneData<T, L>,
         report: &mut Report,
     ) -> RusticolResult<Vec<FamilyNumerator<T>>> {
+        let families = &chunk.families;
         let start = Instant::now();
-        let ids = chunk_factors(plan, families);
-        factors.retain(live);
-        factors.build(plan, data, &ids);
+        inputs.prepare(plan, data, &chunk.reads, &chunk.live);
         report.time("factors", start);
-        report.peak("factors", factors.reals(), L);
-        report.count("factors", ids.len() as u64);
+        report.peak(
+            "chunk inputs (factors, vertex tensors, currents)",
+            inputs.reals(),
+            L,
+        );
+        report.count("factors", chunk.reads.factors.len() as u64);
+        report.count("vertex tensors", chunk.reads.vertices.len() as u64);
         let start = Instant::now();
+        let inputs = &*inputs;
         let runs = families
             .par_iter()
-            .map(|&f| run_family::<T, L>(plan, f, factors, seeds, data))
+            .map(|&f| run_family::<T, L>(plan, f, inputs, seeds, data))
             .collect::<RusticolResult<Vec<_>>>()?;
         report.time("dressing", start);
         let peak = runs.iter().map(|run| run.peak_reals).max().unwrap_or(0);
         report.peak("open objects (one family walk)", peak, L);
         report.count("families", families.len() as u64);
+        let steps = || families.iter().flat_map(|&f| &plan.families[f].steps);
+        report.count("steps", steps().count() as u64);
         report.count(
-            "steps",
-            families
-                .iter()
-                .map(|&f| plan.families[f].steps.len() as u64)
-                .sum(),
+            "split steps",
+            steps().filter(|s| s.split.is_some()).count() as u64,
         );
         let numerators: Vec<_> = runs.into_iter().map(|run| run.numerator).collect();
         report.peak(
@@ -2416,16 +2431,25 @@ pub mod v2 {
         for points in chunks(batch.points(), L) {
             let data = LaneData::<T, L>::new(plan, batch, &points, zero)?;
             let seeds = seeds(plan, &data);
-            let mut factors = FactorStore::new(plan);
+            let mut inputs = ChunkInputs::new(plan);
             let numerators = match schedule {
                 Schedule::B => {
-                    let all: Vec<usize> = (0..plan.families.len()).collect();
-                    let live = chunk_factors(plan, &all);
-                    dress_families(plan, &all, &live, &mut factors, &seeds, &data, &mut report)?
+                    let families: Vec<usize> = (0..plan.families.len()).collect();
+                    let reads = Reads::of(plan, &families);
+                    let chunk = BucketChunk {
+                        families,
+                        live: reads.clone(),
+                        reads,
+                    };
+                    dress_families(plan, &chunk, &mut inputs, &seeds, &data, &mut report)?
                 }
                 Schedule::F => {
-                    factors.build(plan, &data, &forward_factors(plan));
-                    run_forward(plan, &factors, &seeds, &data)?.0
+                    let needed = Reads {
+                        factors: forward_factors(plan),
+                        ..Reads::default()
+                    };
+                    inputs.prepare(plan, &data, &needed, &needed);
+                    run_forward(plan, &inputs.factors, &seeds, &data)?.0
                 }
             };
             for (lane, &point) in points.iter().enumerate() {
@@ -2579,7 +2603,7 @@ pub mod v2 {
             let data = LaneData::<T, L>::new(plan, batch, &chunk, zero)?;
             let seeds = seeds(plan, &data);
             report.time("seeds", start);
-            let mut factors = FactorStore::new(plan);
+            let mut inputs = ChunkInputs::new(plan);
             let masses: Vec<Complex<T>> = batch
                 .masses
                 .iter()
@@ -2594,9 +2618,9 @@ pub mod v2 {
                     squares: HashMap::new(),
                 })
                 .collect();
-            for (part, live) in &chunks_of_buckets {
+            for part in &chunks_of_buckets {
                 let numerators =
-                    dress_families(plan, part, live, &mut factors, &seeds, &data, &mut report)?;
+                    dress_families(plan, part, &mut inputs, &seeds, &data, &mut report)?;
                 let start = Instant::now();
                 let mut failed = vec![false; points];
                 for (point, list) in failures.iter().enumerate() {
