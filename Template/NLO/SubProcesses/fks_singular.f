@@ -4069,9 +4069,10 @@ c soft singularity with the FKS configuration randomly chosen.
       return
       end
 
-      subroutine pick_unweight_contr_vec(iFKS_picked,ifold_picked,ivec_picked)
-c Randomly pick (weighted by the ABS values) the contribution to a given
-c PS point that should be written in the event file.
+      subroutine pick_unweight_contr_vec(iFKS_picked,ifold_picked,ivec)
+c Randomly pick (weighted by the ABS values) the contribution of the
+c accepted lane ivec that should be written in the event file. Every
+c accepted lane is written as an event (see driver_mintMC.f).
       use weight_lines
       use weight_lines_vec
       use driver_vec
@@ -4109,39 +4110,24 @@ c PS point that should be written in the event file.
       integer need_matching(nexternal)
       common /c_need_matching_to_write/ need_matching
 
-      integer ivec,ivec_picked,naccepted,accepted_picked
+      integer ivec
 
 
       call cpu_time(tBefore)
-      naccepted=0
-      do ivec=1,driver_active_size
-         if (driver_accepted(ivec)) naccepted=naccepted+1
-      enddo
-      if (naccepted.eq.0) then
-         write(*,*) 'ERROR in pick_unweight_contr_vec: no accepted lane'
+      if (ivec.lt.1 .or. ivec.gt.driver_active_size) then
+         write(*,*) 'ERROR in pick_unweight_contr_vec: no such lane',ivec
+         stop 1
+      endif
+      if (.not.driver_accepted(ivec)) then
+         write(*,*) 'ERROR in pick_unweight_contr_vec: lane not '/
+     $        /'accepted',ivec
          stop 1
       endif
 
-c Pick one accepted event uniformly. The accept/reject step has already
-c distributed each accepted lane according to its absolute weight; weighting
-c the lanes by that weight a second time would bias the event sample.
-      accepted_picked=min(int(ran2()*naccepted)+1,naccepted)
-      naccepted=0
-      ivec_picked=0
-      do ivec=1,driver_active_size
-         if (driver_accepted(ivec)) then
-            naccepted=naccepted+1
-            if (naccepted.eq.accepted_picked) then
-               ivec_picked=ivec
-               exit
-            endif
-         endif
-      enddo
-
       tot_sum=0d0
-      do i=1,icontr_vec(ivec_picked)
-         do j=1,niproc_vec(i,ivec_picked)
-            tot_sum=tot_sum+abs(unwgt_vec(j,i,ivec_picked))
+      do i=1,icontr_vec(ivec)
+         do j=1,niproc_vec(i,ivec)
+            tot_sum=tot_sum+abs(unwgt_vec(j,i,ivec))
          enddo
       enddo
       if (tot_sum.le.0d0) then
@@ -4153,19 +4139,19 @@ c the lanes by that weight a second time would bias the event sample.
       current=0d0
       i=0
       j=0
-      do ii=1,icontr_vec(ivec_picked)
-         do jj=1,niproc_vec(ii,ivec_picked)
-            if (abs(unwgt_vec(jj,ii,ivec_picked)).gt.0d0) then
+      do ii=1,icontr_vec(ivec)
+         do jj=1,niproc_vec(ii,ivec)
+            if (abs(unwgt_vec(jj,ii,ivec)).gt.0d0) then
                i=ii
                j=jj
-               current=current+abs(unwgt_vec(jj,ii,ivec_picked))
+               current=current+abs(unwgt_vec(jj,ii,ivec))
                if (current.ge.target) goto 10
             endif
          enddo
       enddo
  10   continue
 c found the contribution that should be written:
-      call retrieve_weight_lines(nexternal,ivec_picked)
+      call retrieve_weight_lines(nexternal,ivec)
       icontr_picked=i
       iproc_picked=j
       if (H_event(icontr_picked)) then
@@ -4185,10 +4171,11 @@ c found the contribution that should be written:
       else
          Hevents=.false.
          i_process_addwrite=etoi(iproc_picked,nFKS(icontr_picked))
-c For S-events, ifold_picked is already set in
-c update_shower_scale_Sevents(). Note that for S-events, the fold chosen
-c doesn't really matter.
-c$$$         ifold_picked=ifold_cnt(icontr_picked)
+c For S-events, the fold was picked for this lane in
+c update_shower_scale_Sevents(), and sigintF_vec stored it in
+c lane_ifold_S. Note that for S-events, the fold chosen doesn't really
+c matter.
+         ifold_picked=lane_ifold_S(ivec)
          do k=1,icontr_sum(0,icontr_picked)
             ict=icontr_sum(k,icontr_picked)
             !MZif (particle_type_d(nFKS(ict),fks_i_d(nFKS(ict))).eq.8) then

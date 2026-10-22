@@ -56,7 +56,7 @@ c Vegas stuff
       common/c_vob/virtual_over_born
       include 'orders.inc'
 
-      double precision weight,event_weight,inv_bias
+      double precision event_weight
       character*7 event_norm
       common /event_normalisation/event_norm
       integer ixi_i,iphi_i,iy_ij,vn
@@ -75,7 +75,6 @@ c Vegas stuff
       logical Hevents
       common/SHevents/Hevents
       character*10 dum
-      integer iFKS_picked
 c statistics for MadLoop      
       integer ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1(0:9)
       common/ups_stats/ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1
@@ -99,7 +98,10 @@ c general MadFKS parameters
 
       include 'nFKSconfigs.inc'
 
-      integer vector_size, ivec
+      integer vector_size
+      integer lunqueue(3),nqueued(3),nlanes,nevaluated
+      integer(kind=8) ntried(3),naccepted(3)
+      double precision prob_vn,accept_rate
 
 C-----
 C  BEGIN CODE
@@ -285,7 +287,6 @@ c fill the information for the write_header_init common block
          inter=ans(2,1)
          absint=ans(1,1)+ans(5,1)
          uncer=unc(2,1)
-         weight=event_weight
 
          if (abrv(1:3).ne.'all' .and. abrv(1:4).ne.'born' .and.
      $        abrv(1:4).ne.'virt') then
@@ -296,39 +297,73 @@ c fill the information for the write_header_init common block
          write (*,*) 'imode is ',imode
          vn=-1
          call gen_vec(sigintF_vec,0,vn)
+c Each lane of a batch is an independent hit-or-miss trial, so every
+c accepted lane is an event of the type (vn) the batch was drawn for.
+c The first accepted lane of a batch serves the request that drew it;
+c the others are written, as complete event records, to the queue of
+c that type, and later requests for the same type are served from the
+c queue before a new batch is drawn. The lanes left in the queues at
+c the end are discarded: the event file holds the first accepted lanes
+c of each type, which keeps it unbiased.
+         do i=1,3
+            nqueued(i)=0
+            ntried(i)=0
+            naccepted(i)=0
+            open(newunit=lunqueue(i),status='scratch',form='formatted')
+         enddo
          do j=1,ncalls0
             if (abrv(1:4).eq.'born') then
                vn=3
-               call gen_vec(sigintF_vec,1,vn)
             else
                if (ran2().lt.ans(5,1)/(ans(1,1)+ans(5,1)) .or. only_virt) then
                   abrv='virt'
                   if (only_virt) then
                      vn=2
-                     call gen_vec(sigintF_vec,1,vn)
                   else
                      vn=1
-                     call gen_vec(sigintF_vec,1,vn)
                   endif
                else
                   abrv='novi'
                   vn=2
-                  call gen_vec(sigintF_vec,1,vn)
                endif
             endif
-c Randomly pick the contribution that will be written in the event file
-            call pick_unweight_contr_vec(iFKS_picked,ifold_picked,ivec)
-            call update_fks_dir(iFKS_picked)
-            if (event_norm(1:4).eq.'bias') then
-               call include_inverse_bias_wgt(inv_bias)
-               weight=event_weight*inv_bias
+            if (nqueued(vn).eq.0) then
+c Size the batch for the expected number of requests of this type that
+c are left (this one included), at the acceptance rate of the lanes
+c drawn so far for this type (before its first batch, assume that every
+c lane passes). The integrand calls per event then do not grow with
+c vector_size, also in jobs with few events. With vector_size=1 every
+c batch has one lane, as before.
+               if (abrv(1:4).eq.'born' .or. only_virt) then
+                  prob_vn=1d0
+               elseif (vn.eq.1) then
+                  prob_vn=ans(5,1)/(ans(1,1)+ans(5,1))
+               else
+                  prob_vn=1d0-ans(5,1)/(ans(1,1)+ans(5,1))
+               endif
+               accept_rate=1d0
+               if (naccepted(vn).gt.0) accept_rate=dble(naccepted(vn))
+     $              /dble(ntried(vn))
+               nlanes=ceiling(min(dble(driver_vector_size),
+     $              (1d0+dble(ncalls0-j)*prob_vn)/accept_rate))
+               call gen_vec(sigintF_vec,1,vn,nlanes,nevaluated)
+               call write_accepted_lanes(lunlhe,lunqueue(vn),nqueued(vn)
+     $              ,event_weight,putonshell,p_label)
+               ntried(vn)=ntried(vn)+nevaluated
+               naccepted(vn)=naccepted(vn)+nqueued(vn)+1
+            else
+               call copy_queued_event(lunqueue(vn),lunlhe)
+               nqueued(vn)=nqueued(vn)-1
             endif
-            call fill_rwgt_lines
-            call finalize_event(x_save_vec(1,ifold_picked,ivec),weight
-     $           ,lunlhe,putonshell,p_label,ivec)
+            call gen_vec(sigintF_vec,2,vn) ! count the event written
          enddo
          vn=-1
          call gen_vec(sigintF_vec,3,vn) ! print counters generation efficiencies
+         write (*,*) 'accepted lanes left unused in the event queues:'
+     $        ,nqueued(1)+nqueued(2)+nqueued(3)
+         do i=1,3
+            close(lunqueue(i))
+         enddo
          write (lunlhe,'(a)') "</LesHouchesEvents>"
          close(lunlhe)
          call deallocate_weight_lines
@@ -437,6 +472,158 @@ c Randomly pick the contribution that will be written in the event file
       return
  999  write (*,*) 'nevts file not found'
       stop
+      end
+
+
+      subroutine write_accepted_lanes(lunlhe,lun,nqueued,event_weight
+     $     ,putonshell,p_label)
+c Writes every lane that passed the hit-or-miss of the batch just drawn
+c by gen_vec as a complete event record: the first one to the event file
+c lunlhe, for the request that drew the batch, and the nqueued others to
+c the queue unit lun, which is then rewound for copy_queued_event. The
+c hit-or-miss has already distributed each accepted lane according to
+c its absolute weight, so each one is written once, without any further
+c weighting. The lanes are written in a random order, drawn with one
+c random number per accepted lane. For vector_size=1 this is the random
+c number of the former uniform pick of one accepted lane, so the event
+c file does not change there.
+      use driver_vec
+      use mint_module, only: ndimmax,max_fold
+      implicit none
+      include 'nexternal.inc'
+      include 'genps.inc'
+      integer lunlhe,lun,nqueued,p_label
+      double precision event_weight
+      logical putonshell
+      integer i,k,ivec,iFKS_picked,nacc,lunout
+      integer, allocatable :: order(:)
+      double precision weight,inv_bias,ran2
+      external ran2
+      character*7 event_norm
+      common /event_normalisation/event_norm
+      integer ifold_picked
+      double precision x_save(ndimmax,max_fold)
+      common /c_vegas_x_fold/x_save,ifold_picked
+      allocate(order(driver_active_size))
+      nacc=0
+      do ivec=1,driver_active_size
+         if (.not.driver_accepted(ivec)) cycle
+         nacc=nacc+1
+         k=min(int(ran2()*nacc)+1,nacc)
+         if (k.ne.nacc) order(nacc)=order(k)
+         order(k)=ivec
+      enddo
+c Leave the queue alone when nothing is queued (always the case for
+c vector_size=1): passing every event through it made the event
+c generation of p p > e+ e- [QCD] 20% slower.
+      if (nacc.gt.1) rewind(lun)
+      do i=1,nacc
+         ivec=order(i)
+         lunout=lun
+         if (i.eq.1) lunout=lunlhe
+         call restore_lane_event_state(ivec)
+c Randomly pick the contribution that will be written in the event file
+         call pick_unweight_contr_vec(iFKS_picked,ifold_picked,ivec)
+         call update_fks_dir(iFKS_picked)
+         weight=event_weight
+         if (event_norm(1:4).eq.'bias') then
+            call include_inverse_bias_wgt(inv_bias)
+            weight=event_weight*inv_bias
+         endif
+         call fill_rwgt_lines
+         call finalize_event(x_save_vec(1,ifold_picked,ivec),weight
+     $        ,lunout,putonshell,p_label,ivec)
+      enddo
+      if (nacc.gt.1) rewind(lun)
+      nqueued=nacc-1
+      deallocate(order)
+      return
+      end
+
+
+      subroutine copy_queued_event(lunin,lunout)
+c Copies the next event record of the queue unit lunin, up to and
+c including its </event> line, unchanged to the event file lunout. Long
+c lines are copied in pieces, so the buffer does not limit their length.
+      implicit none
+      integer lunin,lunout,ios,nchar
+      character*1024 buf
+      logical new_line,last_line
+      last_line=.false.
+      do while (.not.last_line)
+         new_line=.true.
+         do
+            read(lunin,'(a)',advance='no',size=nchar,iostat=ios) buf
+            if (ios.eq.0) then
+               write(lunout,'(a)',advance='no') buf(1:nchar)
+               new_line=.false.
+            elseif (is_iostat_eor(ios)) then
+               write(lunout,'(a)') buf(1:nchar)
+               last_line=new_line .and.
+     $              adjustl(buf(1:nchar)).eq.'</event>'
+               exit
+            else
+               write (*,*) 'ERROR reading the event queue',ios
+               stop 1
+            endif
+         enddo
+      enddo
+      return
+      end
+
+
+      subroutine save_lane_event_state(ivec)
+c Stores the event-record state of lane ivec that lives in common blocks
+c (lane_g, lane_muF12, lane_ipartner_lhe and lane_scale1_lhe in
+c driver_vec), at the end of the evaluation of the lane.
+      use driver_vec
+      implicit none
+      include 'nexternal.inc'
+      include 'nFKSconfigs.inc'
+      include 'coupl.inc'
+      integer ivec
+      integer iSorH_lhe,ifks_lhe(fks_configs),jfks_lhe(fks_configs)
+     &     ,fksfather_lhe(fks_configs),ipartner_lhe(fks_configs)
+      double precision scale1_lhe(fks_configs),scale2_lhe(fks_configs)
+      common/cto_LHE1/iSorH_lhe,ifks_lhe,jfks_lhe,
+     #                fksfather_lhe,ipartner_lhe
+      common/cto_LHE2/scale1_lhe,scale2_lhe
+      double precision muR2_current,muF12_current,
+     #                 muF22_current,QES2_current
+      common/cscales_current_values/muR2_current,muF12_current,
+     #                              muF22_current,QES2_current
+      lane_g(ivec)=g
+      lane_muF12(ivec)=muF12_current
+      lane_ipartner_lhe(1:fks_configs,ivec)=ipartner_lhe(1:fks_configs)
+      lane_scale1_lhe(1:fks_configs,ivec)=scale1_lhe(1:fks_configs)
+      return
+      end
+
+
+      subroutine restore_lane_event_state(ivec)
+c Puts back the state stored by save_lane_event_state, before lane ivec
+c is written as an event.
+      use driver_vec
+      implicit none
+      include 'nexternal.inc'
+      include 'nFKSconfigs.inc'
+      include 'coupl.inc'
+      integer ivec
+      integer iSorH_lhe,ifks_lhe(fks_configs),jfks_lhe(fks_configs)
+     &     ,fksfather_lhe(fks_configs),ipartner_lhe(fks_configs)
+      double precision scale1_lhe(fks_configs),scale2_lhe(fks_configs)
+      common/cto_LHE1/iSorH_lhe,ifks_lhe,jfks_lhe,
+     #                fksfather_lhe,ipartner_lhe
+      common/cto_LHE2/scale1_lhe,scale2_lhe
+      double precision muR2_current,muF12_current,
+     #                 muF22_current,QES2_current
+      common/cscales_current_values/muR2_current,muF12_current,
+     #                              muF22_current,QES2_current
+      g=lane_g(ivec)
+      muF12_current=lane_muF12(ivec)
+      ipartner_lhe(1:fks_configs)=lane_ipartner_lhe(1:fks_configs,ivec)
+      scale1_lhe(1:fks_configs)=lane_scale1_lhe(1:fks_configs,ivec)
+      return
       end
 
 
@@ -1313,6 +1500,7 @@ c subtraction terms.
          enddo
  12      continue
          MCcnt_vec(ivec)=MCcntcalled
+         call save_lane_event_state(ivec)
          ! if (icontr.gt.icontr_bfr) then
          !    if(icontr_bfr.eq.0) icontr_bfr=1
          !    ! write(*,*) "icontr increased from ",icontr_bfr," to ",icontr
@@ -1366,6 +1554,7 @@ c Sum the contributions that can be summed before taking the ABS value
 c Update the shower starting scale for the S-events after we have
 c determined which contributions are identical.
             call update_shower_scale_Sevents(ifold_counter,ifold_picked)
+            lane_ifold_S(ivec)=ifold_picked
             call fill_mint_function_NLOPS(f,n1body_wgt)
             call fill_MC_integer(1,lane_group(ivec),
      $           n1body_wgt*lane_vol1(ivec))
