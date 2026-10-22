@@ -390,6 +390,12 @@ def _annotate_oriented_kernel_color_projections(
                 # oriented recognizer.  The original trilinear term and the
                 # compiler-owned source-leg permutation already certify it.
                 structure = certified_structure
+            if structure == "adjoint-structure-constant":
+                # The projection is f in the term's leg order. An orientation
+                # permutes the legs and f is totally antisymmetric, so its
+                # colour-flow sign is the parity of the permutation (this
+                # matters only for vertices whose f legs are distinct species).
+                coefficient *= _permutation_parity(kernel.source_particle_legs)
             recurrence_structure = certified_structure
             recurrence_proof_source = "exact-trilinear-symbolica-projection-v1"
             recurrence_provenance = (("vertex-term-id", str(term.id)),)
@@ -456,6 +462,16 @@ def _annotate_oriented_kernel_color_projections(
         )
         annotated.append(annotated_kernel)
     return tuple(annotated)
+
+
+def _permutation_parity(permutation: Sequence[int]) -> int:
+    inversions = sum(
+        1
+        for index, value in enumerate(permutation)
+        for later in permutation[index + 1 :]
+        if value > later
+    )
+    return -1 if inversions % 2 else 1
 
 
 def _dual_color_representation(representation: int) -> int:
