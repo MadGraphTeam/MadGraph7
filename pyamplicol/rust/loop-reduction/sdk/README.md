@@ -48,10 +48,12 @@ cargo rustc --locked -p rusticol-loop-sdk --example client -- \
 ```
 
 Plain `cargo build --examples` compiles them but cannot resolve the C ABI,
-because the wrapper deliberately has no Cargo dependency on this crate. The archive includes the required GMP/MPFR code
-and the existing Symbolica/NinjaRS/master providers. It does not link PyO3 or
-require a Python interpreter. Saved full-colour directed histories are available
-through the additive grouped complex interface below; mapped-process calls remain
+because the wrapper deliberately has no Cargo dependency on this crate.
+
+The archive includes the required GMP/MPFR code and the existing
+Symbolica/NinjaRS/master providers. It does not link PyO3 or require a Python
+interpreter. Saved full-colour directed histories are available through the
+additive grouped complex interface below; mapped-process calls remain
 unavailable. A prepared, explicitly continued source-colour plan can be loaded
 with LC/NLC metadata; generation requires its declared model continuation.
 
