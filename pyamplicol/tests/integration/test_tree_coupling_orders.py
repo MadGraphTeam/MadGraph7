@@ -25,6 +25,12 @@ amplitudes are all assigned, reproduce the matching column of the all-order
 export, and the eager lane, which shares nothing with the recurrence lane's
 colour construction, reproduces totals and restricted orders, also at leading
 colour where MadGraph has no reference (an external gluon).
+
+u u~ > d d~ s s~ c c~ has four quark lines that W pairings join across the
+generations, so four-point WWA/WWZ/WWAA/WWZZ vertices join all four lines.
+The eager lane is checked pure-electroweak (its own export, all colour-flow
+amplitudes assigned), with at most two gluons and at all orders, and on the
+relabelled process; the recurrence lane per squared order at all orders.
 """
 
 from __future__ import annotations
