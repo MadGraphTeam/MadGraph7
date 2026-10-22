@@ -1,12 +1,30 @@
 # SPDX-License-Identifier: 0BSD
 """Squared coupling-order partials of tree results against MadGraph split orders.
 
-The committed reference was produced by ``tools/developer/madgraph_split_orders.py``
+The committed references were produced by ``tools/developer/madgraph_split_orders.py``
 from MadGraph 3.7.0 standalone output of the UFO ``sm`` model (default
-restriction, t-channel widths kept) at the momenta it records. Processes with
-electroweak triple-gauge vertices are absent: the recurrence lane disagrees
-with MadGraph and with its own eager lane there, independently of coupling
-orders.
+restriction, t-channel widths kept) at the momenta they record: full colour,
+and leading colour (``--colour lc``, the diagonal of MadGraph's colour matrix)
+for processes without external gluons. The recurrence lane is checked per
+squared order; the eager lane (the Python tree compiler, also the loop
+engine's Born) has no partials and is checked on totals. Processes with
+electroweak triple-gauge vertices (u u~ > d d~ e+ e- beyond QCD^4 QED^4) are
+checked on the eager lane only: the recurrence lane disagrees with MadGraph
+and with its own eager lane there, independently of coupling orders.
+
+u u~ > d d~ s s~ (three quark lines, W exchange) checks a triple-gauge vertex
+whose three legs carry three different quark lines. Its colour factor is the
+same in both cyclic orders of the lines, and the eager lane keeps one of them
+(``ColorEngine._singlet_vertex_orientation_allowed``, and
+``_shared_lc_singlet_vertex_orientation_allowed`` for the shared leading-colour
+orderings); the recurrence lane still counts it once per order, i.e. twice
+(halving the WWA and WWZ couplings reproduces MadGraph there), a strict xfail.
+Its squared orders without the pure-electroweak amplitude, QCD^8 and
+QCD^6 QED^2, have no such vertex and are checked on the recurrence lane: they
+include the interference of the W pairing with the neutral pairing of the
+three lines. MadGraph 3.7 leaves colour-flow amplitudes of this process
+unassigned; the tool zeroes them
+(``_zero_colour_amplitudes``).
 """
 
 from __future__ import annotations
@@ -42,11 +60,12 @@ from pyamplicol.generation.process_grouping import GroupingBasis, GroupMember
 REFERENCE = (
     Path(__file__).resolve().parents[1] / "fixtures/tree/madgraph-split-orders.json"
 )
+LC_REFERENCE = REFERENCE.with_name("madgraph-split-orders-lc.json")
 ORDER_LIMITS = {"QCD": 99, "QED": 99}
 
 
-def _reference(process: str) -> dict[str, object]:
-    payload = json.loads(REFERENCE.read_text(encoding="utf-8"))
+def _reference(process: str, path: Path = REFERENCE) -> dict[str, object]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
     (entry,) = (item for item in payload["processes"] if item["process"] == process)
     return entry
 
@@ -73,13 +92,14 @@ def _runtime(
     accuracy: str = "full",
     execution_mode: str = "recurrence",
     lc_flow_layout: str = "topology-replay",
+    limits: dict[str, int] = ORDER_LIMITS,
 ) -> Runtime:
     config = RunConfig(
         action="generate",
         model=ModelConfig(cache=False),
         color=ColorConfig(accuracy=accuracy, lc_flow_layout=lc_flow_layout),
         process=ProcessConfig(
-            coupling_order_policy="explicit", max_coupling_orders=ORDER_LIMITS
+            coupling_order_policy="explicit", max_coupling_orders=limits
         ),
         generation=GenerationConfig(
             workers=1,
@@ -96,6 +116,16 @@ def _runtime(
     )
     Generator(config).generate(process, artifact, model=model)
     return Runtime.load(artifact)
+
+
+def _assert_total_matches_madgraph(totals, reference) -> None:
+    for point, (total, partials) in enumerate(
+        zip(totals, reference["partials"], strict=True)
+    ):
+        scale = math.fsum(abs(value) for value in partials)
+        total = complex(total)
+        assert total.imag == 0.0
+        assert abs(total.real - math.fsum(partials)) <= 1e-12 * scale, point
 
 
 def _assert_matches_madgraph(result: TreeOrderEvaluation, reference) -> None:
@@ -131,9 +161,26 @@ _MADGRAPH_PROCESSES = (
     "g g > t t~",
     "u u~ > e- e+ g",
 )
+_THREE_LINE_TRIPLE_GAUGE = "u u~ > d d~ s s~"
+# Three lines where a W pairs the u and d lines in the initial state.
+_W_PAIRED_THREE_LINES = "u d > u d s s~"
+_DOUBLE_COUNTED_TRIPLE_GAUGE = pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "the recurrence lane counts a triple-gauge vertex joining three quark "
+        "lines once per cyclic order of the lines (twice): QED^8 is up to 15x "
+        "MadGraph; open issue WP2.9 of DESIGN section 16.2"
+    ),
+)
 
 
-@pytest.mark.parametrize("process", _MADGRAPH_PROCESSES)
+@pytest.mark.parametrize(
+    "process",
+    [
+        *_MADGRAPH_PROCESSES,
+        pytest.param(_THREE_LINE_TRIPLE_GAUGE, marks=_DOUBLE_COUNTED_TRIPLE_GAUGE),
+    ],
+)
 def test_partials_match_madgraph_and_keep_the_total(
     sm_model: ModelSource, tmp_path: Path, process: str
 ) -> None:
@@ -154,11 +201,203 @@ def test_partials_match_madgraph_and_keep_the_total(
     )
 
 
+# Quark-only processes, whose MadGraph colour basis is the colour-flow basis.
+_LEADING_COLOUR_PROCESSES = (
+    "u u~ > d d~",
+    "u u~ > u u~",
+    "u d > u d",
+    "u u > u u",
+    "u u~ > u u~ u u~",
+)
+
+
+@pytest.mark.parametrize(
+    "process",
+    [
+        *_LEADING_COLOUR_PROCESSES,
+        pytest.param(_THREE_LINE_TRIPLE_GAUGE, marks=_DOUBLE_COUNTED_TRIPLE_GAUGE),
+    ],
+)
+def test_leading_colour_partials_match_madgraph(
+    sm_model: ModelSource, tmp_path: Path, process: str
+) -> None:
+    runtime = _runtime(sm_model, process, tmp_path / "artifact", accuracy="lc")
+    reference = _reference(process, LC_REFERENCE)
+
+    _assert_matches_madgraph(runtime.evaluate_orders(reference["points"]), reference)
+
+
+@pytest.mark.parametrize("accuracy", ["full", "lc"])
+@pytest.mark.parametrize("process", [_THREE_LINE_TRIPLE_GAUGE, _W_PAIRED_THREE_LINES])
+def test_three_line_orders_without_triple_gauge_vertices_match_madgraph(
+    sm_model: ModelSource, tmp_path: Path, process: str, accuracy: str
+) -> None:
+    """QCD x electroweak interference of three distinct quark lines, including
+    the W pairing (u d)(u~ d~)(s s~) against the neutral pairing. The
+    recurrence lane is independent of the eager lane's colour engine, so these
+    orders check MadGraph's colour-flow amplitudes by a second method."""
+
+    reference = _reference(process, REFERENCE if accuracy == "full" else LC_REFERENCE)
+    runtime = _runtime(sm_model, process, tmp_path / "artifact", accuracy=accuracy)
+    result = runtime.evaluate_orders(reference["points"])
+    checked = ((("QCD", 8),), (("QCD", 6), ("QED", 2)))
+    for point, partials in enumerate(reference["partials"]):
+        scale = math.fsum(abs(value) for value in partials)
+        for label, expected in zip(reference["squared_orders"], partials, strict=True):
+            order = tuple(
+                sorted((name, power) for name, power in label.items() if power)
+            )
+            if order not in checked:
+                continue
+            actual = complex(result.for_order(order)[point])
+            assert actual.imag == 0.0
+            assert abs(actual.real - expected) <= 1e-12 * scale, (point, order)
+
+
+# QCD x electroweak interference between quark lines (s/t channels, identical
+# quarks, a gluon, a lepton pair with triple-gauge vertices, three lines that
+# exchange electroweak bosons in turn): the eager lane keeps the electroweak
+# roots of every line pairing and signs coloured fermions by their Wick order.
+@pytest.mark.parametrize(
+    ("process", "accuracy"),
+    [
+        ("u u~ > d d~", "full"),
+        ("u u~ > d d~", "lc"),
+        ("u u~ > u u~", "full"),
+        ("u u~ > u u~", "lc"),
+        ("u d > u d", "full"),
+        ("u u~ > d d~ g", "full"),
+        ("u u~ > d d~ e+ e-", "full"),
+        ("u u~ > d d~ e+ e-", "lc"),
+        ("u u~ > u u~ u u~", "full"),
+        ("u u~ > u u~ u u~", "lc"),
+        (_THREE_LINE_TRIPLE_GAUGE, "full"),
+        (_THREE_LINE_TRIPLE_GAUGE, "lc"),
+        (_W_PAIRED_THREE_LINES, "full"),
+        (_W_PAIRED_THREE_LINES, "lc"),
+        ("u d~ > u d~ s s~", "full"),
+        ("u d~ > u d~ s s~", "lc"),
+    ],
+)
+def test_eager_lane_matches_madgraph(
+    sm_model: ModelSource, tmp_path: Path, process: str, accuracy: str
+) -> None:
+    reference = _reference(process, REFERENCE if accuracy == "full" else LC_REFERENCE)
+    runtime = _runtime(
+        sm_model,
+        process,
+        tmp_path / "artifact",
+        accuracy=accuracy,
+        execution_mode="eager",
+    )
+
+    _assert_total_matches_madgraph(runtime.evaluate(reference["points"]), reference)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "the eager lane mispairs W exchanges among four quark lines: "
+        "pure-electroweak u u~ > d d~ s s~ c c~ is 1.48x MadGraph at the "
+        "reference point (agrees without W-quark couplings); open issue "
+        "WP2.9 of DESIGN section 16.2"
+    ),
+)
+def test_eager_lane_pairs_w_exchanges_among_four_quark_lines(
+    sm_model: ModelSource, tmp_path: Path
+) -> None:
+    process = "u u~ > d d~ s s~ c c~"
+    reference = _reference(f"{process} QCD=0")
+    runtime = _runtime(
+        sm_model,
+        process,
+        tmp_path / "artifact",
+        execution_mode="eager",
+        limits={"QCD": 0, "QED": 6},
+    )
+
+    _assert_total_matches_madgraph(runtime.evaluate(reference["points"]), reference)
+
+
+@pytest.mark.parametrize("accuracy", ["full", "lc"])
+@pytest.mark.parametrize("process", [_THREE_LINE_TRIPLE_GAUGE, _W_PAIRED_THREE_LINES])
+def test_eager_lane_counts_a_three_line_triple_gauge_vertex_once(
+    sm_model: ModelSource, tmp_path: Path, process: str, accuracy: str
+) -> None:
+    """QED^8 of three quark lines is the pure-electroweak amplitude squared,
+    where WWA/WWZ vertices join the three lines (12x MadGraph for
+    u u~ > d d~ s s~ when both cyclic orders of the lines kept them). At
+    leading colour the flows without a pure-electroweak root vanish.
+
+    MadGraph's all-order export leaves the colour-flow amplitudes no diagram
+    feeds unassigned (the tool zeroes them). A second export generated at
+    QCD=0 builds the pure-electroweak amplitudes on their own, every one
+    assigned, and must reproduce that export's QED^8."""
+
+    path = REFERENCE if accuracy == "full" else LC_REFERENCE
+    reference = _reference(process, path)
+    alone = _reference(f"{process} QCD=0", path)
+    assert alone["points"] == reference["points"]
+    assert alone["squared_orders"] == [{"QCD": 0, "QED": 8}]
+    (column,) = (
+        index
+        for index, order in enumerate(reference["squared_orders"])
+        if order == {"QCD": 0, "QED": 8}
+    )
+    for total, partials in zip(alone["total"], reference["partials"], strict=True):
+        assert math.isclose(total, partials[column], rel_tol=1e-13)
+    runtime = _runtime(
+        sm_model,
+        process,
+        tmp_path / "artifact",
+        accuracy=accuracy,
+        execution_mode="eager",
+        limits={"QCD": 0, "QED": 4},
+    )
+    for point, (value, partials) in enumerate(
+        zip(runtime.evaluate(reference["points"]), reference["partials"], strict=True)
+    ):
+        value = complex(value)
+        assert value.imag == 0.0
+        assert math.isclose(value.real, partials[column], rel_tol=1e-12), point
+
+
+def test_leading_colour_lanes_agree_on_restricted_three_line_orders(
+    sm_model: ModelSource, tmp_path: Path
+) -> None:
+    """At QCD=2 QED=2, a photon or Z emitted by a quark line after a gluon
+    exchange with another line carries both lines' colour; the eager lane
+    keeps it (it dropped those roots and then failed to load) and agrees with
+    the recurrence lane, which has no triple-gauge vertex at this order."""
+
+    limits = {"QCD": 2, "QED": 2}
+    points = _reference(_THREE_LINE_TRIPLE_GAUGE, LC_REFERENCE)["points"]
+    recurrence = _runtime(
+        sm_model,
+        _THREE_LINE_TRIPLE_GAUGE,
+        tmp_path / "recurrence",
+        accuracy="lc",
+        limits=limits,
+    )
+    eager = _runtime(
+        sm_model,
+        _THREE_LINE_TRIPLE_GAUGE,
+        tmp_path / "eager",
+        accuracy="lc",
+        execution_mode="eager",
+        limits=limits,
+    )
+    for actual, expected in zip(
+        eager.evaluate(points), recurrence.evaluate(points), strict=True
+    ):
+        assert complex(actual) == pytest.approx(complex(expected), rel=1e-13)
+
+
 def test_leading_colour_lanes_agree_on_mixed_order_totals(
     sm_model: ModelSource, tmp_path: Path
 ) -> None:
-    """Topology replay, all-flow union and on-the-fly construction sign
-    identical quarks joined by gluons and electroweak bosons alike."""
+    """Topology replay, all-flow union, on-the-fly construction and the eager
+    lane sign identical quarks joined by gluons and electroweak bosons alike."""
 
     process = "u u~ > u u~ g"
     replay = _runtime(sm_model, process, tmp_path / "replay", accuracy="lc")
@@ -167,6 +406,7 @@ def test_leading_colour_lanes_agree_on_mixed_order_totals(
     for name, execution_mode, layout in (
         ("union", "recurrence", "all-flow-union"),
         ("on-the-fly", "on-the-fly", "topology-replay"),
+        ("eager", "eager", "topology-replay"),
     ):
         runtime = _runtime(
             sm_model,

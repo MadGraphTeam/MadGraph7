@@ -108,10 +108,10 @@ from .families import (
     LoopOrderSelection,
     ModelLoopCatalogue,
     Orders,
-    _mass_name,
     _set_partitions,
     add_orders,
     generate_families,
+    mass_name,
     shifts,
 )
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
@@ -464,14 +464,18 @@ def _exact_u1_subtraction_weights():
     interactions), which caps multi-line block rows at ~1e-17 in any carrier;
     graded U(1) currents replace it in WP2.4 (design §3.2 item 4). Until then
     the slice builds its stage expressions with the exact rational (binary64
-    values are unchanged: 1/N_c rounds to the same double).
+    values are unchanged: 1/N_c rounds to the same double). Tree programs
+    carry the U(1) sign in the weight (``generation/fermion_ordering.py``),
+    so -1/N_c is mapped as well.
     """
 
     from symbolica import E
 
     from pyamplicol.generation.stage_expressions import exact_weights
 
-    return exact_weights({complex(1 / NC): E(f"1/{NC}")})
+    return exact_weights(
+        {complex(1 / NC): E(f"1/{NC}"), complex(-1 / NC): E(f"-1/{NC}")}
+    )
 
 
 # --------------------------------------------------------------------- seeds
@@ -2018,7 +2022,7 @@ def _light_flavours(data, values: Mapping[str, Fraction]) -> int:
         for p in data["particles"]
         if int(p["spin"]) == FERMION_SPIN
         and int(p["color"]) == 3
-        and (_mass_name(p["mass"]) == ZERO or values.get(p["mass"]) == 0)
+        and (mass_name(p["mass"]) == ZERO or values.get(p["mass"]) == 0)
     )
 
 

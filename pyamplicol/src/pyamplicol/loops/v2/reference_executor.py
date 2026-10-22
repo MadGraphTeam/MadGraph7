@@ -87,8 +87,8 @@ from .families import (
     FamilyKey,
     Orders,
     Relabelling,
-    _model_data,
     add_orders,
+    model_data,
     relabelling,
     ring_readings,
 )
@@ -889,7 +889,7 @@ class CatalogueKinematics:
         constants: KernelConstants,
         reading: Callable[[str, tuple[int, ...]], tuple[int, ...]] | None = None,
     ):
-        data = _model_data(native_model)
+        data = model_data(native_model)
         self.catalogue = catalogue
         self.blocks = blocks
         self.constants = constants

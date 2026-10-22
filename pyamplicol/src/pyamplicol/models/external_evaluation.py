@@ -17,6 +17,7 @@ from .compiler_kernels import (
     _spin_slots,
 )
 from .compiler_records import _replace_evaluator_constants
+from .contracts import U1_SUBTRACTION_AUXILIARY_KIND
 from .expressions import (
     _expr_antifermion_propagator_dirac,
     _expr_antifermion_propagator_weyl,
@@ -121,7 +122,7 @@ class ExternalModelEvaluationMixin:
         auxiliary_kind = self.auxiliary_kind(particle_id)
         if (
             auxiliary_kind is not None
-            and auxiliary_kind != "u1-subtraction-color-flow-vector"
+            and auxiliary_kind != U1_SUBTRACTION_AUXILIARY_KIND
         ):
             return PropagatorLoweringRule(
                 particle_id=particle_id,

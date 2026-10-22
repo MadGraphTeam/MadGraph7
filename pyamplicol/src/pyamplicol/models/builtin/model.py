@@ -24,6 +24,7 @@ from ..base import (
     RecurrenceQuantumFlowContract,
     Vertex,
 )
+from ..contracts import U1_SUBTRACTION_AUXILIARY_KIND
 from .definitions import BuiltinSMDefinitionMixin
 from .expressions import _builtin_vertex_result_chiralities
 from .lowering import BuiltinSMLoweringMixin
@@ -483,7 +484,7 @@ class BuiltinModel(Model):
 
     def auxiliary_kind(self, particle_id: int) -> str | None:
         if particle_id == 99:
-            return "u1-subtraction-color-flow-vector"
+            return U1_SUBTRACTION_AUXILIARY_KIND
         if self.is_tensor(particle_id):
             return "antisymmetric-tensor"
         return None

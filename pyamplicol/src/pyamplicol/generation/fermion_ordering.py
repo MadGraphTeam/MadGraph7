@@ -9,24 +9,46 @@ than antiparticle--particle.  Folding this exact ``+/-1`` into the generated
 coefficient realizes the exterior algebra without adding runtime state or
 splitting currents by factorially many Wick lineages.
 
-Color-connected fundamental open lines already carry this ordering in their
-authenticated color-flow construction.  This pass therefore owns only
-color-singlet fermion sources; applying it to fundamental lines would count
-the same exchange sign twice.
+Colour-singlet fermions always take these signs. Coloured (fundamental) open
+lines have two conventions:
+
+* **Wick** (``coloured_lines=True``, tree programs with amplitude roots). The
+  merges sign coloured fermions as well. The Born colour metric multiplies a
+  closed open-line sector by the parity of its fundamental--antifundamental
+  pairing (``color/correlator_matrices.py``); that parity is the Wick sign, up
+  to ``(-1)^(lines-1)``, only when every link between quark lines is a gluon,
+  because a gluon transposes the colour ends of the two lines it joins. A
+  colour-singlet link (photon, Z, W, or the U(1) part of a gluon) leaves them
+  in place. Each amplitude root therefore divides out the colour parity of its
+  sector times ``(-1)^(lines-1)`` (``open_line_closure_sign``), and a U(1)
+  subtraction current, whose ``-1/N_c`` sign the colour parity used to supply,
+  carries that ``-1`` where it is created. Roots of gluon-joined lines keep
+  their sign, and QCD x electroweak interference between quark lines gets its
+  Wick sign. The Rust recurrence builder applies the same factors
+  (``rusticol-core`` ``recurrence/fermion_ordering.rs``) except the global
+  ``gluon_joined_phase``, so the two lanes' amplitudes may differ by an
+  overall sign; squared results and their per-order partials agree.
+* **Colour flow** (``coloured_lines=False``, loop-request blocks). The colour
+  flow owns the ordering of coloured lines; ``loops/v2/blocks.py`` documents
+  how the loop engine turns those currents into Feynman-rule currents.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import replace
 
+from ..color.plan_types import LCColorSector
 from ..models.base import Model
-from ..processes.ir import CanonicalProcessIR
-from .dag_types import CurrentIndex, GenericDAG
+from ..models.contracts import U1_SUBTRACTION_AUXILIARY_KIND
+from ..processes.ir import CanonicalProcessIR, ProcessLegIR
+from .dag_types import AmplitudeRoot, CurrentIndex, GenericDAG, InteractionNode
 
 
 def _external_fermion_requires_exterior_sign(
     statistics: str,
     color_role: str,
+    coloured_lines: bool = False,
 ) -> bool:
     """Classify one canonical source without guessing unsupported color roles."""
 
@@ -35,20 +57,22 @@ def _external_fermion_requires_exterior_sign(
     if color_role == "singlet":
         return True
     if color_role in {"fundamental", "antifundamental"}:
-        return False
+        return coloured_lines
     raise ValueError(
         f"external-fermion ordering does not support fermion color role {color_role!r}"
     )
 
 
-def _fermion_rep_requires_exterior_sign(color_representation: int) -> bool:
+def _fermion_rep_requires_exterior_sign(
+    color_representation: int, coloured_lines: bool = False
+) -> bool:
     """Return sign ownership for a model fermion in the supported UFO scope."""
 
     color_representation = int(color_representation)
     if color_representation == 1:
         return True
     if abs(color_representation) == 3:
-        return False
+        return coloured_lines
     raise ValueError(
         "external-fermion ordering does not support fermion color "
         f"representation {color_representation}"
@@ -109,29 +133,63 @@ def _fermion_input_orientation_sign(
     raise ValueError("external-fermion ordering requires opposite Dirac orientations")
 
 
+def open_line_closure_sign(sector: LCColorSector | None) -> int:
+    """The sign that divides the colour parity of a closed open-line sector out.
+
+    For ``k`` open lines it is the parity of the fundamental-to-antifundamental
+    pairing (lines listed by ascending fundamental label, as the Born colour
+    metric lists them) times ``(-1)^(k-1)``, the colour parity of a tree whose
+    lines are all joined by gluons. Other sector kinds have no open line.
+    """
+
+    if sector is None or sector.kind != "open-lines":
+        return 1
+    antifundamentals = tuple(
+        line.antifundamental_label
+        for line in sorted(
+            sector.open_color_lines, key=lambda line: line.fundamental_label
+        )
+    )
+    inversions = sum(
+        first > second
+        for index, first in enumerate(antifundamentals)
+        for second in antifundamentals[index + 1 :]
+    )
+    return -1 if (inversions + len(antifundamentals) - 1) % 2 else 1
+
+
 class FermionOrderingSign:
     """Cached model/process contract for cold DAG construction."""
 
     __slots__ = (
+        "_coloured_lines",
         "_merge_cache",
         "_model",
         "_particle_contract_cache",
         "_source_ranks",
     )
 
-    def __init__(self, process: CanonicalProcessIR, model: Model) -> None:
+    def __init__(
+        self,
+        process: CanonicalProcessIR,
+        model: Model,
+        *,
+        coloured_lines: bool = False,
+    ) -> None:
         self._model = model
+        self._coloured_lines = bool(coloured_lines)
         source_ranks: dict[int, int] = {}
         for source_slot, leg in enumerate(process.legs):
             if _external_fermion_requires_exterior_sign(
                 leg.statistics,
                 leg.color_role,
+                self._coloured_lines,
             ):
                 source_ranks[int(leg.label)] = source_slot
         self._source_ranks = source_ranks
         self._particle_contract_cache: dict[int, tuple[bool, str, bool]] = {}
         self._merge_cache: dict[
-            tuple[tuple[int, ...], tuple[int, ...], int, int], int
+            tuple[tuple[int, ...], tuple[int, ...], int | None, int | None], int
         ] = {}
 
     @property
@@ -139,6 +197,26 @@ class FermionOrderingSign:
         """Whether this process has any source whose sign is owned here."""
 
         return bool(self._source_ranks)
+
+    def tree_sign(self, lines: Sequence[tuple[ProcessLegIR, ProcessLegIR]]) -> int:
+        """Product of the merge signs of one tree with these fermion lines.
+
+        Each line closes its two external ends at a two-fermion merge, and the
+        closed lines join one by one through bosons. The exterior algebra
+        makes the product independent of the tree's shape.
+        """
+
+        sign = 1
+        joined: tuple[int, ...] = ()
+        for first, second in lines:
+            ends = (int(first.label),), (int(second.label),)
+            sign *= self._merge_sign(
+                *ends, int(first.outgoing_pdg or 0), int(second.outgoing_pdg or 0)
+            )
+            line = tuple(sorted((*ends[0], *ends[1])))
+            sign *= self._merge_sign(joined, line, None, None)
+            joined = tuple(sorted((*joined, *line)))
+        return sign
 
     def _particle_contract(self, particle_id: int) -> tuple[bool, str, bool]:
         particle_id = int(particle_id)
@@ -152,7 +230,9 @@ class FermionOrderingSign:
             else "self-conjugate"
         )
         requires_exterior_sign = (
-            _fermion_rep_requires_exterior_sign(self._model.color_rep(particle_id))
+            _fermion_rep_requires_exterior_sign(
+                self._model.color_rep(particle_id), self._coloured_lines
+            )
             if is_fermion
             else False
         )
@@ -161,28 +241,48 @@ class FermionOrderingSign:
         return result
 
     def merge_sign(self, left: CurrentIndex, right: CurrentIndex) -> int:
-        key = (
+        return self._merge_sign(
             left.external_labels,
             right.external_labels,
             int(left.particle_id),
             int(right.particle_id),
         )
+
+    def _merge_sign(
+        self,
+        left_labels: tuple[int, ...],
+        right_labels: tuple[int, ...],
+        left_particle_id: int | None,
+        right_particle_id: int | None,
+    ) -> int:
+        """Sign of one merge; a ``None`` particle id is a boson current."""
+
+        key = (left_labels, right_labels, left_particle_id, right_particle_id)
         cached = self._merge_cache.get(key)
         if cached is not None:
             return cached
+        boson = (False, "self-conjugate", False)
         (
             left_is_fermion,
             left_orientation,
             left_requires_exterior_sign,
-        ) = self._particle_contract(left.particle_id)
+        ) = (
+            boson
+            if left_particle_id is None
+            else self._particle_contract(left_particle_id)
+        )
         (
             right_is_fermion,
             right_orientation,
             right_requires_exterior_sign,
-        ) = self._particle_contract(right.particle_id)
+        ) = (
+            boson
+            if right_particle_id is None
+            else self._particle_contract(right_particle_id)
+        )
         sign = _external_fermion_support_sign(
-            left.external_labels,
-            right.external_labels,
+            left_labels,
+            right_labels,
             self._source_ranks,
         )
         sign *= _fermion_input_orientation_sign(
@@ -197,40 +297,117 @@ class FermionOrderingSign:
         return sign
 
 
-def apply_fermion_ordering_signs(dag: GenericDAG, model: Model) -> GenericDAG:
-    """Fold every merge sign into existing DAG constants exactly once."""
+def gluon_joined_phase(process: CanonicalProcessIR, model: Model) -> int:
+    """The constant that keeps gluon-joined roots unchanged by the Wick signs.
+
+    For a tree whose coloured lines are joined by gluons, the Wick sign times
+    ``open_line_closure_sign`` of its sector is the same for every tree of a
+    process; this is that constant times the colour-flow convention's sign of
+    the same tree, so multiplying every root by it leaves those roots exactly
+    as the colour-flow convention builds them. It is evaluated on a reference
+    tree: fundamental ends paired with antifundamental ends in label order
+    (the identity colour pairing), and colour-singlet fermions paired
+    particle with antiparticle in label order.
+    """
+
+    lines: list[tuple[ProcessLegIR, ProcessLegIR]] = []
+    fermions = [leg for leg in process.legs if leg.statistics == "fermion"]
+    for first_role, second_role in (
+        ("fundamental", "antifundamental"),
+        ("particle", "antiparticle"),
+    ):
+        if first_role == "fundamental":
+            first = [leg for leg in fermions if leg.color_role == first_role]
+            second = [leg for leg in fermions if leg.color_role == second_role]
+        else:
+            singlets = [leg for leg in fermions if leg.color_role == "singlet"]
+            first, second = (
+                [
+                    leg
+                    for leg in singlets
+                    if model.source_orientation(int(leg.outgoing_pdg or 0)) == role
+                ]
+                for role in (first_role, second_role)
+            )
+        if len(first) != len(second):
+            raise ValueError(
+                "external-fermion ordering cannot pair the external fermions"
+            )
+        lines.extend(
+            zip(
+                sorted(first, key=lambda leg: leg.label),
+                sorted(second, key=lambda leg: leg.label),
+                strict=True,
+            )
+        )
+    wick = FermionOrderingSign(process, model, coloured_lines=True)
+    flow = FermionOrderingSign(process, model, coloured_lines=False)
+    return wick.tree_sign(lines) * flow.tree_sign(lines)
+
+
+def apply_fermion_ordering_signs(
+    dag: GenericDAG, model: Model, *, coloured_lines: bool = False
+) -> GenericDAG:
+    """Fold every merge sign into existing DAG constants exactly once.
+
+    ``coloured_lines`` selects the Wick convention for coloured fermions
+    (module docstring); it is for programs that close amplitude roots.
+    """
 
     if not dag.interactions and not dag.amplitude_roots:
         return dag
-    ordering = FermionOrderingSign(dag.process, model)
+    ordering = FermionOrderingSign(dag.process, model, coloured_lines=coloured_lines)
     if not ordering.active:
         return dag
     currents = dag.currents
+    color_plan = dag.color_plan
+    phase = gluon_joined_phase(dag.process, model) if coloured_lines else 1
 
     def signed_weight(
-        weight: tuple[float, float], left_id: int, right_id: int
+        weight: tuple[float, float], left_id: int, right_id: int, factor: int = 1
     ) -> tuple[float, float]:
-        sign = ordering.merge_sign(
+        sign = factor * ordering.merge_sign(
             currents[left_id].index,
             currents[right_id].index,
         )
         return weight if sign == 1 else (-weight[0], -weight[1])
 
-    def signed_interaction(interaction):
+    def creation_sign(result_id: int) -> int:
+        if (
+            coloured_lines
+            and currents[result_id].index.auxiliary_kind
+            == U1_SUBTRACTION_AUXILIARY_KIND
+        ):
+            return -1
+        return 1
+
+    def closure_sign(root: AmplitudeRoot) -> int:
+        if not coloured_lines:
+            return 1
+        sector_id = root.color_sector_id
+        if sector_id is None:
+            sector_id = currents[root.left_id].index.color_state.sector_id
+        return phase * open_line_closure_sign(
+            None if sector_id is None else color_plan.sector(sector_id)
+        )
+
+    def signed_interaction(interaction: InteractionNode) -> InteractionNode:
         color_weight = signed_weight(
             interaction.color_weight,
             interaction.left_id,
             interaction.right_id,
+            creation_sign(interaction.result_id),
         )
         if color_weight is interaction.color_weight:
             return interaction
         return replace(interaction, color_weight=color_weight)
 
-    def signed_root(root):
+    def signed_root(root: AmplitudeRoot) -> AmplitudeRoot:
         color_weight = signed_weight(
             root.color_weight,
             root.left_id,
             root.right_id,
+            closure_sign(root),
         )
         if color_weight is root.color_weight:
             return root
@@ -243,4 +420,9 @@ def apply_fermion_ordering_signs(dag: GenericDAG, model: Model) -> GenericDAG:
     )
 
 
-__all__ = ["FermionOrderingSign", "apply_fermion_ordering_signs"]
+__all__ = [
+    "FermionOrderingSign",
+    "apply_fermion_ordering_signs",
+    "gluon_joined_phase",
+    "open_line_closure_sign",
+]

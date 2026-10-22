@@ -305,7 +305,11 @@ class GenericDAGCompiler:
         self.progress_callback({"step": step, **details})
 
     def _apply_fermion_ordering(self, dag: GenericDAG) -> GenericDAG:
-        return apply_fermion_ordering_signs(dag, self.model)
+        # Tree programs sign coloured fermions by their Wick order; loop
+        # blocks keep the colour-flow convention their consumers rely on.
+        return apply_fermion_ordering_signs(
+            dag, self.model, coloured_lines=not self.loop_blocks
+        )
 
     def compile(self, process: CanonicalProcessIR) -> GenericDAG:
         if not isinstance(process, CanonicalProcessIR):
