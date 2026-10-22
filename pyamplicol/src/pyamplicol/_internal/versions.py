@@ -110,10 +110,13 @@ EVALUATOR_RUNTIME_CAPABILITIES = frozenset(
     }
 )
 LOOP_RUNTIME_CAPABILITY = "rusticol.loop-runtime.v3"
+# Plan v4 virtual processes of the shared-recursion engine (loops/v2).
+LOOP_V2_RUNTIME_CAPABILITY = "rusticol.loop-runtime.v4"
 KNOWN_EVALUATOR_RUNTIME_CAPABILITIES = EVALUATOR_RUNTIME_CAPABILITIES | frozenset(
     {
-        # Parse/serialize this lane, without admitting it to scalar Runtime.
+        # Parse/serialize these lanes, without admitting them to scalar Runtime.
         LOOP_RUNTIME_CAPABILITY,
+        LOOP_V2_RUNTIME_CAPABILITY,
         # Historical eager plan-v2 artifacts remain parseable for inspection
         # and actionable migration errors, but are not executable capabilities.
         EAGER_DAG_F64_RUNTIME_CAPABILITY,
@@ -1076,6 +1079,7 @@ __all__ = [
     "EAGER_RUNTIME_LAYOUT_F64_CAPABILITY",
     "EVALUATOR_RUNTIME_CAPABILITIES",
     "KNOWN_EVALUATOR_RUNTIME_CAPABILITIES",
+    "LOOP_V2_RUNTIME_CAPABILITY",
     "ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY",
     "ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY",
     "ON_THE_FLY_RUNTIME_CAPABILITY",

@@ -57,6 +57,7 @@ from .._internal.versions import (
     EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
     EVALUATOR_RUNTIME_CAPABILITIES,
     LOOP_RUNTIME_CAPABILITY,
+    LOOP_V2_RUNTIME_CAPABILITY,
     NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
     ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
@@ -980,14 +981,21 @@ def write_schema_v3_artifact(
     )
     if has_loop and len(loop_processes) != len(processes):
         raise ValueError("tree and virtual processes cannot share an artifact yet")
+    loop_capabilities = {process.runtime_capability for process in loop_processes}
+    if len(loop_capabilities) > 1:
+        raise ValueError("legacy and v2 virtual processes cannot share an artifact")
     if existing is not None:
-        existing_loop = (
-            LOOP_RUNTIME_CAPABILITY in existing.runtime["required_runtime_capabilities"]
+        existing_capabilities = set(existing.runtime["required_runtime_capabilities"])
+        existing_loop = bool(
+            existing_capabilities
+            & {LOOP_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPABILITY}
         )
         if has_loop != existing_loop:
             raise ValueError(
                 "cannot append tree and virtual processes to the same artifact"
             )
+        if has_loop and not loop_capabilities <= existing_capabilities:
+            raise ValueError("legacy and v2 virtual processes cannot share an artifact")
     if has_loop:
         scheme = loop_processes[0].metadata.scheme
         if any(process.metadata.scheme != scheme for process in loop_processes):
@@ -1002,7 +1010,12 @@ def write_schema_v3_artifact(
                 if physics.get("metadata", {}).get("scheme") != asdict(scheme):
                     raise ValueError("loop append requires the same declared scheme")
     existing_bundle = _existing_bundle_path(existing)
-    can_emit_bundle = hook is not None or existing_bundle is not None
+    # The standalone SDK evaluates plan v4 processes once their tree inputs
+    # run natively (WP3.1); until then a v2 artifact carries no API bundle.
+    v2_loop = LOOP_V2_RUNTIME_CAPABILITY in loop_capabilities
+    if v2_loop:
+        hook = None
+    can_emit_bundle = not v2_loop and (hook is not None or existing_bundle is not None)
     effective_config = _effective_config_payload(
         effective_config,
         disable_api_bundle=bundle_requested and not can_emit_bundle,
@@ -1015,7 +1028,9 @@ def write_schema_v3_artifact(
         adjustments.append(
             {
                 "path": "generation.emit_api_bundle",
-                "reason": "no root API-bundle emitter is installed",
+                "reason": "the standalone SDK does not evaluate v2 virtuals yet"
+                if v2_loop
+                else "no root API-bundle emitter is installed",
             }
         )
     requested_bytes = _toml_bytes(requested_config)
@@ -5163,7 +5178,7 @@ def _process_runtime_capabilities(
     process: ProcessArtifact,
 ) -> tuple[str, ...]:
     if isinstance(process, LoopProcessArtifact):
-        return (LOOP_RUNTIME_CAPABILITY,)
+        return (process.runtime_capability,)
     if isinstance(process, OnTheFlyProcessArtifact):
         return _on_the_fly_process_runtime_capabilities(process)
     if isinstance(process, RecurrenceProcessArtifact):
@@ -5316,6 +5331,7 @@ def _required_runtime_capabilities(
             RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
             RECURRENCE_COLOR_RUNTIME_CAPABILITY,
             LOOP_RUNTIME_CAPABILITY,
+            LOOP_V2_RUNTIME_CAPABILITY,
         }
     )
     if unknown:
