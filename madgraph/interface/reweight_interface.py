@@ -1520,11 +1520,13 @@ class ReweightInterface(extended_cmd.Cmd):
                 ratio_T = w_new / w_orig
                 if '_nlo' in type_nlo and c_wgt.type in [2, 14, 15]:
                     w_orig, w_new = tree_me(cevent, icev, alphas)
+                    # the Ellis-Sexton scale, already squared in the LHE
+                    # (smatrixhel takes mu_R^2)
                     scale2 = c_wgt.scales2[0]
                     if ('V', icev, alphas, scale2) not in me_cache:
                         me_cache[('V', icev, alphas, scale2)] = (
-                            self.calculate_matrix_element(cevent, 'V0', scale2=scale2**2, alphas=alphas),
-                            self.calculate_matrix_element(cevent, 'V1', scale2=scale2**2, alphas=alphas))
+                            self.calculate_matrix_element(cevent, 'V0', scale2=scale2, alphas=alphas),
+                            self.calculate_matrix_element(cevent, 'V1', scale2=scale2, alphas=alphas))
                     w_origV, w_newV = me_cache[('V', icev, alphas, scale2)]
                     ratio_BV = (w_newV + w_new) / (w_origV + w_orig)
                 else:
