@@ -9,14 +9,16 @@ the bucket-streamed NinjaRS reduction. Checks:
 
 * family numerators equal the Python reference executor's (schedule B, same
   trie frames): within 1e-13 of each column's largest coefficient in
-  binary64 and to the working precision in arbitrary precision, on the slice
-  processes and gg -> ggg, uu~ -> ggg, uu~ -> e-e+gg and uu~ -> uu~g, with
-  every step fused, split where it can, or as the rule chooses;
+  binary64 (every fixture point) and to the working precision in arbitrary
+  precision, on the slice processes and gg -> ggg, uu~ -> ggg, uu~ -> e-e+gg
+  and uu~ -> uu~g, with every step fused, split where it can, or as the rule
+  chooses;
 * the native rational carrier reproduces the Python exact run bit for bit
   (identical kernels, seeds and leaf weights) in both kernel forms, and
   schedule F equals B;
 * the native evaluation (reduction included) reproduces the slice's complete
-  virtual, finite-only evaluations equal the finite parts with absent poles,
+  virtual in binary64 and at 40 digits, also in lane chunks smaller than the
+  batch, finite-only evaluations equal the finite parts with absent poles,
   and the native reduction-direction check gives the slice's estimate;
 * the run reports its memory per lane and its stage timings (development
   numbers, not benchmark rows).
@@ -314,6 +316,20 @@ def test_numerators_equal_the_reference_in_binary64(slices, name):
                 vanishing,
                 (schedule, forms),
             )
+    # The other fixture points, in one batch, in the rule's forms.
+    points, scales = PROCESSES[name][2]()
+    natives = executor.family_numerators(
+        points[1:], scales[1:], parameters=PARAMETERS, precision=DOUBLE
+    )
+    for index, (native, point, scale) in enumerate(
+        zip(natives, points[1:], scales[1:], strict=True), start=1
+    ):
+        reference, _ = slice_.family_numerators(
+            point, scale, parameters=PARAMETERS, precision=DOUBLE
+        )
+        _assert_numerators(
+            native, reference.numerators, point, DOUBLE_TOLERANCE, vanishing, index
+        )
 
 
 # gg -> ggg in arbitrary precision: schedule B in the rule's forms only (the
@@ -501,6 +517,47 @@ def test_native_virtual_equals_the_slice(slices, name):
     report = executor.last_report
     assert report["lanes"] == 16
     assert report["reals_per_lane"]["open objects (one family walk)"] > 0
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["gg_gg", "uux_ddxg"])
+def test_native_virtual_equals_the_slice_in_arbitrary_precision(slices, name):
+    """The MPFR carrier and the generic NinjaRS engine give the slice's
+    complete virtual at 40 digits."""
+
+    slice_, executor = slices(name)
+    point, scale = _point(name)
+    precision = Precision.arbitrary(40)
+    (native,) = executor.evaluate(
+        [point], [scale], parameters=PARAMETERS, precision=precision
+    )
+    reference = slice_.evaluate(
+        point, scale, parameters=PARAMETERS, precision=precision
+    )
+    assert native.born == reference.born
+    for component in COMPONENTS:
+        for sector, value in reference.components[component].items():
+            mine = native.components[component][sector]
+            exact = [Decimal(x) for x in value.coefficients]
+            bound = Decimal("1e-35") * (max(map(abs, exact)) or 1)
+            for a, b in zip(mine.coefficients, exact, strict=True):
+                assert abs(Decimal(a) - b) <= bound, component
+
+
+@pytest.mark.loop_physics
+def test_lane_chunks_give_the_wide_results(slices):
+    """More points than lanes: two-lane chunks, the last one padded and the
+    master cache cleared between chunks, give the 16-lane virtual."""
+
+    slice_, executor = slices("uux_ddxg")
+    points, scales = PROCESSES["uux_ddxg"][2]()
+    assert len(points) > 2
+    narrow = NativeExecutor(slice_, exported=executor.exported, lanes=2)
+    chunked = narrow.evaluate(points, scales, parameters=PARAMETERS)
+    assert narrow.last_report["lanes"] == 2
+    wide = executor.evaluate(points, scales, parameters=PARAMETERS)
+    for a, b in zip(chunked, wide, strict=True):
+        _assert_close(a, b, 1e-13)
 
 
 @pytest.mark.loop_physics
