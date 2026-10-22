@@ -1361,6 +1361,7 @@ def lower_counterterm_vertices(
                 ],
             }
         )
+    payload["parameters"].extend(lines.parameters)
     payload["particles"].extend(lines.particles)
     payload["propagators"].extend(lines.propagators)
     payload["couplings"].extend(lines.couplings)

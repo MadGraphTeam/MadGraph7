@@ -74,6 +74,7 @@ class LineInsertions:
     term that cannot be lowered to the reason.
     """
 
+    parameters: list[dict[str, Any]] = field(default_factory=list)
     particles: list[dict[str, Any]] = field(default_factory=list)
     propagators: list[dict[str, Any]] = field(default_factory=list)
     couplings: list[dict[str, Any]] = field(default_factory=list)
@@ -102,6 +103,8 @@ def lower_line_insertions(
     standard propagator and carry ``P Pi P = kappa P`` as the factor
     ``kappa`` (``_line_factor``).
     """
+
+    from symbolica import E
 
     particles = {str(item["name"]): item for item in payload["particles"]}
     propagators = {str(item["name"]): item for item in payload["propagators"]}
@@ -153,6 +156,31 @@ def lower_line_insertions(
             if isinstance(factor, str):
                 out.refused.update(dict.fromkeys(terms, factor))
                 continue
+        scales: list[str] = []
+        if factor is None:
+            # The scales (coupling times colour) are derived model parameters,
+            # so that the propagator kernel stays free of constants such as
+            # pi, which compiled kernels round to binary64.
+            for index, (value, _structure) in enumerate(
+                _insertion_terms(
+                    [(insertions[term], term) for term in terms],
+                    lorentz,
+                    particles,
+                    source,
+                )
+            ):
+                scales.append(f"{clone}_X{index}")
+                out.parameters.append(
+                    {
+                        "expression": value.to_canonical_string(),
+                        "lhablock": None,
+                        "lhacode": None,
+                        "name": scales[-1],
+                        "nature": "internal",
+                        "parameter_type": "complex",
+                        "value": None,
+                    }
+                )
         for name, clone_name in species.items():
             record = dict(particles[name])
             record.update(
@@ -168,12 +196,19 @@ def lower_line_insertions(
                 line.update(
                     numerator=_line_numerator(
                         source_propagator["numerator"],
-                        _insertion_terms(
-                            [(insertions[term], term) for term in terms],
-                            lorentz,
-                            particles,
-                            name,
-                        ),
+                        [
+                            (E(f"UFO::{{}}::{scale}"), structure)
+                            for scale, (_value, structure) in zip(
+                                scales,
+                                _insertion_terms(
+                                    [(insertions[term], term) for term in terms],
+                                    lorentz,
+                                    particles,
+                                    name,
+                                ),
+                                strict=True,
+                            )
+                        ],
                     ),
                     denominator=f"({source_propagator['denominator']})^2",
                     pyamplicol_source="model-supplied",

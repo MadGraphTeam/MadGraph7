@@ -522,8 +522,9 @@ class ExternalModelEvaluationMixin:
         Numerator and denominator are normalised separately: the denominator
         is a Lorentz scalar, and a negative power of a momentum square is not
         a valid tensor network (e.g. the squared denominator of a line with a
-        counterterm insertion). Both keep ``pi`` exact; the f64 kernel
-        compilation rounds it at its own boundary.
+        counterterm insertion). Derived model parameters (e.g. ``G``) stay
+        symbols, listed with the external ones as the propagator's runtime
+        parameters.
         """
 
         cached = self._custom_propagator_expressions.get(int(particle_id))
@@ -553,7 +554,10 @@ class ExternalModelEvaluationMixin:
             sorted(
                 parameter.name
                 for parameter in self._parameter_records.values()
-                if parameter.nature == "external"
+                if (
+                    parameter.nature == "external"
+                    or parameter.name in self._runtime_derived_definitions
+                )
                 and self._model_symbols.symbol(parameter.name) in symbols
             )
         )
@@ -562,8 +566,17 @@ class ExternalModelEvaluationMixin:
         return result
 
     def _resolved_parameters(self, expression: _sym.Expression) -> _sym.Expression:
+        """Internal constants resolved; derived parameters stay runtime inputs.
+
+        Derived parameters are evaluated exactly at every precision, whereas a
+        compiled propagator kernel rounds constants such as pi to binary64.
+        """
+
         for parameter in self._parameter_records.values():
-            if parameter.nature == "external":
+            if (
+                parameter.nature == "external"
+                or parameter.name in self._runtime_derived_definitions
+            ):
                 continue
             expression = expression.replace(
                 self._model_symbols.symbol(parameter.name),
