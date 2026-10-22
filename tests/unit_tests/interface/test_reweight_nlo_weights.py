@@ -21,12 +21,17 @@
 * aMC@NLO evaluates its matrix elements with zero width for the external
   particles, while the banner keeps the param_card as given:
   ReweightInterface.get_amcatnlo_param_card restores the card it really used.
+* The reweighting runs in several processes that all rewrite the same
+  rw_me/Cards/param_card.dat: ReweightInterface.write_card_atomically.
 """
 
 from __future__ import absolute_import
 import copy
 import math
 import os
+import shutil
+import tempfile
+import threading
 import unittest
 
 import madgraph
@@ -203,6 +208,33 @@ DECAY 24 2.047600e+00 # ww
         """a LO sample keeps its card"""
         card = check_param_card.ParamCard(self.card.splitlines())
         self.assertIs(self.interface(sample=False).get_amcatnlo_param_card(card), card)
+
+
+class TestWriteCardAtomically(unittest.TestCase):
+    """a reader never sees the param_card half written"""
+
+    def test_concurrent_reads(self):
+        tmpdir = tempfile.mkdtemp(prefix='rwgt_card')
+        try:
+            path = os.path.join(tmpdir, 'param_card.dat')
+            text = TestAmcatnloParamCard.card * 2000      # ~0.5 MB
+            write = reweight_interface.ReweightInterface.write_card_atomically
+            write(path, text)
+            stop = threading.Event()
+            def writer():
+                while not stop.is_set():
+                    write(path, text)
+            thread = threading.Thread(target=writer)
+            thread.start()
+            try:
+                for _ in range(300):
+                    self.assertEqual(open(path).read(), text)
+            finally:
+                stop.set()
+                thread.join()
+            self.assertEqual(os.listdir(tmpdir), ['param_card.dat'])
+        finally:
+            shutil.rmtree(tmpdir)
 
 
 if __name__ == '__main__':

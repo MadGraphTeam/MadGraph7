@@ -832,6 +832,15 @@ class ReweightInterface(extended_cmd.Cmd):
 
 
 
+    @staticmethod
+    def write_card_atomically(path, text):
+        """write text to path through a temporary file and a rename, so that
+        a process reading path never sees it half written"""
+        tmp = '%s.%d.tmp' % (path, os.getpid())
+        with open(tmp, 'w') as fsock:
+            fsock.write(text)
+        os.replace(tmp, path)
+
     def handle_param_card(self, model_line, args, type_rwgt):
         
 
@@ -847,8 +856,10 @@ class ReweightInterface(extended_cmd.Cmd):
         if not '--keep_card' in args:
             if self.has_nlo and self.rwgt_mode != "LO":
                 rwdir_virt = rw_dir.replace('rw_me', 'rw_mevirt')
-            with open(pjoin(rw_dir, 'Cards', 'param_card.dat'), 'w') as fsock:
-                fsock.write(self.banner['slha']) 
+            # the reweighting runs in several processes sharing rw_dir: they
+            # all write this same card, atomically, so that none can read it
+            # half written
+            self.write_card_atomically(pjoin(rw_dir, 'Cards', 'param_card.dat'), self.banner['slha'])
             out, cmd = common_run_interface.CommonRunCmd.ask_edit_card_static(cards=['param_card.dat'],
                                 ask=self.ask, pwd=rw_dir, first_cmd=self.stored_line,
                                 write_file=False, return_instance=True
@@ -889,15 +900,16 @@ class ReweightInterface(extended_cmd.Cmd):
             raise Exception(str(new_card))
         tmp_card = new_card.lower().split('block',1)[1]
         if "auto" in tmp_card: 
-            if param_card_iterator:
-                first_card.write(pjoin(rw_dir, 'Cards', 'param_card.dat'))
-            else:
-                ff = open(pjoin(rw_dir, 'Cards', 'param_card.dat'),'w')
-                ff.write(new_card)
-                ff.close()
-                
-            self.mother.check_param_card(pjoin(rw_dir, 'Cards', 'param_card.dat'))
-            new_card = open(pjoin(rw_dir, 'Cards', 'param_card.dat')).read()
+            # the widths are computed in place: on a card of this process
+            # only, the other reweighting processes share rw_dir
+            path = pjoin(rw_dir, 'Cards', 'param_card_%d.dat' % os.getpid())
+            with open(path, 'w') as fsock:
+                fsock.write(first_card.write() if param_card_iterator else new_card)
+            try:
+                self.mother.check_param_card(path)
+                new_card = open(path).read()
+            finally:
+                os.remove(path)
 
         # Find new tag in the banner and add information if needed
         if 'initrwgt' in self.banner and self.output_type == 'default':
@@ -1780,8 +1792,7 @@ class ReweightInterface(extended_cmd.Cmd):
                         'width for the external particle(s) %s: so are the ones of the reweighting.',
                         ', '.join(str(p) for p in to_zero))
             self._amcatnlo_width_logged = True
-        # (a deepcopy of a ParamCard loses the parameters of its blocks)
-        param_card = check_param_card.ParamCard(param_card.write().splitlines())
+        param_card = copy.deepcopy(param_card)
         for pdg in to_zero:
             param_card['decay'].get((pdg,)).value = 0.
         return param_card
