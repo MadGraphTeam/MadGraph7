@@ -16,7 +16,6 @@ Python eager compiler.
 
 from __future__ import annotations
 
-from collections import Counter
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -392,12 +391,10 @@ def test_lowered_couplings_are_exact_model_expressions(lowered_ct_model):
     assert any("log(UFO::{}::MT^2*UFO::{}::MU_R^(-2))" in e for e in lowered)
     assert not any("MB" in e or "value_" in e for e in lowered)
     assert all("PYAMPLICOL_CT_S_" in e and "PYAMPLICOL_CT_M" in e for e in lowered)
+    assert not any("two-point" in reason for reason in model.residual.values())
     assert {
         reason.split(":")[0].split(" of ")[0] for reason in model.residual.values()
-    } >= {
-        "two-point insertion",
-        "no colour-flow contact decomposition",
-    }
+    } >= {"no colour-flow contact decomposition"}
     model.check_parameters({"MT": 173.0, "MU_R": 91.188})
     with pytest.raises(ValueError, match="vanish"):
         model.check_parameters({"MT": 0.0})
@@ -405,22 +402,18 @@ def test_lowered_couplings_are_exact_model_expressions(lowered_ct_model):
 
 @pytest.mark.loop_fast
 def test_rules_split_between_recursion_and_sites(ct_slice, lowered_ct_model):
-    """Two-point insertions and the fixed-SU(3) four-gluon R2 stay sites; every
-    three-gluon, quark-gluon and four-gluon UV rule is in the recursion with
-    its admitted alternatives."""
+    """Only the fixed-SU(3) four-gluon R2 stays a site; every two-point,
+    three-gluon, quark-gluon and four-gluon rule is in the recursion with its
+    admitted alternatives."""
 
     ct = ct_slice("gg_gg")
     recursion = _recursion(ct, lowered_ct_model().model)
     assert set(recursion.rules) | set(recursion.residual) == set(ct.rules)
-    reasons = Counter(
-        "two-point" if "two-point" in reason else "multi-trace"
-        for reason in recursion.residual.values()
-    )
-    assert set(reasons) == {"two-point", "multi-trace"}
     for name, reason in recursion.residual.items():
         rule = ct.rules[name]
-        if len(rule.particle_pdgs) > 2:
-            assert {e.vertex_name for e in rule.entries} == {"V_R2RGA"}, reason
+        assert {e.vertex_name for e in rule.entries} == {"V_R2RGA"}, reason
+        assert "multi-trace" in reason
+    assert any(len(rule.particle_pdgs) == 2 for rule in recursion.rules.values())
     # Pure-gluon rules are admitted with all their alternatives (every quark
     # flavour, the top and the gluon run in the loops of g g > g g); rules
     # with quark legs have no witness in this process.
@@ -432,7 +425,64 @@ def test_rules_split_between_recursion_and_sites(ct_slice, lowered_ct_model):
     assert recursion.coupling_order_limits() == {
         "QCD": 4,
         "QED": 0,
-        "PYAMPLICOL_CT_INSERTION": 1,
+        "PYAMPLICOL_CT_INSERTION": 2,
+    }
+
+
+@pytest.mark.loop_fast
+def test_two_point_insertions_are_clone_lines(lowered_ct_model):
+    """Two-point CTs become clone lines: the gluon and the massive top keep
+    P Pi P as a model-supplied propagator (the gluon's U(1)-subtraction
+    auxiliary with it), a massless (Weyl) quark keeps its propagator and
+    carries kappa on the copies of its antiparticle leg only, and the
+    structure-constant colour of a copy follows its orientation's parity."""
+
+    lowered = lowered_ct_model().model.lowered
+    payload = lowered.compiled.model
+    ir = lowered.compiled.ir
+    clones = {s.particles[0].rstrip("~"): c for s, c in lowered.insertions.items()}
+    propagators = {item["particle"]: item for item in payload["propagators"]}
+    for field in ("G", "t"):
+        line = propagators[clones[field]]
+        assert line["pyamplicol_source"] == "model-supplied"
+        assert line["denominator"].endswith(")^2")
+    auxiliary = f"__pyamplicol_u1_subtraction_{clones['G']}"
+    custom = {record.particle for record in ir.propagators if record.custom}
+    assert auxiliary in custom and clones["G"] in custom
+
+    weyl = clones["d"]
+    assert propagators[weyl] == {
+        **propagators["d"],
+        "name": f"{weyl}_prop",
+        "particle": weyl,
+    }
+    couplings = {item["name"]: item["expression"] for item in payload["couplings"]}
+    for rule in payload["vertex_rules"]:
+        legs = rule["particles"]
+        if weyl not in legs and f"{weyl}~" not in legs:
+            continue
+        original = next(
+            r
+            for r in payload["vertex_rules"]
+            if r["name"] == rule["name"].split("__", 1)[1]
+        )
+        scaled = [
+            couplings[mine] != couplings[theirs]
+            for row, rows in zip(rule["couplings"], original["couplings"], strict=True)
+            for mine, theirs in zip(row, rows, strict=True)
+            if mine is not None
+        ]
+        assert set(scaled) == {f"{weyl}~" in legs}, rule["name"]
+
+    signs = {
+        kernel.source_particle_legs: kernel.color_projection_coefficient
+        for kernel in ir.oriented_kernels
+        if kernel.vertex == f"{clones['G']}__V_3"
+    }
+    assert signs == {
+        (1, 2, 0): (1.0, 0.0),
+        (0, 2, 1): (-1.0, -0.0),
+        (2, 0, 1): (1.0, 0.0),
     }
 
 
