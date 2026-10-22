@@ -13,13 +13,16 @@ Checks:
   generic seeds (several quark lines) stay on schedule B;
 * O4 in Rust: the native exact carrier gives M = B bit for bit, with chunk
   keys of depth 0, 1 and 2, every kernel form and both ring readings;
-  binary64 and arbitrary precision agree with B to the carrier's precision;
+  60-digit arithmetic agrees with B to 1e-70;
 * a native evaluation with schedule M equals schedule B at 32 digits (all
   three Laurent coefficients); in binary64 M's virtual lies within 1e-12 of
   the 32-digit value, or within its own reduction-direction estimate on
   ill-conditioned points, and finite-only runs give its finite parts; the
-  report has M's memory per lane;
-* leading colour: M = B on the pruned LC slices.
+  report has M's memory per lane.
+
+``test_loop_v2_merged_controls`` checks M = B on every control at full,
+next-to-leading and leading colour in the exact, binary64 and DoubleFloat
+carriers.
 """
 
 from __future__ import annotations
@@ -46,8 +49,7 @@ from pyamplicol.loops.v2.stability import StabilityChecks, deviation
 ROOT = Path(__file__).resolve().parents[2]
 PARAMETERS = {"aS": "0.118", "MT": "173"}
 FIXED = {"MB": "0"}
-DOUBLE_TOLERANCE = 1e-13
-ARBITRARY_TOLERANCE = 1e-70
+ARBITRARY_TOLERANCE = "1e-70"
 
 
 def _points(name: str) -> tuple[list, list[str]]:
@@ -295,48 +297,49 @@ def test_exact_m_equals_b(slices, name):
         _assert_exact(mine, reference, (chunk_depth, forms, reading))
 
 
-@pytest.mark.loop_physics
-@pytest.mark.parametrize("name", ["gg_ggg", "uux_ggg", "uux_emepgg"])
-def test_binary64_m_equals_b(slices, name):
-    """Binary64 numerators of M against B (momentum-conserving points):
-    within 1e-13 of each family's largest sqrt(s)^r-weighted coefficient.
+def _magnitude(value) -> Decimal:
+    """|value| of a complex number or a carrier pair (Decimal parts)."""
+
+    if isinstance(value, complex):
+        return Decimal(abs(value))
+    return (value.real * value.real + value.imag * value.imag).sqrt()
+
+
+def _assert_close(left, right, energy, tolerance, label) -> None:
+    """Native numerators ``left`` within ``tolerance`` of ``right`` on each
+    family's largest sqrt(s)^r-weighted coefficient.
 
     Families that vanish identically (Furry's theorem: the two orientations
     of a closed quark loop with one photon and two gluons cancel) have no
     scale of their own. B cancels them leaf by leaf, M only at the closure
-    of the two orderings, so their rounding is held to 1e-13 of the point's
-    largest weighted coefficient instead; a family counts as vanishing when
-    B's value is below that bound.
+    of the two orderings, so their rounding is held to ``tolerance`` of the
+    point's largest weighted coefficient instead; a family counts as
+    vanishing when B's value is below that bound.
     """
 
-    slice_ = slices(name)
-    executor = _executor(slice_)
-    points, scales = _points(PROCESSES[name][3])
-    points, scales = [_conserving(p) for p in points[:2]], scales[:2]
-    b = executor.family_numerators(points, scales, parameters=PARAMETERS)
-    m = executor.family_numerators(points, scales, parameters=PARAMETERS, schedule="M")
-    for index, (left, right) in enumerate(zip(m, b, strict=True)):
-        energy = float(Fraction(points[index][0][0]) + Fraction(points[index][1][0]))
-        assert left.keys() == right.keys()
+    energy = Decimal(energy)
+    tolerance = Decimal(tolerance)
+    with localcontext() as context:
+        context.prec = 100
 
-        def weighted(numerator, energy=energy):
+        def weighted(numerator):
             return max(
-                abs(complex(x)) * energy ** _degree(k)
+                _magnitude(x) * energy ** _degree(k)
                 for column in numerator.columns
                 for k, x in enumerate(column)
             )
 
+        assert left.keys() == right.keys(), label
         largest = max(weighted(numerator) for numerator in right.values())
         for key, mine in left.items():
             theirs = right[key]
             scale = weighted(theirs)
-            if scale < DOUBLE_TOLERANCE * largest:
+            if scale < tolerance * largest:
                 scale = largest
             for x, y in zip(mine.columns, theirs.columns, strict=True):
                 for k, (a, c) in enumerate(zip(x, y, strict=True)):
-                    assert abs(complex(a) - complex(c)) * energy ** _degree(k) <= (
-                        DOUBLE_TOLERANCE * scale
-                    ), (name, index, key)
+                    error = _magnitude(a - c) * energy ** _degree(k)
+                    assert error <= tolerance * scale, (label, key, k, error / scale)
 
 
 @pytest.mark.loop_physics
@@ -350,25 +353,7 @@ def test_arbitrary_precision_m_equals_b(slices):
     (b,) = executor.family_numerators([point], [scale], **options)
     (m,) = executor.family_numerators([point], [scale], schedule="M", **options)
     energy = Decimal(point[0][0]) + Decimal(point[1][0])
-    assert m.keys() == b.keys()
-    with localcontext() as context:
-        context.prec = 100
-        for key, mine in m.items():
-            theirs = b[key]
-            scale_ = max(
-                _magnitude(x) * energy ** _degree(k)
-                for column in theirs.columns
-                for k, x in enumerate(column)
-            )
-            for x, y in zip(mine.columns, theirs.columns, strict=True):
-                for k, (a, c) in enumerate(zip(x, y, strict=True)):
-                    assert _magnitude(a - c) * energy ** _degree(k) <= (
-                        Decimal(ARBITRARY_TOLERANCE) * scale_
-                    ), key
-
-
-def _magnitude(value) -> Decimal:
-    return (value.real * value.real + value.imag * value.imag).sqrt()
+    _assert_close(m, b, energy, ARBITRARY_TOLERANCE, name)
 
 
 # ----------------------------------------------------------------- evaluation
@@ -450,23 +435,3 @@ def test_native_evaluation_with_m_equals_b(slices, name):
     assert reals["merged family accumulators"] > 0
     assert reals["open objects (one merged chunk)"] > 0
     assert report["counts"]["merged states"] > 0
-
-
-# ----------------------------------------------------------------- colour
-
-
-@pytest.mark.loop_physics
-@pytest.mark.parametrize("name", ["gg_gg", "uux_ggg"])
-def test_leading_colour_m_equals_b(slices, name):
-    """At leading colour the pruned skeletons' paths certify and M = B
-    exactly."""
-
-    slice_ = slices(name, "lc")
-    graph = merged.merged_graph(slice_)
-    assert graph.families
-    executor = NativeExecutor(slice_, forward=False, merged=graph)
-    point, scale = _point(name)
-    options = {"parameters": PARAMETERS, "exact": True}
-    (b,) = executor.family_numerators([point], [scale], **options)
-    (m,) = executor.family_numerators([point], [scale], schedule="M", **options)
-    _assert_exact(m, b, "lc")

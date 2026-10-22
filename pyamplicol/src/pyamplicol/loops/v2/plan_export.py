@@ -36,7 +36,7 @@ slice's assembly turns into the six components and 19 totals.
 from __future__ import annotations
 
 import json
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from collections.abc import Hashable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
@@ -57,6 +57,8 @@ PLAN_SCHEMA = 4
 _ONE = ExactColorCoefficient(1)
 # Lanes of the native executor's SIMD batches (gate G0, design §5.4).
 DEFAULT_LANES = 16
+# Distinct points whose slice inputs ``NativeExecutor.family_numerators`` keeps.
+_POINT_CACHE = 16
 
 Arithmetic = Literal["double", "double-double", "arbitrary", "exact"]
 
@@ -768,9 +770,9 @@ class NativeExecutor:
         self.forms = forms
         self._plan_json = self.exported.json()
         self._native: dict[tuple[str, int | None, int], Any] = {}
-        # The point inputs of the last ``family_numerators`` call (schedules
-        # and carriers compared on one batch share them).
-        self._last_points: tuple[Any, Any] | None = None
+        # Point inputs of the latest ``family_numerators`` calls (oracle
+        # comparisons run several schedules and carriers on one batch).
+        self._point_inputs: OrderedDict[str, Any] = OrderedDict()
 
     def native(
         self,
@@ -826,6 +828,39 @@ class NativeExecutor:
                         poles,
                     )
                 )
+        return precision, evaluations
+
+    def _cached_points(self, points, scales, parameters, precision):
+        """``_points`` with poles, through a cache of the inputs of the last
+        ``_POINT_CACHE`` distinct points (read only: ``family_numerators``
+        never changes an evaluation)."""
+
+        from .assemble import Precision
+
+        precision = precision or Precision.double()
+        common = repr((sorted((parameters or {}).items()), precision))
+        keys = [
+            repr((point, scale)) + common
+            for point, scale in zip(points, scales, strict=True)
+        ]
+        cache = self._point_inputs
+        missing = [k for k, key in enumerate(keys) if key not in cache]
+        if missing:
+            _precision, fresh = self._points(
+                [points[k] for k in missing],
+                [scales[k] for k in missing],
+                parameters,
+                precision,
+                True,
+            )
+            for k, evaluation in zip(missing, fresh, strict=True):
+                cache[keys[k]] = evaluation
+        evaluations = []
+        for key in keys:
+            cache.move_to_end(key)
+            evaluations.append(cache[key])
+        while len(cache) > max(_POINT_CACHE, len(keys)):
+            cache.popitem(last=False)
         return precision, evaluations
 
     def _inputs(self, evaluations, arithmetic: Arithmetic) -> dict[str, Any]:
@@ -928,16 +963,14 @@ class NativeExecutor:
         and Born amplitudes read as exact rationals and the exact kernel
         constants (``reference_executor.KernelConstants`` stand-ins);
         ``double_double`` runs the native DoubleFloat carrier on the inputs
-        of an arbitrary ``precision``. Consecutive calls on the same points,
-        scales, parameters and precision share the slice's point inputs.
+        of an arbitrary ``precision``. Calls on the same points, scales,
+        parameters and precision share the slice's point inputs
+        (``_cached_points``).
         """
 
-        key = repr((points, scales, sorted((parameters or {}).items()), precision))
-        if self._last_points is None or self._last_points[0] != key:
-            self._last_points = key, self._points(
-                points, scales, parameters, precision, True
-            )
-        precision, evaluations = self._last_points[1]
+        precision, evaluations = self._cached_points(
+            points, scales, parameters, precision
+        )
         arithmetic, digits = self._arithmetic(precision, exact)
         inputs = self._inputs(evaluations, arithmetic)
         if double_double:

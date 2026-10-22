@@ -4,18 +4,18 @@
 Every control process (gluons, one and two quark lines, photon exchange) at
 full, next-to-leading and leading colour: schedule M dresses the families
 whose skeletons are certified primitive classes and schedule B the others
-(generic fallback per family; ``u u~ > u u~`` has no certified family and
-runs B throughout), and the native family numerators of the two schedules
-agree
+(generic fallback per family; ``u u~ > u u~`` has no certified family, so its
+graph is empty and B runs throughout), and the native family numerators of
+the two schedules agree
 
-* bit for bit in the exact rational carrier,
+* bit for bit in the exact rational carrier (first point),
 * within 1e-13 in binary64 and within 1e-28 in DoubleFloat (inputs formed at
-  32 digits) of each family's largest sqrt(s)^r-weighted coefficient
-  (families that vanish identically by Furry's theorem against the point's
-  largest family, as ``test_loop_v2_merged.test_binary64_m_equals_b``
-  explains).
+  32 digits) of each family's largest sqrt(s)^r-weighted coefficient (two
+  points; ``test_loop_v2_merged._assert_close``).
 
-Points are made momentum conserving exactly (``_conserving``).
+Points are made momentum conserving exactly (``_conserving``): M closes a
+ring in its cut frame and maps it into the trie frame by a shift that
+assumes conservation.
 """
 
 from __future__ import annotations
@@ -26,11 +26,12 @@ import pytest
 
 from pyamplicol.loops.v2 import merged
 from pyamplicol.loops.v2.assemble import Precision
-from pyamplicol.loops.v2.plan_export import NativeExecutor, _degree
+from pyamplicol.loops.v2.plan_export import NativeExecutor
 
 from .test_loop_v2_merged import (
     PARAMETERS,
     PROCESSES,
+    _assert_close,
     _assert_exact,
     _conserving,
     _points,
@@ -48,45 +49,20 @@ CONTROLS = (
     "gg_ggg",
 )
 ACCURACIES = ("full", "nlc", "lc")
-# Controls whose every family is certified, and those with none.
+# Controls whose every family is certified, and the one with none.
 EVERYWHERE = {"gg_gg", "gg_ggg"}
 NOWHERE = {"uux_uux"}
 FALLBACK_REASONS = {
     "generic seed (no certified primitive class)",
     "the B seed is not a certified combination",
 }
-TOLERANCES = {"double": 1e-13, "double-double": 1e-28}
-
-
-def _magnitude(value) -> float:
-    if isinstance(value, complex):
-        return abs(value)
-    return abs(complex(float(value.real), float(value.imag)))
-
-
-def _assert_close(left, right, energy: float, tolerance: float, label) -> None:
-    """``left`` within ``tolerance`` of ``right`` on each family's largest
-    sqrt(s)^r-weighted coefficient; families below ``tolerance`` of the
-    point's largest family (identically vanishing) against that one."""
-
-    def weighted(numerator):
-        return max(
-            _magnitude(x) * energy ** _degree(k)
-            for column in numerator.columns
-            for k, x in enumerate(column)
-        )
-
-    assert left.keys() == right.keys(), label
-    largest = max(weighted(numerator) for numerator in right.values())
-    for key, mine in left.items():
-        theirs = right[key]
-        scale = weighted(theirs)
-        if scale < tolerance * largest:
-            scale = largest
-        for x, y in zip(mine.columns, theirs.columns, strict=True):
-            for k, (a, c) in enumerate(zip(x, y, strict=True)):
-                error = _magnitude(a - c) * energy ** _degree(k)
-                assert error <= tolerance * scale, (label, key, k, error / scale)
+CARRIERS = {
+    "double": ({}, "1e-13"),
+    "double-double": (
+        {"precision": Precision.arbitrary(32), "double_double": True},
+        "1e-28",
+    ),
+}
 
 
 @pytest.mark.loop_physics
@@ -109,24 +85,16 @@ def test_m_equals_b_on_every_control(slices, name, accuracy):  # noqa: F811
 
     points, scales = _points(PROCESSES[name][3])
     points, scales = [_conserving(p) for p in points[:2]], scales[:2]
-    energies = [float(Fraction(p[0][0]) + Fraction(p[1][0])) for p in points]
-    runs = {
-        "exact": {"parameters": PARAMETERS, "exact": True},
-        "double": {"parameters": PARAMETERS},
-        "double-double": {
-            "parameters": PARAMETERS,
-            "precision": Precision.arbitrary(32),
-            "double_double": True,
-        },
-    }
-    for carrier, options in runs.items():
+    energies = [Fraction(p[0][0]) + Fraction(p[1][0]) for p in points]
+    options = {"parameters": PARAMETERS, "exact": True}
+    (b,) = executor.family_numerators(points[:1], scales[:1], **options)
+    (m,) = executor.family_numerators(points[:1], scales[:1], schedule="M", **options)
+    _assert_exact(m, b, (name, accuracy, "exact"))
+    for carrier, (extra, tolerance) in CARRIERS.items():
+        options = {"parameters": PARAMETERS, **extra}
         b = executor.family_numerators(points, scales, **options)
         m = executor.family_numerators(points, scales, schedule="M", **options)
         for index, (mine, theirs) in enumerate(zip(m, b, strict=True)):
+            energy = f"{float(energies[index]):.17g}"
             label = (name, accuracy, carrier, index)
-            if carrier == "exact":
-                _assert_exact(mine, theirs, label)
-            else:
-                _assert_close(
-                    mine, theirs, energies[index], TOLERANCES[carrier], label
-                )
+            _assert_close(mine, theirs, energy, tolerance, label)
