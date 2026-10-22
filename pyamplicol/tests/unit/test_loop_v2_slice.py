@@ -628,6 +628,57 @@ def test_loop_fermion_vertices_must_be_vector(loop_sm_compiled_model, loop_nativ
         )
 
 
+@pytest.mark.loop_fast
+def test_loop_fermion_vertices_must_not_couple_through_the_line_mass():
+    """The tree reading flips the emitted loop line's mass in the whole
+    segment kernel (``TreeReading.mass_signs``), so a vector vertex whose
+    coupling depends on that mass, here through an internal parameter, is
+    refused; the same vertex with a mass-free coupling is admitted."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.conventions import LeafWeights
+
+    def parameter(name, expression=None):
+        return {"name": name, "expression": expression}
+
+    def model(coupling):
+        return {
+            "particles": [
+                {"name": "t", "antiname": "t~", "spin": 2, "mass": "MT"},
+                {"name": "t~", "antiname": "t", "spin": 2, "mass": "MT"},
+                {"name": "g", "antiname": "g", "spin": 3, "mass": "ZERO"},
+            ],
+            "parameters": [
+                parameter("ZERO", "0"),
+                parameter("MT"),
+                parameter("G"),
+                parameter("MTv", "MT/246"),
+            ],
+            "couplings": [{"name": "GC", "expression": coupling}],
+            "lorentz_structures": [
+                {"name": "FFV", "structure": "Gamma(idx(1,3),idx(1,1),idx(1,2))"}
+            ],
+            "vertex_rules": [
+                {
+                    "name": "V",
+                    "particles": ["t~", "t", "g"],
+                    "lorentz_structures": ["FFV"],
+                    "couplings": [["GC"]],
+                }
+            ],
+        }
+
+    vertex = SimpleNamespace(vertex=SimpleNamespace(rule="V"))
+    emits_top = SimpleNamespace(loop_in="g", loop_out="t", terms=(vertex,))
+    emits_gluon = SimpleNamespace(loop_in="t", loop_out="g", terms=(vertex,))
+    LeafWeights(model("-G*I"), {})._require_vector_couplings([emits_top])
+    massive = LeafWeights(model("-G*MTv"), {})
+    massive._require_vector_couplings([emits_gluon])
+    with pytest.raises(FermionSignError, match="couples through the mass MT"):
+        massive._require_vector_couplings([emits_top])
+
+
 # ----------------------------------------------------------------- O2 / O7
 
 
