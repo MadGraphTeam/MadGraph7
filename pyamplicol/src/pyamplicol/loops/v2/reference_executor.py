@@ -533,13 +533,22 @@ class ExactKernel:
             tuple(_kernel_terms(E(expression), positions, parameters))
             for expression in spec.exact_expressions
         )
+        self._bound: KernelConstants | None = None
+        self._resolved: tuple[tuple[tuple[Any, Any], ...], ...] = ()
 
     def evaluate(self, values: Sequence[Any], constants: KernelConstants) -> list[Any]:
+        # The constants of one ``KernelConstants`` are looked up once: hashing
+        # the exact keys dominated repeated evaluations at one point.
+        if constants is not self._bound:
+            self._resolved = tuple(
+                tuple((constants.constant(key), monomial) for key, monomial in terms)
+                for terms in self.outputs
+            )
+            self._bound = constants
         out = []
-        for terms in self.outputs:
+        for terms in self._resolved:
             total: Any = 0
-            for key, monomial in terms:
-                value = constants.constant(key)
+            for value, monomial in terms:
                 for position, power in monomial:
                     factor = values[position]
                     for _ in range(power):

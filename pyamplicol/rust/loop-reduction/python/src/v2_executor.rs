@@ -451,7 +451,7 @@ impl V2Executor {
     /// `budget` (re-test error budgets), `failures` and `report`. `schedule`
     /// `M` dresses the plan's schedule-M families by M (streamed in parts of
     /// `part_chunks` chunks) and the others by B.
-    #[pyo3(signature = (inputs, *, poles=true, check=false, reverse=true, rotation=1, shift=false, chunk_families=None, schedule="B", part_chunks=None))]
+    #[pyo3(signature = (inputs, *, poles=true, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -462,6 +462,7 @@ impl V2Executor {
         reverse: bool,
         rotation: usize,
         shift: bool,
+        rescale: bool,
         chunk_families: Option<usize>,
         schedule: &str,
         part_chunks: Option<usize>,
@@ -472,6 +473,7 @@ impl V2Executor {
                 reverse,
                 rotation,
                 shift,
+                rescale,
             }),
             schedule: match schedule {
                 "B" => Schedule::B,

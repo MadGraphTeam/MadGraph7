@@ -60,6 +60,7 @@ fn frame(check: ReductionCheck) -> ReductionFrame {
         reverse: check.reverse,
         rotation: check.rotation,
         shift: check.shift,
+        rescale: check.rescale,
     }
 }
 

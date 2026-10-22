@@ -35,6 +35,13 @@
 //! Without `shift` the coefficients are reused exactly (odd-degree blocks
 //! change sign under `q -> -q`), and box, triangle and tadpole masters are
 //! cache hits; bubbles whose two masses swap order are evaluated anew.
+//! With `rescale` every dimensionful input is scaled by the non-dyadic
+//! [`RESCALING`] factor `x` (shifts by `x`, squared masses, scale and
+//! invariants by `x²`, degree-`d` coefficients by `x^-d`), so that every
+//! master is evaluated anew at differently rounded arguments; the integral
+//! scales exactly as `x^(4-2N)` (all Laurent orders, the scale moving with
+//! it) and is scaled back. This also tests the masters, which no relabelling
+//! of the same invariants (nor a rotation of the point) changes.
 //!
 //! **Finite-only mode.** `poles = false` returns only the finite column; the
 //! pole columns are absent, not zero, also in the check.
@@ -71,7 +78,12 @@ pub struct ReductionFrame {
     pub reverse: bool,
     pub rotation: usize,
     pub shift: bool,
+    pub rescale: bool,
 }
+
+/// The scale factor `x = 7/10` of a rescaled frame (non-dyadic, so that
+/// every scaled input rounds differently).
+pub const RESCALING: (i64, i64) = (7, 10);
 
 impl ReductionFrame {
     /// The loop direction reversed: `q -> -q` with the cycle traversed
@@ -83,6 +95,14 @@ impl ReductionFrame {
         reverse: true,
         rotation: 1,
         shift: false,
+        rescale: false,
+    };
+
+    /// [`Self::REVERSED`] with every dimensionful input rescaled: the masters
+    /// are recomputed (and so tested) at the cost of their evaluation.
+    pub const RESCALED: Self = Self {
+        rescale: true,
+        ..Self::REVERSED
     };
 
     fn order(self, n: usize) -> Vec<usize> {
@@ -252,6 +272,19 @@ impl<T: Carrier> BucketInput<T> {
         let order = frame.map_or(identity, |f| f.order(n));
         let reverse = frame.is_some_and(|f| f.reverse);
         let shift = frame.is_some_and(|f| f.shift);
+        let scale = frame
+            .is_some_and(|f| f.rescale)
+            .then(|| {
+                members
+                    .first()
+                    .map(|&(g, _)| rescaling(&groups[g].shifts[0]))
+            })
+            .flatten();
+        let scale_squared = scale.clone().map(|x| x.clone() * &x);
+        let scaled = |v: Complex<T>, factor: &Option<Complex<T>>| match factor {
+            Some(x) => v * x,
+            None => v,
+        };
         for &(group, row) in members {
             let lanes = &groups[group];
             let shifts = &lanes.shifts[row * 4 * n..(row + 1) * 4 * n];
@@ -262,19 +295,27 @@ impl<T: Carrier> BucketInput<T> {
             for &i in &order {
                 for (mu, v) in vector(i).into_iter().enumerate() {
                     let v = if shift { v - &origin[mu] } else { v };
-                    input.shifts.push(if reverse { -v } else { v });
+                    input
+                        .shifts
+                        .push(scaled(if reverse { -v } else { v }, &scale));
                 }
             }
             let masses = &lanes.masses[row * n..(row + 1) * n];
+            input.masses.extend(
+                order
+                    .iter()
+                    .map(|&i| scaled(masses[i].clone(), &scale_squared)),
+            );
             input
-                .masses
-                .extend(order.iter().map(|&i| masses[i].clone()));
-            input.scales.push(lanes.scales[row].clone());
+                .scales
+                .push(scaled(lanes.scales[row].clone(), &scale_squared));
             let s = &lanes.s_matrix[row * n * n..(row + 1) * n * n];
             for &i in &order {
-                input
-                    .s_matrix
-                    .extend(order.iter().map(|&j| s[i * n + j].clone()));
+                input.s_matrix.extend(
+                    order
+                        .iter()
+                        .map(|&j| scaled(s[i * n + j].clone(), &scale_squared)),
+                );
             }
             let declared = ncoeff(lanes.rank);
             let source = &lanes.coefficients[row * declared..row * declared + width];
@@ -290,10 +331,33 @@ impl<T: Carrier> BucketInput<T> {
             if reverse {
                 reverse_coefficients(&mut input.coefficients[start..], rank);
             }
+            if let Some(x) = &scale {
+                // N'(q') = N(q'/x): degree-d coefficients times x^-d.
+                let inverse = x.one() / x;
+                let mut power = inverse.clone();
+                for degree in 1..=rank {
+                    for c in &mut input.coefficients
+                        [start + block_offset(degree)..start + ncoeff(degree)]
+                    {
+                        *c = c.clone() * &power;
+                    }
+                    power = power * &inverse;
+                }
+            }
             input.ids.push(lanes.ids[row]);
         }
         input
     }
+}
+
+/// The rescaling factor [`RESCALING`] in the carrier of `like`.
+fn rescaling<T: Carrier>(like: &Complex<T>) -> Complex<T> {
+    let zero = like.re.zero();
+    let (numerator, denominator) = RESCALING;
+    Complex::new(
+        zero.from_i64(numerator) / &zero.from_i64(denominator),
+        zero.clone(),
+    )
 }
 
 /// Lanes `(group, row)` per (propagators, true rank), in a fixed order.
@@ -323,7 +387,19 @@ fn reduce_groups<T: Carrier, E: BucketEngine<T>>(
         .collect();
     for (&(n, rank), members) in buckets {
         let input = BucketInput::gather(groups, n, rank, members, frame);
-        for (&(group, row), outcome) in members.iter().zip(engine.reduce(&input)?) {
+        // A rescaled frame's integrals are x^(4-2N) times the family's.
+        let undo = frame.filter(|f| f.rescale).map(|_| {
+            let x = rescaling(&input.shifts[0]);
+            let inverse = x.one() / &x;
+            (0..2 * n).fold(x.one(), |power, _| power * &x)
+                * &(0..4).fold(x.one(), |power, _| power * &inverse)
+        });
+        for (&(group, row), mut outcome) in members.iter().zip(engine.reduce(&input)?) {
+            if let (Some(factor), Some(value)) = (&undo, &mut outcome.value) {
+                for v in value.iter_mut() {
+                    *v = v.clone() * factor;
+                }
+            }
             outcomes[group][row] = Some(outcome);
         }
     }
@@ -525,6 +601,13 @@ fn template(rank: usize) -> (String, Vec<String>) {
     (terms.join("+"), parameters)
 }
 
+/// Lanes per generic-engine call. The engine's workspace grows with the lanes
+/// of one call (about 18 MB per lane of a 7-point process at 256 bits: 17 GB
+/// for the 968 lanes of four uu~ -> e-e+dd~g points in one bucket stream), so
+/// buckets are reduced in chunks of this many lanes; lanes are independent,
+/// and chunking leaves every value unchanged.
+const GENERIC_CHUNK_LANES: usize = 16;
+
 impl<T: Carrier> BucketEngine<T> for GenericEngine<T>
 where
     Complex<T>: Real + EvaluationDomain,
@@ -547,24 +630,29 @@ where
             .chunks_exact(4)
             .map(|v| FourMomentum::from([v[0].clone(), v[1].clone(), v[2].clone(), v[3].clone()]))
             .collect();
-        Ok(reductions
-            .evaluate_native(
-                &input.ids,
-                &shifts,
-                &input.masses,
-                &input.scales,
-                &input.coefficients,
-                Some(&input.s_matrix),
-            )?
-            .into_iter()
-            .map(|lane| Outcome {
-                status: lane
-                    .status
-                    .strip_prefix("epsilon sector 0: ")
-                    .map_or(lane.status.clone(), str::to_owned),
-                value: lane.value.map(|v| [v.finite, v.single_pole, v.double_pole]),
-            })
-            .collect())
+        let (n, width, lanes) = (input.n, ncoeff(input.rank), input.ids.len());
+        let mut outcomes = Vec::with_capacity(lanes);
+        for start in (0..lanes).step_by(GENERIC_CHUNK_LANES) {
+            let end = (start + GENERIC_CHUNK_LANES).min(lanes);
+            let reduced = reductions.evaluate_native(
+                &input.ids[start..end],
+                &shifts[start * n..end * n],
+                &input.masses[start * n..end * n],
+                &input.scales[start..end],
+                &input.coefficients[start * width..end * width],
+                Some(&input.s_matrix[start * n * n..end * n * n]),
+            )?;
+            outcomes.extend(reduced.into_iter().map(|lane| {
+                Outcome {
+                    status: lane
+                        .status
+                        .strip_prefix("epsilon sector 0: ")
+                        .map_or(lane.status.clone(), str::to_owned),
+                    value: lane.value.map(|v| [v.finite, v.single_pole, v.double_pole]),
+                }
+            }));
+        }
+        Ok(outcomes)
     }
 }
 
@@ -780,6 +868,64 @@ mod tests {
         assert!(tensor_rank(7).is_err());
     }
 
+    /// A 256-bit generic engine of tadpole lanes `∫ c / (q² - m²)`.
+    fn tadpoles(masses: &[Float], scale: &Float) -> (GenericEngine<Float>, BucketInput<Float>) {
+        let zero = Float::with_val(256, 0);
+        let complex = |x: &Float| Complex::new(x.clone(), zero.clone());
+        let lanes = masses.len();
+        let engine = GenericEngine {
+            reductions: HashMap::new(),
+            prototype: zero.clone(),
+        };
+        let input = BucketInput {
+            n: 1,
+            rank: 0,
+            ids: (0..lanes as u64).collect(),
+            shifts: vec![complex(&zero); 4 * lanes],
+            masses: masses.iter().map(complex).collect(),
+            scales: vec![complex(scale); lanes],
+            s_matrix: vec![complex(&zero); lanes],
+            coefficients: vec![complex(&Float::with_val(256, 1)); lanes],
+        };
+        (engine, input)
+    }
+
+    #[test]
+    fn imprecise_float_masters_fail_their_lane() {
+        // numerica tracks significant bits: a squared mass known to 53 bits
+        // gives an A0 below `required_tracked_bits(256)` = 64 tracked bits,
+        // which the master provider reports as `ImpreciseResult`; the lane
+        // fails instead of returning a finite but unestablished value.
+        let scale = Float::with_val(256, 1_000_000);
+        let masses = [Float::with_val(256, 29929), Float::with_val(53, 29929)];
+        let (mut engine, input) = tadpoles(&masses, &scale);
+        let outcomes = engine.reduce(&input).unwrap();
+        assert_eq!(outcomes[0].status, "success");
+        assert!(outcomes[0].value.is_some());
+        assert!(
+            outcomes[1].status.contains("ImpreciseResult"),
+            "{}",
+            outcomes[1].status
+        );
+        assert!(outcomes[1].value.is_none());
+    }
+
+    #[test]
+    fn generic_chunks_leave_values_unchanged() {
+        let scale = Float::with_val(256, 1_000_000);
+        let masses: Vec<_> = (0..GENERIC_CHUNK_LANES + 3)
+            .map(|k| Float::with_val(256, 29929 + 7 * k as i64))
+            .collect();
+        let (mut engine, input) = tadpoles(&masses, &scale);
+        let chunked = engine.reduce(&input).unwrap();
+        for (k, mass) in masses.iter().enumerate() {
+            let (mut single, one) = tadpoles(std::slice::from_ref(mass), &scale);
+            let alone = single.reduce(&one).unwrap();
+            assert_eq!(alone[0].status, "success");
+            assert_eq!(chunked[k].value, alone[0].value, "lane {k}");
+        }
+    }
+
     #[test]
     fn frames_are_dihedral_relabellings() {
         assert_eq!(ReductionFrame::REVERSED.order(4), [1, 0, 3, 2]);
@@ -788,6 +934,7 @@ mod tests {
             reverse: false,
             rotation: 6,
             shift: true,
+            rescale: false,
         };
         assert_eq!(frame.order(4), [2, 3, 0, 1]);
     }
