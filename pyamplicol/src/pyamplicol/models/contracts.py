@@ -36,6 +36,11 @@ MODEL_SUPPLIED_PROPAGATOR_SOURCE = "model-supplied"
 
 SUPPORTED_COLOR_REPRESENTATIONS = frozenset({-3, 1, 3, 8})
 
+# Auxiliary kind of the colour-flow U(1) subtraction current: the singlet part
+# a colour-flow gluon removes, which colour-flow compilation adds as a synthetic
+# vector particle.
+U1_SUBTRACTION_AUXILIARY_KIND = "u1-subtraction-color-flow-vector"
+
 # Tree kernels exist in two variants. ``transverse`` is the compile-time
 # default: proven massless Yang-Mills vertices drop the terms proportional to
 # each input current's self-contraction p_i.J_i, which is exact for conserved

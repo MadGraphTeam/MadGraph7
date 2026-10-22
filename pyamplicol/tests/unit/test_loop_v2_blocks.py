@@ -738,11 +738,12 @@ def test_family_recursion_runs_on_the_block_table(models, text, born):
 
 
 @pytest.mark.loop_fast
-def test_born_is_the_tree_program_bucketed_by_exact_order(models):
+@pytest.mark.parametrize("accuracy", ["full", "lc"])
+def test_born_is_the_tree_program_bucketed_by_exact_order(models, accuracy):
     compiled, model, _structure = models
-    # The Born keeps the requested accuracy; this leading-colour tree has
-    # both the QCD and the electroweak exchange.
-    process = _process(compiled, "u u~ > d d~", "lc")
+    # Both colour accuracies keep the QCD and the electroweak exchange
+    # between the two quark lines (full colour used to drop the latter).
+    process = _process(compiled, "u u~ > d d~", accuracy)
     born_limits = {"QCD": 2, "QED": 2}
     blocks = build_tree_blocks(
         process,
@@ -750,11 +751,15 @@ def test_born_is_the_tree_program_bucketed_by_exact_order(models):
         born_coupling_orders=born_limits,
         block_coupling_orders={"QCD": 4, "QED": 2},
     )
-    # Baseline of the plain tree program, recorded with compile_generic_dag on
-    # 2590dc2c, before loop-request mode (WP1.2) touched the DAG compiler:
-    # every root closes the (u u~ d) current with the d~ source.
+    # Baselines of the plain tree program: leading colour recorded with
+    # compile_generic_dag on 2590dc2c, before loop-request mode (WP1.2) touched
+    # the DAG compiler; full colour recorded once its electroweak merges were
+    # restored (it had the QCD roots only). Every root closes the (u u~ d)
+    # current with the d~ source; the two accuracies differ only in the
+    # current count and the id of the second colour sector.
+    current_count, second_sector = {"full": (76, 2), "lc": (30, 1)}[accuracy]
     dag = blocks.born_dag
-    assert len(dag.currents) == 30
+    assert len(dag.currents) == current_count
     roots = Counter(
         (
             add_orders(
@@ -772,9 +777,9 @@ def test_born_is_the_tree_program_bucketed_by_exact_order(models):
     closure = frozenset({(7, 1), (8, -1)})
     assert roots == {
         ((("QCD", 2),), 0, closure): 4,
-        ((("QCD", 2),), 1, closure): 4,
+        ((("QCD", 2),), second_sector, closure): 4,
         ((("QED", 2),), 0, closure): 4,
-        ((("QED", 2),), 1, closure): 1,
+        ((("QED", 2),), second_sector, closure): 1,
     }
     assert blocks.born_orders == ((("QCD", 2),), (("QED", 2),))
     by_order = blocks.born_roots_by_order()
@@ -807,6 +812,29 @@ def test_born_is_the_tree_program_bucketed_by_exact_order(models):
     assert {block.key for block in blocks.blocks} == {
         block.key for block in full.blocks
     }
+
+
+@pytest.mark.loop_fast
+def test_full_colour_born_keeps_electroweak_roots_with_a_gluon(models):
+    compiled, model, _structure = models
+    limits = {"QCD": 3, "QED": 2}
+    by_accuracy = {
+        accuracy: build_tree_blocks(
+            _process(compiled, "u u~ > d d~ g", accuracy),
+            model,
+            born_coupling_orders=limits,
+            block_coupling_orders=limits,
+        ).born_orders
+        for accuracy in ("full", "lc")
+    }
+    assert (
+        by_accuracy["full"]
+        == by_accuracy["lc"]
+        == (
+            (("QCD", 1), ("QED", 2)),
+            (("QCD", 3),),
+        )
+    )
 
 
 @pytest.mark.loop_fast

@@ -15,6 +15,7 @@ from .compiler_kernels import (
     _remap_kernel_symbols,
 )
 from .contracts import (
+    U1_SUBTRACTION_AUXILIARY_KIND,
     CompiledLCColorTransitionTerm,
     CompiledOrientedKernel,
     CompiledParticleRecord,
@@ -22,8 +23,6 @@ from .contracts import (
     compiled_particle_component_dimension,
 )
 from .tensors import normalize_color_expression
-
-_U1_SUBTRACTION_AUXILIARY = "u1-subtraction-color-flow-vector"
 
 
 class _CompiledLCColorTransitionCompilation(tuple):
@@ -366,7 +365,7 @@ def synthesize_fundamental_fierz_auxiliaries(
             goldstoneboson=False,
             propagator=None,
             component_dimension=compiled_particle_component_dimension(source),
-            auxiliary_kind=_U1_SUBTRACTION_AUXILIARY,
+            auxiliary_kind=U1_SUBTRACTION_AUXILIARY_KIND,
         )
 
     synthetic: list[CompiledOrientedKernel] = []

@@ -34,7 +34,7 @@ from typing import Any
 from ..scalar_bindings import ScalarBindingPlan, prepare_scalar_bindings
 from ..wavefunction import ExternalFieldRule
 from .ct_sites import LAURENT_POWERS, CountertermSites
-from .families import ExternalLeg, LoopOrderSelection, Orders, _model_data, add_orders
+from .families import ExternalLeg, LoopOrderSelection, Orders, add_orders, model_data
 
 FIELD_COMPONENT = "uv_external_fields"
 
@@ -81,7 +81,7 @@ def external_field_insertions(
     """
 
     particles = {
-        entry["name"]: entry for entry in _model_data(native_model)["particles"]
+        entry["name"]: entry for entry in model_data(native_model)["particles"]
     }
     forbidden = frozenset(abs(int(pdg)) for pdg in forbidden)
     rules = tuple(rules)
