@@ -1,0 +1,353 @@
+# SPDX-License-Identifier: 0BSD
+"""Schedule M on generated slices, natively (design §2.2, §3.5, WP2.8).
+
+``merged.merged_graph`` splits every certified skeleton into its
+colour-ordered paths (one per choice of vertex decomposition terms), seeds
+each at the cut by the primitive class of its cut word and shares states
+across compositions and families; ``plan_export`` writes the graph into plan
+v4 and the native executor runs it (``rusticol_core::loop_v2::merged``).
+Checks:
+
+* the planar paths of every certified skeleton sum to its B seed exactly and
+  the state graph has one cut-to-closure path per planar path; families with
+  generic seeds (several quark lines) stay on schedule B;
+* O4 in Rust: the native exact carrier gives M = B bit for bit, with chunked
+  and unchunked graphs and every kernel form; binary64 and arbitrary
+  precision agree with B to the carrier's precision;
+* a native evaluation with schedule M equals schedule B (all three Laurent
+  coefficients, finite-only included) and reports M's memory per lane;
+* leading colour: M = B on the pruned LC slices.
+"""
+
+from __future__ import annotations
+
+import json
+from decimal import Decimal, localcontext
+from fractions import Fraction
+from pathlib import Path
+
+import pytest
+
+from pyamplicol.loops.v2 import assemble, ct_sites, merged
+from pyamplicol.loops.v2 import reference_executor as rx
+from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
+from pyamplicol.loops.v2.assemble import COMPONENTS
+from pyamplicol.loops.v2.plan_export import NativeExecutor, _degree, export_plan
+
+ROOT = Path(__file__).resolve().parents[2]
+PARAMETERS = {"aS": "0.118", "MT": "173"}
+FIXED = {"MB": "0"}
+DOUBLE_TOLERANCE = 1e-13
+ARBITRARY_TOLERANCE = 1e-70
+
+
+def _points(name: str) -> tuple[list, list[str]]:
+    if name.endswith(".json") and "/" in name:
+        data = json.loads(
+            (ROOT / "tests" / "fixtures" / "loop" / name).read_text(), parse_float=str
+        )
+        points = data["points"]
+        mu = data.get("mu_r", ["1000"] * len(points))
+        if isinstance(mu, str):
+            mu = [mu] * len(points)
+        return points, [format(Decimal(str(m)) ** 2, "f") for m in mu]
+    data = json.loads(
+        (ROOT / "tools" / "loop_reference" / f"{name}.json").read_text(),
+        parse_float=str,
+    )
+    return data["points"], ["1000000"] * len(data["points"])
+
+
+# process, Born orders, ignored particles, points
+PROCESSES = {
+    "gg_gg": ("g g > g g", {"QCD": 2, "QED": 0}, (), "gluon_scattering_qcd"),
+    "uux_gg": ("u u~ > g g", {"QCD": 2, "QED": 0}, (), "gluon_scattering_qcd"),
+    "uux_ddxg": (
+        "u u~ > d d~ g",
+        {"QCD": 3, "QED": 0},
+        (),
+        "required/uux_ddxg.json",
+    ),
+    "gg_ggg": ("g g > g g g", {"QCD": 3, "QED": 0}, (), "quark_three_gluon_qcd"),
+    "uux_ggg": ("u u~ > g g g", {"QCD": 3, "QED": 0}, (), "quark_three_gluon_qcd"),
+    # Photon exchange only (``test_loop_v2_executor.IGNORED``).
+    "uux_emepgg": (
+        "u u~ > e- e+ g g",
+        {"QCD": 2, "QED": 2},
+        (23,),
+        "dilepton-two-gluon.json",
+    ),
+}
+
+
+def _furry_zeros(generate):
+    """``generate_counterterm_sites`` with Furry's certified zeros (as
+    ``test_loop_v2_executor``)."""
+
+    def with_zeros(families, table, rules, data, selection, **options):
+        zeros = [
+            ct_sites.CertifiedZero(
+                signature,
+                species,
+                "Furry: C-odd closed quark loop (one photon, two gluons)",
+            )
+            for signature, sets in ct_sites.divergent_witnesses(families, data).items()
+            if signature.fields == ("A", "G", "G")
+            for species in sets
+            if all(1 <= pdg <= 6 for pdg in species)
+        ]
+        return generate(families, table, rules, data, selection, zeros=zeros, **options)
+
+    return with_zeros
+
+
+@pytest.fixture(scope="module")
+def slices(loop_sm_compiled_model, loop_native):
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+    from tools.loop_reference import legacy_capture
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    declaration = LoopColorDeclaration.from_dict(
+        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+    )
+    built: dict[tuple[str, str], LoopSlice] = {}
+
+    def build(name: str, accuracy: str = "full") -> LoopSlice:
+        if (name, accuracy) not in built:
+            process, born, ignored, _points = PROCESSES[name]
+            loop = {k: v + (2 if k == "QCD" else 0) for k, v in born.items()}
+            request = SliceRequest(
+                process,
+                born,
+                loop,
+                fixed_parameters=FIXED,
+                ignored_particle_ids=ignored,
+                accuracy=accuracy,
+                colour_declaration=None if accuracy == "full" else declaration,
+            )
+            with pytest.MonkeyPatch.context() as patch:
+                if born["QED"]:
+                    patch.setattr(
+                        assemble,
+                        "generate_counterterm_sites",
+                        _furry_zeros(assemble.generate_counterterm_sites),
+                    )
+                built[name, accuracy] = LoopSlice.generate(compiled, request, loop_native)
+        return built[name, accuracy]
+
+    return build
+
+
+def _point(name: str, index: int = 0):
+    points, scales = _points(PROCESSES[name][3])
+    return points[index], scales[index]
+
+
+def _executor(slice_, chunk_tokens=2, forms="rule") -> NativeExecutor:
+    graph = merged.merged_graph(slice_, chunk_tokens=chunk_tokens)
+    return NativeExecutor(slice_, forward=False, merged=graph, forms=forms)
+
+
+# ----------------------------------------------------------------- generation
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("name", "everywhere"),
+    [("gg_gg", True), ("uux_gg", False), ("uux_ddxg", False), ("gg_ggg", True)],
+)
+def test_planar_paths_certify_against_the_b_seeds(slices, name, everywhere):
+    """Every certified family's planar paths sum to its skeletons' B seeds
+    (checked inside ``PlanarExpansion.paths``) and the state graph has one
+    closing path per planar path; families with generic seeds fall back to
+    B. States are shared: fewer states than path positions."""
+
+    slice_ = slices(name)
+    graph = merged.merged_graph(slice_)
+    families = set(slice_.plan.schedules)
+    assert graph.families | set(graph.fallback) == families
+    assert not graph.families & set(graph.fallback)
+    assert (not graph.fallback) == everywhere
+    assert all("generic seed" in why for why in graph.fallback.values())
+    expansion = merged.PlanarExpansion(slice_)
+    positions = 0
+    for skeleton in rx.plan_skeletons(slice_.plan):
+        if skeleton.family in graph.families:
+            positions += sum(len(p.steps) for p in expansion.paths(skeleton))
+    counts = graph.counts()
+    assert counts["paths"] >= sum(
+        1 for s in rx.plan_skeletons(slice_.plan) if s.family in graph.families
+    )
+    assert counts["states"] < positions
+    # Chunks only cut merges: the unchunked graph has the fewest states.
+    whole = merged.merged_graph(slice_, chunk_tokens=0)
+    assert whole.counts()["chunks"] == 1
+    assert whole.counts()["states"] <= counts["states"]
+
+
+@pytest.mark.loop_physics
+def test_plan_carries_schedule_m(slices):
+    slice_ = slices("gg_gg")
+    graph = merged.merged_graph(slice_)
+    program = export_plan(slice_, forward=False, merged=graph).program
+    section = program["merged"]
+    assert len(section["states"]) == len(graph.states)
+    assert section["chunks"][-1] == len(graph.states)
+    assert sorted(section["families"]) == section["families"]
+    closures = [s["closure"] for s in section["states"] if s["closure"]]
+    assert {c["family"] for c in closures} == set(section["families"])
+    executor = NativeExecutor(slice_, forward=False, merged=graph)
+    assert executor.native("double").merged_families == section["families"]
+    assert export_plan(slice_, forward=False).program["merged"] is None
+
+
+# ----------------------------------------------------------------- numerators
+
+
+def _assert_exact(left, right, label):
+    assert left.keys() == right.keys(), label
+    for key, mine in left.items():
+        theirs = right[key]
+        for x, y in zip(mine.columns, theirs.columns, strict=True):
+            width = max(len(x), len(y))
+            a = [rx.exact(v) for v in x] + [0] * (width - len(x))
+            b = [rx.exact(v) for v in y] + [0] * (width - len(y))
+            assert a == b, (label, key)
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["gg_gg", "uux_gg", "uux_ddxg"])
+def test_exact_m_equals_b(slices, name):
+    """O4 in Rust: exact rational numerators of M equal B's bit for bit,
+    chunked or not, in every kernel form."""
+
+    slice_ = slices(name)
+    point, scale = _point(name)
+    reference = None
+    for chunk_tokens, forms in ((2, "rule"), (0, "fused"), (3, "split")):
+        executor = _executor(slice_, chunk_tokens, forms)
+        options = {"parameters": PARAMETERS, "exact": True}
+        if reference is None:
+            (reference,) = executor.family_numerators([point], [scale], **options)
+        (mine,) = executor.family_numerators(
+            [point], [scale], schedule="M", **options
+        )
+        _assert_exact(mine, reference, (chunk_tokens, forms))
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["gg_ggg", "uux_ggg", "uux_emepgg"])
+def test_binary64_m_equals_b(slices, name):
+    """Binary64 numerators of M against B: within 1e-13 of each family's
+    largest sqrt(s)^r-weighted coefficient."""
+
+    slice_ = slices(name)
+    executor = _executor(slice_)
+    points, scales = _points(PROCESSES[name][3])
+    b = executor.family_numerators(points[:2], scales[:2], parameters=PARAMETERS)
+    m = executor.family_numerators(
+        points[:2], scales[:2], parameters=PARAMETERS, schedule="M"
+    )
+    for index, (left, right) in enumerate(zip(m, b, strict=True)):
+        energy = float(Fraction(points[index][0][0]) + Fraction(points[index][1][0]))
+        assert left.keys() == right.keys()
+        for key, mine in left.items():
+            theirs = right[key]
+            scale = max(
+                abs(complex(x)) * energy ** _degree(k)
+                for column in theirs.columns
+                for k, x in enumerate(column)
+            )
+            for x, y in zip(mine.columns, theirs.columns, strict=True):
+                for k, (a, c) in enumerate(zip(x, y, strict=True)):
+                    assert abs(complex(a) - complex(c)) * energy ** _degree(k) <= (
+                        DOUBLE_TOLERANCE * scale
+                    ), (name, index, key)
+
+
+@pytest.mark.loop_physics
+def test_arbitrary_precision_m_equals_b(slices):
+    name = "gg_ggg"
+    slice_ = slices(name)
+    executor = _executor(slice_)
+    point, scale = _point(name)
+    precision = Precision.arbitrary(60)
+    options = {"parameters": PARAMETERS, "precision": precision}
+    (b,) = executor.family_numerators([point], [scale], **options)
+    (m,) = executor.family_numerators([point], [scale], schedule="M", **options)
+    energy = Decimal(point[0][0]) + Decimal(point[1][0])
+    assert m.keys() == b.keys()
+    with localcontext() as context:
+        context.prec = 100
+        for key, mine in m.items():
+            theirs = b[key]
+            scale_ = max(
+                _magnitude(x) * energy ** _degree(k)
+                for column in theirs.columns
+                for k, x in enumerate(column)
+            )
+            for x, y in zip(mine.columns, theirs.columns, strict=True):
+                for k, (a, c) in enumerate(zip(x, y, strict=True)):
+                    assert _magnitude(a - c) * energy ** _degree(k) <= (
+                        Decimal(ARBITRARY_TOLERANCE) * scale_
+                    ), key
+
+
+def _magnitude(value) -> Decimal:
+    return (value.real * value.real + value.imag * value.imag).sqrt()
+
+
+# ----------------------------------------------------------------- evaluation
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["gg_ggg", "uux_ggg"])
+def test_native_evaluation_with_m_equals_b(slices, name):
+    """The complete native evaluation with schedule M equals schedule B (all
+    three Laurent coefficients, finite only too), streaming M's completed
+    families into the reduction; the report has M's memory per lane."""
+
+    slice_ = slices(name)
+    executor = _executor(slice_)
+    points, scales = _points(PROCESSES[name][3])
+    points, scales = points[:2], scales[:2]
+    for poles in (True, False):
+        b = executor.evaluate(points, scales, parameters=PARAMETERS, poles=poles)
+        m = executor.evaluate(
+            points, scales, parameters=PARAMETERS, poles=poles, schedule="M"
+        )
+        report = executor.last_report
+        for left, right in zip(m, b, strict=True):
+            assert left.born == right.born
+            for component in COMPONENTS:
+                for sector, value in right.components[component].items():
+                    mine = left.components[component][sector]
+                    assert len(mine.coefficients) == len(value.coefficients)
+                    scale = max(abs(complex(x)) for x in value.coefficients) or 1.0
+                    for x, y in zip(mine.coefficients, value.coefficients, strict=True):
+                        assert abs(complex(x) - complex(y)) <= 1e-12 * scale, component
+    reals = report["reals_per_lane"]
+    assert reals["merged family accumulators"] > 0
+    assert reals["open objects (one merged chunk)"] > 0
+    assert report["counts"]["merged states"] > 0
+
+
+# ----------------------------------------------------------------- colour
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", ["gg_gg", "uux_ggg"])
+def test_leading_colour_m_equals_b(slices, name):
+    """At leading colour the pruned skeletons' paths certify and M = B
+    exactly."""
+
+    slice_ = slices(name, "lc")
+    graph = merged.merged_graph(slice_)
+    assert graph.families
+    executor = NativeExecutor(slice_, forward=False, merged=graph)
+    point, scale = _point(name)
+    options = {"parameters": PARAMETERS, "exact": True}
+    (b,) = executor.family_numerators([point], [scale], **options)
+    (m,) = executor.family_numerators([point], [scale], schedule="M", **options)
+    _assert_exact(m, b, "lc")

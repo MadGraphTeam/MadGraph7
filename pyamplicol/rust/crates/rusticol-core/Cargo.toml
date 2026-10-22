@@ -44,3 +44,8 @@ wide.workspace = true
 name = "loop_v2_kernels"
 harness = false
 required-features = ["loop-v2"]
+
+[[bench]]
+name = "loop_v2_schedules"
+harness = false
+required-features = ["loop-v2"]
