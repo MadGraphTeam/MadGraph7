@@ -388,29 +388,46 @@ def test_eager_lane_matches_madgraph(
     _assert_total_matches_madgraph(runtime.evaluate(reference["points"]), reference)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "the eager lane mispairs W exchanges among four quark lines: "
-        "pure-electroweak u u~ > d d~ s s~ c c~ is 1.48x MadGraph at the "
-        "reference point (agrees without W-quark couplings); open issue "
-        "WP2.9 of DESIGN section 16.2"
-    ),
-)
+_FOUR_LINES = "u u~ > d d~ s s~ c c~"
+
+
+def _reordered(points: list[object], process: str, reference: str) -> list[object]:
+    """``points`` of ``reference`` with their momenta in the leg order of
+    ``process`` (the same particles, each listed once)."""
+
+    names = reference.replace(">", "").split()
+    order = [names.index(name) for name in process.replace(">", "").split()]
+    return [[point[index] for index in order] for point in points]
+
+
+# The second order relabels every line, so that other traversal sectors and
+# other orientations of each colour-singlet vertex build the same diagrams.
+@pytest.mark.parametrize("process", [_FOUR_LINES, "u~ u > c c~ s s~ d d~"])
+@pytest.mark.parametrize("accuracy", ["full", "lc"])
 def test_eager_lane_pairs_w_exchanges_among_four_quark_lines(
-    sm_model: ModelSource, tmp_path: Path
+    sm_model: ModelSource, tmp_path: Path, process: str, accuracy: str
 ) -> None:
-    process = "u u~ > d d~ s s~ c c~"
-    reference = _reference(f"{process} QCD=0")
+    """Pure-electroweak four quark lines, where four-point WWA/WWZ/WWAA/WWZZ
+    contact vertices join all four lines. The full-colour traversal sectors
+    close on different sinks and built some of these diagrams twice and
+    their mirror images not at all (1.48x MadGraph). The W pairings of the
+    two generations give four interfering colour flows. MadGraph's QCD=0
+    export assigns all its colour-flow amplitudes."""
+
+    reference = _reference(
+        f"{_FOUR_LINES} QCD=0", REFERENCE if accuracy == "full" else LC_REFERENCE
+    )
     runtime = _runtime(
         sm_model,
         process,
         tmp_path / "artifact",
+        accuracy=accuracy,
         execution_mode="eager",
         limits={"QCD": 0, "QED": 6},
     )
+    points = _reordered(reference["points"], process, _FOUR_LINES)
 
-    _assert_total_matches_madgraph(runtime.evaluate(reference["points"]), reference)
+    _assert_total_matches_madgraph(runtime.evaluate(points), reference)
 
 
 @pytest.mark.parametrize("accuracy", ["full", "lc"])
