@@ -308,6 +308,95 @@ class TestMECmdRWGT(unittest.TestCase):
             self.assertRaisesRegex(Exception, 'non zero status',
                     me_cmd.exec_cmd, 'reweight run_01 -from_cards', precmd=True)
 
+    def test_nlo_reweighting_eft_split_orders(self):
+        """ NLO-mode reweighting of an MC@NLO p p > t t~ [QCD] SMEFT sample in
+        ctu8 against direct fixed-order NLO runs at the new values.
+        The event weights are split by squared orders (SM, interference,
+        quadratic: the orderstag of the <mgrwgt> block), and those scale
+        differently with ctu8: one ratio per kinematic configuration is only
+        right if every order has the same local K-factor.
+        """
+        import madgraph.models.check_param_card as check_param_card
+
+        orig_c, new_c = 1., [10., 0.]
+
+        mg_cmd = MGCmd.MasterCmd()
+        mg_cmd.no_notification()
+        mg_cmd.run_cmd('set automatic_html_opening False --no_save')
+        mg_cmd.run_cmd('import model SMEFTatNLO-NLO')
+        mg_cmd.run_cmd('generate p p > t t~ NP=2 QCD=2 QED=0 [QCD]')
+        mg_cmd.run_cmd('output %s' % self.run_dir)
+
+        default_param = pjoin(self.run_dir, 'Cards', 'param_card_default.dat')
+        def write_param(c):
+            # the default card (all the Wilson coefficients of the restriction
+            # on) with ctu8 = c and mueft = 173 (MU_R is not in the card:
+            # aMC@NLO sets it to the renormalisation scale)
+            card = check_param_card.ParamCard(default_param)
+            card['dim64f'].get((7,)).value = c
+            card['renor'].get((1,)).value = 173.
+            card.write(pjoin(self.run_dir, 'Cards', 'param_card.dat'))
+
+        run_card = banner_mod.RunCardNLO(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+        for key, value in dict(nevents=20000, pdlabel='lhapdf', lhaid=260000,
+                               fixed_ren_scale=True, fixed_fac_scale=True,
+                               mur_ref_fixed=173., muf_ref_fixed=173.,
+                               store_rwgt_info=True, req_acc=0.002,
+                               req_acc_fo=0.002).items():
+            run_card[key] = value
+        run_card.write(pjoin(self.run_dir, 'Cards', 'run_card.dat'))
+
+        def run(mode, name):
+            out = subprocess.run([pjoin(self.run_dir, 'bin', 'generate_events'),
+                                  mode, '-f', '--name=%s' % name], cwd=self.run_dir,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 text=True).stdout
+            found = re.findall(r'Total cross section:\s+(\S+)\s+\+-\s+(\S+)\s+pb', out)
+            self.assertTrue(found, out[-2000:])
+            return float(found[-1][0]), float(found[-1][1])
+
+        # MC@NLO sample at ctu8 = 1, reweighted in NLO mode at generation
+        write_param(orig_c)
+        with open(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'), 'w') as ff:
+            ff.write('change mode LO+NLO\n')
+            for c in new_c:
+                ff.write('launch --rwgt_name=c%g\nset DIM64F 7 %g\n' % (c, c))
+        # no shower_card: the shower switch defaults to OFF
+        os.remove(pjoin(self.run_dir, 'Cards', 'shower_card.dat'))
+        orig, orig_err = run('aMC@NLO', 'orig')
+
+        # sums of the weights and the ratio estimator of new over original
+        names = ['c%g_%s' % (c, t) for c in new_c for t in ['lo', 'nlo']]
+        events = []
+        lhe = lhe_parser.EventFile(pjoin(self.run_dir, 'Events', 'orig', 'events.lhe.gz'))
+        for event in lhe:
+            rwgt_data = event.parse_reweight()
+            missing = [n for n in names if n not in rwgt_data]
+            self.assertFalse(missing, 'the NLO reweighting did not produce %s' % missing)
+            events.append((event.wgt, [rwgt_data[n] for n in names]))
+        sum_orig = sum(w for w, _ in events)
+        reweighted = {}
+        for i, n in enumerate(names):
+            ratio = sum(new[i] for _, new in events) / sum_orig
+            err = math.sqrt(sum((new[i] - ratio * w)**2 for w, new in events)) / abs(sum_orig)
+            # times the integrated cross section of the sample
+            reweighted[n] = (ratio * orig, math.sqrt((err * orig)**2 + (ratio * orig_err)**2))
+
+        # direct fixed-order NLO runs
+        os.remove(pjoin(self.run_dir, 'Cards', 'reweight_card.dat'))
+        direct = {}
+        for c in new_c:
+            write_param(c)
+            direct[c] = run('NLO', 'fo_c%g' % c)
+
+        summary = '\n'.join('ctu8=%g: direct %.4g +- %.2g, NLO-reweighted %.4g +- %.2g, LO-reweighted %.4g +- %.2g'
+                            % ((c,) + direct[c] + reweighted['c%g_nlo' % c] + reweighted['c%g_lo' % c])
+                            for c in new_c)
+        logger.info('original ctu8=%g: %.4g +- %.2g pb\n%s' % (orig_c, orig, orig_err, summary))
+        for c in new_c:
+            (d, d_err), (r, r_err) = direct[c], reweighted['c%g_nlo' % c]
+            self.assertLess(abs(d - r), 4 * math.sqrt(d_err**2 + r_err**2), summary)
+
     @test_manager.bypass_for_py3
     def test_nlo_output2(self):
         """ check identical re-weighting in ttbar 
