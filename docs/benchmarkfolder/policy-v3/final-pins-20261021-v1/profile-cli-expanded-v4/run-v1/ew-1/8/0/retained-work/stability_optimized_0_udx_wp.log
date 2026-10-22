@@ -1,0 +1,50 @@
+Stability check results
+
+Stability checking for u d~ > w+ [ virt = QED ] (optimized mode)
+
+Data entries for the stability plot.
+First row is a maximal accuracy delta, second is the fraction of events with DP accuracy worse than delta.
+<plot_data reduction=NINJARS>
+1.0000e-17  8.5000e-01
+1.5849e-17  8.5000e-01
+2.5119e-17  8.5000e-01
+3.9811e-17  8.5000e-01
+6.3096e-17  8.5000e-01
+1.0000e-16  8.5000e-01
+1.5849e-16  7.5000e-01
+2.5119e-16  7.5000e-01
+3.9811e-16  5.5000e-01
+6.3096e-16  4.5000e-01
+1.0000e-15  3.0000e-01
+1.5849e-15  2.5000e-01
+2.5119e-15  1.5000e-01
+3.9811e-15  5.0000e-02
+6.3096e-15  0.0000e+00
+1.0000e-14  0.0000e+00
+</plot_data>
+
+List of accuracies recorded for the 20 evaluations with NinjaRS
+First row is DP, second is QP (if available).
+
+<accuracies reduction=NINJARS>
+0.0000e+00  NA
+2.5829e-15  NA
+2.3246e-15  NA
+2.3246e-15  NA
+2.8412e-15  NA
+2.5829e-16  NA
+1.1623e-15  NA
+7.7488e-16  NA
+0.0000e+00  NA
+7.7488e-16  NA
+2.5829e-16  NA
+1.2915e-16  NA
+4.7784e-15  NA
+1.2915e-16  NA
+5.1659e-16  NA
+5.1659e-16  NA
+0.0000e+00  NA
+3.8744e-16  NA
+2.5829e-16  NA
+7.7488e-16  NA
+</accuracies>

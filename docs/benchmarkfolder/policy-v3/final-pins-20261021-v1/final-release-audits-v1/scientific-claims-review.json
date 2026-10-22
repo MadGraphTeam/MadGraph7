@@ -1,0 +1,429 @@
+{
+  "amended_performance": {
+    "required_gate": "Six10point full-sum normal-rescue processes with7pairs versus original Ninja; retired8case timing gate not reinstated.",
+    "rows": {
+      "ew-1": {
+        "pairs": 7,
+        "passed": true,
+        "points": 10,
+        "ratio": 0.9342693030055261,
+        "reported_ci95": [
+          0.930253076915019,
+          0.9413358218877591
+        ]
+      },
+      "ew-2": {
+        "pairs": 7,
+        "passed": true,
+        "points": 10,
+        "ratio": 1.0332405446051574,
+        "reported_ci95": [
+          1.0305244106215907,
+          1.0392695537924197
+        ]
+      },
+      "qcd-1": {
+        "pairs": 7,
+        "passed": true,
+        "points": 10,
+        "ratio": 0.9198624206186806,
+        "reported_ci95": [
+          0.9117613773772438,
+          0.9218660875106502
+        ]
+      },
+      "qcd-2": {
+        "pairs": 7,
+        "passed": true,
+        "points": 10,
+        "ratio": 0.8830123357384022,
+        "reported_ci95": [
+          0.8798127529003507,
+          0.8869686609644211
+        ]
+      },
+      "supplement-gg-h": {
+        "pairs": 7,
+        "passed": true,
+        "points": 10,
+        "ratio": 0.7862324413438299,
+        "reported_ci95": [
+          0.784061825516816,
+          0.7991948959944504
+        ]
+      },
+      "supplement-gg-hh": {
+        "pairs": 7,
+        "passed": true,
+        "points": 10,
+        "ratio": 0.8072931983626191,
+        "reported_ci95": [
+          0.7897604598306105,
+          0.8148265835211542
+        ]
+      }
+    }
+  },
+  "cli": {
+    "cases": {
+      "control-gg-h": {
+        "observations": {
+          "6": 3,
+          "8": 3
+        },
+        "status": "complete_comparable"
+      },
+      "control-gg-hh": {
+        "observations": {
+          "6": 3,
+          "8": 3
+        },
+        "status": "complete_comparable"
+      },
+      "ew-1": {
+        "observations": {
+          "6": 3,
+          "8": 3
+        },
+        "status": "complete_incomparable"
+      },
+      "ew-2": {
+        "observations": {
+          "6": 3,
+          "8": 3
+        },
+        "status": "complete_comparable"
+      },
+      "ew-3": {
+        "observations": {
+          "6": 3,
+          "8": 3
+        },
+        "status": "complete_comparable"
+      },
+      "ew-4": {
+        "observations": {
+          "6": 3,
+          "8": 3
+        },
+        "status": "complete_comparable"
+      },
+      "profile-gg-hhh": {
+        "observations": {
+          "6": 3,
+          "8": 3
+        },
+        "status": "complete_comparable"
+      },
+      "profile-gg-hhhh": {
+        "observations": {
+          "6": 3,
+          "8": 3
+        },
+        "status": "complete_comparable"
+      },
+      "qcd-1": {
+        "observations": {
+          "6": 3,
+          "8": 3
+        },
+        "status": "complete_incomparable"
+      },
+      "qcd-2": {
+        "observations": {
+          "6": 3,
+          "8": 3
+        },
+        "status": "complete_comparable"
+      },
+      "qcd-3": {
+        "observations": {
+          "6": 3,
+          "8": 3
+        },
+        "status": "complete_comparable"
+      },
+      "qcd-4": {
+        "observations": {
+          "6": 3,
+          "8": 3
+        },
+        "status": "complete_comparable"
+      }
+    },
+    "global_aggregate_complete": false,
+    "limits": [
+      "Only10 processes have matched timing scopes across all6observations; QCD1/EW1 ratios NA.",
+      "FULL-minus-SKIP is an inclusive estimate, not a scalar-algorithm stopwatch.",
+      "20-point DP caches/zero populated QP samples are reused across3sessions; not60unique samples or full timed rescue counters.",
+      "Expanded12case diagnostics do not replace the six-process full-sum acceptance gate."
+    ],
+    "valid_observations": 72
+  },
+  "core": {
+    "coefficient_comparisons": 19200,
+    "label_limit": "764/36 is original Ninja reference calibration, not optimized-candidate-source Ninja.",
+    "pairwise_traversal_comparisons": 24,
+    "status_counts": {
+      "nrs": {
+        "218": 768,
+        "322": 32
+      },
+      "original_ninja_reference": {
+        "216": 764,
+        "328": 36
+      }
+    },
+    "unique_process_points": 800,
+    "worst_fraction_of_tolerance": 0.8798816587474108
+  },
+  "goal_audit": {
+    "failed_required_current_scientific_gate_identified": false,
+    "no_universal_all_phase_space_or_all_upstream_tests_claim": true,
+    "publication_completion_still_requires": "Final report feedback/reproduction/visual audit, software/inventory checks, branch cleanup and pushed commits; owned by root/other auditors."
+  },
+  "inputs": {
+    "docs/benchmarkfolder/benchmark.typ": {
+      "bytes": 21743,
+      "sha256": "63232ec5195c1575a5d347c5b7b0a5601860980fb85d3f480466a51329083342"
+    },
+    "docs/benchmarkfolder/final-report-v1/cli-report.json": {
+      "bytes": 10672582,
+      "sha256": "8a1da525d23d21bd19b5c47b96aa1be479aa412bc13f3e0aebaf485dd55ac334"
+    },
+    "docs/benchmarkfolder/final-report-v1/report-data.json": {
+      "bytes": 266071,
+      "sha256": "d9a3cc8871a5b9a2ed66ada7057079a62942afe4c1470092e94a0eb0d2c2e6a1"
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-1-baseline-6-calibration.json": {
+      "bytes": 60796,
+      "sha256": "870cf99f578d7c405e5e58451d918a60ed204a1a349dba9cb5f54397630257ef"
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-2-baseline-6-calibration.json": {
+      "bytes": 62946,
+      "sha256": "addcbac45aaac6731510ecd6a85d0f969f652bfa612503e7eed5fae40924ec79"
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/ew-3-baseline-6-calibration.json": {
+      "bytes": 63290,
+      "sha256": "6460ea8d59427b31e6168d79acf620f71d820b07872897f5a5df374dcab24aac"
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-1-baseline-6-calibration.json": {
+      "bytes": 58986,
+      "sha256": "112bb30d3795788901322954ae4b7373fb5e477f98cb1b24f33665a375c2d5cb"
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-2-baseline-6-calibration.json": {
+      "bytes": 61043,
+      "sha256": "d1bc0f52218bacbe6317361b4fbe21624b56598485bcad9f3ef6b7c8130c66e5"
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-24h-20261020/data/qcd-3-baseline-6-calibration.json": {
+      "bytes": 63493,
+      "sha256": "e748fd872586face9d3e5e5553689e0a9eb47c1e02bf1d193264726c6f05950b"
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-core-v2-fresh-20261021/data/qcd-4-baseline-6-calibration.json": {
+      "bytes": 63124,
+      "sha256": "f3d7c326a6156cfca826c8590b80fe4405e7a32e561c43e6cda730021add2ae0"
+    },
+    "docs/benchmarkfolder/policy-v2/reference-runs/corrected-original-ew4-ct-ninja-v3-20261021/data/ew-4-baseline-6-calibration.json": {
+      "bytes": 63318,
+      "sha256": "07cb3d1c46d29fb1c9600a70af38ab13e617a7a7acfa8cf1d1eb5bcc8691fd79"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/independent-ninja-audit-v1.json": {
+      "bytes": 94561,
+      "sha256": "444fcc8a83ac1b048084f7f8fce52a32805dcf5b8fa88f7ada07c5c51dcb65b5"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/data/ew-1-candidate-8-0.json": {
+      "bytes": 405973,
+      "sha256": "794bccddbaea596b6a92fbf9a3d694977706e9e2669a9fedf108441be5ac328c"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/data/ew-2-candidate-8-0.json": {
+      "bytes": 408040,
+      "sha256": "b7a16fbf7713e47ab783013a8897ca59e1949e20ec81d51feb8f18ed093065ec"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/data/ew-3-candidate-8-0.json": {
+      "bytes": 408295,
+      "sha256": "13e92e8cecd7ebed3e90799a1efd82de7896388d4d0f37c851269a004b42eb32"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/data/ew-4-candidate-8-0.json": {
+      "bytes": 408259,
+      "sha256": "5583a39164dc2a9c628c3492e3e47002308d358fa467f061b04227224151d33e"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/data/qcd-1-candidate-8-0.json": {
+      "bytes": 403787,
+      "sha256": "e33c48023376453dc6be24e53a3e183237d3963b68f2e214dc948c14e8a3ef9c"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/data/qcd-2-candidate-8-0.json": {
+      "bytes": 406158,
+      "sha256": "7cc2fc6725b76e303c67a0eaf77a7e65272e6e9c54d5f437ab1c3ae238107c76"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/data/qcd-3-candidate-8-0.json": {
+      "bytes": 408530,
+      "sha256": "0e0e23cb913751bda924d8b518bad4aaef8d5e8040f846e0c1f76ea8c9ad9e3b"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/run-v1/data/qcd-4-candidate-8-0.json": {
+      "bytes": 407757,
+      "sha256": "b51ba99e833bb889e6dd37f9b765e99d4f39649331b4a8566313e63f4fe68dbd"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/result.json": {
+      "bytes": 123422,
+      "sha256": "ab7f9b9dc0e870e1ba62aa534615250ddaaa8eed6d7dffa6b37846266aaf46ae"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/portable-unit-proof.json": {
+      "bytes": 11257,
+      "sha256": "fcc7e54b7fead1e820367f5f4afe882353392a24de6f8ab7b2a65e4ef3b085ec"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/verification-v2.json": {
+      "bytes": 7822,
+      "sha256": "7f19cf47f11d7607450b4f51e31a67d40b710e23a2cfbc3bb71a97cce02d1caf"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/paper-comparison/lightweight-final-science-v1/data/0001-summary.json": {
+      "bytes": 7332985,
+      "sha256": "c46368e08f039d39d4acb6369f067407785315cf5a591099db97f1e9adb6b12e"
+    },
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/references-public-v2.json": {
+      "bytes": 1683755,
+      "sha256": "590aed9f703925057cb7e1ae1f3cbd6d0527dba4cfe581ab7a4a653c42a14669"
+    },
+    "references/PLAN.md": {
+      "bytes": 84393,
+      "sha256": "f0f5d4c30e2ce925c1dcc1d9e4f6804eb5a6c75ee2a8a8e911567364e7b337a2"
+    }
+  },
+  "material_report_clarifications_requested": [
+    "Label2.73e-62 as maximum scaled Laurent difference.",
+    "Label1.48e-34 as maximum scaled complete-Laurent difference from historical outputs.",
+    "Add explicit ordinaryRust24PASS0FAIL7IGNORED sentence, separate from ignored adversarial failures."
+  ],
+  "native_dp": {
+    "hardware_exception_observations": {
+      "ew-1": {
+        "6": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        },
+        "8": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        }
+      },
+      "ew-2": {
+        "6": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        },
+        "8": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 300,
+          "ieee_overflow_seen": 0
+        }
+      },
+      "ew-3": {
+        "6": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        },
+        "8": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 300,
+          "ieee_overflow_seen": 0
+        }
+      },
+      "qcd-1": {
+        "6": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        },
+        "8": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        }
+      },
+      "qcd-2": {
+        "6": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        },
+        "8": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 300,
+          "ieee_overflow_seen": 0
+        }
+      },
+      "qcd-3": {
+        "6": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        },
+        "8": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 300,
+          "ieee_overflow_seen": 0
+        }
+      },
+      "supplement-gg-h": {
+        "6": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        },
+        "8": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        }
+      },
+      "supplement-gg-hh": {
+        "6": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        },
+        "8": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 300,
+          "ieee_overflow_seen": 0
+        }
+      }
+    },
+    "limits": [
+      "Hardware-invalid300 call observations in5NRS processes are separate from zero algorithmic rejection/nonfinite/MP/comp counters.",
+      "Loop-induced H/HH random panels use one preregistered all-minus helicity; full-sum timing is separate.",
+      "Finite-sample transformation self-consistency is not an analytic finite-part oracle."
+    ],
+    "points_per_case_tool": 100
+  },
+  "precision": {
+    "convergence_passed": true,
+    "convergence_requests_each_precision": 1392,
+    "current_source_changes_from_tested45": [
+      "UPSTREAM.md"
+    ],
+    "historical_binary128_changes": 468,
+    "ignored_provider_diagnostic_passed": false,
+    "limits": [
+      "The two failed assertions remain explicit ignored diagnostics in current source; standardCargo/makecheck does not use--ignored.",
+      "The1392fresh256/384convergence succeeds; bit-identity and upstream directprovider convergence remain distinct failing diagnostics.",
+      "Binary128input recovery is exact; outputASCII may double-round16/22272fields.",
+      "Reduction/masters256bits do not supply256bitnumerator accuracy.",
+      "FullbridgeconsistentplanarDPaccurate/MPsafereject does not solve upstream directprovider issue."
+    ],
+    "original_ignored_bitidentity_exit": 101,
+    "standard_current_rust_suite": {
+      "failed": 0,
+      "ignored": 7,
+      "passed": 24
+    },
+    "standard_suite_exit": 0,
+    "unsafe_provider_successes": 2
+  },
+  "schema": "final-scientific-claims-review-v1",
+  "scope": "Independent retained-source/data claims audit; first completed14page report draft; no native calls/tests/builds/archive hashes or edits to implementation/report source.",
+  "status": "scientific-scope-pass-with-two-label-clarifications-requested"
+}

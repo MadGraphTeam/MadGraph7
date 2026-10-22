@@ -1,0 +1,142 @@
+{
+  "files": {
+    "README.md": {
+      "bytes": 3088,
+      "sha256": "49a14aae5d47052dcff560364396de0d68cf25ca0a51e090432ae224dbd775c5"
+    },
+    "assets/combined-loop-induced.svg": {
+      "bytes": 79241,
+      "sha256": "83751162b57f04707aa3b0bf965ca37865d9aee38302afe313983b937a5da369"
+    },
+    "assets/combined-on-shell.svg": {
+      "bytes": 70298,
+      "sha256": "865e148f64e246115cadc8f48d7e056b34a5764fd52cf4efd15b4e6bb5b6d506"
+    },
+    "assets/combined-three-particle.svg": {
+      "bytes": 83380,
+      "sha256": "dc7ee9c7983ddd35f95c356dc1983fd4f3a616597f0fc93650d359c83144f902"
+    },
+    "assets/combined-two-particle.svg": {
+      "bytes": 75197,
+      "sha256": "bdf406ef339dfdffbd3c1a47b3f585c4c9c6a0166fce4cc9b22f0b4552657382"
+    },
+    "assets/direction-loop-induced.svg": {
+      "bytes": 76397,
+      "sha256": "b69447d7fc57e11e80db18c5ad4d072f88cbebd9987ed0453102bee12449db38"
+    },
+    "assets/direction-on-shell.svg": {
+      "bytes": 65884,
+      "sha256": "3091ca65c8155237898c318580ce2066995b54bac34ed37ffaa27d9bc227b6ce"
+    },
+    "assets/direction-three-particle.svg": {
+      "bytes": 82105,
+      "sha256": "f89f4321768e79caef179ab79e2ec742a0ed459db52d48e4d9c616d0147bff03"
+    },
+    "assets/direction-two-particle.svg": {
+      "bytes": 68752,
+      "sha256": "83007d873524765ae8c8d4a4c93b33e6545be247a884e756ae0d784a81fcfdf5"
+    },
+    "assets/lorentz-loop-induced.svg": {
+      "bytes": 75393,
+      "sha256": "82c60ca00af45bc8f9a48dfc6f299a15aba8c442468ceb0b9751b90460871470"
+    },
+    "assets/lorentz-on-shell.svg": {
+      "bytes": 61080,
+      "sha256": "b77944f57d0a1184d3054708e16f63cf773f2327f264da320a1eeb3ae9fec70d"
+    },
+    "assets/lorentz-three-particle.svg": {
+      "bytes": 80779,
+      "sha256": "c91c65a26599c03574f20d958af5d4e98457189b68299f89ac9a9b5ae5a467ac"
+    },
+    "assets/lorentz-two-particle.svg": {
+      "bytes": 67728,
+      "sha256": "7a09948ca2127df20fddad9f3029296d0ff3ed669fc2f3c68cb4166db1746580"
+    },
+    "data/counts.json": {
+      "bytes": 17823,
+      "sha256": "93db8bf131aad2b42f842062569386b30557cbcfdce622d43cd860f29d72c836"
+    },
+    "data/figure-data-combined.json": {
+      "bytes": 2288624,
+      "sha256": "abe2f5975247413b163d700fc4ff3724c69ac171e718ff160a8213451ee9ddac"
+    },
+    "data/figure-data-direction.json": {
+      "bytes": 1899206,
+      "sha256": "8b3097a0741d8b87121f28a1cd465b16c1c7bf874f9deb58a859821874e63b2b"
+    },
+    "data/figure-data-lorentz.json": {
+      "bytes": 1772858,
+      "sha256": "3e77615c7f53e6268b011b5767e8cc5e87e18ad461ff829f09653ffb13606772"
+    },
+    "data/hardware-diagnostics.json": {
+      "bytes": 5535,
+      "sha256": "8952d4fd299b232e23530194fffddf724604102cd46740e2006157b797442a9d"
+    },
+    "evidence/first-live-render-source.py": {
+      "bytes": 11817,
+      "sha256": "3dfb9c63a01361804b8197d6ee24486eebd4dde7bfd6c7e8e8c3e09964eba956"
+    },
+    "evidence/materialized-render-receipt.json": {
+      "bytes": 8868,
+      "sha256": "788e88b81e0a4ca1b10a178ed6c5b702baa50979b8889221dcbfa738bb6455a9"
+    },
+    "evidence/offline-materialization-source.py": {
+      "bytes": 6221,
+      "sha256": "a9d98cb078209aa70b4e032edcb3479acb5d6fff35fe29b7c7b9f5e4eb5babd9"
+    },
+    "evidence/offline-vector-reproduction.json": {
+      "bytes": 1071,
+      "sha256": "b40cac5a2f0724585d21ebed6430dd9bd65a7a1b5e67b558a3d9297eb80b768c"
+    },
+    "evidence/offline-vector-reproduction.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "evidence/offline-vector-reproduction.stdout": {
+      "bytes": 109,
+      "sha256": "6c6e23182afa25f5a3404f5be8fca45688af931e2a41fb437cb61dafcabc62d3"
+    },
+    "evidence/original-live-reader-replay-receipt.json": {
+      "bytes": 7359,
+      "sha256": "86082074d7284c3d8fa15caa141cbca991959bc05faab4eb2015c7693f2f803c"
+    },
+    "evidence/preview-visual-reproduction-receipt.json": {
+      "bytes": 2327,
+      "sha256": "78470ffbfc058203eaaa32c6dea25c0dd96edcce98e06a89d7597d420e3114bb"
+    },
+    "evidence/print-layout-source.py": {
+      "bytes": 11969,
+      "sha256": "0b588c2387e0eb20d67e7a55557ce24e55b30bd4c7f8a3a199249b357270f254"
+    },
+    "evidence/reproduction-manifest-v1.json": {
+      "bytes": 4486,
+      "sha256": "9ea581c20a51e8e02b93adb4bd764f77951523ded022b9c84a362cc9178a2881"
+    },
+    "evidence/scientific-authorities.json": {
+      "bytes": 1860,
+      "sha256": "118d1161ac8f5f46c2803efb2fe3760c148be7e9d558dd926a0760bda7613936"
+    },
+    "evidence/vector-capsule-curation-source.py": {
+      "bytes": 10621,
+      "sha256": "bd00cdfdceaf8e355fa879b9df1b56c2b9237428e00b30e83f38d6610402e194"
+    },
+    "plot.py": {
+      "bytes": 7193,
+      "sha256": "7c590f290bb0702567a280394bcd9df315ebd6eb4cd26bc78c912acc56cb5d2f"
+    }
+  },
+  "points_per_case_per_tool": 100,
+  "rendering": {
+    "font_family": "Libertinus Serif",
+    "font_sha256": "fcf06307a77367394fcb0ccb241e59eea70dba3d732be309647611224679c733",
+    "matplotlib": "3.11.1",
+    "minimum_axes_font_pt": 10.3,
+    "sampling_metadata_font_pt": 9.5
+  },
+  "requested_tools": [
+    6,
+    8
+  ],
+  "schema": "actual-lightweight-stability-vector-assets-v1",
+  "scientific_data": "actual selected-eight N100; audited source/runtime/raw-custody/arithmetic"
+}

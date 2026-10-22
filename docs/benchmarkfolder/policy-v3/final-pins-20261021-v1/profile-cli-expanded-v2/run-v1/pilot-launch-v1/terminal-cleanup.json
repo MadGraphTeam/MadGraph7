@@ -1,0 +1,49 @@
+{
+  "status": "failed-pilot-safe-terminal",
+  "finished_utc": "2026-10-21T22:35:05.745968+00:00",
+  "owned_identity_checks": [
+    {
+      "pid": 311956,
+      "start_ticks": 65570045,
+      "pgid": 311956,
+      "present": false
+    },
+    {
+      "pid": 312017,
+      "start_ticks": 65570062,
+      "pgid": 312017,
+      "present": false
+    },
+    {
+      "pid": 312017,
+      "start_ticks": 65570062,
+      "pgid": 312017,
+      "present": false
+    },
+    {
+      "pid": 312695,
+      "start_ticks": 65570218,
+      "pgid": 312695,
+      "present": false
+    }
+  ],
+  "isolated_group_members": {
+    "312017": [],
+    "311956": [],
+    "312695": []
+  },
+  "cpu207_released": true,
+  "attempted_cells": [
+    0
+  ],
+  "accepted_profiles": 0,
+  "NinjaRS_cell_attempted": false,
+  "tracked_source_diff_from_fa6a": "",
+  "failed_result": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v2/run-v1/qcd-1/6/0/result.json",
+    "sha256": "715050c795703c9674404fb64582deaf32179aef44d28c4e717fe59c9e1702eb"
+  },
+  "failure": "Generic legacy MadLoopParams.dat lookup misses modern MadLoop5_resources card during stability",
+  "actual_debug_retained_in_failed_inventory": true,
+  "no_retry": true
+}

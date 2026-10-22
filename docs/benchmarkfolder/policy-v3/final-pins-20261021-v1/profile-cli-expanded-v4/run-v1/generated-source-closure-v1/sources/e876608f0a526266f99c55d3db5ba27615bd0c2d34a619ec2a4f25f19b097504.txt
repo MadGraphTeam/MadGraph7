@@ -1,0 +1,23 @@
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c      written by the UFO converter
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+
+      SUBROUTINE MP_COUP3( )
+      USE MODEL_OBJECT
+      IMPLICIT NONE
+
+      INCLUDE 'model_functions.inc'
+      REAL*16 MP__PI, MP__ZERO
+      PARAMETER (MP__PI=3.1415926535897932384626433832795E0_16)
+      PARAMETER (MP__ZERO=0E0_16)
+      INCLUDE 'mp_input.inc'
+      INCLUDE 'mp_coupl.inc'
+
+      MP__C_UVCXSWP1EW = (MP__MDL_EE*CMPLX(0.000000E+00_16,5.000000E
+     $ -01_16,KIND=16)*MP__MDL_CONJG__CKM22*(-2.000000E+00_16
+     $ *MP__MDL_SWCOUP_UV_EW_FIN_+MP__MDL_SW
+     $ *MP__MDL_SWCFT_BAR_UV_EW_L_FIN_+MP__MDL_SW*(2.000000E+00_16
+     $ *(MP__MDL_ECOUP_A0_UV_EW_FIN_+MP__MDL_ECOUP_DGMUA0_UV_EW_FIN_)
+     $ +MP__MDL_WWCFT_UV_EW_FIN_+MP__MDL_CWCFT_UV_EW_L_FIN_)))
+     $ /(MP__MDL_SQRT__2*MP__MDL_SW__EXP__2)
+      END

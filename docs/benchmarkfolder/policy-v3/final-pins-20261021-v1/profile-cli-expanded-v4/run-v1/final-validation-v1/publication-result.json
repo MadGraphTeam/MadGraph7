@@ -1,0 +1,1123 @@
+{
+  "cases": {
+    "control-gg-h": {
+      "adaptive_base_points": {
+        "6": [
+          9984,
+          3790,
+          3900
+        ],
+        "8": [
+          14105,
+          6084,
+          5924
+        ]
+      },
+      "all_stage_scopes_complete": true,
+      "all_stage_scopes_identical": true,
+      "cache": {
+        "6": {
+          "cache_sha256": "e07e24f818d2afd2a18fa0b38b9434c1577c72f0ef9bf236600b26393ede2cb2",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        },
+        "8": {
+          "cache_sha256": "8e8f7047cdf9c03c89b99fec07fe764899c1cd75b68202a0a61ca6795d13972d",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        }
+      },
+      "elapsed_seconds_by_session": {
+        "6": [
+          52.651747,
+          30.715284,
+          32.44203
+        ],
+        "8": [
+          54.007126,
+          31.826001,
+          32.326721
+        ]
+      },
+      "scope_differences": [],
+      "selected_helicity_weight": {
+        "6": [
+          2,
+          2,
+          2
+        ],
+        "8": [
+          2,
+          2,
+          2
+        ]
+      },
+      "sessions": {
+        "6": 3,
+        "8": 3
+      }
+    },
+    "control-gg-hh": {
+      "adaptive_base_points": {
+        "6": [
+          5416,
+          3172,
+          3171
+        ],
+        "8": [
+          7404,
+          4797,
+          4616
+        ]
+      },
+      "all_stage_scopes_complete": true,
+      "all_stage_scopes_identical": true,
+      "cache": {
+        "6": {
+          "cache_sha256": "f6715f0722090c4b00d92377ed769f861548e81246fe01d8efd50bbc11360283",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        },
+        "8": {
+          "cache_sha256": "732b1b9622c4f5d792187f259ec9687cb567aebeaed8acfe32f5f7329e635594",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        }
+      },
+      "elapsed_seconds_by_session": {
+        "6": [
+          70.747838,
+          40.088106,
+          42.934333
+        ],
+        "8": [
+          73.858096,
+          44.320939,
+          44.627249
+        ]
+      },
+      "scope_differences": [],
+      "selected_helicity_weight": {
+        "6": [
+          2,
+          2,
+          2
+        ],
+        "8": [
+          2,
+          2,
+          2
+        ]
+      },
+      "sessions": {
+        "6": 3,
+        "8": 3
+      }
+    },
+    "ew-1": {
+      "adaptive_base_points": {
+        "6": [
+          7315,
+          2629,
+          3186
+        ],
+        "8": [
+          10544,
+          4096,
+          4559
+        ]
+      },
+      "all_stage_scopes_complete": true,
+      "all_stage_scopes_identical": false,
+      "cache": {
+        "6": {
+          "cache_sha256": "637dde286397afe3db8a536ffdc787d5a0bac55ad0a10f482cfa08f6b456c5a3",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        },
+        "8": {
+          "cache_sha256": "44620e97f891340143d6455850049295add2fa61a499110312c4e5000b0cb658",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        }
+      },
+      "elapsed_seconds_by_session": {
+        "6": [
+          71.838397,
+          40.77599,
+          35.622063
+        ],
+        "8": [
+          71.266985,
+          44.31484,
+          36.274937
+        ]
+      },
+      "scope_differences": [
+        {
+          "different_keys": [
+            "helicity_index",
+            "physical_helicity",
+            "helicity_filter_sha256"
+          ],
+          "item": {
+            "backend": 6,
+            "case": "ew-1",
+            "command_card": {
+              "bytes": 758,
+              "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-plan-v4/cards/ew-1-6-0.mg5",
+              "sha256": "a85d70a77bf266d4b495c24d06c72258c3c98cc39c47e93eb8d196ad9cfb020c"
+            },
+            "npoints": 0,
+            "repetition": 1
+          }
+        },
+        {
+          "different_keys": [
+            "helicity_index",
+            "physical_helicity",
+            "helicity_filter_sha256"
+          ],
+          "item": {
+            "backend": 6,
+            "case": "ew-1",
+            "command_card": {
+              "bytes": 758,
+              "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-plan-v4/cards/ew-1-6-0.mg5",
+              "sha256": "a85d70a77bf266d4b495c24d06c72258c3c98cc39c47e93eb8d196ad9cfb020c"
+            },
+            "npoints": 0,
+            "repetition": 2
+          }
+        },
+        {
+          "different_keys": [
+            "helicity_index",
+            "physical_helicity",
+            "helicity_filter_sha256"
+          ],
+          "item": {
+            "backend": 8,
+            "case": "ew-1",
+            "command_card": {
+              "bytes": 758,
+              "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-plan-v4/cards/ew-1-8-0.mg5",
+              "sha256": "182e8726c85f42b1cac8f125ce7e4d935fff2f4a8585893872d518ce3c711f1c"
+            },
+            "npoints": 0,
+            "repetition": 1
+          }
+        },
+        {
+          "different_keys": [
+            "helicity_index",
+            "physical_helicity",
+            "helicity_filter_sha256"
+          ],
+          "item": {
+            "backend": 8,
+            "case": "ew-1",
+            "command_card": {
+              "bytes": 758,
+              "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-plan-v4/cards/ew-1-8-0.mg5",
+              "sha256": "182e8726c85f42b1cac8f125ce7e4d935fff2f4a8585893872d518ce3c711f1c"
+            },
+            "npoints": 0,
+            "repetition": 2
+          }
+        }
+      ],
+      "selected_helicity_weight": {
+        "6": [
+          1,
+          1,
+          1
+        ],
+        "8": [
+          1,
+          1,
+          1
+        ]
+      },
+      "sessions": {
+        "6": 3,
+        "8": 3
+      }
+    },
+    "ew-2": {
+      "adaptive_base_points": {
+        "6": [
+          4889,
+          2544,
+          2641
+        ],
+        "8": [
+          5759,
+          3158,
+          3213
+        ]
+      },
+      "all_stage_scopes_complete": true,
+      "all_stage_scopes_identical": true,
+      "cache": {
+        "6": {
+          "cache_sha256": "f8da16c7cac424a4232374f88ee51e1a8e5c0a36800d67482c8c14c3cc74e7ea",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        },
+        "8": {
+          "cache_sha256": "2f0b7f9d29d260c3a4680f3f492d1421b6d05861799658074609375772b9f020",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        }
+      },
+      "elapsed_seconds_by_session": {
+        "6": [
+          102.883507,
+          43.494085,
+          41.472945
+        ],
+        "8": [
+          103.188857,
+          45.161764,
+          41.794235
+        ]
+      },
+      "scope_differences": [],
+      "selected_helicity_weight": {
+        "6": [
+          2,
+          2,
+          2
+        ],
+        "8": [
+          2,
+          2,
+          2
+        ]
+      },
+      "sessions": {
+        "6": 3,
+        "8": 3
+      }
+    },
+    "ew-3": {
+      "adaptive_base_points": {
+        "6": [
+          611,
+          654,
+          658
+        ],
+        "8": [
+          429,
+          699,
+          562
+        ]
+      },
+      "all_stage_scopes_complete": true,
+      "all_stage_scopes_identical": true,
+      "cache": {
+        "6": {
+          "cache_sha256": "5da5fce15a4686af5dd87ffe47f8e0ece52a7374f3b12945cdc4331d5208c9ad",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        },
+        "8": {
+          "cache_sha256": "57f9914052bec17edb64646f28ed32ff5f4164580e6ce01272dff5bd66ea60d8",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        }
+      },
+      "elapsed_seconds_by_session": {
+        "6": [
+          205.947212,
+          93.259179,
+          94.178991
+        ],
+        "8": [
+          189.708087,
+          95.020924,
+          86.250187
+        ]
+      },
+      "scope_differences": [],
+      "selected_helicity_weight": {
+        "6": [
+          1,
+          1,
+          1
+        ],
+        "8": [
+          1,
+          1,
+          1
+        ]
+      },
+      "sessions": {
+        "6": 3,
+        "8": 3
+      }
+    },
+    "ew-4": {
+      "adaptive_base_points": {
+        "6": [
+          50,
+          82,
+          81
+        ],
+        "8": [
+          50,
+          80,
+          83
+        ]
+      },
+      "all_stage_scopes_complete": true,
+      "all_stage_scopes_identical": true,
+      "cache": {
+        "6": {
+          "cache_sha256": "476124c6a5fbd4c813b985c73967c10d38fb8acb1aafb6e1151c740d841dca59",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        },
+        "8": {
+          "cache_sha256": "2d8e4958b92cea4b0dce1b389fb6038da6ce2d102a039f041b9749299c614c9c",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        }
+      },
+      "elapsed_seconds_by_session": {
+        "6": [
+          279.432556,
+          99.884138,
+          98.905651
+        ],
+        "8": [
+          285.235062,
+          100.223309,
+          100.046752
+        ]
+      },
+      "scope_differences": [],
+      "selected_helicity_weight": {
+        "6": [
+          1,
+          1,
+          1
+        ],
+        "8": [
+          1,
+          1,
+          1
+        ]
+      },
+      "sessions": {
+        "6": 3,
+        "8": 3
+      }
+    },
+    "profile-gg-hhh": {
+      "adaptive_base_points": {
+        "6": [
+          703,
+          663,
+          664
+        ],
+        "8": [
+          804,
+          807,
+          813
+        ]
+      },
+      "all_stage_scopes_complete": true,
+      "all_stage_scopes_identical": true,
+      "cache": {
+        "6": {
+          "cache_sha256": "05163ab08180b7034658a00bbde96d2eaaea3239d5311512c6f9bc7562a723c4",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        },
+        "8": {
+          "cache_sha256": "3969b7eaea9697a4751a33b96bc6caedef71e9fe55178b58a8407b33b5e54c0b",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        }
+      },
+      "elapsed_seconds_by_session": {
+        "6": [
+          114.605057,
+          73.085881,
+          75.265646
+        ],
+        "8": [
+          110.093839,
+          76.09099,
+          75.721646
+        ]
+      },
+      "scope_differences": [],
+      "selected_helicity_weight": {
+        "6": [
+          1,
+          1,
+          1
+        ],
+        "8": [
+          1,
+          1,
+          1
+        ]
+      },
+      "sessions": {
+        "6": 3,
+        "8": 3
+      }
+    },
+    "profile-gg-hhhh": {
+      "adaptive_base_points": {
+        "6": [
+          50,
+          50,
+          50
+        ],
+        "8": [
+          53,
+          54,
+          54
+        ]
+      },
+      "all_stage_scopes_complete": true,
+      "all_stage_scopes_identical": true,
+      "cache": {
+        "6": {
+          "cache_sha256": "a63954fc4a1cc8a85882c3a3c2e2996ec531e95b98909bbaaa60c4c43b170027",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        },
+        "8": {
+          "cache_sha256": "d1fd3c1d16ab6cef13a088bfa090cfcc8469bc4c29d64c98bb45437e8f001368",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        }
+      },
+      "elapsed_seconds_by_session": {
+        "6": [
+          178.927974,
+          82.775166,
+          81.57104
+        ],
+        "8": [
+          170.780422,
+          81.502323,
+          78.722826
+        ]
+      },
+      "scope_differences": [],
+      "selected_helicity_weight": {
+        "6": [
+          1,
+          1,
+          1
+        ],
+        "8": [
+          1,
+          1,
+          1
+        ]
+      },
+      "sessions": {
+        "6": 3,
+        "8": 3
+      }
+    },
+    "qcd-1": {
+      "adaptive_base_points": {
+        "6": [
+          10707,
+          3818,
+          4082
+        ],
+        "8": [
+          16376,
+          6549,
+          6443
+        ]
+      },
+      "all_stage_scopes_complete": true,
+      "all_stage_scopes_identical": false,
+      "cache": {
+        "6": {
+          "cache_sha256": "f2c81e6fd17eba3034084aa0758de59acd3db4bef15b5db243ad6f7d0f5b4059",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        },
+        "8": {
+          "cache_sha256": "0cd61153a50a5933e8b5aabc2b531984bec515dc9c78cdb2a88b32894e269b63",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        }
+      },
+      "elapsed_seconds_by_session": {
+        "6": [
+          47.991006,
+          33.888386,
+          31.726994
+        ],
+        "8": [
+          46.191287,
+          31.402809,
+          30.58514
+        ]
+      },
+      "scope_differences": [
+        {
+          "different_keys": [
+            "helicity_index",
+            "physical_helicity",
+            "helicity_filter_sha256"
+          ],
+          "item": {
+            "backend": 6,
+            "case": "qcd-1",
+            "command_card": {
+              "bytes": 655,
+              "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-plan-v4/cards/qcd-1-6-0.mg5",
+              "sha256": "0134c967eecca42c328761d12d44224a9da91c9353ecd2e8683e11d5fe18d36d"
+            },
+            "npoints": 0,
+            "repetition": 1
+          }
+        },
+        {
+          "different_keys": [
+            "helicity_index",
+            "physical_helicity",
+            "helicity_filter_sha256"
+          ],
+          "item": {
+            "backend": 6,
+            "case": "qcd-1",
+            "command_card": {
+              "bytes": 655,
+              "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-plan-v4/cards/qcd-1-6-0.mg5",
+              "sha256": "0134c967eecca42c328761d12d44224a9da91c9353ecd2e8683e11d5fe18d36d"
+            },
+            "npoints": 0,
+            "repetition": 2
+          }
+        },
+        {
+          "different_keys": [
+            "helicity_index",
+            "physical_helicity",
+            "helicity_filter_sha256"
+          ],
+          "item": {
+            "backend": 8,
+            "case": "qcd-1",
+            "command_card": {
+              "bytes": 655,
+              "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-plan-v4/cards/qcd-1-8-0.mg5",
+              "sha256": "1379cbb60a3d893bcc979c0e85ad0582b10745eefb1354eb84562d4f546fbae6"
+            },
+            "npoints": 0,
+            "repetition": 1
+          }
+        },
+        {
+          "different_keys": [
+            "helicity_index",
+            "physical_helicity",
+            "helicity_filter_sha256"
+          ],
+          "item": {
+            "backend": 8,
+            "case": "qcd-1",
+            "command_card": {
+              "bytes": 655,
+              "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-plan-v4/cards/qcd-1-8-0.mg5",
+              "sha256": "1379cbb60a3d893bcc979c0e85ad0582b10745eefb1354eb84562d4f546fbae6"
+            },
+            "npoints": 0,
+            "repetition": 2
+          }
+        }
+      ],
+      "selected_helicity_weight": {
+        "6": [
+          1,
+          1,
+          1
+        ],
+        "8": [
+          1,
+          1,
+          1
+        ]
+      },
+      "sessions": {
+        "6": 3,
+        "8": 3
+      }
+    },
+    "qcd-2": {
+      "adaptive_base_points": {
+        "6": [
+          5581,
+          3361,
+          3378
+        ],
+        "8": [
+          6936,
+          4810,
+          4477
+        ]
+      },
+      "all_stage_scopes_complete": true,
+      "all_stage_scopes_identical": true,
+      "cache": {
+        "6": {
+          "cache_sha256": "f11b1dbcffda03514789a9a055ee168253f48ae8d0dab554775918e3a5ecf2f9",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        },
+        "8": {
+          "cache_sha256": "c9640bc580f89ee5aaadceb06336f178cd0ce8d1cedb08eeed4440e3dd53413a",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        }
+      },
+      "elapsed_seconds_by_session": {
+        "6": [
+          73.168296,
+          42.397832,
+          40.814192
+        ],
+        "8": [
+          76.536354,
+          46.13215,
+          43.359037
+        ]
+      },
+      "scope_differences": [],
+      "selected_helicity_weight": {
+        "6": [
+          2,
+          2,
+          2
+        ],
+        "8": [
+          2,
+          2,
+          2
+        ]
+      },
+      "sessions": {
+        "6": 3,
+        "8": 3
+      }
+    },
+    "qcd-3": {
+      "adaptive_base_points": {
+        "6": [
+          565,
+          623,
+          618
+        ],
+        "8": [
+          658,
+          639,
+          663
+        ]
+      },
+      "all_stage_scopes_complete": true,
+      "all_stage_scopes_identical": true,
+      "cache": {
+        "6": {
+          "cache_sha256": "16b132904c61ec522eef2bd9467400bd33f8ad76e4f908f4825ecfd0c09ceb33",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        },
+        "8": {
+          "cache_sha256": "9b91c580af24b093c2dcc725778f1bf1bebe3c2d00551cfc493eb59282a0a2ce",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        }
+      },
+      "elapsed_seconds_by_session": {
+        "6": [
+          119.272862,
+          87.60504,
+          89.817343
+        ],
+        "8": [
+          120.410117,
+          87.702351,
+          92.256304
+        ]
+      },
+      "scope_differences": [],
+      "selected_helicity_weight": {
+        "6": [
+          1,
+          1,
+          1
+        ],
+        "8": [
+          1,
+          1,
+          1
+        ]
+      },
+      "sessions": {
+        "6": 3,
+        "8": 3
+      }
+    },
+    "qcd-4": {
+      "adaptive_base_points": {
+        "6": [
+          50,
+          50,
+          50
+        ],
+        "8": [
+          50,
+          50,
+          50
+        ]
+      },
+      "all_stage_scopes_complete": true,
+      "all_stage_scopes_identical": true,
+      "cache": {
+        "6": {
+          "cache_sha256": "3eb12bad263beac2f8f8c211e10d6a8ccddfb468466574ee897fbd2cab716777",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        },
+        "8": {
+          "cache_sha256": "c4f51b8ad60093563fc52b85d11e982f76c8787c289892ae4cb021e7dba8e8ee",
+          "dp_points": 20,
+          "new_points_by_session": [
+            20,
+            0,
+            0
+          ],
+          "qp_points": 0,
+          "same_cache_across_sessions": true
+        }
+      },
+      "elapsed_seconds_by_session": {
+        "6": [
+          307.324801,
+          147.408374,
+          152.405193
+        ],
+        "8": [
+          306.081833,
+          147.114903,
+          149.379842
+        ]
+      },
+      "scope_differences": [],
+      "selected_helicity_weight": {
+        "6": [
+          1,
+          1,
+          1
+        ],
+        "8": [
+          1,
+          1,
+          1
+        ]
+      },
+      "sessions": {
+        "6": 3,
+        "8": 3
+      }
+    }
+  },
+  "cleanup": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/continuation-launch-v1/terminal-cleanup.json",
+    "sha256": "1f61210a1acee6fcd3aa367b68aa1f2877cda492e1f5e8fe83b4531aca26190e"
+  },
+  "controller_results": [
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/pilot-launch-v1/result.json",
+      "sha256": "64abd5afd99869045001ddb9cec5f9ffd06e88c5ea2dba472720aaf9ea773424"
+    },
+    {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/continuation-launch-v1/result.json",
+      "sha256": "e3f5f0ebedeaeba06f0e3e8f22ec9652bec25e1a3de2a17b4ba5ee59c50d770f"
+    }
+  ],
+  "coverage": {
+    "all_parent_returncodes_zero": true,
+    "backends": [
+      6,
+      8
+    ],
+    "cases": 12,
+    "cells": 72,
+    "controller_indices": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71
+    ],
+    "failed_cells": 0,
+    "repeated_cells": 0,
+    "sessions_per_backend": 3,
+    "strict_reader_failures": []
+  },
+  "expected_pins": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/final-validation-v1/expected-pins.json",
+    "sha256": "e9ccc784d5beeb0ea526ece124fe9f72f6a147b247fce8785dbde2339738a7c1"
+  },
+  "fullsum_performance_gate_eligible": false,
+  "invocation": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/final-validation-v1/validate-retained-results.py",
+    "sha256": "b882c83534e3c5d855eaa3031e89f5fe6021c53c0bb40e0548f2222e713e4590"
+  },
+  "limits": [
+    "MG7 direct-DP wall stages divided by actual adaptive traversal counts; loop evaluation is FULL-minus-SKIP estimate, not a direct reduction stopwatch",
+    "Three empirical CLI sessions per backend; no small-sample bootstrap coverage guarantee and no matched-point timing claim",
+    "20-point CLI stability cache reused unchanged with zero new points in sessions1/2; these are not timed rescue counts or retained matched-momentum CDF samples",
+    "Zero selected helicity weight or nonpositive subtraction samples must suppress corresponding optional logarithmic comparison",
+    "Literal-original full-helicity rescue-on LIGHT6 seven-pair acceptance study remains separate"
+  ],
+  "native_archive_bytes_read": 0,
+  "nonpositive_raw_timing_observations": [],
+  "numerical_calls": 0,
+  "optional_draft_receipt_sha256": "a7bfa80314e1c28b7debbf4e52ad084270c08ff2daffbdf09caa42789bad9dfd",
+  "publication_note": "This is the exact successful reader/controller/scope summary with the optional 41.7MB mirrored validated-record array omitted. All 72 original descriptors and their complete raw inventories remain the authority; inputs-sha256.json retains the verified transitive bytes.",
+  "qualification_eligible": false,
+  "reader": {
+    "path": "tools/ninjars_profile_cli_v3.py",
+    "sha256": "b0681842604b651eac164448f0ca5b19cc61ae02c16704ceb4e9e926516c8ff7"
+  },
+  "result_list": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/result-list.json",
+    "sha256": "ea1d1ad683d15a1c4d07314410e381390764451696f27858276eb5555b66eb31"
+  },
+  "schema": "final-retained-cli72-reader-invocation-v1",
+  "source_inventory": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/final-validation-v1/inputs-sha256.json",
+    "sha256": "9dc00c26c6bac3c3f0fc157804f05acc498969aadfac1614cdb87eee184f496e"
+  },
+  "specification": {
+    "bytes": 437434,
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-plan-v4/specification.json",
+    "sha256": "43179488a3fac72a88a45f95717c82b11f71e5a91b1697af7e084b32795a5492"
+  },
+  "status": "passed",
+  "timed_status_counts_available": false,
+  "utc": "2026-10-22T00:57:54.992404+00:00",
+  "zero_selected_helicity_weight_cells": []
+}

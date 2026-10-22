@@ -1,0 +1,24 @@
+{
+  "HH_independent_retained_audit_paused": true,
+  "HH_mathematical_postfinalizer_pass": "6a61ff18068ce87dfd06c4ee6f56f7580329f6bd24f22a98fa64c9a6da6649a6",
+  "authorized_indices": [
+    0,
+    1
+  ],
+  "continuation_requires_separate_root_handoff": true,
+  "global_timing_quiet_confirmed": true,
+  "native_HHH_four_children_reaped_zero": "417a348b9b78283124f020e97879a5c4fe92b0d129bfcc9e9513aafe0b1ceeb4",
+  "quiet_agents": [
+    "campaign_final",
+    "report_final",
+    "audit_final",
+    "numerical_final",
+    "installer_final",
+    "stress_final",
+    "paper_benchmark"
+  ],
+  "root_handoff_sha256": "678a4e0a012c707b52a75d318ab5ccc1555793decc1c1c6c086a6ff727cf2db1",
+  "schema": "root-profile-cli-pilot-operational-scope-v1",
+  "source_HEAD": "17cbbf00a3c50fab7e2102fd53b02a194049a1c9",
+  "utc": "2026-10-21T22:11:43.198825+00:00"
+}

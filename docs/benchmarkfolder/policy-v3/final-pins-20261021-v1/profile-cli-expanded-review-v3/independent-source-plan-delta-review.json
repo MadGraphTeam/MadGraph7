@@ -1,0 +1,18 @@
+{
+  "schema": "independent-cli-expanded-plan-v3-delta-review-v1",
+  "passed": true,
+  "specification_sha256": "93bb357fbae47ba0a43a630660c1cf2bdf38796950e4b7ef013f8b0f5fa6e6b2",
+  "manifest_sha256": "975f67b1e0989bbf678ef364b0c1f2a070d441f0ab59a1d43f9d5f7700ee7123",
+  "scope": "Fast bounded delta/readiness only; no tests/native/build/archive hashing or repeated source audit.",
+  "checks": [
+    "All52 finiteplan payload hash/size bindings verified.",
+    "Same12 definitions/models/seeds/physicalcards/HHHdirtylineage and48 byte-identical commandcards.",
+    "Same72 declaredcells,3repetitions/tool,first20 then cached0; pilotonlyindices0/1 and continuation requirement unchanged.",
+    "Same87 sourcekeys; only reviewedprocess_checks1229 changed, helperc8f2 unchanged.",
+    "68417 pushed source and135software59c5 binding; newwork/report absent beforepilot.",
+    "Both failed predecessor attempts explicitly zeroaccepted/no8; no reuse/relabel.",
+    "Expectedhandoff template remains root_authorizedfalse/CPU207/exactspec, actualhandoff still required.",
+    "36min nominaltarget caveat corrected; no achievedduration/floor or completecampaign claim."
+  ],
+  "quiescent_after_review": true
+}

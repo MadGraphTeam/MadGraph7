@@ -1,0 +1,32 @@
+{
+  "bound_inputs": {
+    ".benchmark-work/light-final-stability-figures-v1/attempt-3-print/preview-attempt-2/benchmark.typ": "68f5232812f7f0e96c1f73fffad202393a3a098b593d7fc54c33f484cabe131f",
+    ".benchmark-work/light-final-stability-figures-v1/attempt-3-print/preview-attempt-2/input-sha256.json": "a48359db63663ee40e8b78dc2a2132afcf9f21211cf7bb8cf641be9d4600cd4c",
+    ".benchmark-work/light-final-stability-figures-v1/attempt-3-print/preview-attempt-2/style.typ": "5660f8d742e20339e9688659ae3785e0a22808ab5c6719324c5bbbaf1fd4ec10",
+    ".benchmark-work/light-final-stability-figures-v1/attempt-3-print/preview-attempt-2/two-tool-data.json": "c1f924e4bbabd061c7af7ce4f6b9c13f1b1a39f4bce0c330ae9bbed73fd2b468",
+    ".benchmark-work/light-final-stability-figures-v1/attempt-3-print/render-receipt.json": "788e88b81e0a4ca1b10a178ed6c5b702baa50979b8889221dcbfa738bb6455a9",
+    ".benchmark-work/light-final-stability-figures-v1/prepare_preview.py": "0fe2511ba0212494fb40d9f2926c57d2f52ba8108be998abf18fdcbd24a28961",
+    ".benchmark-work/light-final-stability-figures-v1/render-attempt-1.py": "3dfb9c63a01361804b8197d6ee24486eebd4dde7bfd6c7e8e8c3e09964eba956",
+    ".benchmark-work/light-final-stability-figures-v1/render-print.py": "0b588c2387e0eb20d67e7a55557ce24e55b30bd4c7f8a3a199249b357270f254",
+    ".benchmark-work/light-final-stability-figures-v1/replot-print.py": "a9d98cb078209aa70b4e032edcb3479acb5d6fff35fe29b7c7b9f5e4eb5babd9"
+  },
+  "font_size_at_page_placement": {
+    "axes_pt": 10.3,
+    "caption_pt": 8.5,
+    "sampling_metadata_pt": 9.5
+  },
+  "main_report_changed": false,
+  "native_artifacts_opened_for_layout": 0,
+  "native_evaluations": 0,
+  "pages": 5,
+  "pdf_byte_identical": true,
+  "pdf_sha256": "c8db34652153dc82cffc21f32bce6d0e1079fd33905bfe8679815f8361497edb",
+  "reproduced_pdf_sha256": "c8db34652153dc82cffc21f32bce6d0e1079fd33905bfe8679815f8361497edb",
+  "schema": "actual-stability-preview-visual-reproduction-v1",
+  "synthetic_data": false,
+  "visual_inspection": {
+    "other_pages": "same fixed layout; two-particle/loop-induced PNGs independently inspected before compilation",
+    "page1": "passed; math, axes, sampling metadata and captions are legible without overlap",
+    "page5": "passed; finite counts, saved hardware invalid counts and audit scope are separate and legible"
+  }
+}

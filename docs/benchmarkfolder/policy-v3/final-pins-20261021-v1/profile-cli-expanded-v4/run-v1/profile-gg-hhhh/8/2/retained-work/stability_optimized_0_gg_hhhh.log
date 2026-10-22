@@ -1,0 +1,80 @@
+Stability check results
+
+Stability checking for g g > h h h h [ sqrvirt = QCD ] (optimized mode)
+
+Data entries for the stability plot.
+First row is a maximal accuracy delta, second is the fraction of events with DP accuracy worse than delta.
+<plot_data reduction=NINJARS>
+1.0000e-17  1.0000e+00
+1.5849e-17  1.0000e+00
+2.5119e-17  1.0000e+00
+3.9811e-17  1.0000e+00
+6.3096e-17  1.0000e+00
+1.0000e-16  1.0000e+00
+1.5849e-16  1.0000e+00
+2.5119e-16  1.0000e+00
+3.9811e-16  1.0000e+00
+6.3096e-16  1.0000e+00
+1.0000e-15  1.0000e+00
+1.5849e-15  1.0000e+00
+2.5119e-15  1.0000e+00
+3.9811e-15  1.0000e+00
+6.3096e-15  1.0000e+00
+1.0000e-14  1.0000e+00
+1.5849e-14  1.0000e+00
+2.5119e-14  1.0000e+00
+3.9811e-14  1.0000e+00
+6.3096e-14  1.0000e+00
+1.0000e-13  1.0000e+00
+1.5849e-13  1.0000e+00
+2.5119e-13  1.0000e+00
+3.9811e-13  8.5000e-01
+6.3096e-13  7.0000e-01
+1.0000e-12  6.5000e-01
+1.5849e-12  6.0000e-01
+2.5119e-12  6.0000e-01
+3.9811e-12  5.0000e-01
+6.3096e-12  4.5000e-01
+1.0000e-11  4.0000e-01
+1.5849e-11  2.5000e-01
+2.5119e-11  2.0000e-01
+3.9811e-11  2.0000e-01
+6.3096e-11  1.5000e-01
+1.0000e-10  5.0000e-02
+1.5849e-10  5.0000e-02
+2.5119e-10  5.0000e-02
+3.9811e-10  5.0000e-02
+6.3096e-10  5.0000e-02
+1.0000e-09  5.0000e-02
+1.5849e-09  5.0000e-02
+2.5119e-09  0.0000e+00
+3.9811e-09  0.0000e+00
+6.3096e-09  0.0000e+00
+1.0000e-08  0.0000e+00
+</plot_data>
+
+List of accuracies recorded for the 20 evaluations with NinjaRS
+First row is DP, second is QP (if available).
+
+<accuracies reduction=NINJARS>
+3.0000e-13  NA
+3.9476e-13  NA
+3.5035e-12  NA
+2.0733e-11  NA
+1.0129e-11  NA
+1.0228e-11  NA
+7.4688e-11  NA
+1.1285e-11  NA
+4.8293e-13  NA
+9.3206e-13  NA
+2.8177e-13  NA
+5.0508e-13  NA
+6.4081e-12  NA
+3.5441e-12  NA
+4.2690e-11  NA
+1.7993e-09  NA
+7.0987e-11  NA
+1.3356e-12  NA
+4.2974e-12  NA
+5.6325e-13  NA
+</accuracies>

@@ -1,0 +1,327 @@
+{
+  "schema": "owned-profile-cli-pilot-terminal-validation-v1",
+  "utc": "2026-10-21T23:06:36.426466+00:00",
+  "status": "passed",
+  "authorized_indices": [
+    0,
+    1
+  ],
+  "completed_indices": [
+    0,
+    1
+  ],
+  "normal_gate_claim": false,
+  "complete_diagnostic_profiles": 2,
+  "cpu207_released": true,
+  "recorded_identities": [
+    {
+      "pid": 1334355,
+      "start_ticks": 65757272,
+      "pgid": 1334355,
+      "session": 1334355,
+      "state": "absent"
+    },
+    {
+      "pid": 1334358,
+      "start_ticks": 65757279,
+      "pgid": 1334358,
+      "session": 1334358,
+      "state": "absent"
+    },
+    {
+      "pid": 1349390,
+      "start_ticks": 65762079,
+      "pgid": 1349390,
+      "session": 1349390,
+      "state": "absent"
+    },
+    {
+      "pid": 1334896,
+      "start_ticks": 65757437,
+      "pgid": 1334896,
+      "state": "absent"
+    },
+    {
+      "pid": 1349647,
+      "start_ticks": 65762180,
+      "pgid": 1349647,
+      "state": "absent"
+    }
+  ],
+  "owned_groups": [
+    1334355,
+    1334358,
+    1334896,
+    1349390,
+    1349647
+  ],
+  "remaining_group_members": [],
+  "strict_reader": "tools/ninjars_profile_cli_v3.py:report_snapshot",
+  "strict_source_pins": {
+    "ninja_archive": "42866021f93004c143e0a49de8c420a6bebbcd4eb26242eef556ad71296e57c0",
+    "ninjars_archive": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c",
+    "process_checks": "59b2051d9ba17408046e9a7df188b70256e4081b71519b441623bc5e33358899"
+  },
+  "same_stage_scope": true,
+  "scope_limitations": [
+    "One actual session per backend; no repeated-sample performance claim.",
+    "Separate stock adaptive timing streams and stability RNG prefixes; no matched-point cross-backend stability comparison.",
+    "Stock timing is direct-DP total-minus-SKIP estimation, not a direct reduction stopwatch or the full-sum rescue-on acceptance gate."
+  ],
+  "profiles": {
+    "6": {
+      "result": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/result.json",
+        "sha256": "3d4974d7ab4a705cb68adaebcc3511d186e5868726fec4553fe4687abdd38f51"
+      },
+      "complete": true,
+      "stage_scope_complete": true,
+      "stage_scope": {
+        "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+        "timing_energy_source": [
+          "SQRTS=PMASS(1)",
+          "SQRTS=MAX(1000D0,2.0D0*TOTMASS)",
+          "SQRTS=DSQRT(DABS(DOT(PIN(0),PIN(0))))"
+        ],
+        "helicity_index": 3,
+        "physical_helicity": [
+          1,
+          -1,
+          1
+        ],
+        "loop_optimized_output": true,
+        "direct_dp": true,
+        "helicity_table_sha256": "4598f48b6b2ac00343f20c274f536e95cd7ccbd56b035f7292a9387e40b0f035",
+        "helicity_filter_sha256": "689891d0230becc34d11c5fc2f8d05fb72e97fe8d77d31cfca64cc5e91b4253b",
+        "selected_helicity_weight": 1,
+        "common_madloop_settings": {
+          "iregimode": 2,
+          "iregirecy": true,
+          "ctmoderun": 1,
+          "mlstabthres": 0.001,
+          "nrotations_dp": 0,
+          "nrotations_qp": 0,
+          "improvepspoint": 2,
+          "ctlooplibrary": 2,
+          "ctstabthres": 0.01,
+          "ctmodeinit": 1,
+          "checkcycle": 3,
+          "maxattempts": 10,
+          "zerothres": 1e-09,
+          "osthres": 1e-08,
+          "doublecheckhelicityfilter": false,
+          "writeoutfilters": true,
+          "useloopfilter": true,
+          "helicityfilterlevel": 2,
+          "loopinitstartover": false,
+          "helinitstartover": false,
+          "useqpintegrandforninja": true,
+          "useqpintegrandforninjars": true,
+          "useqpintegrandforcuttools": true,
+          "colliermode": 1,
+          "colliercomputeuvpoles": true,
+          "colliercomputeirpoles": true,
+          "collierrequiredaccuracy": 1e-08,
+          "colliercanoutput": false,
+          "collierglobalcache": -1,
+          "collierusecacheforpoles": false,
+          "collieruseinternalstabilitytest": false
+        },
+        "actual_split_orders_target": "default-all",
+        "compiler_settings_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1"
+      },
+      "selected_helicity_weight": 1,
+      "adaptive_base_points": 10707,
+      "metadata_stage_count": 5,
+      "raw_timing": {
+        "run_polarized_total": 1.3348167100918663e-05,
+        "run_unpolarized_total": 1.9985809817839217e-05,
+        "run_unpolarized_coefs": 1.436423507181661e-05,
+        "run_polarized_coefs": 9.514809634557033e-06,
+        "single_helicity": {
+          "seconds_per_point": 1.3348167100918663e-05,
+          "construction_seconds_per_point": 9.514809634557033e-06,
+          "reduction_estimate_seconds_per_point": 3.83335746636163e-06
+        },
+        "helicity_sum": {
+          "seconds_per_point": 1.9985809817839217e-05,
+          "construction_seconds_per_point": 1.436423507181661e-05,
+          "reduction_estimate_seconds_per_point": 5.6215747460226075e-06
+        }
+      },
+      "stability": {
+        "cache": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/SAVEDTMP_CHECK_uux_z/SubProcesses/P0_uux_z/SavedStabilityRun_Ninja_0.pkl",
+          "sha256": "f2c81e6fd17eba3034084aa0758de59acd3db4bef15b5db243ad6f7d0f5b4059",
+          "bytes": 1472
+        },
+        "dp_points": 20,
+        "qp_points": 0,
+        "scope": "CLI self-consistency sample; ordinary momenta not retained by stock pickle; not matched-point CDF authority"
+      },
+      "thread_environment": {
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "RAYON_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1"
+      }
+    },
+    "8": {
+      "result": {
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/result.json",
+        "sha256": "c5aeee2c38c839c557a138892d8b9ccd0ee7399175f23b6057bfb30f0d4518f5"
+      },
+      "complete": true,
+      "stage_scope_complete": true,
+      "stage_scope": {
+        "physical_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+        "timing_energy_source": [
+          "SQRTS=PMASS(1)",
+          "SQRTS=MAX(1000D0,2.0D0*TOTMASS)",
+          "SQRTS=DSQRT(DABS(DOT(PIN(0),PIN(0))))"
+        ],
+        "helicity_index": 3,
+        "physical_helicity": [
+          1,
+          -1,
+          1
+        ],
+        "loop_optimized_output": true,
+        "direct_dp": true,
+        "helicity_table_sha256": "4598f48b6b2ac00343f20c274f536e95cd7ccbd56b035f7292a9387e40b0f035",
+        "helicity_filter_sha256": "689891d0230becc34d11c5fc2f8d05fb72e97fe8d77d31cfca64cc5e91b4253b",
+        "selected_helicity_weight": 1,
+        "common_madloop_settings": {
+          "iregimode": 2,
+          "iregirecy": true,
+          "ctmoderun": 1,
+          "mlstabthres": 0.001,
+          "nrotations_dp": 0,
+          "nrotations_qp": 0,
+          "improvepspoint": 2,
+          "ctlooplibrary": 2,
+          "ctstabthres": 0.01,
+          "ctmodeinit": 1,
+          "checkcycle": 3,
+          "maxattempts": 10,
+          "zerothres": 1e-09,
+          "osthres": 1e-08,
+          "doublecheckhelicityfilter": false,
+          "writeoutfilters": true,
+          "useloopfilter": true,
+          "helicityfilterlevel": 2,
+          "loopinitstartover": false,
+          "helinitstartover": false,
+          "useqpintegrandforninja": true,
+          "useqpintegrandforninjars": true,
+          "useqpintegrandforcuttools": true,
+          "colliermode": 1,
+          "colliercomputeuvpoles": true,
+          "colliercomputeirpoles": true,
+          "collierrequiredaccuracy": 1e-08,
+          "colliercanoutput": false,
+          "collierglobalcache": -1,
+          "collierusecacheforpoles": false,
+          "collieruseinternalstabilitytest": false
+        },
+        "actual_split_orders_target": "default-all",
+        "compiler_settings_sha256": "908a15f79e76987ee68c8f4957cc9e68d5362460f89480998fedf146347621c1"
+      },
+      "selected_helicity_weight": 1,
+      "adaptive_base_points": 16376,
+      "metadata_stage_count": 5,
+      "raw_timing": {
+        "run_polarized_total": 1.2982769541234928e-05,
+        "run_unpolarized_total": 2.5800104891316275e-05,
+        "run_unpolarized_coefs": 1.4554656419628238e-05,
+        "run_polarized_coefs": 9.711495130657276e-06,
+        "single_helicity": {
+          "seconds_per_point": 1.2982769541234928e-05,
+          "construction_seconds_per_point": 9.711495130657276e-06,
+          "reduction_estimate_seconds_per_point": 3.2712744105776515e-06
+        },
+        "helicity_sum": {
+          "seconds_per_point": 2.5800104891316275e-05,
+          "construction_seconds_per_point": 1.4554656419628238e-05,
+          "reduction_estimate_seconds_per_point": 1.1245448471688037e-05
+        }
+      },
+      "stability": {
+        "cache": {
+          "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/SAVEDTMP_CHECK_uux_z/SubProcesses/P0_uux_z/SavedStabilityRun_NinjaRS_0.pkl",
+          "sha256": "0cd61153a50a5933e8b5aabc2b531984bec515dc9c78cdb2a88b32894e269b63",
+          "bytes": 1472
+        },
+        "dp_points": 20,
+        "qp_points": 0,
+        "scope": "CLI self-consistency sample; ordinary momenta not retained by stock pickle; not matched-point CDF authority"
+      },
+      "thread_environment": {
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "RAYON_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1"
+      }
+    }
+  },
+  "input_hashes": {
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/result.json": "3d4974d7ab4a705cb68adaebcc3511d186e5868726fec4553fe4687abdd38f51",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/stdout.log": "32930e1cb07d094ad92b6244c3e7c504f261f84286f6743caa4d5f82098c7ad9",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/timing-metadata.json": "8d4b90c81f496886612bea64e07cf86729660167cf25a381369e7038b3453955",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/SavedStabilityRun_Ninja_0.pkl": "f2c81e6fd17eba3034084aa0758de59acd3db4bef15b5db243ad6f7d0f5b4059",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/process-ledger.jsonl": "59e91c105c578283696332adb60e1c4ed46b6b73e45dd7946270518c0984316d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/profile_cli.py": "b0681842604b651eac164448f0ca5b19cc61ae02c16704ceb4e9e926516c8ff7",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/MadLoopParams.dat": "8e8f2801293414ac696971b442e168003eabc5d2c3fbf17960526c340103a3b0",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/input-specification.json": "43179488a3fac72a88a45f95717c82b11f71e5a91b1697af7e084b32795a5492",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/root-handoff.json": "88e8031ff216b146ae7bd8d29cbad9ec1be564bab0475e4d0504bae975b98b73",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/profile.log": "569c14fb44d90e0e313eb4e5c3b5a042d05e53bf1ee1bd9e28532009bfa0fe44",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/check_sa.f": "ca86c419bda1bb73814d2b744f967c0d73ab682e055dcf801901289dc7401763",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/commands.mg5": "9561ccfafc39eb92e8dbf6fa32dca40394a1b6dae3d2dd21615d8ced9b01bd14",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/loop_matrix.f": "d413cd4d5e066be40c151862b50d4a2e8711052bb8154ca8f81c8d1bd47dbcb8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/retained-work/stability_optimized_0_uux_z.log": "a3726a356ce67c5413fe1d268b9327c3807e21b7f90355a72bc0c6588da1992f",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/retained-work/profile_optimized_0_uux_z.log": "569c14fb44d90e0e313eb4e5c3b5a042d05e53bf1ee1bd9e28532009bfa0fe44",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/timing-stage-inputs/profile_timing_metadata.json": "8d4b90c81f496886612bea64e07cf86729660167cf25a381369e7038b3453955",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/timing-stage-inputs/01_polarized_full/loop_matrix.f": "d413cd4d5e066be40c151862b50d4a2e8711052bb8154ca8f81c8d1bd47dbcb8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/timing-stage-inputs/01_polarized_full/check_sa.f": "290961976cb6c5991005ddc0d871714387a217c8daccdccc93f64b9932d6a013",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/timing-stage-inputs/04_polarized_skip/check_sa.f": "290961976cb6c5991005ddc0d871714387a217c8daccdccc93f64b9932d6a013",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/timing-stage-inputs/04_polarized_skip/loop_matrix.f": "d70b16741312a41600179d87ac2bea57885eafa2335d1a59906ce2d5d5d02318",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/timing-stage-inputs/00_boot/check_sa.f": "caf9524eef2cec0388b4b4288140ca5fd6adb8c3661ccf647992072a1189767d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/timing-stage-inputs/00_boot/loop_matrix.f": "87ff7936eadd2bde712ae347996e15742337d6326905a37b8259f6372231a1eb",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/timing-stage-inputs/03_unpolarized_skip/loop_matrix.f": "d70b16741312a41600179d87ac2bea57885eafa2335d1a59906ce2d5d5d02318",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/timing-stage-inputs/03_unpolarized_skip/check_sa.f": "f83c67fed04fd0cbdfbff5fe5a734337248a2e8050a0cbe73e74e4fa1c670bf4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/timing-stage-inputs/02_unpolarized_full/loop_matrix.f": "d413cd4d5e066be40c151862b50d4a2e8711052bb8154ca8f81c8d1bd47dbcb8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/timing-stage-inputs/02_unpolarized_full/check_sa.f": "f83c67fed04fd0cbdfbff5fe5a734337248a2e8050a0cbe73e74e4fa1c670bf4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/retained-work/SAVEDTMP_CHECK_uux_z/SavedRunInfos/profile_timing_metadata.json": "8d4b90c81f496886612bea64e07cf86729660167cf25a381369e7038b3453955",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/6/0/retained-work/SAVEDTMP_CHECK_uux_z/SubProcesses/P0_uux_z/SavedStabilityRun_Ninja_0.pkl": "f2c81e6fd17eba3034084aa0758de59acd3db4bef15b5db243ad6f7d0f5b4059",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/result.json": "c5aeee2c38c839c557a138892d8b9ccd0ee7399175f23b6057bfb30f0d4518f5",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/profile.log": "e734c7867f985345aa7d3cd2786e752bc00859e5664e9a08efdd6b0173389712",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/stdout.log": "6fe6547485fcbfc9935177ecfda1554ade3beb89863e0992c5a4d7656f286320",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/input-specification.json": "43179488a3fac72a88a45f95717c82b11f71e5a91b1697af7e084b32795a5492",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/MadLoopParams.dat": "4cd425ad025c57eae7a96e19b269266056145cfca1f86175ce0842385e1586f0",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/commands.mg5": "d077beb4f1c4e730040966051d57fa15cf42da03ffd82aeb9658fdde5fc5123b",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/param_card.dat": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/root-handoff.json": "88e8031ff216b146ae7bd8d29cbad9ec1be564bab0475e4d0504bae975b98b73",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/profile_cli.py": "b0681842604b651eac164448f0ca5b19cc61ae02c16704ceb4e9e926516c8ff7",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/check_sa.f": "ca86c419bda1bb73814d2b744f967c0d73ab682e055dcf801901289dc7401763",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/loop_matrix.f": "d413cd4d5e066be40c151862b50d4a2e8711052bb8154ca8f81c8d1bd47dbcb8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/process-ledger.jsonl": "86d877bd5bd6f6f48aceb11ffa22a926f9ce48a15183332acf173d1a34113c13",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/timing-metadata.json": "d2ef427c7bdbf9c01d5fd65a0982f022cec39461323987f9b259697db067a5f4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/SavedStabilityRun_NinjaRS_0.pkl": "0cd61153a50a5933e8b5aabc2b531984bec515dc9c78cdb2a88b32894e269b63",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/timing-stage-inputs/profile_timing_metadata.json": "d2ef427c7bdbf9c01d5fd65a0982f022cec39461323987f9b259697db067a5f4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/retained-work/stability_optimized_0_uux_z.log": "2d09b767272a78cf15394fdd70bed5337c250ffc1bc9a62698b9352e74452dc3",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/retained-work/profile_optimized_0_uux_z.log": "e734c7867f985345aa7d3cd2786e752bc00859e5664e9a08efdd6b0173389712",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/retained-work/SAVEDTMP_CHECK_uux_z/SavedRunInfos/profile_timing_metadata.json": "d2ef427c7bdbf9c01d5fd65a0982f022cec39461323987f9b259697db067a5f4",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/retained-work/SAVEDTMP_CHECK_uux_z/SubProcesses/P0_uux_z/SavedStabilityRun_NinjaRS_0.pkl": "0cd61153a50a5933e8b5aabc2b531984bec515dc9c78cdb2a88b32894e269b63",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/timing-stage-inputs/03_unpolarized_skip/check_sa.f": "faa6092eebb38b83e87d270573c458b170d3d6e4633512523da9ef0c8929c4ca",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/timing-stage-inputs/03_unpolarized_skip/loop_matrix.f": "d70b16741312a41600179d87ac2bea57885eafa2335d1a59906ce2d5d5d02318",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/timing-stage-inputs/04_polarized_skip/loop_matrix.f": "d70b16741312a41600179d87ac2bea57885eafa2335d1a59906ce2d5d5d02318",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/timing-stage-inputs/04_polarized_skip/check_sa.f": "b1d228ab9f28fb4a4b8b0f91c2eaf958b8e992211705f80378c3f461f47340da",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/timing-stage-inputs/02_unpolarized_full/loop_matrix.f": "d413cd4d5e066be40c151862b50d4a2e8711052bb8154ca8f81c8d1bd47dbcb8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/timing-stage-inputs/02_unpolarized_full/check_sa.f": "faa6092eebb38b83e87d270573c458b170d3d6e4633512523da9ef0c8929c4ca",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/timing-stage-inputs/01_polarized_full/loop_matrix.f": "d413cd4d5e066be40c151862b50d4a2e8711052bb8154ca8f81c8d1bd47dbcb8",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/timing-stage-inputs/01_polarized_full/check_sa.f": "b1d228ab9f28fb4a4b8b0f91c2eaf958b8e992211705f80378c3f461f47340da",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/timing-stage-inputs/00_boot/check_sa.f": "caf9524eef2cec0388b4b4288140ca5fd6adb8c3661ccf647992072a1189767d",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/qcd-1/8/0/timing-stage-inputs/00_boot/loop_matrix.f": "87ff7936eadd2bde712ae347996e15742337d6326905a37b8259f6372231a1eb"
+  }
+}

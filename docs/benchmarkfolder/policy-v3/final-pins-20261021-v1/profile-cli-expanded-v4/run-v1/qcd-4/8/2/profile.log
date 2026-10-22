@@ -1,0 +1,58 @@
+Timing result for the optimized output:
+Process: u u~ > z z g g [ virt = QCD ] 
+
+= Generation time total...... ========== NA
+|= Diagrams generation....... NA
+|= Helas Diagrams generation. NA
+|= Process output............ NA
+|= HELAS+model compilation... NA
+|= Process compilation....... NA
+|= Initialization............ NA
+
+= Reduction tool tested...... NinjaRS
+
+= Helicity sum time / PSpoint ========== 1.11e+03ms
+|= Coefs. computation time... 1.05e+03ms (94%)
+|= Loop evaluation time...... 65.8ms (6%)
+
+= One helicity time / PSpoint ========== 33.3ms
+|= Coefs. computation time... 16.9ms (51%)
+|= Loop evaluation time...... 16.4ms (49%)
+
+= Miscellaneous ========================
+|= Number of hel. computed... 72/144
+|= Number of loop diagrams... NA
+|= Number of loop groups..... NA
+|= Number of loop wfs........ NA
+|= Loading time (Color data). ~23.9ms
+|= Maximum RAM usage (rss)... 73.9Mb
+
+= Output disk size =====================
+|= Source directory sources.. 557Kb
+|= Process sources........... 370Kb
+|= Color and helicity data... 40Kb
+|= Executable size........... 28Mb
+
+Stability result for the optimized output:
+Stability checking for u u~ > z z g g [ virt = QCD ] (optimized mode)
+
+= Tool (DoublePrec for CT).......   NinjaRS   
+|= Number of PS points considered   20        
+|= Median accuracy...............   3.09e-10  
+|= Max accuracy..................   2.71e-13  
+|= Min accuracy..................   6.34e-07  
+|= Overall DP loop_dir test power   0.5,-0.4  
+|= Fraction of evts with power<-3   0.00e+00  
+|= Number of Unstable PS points     0         
+
+= Legend for the statistics of the stability tests. (all log below ar log_10)
+The loop direction test power P is computed as follow:
+    P = accuracy(loop_dir_test) / accuracy(all_other_test)
+    So that log(P) is positive if the loop direction test is effective.
+  The tuple printed out is (log(median(P)),log(min(P)))
+  The consistency test C is computed when QP evaluations are available:
+     C = accuracy(all_DP_test) / abs(best_QP_eval-best_DP_eval)
+  So a consistent test would have log(C) as close to zero as possible.
+  The tuple printed out is (log(median(C)),log(min(C)),log(max(C)))
+
+= Stability details of the run are output to the file stability_optimized_0_uux_zzgg.log

@@ -1,0 +1,320 @@
+      SUBROUTINE ML5_0_MP_HELAS_CALLS_AMPB_1(P,NHEL,H,IC)
+C     
+      USE ML5_0_POLYNOMIAL_CONSTANTS
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+C     
+C     CONSTANTS
+C     
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=6)
+      INTEGER    NCOMB
+      PARAMETER (NCOMB=4)
+
+      INTEGER    NLOOPS, NLOOPGROUPS, NCTAMPS
+      PARAMETER (NLOOPS=856, NLOOPGROUPS=856, NCTAMPS=88)
+      INTEGER    NLOOPAMPS
+      PARAMETER (NLOOPAMPS=944)
+      INTEGER    NWAVEFUNCS,NLOOPWAVEFUNCS
+      PARAMETER (NWAVEFUNCS=53,NLOOPWAVEFUNCS=1672)
+      REAL*16     ZERO
+      PARAMETER (ZERO=0.0E0_16)
+      COMPLEX*32     IZERO
+      PARAMETER (IZERO=CMPLX(0.0E0_16,0.0E0_16,KIND=16))
+C     These are constants related to the split orders
+      INTEGER    NSO, NSQUAREDSO, NAMPSO
+      PARAMETER (NSO=1, NSQUAREDSO=1, NAMPSO=1)
+C     
+C     ARGUMENTS
+C     
+      REAL*16 P(0:3,NEXTERNAL)
+      INTEGER NHEL(NEXTERNAL), IC(NEXTERNAL)
+      INTEGER H
+C     
+C     LOCAL VARIABLES
+C     
+      INTEGER I,J,K
+      INTEGER FLAVOR(NEXTERNAL)
+      DATA FLAVOR /NEXTERNAL*1/
+      COMPLEX*32 COEFS(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+C     
+C     GLOBAL VARIABLES
+C     
+
+      INCLUDE 'mp_coupl_same_name.inc'
+
+      INTEGER GOODHEL(NCOMB)
+      LOGICAL GOODAMP(NSQUAREDSO,NLOOPGROUPS)
+      COMMON/ML5_0_FILTERS/GOODAMP,GOODHEL
+
+      INTEGER SQSO_TARGET
+      COMMON/ML5_0_SOCHOICE/SQSO_TARGET
+
+      LOGICAL UVCT_REQ_SO_DONE,MP_UVCT_REQ_SO_DONE,CT_REQ_SO_DONE
+     $ ,MP_CT_REQ_SO_DONE,LOOP_REQ_SO_DONE,MP_LOOP_REQ_SO_DONE
+     $ ,CTCALL_REQ_SO_DONE,FILTER_SO
+      COMMON/ML5_0_SO_REQS/UVCT_REQ_SO_DONE,MP_UVCT_REQ_SO_DONE
+     $ ,CT_REQ_SO_DONE,MP_CT_REQ_SO_DONE,LOOP_REQ_SO_DONE
+     $ ,MP_LOOP_REQ_SO_DONE,CTCALL_REQ_SO_DONE,FILTER_SO
+
+      TYPE(MP_ALOHA) W(NWAVEFUNCS)
+      COMMON/ML5_0_MP_W/W
+
+      COMPLEX*32 WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,
+     $ -1:NLOOPWAVEFUNCS)
+      COMPLEX*32 PL(0:3,-1:NLOOPWAVEFUNCS)
+      COMMON/ML5_0_MP_WL/WL,PL
+
+      COMPLEX*32 AMPL(3,NLOOPAMPS)
+      COMMON/ML5_0_MP_AMPL/AMPL
+
+C     
+C     ----------
+C     BEGIN CODE
+C     ----------
+
+C     The target squared split order contribution is already reached
+C      if true.
+      IF (FILTER_SO.AND.MP_CT_REQ_SO_DONE) THEN
+        GOTO 1001
+      ENDIF
+
+      CALL MP_VXXXXX(P(0,1),ZERO,NHEL(1),-1,W(1))
+      CALL MP_VXXXXX(P(0,2),ZERO,NHEL(2),-1,W(2))
+      CALL MP_SXXXXX(P(0,3),+1,W(3))
+      CALL MP_SXXXXX(P(0,4),+1,W(4))
+      CALL MP_SXXXXX(P(0,5),+1,W(5))
+      CALL MP_SXXXXX(P(0,6),+1,W(6))
+      CALL MP_SSS1_1(W(3),W(4),GC_30,MDL_MH,MDL_WH,W(7))
+      CALL MP_SSS1_1(W(5),W(7),GC_30,MDL_MH,MDL_WH,W(8))
+      CALL MP_SSS1_1(W(6),W(8),GC_30,MDL_MH,MDL_WH,W(9))
+C     Counter-term amplitude(s) for loop diagram number 25
+      CALL MP_VVS1_0(W(1),W(2),W(9),R2_GGHB,AMPL(1,1))
+      CALL MP_SSS1_1(W(6),W(7),GC_30,MDL_MH,MDL_WH,W(10))
+      CALL MP_SSS1_1(W(5),W(10),GC_30,MDL_MH,MDL_WH,W(11))
+C     Counter-term amplitude(s) for loop diagram number 26
+      CALL MP_VVS1_0(W(1),W(2),W(11),R2_GGHB,AMPL(1,2))
+      CALL MP_SSSS1_1(W(5),W(6),W(7),GC_HHHH,MDL_MH,MDL_WH,W(12))
+C     Counter-term amplitude(s) for loop diagram number 27
+      CALL MP_VVS1_0(W(1),W(2),W(12),R2_GGHB,AMPL(1,3))
+C     Counter-term amplitude(s) for loop diagram number 32
+      CALL MP_R2_GGHH_0(W(1),W(2),W(10),W(5),R2_GGHHB,AMPL(1,4))
+C     Counter-term amplitude(s) for loop diagram number 35
+      CALL MP_R2_GGHH_0(W(1),W(2),W(8),W(6),R2_GGHHB,AMPL(1,5))
+      CALL MP_SSS1_1(W(5),W(6),GC_30,MDL_MH,MDL_WH,W(13))
+      CALL MP_SSS1_1(W(13),W(7),GC_30,MDL_MH,MDL_WH,W(14))
+C     Counter-term amplitude(s) for loop diagram number 38
+      CALL MP_VVS1_0(W(1),W(2),W(14),R2_GGHB,AMPL(1,6))
+C     Counter-term amplitude(s) for loop diagram number 39
+      CALL MP_R2_GGHH_0(W(1),W(2),W(13),W(7),R2_GGHHB,AMPL(1,7))
+      CALL MP_SSS1_1(W(3),W(5),GC_30,MDL_MH,MDL_WH,W(15))
+      CALL MP_SSS1_1(W(4),W(15),GC_30,MDL_MH,MDL_WH,W(16))
+      CALL MP_SSS1_1(W(6),W(16),GC_30,MDL_MH,MDL_WH,W(17))
+C     Counter-term amplitude(s) for loop diagram number 41
+      CALL MP_VVS1_0(W(1),W(2),W(17),R2_GGHB,AMPL(1,8))
+      CALL MP_SSS1_1(W(6),W(15),GC_30,MDL_MH,MDL_WH,W(18))
+      CALL MP_SSS1_1(W(4),W(18),GC_30,MDL_MH,MDL_WH,W(19))
+C     Counter-term amplitude(s) for loop diagram number 42
+      CALL MP_VVS1_0(W(1),W(2),W(19),R2_GGHB,AMPL(1,9))
+      CALL MP_SSSS1_1(W(4),W(6),W(15),GC_HHHH,MDL_MH,MDL_WH,W(20))
+C     Counter-term amplitude(s) for loop diagram number 43
+      CALL MP_VVS1_0(W(1),W(2),W(20),R2_GGHB,AMPL(1,10))
+C     Counter-term amplitude(s) for loop diagram number 48
+      CALL MP_R2_GGHH_0(W(1),W(2),W(18),W(4),R2_GGHHB,AMPL(1,11))
+C     Counter-term amplitude(s) for loop diagram number 51
+      CALL MP_R2_GGHH_0(W(1),W(2),W(16),W(6),R2_GGHHB,AMPL(1,12))
+      CALL MP_SSS1_1(W(4),W(6),GC_30,MDL_MH,MDL_WH,W(21))
+      CALL MP_SSS1_1(W(21),W(15),GC_30,MDL_MH,MDL_WH,W(22))
+C     Counter-term amplitude(s) for loop diagram number 54
+      CALL MP_VVS1_0(W(1),W(2),W(22),R2_GGHB,AMPL(1,13))
+C     Counter-term amplitude(s) for loop diagram number 55
+      CALL MP_R2_GGHH_0(W(1),W(2),W(21),W(15),R2_GGHHB,AMPL(1,14))
+      CALL MP_SSS1_1(W(3),W(6),GC_30,MDL_MH,MDL_WH,W(23))
+      CALL MP_SSS1_1(W(4),W(23),GC_30,MDL_MH,MDL_WH,W(24))
+      CALL MP_SSS1_1(W(5),W(24),GC_30,MDL_MH,MDL_WH,W(25))
+C     Counter-term amplitude(s) for loop diagram number 57
+      CALL MP_VVS1_0(W(1),W(2),W(25),R2_GGHB,AMPL(1,15))
+      CALL MP_SSS1_1(W(5),W(23),GC_30,MDL_MH,MDL_WH,W(26))
+      CALL MP_SSS1_1(W(4),W(26),GC_30,MDL_MH,MDL_WH,W(27))
+C     Counter-term amplitude(s) for loop diagram number 58
+      CALL MP_VVS1_0(W(1),W(2),W(27),R2_GGHB,AMPL(1,16))
+      CALL MP_SSSS1_1(W(4),W(5),W(23),GC_HHHH,MDL_MH,MDL_WH,W(28))
+C     Counter-term amplitude(s) for loop diagram number 59
+      CALL MP_VVS1_0(W(1),W(2),W(28),R2_GGHB,AMPL(1,17))
+C     Counter-term amplitude(s) for loop diagram number 64
+      CALL MP_R2_GGHH_0(W(1),W(2),W(26),W(4),R2_GGHHB,AMPL(1,18))
+C     Counter-term amplitude(s) for loop diagram number 67
+      CALL MP_R2_GGHH_0(W(1),W(2),W(24),W(5),R2_GGHHB,AMPL(1,19))
+      CALL MP_SSS1_1(W(4),W(5),GC_30,MDL_MH,MDL_WH,W(29))
+      CALL MP_SSS1_1(W(29),W(23),GC_30,MDL_MH,MDL_WH,W(30))
+C     Counter-term amplitude(s) for loop diagram number 70
+      CALL MP_VVS1_0(W(1),W(2),W(30),R2_GGHB,AMPL(1,20))
+C     Counter-term amplitude(s) for loop diagram number 71
+      CALL MP_R2_GGHH_0(W(1),W(2),W(29),W(23),R2_GGHHB,AMPL(1,21))
+      CALL MP_SSS1_1(W(3),W(29),GC_30,MDL_MH,MDL_WH,W(31))
+      CALL MP_SSS1_1(W(6),W(31),GC_30,MDL_MH,MDL_WH,W(32))
+C     Counter-term amplitude(s) for loop diagram number 73
+      CALL MP_VVS1_0(W(1),W(2),W(32),R2_GGHB,AMPL(1,22))
+      CALL MP_SSS1_1(W(6),W(29),GC_30,MDL_MH,MDL_WH,W(33))
+      CALL MP_SSS1_1(W(3),W(33),GC_30,MDL_MH,MDL_WH,W(34))
+C     Counter-term amplitude(s) for loop diagram number 74
+      CALL MP_VVS1_0(W(1),W(2),W(34),R2_GGHB,AMPL(1,23))
+      CALL MP_SSSS1_1(W(3),W(6),W(29),GC_HHHH,MDL_MH,MDL_WH,W(35))
+C     Counter-term amplitude(s) for loop diagram number 75
+      CALL MP_VVS1_0(W(1),W(2),W(35),R2_GGHB,AMPL(1,24))
+C     Counter-term amplitude(s) for loop diagram number 78
+      CALL MP_R2_GGHH_0(W(1),W(2),W(33),W(3),R2_GGHHB,AMPL(1,25))
+C     Counter-term amplitude(s) for loop diagram number 83
+      CALL MP_R2_GGHH_0(W(1),W(2),W(31),W(6),R2_GGHHB,AMPL(1,26))
+      CALL MP_SSS1_1(W(3),W(21),GC_30,MDL_MH,MDL_WH,W(36))
+      CALL MP_SSS1_1(W(5),W(36),GC_30,MDL_MH,MDL_WH,W(37))
+C     Counter-term amplitude(s) for loop diagram number 86
+      CALL MP_VVS1_0(W(1),W(2),W(37),R2_GGHB,AMPL(1,27))
+      CALL MP_SSS1_1(W(5),W(21),GC_30,MDL_MH,MDL_WH,W(38))
+      CALL MP_SSS1_1(W(3),W(38),GC_30,MDL_MH,MDL_WH,W(39))
+C     Counter-term amplitude(s) for loop diagram number 87
+      CALL MP_VVS1_0(W(1),W(2),W(39),R2_GGHB,AMPL(1,28))
+      CALL MP_SSSS1_1(W(3),W(5),W(21),GC_HHHH,MDL_MH,MDL_WH,W(40))
+C     Counter-term amplitude(s) for loop diagram number 88
+      CALL MP_VVS1_0(W(1),W(2),W(40),R2_GGHB,AMPL(1,29))
+C     Counter-term amplitude(s) for loop diagram number 91
+      CALL MP_R2_GGHH_0(W(1),W(2),W(38),W(3),R2_GGHHB,AMPL(1,30))
+C     Counter-term amplitude(s) for loop diagram number 96
+      CALL MP_R2_GGHH_0(W(1),W(2),W(36),W(5),R2_GGHHB,AMPL(1,31))
+      CALL MP_SSS1_1(W(3),W(13),GC_30,MDL_MH,MDL_WH,W(41))
+      CALL MP_SSS1_1(W(4),W(41),GC_30,MDL_MH,MDL_WH,W(42))
+C     Counter-term amplitude(s) for loop diagram number 99
+      CALL MP_VVS1_0(W(1),W(2),W(42),R2_GGHB,AMPL(1,32))
+      CALL MP_SSS1_1(W(4),W(13),GC_30,MDL_MH,MDL_WH,W(43))
+      CALL MP_SSS1_1(W(3),W(43),GC_30,MDL_MH,MDL_WH,W(44))
+C     Counter-term amplitude(s) for loop diagram number 100
+      CALL MP_VVS1_0(W(1),W(2),W(44),R2_GGHB,AMPL(1,33))
+      CALL MP_SSSS1_1(W(3),W(4),W(13),GC_HHHH,MDL_MH,MDL_WH,W(45))
+C     Counter-term amplitude(s) for loop diagram number 101
+      CALL MP_VVS1_0(W(1),W(2),W(45),R2_GGHB,AMPL(1,34))
+C     Counter-term amplitude(s) for loop diagram number 104
+      CALL MP_R2_GGHH_0(W(1),W(2),W(43),W(3),R2_GGHHB,AMPL(1,35))
+C     Counter-term amplitude(s) for loop diagram number 107
+      CALL MP_R2_GGHH_0(W(1),W(2),W(41),W(4),R2_GGHHB,AMPL(1,36))
+      CALL MP_SSSS1_1(W(3),W(4),W(5),GC_HHHH,MDL_MH,MDL_WH,W(46))
+      CALL MP_SSS1_1(W(6),W(46),GC_30,MDL_MH,MDL_WH,W(47))
+C     Counter-term amplitude(s) for loop diagram number 112
+      CALL MP_VVS1_0(W(1),W(2),W(47),R2_GGHB,AMPL(1,37))
+C     Counter-term amplitude(s) for loop diagram number 113
+      CALL MP_R2_GGHH_0(W(1),W(2),W(6),W(46),R2_GGHHB,AMPL(1,38))
+      CALL MP_SSSS1_1(W(3),W(4),W(6),GC_HHHH,MDL_MH,MDL_WH,W(48))
+      CALL MP_SSS1_1(W(5),W(48),GC_30,MDL_MH,MDL_WH,W(49))
+C     Counter-term amplitude(s) for loop diagram number 115
+      CALL MP_VVS1_0(W(1),W(2),W(49),R2_GGHB,AMPL(1,39))
+C     Counter-term amplitude(s) for loop diagram number 116
+      CALL MP_R2_GGHH_0(W(1),W(2),W(5),W(48),R2_GGHHB,AMPL(1,40))
+      CALL MP_SSSS1_1(W(3),W(5),W(6),GC_HHHH,MDL_MH,MDL_WH,W(50))
+      CALL MP_SSS1_1(W(4),W(50),GC_30,MDL_MH,MDL_WH,W(51))
+C     Counter-term amplitude(s) for loop diagram number 118
+      CALL MP_VVS1_0(W(1),W(2),W(51),R2_GGHB,AMPL(1,41))
+C     Counter-term amplitude(s) for loop diagram number 119
+      CALL MP_R2_GGHH_0(W(1),W(2),W(4),W(50),R2_GGHHB,AMPL(1,42))
+      CALL MP_SSSS1_1(W(4),W(5),W(6),GC_HHHH,MDL_MH,MDL_WH,W(52))
+      CALL MP_SSS1_1(W(3),W(52),GC_30,MDL_MH,MDL_WH,W(53))
+C     Counter-term amplitude(s) for loop diagram number 121
+      CALL MP_VVS1_0(W(1),W(2),W(53),R2_GGHB,AMPL(1,43))
+C     Counter-term amplitude(s) for loop diagram number 122
+      CALL MP_R2_GGHH_0(W(1),W(2),W(52),W(3),R2_GGHHB,AMPL(1,44))
+C     Counter-term amplitude(s) for loop diagram number 453
+      CALL MP_VVS1_0(W(1),W(2),W(9),R2_GGHT,AMPL(1,45))
+C     Counter-term amplitude(s) for loop diagram number 454
+      CALL MP_VVS1_0(W(1),W(2),W(11),R2_GGHT,AMPL(1,46))
+C     Counter-term amplitude(s) for loop diagram number 455
+      CALL MP_VVS1_0(W(1),W(2),W(12),R2_GGHT,AMPL(1,47))
+C     Counter-term amplitude(s) for loop diagram number 460
+      CALL MP_R2_GGHH_0(W(1),W(2),W(10),W(5),R2_GGHHT,AMPL(1,48))
+C     Counter-term amplitude(s) for loop diagram number 463
+      CALL MP_R2_GGHH_0(W(1),W(2),W(8),W(6),R2_GGHHT,AMPL(1,49))
+C     Counter-term amplitude(s) for loop diagram number 466
+      CALL MP_VVS1_0(W(1),W(2),W(14),R2_GGHT,AMPL(1,50))
+C     Counter-term amplitude(s) for loop diagram number 467
+      CALL MP_R2_GGHH_0(W(1),W(2),W(13),W(7),R2_GGHHT,AMPL(1,51))
+C     Counter-term amplitude(s) for loop diagram number 469
+      CALL MP_VVS1_0(W(1),W(2),W(17),R2_GGHT,AMPL(1,52))
+C     Counter-term amplitude(s) for loop diagram number 470
+      CALL MP_VVS1_0(W(1),W(2),W(19),R2_GGHT,AMPL(1,53))
+C     Counter-term amplitude(s) for loop diagram number 471
+      CALL MP_VVS1_0(W(1),W(2),W(20),R2_GGHT,AMPL(1,54))
+C     Counter-term amplitude(s) for loop diagram number 476
+      CALL MP_R2_GGHH_0(W(1),W(2),W(18),W(4),R2_GGHHT,AMPL(1,55))
+C     Counter-term amplitude(s) for loop diagram number 479
+      CALL MP_R2_GGHH_0(W(1),W(2),W(16),W(6),R2_GGHHT,AMPL(1,56))
+C     Counter-term amplitude(s) for loop diagram number 482
+      CALL MP_VVS1_0(W(1),W(2),W(22),R2_GGHT,AMPL(1,57))
+C     Counter-term amplitude(s) for loop diagram number 483
+      CALL MP_R2_GGHH_0(W(1),W(2),W(21),W(15),R2_GGHHT,AMPL(1,58))
+C     Counter-term amplitude(s) for loop diagram number 485
+      CALL MP_VVS1_0(W(1),W(2),W(25),R2_GGHT,AMPL(1,59))
+C     Counter-term amplitude(s) for loop diagram number 486
+      CALL MP_VVS1_0(W(1),W(2),W(27),R2_GGHT,AMPL(1,60))
+C     Counter-term amplitude(s) for loop diagram number 487
+      CALL MP_VVS1_0(W(1),W(2),W(28),R2_GGHT,AMPL(1,61))
+C     Counter-term amplitude(s) for loop diagram number 492
+      CALL MP_R2_GGHH_0(W(1),W(2),W(26),W(4),R2_GGHHT,AMPL(1,62))
+C     Counter-term amplitude(s) for loop diagram number 495
+      CALL MP_R2_GGHH_0(W(1),W(2),W(24),W(5),R2_GGHHT,AMPL(1,63))
+C     Counter-term amplitude(s) for loop diagram number 498
+      CALL MP_VVS1_0(W(1),W(2),W(30),R2_GGHT,AMPL(1,64))
+C     Counter-term amplitude(s) for loop diagram number 499
+      CALL MP_R2_GGHH_0(W(1),W(2),W(29),W(23),R2_GGHHT,AMPL(1,65))
+C     Counter-term amplitude(s) for loop diagram number 501
+      CALL MP_VVS1_0(W(1),W(2),W(32),R2_GGHT,AMPL(1,66))
+C     Counter-term amplitude(s) for loop diagram number 502
+      CALL MP_VVS1_0(W(1),W(2),W(34),R2_GGHT,AMPL(1,67))
+C     Counter-term amplitude(s) for loop diagram number 503
+      CALL MP_VVS1_0(W(1),W(2),W(35),R2_GGHT,AMPL(1,68))
+C     Counter-term amplitude(s) for loop diagram number 506
+      CALL MP_R2_GGHH_0(W(1),W(2),W(33),W(3),R2_GGHHT,AMPL(1,69))
+C     Counter-term amplitude(s) for loop diagram number 511
+      CALL MP_R2_GGHH_0(W(1),W(2),W(31),W(6),R2_GGHHT,AMPL(1,70))
+C     Counter-term amplitude(s) for loop diagram number 514
+      CALL MP_VVS1_0(W(1),W(2),W(37),R2_GGHT,AMPL(1,71))
+C     Counter-term amplitude(s) for loop diagram number 515
+      CALL MP_VVS1_0(W(1),W(2),W(39),R2_GGHT,AMPL(1,72))
+C     Counter-term amplitude(s) for loop diagram number 516
+      CALL MP_VVS1_0(W(1),W(2),W(40),R2_GGHT,AMPL(1,73))
+C     Counter-term amplitude(s) for loop diagram number 519
+      CALL MP_R2_GGHH_0(W(1),W(2),W(38),W(3),R2_GGHHT,AMPL(1,74))
+C     Counter-term amplitude(s) for loop diagram number 524
+      CALL MP_R2_GGHH_0(W(1),W(2),W(36),W(5),R2_GGHHT,AMPL(1,75))
+C     Counter-term amplitude(s) for loop diagram number 527
+      CALL MP_VVS1_0(W(1),W(2),W(42),R2_GGHT,AMPL(1,76))
+C     Counter-term amplitude(s) for loop diagram number 528
+      CALL MP_VVS1_0(W(1),W(2),W(44),R2_GGHT,AMPL(1,77))
+C     Counter-term amplitude(s) for loop diagram number 529
+      CALL MP_VVS1_0(W(1),W(2),W(45),R2_GGHT,AMPL(1,78))
+C     Counter-term amplitude(s) for loop diagram number 532
+      CALL MP_R2_GGHH_0(W(1),W(2),W(43),W(3),R2_GGHHT,AMPL(1,79))
+C     Counter-term amplitude(s) for loop diagram number 535
+      CALL MP_R2_GGHH_0(W(1),W(2),W(41),W(4),R2_GGHHT,AMPL(1,80))
+C     Counter-term amplitude(s) for loop diagram number 540
+      CALL MP_VVS1_0(W(1),W(2),W(47),R2_GGHT,AMPL(1,81))
+C     Counter-term amplitude(s) for loop diagram number 541
+      CALL MP_R2_GGHH_0(W(1),W(2),W(6),W(46),R2_GGHHT,AMPL(1,82))
+C     Counter-term amplitude(s) for loop diagram number 543
+      CALL MP_VVS1_0(W(1),W(2),W(49),R2_GGHT,AMPL(1,83))
+C     Counter-term amplitude(s) for loop diagram number 544
+      CALL MP_R2_GGHH_0(W(1),W(2),W(5),W(48),R2_GGHHT,AMPL(1,84))
+C     Counter-term amplitude(s) for loop diagram number 546
+      CALL MP_VVS1_0(W(1),W(2),W(51),R2_GGHT,AMPL(1,85))
+C     Counter-term amplitude(s) for loop diagram number 547
+      CALL MP_R2_GGHH_0(W(1),W(2),W(4),W(50),R2_GGHHT,AMPL(1,86))
+C     Counter-term amplitude(s) for loop diagram number 549
+      CALL MP_VVS1_0(W(1),W(2),W(53),R2_GGHT,AMPL(1,87))
+C     Counter-term amplitude(s) for loop diagram number 550
+      CALL MP_R2_GGHH_0(W(1),W(2),W(52),W(3),R2_GGHHT,AMPL(1,88))
+C     At this point, all CT amps needed for (QCD=4), i.e. of split
+C      order ID=1, are computed.
+      IF(FILTER_SO.AND.SQSO_TARGET.EQ.1) GOTO 2000
+
+      GOTO 1001
+ 2000 CONTINUE
+      MP_CT_REQ_SO_DONE=.TRUE.
+ 1001 CONTINUE
+      END
+

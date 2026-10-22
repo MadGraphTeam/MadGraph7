@@ -1,0 +1,9 @@
+{
+  "status": "failed-before-any-subprocess",
+  "error": "ModuleNotFoundError: No module named ninjars_profile_v2",
+  "cause": "Operational wrapper used parents[8] instead of parents[7] for repository root",
+  "native_calls": 0,
+  "helper_processes": 0,
+  "source_sha256": "3b922e1409d9aa5cdd2e6d82479c81c2db6c8dbb47d6e94bf005edbcf7208c5d",
+  "producer_modified": false
+}

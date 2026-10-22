@@ -1,0 +1,1623 @@
+      SUBROUTINE ML5_0_HELAS_CALLS_AMPB_2(P,NHEL,H,IC)
+C     
+C     Modules
+C     
+      USE ML5_0_POLYNOMIAL_CONSTANTS
+      USE ALOHA_OBJECT
+C     
+      IMPLICIT NONE
+C     
+C     CONSTANTS
+C     
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=6)
+      INTEGER    NCOMB
+      PARAMETER (NCOMB=64)
+      INTEGER NBORNAMPS
+      PARAMETER (NBORNAMPS=40)
+      INTEGER    NLOOPS, NLOOPGROUPS, NCTAMPS
+      PARAMETER (NLOOPS=5066, NLOOPGROUPS=1218, NCTAMPS=2022)
+      INTEGER    NLOOPAMPS
+      PARAMETER (NLOOPAMPS=7088)
+      INTEGER    NWAVEFUNCS,NLOOPWAVEFUNCS
+      PARAMETER (NWAVEFUNCS=155,NLOOPWAVEFUNCS=6898)
+      REAL*8     ZERO
+      PARAMETER (ZERO=0D0)
+      REAL*16     MP__ZERO
+      PARAMETER (MP__ZERO=0.0E0_16)
+C     These are constants related to the split orders
+      INTEGER    NSO, NSQUAREDSO, NAMPSO
+      PARAMETER (NSO=1, NSQUAREDSO=1, NAMPSO=2)
+C     
+C     ARGUMENTS
+C     
+      REAL*8 P(0:3,NEXTERNAL)
+      INTEGER NHEL(NEXTERNAL), IC(NEXTERNAL)
+      INTEGER H
+C     
+C     LOCAL VARIABLES
+C     
+      INTEGER I,J,K
+      INTEGER FLAVOR(NEXTERNAL)
+      DATA FLAVOR /NEXTERNAL*1/
+      COMPLEX*16 COEFS(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+
+      LOGICAL DUMMYFALSE
+      DATA DUMMYFALSE/.FALSE./
+C     
+C     GLOBAL VARIABLES
+C     
+
+      INCLUDE 'coupl.inc'
+      INCLUDE 'mp_coupl.inc'
+
+      INTEGER HELOFFSET
+      INTEGER GOODHEL(NCOMB)
+      LOGICAL GOODAMP(NSQUAREDSO,NLOOPGROUPS)
+      COMMON/ML5_0_FILTERS/GOODAMP,GOODHEL,HELOFFSET
+
+      LOGICAL CHECKPHASE
+      LOGICAL HELDOUBLECHECKED
+      COMMON/ML5_0_INIT/CHECKPHASE, HELDOUBLECHECKED
+
+      INTEGER SQSO_TARGET
+      COMMON/ML5_0_SOCHOICE/SQSO_TARGET
+
+      LOGICAL UVCT_REQ_SO_DONE,MP_UVCT_REQ_SO_DONE,CT_REQ_SO_DONE
+     $ ,MP_CT_REQ_SO_DONE,LOOP_REQ_SO_DONE,MP_LOOP_REQ_SO_DONE
+     $ ,CTCALL_REQ_SO_DONE,FILTER_SO
+      COMMON/ML5_0_SO_REQS/UVCT_REQ_SO_DONE,MP_UVCT_REQ_SO_DONE
+     $ ,CT_REQ_SO_DONE,MP_CT_REQ_SO_DONE,LOOP_REQ_SO_DONE
+     $ ,MP_LOOP_REQ_SO_DONE,CTCALL_REQ_SO_DONE,FILTER_SO
+
+      INTEGER I_SO
+      COMMON/ML5_0_I_SO/I_SO
+      INTEGER I_LIB
+      COMMON/ML5_0_I_LIB/I_LIB
+
+      COMPLEX*16 AMP(NBORNAMPS)
+      COMMON/ML5_0_AMPS/AMP
+      TYPE(ALOHA) W(NWAVEFUNCS)
+      COMMON/ML5_0_W/W
+      COMPLEX*16 WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,
+     $ -1:NLOOPWAVEFUNCS)
+      COMPLEX*16 PL(0:3,-1:NLOOPWAVEFUNCS)
+      COMMON/ML5_0_WL/WL,PL
+
+      COMPLEX*16 AMPL(3,NCTAMPS)
+      COMMON/ML5_0_AMPL/AMPL
+
+C     
+C     ----------
+C     BEGIN CODE
+C     ----------
+
+C     The target squared split order contribution is already reached
+C      if true.
+      IF (FILTER_SO.AND.CT_REQ_SO_DONE) THEN
+        GOTO 1001
+      ENDIF
+
+      CALL FFV2_0(W(99),W(1),W(6),R2_LLACP,AMPL(1,1055))
+C     Counter-term amplitude(s) for loop diagram number 2997
+      CALL FFV2_0(W(100),W(1),W(6),R2_LLACP,AMPL(1,1056))
+C     Counter-term amplitude(s) for loop diagram number 3007
+      CALL FFV2_0(W(2),W(1),W(113),R2_LLACP,AMPL(1,1057))
+C     Counter-term amplitude(s) for loop diagram number 3012
+      CALL FFV2_0(W(77),W(1),W(5),R2_LLACP,AMPL(1,1058))
+C     Counter-term amplitude(s) for loop diagram number 3013
+      CALL FFV2_0(W(78),W(1),W(5),R2_LLACP,AMPL(1,1059))
+C     Counter-term amplitude(s) for loop diagram number 3044
+      CALL R2_QQ_4_0(W(101),W(29),R2_QQCPCS,AMPL(1,1060))
+C     Counter-term amplitude(s) for loop diagram number 3045
+      CALL R2_QQ_4_0(W(25),W(115),R2_QQCPCS,AMPL(1,1061))
+C     Counter-term amplitude(s) for loop diagram number 3046
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(19),W(121),R2_AABOSON1
+     $ ,R2_AABOSON2,R2_AABOSON3,AMPL(1,1062))
+C     Counter-term amplitude(s) for loop diagram number 3047
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(19),W(122),R2_AZBOSON1
+     $ ,R2_AZBOSON2,R2_AZBOSON3,AMPL(1,1063))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(19),W(122)
+     $ ,C_UVAZMASS1EW_1EPS,C_UVAZMASS2EW_1EPS,C_UVAZMASS3EW_1EPS
+     $ ,AMPL(2,1064))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(19),W(122)
+     $ ,C_UVAZMASS1EW,C_UVAZMASS2EW,C_UVAZMASS3EW,AMPL(1,1065))
+C     Counter-term amplitude(s) for loop diagram number 3074
+      CALL R2_QQ_4_0(W(101),W(30),R2_QQCPCS,AMPL(1,1066))
+C     Counter-term amplitude(s) for loop diagram number 3075
+      CALL R2_QQ_4_0(W(25),W(116),R2_QQCPCS,AMPL(1,1067))
+C     Counter-term amplitude(s) for loop diagram number 3076
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(121),W(20),R2_AZBOSON1
+     $ ,R2_AZBOSON2,R2_AZBOSON3,AMPL(1,1068))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(121),W(20)
+     $ ,C_UVAZMASS1EW_1EPS,C_UVAZMASS2EW_1EPS,C_UVAZMASS3EW_1EPS
+     $ ,AMPL(2,1069))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(121),W(20)
+     $ ,C_UVAZMASS1EW,C_UVAZMASS2EW,C_UVAZMASS3EW,AMPL(1,1070))
+C     Counter-term amplitude(s) for loop diagram number 3090
+      CALL FFV2_0(W(25),W(29),W(6),R2_LLACP,AMPL(1,1071))
+C     Counter-term amplitude(s) for loop diagram number 3101
+      CALL FFV2_0(W(25),W(30),W(6),R2_LLACP,AMPL(1,1072))
+C     Counter-term amplitude(s) for loop diagram number 3114
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(61),W(31),R2_AABOSON1
+     $ ,R2_AABOSON2,R2_AABOSON3,AMPL(1,1073))
+C     Counter-term amplitude(s) for loop diagram number 3118
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(31),W(62),R2_AZBOSON1
+     $ ,R2_AZBOSON2,R2_AZBOSON3,AMPL(1,1074))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(31),W(62)
+     $ ,C_UVAZMASS1EW_1EPS,C_UVAZMASS2EW_1EPS,C_UVAZMASS3EW_1EPS
+     $ ,AMPL(2,1075))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(31),W(62)
+     $ ,C_UVAZMASS1EW,C_UVAZMASS2EW,C_UVAZMASS3EW,AMPL(1,1076))
+C     Counter-term amplitude(s) for loop diagram number 3122
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(61),W(32),R2_AZBOSON1
+     $ ,R2_AZBOSON2,R2_AZBOSON3,AMPL(1,1077))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(61),W(32)
+     $ ,C_UVAZMASS1EW_1EPS,C_UVAZMASS2EW_1EPS,C_UVAZMASS3EW_1EPS
+     $ ,AMPL(2,1078))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(61),W(32)
+     $ ,C_UVAZMASS1EW,C_UVAZMASS2EW,C_UVAZMASS3EW,AMPL(1,1079))
+C     Counter-term amplitude(s) for loop diagram number 3130
+      CALL R2_QQ_4_0(W(13),W(117),R2_QQCPCS,AMPL(1,1080))
+C     Counter-term amplitude(s) for loop diagram number 3131
+      CALL FFV2_0(W(13),W(4),W(31),R2_LLACP,AMPL(1,1081))
+C     Counter-term amplitude(s) for loop diagram number 3132
+      CALL R2_QQ_4_0(W(13),W(118),R2_QQCPCS,AMPL(1,1082))
+C     Counter-term amplitude(s) for loop diagram number 3133
+      CALL FFV2_0(W(13),W(4),W(32),R2_LLZCP,AMPL(1,1083))
+C     Counter-term amplitude(s) for loop diagram number 3134
+      CALL R2_QQ_4_0(W(25),W(119),R2_QQCPCS,AMPL(1,1084))
+C     Counter-term amplitude(s) for loop diagram number 3135
+      CALL R2_QQ_4_0(W(25),W(120),R2_QQCPCS,AMPL(1,1085))
+C     Counter-term amplitude(s) for loop diagram number 3143
+      CALL FFV2_0(W(3),W(4),W(121),R2_LLACP,AMPL(1,1086))
+C     Counter-term amplitude(s) for loop diagram number 3144
+      CALL FFV2_0(W(3),W(4),W(122),R2_LLZCP,AMPL(1,1087))
+C     Counter-term amplitude(s) for loop diagram number 3145
+      CALL FFV2_0(W(3),W(12),W(31),R2_LLACP,AMPL(1,1088))
+C     Counter-term amplitude(s) for loop diagram number 3146
+      CALL FFV2_0(W(3),W(12),W(32),R2_LLZCP,AMPL(1,1089))
+C     Counter-term amplitude(s) for loop diagram number 3151
+      CALL FFV2_0(W(3),W(117),W(6),R2_LLACP,AMPL(1,1090))
+C     Counter-term amplitude(s) for loop diagram number 3152
+      CALL FFV2_0(W(3),W(118),W(6),R2_LLACP,AMPL(1,1091))
+C     Counter-term amplitude(s) for loop diagram number 3156
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(63),W(31),R2_AABOSON1
+     $ ,R2_AABOSON2,R2_AABOSON3,AMPL(1,1092))
+C     Counter-term amplitude(s) for loop diagram number 3160
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(31),W(64),R2_AZBOSON1
+     $ ,R2_AZBOSON2,R2_AZBOSON3,AMPL(1,1093))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(31),W(64)
+     $ ,C_UVAZMASS1EW_1EPS,C_UVAZMASS2EW_1EPS,C_UVAZMASS3EW_1EPS
+     $ ,AMPL(2,1094))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(31),W(64)
+     $ ,C_UVAZMASS1EW,C_UVAZMASS2EW,C_UVAZMASS3EW,AMPL(1,1095))
+C     Counter-term amplitude(s) for loop diagram number 3164
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(63),W(32),R2_AZBOSON1
+     $ ,R2_AZBOSON2,R2_AZBOSON3,AMPL(1,1096))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(63),W(32)
+     $ ,C_UVAZMASS1EW_1EPS,C_UVAZMASS2EW_1EPS,C_UVAZMASS3EW_1EPS
+     $ ,AMPL(2,1097))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(63),W(32)
+     $ ,C_UVAZMASS1EW,C_UVAZMASS2EW,C_UVAZMASS3EW,AMPL(1,1098))
+C     Counter-term amplitude(s) for loop diagram number 3172
+      CALL R2_QQ_4_0(W(123),W(12),R2_QQCPCS,AMPL(1,1099))
+C     Counter-term amplitude(s) for loop diagram number 3173
+      CALL R2_QQ_4_0(W(124),W(12),R2_QQCPCS,AMPL(1,1100))
+C     Counter-term amplitude(s) for loop diagram number 3174
+      CALL R2_QQ_4_0(W(25),W(125),R2_QQCPCS,AMPL(1,1101))
+C     Counter-term amplitude(s) for loop diagram number 3175
+      CALL R2_QQ_4_0(W(25),W(126),R2_QQCPCS,AMPL(1,1102))
+C     Counter-term amplitude(s) for loop diagram number 3176
+      CALL FFV2_0(W(123),W(4),W(6),R2_LLACP,AMPL(1,1103))
+C     Counter-term amplitude(s) for loop diagram number 3177
+      CALL FFV2_0(W(124),W(4),W(6),R2_LLACP,AMPL(1,1104))
+C     Counter-term amplitude(s) for loop diagram number 3198
+      CALL R2_QQ_4_0(W(102),W(29),R2_QQCPCS,AMPL(1,1105))
+C     Counter-term amplitude(s) for loop diagram number 3199
+      CALL R2_QQ_4_0(W(18),W(127),R2_QQCPCS,AMPL(1,1106))
+C     Counter-term amplitude(s) for loop diagram number 3200
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(19),W(133),R2_AABOSON1
+     $ ,R2_AABOSON2,R2_AABOSON3,AMPL(1,1107))
+C     Counter-term amplitude(s) for loop diagram number 3201
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(19),W(134),R2_AZBOSON1
+     $ ,R2_AZBOSON2,R2_AZBOSON3,AMPL(1,1108))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(19),W(134)
+     $ ,C_UVAZMASS1EW_1EPS,C_UVAZMASS2EW_1EPS,C_UVAZMASS3EW_1EPS
+     $ ,AMPL(2,1109))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(19),W(134)
+     $ ,C_UVAZMASS1EW,C_UVAZMASS2EW,C_UVAZMASS3EW,AMPL(1,1110))
+C     Counter-term amplitude(s) for loop diagram number 3228
+      CALL R2_QQ_4_0(W(102),W(30),R2_QQCPCS,AMPL(1,1111))
+C     Counter-term amplitude(s) for loop diagram number 3229
+      CALL R2_QQ_4_0(W(18),W(128),R2_QQCPCS,AMPL(1,1112))
+C     Counter-term amplitude(s) for loop diagram number 3230
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(133),W(20),R2_AZBOSON1
+     $ ,R2_AZBOSON2,R2_AZBOSON3,AMPL(1,1113))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(133),W(20)
+     $ ,C_UVAZMASS1EW_1EPS,C_UVAZMASS2EW_1EPS,C_UVAZMASS3EW_1EPS
+     $ ,AMPL(2,1114))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(133),W(20)
+     $ ,C_UVAZMASS1EW,C_UVAZMASS2EW,C_UVAZMASS3EW,AMPL(1,1115))
+C     Counter-term amplitude(s) for loop diagram number 3244
+      CALL FFV2_0(W(18),W(29),W(5),R2_LLACP,AMPL(1,1116))
+C     Counter-term amplitude(s) for loop diagram number 3255
+      CALL FFV2_0(W(18),W(30),W(5),R2_LLACP,AMPL(1,1117))
+C     Counter-term amplitude(s) for loop diagram number 3268
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(85),W(33),R2_AABOSON1
+     $ ,R2_AABOSON2,R2_AABOSON3,AMPL(1,1118))
+C     Counter-term amplitude(s) for loop diagram number 3272
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(33),W(86),R2_AZBOSON1
+     $ ,R2_AZBOSON2,R2_AZBOSON3,AMPL(1,1119))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(33),W(86)
+     $ ,C_UVAZMASS1EW_1EPS,C_UVAZMASS2EW_1EPS,C_UVAZMASS3EW_1EPS
+     $ ,AMPL(2,1120))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(33),W(86)
+     $ ,C_UVAZMASS1EW,C_UVAZMASS2EW,C_UVAZMASS3EW,AMPL(1,1121))
+C     Counter-term amplitude(s) for loop diagram number 3276
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(85),W(34),R2_AZBOSON1
+     $ ,R2_AZBOSON2,R2_AZBOSON3,AMPL(1,1122))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(85),W(34)
+     $ ,C_UVAZMASS1EW_1EPS,C_UVAZMASS2EW_1EPS,C_UVAZMASS3EW_1EPS
+     $ ,AMPL(2,1123))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(85),W(34)
+     $ ,C_UVAZMASS1EW,C_UVAZMASS2EW,C_UVAZMASS3EW,AMPL(1,1124))
+C     Counter-term amplitude(s) for loop diagram number 3284
+      CALL R2_QQ_4_0(W(8),W(129),R2_QQCPCS,AMPL(1,1125))
+C     Counter-term amplitude(s) for loop diagram number 3285
+      CALL FFV2_0(W(8),W(4),W(33),R2_LLACP,AMPL(1,1126))
+C     Counter-term amplitude(s) for loop diagram number 3286
+      CALL R2_QQ_4_0(W(8),W(130),R2_QQCPCS,AMPL(1,1127))
+C     Counter-term amplitude(s) for loop diagram number 3287
+      CALL FFV2_0(W(8),W(4),W(34),R2_LLZCP,AMPL(1,1128))
+C     Counter-term amplitude(s) for loop diagram number 3288
+      CALL R2_QQ_4_0(W(18),W(131),R2_QQCPCS,AMPL(1,1129))
+C     Counter-term amplitude(s) for loop diagram number 3289
+      CALL R2_QQ_4_0(W(18),W(132),R2_QQCPCS,AMPL(1,1130))
+C     Counter-term amplitude(s) for loop diagram number 3297
+      CALL FFV2_0(W(3),W(4),W(133),R2_LLACP,AMPL(1,1131))
+C     Counter-term amplitude(s) for loop diagram number 3298
+      CALL FFV2_0(W(3),W(4),W(134),R2_LLZCP,AMPL(1,1132))
+C     Counter-term amplitude(s) for loop diagram number 3299
+      CALL FFV2_0(W(3),W(14),W(33),R2_LLACP,AMPL(1,1133))
+C     Counter-term amplitude(s) for loop diagram number 3300
+      CALL FFV2_0(W(3),W(14),W(34),R2_LLZCP,AMPL(1,1134))
+C     Counter-term amplitude(s) for loop diagram number 3305
+      CALL FFV2_0(W(3),W(129),W(5),R2_LLACP,AMPL(1,1135))
+C     Counter-term amplitude(s) for loop diagram number 3306
+      CALL FFV2_0(W(3),W(130),W(5),R2_LLACP,AMPL(1,1136))
+C     Counter-term amplitude(s) for loop diagram number 3310
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(87),W(33),R2_AABOSON1
+     $ ,R2_AABOSON2,R2_AABOSON3,AMPL(1,1137))
+C     Counter-term amplitude(s) for loop diagram number 3314
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(33),W(88),R2_AZBOSON1
+     $ ,R2_AZBOSON2,R2_AZBOSON3,AMPL(1,1138))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(33),W(88)
+     $ ,C_UVAZMASS1EW_1EPS,C_UVAZMASS2EW_1EPS,C_UVAZMASS3EW_1EPS
+     $ ,AMPL(2,1139))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(33),W(88)
+     $ ,C_UVAZMASS1EW,C_UVAZMASS2EW,C_UVAZMASS3EW,AMPL(1,1140))
+C     Counter-term amplitude(s) for loop diagram number 3318
+      CALL R2_GG_1_R2_GG_2_R2_GG_3_0(W(87),W(34),R2_AZBOSON1
+     $ ,R2_AZBOSON2,R2_AZBOSON3,AMPL(1,1141))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(87),W(34)
+     $ ,C_UVAZMASS1EW_1EPS,C_UVAZMASS2EW_1EPS,C_UVAZMASS3EW_1EPS
+     $ ,AMPL(2,1142))
+      CALL L_WMWPMASS1_L_WMWPMASS2_L_WMWPMASS3_0(W(87),W(34)
+     $ ,C_UVAZMASS1EW,C_UVAZMASS2EW,C_UVAZMASS3EW,AMPL(1,1143))
+C     Counter-term amplitude(s) for loop diagram number 3326
+      CALL R2_QQ_4_0(W(135),W(14),R2_QQCPCS,AMPL(1,1144))
+C     Counter-term amplitude(s) for loop diagram number 3327
+      CALL R2_QQ_4_0(W(136),W(14),R2_QQCPCS,AMPL(1,1145))
+C     Counter-term amplitude(s) for loop diagram number 3328
+      CALL R2_QQ_4_0(W(18),W(137),R2_QQCPCS,AMPL(1,1146))
+C     Counter-term amplitude(s) for loop diagram number 3329
+      CALL R2_QQ_4_0(W(18),W(138),R2_QQCPCS,AMPL(1,1147))
+C     Counter-term amplitude(s) for loop diagram number 3330
+      CALL FFV2_0(W(135),W(4),W(5),R2_LLACP,AMPL(1,1148))
+C     Counter-term amplitude(s) for loop diagram number 3331
+      CALL FFV2_0(W(136),W(4),W(5),R2_LLACP,AMPL(1,1149))
+C     Counter-term amplitude(s) for loop diagram number 3332
+      CALL FFV2_0(W(2),W(115),W(5),R2_LLACP,AMPL(1,1150))
+C     Counter-term amplitude(s) for loop diagram number 3335
+      CALL FFV2_0(W(2),W(116),W(5),R2_LLACP,AMPL(1,1151))
+C     Counter-term amplitude(s) for loop diagram number 3338
+      CALL FFV2_0(W(2),W(127),W(6),R2_LLACP,AMPL(1,1152))
+C     Counter-term amplitude(s) for loop diagram number 3341
+      CALL FFV2_0(W(2),W(128),W(6),R2_LLACP,AMPL(1,1153))
+C     Counter-term amplitude(s) for loop diagram number 3346
+      CALL FFV2_0(W(2),W(131),W(6),R2_LLACP,AMPL(1,1154))
+C     Counter-term amplitude(s) for loop diagram number 3347
+      CALL FFV2_0(W(2),W(132),W(6),R2_LLACP,AMPL(1,1155))
+C     Counter-term amplitude(s) for loop diagram number 3348
+      CALL FFV2_0(W(2),W(119),W(5),R2_LLACP,AMPL(1,1156))
+C     Counter-term amplitude(s) for loop diagram number 3349
+      CALL FFV2_0(W(2),W(120),W(5),R2_LLACP,AMPL(1,1157))
+C     Counter-term amplitude(s) for loop diagram number 3350
+      CALL FFV2_0(W(2),W(137),W(6),R2_LLACP,AMPL(1,1158))
+C     Counter-term amplitude(s) for loop diagram number 3351
+      CALL FFV2_0(W(2),W(138),W(6),R2_LLACP,AMPL(1,1159))
+C     Counter-term amplitude(s) for loop diagram number 3352
+      CALL FFV2_0(W(2),W(125),W(5),R2_LLACP,AMPL(1,1160))
+C     Counter-term amplitude(s) for loop diagram number 3353
+      CALL FFV2_0(W(2),W(126),W(5),R2_LLACP,AMPL(1,1161))
+      CALL FFV1P0_3(W(2),W(29),GC_3,ZERO,ZERO,W(148))
+      CALL FFV2_4P0_3(W(2),W(29),GC_68,GC_77,MDL_MZ,MDL_WZ,W(149))
+      CALL FFV1P0_3(W(65),W(1),GC_3,ZERO,ZERO,W(150))
+      CALL FFV2_4P0_3(W(65),W(1),GC_68,GC_77,MDL_MZ,MDL_WZ,W(151))
+      CALL FFV1P0_3(W(2),W(30),GC_3,ZERO,ZERO,W(152))
+      CALL FFV2_4P0_3(W(2),W(30),GC_68,GC_77,MDL_MZ,MDL_WZ,W(153))
+      CALL FFV1P0_3(W(67),W(1),GC_3,ZERO,ZERO,W(154))
+      CALL FFV2_4P0_3(W(67),W(1),GC_68,GC_77,MDL_MZ,MDL_WZ,W(155))
+C     Counter-term amplitude(s) for loop diagram number 3490
+      CALL R2_VVVV1_0(W(7),W(19),W(6),W(5),R2_AAAA,AMPL(1,1162))
+C     Counter-term amplitude(s) for loop diagram number 3506
+      CALL R2_VVVV1_0(W(7),W(6),W(5),W(20),R2_AAAZ,AMPL(1,1163))
+C     Counter-term amplitude(s) for loop diagram number 3522
+      CALL R2_VVVV1_0(W(19),W(6),W(5),W(10),R2_AAAZ,AMPL(1,1164))
+C     Counter-term amplitude(s) for loop diagram number 3538
+      CALL R2_VVVV1_0(W(6),W(5),W(10),W(20),R2_AAZZ,AMPL(1,1165))
+C     Counter-term amplitude(s) for loop diagram number 4381
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(7),R2_AAAAD,AMPL(1,1166))
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(7),R2_AAAAD,AMPL(1,1167))
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(7),R2_AAAAD,AMPL(1,1168))
+C     Counter-term amplitude(s) for loop diagram number 4385
+      CALL R2_VVVV1_0(W(5),W(6),W(7),W(20),R2_AAAZD,AMPL(1,1169))
+      CALL R2_VVVV1_0(W(5),W(6),W(7),W(20),R2_AAAZD,AMPL(1,1170))
+      CALL R2_VVVV1_0(W(5),W(6),W(7),W(20),R2_AAAZD,AMPL(1,1171))
+C     Counter-term amplitude(s) for loop diagram number 4389
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(10),R2_AAAZD,AMPL(1,1172))
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(10),R2_AAAZD,AMPL(1,1173))
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(10),R2_AAAZD,AMPL(1,1174))
+C     Counter-term amplitude(s) for loop diagram number 4393
+      CALL R2_VVVV1_0(W(5),W(6),W(20),W(10),R2_AAZZD,AMPL(1,1175))
+      CALL R2_VVVV1_0(W(5),W(6),W(20),W(10),R2_AAZZD,AMPL(1,1176))
+      CALL R2_VVVV1_0(W(5),W(6),W(20),W(10),R2_AAZZD,AMPL(1,1177))
+C     Counter-term amplitude(s) for loop diagram number 4406
+      CALL R2_GG_1_0(W(7),W(103),R2_AAD,AMPL(1,1178))
+      CALL R2_GG_1_0(W(7),W(103),R2_AAD,AMPL(1,1179))
+      CALL R2_GG_1_0(W(7),W(103),R2_AAD,AMPL(1,1180))
+C     Counter-term amplitude(s) for loop diagram number 4407
+      CALL R2_GG_1_0(W(7),W(104),R2_AZD,AMPL(1,1181))
+      CALL R2_GG_1_0(W(7),W(104),R2_AZD,AMPL(1,1182))
+      CALL R2_GG_1_0(W(7),W(104),R2_AZD,AMPL(1,1183))
+C     Counter-term amplitude(s) for loop diagram number 4411
+      CALL R2_GG_1_0(W(103),W(10),R2_AZD,AMPL(1,1184))
+      CALL R2_GG_1_0(W(103),W(10),R2_AZD,AMPL(1,1185))
+      CALL R2_GG_1_0(W(103),W(10),R2_AZD,AMPL(1,1186))
+C     Counter-term amplitude(s) for loop diagram number 4412
+      CALL R2_GG_1_0(W(10),W(104),R2_ZZD,AMPL(1,1187))
+      CALL R2_GG_1_0(W(10),W(104),R2_ZZD,AMPL(1,1188))
+      CALL R2_GG_1_0(W(10),W(104),R2_ZZD,AMPL(1,1189))
+C     Counter-term amplitude(s) for loop diagram number 4415
+      CALL R2_GG_1_0(W(7),W(105),R2_AAD,AMPL(1,1190))
+      CALL R2_GG_1_0(W(7),W(105),R2_AAD,AMPL(1,1191))
+      CALL R2_GG_1_0(W(7),W(105),R2_AAD,AMPL(1,1192))
+C     Counter-term amplitude(s) for loop diagram number 4416
+      CALL R2_GG_1_0(W(7),W(106),R2_AZD,AMPL(1,1193))
+      CALL R2_GG_1_0(W(7),W(106),R2_AZD,AMPL(1,1194))
+      CALL R2_GG_1_0(W(7),W(106),R2_AZD,AMPL(1,1195))
+C     Counter-term amplitude(s) for loop diagram number 4417
+      CALL R2_GG_1_0(W(105),W(10),R2_AZD,AMPL(1,1196))
+      CALL R2_GG_1_0(W(105),W(10),R2_AZD,AMPL(1,1197))
+      CALL R2_GG_1_0(W(105),W(10),R2_AZD,AMPL(1,1198))
+C     Counter-term amplitude(s) for loop diagram number 4418
+      CALL R2_GG_1_0(W(10),W(106),R2_ZZD,AMPL(1,1199))
+      CALL R2_GG_1_0(W(10),W(106),R2_ZZD,AMPL(1,1200))
+      CALL R2_GG_1_0(W(10),W(106),R2_ZZD,AMPL(1,1201))
+C     Counter-term amplitude(s) for loop diagram number 4420
+      CALL R2_GG_1_0(W(7),W(107),R2_AAD,AMPL(1,1202))
+      CALL R2_GG_1_0(W(7),W(107),R2_AAD,AMPL(1,1203))
+      CALL R2_GG_1_0(W(7),W(107),R2_AAD,AMPL(1,1204))
+C     Counter-term amplitude(s) for loop diagram number 4421
+      CALL R2_GG_1_0(W(7),W(108),R2_AZD,AMPL(1,1205))
+      CALL R2_GG_1_0(W(7),W(108),R2_AZD,AMPL(1,1206))
+      CALL R2_GG_1_0(W(7),W(108),R2_AZD,AMPL(1,1207))
+C     Counter-term amplitude(s) for loop diagram number 4425
+      CALL R2_GG_1_0(W(107),W(10),R2_AZD,AMPL(1,1208))
+      CALL R2_GG_1_0(W(107),W(10),R2_AZD,AMPL(1,1209))
+      CALL R2_GG_1_0(W(107),W(10),R2_AZD,AMPL(1,1210))
+C     Counter-term amplitude(s) for loop diagram number 4426
+      CALL R2_GG_1_0(W(10),W(108),R2_ZZD,AMPL(1,1211))
+      CALL R2_GG_1_0(W(10),W(108),R2_ZZD,AMPL(1,1212))
+      CALL R2_GG_1_0(W(10),W(108),R2_ZZD,AMPL(1,1213))
+C     Counter-term amplitude(s) for loop diagram number 4429
+      CALL R2_GG_1_0(W(7),W(109),R2_AAD,AMPL(1,1214))
+      CALL R2_GG_1_0(W(7),W(109),R2_AAD,AMPL(1,1215))
+      CALL R2_GG_1_0(W(7),W(109),R2_AAD,AMPL(1,1216))
+C     Counter-term amplitude(s) for loop diagram number 4430
+      CALL R2_GG_1_0(W(7),W(110),R2_AZD,AMPL(1,1217))
+      CALL R2_GG_1_0(W(7),W(110),R2_AZD,AMPL(1,1218))
+      CALL R2_GG_1_0(W(7),W(110),R2_AZD,AMPL(1,1219))
+C     Counter-term amplitude(s) for loop diagram number 4431
+      CALL R2_GG_1_0(W(109),W(10),R2_AZD,AMPL(1,1220))
+      CALL R2_GG_1_0(W(109),W(10),R2_AZD,AMPL(1,1221))
+      CALL R2_GG_1_0(W(109),W(10),R2_AZD,AMPL(1,1222))
+C     Counter-term amplitude(s) for loop diagram number 4432
+      CALL R2_GG_1_0(W(10),W(110),R2_ZZD,AMPL(1,1223))
+      CALL R2_GG_1_0(W(10),W(110),R2_ZZD,AMPL(1,1224))
+      CALL R2_GG_1_0(W(10),W(110),R2_ZZD,AMPL(1,1225))
+C     Counter-term amplitude(s) for loop diagram number 4434
+      CALL R2_GG_1_0(W(7),W(111),R2_AAD,AMPL(1,1226))
+      CALL R2_GG_1_0(W(7),W(111),R2_AAD,AMPL(1,1227))
+      CALL R2_GG_1_0(W(7),W(111),R2_AAD,AMPL(1,1228))
+C     Counter-term amplitude(s) for loop diagram number 4435
+      CALL R2_GG_1_0(W(7),W(112),R2_AZD,AMPL(1,1229))
+      CALL R2_GG_1_0(W(7),W(112),R2_AZD,AMPL(1,1230))
+      CALL R2_GG_1_0(W(7),W(112),R2_AZD,AMPL(1,1231))
+C     Counter-term amplitude(s) for loop diagram number 4439
+      CALL R2_GG_1_0(W(111),W(10),R2_AZD,AMPL(1,1232))
+      CALL R2_GG_1_0(W(111),W(10),R2_AZD,AMPL(1,1233))
+      CALL R2_GG_1_0(W(111),W(10),R2_AZD,AMPL(1,1234))
+C     Counter-term amplitude(s) for loop diagram number 4440
+      CALL R2_GG_1_0(W(10),W(112),R2_ZZD,AMPL(1,1235))
+      CALL R2_GG_1_0(W(10),W(112),R2_ZZD,AMPL(1,1236))
+      CALL R2_GG_1_0(W(10),W(112),R2_ZZD,AMPL(1,1237))
+C     Counter-term amplitude(s) for loop diagram number 4444
+      CALL R2_GG_1_0(W(7),W(113),R2_AAD,AMPL(1,1238))
+      CALL R2_GG_1_0(W(7),W(113),R2_AAD,AMPL(1,1239))
+      CALL R2_GG_1_0(W(7),W(113),R2_AAD,AMPL(1,1240))
+C     Counter-term amplitude(s) for loop diagram number 4445
+      CALL R2_GG_1_0(W(7),W(114),R2_AZD,AMPL(1,1241))
+      CALL R2_GG_1_0(W(7),W(114),R2_AZD,AMPL(1,1242))
+      CALL R2_GG_1_0(W(7),W(114),R2_AZD,AMPL(1,1243))
+C     Counter-term amplitude(s) for loop diagram number 4449
+      CALL R2_GG_1_0(W(113),W(10),R2_AZD,AMPL(1,1244))
+      CALL R2_GG_1_0(W(113),W(10),R2_AZD,AMPL(1,1245))
+      CALL R2_GG_1_0(W(113),W(10),R2_AZD,AMPL(1,1246))
+C     Counter-term amplitude(s) for loop diagram number 4450
+      CALL R2_GG_1_0(W(10),W(114),R2_ZZD,AMPL(1,1247))
+      CALL R2_GG_1_0(W(10),W(114),R2_ZZD,AMPL(1,1248))
+      CALL R2_GG_1_0(W(10),W(114),R2_ZZD,AMPL(1,1249))
+C     Counter-term amplitude(s) for loop diagram number 4461
+      CALL R2_GG_1_0(W(19),W(59),R2_AAD,AMPL(1,1250))
+      CALL R2_GG_1_0(W(19),W(59),R2_AAD,AMPL(1,1251))
+      CALL R2_GG_1_0(W(19),W(59),R2_AAD,AMPL(1,1252))
+C     Counter-term amplitude(s) for loop diagram number 4462
+      CALL R2_GG_1_0(W(19),W(60),R2_AZD,AMPL(1,1253))
+      CALL R2_GG_1_0(W(19),W(60),R2_AZD,AMPL(1,1254))
+      CALL R2_GG_1_0(W(19),W(60),R2_AZD,AMPL(1,1255))
+C     Counter-term amplitude(s) for loop diagram number 4463
+      CALL R2_GG_1_0(W(59),W(20),R2_AZD,AMPL(1,1256))
+      CALL R2_GG_1_0(W(59),W(20),R2_AZD,AMPL(1,1257))
+      CALL R2_GG_1_0(W(59),W(20),R2_AZD,AMPL(1,1258))
+C     Counter-term amplitude(s) for loop diagram number 4464
+      CALL R2_GG_1_0(W(20),W(60),R2_ZZD,AMPL(1,1259))
+      CALL R2_GG_1_0(W(20),W(60),R2_ZZD,AMPL(1,1260))
+      CALL R2_GG_1_0(W(20),W(60),R2_ZZD,AMPL(1,1261))
+C     Counter-term amplitude(s) for loop diagram number 4467
+      CALL R2_GG_1_0(W(19),W(73),R2_AAD,AMPL(1,1262))
+      CALL R2_GG_1_0(W(19),W(73),R2_AAD,AMPL(1,1263))
+      CALL R2_GG_1_0(W(19),W(73),R2_AAD,AMPL(1,1264))
+C     Counter-term amplitude(s) for loop diagram number 4468
+      CALL R2_GG_1_0(W(19),W(74),R2_AZD,AMPL(1,1265))
+      CALL R2_GG_1_0(W(19),W(74),R2_AZD,AMPL(1,1266))
+      CALL R2_GG_1_0(W(19),W(74),R2_AZD,AMPL(1,1267))
+C     Counter-term amplitude(s) for loop diagram number 4473
+      CALL R2_GG_1_0(W(73),W(20),R2_AZD,AMPL(1,1268))
+      CALL R2_GG_1_0(W(73),W(20),R2_AZD,AMPL(1,1269))
+      CALL R2_GG_1_0(W(73),W(20),R2_AZD,AMPL(1,1270))
+C     Counter-term amplitude(s) for loop diagram number 4474
+      CALL R2_GG_1_0(W(20),W(74),R2_ZZD,AMPL(1,1271))
+      CALL R2_GG_1_0(W(20),W(74),R2_ZZD,AMPL(1,1272))
+      CALL R2_GG_1_0(W(20),W(74),R2_ZZD,AMPL(1,1273))
+C     Counter-term amplitude(s) for loop diagram number 4475
+      CALL R2_GG_1_0(W(22),W(61),R2_AAD,AMPL(1,1274))
+      CALL R2_GG_1_0(W(22),W(61),R2_AAD,AMPL(1,1275))
+      CALL R2_GG_1_0(W(22),W(61),R2_AAD,AMPL(1,1276))
+C     Counter-term amplitude(s) for loop diagram number 4476
+      CALL R2_GG_1_0(W(22),W(62),R2_AZD,AMPL(1,1277))
+      CALL R2_GG_1_0(W(22),W(62),R2_AZD,AMPL(1,1278))
+      CALL R2_GG_1_0(W(22),W(62),R2_AZD,AMPL(1,1279))
+C     Counter-term amplitude(s) for loop diagram number 4477
+      CALL R2_GG_1_0(W(61),W(23),R2_AZD,AMPL(1,1280))
+      CALL R2_GG_1_0(W(61),W(23),R2_AZD,AMPL(1,1281))
+      CALL R2_GG_1_0(W(61),W(23),R2_AZD,AMPL(1,1282))
+C     Counter-term amplitude(s) for loop diagram number 4478
+      CALL R2_GG_1_0(W(23),W(62),R2_ZZD,AMPL(1,1283))
+      CALL R2_GG_1_0(W(23),W(62),R2_ZZD,AMPL(1,1284))
+      CALL R2_GG_1_0(W(23),W(62),R2_ZZD,AMPL(1,1285))
+C     Counter-term amplitude(s) for loop diagram number 4479
+      CALL R2_GG_1_0(W(22),W(63),R2_AAD,AMPL(1,1286))
+      CALL R2_GG_1_0(W(22),W(63),R2_AAD,AMPL(1,1287))
+      CALL R2_GG_1_0(W(22),W(63),R2_AAD,AMPL(1,1288))
+C     Counter-term amplitude(s) for loop diagram number 4480
+      CALL R2_GG_1_0(W(22),W(64),R2_AZD,AMPL(1,1289))
+      CALL R2_GG_1_0(W(22),W(64),R2_AZD,AMPL(1,1290))
+      CALL R2_GG_1_0(W(22),W(64),R2_AZD,AMPL(1,1291))
+C     Counter-term amplitude(s) for loop diagram number 4481
+      CALL R2_GG_1_0(W(63),W(23),R2_AZD,AMPL(1,1292))
+      CALL R2_GG_1_0(W(63),W(23),R2_AZD,AMPL(1,1293))
+      CALL R2_GG_1_0(W(63),W(23),R2_AZD,AMPL(1,1294))
+C     Counter-term amplitude(s) for loop diagram number 4482
+      CALL R2_GG_1_0(W(23),W(64),R2_ZZD,AMPL(1,1295))
+      CALL R2_GG_1_0(W(23),W(64),R2_ZZD,AMPL(1,1296))
+      CALL R2_GG_1_0(W(23),W(64),R2_ZZD,AMPL(1,1297))
+C     Counter-term amplitude(s) for loop diagram number 4483
+      CALL R2_GG_1_0(W(19),W(83),R2_AAD,AMPL(1,1298))
+      CALL R2_GG_1_0(W(19),W(83),R2_AAD,AMPL(1,1299))
+      CALL R2_GG_1_0(W(19),W(83),R2_AAD,AMPL(1,1300))
+C     Counter-term amplitude(s) for loop diagram number 4484
+      CALL R2_GG_1_0(W(19),W(84),R2_AZD,AMPL(1,1301))
+      CALL R2_GG_1_0(W(19),W(84),R2_AZD,AMPL(1,1302))
+      CALL R2_GG_1_0(W(19),W(84),R2_AZD,AMPL(1,1303))
+C     Counter-term amplitude(s) for loop diagram number 4485
+      CALL R2_GG_1_0(W(83),W(20),R2_AZD,AMPL(1,1304))
+      CALL R2_GG_1_0(W(83),W(20),R2_AZD,AMPL(1,1305))
+      CALL R2_GG_1_0(W(83),W(20),R2_AZD,AMPL(1,1306))
+C     Counter-term amplitude(s) for loop diagram number 4486
+      CALL R2_GG_1_0(W(20),W(84),R2_ZZD,AMPL(1,1307))
+      CALL R2_GG_1_0(W(20),W(84),R2_ZZD,AMPL(1,1308))
+      CALL R2_GG_1_0(W(20),W(84),R2_ZZD,AMPL(1,1309))
+C     Counter-term amplitude(s) for loop diagram number 4489
+      CALL R2_GG_1_0(W(19),W(95),R2_AAD,AMPL(1,1310))
+      CALL R2_GG_1_0(W(19),W(95),R2_AAD,AMPL(1,1311))
+      CALL R2_GG_1_0(W(19),W(95),R2_AAD,AMPL(1,1312))
+C     Counter-term amplitude(s) for loop diagram number 4490
+      CALL R2_GG_1_0(W(19),W(96),R2_AZD,AMPL(1,1313))
+      CALL R2_GG_1_0(W(19),W(96),R2_AZD,AMPL(1,1314))
+      CALL R2_GG_1_0(W(19),W(96),R2_AZD,AMPL(1,1315))
+C     Counter-term amplitude(s) for loop diagram number 4495
+      CALL R2_GG_1_0(W(95),W(20),R2_AZD,AMPL(1,1316))
+      CALL R2_GG_1_0(W(95),W(20),R2_AZD,AMPL(1,1317))
+      CALL R2_GG_1_0(W(95),W(20),R2_AZD,AMPL(1,1318))
+C     Counter-term amplitude(s) for loop diagram number 4496
+      CALL R2_GG_1_0(W(20),W(96),R2_ZZD,AMPL(1,1319))
+      CALL R2_GG_1_0(W(20),W(96),R2_ZZD,AMPL(1,1320))
+      CALL R2_GG_1_0(W(20),W(96),R2_ZZD,AMPL(1,1321))
+C     Counter-term amplitude(s) for loop diagram number 4497
+      CALL R2_GG_1_0(W(85),W(27),R2_AAD,AMPL(1,1322))
+      CALL R2_GG_1_0(W(85),W(27),R2_AAD,AMPL(1,1323))
+      CALL R2_GG_1_0(W(85),W(27),R2_AAD,AMPL(1,1324))
+C     Counter-term amplitude(s) for loop diagram number 4498
+      CALL R2_GG_1_0(W(27),W(86),R2_AZD,AMPL(1,1325))
+      CALL R2_GG_1_0(W(27),W(86),R2_AZD,AMPL(1,1326))
+      CALL R2_GG_1_0(W(27),W(86),R2_AZD,AMPL(1,1327))
+C     Counter-term amplitude(s) for loop diagram number 4499
+      CALL R2_GG_1_0(W(85),W(28),R2_AZD,AMPL(1,1328))
+      CALL R2_GG_1_0(W(85),W(28),R2_AZD,AMPL(1,1329))
+      CALL R2_GG_1_0(W(85),W(28),R2_AZD,AMPL(1,1330))
+C     Counter-term amplitude(s) for loop diagram number 4500
+      CALL R2_GG_1_0(W(86),W(28),R2_ZZD,AMPL(1,1331))
+      CALL R2_GG_1_0(W(86),W(28),R2_ZZD,AMPL(1,1332))
+      CALL R2_GG_1_0(W(86),W(28),R2_ZZD,AMPL(1,1333))
+C     Counter-term amplitude(s) for loop diagram number 4501
+      CALL R2_GG_1_0(W(87),W(27),R2_AAD,AMPL(1,1334))
+      CALL R2_GG_1_0(W(87),W(27),R2_AAD,AMPL(1,1335))
+      CALL R2_GG_1_0(W(87),W(27),R2_AAD,AMPL(1,1336))
+C     Counter-term amplitude(s) for loop diagram number 4502
+      CALL R2_GG_1_0(W(27),W(88),R2_AZD,AMPL(1,1337))
+      CALL R2_GG_1_0(W(27),W(88),R2_AZD,AMPL(1,1338))
+      CALL R2_GG_1_0(W(27),W(88),R2_AZD,AMPL(1,1339))
+C     Counter-term amplitude(s) for loop diagram number 4503
+      CALL R2_GG_1_0(W(87),W(28),R2_AZD,AMPL(1,1340))
+      CALL R2_GG_1_0(W(87),W(28),R2_AZD,AMPL(1,1341))
+      CALL R2_GG_1_0(W(87),W(28),R2_AZD,AMPL(1,1342))
+C     Counter-term amplitude(s) for loop diagram number 4504
+      CALL R2_GG_1_0(W(88),W(28),R2_ZZD,AMPL(1,1343))
+      CALL R2_GG_1_0(W(88),W(28),R2_ZZD,AMPL(1,1344))
+      CALL R2_GG_1_0(W(88),W(28),R2_ZZD,AMPL(1,1345))
+C     Counter-term amplitude(s) for loop diagram number 4507
+      CALL R2_GG_1_0(W(19),W(121),R2_AAD,AMPL(1,1346))
+      CALL R2_GG_1_0(W(19),W(121),R2_AAD,AMPL(1,1347))
+      CALL R2_GG_1_0(W(19),W(121),R2_AAD,AMPL(1,1348))
+C     Counter-term amplitude(s) for loop diagram number 4508
+      CALL R2_GG_1_0(W(19),W(122),R2_AZD,AMPL(1,1349))
+      CALL R2_GG_1_0(W(19),W(122),R2_AZD,AMPL(1,1350))
+      CALL R2_GG_1_0(W(19),W(122),R2_AZD,AMPL(1,1351))
+C     Counter-term amplitude(s) for loop diagram number 4513
+      CALL R2_GG_1_0(W(121),W(20),R2_AZD,AMPL(1,1352))
+      CALL R2_GG_1_0(W(121),W(20),R2_AZD,AMPL(1,1353))
+      CALL R2_GG_1_0(W(121),W(20),R2_AZD,AMPL(1,1354))
+C     Counter-term amplitude(s) for loop diagram number 4514
+      CALL R2_GG_1_0(W(20),W(122),R2_ZZD,AMPL(1,1355))
+      CALL R2_GG_1_0(W(20),W(122),R2_ZZD,AMPL(1,1356))
+      CALL R2_GG_1_0(W(20),W(122),R2_ZZD,AMPL(1,1357))
+C     Counter-term amplitude(s) for loop diagram number 4515
+      CALL R2_GG_1_0(W(31),W(61),R2_AAD,AMPL(1,1358))
+      CALL R2_GG_1_0(W(31),W(61),R2_AAD,AMPL(1,1359))
+      CALL R2_GG_1_0(W(31),W(61),R2_AAD,AMPL(1,1360))
+C     Counter-term amplitude(s) for loop diagram number 4516
+      CALL R2_GG_1_0(W(31),W(62),R2_AZD,AMPL(1,1361))
+      CALL R2_GG_1_0(W(31),W(62),R2_AZD,AMPL(1,1362))
+      CALL R2_GG_1_0(W(31),W(62),R2_AZD,AMPL(1,1363))
+C     Counter-term amplitude(s) for loop diagram number 4517
+      CALL R2_GG_1_0(W(61),W(32),R2_AZD,AMPL(1,1364))
+      CALL R2_GG_1_0(W(61),W(32),R2_AZD,AMPL(1,1365))
+      CALL R2_GG_1_0(W(61),W(32),R2_AZD,AMPL(1,1366))
+C     Counter-term amplitude(s) for loop diagram number 4518
+      CALL R2_GG_1_0(W(32),W(62),R2_ZZD,AMPL(1,1367))
+      CALL R2_GG_1_0(W(32),W(62),R2_ZZD,AMPL(1,1368))
+      CALL R2_GG_1_0(W(32),W(62),R2_ZZD,AMPL(1,1369))
+C     Counter-term amplitude(s) for loop diagram number 4519
+      CALL R2_GG_1_0(W(31),W(63),R2_AAD,AMPL(1,1370))
+      CALL R2_GG_1_0(W(31),W(63),R2_AAD,AMPL(1,1371))
+      CALL R2_GG_1_0(W(31),W(63),R2_AAD,AMPL(1,1372))
+C     Counter-term amplitude(s) for loop diagram number 4520
+      CALL R2_GG_1_0(W(31),W(64),R2_AZD,AMPL(1,1373))
+      CALL R2_GG_1_0(W(31),W(64),R2_AZD,AMPL(1,1374))
+      CALL R2_GG_1_0(W(31),W(64),R2_AZD,AMPL(1,1375))
+C     Counter-term amplitude(s) for loop diagram number 4521
+      CALL R2_GG_1_0(W(63),W(32),R2_AZD,AMPL(1,1376))
+      CALL R2_GG_1_0(W(63),W(32),R2_AZD,AMPL(1,1377))
+      CALL R2_GG_1_0(W(63),W(32),R2_AZD,AMPL(1,1378))
+C     Counter-term amplitude(s) for loop diagram number 4522
+      CALL R2_GG_1_0(W(32),W(64),R2_ZZD,AMPL(1,1379))
+      CALL R2_GG_1_0(W(32),W(64),R2_ZZD,AMPL(1,1380))
+      CALL R2_GG_1_0(W(32),W(64),R2_ZZD,AMPL(1,1381))
+C     Counter-term amplitude(s) for loop diagram number 4525
+      CALL R2_GG_1_0(W(19),W(133),R2_AAD,AMPL(1,1382))
+      CALL R2_GG_1_0(W(19),W(133),R2_AAD,AMPL(1,1383))
+      CALL R2_GG_1_0(W(19),W(133),R2_AAD,AMPL(1,1384))
+C     Counter-term amplitude(s) for loop diagram number 4526
+      CALL R2_GG_1_0(W(19),W(134),R2_AZD,AMPL(1,1385))
+      CALL R2_GG_1_0(W(19),W(134),R2_AZD,AMPL(1,1386))
+      CALL R2_GG_1_0(W(19),W(134),R2_AZD,AMPL(1,1387))
+C     Counter-term amplitude(s) for loop diagram number 4531
+      CALL R2_GG_1_0(W(133),W(20),R2_AZD,AMPL(1,1388))
+      CALL R2_GG_1_0(W(133),W(20),R2_AZD,AMPL(1,1389))
+      CALL R2_GG_1_0(W(133),W(20),R2_AZD,AMPL(1,1390))
+C     Counter-term amplitude(s) for loop diagram number 4532
+      CALL R2_GG_1_0(W(20),W(134),R2_ZZD,AMPL(1,1391))
+      CALL R2_GG_1_0(W(20),W(134),R2_ZZD,AMPL(1,1392))
+      CALL R2_GG_1_0(W(20),W(134),R2_ZZD,AMPL(1,1393))
+C     Counter-term amplitude(s) for loop diagram number 4533
+      CALL R2_GG_1_0(W(85),W(33),R2_AAD,AMPL(1,1394))
+      CALL R2_GG_1_0(W(85),W(33),R2_AAD,AMPL(1,1395))
+      CALL R2_GG_1_0(W(85),W(33),R2_AAD,AMPL(1,1396))
+C     Counter-term amplitude(s) for loop diagram number 4534
+      CALL R2_GG_1_0(W(33),W(86),R2_AZD,AMPL(1,1397))
+      CALL R2_GG_1_0(W(33),W(86),R2_AZD,AMPL(1,1398))
+      CALL R2_GG_1_0(W(33),W(86),R2_AZD,AMPL(1,1399))
+C     Counter-term amplitude(s) for loop diagram number 4535
+      CALL R2_GG_1_0(W(85),W(34),R2_AZD,AMPL(1,1400))
+      CALL R2_GG_1_0(W(85),W(34),R2_AZD,AMPL(1,1401))
+      CALL R2_GG_1_0(W(85),W(34),R2_AZD,AMPL(1,1402))
+C     Counter-term amplitude(s) for loop diagram number 4536
+      CALL R2_GG_1_0(W(86),W(34),R2_ZZD,AMPL(1,1403))
+      CALL R2_GG_1_0(W(86),W(34),R2_ZZD,AMPL(1,1404))
+      CALL R2_GG_1_0(W(86),W(34),R2_ZZD,AMPL(1,1405))
+C     Counter-term amplitude(s) for loop diagram number 4537
+      CALL R2_GG_1_0(W(87),W(33),R2_AAD,AMPL(1,1406))
+      CALL R2_GG_1_0(W(87),W(33),R2_AAD,AMPL(1,1407))
+      CALL R2_GG_1_0(W(87),W(33),R2_AAD,AMPL(1,1408))
+C     Counter-term amplitude(s) for loop diagram number 4538
+      CALL R2_GG_1_0(W(33),W(88),R2_AZD,AMPL(1,1409))
+      CALL R2_GG_1_0(W(33),W(88),R2_AZD,AMPL(1,1410))
+      CALL R2_GG_1_0(W(33),W(88),R2_AZD,AMPL(1,1411))
+C     Counter-term amplitude(s) for loop diagram number 4539
+      CALL R2_GG_1_0(W(87),W(34),R2_AZD,AMPL(1,1412))
+      CALL R2_GG_1_0(W(87),W(34),R2_AZD,AMPL(1,1413))
+      CALL R2_GG_1_0(W(87),W(34),R2_AZD,AMPL(1,1414))
+C     Counter-term amplitude(s) for loop diagram number 4540
+      CALL R2_GG_1_0(W(88),W(34),R2_ZZD,AMPL(1,1415))
+      CALL R2_GG_1_0(W(88),W(34),R2_ZZD,AMPL(1,1416))
+      CALL R2_GG_1_0(W(88),W(34),R2_ZZD,AMPL(1,1417))
+C     Counter-term amplitude(s) for loop diagram number 4549
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(7),R2_AAAAU,AMPL(1,1418))
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(7),R2_AAAAU,AMPL(1,1419))
+C     Counter-term amplitude(s) for loop diagram number 4553
+      CALL R2_VVVV1_0(W(5),W(6),W(7),W(20),R2_AAAZU,AMPL(1,1420))
+      CALL R2_VVVV1_0(W(5),W(6),W(7),W(20),R2_AAAZU,AMPL(1,1421))
+C     Counter-term amplitude(s) for loop diagram number 4557
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(10),R2_AAAZU,AMPL(1,1422))
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(10),R2_AAAZU,AMPL(1,1423))
+C     Counter-term amplitude(s) for loop diagram number 4561
+      CALL R2_VVVV1_0(W(5),W(6),W(20),W(10),R2_AAZZU,AMPL(1,1424))
+      CALL R2_VVVV1_0(W(5),W(6),W(20),W(10),R2_AAZZU,AMPL(1,1425))
+C     Counter-term amplitude(s) for loop diagram number 4574
+      CALL R2_GG_1_0(W(7),W(103),R2_AAU,AMPL(1,1426))
+      CALL R2_GG_1_0(W(7),W(103),R2_AAU,AMPL(1,1427))
+C     Counter-term amplitude(s) for loop diagram number 4575
+      CALL R2_GG_1_0(W(7),W(104),R2_AZU,AMPL(1,1428))
+      CALL R2_GG_1_0(W(7),W(104),R2_AZU,AMPL(1,1429))
+C     Counter-term amplitude(s) for loop diagram number 4579
+      CALL R2_GG_1_0(W(103),W(10),R2_AZU,AMPL(1,1430))
+      CALL R2_GG_1_0(W(103),W(10),R2_AZU,AMPL(1,1431))
+C     Counter-term amplitude(s) for loop diagram number 4580
+      CALL R2_GG_1_0(W(10),W(104),R2_ZZU,AMPL(1,1432))
+      CALL R2_GG_1_0(W(10),W(104),R2_ZZU,AMPL(1,1433))
+C     Counter-term amplitude(s) for loop diagram number 4583
+      CALL R2_GG_1_0(W(7),W(105),R2_AAU,AMPL(1,1434))
+      CALL R2_GG_1_0(W(7),W(105),R2_AAU,AMPL(1,1435))
+C     Counter-term amplitude(s) for loop diagram number 4584
+      CALL R2_GG_1_0(W(7),W(106),R2_AZU,AMPL(1,1436))
+      CALL R2_GG_1_0(W(7),W(106),R2_AZU,AMPL(1,1437))
+C     Counter-term amplitude(s) for loop diagram number 4585
+      CALL R2_GG_1_0(W(105),W(10),R2_AZU,AMPL(1,1438))
+      CALL R2_GG_1_0(W(105),W(10),R2_AZU,AMPL(1,1439))
+C     Counter-term amplitude(s) for loop diagram number 4586
+      CALL R2_GG_1_0(W(10),W(106),R2_ZZU,AMPL(1,1440))
+      CALL R2_GG_1_0(W(10),W(106),R2_ZZU,AMPL(1,1441))
+C     Counter-term amplitude(s) for loop diagram number 4588
+      CALL R2_GG_1_0(W(7),W(107),R2_AAU,AMPL(1,1442))
+      CALL R2_GG_1_0(W(7),W(107),R2_AAU,AMPL(1,1443))
+C     Counter-term amplitude(s) for loop diagram number 4589
+      CALL R2_GG_1_0(W(7),W(108),R2_AZU,AMPL(1,1444))
+      CALL R2_GG_1_0(W(7),W(108),R2_AZU,AMPL(1,1445))
+C     Counter-term amplitude(s) for loop diagram number 4593
+      CALL R2_GG_1_0(W(107),W(10),R2_AZU,AMPL(1,1446))
+      CALL R2_GG_1_0(W(107),W(10),R2_AZU,AMPL(1,1447))
+C     Counter-term amplitude(s) for loop diagram number 4594
+      CALL R2_GG_1_0(W(10),W(108),R2_ZZU,AMPL(1,1448))
+      CALL R2_GG_1_0(W(10),W(108),R2_ZZU,AMPL(1,1449))
+C     Counter-term amplitude(s) for loop diagram number 4597
+      CALL R2_GG_1_0(W(7),W(109),R2_AAU,AMPL(1,1450))
+      CALL R2_GG_1_0(W(7),W(109),R2_AAU,AMPL(1,1451))
+C     Counter-term amplitude(s) for loop diagram number 4598
+      CALL R2_GG_1_0(W(7),W(110),R2_AZU,AMPL(1,1452))
+      CALL R2_GG_1_0(W(7),W(110),R2_AZU,AMPL(1,1453))
+C     Counter-term amplitude(s) for loop diagram number 4599
+      CALL R2_GG_1_0(W(109),W(10),R2_AZU,AMPL(1,1454))
+      CALL R2_GG_1_0(W(109),W(10),R2_AZU,AMPL(1,1455))
+C     Counter-term amplitude(s) for loop diagram number 4600
+      CALL R2_GG_1_0(W(10),W(110),R2_ZZU,AMPL(1,1456))
+      CALL R2_GG_1_0(W(10),W(110),R2_ZZU,AMPL(1,1457))
+C     Counter-term amplitude(s) for loop diagram number 4602
+      CALL R2_GG_1_0(W(7),W(111),R2_AAU,AMPL(1,1458))
+      CALL R2_GG_1_0(W(7),W(111),R2_AAU,AMPL(1,1459))
+C     Counter-term amplitude(s) for loop diagram number 4603
+      CALL R2_GG_1_0(W(7),W(112),R2_AZU,AMPL(1,1460))
+      CALL R2_GG_1_0(W(7),W(112),R2_AZU,AMPL(1,1461))
+C     Counter-term amplitude(s) for loop diagram number 4607
+      CALL R2_GG_1_0(W(111),W(10),R2_AZU,AMPL(1,1462))
+      CALL R2_GG_1_0(W(111),W(10),R2_AZU,AMPL(1,1463))
+C     Counter-term amplitude(s) for loop diagram number 4608
+      CALL R2_GG_1_0(W(10),W(112),R2_ZZU,AMPL(1,1464))
+      CALL R2_GG_1_0(W(10),W(112),R2_ZZU,AMPL(1,1465))
+C     Counter-term amplitude(s) for loop diagram number 4612
+      CALL R2_GG_1_0(W(7),W(113),R2_AAU,AMPL(1,1466))
+      CALL R2_GG_1_0(W(7),W(113),R2_AAU,AMPL(1,1467))
+C     Counter-term amplitude(s) for loop diagram number 4613
+      CALL R2_GG_1_0(W(7),W(114),R2_AZU,AMPL(1,1468))
+      CALL R2_GG_1_0(W(7),W(114),R2_AZU,AMPL(1,1469))
+C     Counter-term amplitude(s) for loop diagram number 4617
+      CALL R2_GG_1_0(W(113),W(10),R2_AZU,AMPL(1,1470))
+      CALL R2_GG_1_0(W(113),W(10),R2_AZU,AMPL(1,1471))
+C     Counter-term amplitude(s) for loop diagram number 4618
+      CALL R2_GG_1_0(W(10),W(114),R2_ZZU,AMPL(1,1472))
+      CALL R2_GG_1_0(W(10),W(114),R2_ZZU,AMPL(1,1473))
+C     Counter-term amplitude(s) for loop diagram number 4629
+      CALL R2_GG_1_0(W(19),W(59),R2_AAU,AMPL(1,1474))
+      CALL R2_GG_1_0(W(19),W(59),R2_AAU,AMPL(1,1475))
+C     Counter-term amplitude(s) for loop diagram number 4630
+      CALL R2_GG_1_0(W(19),W(60),R2_AZU,AMPL(1,1476))
+      CALL R2_GG_1_0(W(19),W(60),R2_AZU,AMPL(1,1477))
+C     Counter-term amplitude(s) for loop diagram number 4631
+      CALL R2_GG_1_0(W(59),W(20),R2_AZU,AMPL(1,1478))
+      CALL R2_GG_1_0(W(59),W(20),R2_AZU,AMPL(1,1479))
+C     Counter-term amplitude(s) for loop diagram number 4632
+      CALL R2_GG_1_0(W(20),W(60),R2_ZZU,AMPL(1,1480))
+      CALL R2_GG_1_0(W(20),W(60),R2_ZZU,AMPL(1,1481))
+C     Counter-term amplitude(s) for loop diagram number 4635
+      CALL R2_GG_1_0(W(19),W(73),R2_AAU,AMPL(1,1482))
+      CALL R2_GG_1_0(W(19),W(73),R2_AAU,AMPL(1,1483))
+C     Counter-term amplitude(s) for loop diagram number 4636
+      CALL R2_GG_1_0(W(19),W(74),R2_AZU,AMPL(1,1484))
+      CALL R2_GG_1_0(W(19),W(74),R2_AZU,AMPL(1,1485))
+C     Counter-term amplitude(s) for loop diagram number 4641
+      CALL R2_GG_1_0(W(73),W(20),R2_AZU,AMPL(1,1486))
+      CALL R2_GG_1_0(W(73),W(20),R2_AZU,AMPL(1,1487))
+C     Counter-term amplitude(s) for loop diagram number 4642
+      CALL R2_GG_1_0(W(20),W(74),R2_ZZU,AMPL(1,1488))
+      CALL R2_GG_1_0(W(20),W(74),R2_ZZU,AMPL(1,1489))
+C     Counter-term amplitude(s) for loop diagram number 4643
+      CALL R2_GG_1_0(W(22),W(61),R2_AAU,AMPL(1,1490))
+      CALL R2_GG_1_0(W(22),W(61),R2_AAU,AMPL(1,1491))
+C     Counter-term amplitude(s) for loop diagram number 4644
+      CALL R2_GG_1_0(W(22),W(62),R2_AZU,AMPL(1,1492))
+      CALL R2_GG_1_0(W(22),W(62),R2_AZU,AMPL(1,1493))
+C     Counter-term amplitude(s) for loop diagram number 4645
+      CALL R2_GG_1_0(W(61),W(23),R2_AZU,AMPL(1,1494))
+      CALL R2_GG_1_0(W(61),W(23),R2_AZU,AMPL(1,1495))
+C     Counter-term amplitude(s) for loop diagram number 4646
+      CALL R2_GG_1_0(W(23),W(62),R2_ZZU,AMPL(1,1496))
+      CALL R2_GG_1_0(W(23),W(62),R2_ZZU,AMPL(1,1497))
+C     Counter-term amplitude(s) for loop diagram number 4647
+      CALL R2_GG_1_0(W(22),W(63),R2_AAU,AMPL(1,1498))
+      CALL R2_GG_1_0(W(22),W(63),R2_AAU,AMPL(1,1499))
+C     Counter-term amplitude(s) for loop diagram number 4648
+      CALL R2_GG_1_0(W(22),W(64),R2_AZU,AMPL(1,1500))
+      CALL R2_GG_1_0(W(22),W(64),R2_AZU,AMPL(1,1501))
+C     Counter-term amplitude(s) for loop diagram number 4649
+      CALL R2_GG_1_0(W(63),W(23),R2_AZU,AMPL(1,1502))
+      CALL R2_GG_1_0(W(63),W(23),R2_AZU,AMPL(1,1503))
+C     Counter-term amplitude(s) for loop diagram number 4650
+      CALL R2_GG_1_0(W(23),W(64),R2_ZZU,AMPL(1,1504))
+      CALL R2_GG_1_0(W(23),W(64),R2_ZZU,AMPL(1,1505))
+C     Counter-term amplitude(s) for loop diagram number 4651
+      CALL R2_GG_1_0(W(19),W(83),R2_AAU,AMPL(1,1506))
+      CALL R2_GG_1_0(W(19),W(83),R2_AAU,AMPL(1,1507))
+C     Counter-term amplitude(s) for loop diagram number 4652
+      CALL R2_GG_1_0(W(19),W(84),R2_AZU,AMPL(1,1508))
+      CALL R2_GG_1_0(W(19),W(84),R2_AZU,AMPL(1,1509))
+C     Counter-term amplitude(s) for loop diagram number 4653
+      CALL R2_GG_1_0(W(83),W(20),R2_AZU,AMPL(1,1510))
+      CALL R2_GG_1_0(W(83),W(20),R2_AZU,AMPL(1,1511))
+C     Counter-term amplitude(s) for loop diagram number 4654
+      CALL R2_GG_1_0(W(20),W(84),R2_ZZU,AMPL(1,1512))
+      CALL R2_GG_1_0(W(20),W(84),R2_ZZU,AMPL(1,1513))
+C     Counter-term amplitude(s) for loop diagram number 4657
+      CALL R2_GG_1_0(W(19),W(95),R2_AAU,AMPL(1,1514))
+      CALL R2_GG_1_0(W(19),W(95),R2_AAU,AMPL(1,1515))
+C     Counter-term amplitude(s) for loop diagram number 4658
+      CALL R2_GG_1_0(W(19),W(96),R2_AZU,AMPL(1,1516))
+      CALL R2_GG_1_0(W(19),W(96),R2_AZU,AMPL(1,1517))
+C     Counter-term amplitude(s) for loop diagram number 4663
+      CALL R2_GG_1_0(W(95),W(20),R2_AZU,AMPL(1,1518))
+      CALL R2_GG_1_0(W(95),W(20),R2_AZU,AMPL(1,1519))
+C     Counter-term amplitude(s) for loop diagram number 4664
+      CALL R2_GG_1_0(W(20),W(96),R2_ZZU,AMPL(1,1520))
+      CALL R2_GG_1_0(W(20),W(96),R2_ZZU,AMPL(1,1521))
+C     Counter-term amplitude(s) for loop diagram number 4665
+      CALL R2_GG_1_0(W(85),W(27),R2_AAU,AMPL(1,1522))
+      CALL R2_GG_1_0(W(85),W(27),R2_AAU,AMPL(1,1523))
+C     Counter-term amplitude(s) for loop diagram number 4666
+      CALL R2_GG_1_0(W(27),W(86),R2_AZU,AMPL(1,1524))
+      CALL R2_GG_1_0(W(27),W(86),R2_AZU,AMPL(1,1525))
+C     Counter-term amplitude(s) for loop diagram number 4667
+      CALL R2_GG_1_0(W(85),W(28),R2_AZU,AMPL(1,1526))
+      CALL R2_GG_1_0(W(85),W(28),R2_AZU,AMPL(1,1527))
+C     Counter-term amplitude(s) for loop diagram number 4668
+      CALL R2_GG_1_0(W(86),W(28),R2_ZZU,AMPL(1,1528))
+      CALL R2_GG_1_0(W(86),W(28),R2_ZZU,AMPL(1,1529))
+C     Counter-term amplitude(s) for loop diagram number 4669
+      CALL R2_GG_1_0(W(87),W(27),R2_AAU,AMPL(1,1530))
+      CALL R2_GG_1_0(W(87),W(27),R2_AAU,AMPL(1,1531))
+C     Counter-term amplitude(s) for loop diagram number 4670
+      CALL R2_GG_1_0(W(27),W(88),R2_AZU,AMPL(1,1532))
+      CALL R2_GG_1_0(W(27),W(88),R2_AZU,AMPL(1,1533))
+C     Counter-term amplitude(s) for loop diagram number 4671
+      CALL R2_GG_1_0(W(87),W(28),R2_AZU,AMPL(1,1534))
+      CALL R2_GG_1_0(W(87),W(28),R2_AZU,AMPL(1,1535))
+C     Counter-term amplitude(s) for loop diagram number 4672
+      CALL R2_GG_1_0(W(88),W(28),R2_ZZU,AMPL(1,1536))
+      CALL R2_GG_1_0(W(88),W(28),R2_ZZU,AMPL(1,1537))
+C     Counter-term amplitude(s) for loop diagram number 4675
+      CALL R2_GG_1_0(W(19),W(121),R2_AAU,AMPL(1,1538))
+      CALL R2_GG_1_0(W(19),W(121),R2_AAU,AMPL(1,1539))
+C     Counter-term amplitude(s) for loop diagram number 4676
+      CALL R2_GG_1_0(W(19),W(122),R2_AZU,AMPL(1,1540))
+      CALL R2_GG_1_0(W(19),W(122),R2_AZU,AMPL(1,1541))
+C     Counter-term amplitude(s) for loop diagram number 4681
+      CALL R2_GG_1_0(W(121),W(20),R2_AZU,AMPL(1,1542))
+      CALL R2_GG_1_0(W(121),W(20),R2_AZU,AMPL(1,1543))
+C     Counter-term amplitude(s) for loop diagram number 4682
+      CALL R2_GG_1_0(W(20),W(122),R2_ZZU,AMPL(1,1544))
+      CALL R2_GG_1_0(W(20),W(122),R2_ZZU,AMPL(1,1545))
+C     Counter-term amplitude(s) for loop diagram number 4683
+      CALL R2_GG_1_0(W(31),W(61),R2_AAU,AMPL(1,1546))
+      CALL R2_GG_1_0(W(31),W(61),R2_AAU,AMPL(1,1547))
+C     Counter-term amplitude(s) for loop diagram number 4684
+      CALL R2_GG_1_0(W(31),W(62),R2_AZU,AMPL(1,1548))
+      CALL R2_GG_1_0(W(31),W(62),R2_AZU,AMPL(1,1549))
+C     Counter-term amplitude(s) for loop diagram number 4685
+      CALL R2_GG_1_0(W(61),W(32),R2_AZU,AMPL(1,1550))
+      CALL R2_GG_1_0(W(61),W(32),R2_AZU,AMPL(1,1551))
+C     Counter-term amplitude(s) for loop diagram number 4686
+      CALL R2_GG_1_0(W(32),W(62),R2_ZZU,AMPL(1,1552))
+      CALL R2_GG_1_0(W(32),W(62),R2_ZZU,AMPL(1,1553))
+C     Counter-term amplitude(s) for loop diagram number 4687
+      CALL R2_GG_1_0(W(31),W(63),R2_AAU,AMPL(1,1554))
+      CALL R2_GG_1_0(W(31),W(63),R2_AAU,AMPL(1,1555))
+C     Counter-term amplitude(s) for loop diagram number 4688
+      CALL R2_GG_1_0(W(31),W(64),R2_AZU,AMPL(1,1556))
+      CALL R2_GG_1_0(W(31),W(64),R2_AZU,AMPL(1,1557))
+C     Counter-term amplitude(s) for loop diagram number 4689
+      CALL R2_GG_1_0(W(63),W(32),R2_AZU,AMPL(1,1558))
+      CALL R2_GG_1_0(W(63),W(32),R2_AZU,AMPL(1,1559))
+C     Counter-term amplitude(s) for loop diagram number 4690
+      CALL R2_GG_1_0(W(32),W(64),R2_ZZU,AMPL(1,1560))
+      CALL R2_GG_1_0(W(32),W(64),R2_ZZU,AMPL(1,1561))
+C     Counter-term amplitude(s) for loop diagram number 4693
+      CALL R2_GG_1_0(W(19),W(133),R2_AAU,AMPL(1,1562))
+      CALL R2_GG_1_0(W(19),W(133),R2_AAU,AMPL(1,1563))
+C     Counter-term amplitude(s) for loop diagram number 4694
+      CALL R2_GG_1_0(W(19),W(134),R2_AZU,AMPL(1,1564))
+      CALL R2_GG_1_0(W(19),W(134),R2_AZU,AMPL(1,1565))
+C     Counter-term amplitude(s) for loop diagram number 4699
+      CALL R2_GG_1_0(W(133),W(20),R2_AZU,AMPL(1,1566))
+      CALL R2_GG_1_0(W(133),W(20),R2_AZU,AMPL(1,1567))
+C     Counter-term amplitude(s) for loop diagram number 4700
+      CALL R2_GG_1_0(W(20),W(134),R2_ZZU,AMPL(1,1568))
+      CALL R2_GG_1_0(W(20),W(134),R2_ZZU,AMPL(1,1569))
+C     Counter-term amplitude(s) for loop diagram number 4701
+      CALL R2_GG_1_0(W(85),W(33),R2_AAU,AMPL(1,1570))
+      CALL R2_GG_1_0(W(85),W(33),R2_AAU,AMPL(1,1571))
+C     Counter-term amplitude(s) for loop diagram number 4702
+      CALL R2_GG_1_0(W(33),W(86),R2_AZU,AMPL(1,1572))
+      CALL R2_GG_1_0(W(33),W(86),R2_AZU,AMPL(1,1573))
+C     Counter-term amplitude(s) for loop diagram number 4703
+      CALL R2_GG_1_0(W(85),W(34),R2_AZU,AMPL(1,1574))
+      CALL R2_GG_1_0(W(85),W(34),R2_AZU,AMPL(1,1575))
+C     Counter-term amplitude(s) for loop diagram number 4704
+      CALL R2_GG_1_0(W(86),W(34),R2_ZZU,AMPL(1,1576))
+      CALL R2_GG_1_0(W(86),W(34),R2_ZZU,AMPL(1,1577))
+C     Counter-term amplitude(s) for loop diagram number 4705
+      CALL R2_GG_1_0(W(87),W(33),R2_AAU,AMPL(1,1578))
+      CALL R2_GG_1_0(W(87),W(33),R2_AAU,AMPL(1,1579))
+C     Counter-term amplitude(s) for loop diagram number 4706
+      CALL R2_GG_1_0(W(33),W(88),R2_AZU,AMPL(1,1580))
+      CALL R2_GG_1_0(W(33),W(88),R2_AZU,AMPL(1,1581))
+C     Counter-term amplitude(s) for loop diagram number 4707
+      CALL R2_GG_1_0(W(87),W(34),R2_AZU,AMPL(1,1582))
+      CALL R2_GG_1_0(W(87),W(34),R2_AZU,AMPL(1,1583))
+C     Counter-term amplitude(s) for loop diagram number 4708
+      CALL R2_GG_1_0(W(88),W(34),R2_ZZU,AMPL(1,1584))
+      CALL R2_GG_1_0(W(88),W(34),R2_ZZU,AMPL(1,1585))
+C     Counter-term amplitude(s) for loop diagram number 4717
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(7),R2_AAAAU,AMPL(1,1586))
+C     Counter-term amplitude(s) for loop diagram number 4721
+      CALL R2_VVVV1_0(W(5),W(6),W(7),W(20),R2_AAAZU,AMPL(1,1587))
+C     Counter-term amplitude(s) for loop diagram number 4725
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(10),R2_AAAZU,AMPL(1,1588))
+C     Counter-term amplitude(s) for loop diagram number 4729
+      CALL R2_VVVV1_0(W(5),W(6),W(20),W(10),R2_AAZZU,AMPL(1,1589))
+C     Counter-term amplitude(s) for loop diagram number 4739
+      CALL VVS1_0(W(5),W(6),W(139),R2_AAHT,AMPL(1,1590))
+C     Counter-term amplitude(s) for loop diagram number 4744
+      CALL R2_GG_1_R2_GG_3_0(W(7),W(103),R2_AAU,R2_AAT3,AMPL(1,1591))
+C     Counter-term amplitude(s) for loop diagram number 4745
+      CALL R2_GG_1_R2_GG_3_0(W(7),W(104),R2_AZU,R2_AZT3,AMPL(1,1592))
+C     Counter-term amplitude(s) for loop diagram number 4749
+      CALL R2_GG_1_R2_GG_3_0(W(103),W(10),R2_AZU,R2_AZT3,AMPL(1,1593))
+C     Counter-term amplitude(s) for loop diagram number 4750
+      CALL R2_GG_1_R2_GG_3_0(W(10),W(104),R2_ZZU,R2_ZZT3,AMPL(1,1594))
+C     Counter-term amplitude(s) for loop diagram number 4753
+      CALL R2_GG_1_R2_GG_3_0(W(7),W(105),R2_AAU,R2_AAT3,AMPL(1,1595))
+C     Counter-term amplitude(s) for loop diagram number 4754
+      CALL R2_GG_1_R2_GG_3_0(W(7),W(106),R2_AZU,R2_AZT3,AMPL(1,1596))
+C     Counter-term amplitude(s) for loop diagram number 4755
+      CALL R2_GG_1_R2_GG_3_0(W(105),W(10),R2_AZU,R2_AZT3,AMPL(1,1597))
+C     Counter-term amplitude(s) for loop diagram number 4756
+      CALL R2_GG_1_R2_GG_3_0(W(10),W(106),R2_ZZU,R2_ZZT3,AMPL(1,1598))
+C     Counter-term amplitude(s) for loop diagram number 4758
+      CALL R2_GG_1_R2_GG_3_0(W(7),W(107),R2_AAU,R2_AAT3,AMPL(1,1599))
+C     Counter-term amplitude(s) for loop diagram number 4759
+      CALL R2_GG_1_R2_GG_3_0(W(7),W(108),R2_AZU,R2_AZT3,AMPL(1,1600))
+C     Counter-term amplitude(s) for loop diagram number 4763
+      CALL R2_GG_1_R2_GG_3_0(W(107),W(10),R2_AZU,R2_AZT3,AMPL(1,1601))
+C     Counter-term amplitude(s) for loop diagram number 4764
+      CALL R2_GG_1_R2_GG_3_0(W(10),W(108),R2_ZZU,R2_ZZT3,AMPL(1,1602))
+C     Counter-term amplitude(s) for loop diagram number 4767
+      CALL R2_GG_1_R2_GG_3_0(W(7),W(109),R2_AAU,R2_AAT3,AMPL(1,1603))
+C     Counter-term amplitude(s) for loop diagram number 4768
+      CALL R2_GG_1_R2_GG_3_0(W(7),W(110),R2_AZU,R2_AZT3,AMPL(1,1604))
+C     Counter-term amplitude(s) for loop diagram number 4769
+      CALL R2_GG_1_R2_GG_3_0(W(109),W(10),R2_AZU,R2_AZT3,AMPL(1,1605))
+C     Counter-term amplitude(s) for loop diagram number 4770
+      CALL R2_GG_1_R2_GG_3_0(W(10),W(110),R2_ZZU,R2_ZZT3,AMPL(1,1606))
+C     Counter-term amplitude(s) for loop diagram number 4772
+      CALL R2_GG_1_R2_GG_3_0(W(7),W(111),R2_AAU,R2_AAT3,AMPL(1,1607))
+C     Counter-term amplitude(s) for loop diagram number 4773
+      CALL R2_GG_1_R2_GG_3_0(W(7),W(112),R2_AZU,R2_AZT3,AMPL(1,1608))
+C     Counter-term amplitude(s) for loop diagram number 4777
+      CALL R2_GG_1_R2_GG_3_0(W(111),W(10),R2_AZU,R2_AZT3,AMPL(1,1609))
+C     Counter-term amplitude(s) for loop diagram number 4778
+      CALL R2_GG_1_R2_GG_3_0(W(10),W(112),R2_ZZU,R2_ZZT3,AMPL(1,1610))
+C     Counter-term amplitude(s) for loop diagram number 4782
+      CALL R2_GG_1_R2_GG_3_0(W(7),W(113),R2_AAU,R2_AAT3,AMPL(1,1611))
+C     Counter-term amplitude(s) for loop diagram number 4783
+      CALL R2_GG_1_R2_GG_3_0(W(7),W(114),R2_AZU,R2_AZT3,AMPL(1,1612))
+C     Counter-term amplitude(s) for loop diagram number 4787
+      CALL R2_GG_1_R2_GG_3_0(W(113),W(10),R2_AZU,R2_AZT3,AMPL(1,1613))
+C     Counter-term amplitude(s) for loop diagram number 4788
+      CALL R2_GG_1_R2_GG_3_0(W(10),W(114),R2_ZZU,R2_ZZT3,AMPL(1,1614))
+C     Counter-term amplitude(s) for loop diagram number 4799
+      CALL R2_GG_1_R2_GG_3_0(W(19),W(59),R2_AAU,R2_AAT3,AMPL(1,1615))
+C     Counter-term amplitude(s) for loop diagram number 4800
+      CALL R2_GG_1_R2_GG_3_0(W(19),W(60),R2_AZU,R2_AZT3,AMPL(1,1616))
+C     Counter-term amplitude(s) for loop diagram number 4801
+      CALL R2_GG_1_R2_GG_3_0(W(59),W(20),R2_AZU,R2_AZT3,AMPL(1,1617))
+C     Counter-term amplitude(s) for loop diagram number 4802
+      CALL R2_GG_1_R2_GG_3_0(W(20),W(60),R2_ZZU,R2_ZZT3,AMPL(1,1618))
+C     Counter-term amplitude(s) for loop diagram number 4805
+      CALL R2_GG_1_R2_GG_3_0(W(19),W(73),R2_AAU,R2_AAT3,AMPL(1,1619))
+C     Counter-term amplitude(s) for loop diagram number 4806
+      CALL R2_GG_1_R2_GG_3_0(W(19),W(74),R2_AZU,R2_AZT3,AMPL(1,1620))
+C     Counter-term amplitude(s) for loop diagram number 4811
+      CALL R2_GG_1_R2_GG_3_0(W(73),W(20),R2_AZU,R2_AZT3,AMPL(1,1621))
+C     Counter-term amplitude(s) for loop diagram number 4812
+      CALL R2_GG_1_R2_GG_3_0(W(20),W(74),R2_ZZU,R2_ZZT3,AMPL(1,1622))
+C     Counter-term amplitude(s) for loop diagram number 4813
+      CALL R2_GG_1_R2_GG_3_0(W(22),W(61),R2_AAU,R2_AAT3,AMPL(1,1623))
+C     Counter-term amplitude(s) for loop diagram number 4814
+      CALL R2_GG_1_R2_GG_3_0(W(22),W(62),R2_AZU,R2_AZT3,AMPL(1,1624))
+C     Counter-term amplitude(s) for loop diagram number 4815
+      CALL R2_GG_1_R2_GG_3_0(W(61),W(23),R2_AZU,R2_AZT3,AMPL(1,1625))
+C     Counter-term amplitude(s) for loop diagram number 4816
+      CALL R2_GG_1_R2_GG_3_0(W(23),W(62),R2_ZZU,R2_ZZT3,AMPL(1,1626))
+C     Counter-term amplitude(s) for loop diagram number 4817
+      CALL R2_GG_1_R2_GG_3_0(W(22),W(63),R2_AAU,R2_AAT3,AMPL(1,1627))
+C     Counter-term amplitude(s) for loop diagram number 4818
+      CALL R2_GG_1_R2_GG_3_0(W(22),W(64),R2_AZU,R2_AZT3,AMPL(1,1628))
+C     Counter-term amplitude(s) for loop diagram number 4819
+      CALL R2_GG_1_R2_GG_3_0(W(63),W(23),R2_AZU,R2_AZT3,AMPL(1,1629))
+C     Counter-term amplitude(s) for loop diagram number 4820
+      CALL R2_GG_1_R2_GG_3_0(W(23),W(64),R2_ZZU,R2_ZZT3,AMPL(1,1630))
+C     Counter-term amplitude(s) for loop diagram number 4821
+      CALL R2_GG_1_R2_GG_3_0(W(19),W(83),R2_AAU,R2_AAT3,AMPL(1,1631))
+C     Counter-term amplitude(s) for loop diagram number 4822
+      CALL R2_GG_1_R2_GG_3_0(W(19),W(84),R2_AZU,R2_AZT3,AMPL(1,1632))
+C     Counter-term amplitude(s) for loop diagram number 4823
+      CALL R2_GG_1_R2_GG_3_0(W(83),W(20),R2_AZU,R2_AZT3,AMPL(1,1633))
+C     Counter-term amplitude(s) for loop diagram number 4824
+      CALL R2_GG_1_R2_GG_3_0(W(20),W(84),R2_ZZU,R2_ZZT3,AMPL(1,1634))
+C     Counter-term amplitude(s) for loop diagram number 4827
+      CALL R2_GG_1_R2_GG_3_0(W(19),W(95),R2_AAU,R2_AAT3,AMPL(1,1635))
+C     Counter-term amplitude(s) for loop diagram number 4828
+      CALL R2_GG_1_R2_GG_3_0(W(19),W(96),R2_AZU,R2_AZT3,AMPL(1,1636))
+C     Counter-term amplitude(s) for loop diagram number 4833
+      CALL R2_GG_1_R2_GG_3_0(W(95),W(20),R2_AZU,R2_AZT3,AMPL(1,1637))
+C     Counter-term amplitude(s) for loop diagram number 4834
+      CALL R2_GG_1_R2_GG_3_0(W(20),W(96),R2_ZZU,R2_ZZT3,AMPL(1,1638))
+C     Counter-term amplitude(s) for loop diagram number 4835
+      CALL R2_GG_1_R2_GG_3_0(W(85),W(27),R2_AAU,R2_AAT3,AMPL(1,1639))
+C     Counter-term amplitude(s) for loop diagram number 4836
+      CALL R2_GG_1_R2_GG_3_0(W(27),W(86),R2_AZU,R2_AZT3,AMPL(1,1640))
+C     Counter-term amplitude(s) for loop diagram number 4837
+      CALL R2_GG_1_R2_GG_3_0(W(85),W(28),R2_AZU,R2_AZT3,AMPL(1,1641))
+C     Counter-term amplitude(s) for loop diagram number 4838
+      CALL R2_GG_1_R2_GG_3_0(W(86),W(28),R2_ZZU,R2_ZZT3,AMPL(1,1642))
+C     Counter-term amplitude(s) for loop diagram number 4839
+      CALL R2_GG_1_R2_GG_3_0(W(87),W(27),R2_AAU,R2_AAT3,AMPL(1,1643))
+C     Counter-term amplitude(s) for loop diagram number 4840
+      CALL R2_GG_1_R2_GG_3_0(W(27),W(88),R2_AZU,R2_AZT3,AMPL(1,1644))
+C     Counter-term amplitude(s) for loop diagram number 4841
+      CALL R2_GG_1_R2_GG_3_0(W(87),W(28),R2_AZU,R2_AZT3,AMPL(1,1645))
+C     Counter-term amplitude(s) for loop diagram number 4842
+      CALL R2_GG_1_R2_GG_3_0(W(88),W(28),R2_ZZU,R2_ZZT3,AMPL(1,1646))
+C     Counter-term amplitude(s) for loop diagram number 4845
+      CALL R2_GG_1_R2_GG_3_0(W(19),W(121),R2_AAU,R2_AAT3,AMPL(1,1647))
+C     Counter-term amplitude(s) for loop diagram number 4846
+      CALL R2_GG_1_R2_GG_3_0(W(19),W(122),R2_AZU,R2_AZT3,AMPL(1,1648))
+C     Counter-term amplitude(s) for loop diagram number 4851
+      CALL R2_GG_1_R2_GG_3_0(W(121),W(20),R2_AZU,R2_AZT3,AMPL(1,1649))
+C     Counter-term amplitude(s) for loop diagram number 4852
+      CALL R2_GG_1_R2_GG_3_0(W(20),W(122),R2_ZZU,R2_ZZT3,AMPL(1,1650))
+C     Counter-term amplitude(s) for loop diagram number 4853
+      CALL R2_GG_1_R2_GG_3_0(W(31),W(61),R2_AAU,R2_AAT3,AMPL(1,1651))
+C     Counter-term amplitude(s) for loop diagram number 4854
+      CALL R2_GG_1_R2_GG_3_0(W(31),W(62),R2_AZU,R2_AZT3,AMPL(1,1652))
+C     Counter-term amplitude(s) for loop diagram number 4855
+      CALL R2_GG_1_R2_GG_3_0(W(61),W(32),R2_AZU,R2_AZT3,AMPL(1,1653))
+C     Counter-term amplitude(s) for loop diagram number 4856
+      CALL R2_GG_1_R2_GG_3_0(W(32),W(62),R2_ZZU,R2_ZZT3,AMPL(1,1654))
+C     Counter-term amplitude(s) for loop diagram number 4857
+      CALL R2_GG_1_R2_GG_3_0(W(31),W(63),R2_AAU,R2_AAT3,AMPL(1,1655))
+C     Counter-term amplitude(s) for loop diagram number 4858
+      CALL R2_GG_1_R2_GG_3_0(W(31),W(64),R2_AZU,R2_AZT3,AMPL(1,1656))
+C     Counter-term amplitude(s) for loop diagram number 4859
+      CALL R2_GG_1_R2_GG_3_0(W(63),W(32),R2_AZU,R2_AZT3,AMPL(1,1657))
+C     Counter-term amplitude(s) for loop diagram number 4860
+      CALL R2_GG_1_R2_GG_3_0(W(32),W(64),R2_ZZU,R2_ZZT3,AMPL(1,1658))
+C     Counter-term amplitude(s) for loop diagram number 4863
+      CALL R2_GG_1_R2_GG_3_0(W(19),W(133),R2_AAU,R2_AAT3,AMPL(1,1659))
+C     Counter-term amplitude(s) for loop diagram number 4864
+      CALL R2_GG_1_R2_GG_3_0(W(19),W(134),R2_AZU,R2_AZT3,AMPL(1,1660))
+C     Counter-term amplitude(s) for loop diagram number 4869
+      CALL R2_GG_1_R2_GG_3_0(W(133),W(20),R2_AZU,R2_AZT3,AMPL(1,1661))
+C     Counter-term amplitude(s) for loop diagram number 4870
+      CALL R2_GG_1_R2_GG_3_0(W(20),W(134),R2_ZZU,R2_ZZT3,AMPL(1,1662))
+C     Counter-term amplitude(s) for loop diagram number 4871
+      CALL R2_GG_1_R2_GG_3_0(W(85),W(33),R2_AAU,R2_AAT3,AMPL(1,1663))
+C     Counter-term amplitude(s) for loop diagram number 4872
+      CALL R2_GG_1_R2_GG_3_0(W(33),W(86),R2_AZU,R2_AZT3,AMPL(1,1664))
+C     Counter-term amplitude(s) for loop diagram number 4873
+      CALL R2_GG_1_R2_GG_3_0(W(85),W(34),R2_AZU,R2_AZT3,AMPL(1,1665))
+C     Counter-term amplitude(s) for loop diagram number 4874
+      CALL R2_GG_1_R2_GG_3_0(W(86),W(34),R2_ZZU,R2_ZZT3,AMPL(1,1666))
+C     Counter-term amplitude(s) for loop diagram number 4875
+      CALL R2_GG_1_R2_GG_3_0(W(87),W(33),R2_AAU,R2_AAT3,AMPL(1,1667))
+C     Counter-term amplitude(s) for loop diagram number 4876
+      CALL R2_GG_1_R2_GG_3_0(W(33),W(88),R2_AZU,R2_AZT3,AMPL(1,1668))
+C     Counter-term amplitude(s) for loop diagram number 4877
+      CALL R2_GG_1_R2_GG_3_0(W(87),W(34),R2_AZU,R2_AZT3,AMPL(1,1669))
+C     Counter-term amplitude(s) for loop diagram number 4878
+      CALL R2_GG_1_R2_GG_3_0(W(88),W(34),R2_ZZU,R2_ZZT3,AMPL(1,1670))
+C     Counter-term amplitude(s) for loop diagram number 4887
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(7),R2_AAAAL,AMPL(1,1671))
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(7),R2_AAAAL,AMPL(1,1672))
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(7),R2_AAAAL,AMPL(1,1673))
+C     Counter-term amplitude(s) for loop diagram number 4891
+      CALL R2_VVVV1_0(W(5),W(6),W(7),W(20),R2_AAAZL,AMPL(1,1674))
+      CALL R2_VVVV1_0(W(5),W(6),W(7),W(20),R2_AAAZL,AMPL(1,1675))
+      CALL R2_VVVV1_0(W(5),W(6),W(7),W(20),R2_AAAZL,AMPL(1,1676))
+C     Counter-term amplitude(s) for loop diagram number 4895
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(10),R2_AAAZL,AMPL(1,1677))
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(10),R2_AAAZL,AMPL(1,1678))
+      CALL R2_VVVV1_0(W(5),W(6),W(19),W(10),R2_AAAZL,AMPL(1,1679))
+C     Counter-term amplitude(s) for loop diagram number 4899
+      CALL R2_VVVV1_0(W(5),W(6),W(20),W(10),R2_AAZZL,AMPL(1,1680))
+      CALL R2_VVVV1_0(W(5),W(6),W(20),W(10),R2_AAZZL,AMPL(1,1681))
+      CALL R2_VVVV1_0(W(5),W(6),W(20),W(10),R2_AAZZL,AMPL(1,1682))
+C     Counter-term amplitude(s) for loop diagram number 4913
+      CALL R2_GG_1_0(W(7),W(103),R2_AAL,AMPL(1,1683))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(7),W(103),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1684))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(7),W(103),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1685))
+      CALL R2_GG_1_0(W(7),W(103),R2_AAL,AMPL(1,1686))
+      CALL R2_GG_1_0(W(7),W(103),R2_AAL,AMPL(1,1687))
+C     Counter-term amplitude(s) for loop diagram number 4914
+      CALL R2_GG_1_0(W(7),W(104),R2_AZL,AMPL(1,1688))
+      CALL R2_GG_1_0(W(7),W(104),R2_AZL,AMPL(1,1689))
+      CALL R2_GG_1_0(W(7),W(104),R2_AZL,AMPL(1,1690))
+C     Counter-term amplitude(s) for loop diagram number 4919
+      CALL R2_GG_1_0(W(103),W(10),R2_AZL,AMPL(1,1691))
+      CALL R2_GG_1_0(W(103),W(10),R2_AZL,AMPL(1,1692))
+      CALL R2_GG_1_0(W(103),W(10),R2_AZL,AMPL(1,1693))
+C     Counter-term amplitude(s) for loop diagram number 4920
+      CALL R2_GG_1_0(W(10),W(104),R2_ZZL,AMPL(1,1694))
+      CALL R2_GG_1_0(W(10),W(104),R2_ZZL,AMPL(1,1695))
+      CALL R2_GG_1_0(W(10),W(104),R2_ZZL,AMPL(1,1696))
+C     Counter-term amplitude(s) for loop diagram number 4923
+      CALL R2_GG_1_0(W(7),W(105),R2_AAL,AMPL(1,1697))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(7),W(105),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1698))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(7),W(105),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1699))
+      CALL R2_GG_1_0(W(7),W(105),R2_AAL,AMPL(1,1700))
+      CALL R2_GG_1_0(W(7),W(105),R2_AAL,AMPL(1,1701))
+C     Counter-term amplitude(s) for loop diagram number 4924
+      CALL R2_GG_1_0(W(7),W(106),R2_AZL,AMPL(1,1702))
+      CALL R2_GG_1_0(W(7),W(106),R2_AZL,AMPL(1,1703))
+      CALL R2_GG_1_0(W(7),W(106),R2_AZL,AMPL(1,1704))
+C     Counter-term amplitude(s) for loop diagram number 4925
+      CALL R2_GG_1_0(W(105),W(10),R2_AZL,AMPL(1,1705))
+      CALL R2_GG_1_0(W(105),W(10),R2_AZL,AMPL(1,1706))
+      CALL R2_GG_1_0(W(105),W(10),R2_AZL,AMPL(1,1707))
+C     Counter-term amplitude(s) for loop diagram number 4926
+      CALL R2_GG_1_0(W(10),W(106),R2_ZZL,AMPL(1,1708))
+      CALL R2_GG_1_0(W(10),W(106),R2_ZZL,AMPL(1,1709))
+      CALL R2_GG_1_0(W(10),W(106),R2_ZZL,AMPL(1,1710))
+C     Counter-term amplitude(s) for loop diagram number 4929
+      CALL R2_GG_1_0(W(7),W(107),R2_AAL,AMPL(1,1711))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(7),W(107),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1712))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(7),W(107),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1713))
+      CALL R2_GG_1_0(W(7),W(107),R2_AAL,AMPL(1,1714))
+      CALL R2_GG_1_0(W(7),W(107),R2_AAL,AMPL(1,1715))
+C     Counter-term amplitude(s) for loop diagram number 4930
+      CALL R2_GG_1_0(W(7),W(108),R2_AZL,AMPL(1,1716))
+      CALL R2_GG_1_0(W(7),W(108),R2_AZL,AMPL(1,1717))
+      CALL R2_GG_1_0(W(7),W(108),R2_AZL,AMPL(1,1718))
+C     Counter-term amplitude(s) for loop diagram number 4935
+      CALL R2_GG_1_0(W(107),W(10),R2_AZL,AMPL(1,1719))
+      CALL R2_GG_1_0(W(107),W(10),R2_AZL,AMPL(1,1720))
+      CALL R2_GG_1_0(W(107),W(10),R2_AZL,AMPL(1,1721))
+C     Counter-term amplitude(s) for loop diagram number 4936
+      CALL R2_GG_1_0(W(10),W(108),R2_ZZL,AMPL(1,1722))
+      CALL R2_GG_1_0(W(10),W(108),R2_ZZL,AMPL(1,1723))
+      CALL R2_GG_1_0(W(10),W(108),R2_ZZL,AMPL(1,1724))
+C     Counter-term amplitude(s) for loop diagram number 4939
+      CALL R2_GG_1_0(W(7),W(109),R2_AAL,AMPL(1,1725))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(7),W(109),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1726))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(7),W(109),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1727))
+      CALL R2_GG_1_0(W(7),W(109),R2_AAL,AMPL(1,1728))
+      CALL R2_GG_1_0(W(7),W(109),R2_AAL,AMPL(1,1729))
+C     Counter-term amplitude(s) for loop diagram number 4940
+      CALL R2_GG_1_0(W(7),W(110),R2_AZL,AMPL(1,1730))
+      CALL R2_GG_1_0(W(7),W(110),R2_AZL,AMPL(1,1731))
+      CALL R2_GG_1_0(W(7),W(110),R2_AZL,AMPL(1,1732))
+C     Counter-term amplitude(s) for loop diagram number 4941
+      CALL R2_GG_1_0(W(109),W(10),R2_AZL,AMPL(1,1733))
+      CALL R2_GG_1_0(W(109),W(10),R2_AZL,AMPL(1,1734))
+      CALL R2_GG_1_0(W(109),W(10),R2_AZL,AMPL(1,1735))
+C     Counter-term amplitude(s) for loop diagram number 4942
+      CALL R2_GG_1_0(W(10),W(110),R2_ZZL,AMPL(1,1736))
+      CALL R2_GG_1_0(W(10),W(110),R2_ZZL,AMPL(1,1737))
+      CALL R2_GG_1_0(W(10),W(110),R2_ZZL,AMPL(1,1738))
+C     Counter-term amplitude(s) for loop diagram number 4945
+      CALL R2_GG_1_0(W(7),W(111),R2_AAL,AMPL(1,1739))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(7),W(111),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1740))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(7),W(111),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1741))
+      CALL R2_GG_1_0(W(7),W(111),R2_AAL,AMPL(1,1742))
+      CALL R2_GG_1_0(W(7),W(111),R2_AAL,AMPL(1,1743))
+C     Counter-term amplitude(s) for loop diagram number 4946
+      CALL R2_GG_1_0(W(7),W(112),R2_AZL,AMPL(1,1744))
+      CALL R2_GG_1_0(W(7),W(112),R2_AZL,AMPL(1,1745))
+      CALL R2_GG_1_0(W(7),W(112),R2_AZL,AMPL(1,1746))
+C     Counter-term amplitude(s) for loop diagram number 4951
+      CALL R2_GG_1_0(W(111),W(10),R2_AZL,AMPL(1,1747))
+      CALL R2_GG_1_0(W(111),W(10),R2_AZL,AMPL(1,1748))
+      CALL R2_GG_1_0(W(111),W(10),R2_AZL,AMPL(1,1749))
+C     Counter-term amplitude(s) for loop diagram number 4952
+      CALL R2_GG_1_0(W(10),W(112),R2_ZZL,AMPL(1,1750))
+      CALL R2_GG_1_0(W(10),W(112),R2_ZZL,AMPL(1,1751))
+      CALL R2_GG_1_0(W(10),W(112),R2_ZZL,AMPL(1,1752))
+C     Counter-term amplitude(s) for loop diagram number 4957
+      CALL R2_GG_1_0(W(7),W(113),R2_AAL,AMPL(1,1753))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(7),W(113),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1754))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(7),W(113),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1755))
+      CALL R2_GG_1_0(W(7),W(113),R2_AAL,AMPL(1,1756))
+      CALL R2_GG_1_0(W(7),W(113),R2_AAL,AMPL(1,1757))
+C     Counter-term amplitude(s) for loop diagram number 4958
+      CALL R2_GG_1_0(W(7),W(114),R2_AZL,AMPL(1,1758))
+      CALL R2_GG_1_0(W(7),W(114),R2_AZL,AMPL(1,1759))
+      CALL R2_GG_1_0(W(7),W(114),R2_AZL,AMPL(1,1760))
+C     Counter-term amplitude(s) for loop diagram number 4963
+      CALL R2_GG_1_0(W(113),W(10),R2_AZL,AMPL(1,1761))
+      CALL R2_GG_1_0(W(113),W(10),R2_AZL,AMPL(1,1762))
+      CALL R2_GG_1_0(W(113),W(10),R2_AZL,AMPL(1,1763))
+C     Counter-term amplitude(s) for loop diagram number 4964
+      CALL R2_GG_1_0(W(10),W(114),R2_ZZL,AMPL(1,1764))
+      CALL R2_GG_1_0(W(10),W(114),R2_ZZL,AMPL(1,1765))
+      CALL R2_GG_1_0(W(10),W(114),R2_ZZL,AMPL(1,1766))
+C     Counter-term amplitude(s) for loop diagram number 4983
+      CALL R2_GG_1_0(W(19),W(59),R2_AAL,AMPL(1,1767))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(19),W(59),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1768))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(19),W(59),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1769))
+      CALL R2_GG_1_0(W(19),W(59),R2_AAL,AMPL(1,1770))
+      CALL R2_GG_1_0(W(19),W(59),R2_AAL,AMPL(1,1771))
+C     Counter-term amplitude(s) for loop diagram number 4984
+      CALL R2_GG_1_0(W(19),W(60),R2_AZL,AMPL(1,1772))
+      CALL R2_GG_1_0(W(19),W(60),R2_AZL,AMPL(1,1773))
+      CALL R2_GG_1_0(W(19),W(60),R2_AZL,AMPL(1,1774))
+C     Counter-term amplitude(s) for loop diagram number 4985
+      CALL R2_GG_1_0(W(59),W(20),R2_AZL,AMPL(1,1775))
+      CALL R2_GG_1_0(W(59),W(20),R2_AZL,AMPL(1,1776))
+      CALL R2_GG_1_0(W(59),W(20),R2_AZL,AMPL(1,1777))
+C     Counter-term amplitude(s) for loop diagram number 4986
+      CALL R2_GG_1_0(W(20),W(60),R2_ZZL,AMPL(1,1778))
+      CALL R2_GG_1_0(W(20),W(60),R2_ZZL,AMPL(1,1779))
+      CALL R2_GG_1_0(W(20),W(60),R2_ZZL,AMPL(1,1780))
+C     Counter-term amplitude(s) for loop diagram number 4991
+      CALL R2_GG_1_0(W(19),W(73),R2_AAL,AMPL(1,1781))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(19),W(73),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1782))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(19),W(73),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1783))
+      CALL R2_GG_1_0(W(19),W(73),R2_AAL,AMPL(1,1784))
+      CALL R2_GG_1_0(W(19),W(73),R2_AAL,AMPL(1,1785))
+C     Counter-term amplitude(s) for loop diagram number 4992
+      CALL R2_GG_1_0(W(19),W(74),R2_AZL,AMPL(1,1786))
+      CALL R2_GG_1_0(W(19),W(74),R2_AZL,AMPL(1,1787))
+      CALL R2_GG_1_0(W(19),W(74),R2_AZL,AMPL(1,1788))
+C     Counter-term amplitude(s) for loop diagram number 4997
+      CALL R2_GG_1_0(W(73),W(20),R2_AZL,AMPL(1,1789))
+      CALL R2_GG_1_0(W(73),W(20),R2_AZL,AMPL(1,1790))
+      CALL R2_GG_1_0(W(73),W(20),R2_AZL,AMPL(1,1791))
+C     Counter-term amplitude(s) for loop diagram number 4998
+      CALL R2_GG_1_0(W(20),W(74),R2_ZZL,AMPL(1,1792))
+      CALL R2_GG_1_0(W(20),W(74),R2_ZZL,AMPL(1,1793))
+      CALL R2_GG_1_0(W(20),W(74),R2_ZZL,AMPL(1,1794))
+C     Counter-term amplitude(s) for loop diagram number 4999
+      CALL R2_GG_1_0(W(22),W(61),R2_AAL,AMPL(1,1795))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(22),W(61),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1796))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(22),W(61),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1797))
+      CALL R2_GG_1_0(W(22),W(61),R2_AAL,AMPL(1,1798))
+      CALL R2_GG_1_0(W(22),W(61),R2_AAL,AMPL(1,1799))
+C     Counter-term amplitude(s) for loop diagram number 5000
+      CALL R2_GG_1_0(W(22),W(62),R2_AZL,AMPL(1,1800))
+      CALL R2_GG_1_0(W(22),W(62),R2_AZL,AMPL(1,1801))
+      CALL R2_GG_1_0(W(22),W(62),R2_AZL,AMPL(1,1802))
+C     Counter-term amplitude(s) for loop diagram number 5001
+      CALL R2_GG_1_0(W(61),W(23),R2_AZL,AMPL(1,1803))
+      CALL R2_GG_1_0(W(61),W(23),R2_AZL,AMPL(1,1804))
+      CALL R2_GG_1_0(W(61),W(23),R2_AZL,AMPL(1,1805))
+C     Counter-term amplitude(s) for loop diagram number 5002
+      CALL R2_GG_1_0(W(23),W(62),R2_ZZL,AMPL(1,1806))
+      CALL R2_GG_1_0(W(23),W(62),R2_ZZL,AMPL(1,1807))
+      CALL R2_GG_1_0(W(23),W(62),R2_ZZL,AMPL(1,1808))
+C     Counter-term amplitude(s) for loop diagram number 5003
+      CALL R2_GG_1_0(W(22),W(63),R2_AAL,AMPL(1,1809))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(22),W(63),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1810))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(22),W(63),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1811))
+      CALL R2_GG_1_0(W(22),W(63),R2_AAL,AMPL(1,1812))
+      CALL R2_GG_1_0(W(22),W(63),R2_AAL,AMPL(1,1813))
+C     Counter-term amplitude(s) for loop diagram number 5004
+      CALL R2_GG_1_0(W(22),W(64),R2_AZL,AMPL(1,1814))
+      CALL R2_GG_1_0(W(22),W(64),R2_AZL,AMPL(1,1815))
+      CALL R2_GG_1_0(W(22),W(64),R2_AZL,AMPL(1,1816))
+C     Counter-term amplitude(s) for loop diagram number 5005
+      CALL R2_GG_1_0(W(63),W(23),R2_AZL,AMPL(1,1817))
+      CALL R2_GG_1_0(W(63),W(23),R2_AZL,AMPL(1,1818))
+      CALL R2_GG_1_0(W(63),W(23),R2_AZL,AMPL(1,1819))
+C     Counter-term amplitude(s) for loop diagram number 5006
+      CALL R2_GG_1_0(W(23),W(64),R2_ZZL,AMPL(1,1820))
+      CALL R2_GG_1_0(W(23),W(64),R2_ZZL,AMPL(1,1821))
+      CALL R2_GG_1_0(W(23),W(64),R2_ZZL,AMPL(1,1822))
+C     Counter-term amplitude(s) for loop diagram number 5007
+      CALL R2_GG_1_0(W(19),W(83),R2_AAL,AMPL(1,1823))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(19),W(83),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1824))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(19),W(83),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1825))
+      CALL R2_GG_1_0(W(19),W(83),R2_AAL,AMPL(1,1826))
+      CALL R2_GG_1_0(W(19),W(83),R2_AAL,AMPL(1,1827))
+C     Counter-term amplitude(s) for loop diagram number 5008
+      CALL R2_GG_1_0(W(19),W(84),R2_AZL,AMPL(1,1828))
+      CALL R2_GG_1_0(W(19),W(84),R2_AZL,AMPL(1,1829))
+      CALL R2_GG_1_0(W(19),W(84),R2_AZL,AMPL(1,1830))
+C     Counter-term amplitude(s) for loop diagram number 5009
+      CALL R2_GG_1_0(W(83),W(20),R2_AZL,AMPL(1,1831))
+      CALL R2_GG_1_0(W(83),W(20),R2_AZL,AMPL(1,1832))
+      CALL R2_GG_1_0(W(83),W(20),R2_AZL,AMPL(1,1833))
+C     Counter-term amplitude(s) for loop diagram number 5010
+      CALL R2_GG_1_0(W(20),W(84),R2_ZZL,AMPL(1,1834))
+      CALL R2_GG_1_0(W(20),W(84),R2_ZZL,AMPL(1,1835))
+      CALL R2_GG_1_0(W(20),W(84),R2_ZZL,AMPL(1,1836))
+C     Counter-term amplitude(s) for loop diagram number 5015
+      CALL R2_GG_1_0(W(19),W(95),R2_AAL,AMPL(1,1837))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(19),W(95),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1838))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(19),W(95),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1839))
+      CALL R2_GG_1_0(W(19),W(95),R2_AAL,AMPL(1,1840))
+      CALL R2_GG_1_0(W(19),W(95),R2_AAL,AMPL(1,1841))
+C     Counter-term amplitude(s) for loop diagram number 5016
+      CALL R2_GG_1_0(W(19),W(96),R2_AZL,AMPL(1,1842))
+      CALL R2_GG_1_0(W(19),W(96),R2_AZL,AMPL(1,1843))
+      CALL R2_GG_1_0(W(19),W(96),R2_AZL,AMPL(1,1844))
+C     Counter-term amplitude(s) for loop diagram number 5021
+      CALL R2_GG_1_0(W(95),W(20),R2_AZL,AMPL(1,1845))
+      CALL R2_GG_1_0(W(95),W(20),R2_AZL,AMPL(1,1846))
+      CALL R2_GG_1_0(W(95),W(20),R2_AZL,AMPL(1,1847))
+C     Counter-term amplitude(s) for loop diagram number 5022
+      CALL R2_GG_1_0(W(20),W(96),R2_ZZL,AMPL(1,1848))
+      CALL R2_GG_1_0(W(20),W(96),R2_ZZL,AMPL(1,1849))
+      CALL R2_GG_1_0(W(20),W(96),R2_ZZL,AMPL(1,1850))
+C     Counter-term amplitude(s) for loop diagram number 5023
+      CALL R2_GG_1_0(W(85),W(27),R2_AAL,AMPL(1,1851))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(85),W(27),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1852))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(85),W(27),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1853))
+      CALL R2_GG_1_0(W(85),W(27),R2_AAL,AMPL(1,1854))
+      CALL R2_GG_1_0(W(85),W(27),R2_AAL,AMPL(1,1855))
+C     Counter-term amplitude(s) for loop diagram number 5024
+      CALL R2_GG_1_0(W(27),W(86),R2_AZL,AMPL(1,1856))
+      CALL R2_GG_1_0(W(27),W(86),R2_AZL,AMPL(1,1857))
+      CALL R2_GG_1_0(W(27),W(86),R2_AZL,AMPL(1,1858))
+C     Counter-term amplitude(s) for loop diagram number 5025
+      CALL R2_GG_1_0(W(85),W(28),R2_AZL,AMPL(1,1859))
+      CALL R2_GG_1_0(W(85),W(28),R2_AZL,AMPL(1,1860))
+      CALL R2_GG_1_0(W(85),W(28),R2_AZL,AMPL(1,1861))
+C     Counter-term amplitude(s) for loop diagram number 5026
+      CALL R2_GG_1_0(W(86),W(28),R2_ZZL,AMPL(1,1862))
+      CALL R2_GG_1_0(W(86),W(28),R2_ZZL,AMPL(1,1863))
+      CALL R2_GG_1_0(W(86),W(28),R2_ZZL,AMPL(1,1864))
+C     Counter-term amplitude(s) for loop diagram number 5027
+      CALL R2_GG_1_0(W(87),W(27),R2_AAL,AMPL(1,1865))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(87),W(27),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1866))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(87),W(27),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1867))
+      CALL R2_GG_1_0(W(87),W(27),R2_AAL,AMPL(1,1868))
+      CALL R2_GG_1_0(W(87),W(27),R2_AAL,AMPL(1,1869))
+C     Counter-term amplitude(s) for loop diagram number 5028
+      CALL R2_GG_1_0(W(27),W(88),R2_AZL,AMPL(1,1870))
+      CALL R2_GG_1_0(W(27),W(88),R2_AZL,AMPL(1,1871))
+      CALL R2_GG_1_0(W(27),W(88),R2_AZL,AMPL(1,1872))
+C     Counter-term amplitude(s) for loop diagram number 5029
+      CALL R2_GG_1_0(W(87),W(28),R2_AZL,AMPL(1,1873))
+      CALL R2_GG_1_0(W(87),W(28),R2_AZL,AMPL(1,1874))
+      CALL R2_GG_1_0(W(87),W(28),R2_AZL,AMPL(1,1875))
+C     Counter-term amplitude(s) for loop diagram number 5030
+      CALL R2_GG_1_0(W(88),W(28),R2_ZZL,AMPL(1,1876))
+      CALL R2_GG_1_0(W(88),W(28),R2_ZZL,AMPL(1,1877))
+      CALL R2_GG_1_0(W(88),W(28),R2_ZZL,AMPL(1,1878))
+C     Counter-term amplitude(s) for loop diagram number 5035
+      CALL R2_GG_1_0(W(19),W(121),R2_AAL,AMPL(1,1879))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(19),W(121),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1880))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(19),W(121),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1881))
+      CALL R2_GG_1_0(W(19),W(121),R2_AAL,AMPL(1,1882))
+      CALL R2_GG_1_0(W(19),W(121),R2_AAL,AMPL(1,1883))
+C     Counter-term amplitude(s) for loop diagram number 5036
+      CALL R2_GG_1_0(W(19),W(122),R2_AZL,AMPL(1,1884))
+      CALL R2_GG_1_0(W(19),W(122),R2_AZL,AMPL(1,1885))
+      CALL R2_GG_1_0(W(19),W(122),R2_AZL,AMPL(1,1886))
+C     Counter-term amplitude(s) for loop diagram number 5041
+      CALL R2_GG_1_0(W(121),W(20),R2_AZL,AMPL(1,1887))
+      CALL R2_GG_1_0(W(121),W(20),R2_AZL,AMPL(1,1888))
+      CALL R2_GG_1_0(W(121),W(20),R2_AZL,AMPL(1,1889))
+C     Counter-term amplitude(s) for loop diagram number 5042
+      CALL R2_GG_1_0(W(20),W(122),R2_ZZL,AMPL(1,1890))
+      CALL R2_GG_1_0(W(20),W(122),R2_ZZL,AMPL(1,1891))
+      CALL R2_GG_1_0(W(20),W(122),R2_ZZL,AMPL(1,1892))
+C     Counter-term amplitude(s) for loop diagram number 5043
+      CALL R2_GG_1_0(W(31),W(61),R2_AAL,AMPL(1,1893))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(31),W(61),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1894))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(31),W(61),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1895))
+      CALL R2_GG_1_0(W(31),W(61),R2_AAL,AMPL(1,1896))
+      CALL R2_GG_1_0(W(31),W(61),R2_AAL,AMPL(1,1897))
+C     Counter-term amplitude(s) for loop diagram number 5044
+      CALL R2_GG_1_0(W(31),W(62),R2_AZL,AMPL(1,1898))
+      CALL R2_GG_1_0(W(31),W(62),R2_AZL,AMPL(1,1899))
+      CALL R2_GG_1_0(W(31),W(62),R2_AZL,AMPL(1,1900))
+C     Counter-term amplitude(s) for loop diagram number 5045
+      CALL R2_GG_1_0(W(61),W(32),R2_AZL,AMPL(1,1901))
+      CALL R2_GG_1_0(W(61),W(32),R2_AZL,AMPL(1,1902))
+      CALL R2_GG_1_0(W(61),W(32),R2_AZL,AMPL(1,1903))
+C     Counter-term amplitude(s) for loop diagram number 5046
+      CALL R2_GG_1_0(W(32),W(62),R2_ZZL,AMPL(1,1904))
+      CALL R2_GG_1_0(W(32),W(62),R2_ZZL,AMPL(1,1905))
+      CALL R2_GG_1_0(W(32),W(62),R2_ZZL,AMPL(1,1906))
+C     Counter-term amplitude(s) for loop diagram number 5047
+      CALL R2_GG_1_0(W(31),W(63),R2_AAL,AMPL(1,1907))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(31),W(63),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1908))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(31),W(63),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1909))
+      CALL R2_GG_1_0(W(31),W(63),R2_AAL,AMPL(1,1910))
+      CALL R2_GG_1_0(W(31),W(63),R2_AAL,AMPL(1,1911))
+C     Counter-term amplitude(s) for loop diagram number 5048
+      CALL R2_GG_1_0(W(31),W(64),R2_AZL,AMPL(1,1912))
+      CALL R2_GG_1_0(W(31),W(64),R2_AZL,AMPL(1,1913))
+      CALL R2_GG_1_0(W(31),W(64),R2_AZL,AMPL(1,1914))
+C     Counter-term amplitude(s) for loop diagram number 5049
+      CALL R2_GG_1_0(W(63),W(32),R2_AZL,AMPL(1,1915))
+      CALL R2_GG_1_0(W(63),W(32),R2_AZL,AMPL(1,1916))
+      CALL R2_GG_1_0(W(63),W(32),R2_AZL,AMPL(1,1917))
+C     Counter-term amplitude(s) for loop diagram number 5050
+      CALL R2_GG_1_0(W(32),W(64),R2_ZZL,AMPL(1,1918))
+      CALL R2_GG_1_0(W(32),W(64),R2_ZZL,AMPL(1,1919))
+      CALL R2_GG_1_0(W(32),W(64),R2_ZZL,AMPL(1,1920))
+C     Counter-term amplitude(s) for loop diagram number 5055
+      CALL R2_GG_1_0(W(19),W(133),R2_AAL,AMPL(1,1921))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(19),W(133),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1922))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(19),W(133),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1923))
+      CALL R2_GG_1_0(W(19),W(133),R2_AAL,AMPL(1,1924))
+      CALL R2_GG_1_0(W(19),W(133),R2_AAL,AMPL(1,1925))
+C     Counter-term amplitude(s) for loop diagram number 5056
+      CALL R2_GG_1_0(W(19),W(134),R2_AZL,AMPL(1,1926))
+      CALL R2_GG_1_0(W(19),W(134),R2_AZL,AMPL(1,1927))
+      CALL R2_GG_1_0(W(19),W(134),R2_AZL,AMPL(1,1928))
+C     Counter-term amplitude(s) for loop diagram number 5061
+      CALL R2_GG_1_0(W(133),W(20),R2_AZL,AMPL(1,1929))
+      CALL R2_GG_1_0(W(133),W(20),R2_AZL,AMPL(1,1930))
+      CALL R2_GG_1_0(W(133),W(20),R2_AZL,AMPL(1,1931))
+C     Counter-term amplitude(s) for loop diagram number 5062
+      CALL R2_GG_1_0(W(20),W(134),R2_ZZL,AMPL(1,1932))
+      CALL R2_GG_1_0(W(20),W(134),R2_ZZL,AMPL(1,1933))
+      CALL R2_GG_1_0(W(20),W(134),R2_ZZL,AMPL(1,1934))
+C     Counter-term amplitude(s) for loop diagram number 5063
+      CALL R2_GG_1_0(W(85),W(33),R2_AAL,AMPL(1,1935))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(85),W(33),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1936))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(85),W(33),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1937))
+      CALL R2_GG_1_0(W(85),W(33),R2_AAL,AMPL(1,1938))
+      CALL R2_GG_1_0(W(85),W(33),R2_AAL,AMPL(1,1939))
+C     Counter-term amplitude(s) for loop diagram number 5064
+      CALL R2_GG_1_0(W(33),W(86),R2_AZL,AMPL(1,1940))
+      CALL R2_GG_1_0(W(33),W(86),R2_AZL,AMPL(1,1941))
+      CALL R2_GG_1_0(W(33),W(86),R2_AZL,AMPL(1,1942))
+C     Counter-term amplitude(s) for loop diagram number 5065
+      CALL R2_GG_1_0(W(85),W(34),R2_AZL,AMPL(1,1943))
+      CALL R2_GG_1_0(W(85),W(34),R2_AZL,AMPL(1,1944))
+      CALL R2_GG_1_0(W(85),W(34),R2_AZL,AMPL(1,1945))
+C     Counter-term amplitude(s) for loop diagram number 5066
+      CALL R2_GG_1_0(W(86),W(34),R2_ZZL,AMPL(1,1946))
+      CALL R2_GG_1_0(W(86),W(34),R2_ZZL,AMPL(1,1947))
+      CALL R2_GG_1_0(W(86),W(34),R2_ZZL,AMPL(1,1948))
+C     Counter-term amplitude(s) for loop diagram number 5067
+      CALL R2_GG_1_0(W(87),W(33),R2_AAL,AMPL(1,1949))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(87),W(33),C_UVAMASS1EW_1EPS
+     $ ,C_UVAMASS2EW_1EPS,AMPL(2,1950))
+      CALL L_WMWPMASS1_L_WMWPMASS3_0(W(87),W(33),C_UVAMASS1EW
+     $ ,C_UVAMASS2EW,AMPL(1,1951))
+      CALL R2_GG_1_0(W(87),W(33),R2_AAL,AMPL(1,1952))
+      CALL R2_GG_1_0(W(87),W(33),R2_AAL,AMPL(1,1953))
+C     Counter-term amplitude(s) for loop diagram number 5068
+      CALL R2_GG_1_0(W(33),W(88),R2_AZL,AMPL(1,1954))
+      CALL R2_GG_1_0(W(33),W(88),R2_AZL,AMPL(1,1955))
+      CALL R2_GG_1_0(W(33),W(88),R2_AZL,AMPL(1,1956))
+C     Counter-term amplitude(s) for loop diagram number 5069
+      CALL R2_GG_1_0(W(87),W(34),R2_AZL,AMPL(1,1957))
+      CALL R2_GG_1_0(W(87),W(34),R2_AZL,AMPL(1,1958))
+      CALL R2_GG_1_0(W(87),W(34),R2_AZL,AMPL(1,1959))
+C     Counter-term amplitude(s) for loop diagram number 5070
+      CALL R2_GG_1_0(W(88),W(34),R2_ZZL,AMPL(1,1960))
+      CALL R2_GG_1_0(W(88),W(34),R2_ZZL,AMPL(1,1961))
+      CALL R2_GG_1_0(W(88),W(34),R2_ZZL,AMPL(1,1962))
+C     Counter-term amplitude(s) for loop diagram number 5087
+      CALL R2_GG_1_0(W(10),W(104),R2_ZZV,AMPL(1,1963))
+      CALL R2_GG_1_0(W(10),W(104),R2_ZZV,AMPL(1,1964))
+      CALL R2_GG_1_0(W(10),W(104),R2_ZZV,AMPL(1,1965))
+C     Counter-term amplitude(s) for loop diagram number 5088
+      CALL R2_GG_1_0(W(10),W(106),R2_ZZV,AMPL(1,1966))
+      CALL R2_GG_1_0(W(10),W(106),R2_ZZV,AMPL(1,1967))
+      CALL R2_GG_1_0(W(10),W(106),R2_ZZV,AMPL(1,1968))
+C     Counter-term amplitude(s) for loop diagram number 5089
+      CALL R2_GG_1_0(W(10),W(108),R2_ZZV,AMPL(1,1969))
+      CALL R2_GG_1_0(W(10),W(108),R2_ZZV,AMPL(1,1970))
+      CALL R2_GG_1_0(W(10),W(108),R2_ZZV,AMPL(1,1971))
+C     Counter-term amplitude(s) for loop diagram number 5090
+      CALL R2_GG_1_0(W(10),W(110),R2_ZZV,AMPL(1,1972))
+      CALL R2_GG_1_0(W(10),W(110),R2_ZZV,AMPL(1,1973))
+      CALL R2_GG_1_0(W(10),W(110),R2_ZZV,AMPL(1,1974))
+C     Counter-term amplitude(s) for loop diagram number 5091
+      CALL R2_GG_1_0(W(10),W(112),R2_ZZV,AMPL(1,1975))
+      CALL R2_GG_1_0(W(10),W(112),R2_ZZV,AMPL(1,1976))
+      CALL R2_GG_1_0(W(10),W(112),R2_ZZV,AMPL(1,1977))
+C     Counter-term amplitude(s) for loop diagram number 5092
+      CALL R2_GG_1_0(W(10),W(114),R2_ZZV,AMPL(1,1978))
+      CALL R2_GG_1_0(W(10),W(114),R2_ZZV,AMPL(1,1979))
+      CALL R2_GG_1_0(W(10),W(114),R2_ZZV,AMPL(1,1980))
+C     Counter-term amplitude(s) for loop diagram number 5093
+      CALL R2_GG_1_0(W(20),W(60),R2_ZZV,AMPL(1,1981))
+      CALL R2_GG_1_0(W(20),W(60),R2_ZZV,AMPL(1,1982))
+      CALL R2_GG_1_0(W(20),W(60),R2_ZZV,AMPL(1,1983))
+C     Counter-term amplitude(s) for loop diagram number 5094
+      CALL R2_GG_1_0(W(20),W(74),R2_ZZV,AMPL(1,1984))
+      CALL R2_GG_1_0(W(20),W(74),R2_ZZV,AMPL(1,1985))
+      CALL R2_GG_1_0(W(20),W(74),R2_ZZV,AMPL(1,1986))
+C     Counter-term amplitude(s) for loop diagram number 5095
+      CALL R2_GG_1_0(W(23),W(62),R2_ZZV,AMPL(1,1987))
+      CALL R2_GG_1_0(W(23),W(62),R2_ZZV,AMPL(1,1988))
+      CALL R2_GG_1_0(W(23),W(62),R2_ZZV,AMPL(1,1989))
+C     Counter-term amplitude(s) for loop diagram number 5096
+      CALL R2_GG_1_0(W(23),W(64),R2_ZZV,AMPL(1,1990))
+      CALL R2_GG_1_0(W(23),W(64),R2_ZZV,AMPL(1,1991))
+      CALL R2_GG_1_0(W(23),W(64),R2_ZZV,AMPL(1,1992))
+C     Counter-term amplitude(s) for loop diagram number 5097
+      CALL R2_GG_1_0(W(20),W(84),R2_ZZV,AMPL(1,1993))
+      CALL R2_GG_1_0(W(20),W(84),R2_ZZV,AMPL(1,1994))
+      CALL R2_GG_1_0(W(20),W(84),R2_ZZV,AMPL(1,1995))
+C     Counter-term amplitude(s) for loop diagram number 5098
+      CALL R2_GG_1_0(W(20),W(96),R2_ZZV,AMPL(1,1996))
+      CALL R2_GG_1_0(W(20),W(96),R2_ZZV,AMPL(1,1997))
+      CALL R2_GG_1_0(W(20),W(96),R2_ZZV,AMPL(1,1998))
+C     Counter-term amplitude(s) for loop diagram number 5099
+      CALL R2_GG_1_0(W(86),W(28),R2_ZZV,AMPL(1,1999))
+      CALL R2_GG_1_0(W(86),W(28),R2_ZZV,AMPL(1,2000))
+      CALL R2_GG_1_0(W(86),W(28),R2_ZZV,AMPL(1,2001))
+C     Counter-term amplitude(s) for loop diagram number 5100
+      CALL R2_GG_1_0(W(88),W(28),R2_ZZV,AMPL(1,2002))
+      CALL R2_GG_1_0(W(88),W(28),R2_ZZV,AMPL(1,2003))
+      CALL R2_GG_1_0(W(88),W(28),R2_ZZV,AMPL(1,2004))
+C     Counter-term amplitude(s) for loop diagram number 5101
+      CALL R2_GG_1_0(W(20),W(122),R2_ZZV,AMPL(1,2005))
+      CALL R2_GG_1_0(W(20),W(122),R2_ZZV,AMPL(1,2006))
+      CALL R2_GG_1_0(W(20),W(122),R2_ZZV,AMPL(1,2007))
+C     Counter-term amplitude(s) for loop diagram number 5102
+      CALL R2_GG_1_0(W(32),W(62),R2_ZZV,AMPL(1,2008))
+      CALL R2_GG_1_0(W(32),W(62),R2_ZZV,AMPL(1,2009))
+      CALL R2_GG_1_0(W(32),W(62),R2_ZZV,AMPL(1,2010))
+C     Counter-term amplitude(s) for loop diagram number 5103
+      CALL R2_GG_1_0(W(32),W(64),R2_ZZV,AMPL(1,2011))
+      CALL R2_GG_1_0(W(32),W(64),R2_ZZV,AMPL(1,2012))
+      CALL R2_GG_1_0(W(32),W(64),R2_ZZV,AMPL(1,2013))
+C     Counter-term amplitude(s) for loop diagram number 5104
+      CALL R2_GG_1_0(W(20),W(134),R2_ZZV,AMPL(1,2014))
+      CALL R2_GG_1_0(W(20),W(134),R2_ZZV,AMPL(1,2015))
+      CALL R2_GG_1_0(W(20),W(134),R2_ZZV,AMPL(1,2016))
+C     Counter-term amplitude(s) for loop diagram number 5105
+      CALL R2_GG_1_0(W(86),W(34),R2_ZZV,AMPL(1,2017))
+      CALL R2_GG_1_0(W(86),W(34),R2_ZZV,AMPL(1,2018))
+      CALL R2_GG_1_0(W(86),W(34),R2_ZZV,AMPL(1,2019))
+C     Counter-term amplitude(s) for loop diagram number 5106
+      CALL R2_GG_1_0(W(88),W(34),R2_ZZV,AMPL(1,2020))
+      CALL R2_GG_1_0(W(88),W(34),R2_ZZV,AMPL(1,2021))
+      CALL R2_GG_1_0(W(88),W(34),R2_ZZV,AMPL(1,2022))
+C     At this point, all CT amps needed for (QED=10), i.e. of split
+C      order ID=1, are computed.
+      IF(FILTER_SO.AND.SQSO_TARGET.EQ.1) GOTO 2000
+
+      GOTO 1001
+ 2000 CONTINUE
+      CT_REQ_SO_DONE=.TRUE.
+ 1001 CONTINUE
+      END
+

@@ -1,0 +1,286 @@
+Running MG7 in debug mode
+********************************************************************************
+*                                                                              *
+*                               W E L C O M E to                               *
+*                              M A D G R A P H 7                               *
+*                                                                              *
+*                                                                              *
+*                                  ..........                                  *
+*                                @          ....                               *
+*                              @               ...                             *
+*                            @    M         M    .                             *
+*                           @     MM       MM    ..                            *
+*                           .     M  M   M  M  ..                              *
+*                           ..    M   M M   M ..                               *
+*                            .    M    M    M.                                 *
+*                            ...               7777777                         *
+*                              ....                 7                          *
+*                                 ................ 7                           *
+*                                                 7                            *
+*                                                7                             *
+*                                                                              *
+*                   VERSION 0.2.1                 2026-09-24                   *
+*                  GIT v0.2.1-567-g464b441fe  madloop_ninjars                  *
+*                                                                              *
+*                 The MadGraph7 Development Team - Find us at                  *
+*                        http://madgraph.phys.ucl.ac.be/                       *
+*                                      and                                     *
+*                      http://amcatnlo.web.cern.ch/amcatnlo/                   *
+*                                                                              *
+*                         Type 'help' for in-line help.                        *
+*                 Type 'tutorial' to learn how MadGraph7 works                 *
+*                                                                              *
+********************************************************************************
+load MG7 configuration from ../../../../../../../input/mg7_configuration.txt 
+fastjet-config does not seem to correspond to a valid fastjet-config executable (v3+). We will use fjcore instead.
+ Please set the 'fastjet'variable to the full (absolute) /PATH/TO/fastjet-config (including fastjet-config).
+ MadGraph7> set fastjet /PATH/TO/fastjet-config
+
+eMELA-config does not seem to correspond to a valid eMELA-config executable.
+ Please set the 'fastjet'variable to the full (absolute) /PATH/TO/eMELA-config (including eMELA-config).
+ MadGraph7> set eMELA /PATH/TO/eMELA-config
+
+set ninja to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib
+set ninjars to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/HEPTools/ninjars/lib
+set collier to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/collier
+lhapdf-config does not seem to correspond to a valid lhapdf-config executable. 
+Please set the 'lhapdf' variable to the (absolute) /PATH/TO/lhapdf-config (including lhapdf-config).
+Note that you can still compile and run aMC@NLO with the built-in PDFs
+ MadGraph7> set lhapdf /PATH/TO/lhapdf-config
+
+No valid eps viewer found. Please set in ./input/mg7_configuration.txt
+No valid web browser found. Please set in ./input/mg7_configuration.txt
+Using default gzip "gzip". Set another one in ./input/mg7_configuration.txt
+import /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/profile-gg-hhh/6/0/commands.mg5
+The import format was not given, so we guess it as command
+set automatic_html_opening False
+This option will be the default in any output that you are going to create in this session.
+In order to keep this changes permanent please run 'save options'
+set auto_update 0
+save options auto_update
+save configuration file to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/input/mg7_configuration.txt
+set nb_core 1
+This option will be the default in any output that you are going to create in this session.
+In order to keep this changes permanent please run 'save options'
+set loop_optimized_output True
+set loop optimized output to True
+set output_dependencies external
+save options output_dependencies
+save configuration file to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/input/mg7_configuration.txt
+set complex_mass_scheme False
+Complex mass already desactivated.
+set ninja /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib
+set ninja to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/original/HEPTools/ninja/lib
+save options ninja
+save configuration file to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/input/mg7_configuration.txt
+set ninjars /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/HEPTools/ninjars/lib
+set ninjars to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/HEPTools/ninjars/lib
+save options ninjars
+save configuration file to /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/input/mg7_configuration.txt
+import model loop_sm
+INFO: Details of the model import are written in /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/models/loop_sm/loop_sm_debug.log 
+INFO: failed to load model from pickle file. Try importing UFO from File 
+[1;60mINFO: This model [version 1.2] is provided by V. Hirschi (email: valentin.hirschi@gmail.com). Please cite n/a [0m
+INFO: load particles 
+INFO: load vertices 
+INFO: Restrict model loop_sm with file ../../../../../../../models/loop_sm/restrict_default.dat . 
+INFO: Use 'explain_restriction' to see what that card removes from the model. 
+INFO: Change particles name to pass to MG7 convention 
+Defined multiparticle p = g u c d s u~ c~ d~ s~
+Defined multiparticle j = g u c d s u~ c~ d~ s~
+Defined multiparticle l+ = e+ mu+
+Defined multiparticle l- = e- mu-
+Defined multiparticle vl = ve vm vt
+Defined multiparticle vl~ = ve~ vm~ vt~
+Defined multiparticle all = g gh gh~ d u s c d~ u~ s~ c~ a ve vm vt e- mu- ve~ vm~ vt~ e+ mu+ b t b~ t~ z w+ h w- ta- ta+
+check profile -reuse 20 /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-generation/run-v1/inputs/candidate/profile-gg-hhh/param_card.dat g g > h h h [sqrvirt=QCD] --reduction=6 --seed=940086 --energy=1000 --split_orders=-1
+check: Setting random seed to 940086.
+INFO: Generating process: g g > h h h [ sqrvirt = QCD ] 
+INFO: Checking timing for process gg_hhh with 703 PS points. 
+INFO: Checking stability of process gg_hhh with 20 PS points by Ninja. 
+check: 0 check performed in 1m50s
+matplotlib: matplotlib data path: /nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data[0m
+matplotlib: CONFIGDIR=/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/profile-gg-hhh/6/config/matplotlib[0m
+matplotlib: interactive is False[0m
+matplotlib: platform is linux[0m
+matplotlib: CACHEDIR=/home/external/.cache/matplotlib[0m
+matplotlib.font_manager: Using fontManager instance from /home/external/.cache/matplotlib/fontlist-v3.11.0.json[0m
+matplotlib.pyplot: Loaded backend agg version v2.2.[0m
+matplotlib.font_manager: findfont: Matching sans\-serif:style=normal:variant=normal:weight=normal:stretch=normal:size=10.0.[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono-BoldOblique.ttf', index=0, name='DejaVu Sans Mono', style='oblique', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXGeneralBolIta.ttf', index=0, name='STIXGeneral', style='italic', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXGeneralItalic.ttf', index=0, name='STIXGeneral', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizOneSymBol.ttf', index=0, name='STIXSizeOneSym', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizTwoSymReg.ttf', index=0, name='STIXSizeTwoSym', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/cmex10.ttf', index=0, name='cmex10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXNonUniBolIta.ttf', index=0, name='STIXNonUnicode', style='italic', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXNonUniIta.ttf', index=0, name='STIXNonUnicode', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizTwoSymBol.ttf', index=0, name='STIXSizeTwoSym', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizThreeSymBol.ttf', index=0, name='STIXSizeThreeSym', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXNonUni.ttf', index=0, name='STIXNonUnicode', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/cmtt10.ttf', index=0, name='cmtt10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono-Oblique.ttf', index=0, name='DejaVu Sans Mono', style='oblique', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizOneSymReg.ttf', index=0, name='STIXSizeOneSym', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/cmsy10.ttf', index=0, name='cmsy10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/cmr10.ttf', index=0, name='cmr10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerifDisplay.ttf', index=0, name='DejaVu Serif Display', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono-Bold.ttf', index=0, name='DejaVu Sans Mono', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono.ttf', index=0, name='DejaVu Sans Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/cmti10.ttf', index=0, name='cmti10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans-BoldOblique.ttf', index=0, name='DejaVu Sans', style='oblique', variant='normal', weight=700, stretch='normal', size='scalable')) = 1.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerif.ttf', index=0, name='DejaVu Serif', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerif-BoldItalic.ttf', index=0, name='DejaVu Serif', style='italic', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXGeneral.ttf', index=0, name='STIXGeneral', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXGeneralBol.ttf', index=0, name='STIXGeneral', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerif-Italic.ttf', index=0, name='DejaVu Serif', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSerif-Bold.ttf', index=0, name='DejaVu Serif', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/cmb10.ttf', index=0, name='cmb10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizThreeSymReg.ttf', index=0, name='STIXSizeThreeSym', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizFourSymBol.ttf', index=0, name='STIXSizeFourSym', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSansDisplay.ttf', index=0, name='DejaVu Sans Display', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/cmss10.ttf', index=0, name='cmss10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/cmmi10.ttf', index=0, name='cmmi10', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans-Bold.ttf', index=0, name='DejaVu Sans', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 0.33499999999999996[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans.ttf', index=0, name='DejaVu Sans', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 0.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans-Oblique.ttf', index=0, name='DejaVu Sans', style='oblique', variant='normal', weight=400, stretch='normal', size='scalable')) = 1.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizFourSymReg.ttf', index=0, name='STIXSizeFourSym', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXNonUniBol.ttf', index=0, name='STIXNonUnicode', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/STIXSizFiveSymReg.ttf', index=0, name='STIXSizeFiveSym', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/LastResortHE-Regular.ttf', index=0, name='Last Resort High-Efficiency', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusSerif-Bold.otf', index=0, name='Libertinus Serif', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusSans-Regular.otf', index=0, name='Libertinus Sans', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusSans-Regular.ttf', index=0, name='Libertinus Sans', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusMath-Regular.otf', index=0, name='Libertinus Math', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansCondensed.ttf', index=0, name='DejaVu Sans', style='normal', variant='normal', weight=400, stretch='condensed', size='scalable')) = 0.25[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansCondensed.ttf', index=0, name='DejaVu Sans Condensed', style='normal', variant='normal', weight=380, stretch='condensed', size='scalable')) = 10.269[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansMono-BoldOblique.ttf', index=0, name='DejaVu Sans Mono', style='oblique', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerifCondensed-BoldItalic.ttf', index=0, name='DejaVu Serif', style='italic', variant='normal', weight=700, stretch='condensed', size='scalable')) = 11.535[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerifCondensed-BoldItalic.ttf', index=0, name='DejaVu Serif Condensed', style='italic', variant='normal', weight=700, stretch='condensed', size='scalable')) = 11.535[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusSerifDisplay-Regular.otf', index=0, name='Libertinus Serif Display', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansCondensed-Bold.ttf', index=0, name='DejaVu Sans', style='normal', variant='normal', weight=700, stretch='condensed', size='scalable')) = 0.5349999999999999[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansCondensed-Bold.ttf', index=0, name='DejaVu Sans Condensed', style='normal', variant='normal', weight=700, stretch='condensed', size='scalable')) = 10.535[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuMathTeXGyre.ttf', index=0, name='DejaVu Math TeX Gyre', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerifCondensed.ttf', index=0, name='DejaVu Serif', style='normal', variant='normal', weight=400, stretch='condensed', size='scalable')) = 10.25[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerifCondensed.ttf', index=0, name='DejaVu Serif Condensed', style='normal', variant='normal', weight=380, stretch='condensed', size='scalable')) = 10.269[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusSerifDisplay-Regular.ttf', index=0, name='Libertinus Serif Display', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansCondensed-Oblique.ttf', index=0, name='DejaVu Sans', style='oblique', variant='normal', weight=400, stretch='condensed', size='scalable')) = 1.25[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansCondensed-Oblique.ttf', index=0, name='DejaVu Sans Condensed', style='oblique', variant='normal', weight=400, stretch='condensed', size='scalable')) = 11.25[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSans-ExtraLight.ttf', index=0, name='DejaVu Sans', style='normal', variant='normal', weight=200, stretch='normal', size='scalable')) = 0.24[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSans-ExtraLight.ttf', index=0, name='DejaVu Sans Light', style='normal', variant='normal', weight=200, stretch='normal', size='scalable')) = 10.24[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerif.ttf', index=0, name='DejaVu Serif', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusSerif-SemiboldItalic.otf', index=0, name='Libertinus Serif', style='italic', variant='normal', weight=600, stretch='normal', size='scalable')) = 11.24[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusSerif-SemiboldItalic.otf', index=0, name='Libertinus Serif Semibold Italic', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusKeyboard-Regular.ttf', index=0, name='Libertinus Keyboard', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusMono-Regular.ttf', index=0, name='Libertinus Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansMono-Oblique.ttf', index=0, name='DejaVu Sans Mono', style='oblique', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerifCondensed-Bold.ttf', index=0, name='DejaVu Serif', style='normal', variant='normal', weight=700, stretch='condensed', size='scalable')) = 10.535[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerifCondensed-Bold.ttf', index=0, name='DejaVu Serif Condensed', style='normal', variant='normal', weight=700, stretch='condensed', size='scalable')) = 10.535[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusSerif-BoldItalic.ttf', index=0, name='Libertinus Serif', style='italic', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSans-BoldOblique.ttf', index=0, name='DejaVu Sans', style='oblique', variant='normal', weight=700, stretch='normal', size='scalable')) = 1.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusSerif-Semibold.otf', index=0, name='Libertinus Serif', style='normal', variant='normal', weight=600, stretch='normal', size='scalable')) = 10.24[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusSerif-Semibold.otf', index=0, name='Libertinus Serif Semibold', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSans.ttf', index=0, name='DejaVu Sans', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 0.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansCondensed-BoldOblique.ttf', index=0, name='DejaVu Sans', style='oblique', variant='normal', weight=700, stretch='condensed', size='scalable')) = 1.535[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansCondensed-BoldOblique.ttf', index=0, name='DejaVu Sans Condensed', style='oblique', variant='normal', weight=700, stretch='condensed', size='scalable')) = 11.535[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansMono.ttf', index=0, name='DejaVu Sans Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusSerif-Bold.ttf', index=0, name='Libertinus Serif', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusSerif-BoldItalic.otf', index=0, name='Libertinus Serif', style='italic', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusSerif-Semibold.ttf', index=0, name='Libertinus Serif', style='normal', variant='normal', weight=600, stretch='normal', size='scalable')) = 10.24[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusSerif-Semibold.ttf', index=0, name='Libertinus Serif Semibold', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusSerif-SemiboldItalic.ttf', index=0, name='Libertinus Serif', style='italic', variant='normal', weight=600, stretch='normal', size='scalable')) = 11.24[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusSerif-SemiboldItalic.ttf', index=0, name='Libertinus Serif Semibold Italic', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusSans-Italic.otf', index=0, name='Libertinus Sans', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusMono-Regular.otf', index=0, name='Libertinus Mono', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerifCondensed-Italic.ttf', index=0, name='DejaVu Serif', style='italic', variant='normal', weight=400, stretch='condensed', size='scalable')) = 11.25[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerifCondensed-Italic.ttf', index=0, name='DejaVu Serif Condensed', style='italic', variant='normal', weight=400, stretch='condensed', size='scalable')) = 11.25[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerif-Bold.ttf', index=0, name='DejaVu Serif', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusSerif-Italic.otf', index=0, name='Libertinus Serif', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusMath-Regular.ttf', index=0, name='Libertinus Math', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusSerifInitials-Regular.otf', index=0, name='Libertinus Serif Initials', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerif-Italic.ttf', index=0, name='DejaVu Serif', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusKeyboard-Regular.otf', index=0, name='Libertinus Keyboard', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSansMono-Bold.ttf', index=0, name='DejaVu Sans Mono', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusSans-Bold.ttf', index=0, name='Libertinus Sans', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSans-Bold.ttf', index=0, name='DejaVu Sans', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 0.33499999999999996[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusSerif-Italic.ttf', index=0, name='Libertinus Serif', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/klwz4lnn6zvz88nas35gyqyh2iv5xh80-dejavu-fonts-minimal-2.37/share/fonts/truetype/DejaVuSans.ttf', index=0, name='DejaVu Sans', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 0.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusSans-Italic.ttf', index=0, name='Libertinus Sans', style='italic', variant='normal', weight=400, stretch='normal', size='scalable')) = 11.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSans-Oblique.ttf', index=0, name='DejaVu Sans', style='oblique', variant='normal', weight=400, stretch='normal', size='scalable')) = 1.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/71mxn2pyq807r32qsd2mdszkajhlb39q-dejavu-fonts-2.37/share/fonts/truetype/DejaVuSerif-BoldItalic.ttf', index=0, name='DejaVu Serif', style='italic', variant='normal', weight=700, stretch='normal', size='scalable')) = 11.335[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusSerifInitials-Regular.ttf', index=0, name='Libertinus Serif Initials', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/truetype/LibertinusSerif-Regular.ttf', index=0, name='Libertinus Serif', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusSerif-Regular.otf', index=0, name='Libertinus Serif', style='normal', variant='normal', weight=400, stretch='normal', size='scalable')) = 10.05[0m
+matplotlib.font_manager: findfont: score(FontEntry(fname='/nix/store/n30d59m2v7j9ipl0saq57s18z7h5v69b-libertinus-7.051/share/fonts/opentype/LibertinusSans-Bold.otf', index=0, name='Libertinus Sans', style='normal', variant='normal', weight=700, stretch='normal', size='scalable')) = 10.335[0m
+matplotlib.font_manager: findfont: Matching sans\-serif:style=normal:variant=normal:weight=normal:stretch=normal:size=10.0 to DejaVu Sans ('/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/lib/python3.14/site-packages/matplotlib/mpl-data/fonts/ttf/DejaVuSans.ttf') with score of 0.050000.[0m
+INFO: Some stability statistics will be displayed once you close the plot window 
+INFO: Log of this profile check was output to file /shared/external/madloop_ninjars/madgraph7_madloop_ninjars/.benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/profile-gg-hhh/6/profile_optimized_0_gg_hhh.log 
+[1;32mDEBUG: 
+Timing result optimized:
+Timing result for the optimized output:
+Process: g g > h h h [ sqrvirt = QCD ] 
+
+= Generation time total...... ========== 25.8s
+|= Diagrams generation....... 1.9s
+|= Helas Diagrams generation. 0.444s
+|= Process output............ 1.36s
+|= HELAS+model compilation... 2.83s
+|= Process compilation....... 19s
+|= Initialization............ 0.342s
+
+= Reduction tool tested...... Ninja
+
+= Helicity sum time / PSpoint ========== 36.5ms
+|= Coefs. computation time... 5.79ms (16%)
+|= Loop evaluation time...... 30.7ms (84%)
+
+= One helicity time / PSpoint ========== 10.3ms
+|= Coefs. computation time... 1.62ms (16%)
+|= Loop evaluation time...... 8.64ms (84%)
+
+= Miscellaneous ========================
+|= Number of hel. computed... 4/4
+|= Number of loop diagrams... 100
+|= Number of loop groups..... 48
+|= Number of loop wfs........ 216
+||= # of loop wfs of rank 0.. 0
+||= # of loop wfs of rank 1.. 4
+||= # of loop wfs of rank 2.. 16
+||= # of loop wfs of rank 3.. 64
+||= # of loop wfs of rank 4.. 84
+||= # of loop wfs of rank 5.. 48
+|= Loading time (Color data). ~12.5ms
+|= Maximum RAM usage (rss)... 15.5Mb
+
+= Output disk size =====================
+|= Source directory sources.. 152Kb
+|= Process sources........... 158Kb
+|= Color and helicity data... 9.0Kb
+|= Executable size........... 27Mb
+
+Stability result for the optimized output:
+Stability checking for g g > h h h [ sqrvirt = QCD ] (optimized mode)
+
+= Tool (DoublePrec for CT).......   Ninja     
+|= Number of PS points considered   20        
+|= Median accuracy...............   4.78e-14  
+|= Max accuracy..................   2.66e-15  
+|= Min accuracy..................   1.05e-12  
+|= Overall DP loop_dir test power   0.2,-1.7  
+|= Fraction of evts with power<-3   0.00e+00  
+|= Number of Unstable PS points     0         
+
+= Legend for the statistics of the stability tests. (all log below ar log_10)
+The loop direction test power P is computed as follow:
+    P = accuracy(loop_dir_test) / accuracy(all_other_test)
+    So that log(P) is positive if the loop direction test is effective.
+  The tuple printed out is (log(median(P)),log(min(P)))
+  The consistency test C is computed when QP evaluations are available:
+     C = accuracy(all_DP_test) / abs(best_QP_eval-best_DP_eval)
+  So a consistent test would have log(C) as close to zero as possible.
+  The tuple printed out is (log(median(C)),log(min(C)),log(max(C)))
+
+= Stability details of the run are output to the file stability_optimized_0_gg_hhh.log
+
+ [0m
+quit
+quit

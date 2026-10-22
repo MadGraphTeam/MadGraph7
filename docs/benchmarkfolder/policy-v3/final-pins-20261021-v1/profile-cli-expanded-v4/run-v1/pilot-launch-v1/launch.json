@@ -1,0 +1,78 @@
+{
+  "scope": "Exactly QCD1 pilot indices0/1 only; no automatic remaining70",
+  "started_utc": "2026-10-21T23:04:31.674391+00:00",
+  "source_sha256": "af8e347e16c5149ec6941afe0fa0c6c35ae207aa7ab5e5f67b7fb559430df9fc",
+  "producer_sha256": "b0681842604b651eac164448f0ca5b19cc61ae02c16704ceb4e9e926516c8ff7",
+  "specification_sha256": "43179488a3fac72a88a45f95717c82b11f71e5a91b1697af7e084b32795a5492",
+  "root_handoff_sha256": "88e8031ff216b146ae7bd8d29cbad9ec1be564bab0475e4d0504bae975b98b73",
+  "root_operational_sha256": "463c59c2c941a937ee9f22e394e422d91d689b8bba0452c69facc640b46422aa",
+  "supervisor": {
+    "pid": 1334355,
+    "start_ticks": 65757272,
+    "pgid": 1334355,
+    "session": 1334355
+  },
+  "commands": [
+    {
+      "index": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "207",
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+        "-B",
+        "-u",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tools/ninjars_profile_cli_v3.py",
+        "--spec",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-plan-v4/specification.json",
+        "--index",
+        "0",
+        "--handoff",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/root-handoff-pilot.json",
+        "--execute-numerical"
+      ],
+      "process": {
+        "pid": 1334358,
+        "start_ticks": 65757279,
+        "pgid": 1334358,
+        "session": 1334358
+      },
+      "started_utc": "2026-10-21T23:04:31.679082+00:00",
+      "returncode": 0,
+      "finished_utc": "2026-10-21T23:05:19.670088+00:00"
+    },
+    {
+      "index": 1,
+      "command": [
+        "taskset",
+        "-c",
+        "207",
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python",
+        "-B",
+        "-u",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tools/ninjars_profile_cli_v3.py",
+        "--spec",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-plan-v4/specification.json",
+        "--index",
+        "1",
+        "--handoff",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/root-handoff-pilot.json",
+        "--execute-numerical"
+      ],
+      "process": {
+        "pid": 1349390,
+        "start_ticks": 65762079,
+        "pgid": 1349390,
+        "session": 1349390
+      },
+      "started_utc": "2026-10-21T23:05:19.673681+00:00",
+      "returncode": 0,
+      "finished_utc": "2026-10-21T23:06:05.864968+00:00"
+    }
+  ],
+  "completed_indices": [
+    0,
+    1
+  ],
+  "status": "incomplete"
+}

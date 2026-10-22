@@ -1,0 +1,18 @@
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+c      written by the UFO converter
+ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+
+      WRITE(*,*)  ' Couplings of loop_qcd_qed_sm_Gmu'
+      WRITE(*,*)  ' ---------------------------------'
+      WRITE(*,*)  ' '
+      WRITE(*,2) 'c_UVcxsWp1EW = ', C_UVCXSWP1EW
+      WRITE(*,2) 'GC_1 = ', GC_1
+      WRITE(*,2) 'GC_2 = ', GC_2
+      WRITE(*,2) 'GC_4 = ', GC_4
+      WRITE(*,2) 'GC_68 = ', GC_68
+      WRITE(*,2) 'GC_69 = ', GC_69
+      WRITE(*,2) 'GC_71 = ', GC_71
+      WRITE(*,2) 'GC_76 = ', GC_76
+      WRITE(*,2) 'GC_124 = ', GC_124
+      WRITE(*,2) 'R2_bxtW2Cp = ', R2_BXTW2CP
+      WRITE(*,2) 'c_UVcxsWp1EW_1eps = ', C_UVCXSWP1EW_1EPS

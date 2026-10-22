@@ -1,0 +1,62 @@
+Timing result for the optimized output:
+Process: e+ e- > t t~ a [ virt = QED ] 
+
+= Generation time total...... ========== 114s
+|= Diagrams generation....... 8.31s
+|= Helas Diagrams generation. 5.21s
+|= Process output............ 6.63s
+|= HELAS+model compilation... 76.8s
+|= Process compilation....... 16.3s
+|= Initialization............ 0.561s
+
+= Reduction tool tested...... NinjaRS
+
+= Helicity sum time / PSpoint ========== 35.7ms
+|= Coefs. computation time... 30.7ms (86%)
+|= Loop evaluation time...... 4.96ms (14%)
+
+= One helicity time / PSpoint ========== 4.77ms
+|= Coefs. computation time... 2.33ms (49%)
+|= Loop evaluation time...... 2.44ms (51%)
+
+= Miscellaneous ========================
+|= Number of hel. computed... 16/32
+|= Number of loop diagrams... 921
+|= Number of loop groups..... 200
+|= Number of loop wfs........ 1362
+||= # of loop wfs of rank 0.. 188
+||= # of loop wfs of rank 1.. 437
+||= # of loop wfs of rank 2.. 587
+||= # of loop wfs of rank 3.. 150
+|= Loading time (Color data). ~29.1ms
+|= Maximum RAM usage (rss)... 25.2Mb
+
+= Output disk size =====================
+|= Source directory sources.. 1.6Mb
+|= Process sources........... 259Kb
+|= Color and helicity data... 8.0Kb
+|= Executable size........... 29Mb
+
+Stability result for the optimized output:
+Stability checking for e+ e- > t t~ a [ virt = QED ] (optimized mode)
+
+= Tool (DoublePrec for CT).......   NinjaRS   
+|= Number of PS points considered   20        
+|= Median accuracy...............   1.27e-13  
+|= Max accuracy..................   5.24e-15  
+|= Min accuracy..................   2.59e-11  
+|= Overall DP loop_dir test power   0.6,-0.7  
+|= Fraction of evts with power<-3   0.00e+00  
+|= Number of Unstable PS points     0         
+
+= Legend for the statistics of the stability tests. (all log below ar log_10)
+The loop direction test power P is computed as follow:
+    P = accuracy(loop_dir_test) / accuracy(all_other_test)
+    So that log(P) is positive if the loop direction test is effective.
+  The tuple printed out is (log(median(P)),log(min(P)))
+  The consistency test C is computed when QP evaluations are available:
+     C = accuracy(all_DP_test) / abs(best_QP_eval-best_DP_eval)
+  So a consistent test would have log(C) as close to zero as possible.
+  The tuple printed out is (log(median(C)),log(min(C)),log(max(C)))
+
+= Stability details of the run are output to the file stability_optimized_0_epem_ttxa.log

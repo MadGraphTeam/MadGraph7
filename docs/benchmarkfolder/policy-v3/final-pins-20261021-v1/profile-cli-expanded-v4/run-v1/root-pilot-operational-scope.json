@@ -1,0 +1,16 @@
+{
+  "schema": "root-profile-cli-pilot-operational-scope-v1",
+  "utc": "2026-10-21T23:04:12.672322+00:00",
+  "authorized_indices": [
+    0,
+    1
+  ],
+  "all_other_agents_quiescent": true,
+  "global_timing_quiet_confirmed": true,
+  "continuation_requires_separate_root_handoff": true,
+  "earlier_three_pilots_retained_incomplete": true,
+  "source_HEAD": "464b441fe04d3cb5b3da7708897fa831e32c55eb",
+  "specification_sha256": "43179488a3fac72a88a45f95717c82b11f71e5a91b1697af7e084b32795a5492",
+  "root_handoff_sha256": "88e8031ff216b146ae7bd8d29cbad9ec1be564bab0475e4d0504bae975b98b73",
+  "independent_plan_delta_review_sha256": "0805380c86ad14482ef83214210db2676b69cfc889f6784954ca42608f8d0d61"
+}

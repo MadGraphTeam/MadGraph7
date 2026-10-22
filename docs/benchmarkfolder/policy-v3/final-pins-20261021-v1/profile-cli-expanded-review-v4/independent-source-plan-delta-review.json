@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "specification_sha256": "43179488a3fac72a88a45f95717c82b11f71e5a91b1697af7e084b32795a5492",
+  "manifest_sha256": "acee6e11dbd305469579fbf1618d097a559108cbf4a4cf74c22d951a1074291e",
+  "scope": "Fast v3\u2192v4 delta/readiness only; no tests/native/build/archivehashes/repeatedsourceaudits.",
+  "checks": [
+    "All52finiteplan payloads hash/size match.",
+    "Same12physics definitions/models/seeds/physicalcards/HHHdirtylineage and48byte-identical commandcards.",
+    "Same72cells,3repetitions,first20then0,pilot0/1 and explicitcontinuation.",
+    "Exactly2/87sourcechanges: reviewed59bprocess+b068helper; livebytesmatch464b sourcebindings and softwareproofbound.",
+    "Newwork/report absent, expectedhandofffalse/exactspec/CPU207.",
+    "Allthree failedpredecessors remain zeroaccepted/noNRS withthirdcompletedCLI/failedadapter statusseparate.",
+    "No point/math/timer/settings/uncertainty/count scope change."
+  ],
+  "quiescent_after_review": true
+}

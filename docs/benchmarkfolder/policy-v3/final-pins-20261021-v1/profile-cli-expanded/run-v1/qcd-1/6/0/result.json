@@ -1,0 +1,79 @@
+{
+  "phase": "mg7-profile-cli-ninja-nrs-v1",
+  "complete": false,
+  "acceptance_eligible": false,
+  "producer_role": "ninjars-mg7-profile-cli-v3",
+  "producer_source": {
+    "path": "tools/ninjars_profile_cli_v3.py",
+    "sha256": "8aed579e7bb3130651cf4fb585c5b701d60b35e2de2c7d79960301396882b20d",
+    "bytes": 33472
+  },
+  "specification": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v1/specification.json",
+    "sha256": "e24874d9ed1b5e694998c5ee08fb51d1721d55f2fa5bb3e405619d4fae3533ac",
+    "bytes": 433093
+  },
+  "command_card": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/qcd-1/6/0/commands.mg5",
+    "sha256": "9561ccfafc39eb92e8dbf6fa32dca40394a1b6dae3d2dd21615d8ced9b01bd14",
+    "bytes": 656
+  },
+  "item": {
+    "case": "qcd-1",
+    "backend": 6,
+    "repetition": 0,
+    "npoints": 20,
+    "command_card": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v1/cards/qcd-1-6-20.mg5",
+      "sha256": "9561ccfafc39eb92e8dbf6fa32dca40394a1b6dae3d2dd21615d8ced9b01bd14",
+      "bytes": 656
+    }
+  },
+  "declared_scope": {
+    "repetitions": 3,
+    "initial_stability_points": 20
+  },
+  "source_root": "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars",
+  "work": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/qcd-1/6",
+  "paired_ratio_eligible": false,
+  "stage_scope": null,
+  "stage_scope_limitation": "Await exact timing-stage metadata; final profile output alone cannot prove prior selected timing helicity",
+  "error": "ValueError('CLI did not produce exactly one fresh profile log')",
+  "files": {
+    "input-specification.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/qcd-1/6/0/input-specification.json",
+      "sha256": "e24874d9ed1b5e694998c5ee08fb51d1721d55f2fa5bb3e405619d4fae3533ac",
+      "bytes": 433093
+    },
+    "stdout.log": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/qcd-1/6/0/stdout.log",
+      "sha256": "70d3ad01b1d588f104eda9a43ceb3c3cdde38b79eee6691baf09369a098170d1",
+      "bytes": 7914
+    },
+    "root-handoff.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/qcd-1/6/0/root-handoff.json",
+      "sha256": "678a4e0a012c707b52a75d318ab5ccc1555793decc1c1c6c086a6ff727cf2db1",
+      "bytes": 181
+    },
+    "profile_cli.py": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/qcd-1/6/0/profile_cli.py",
+      "sha256": "8aed579e7bb3130651cf4fb585c5b701d60b35e2de2c7d79960301396882b20d",
+      "bytes": 33472
+    },
+    "commands.mg5": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/qcd-1/6/0/commands.mg5",
+      "sha256": "9561ccfafc39eb92e8dbf6fa32dca40394a1b6dae3d2dd21615d8ced9b01bd14",
+      "bytes": 656
+    },
+    "process-ledger.jsonl": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/qcd-1/6/0/process-ledger.jsonl",
+      "sha256": "6b967c963d083118f6c8cd4d27fda880f202e295480cccbd4308eb72c0132497",
+      "bytes": 643
+    },
+    "retained-work/SAVEDTMP_CHECK_uux_z/SavedRunInfos/profile_timing_metadata.json": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/qcd-1/6/0/retained-work/SAVEDTMP_CHECK_uux_z/SavedRunInfos/profile_timing_metadata.json",
+      "sha256": "c390e4bd5374afb5caeb8a0d5703a5ac65bed68e777b41e448402fa560a8fd47",
+      "bytes": 424011
+    }
+  }
+}

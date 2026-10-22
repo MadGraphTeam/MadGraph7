@@ -1,0 +1,226 @@
+{
+  "ew-1": {
+    "N": 100,
+    "tools": {
+      "6": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        }
+      },
+      "8": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        }
+      }
+    },
+    "transformed_observations_per_tool": 300
+  },
+  "ew-2": {
+    "N": 100,
+    "tools": {
+      "6": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        }
+      },
+      "8": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 300,
+          "ieee_overflow_seen": 0
+        }
+      }
+    },
+    "transformed_observations_per_tool": 300
+  },
+  "ew-3": {
+    "N": 100,
+    "tools": {
+      "6": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        }
+      },
+      "8": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 300,
+          "ieee_overflow_seen": 0
+        }
+      }
+    },
+    "transformed_observations_per_tool": 300
+  },
+  "qcd-1": {
+    "N": 100,
+    "tools": {
+      "6": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        }
+      },
+      "8": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        }
+      }
+    },
+    "transformed_observations_per_tool": 300
+  },
+  "qcd-2": {
+    "N": 100,
+    "tools": {
+      "6": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        }
+      },
+      "8": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 300,
+          "ieee_overflow_seen": 0
+        }
+      }
+    },
+    "transformed_observations_per_tool": 300
+  },
+  "qcd-3": {
+    "N": 100,
+    "tools": {
+      "6": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        }
+      },
+      "8": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 300,
+          "ieee_overflow_seen": 0
+        }
+      }
+    },
+    "transformed_observations_per_tool": 300
+  },
+  "supplement-gg-h": {
+    "N": 100,
+    "tools": {
+      "6": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        }
+      },
+      "8": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        }
+      }
+    },
+    "transformed_observations_per_tool": 300
+  },
+  "supplement-gg-hh": {
+    "N": 100,
+    "tools": {
+      "6": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 0,
+          "ieee_overflow_seen": 0
+        }
+      },
+      "8": {
+        "algorithmic_failure_categories": {},
+        "classification_counts": {
+          "finite": 100
+        },
+        "hardware_exception_observations": {
+          "ieee_divzero_seen": 0,
+          "ieee_invalid_seen": 300,
+          "ieee_overflow_seen": 0
+        }
+      }
+    },
+    "transformed_observations_per_tool": 300
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "scope": "Historical failed QCD1 Ninja-only pilot; partial timing metadata is not an accepted CLI result or benchmark",
+  "actual_private_debug": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/pilot-launch-v2/private-work-MG5_debug",
+    "sha256": "af7873cc40b79895cb03dc4f6eb422c02768d288821e772cecc898c3de9e4ecf",
+    "bytes": 10988
+  },
+  "original_private_debug": {
+    "path": ".benchmark-work/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/qcd-1/6/MG5_debug",
+    "sha256": "af7873cc40b79895cb03dc4f6eb422c02768d288821e772cecc898c3de9e4ecf",
+    "bytes": 10988
+  },
+  "stale_root_debug_observation": {
+    "artifact": {
+      "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/pilot-launch-v2/root-MG5_debug",
+      "sha256": "d22e2db2babaa1ae8d713c95f0557e90cfeffdbd32e8af5d6cd2aa66e99612af",
+      "bytes": 8961
+    },
+    "meaning": "Earlier default-smoke debug, copied before actual private-debug location identified; not the pilot traceback"
+  },
+  "partial_timing_metadata": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/qcd-1/6/0/retained-work/SAVEDTMP_CHECK_uux_z/SavedRunInfos/profile_timing_metadata.json",
+    "sha256": "c390e4bd5374afb5caeb8a0d5703a5ac65bed68e777b41e448402fa560a8fd47",
+    "bytes": 424011
+  },
+  "attempted_backend": 6,
+  "unattempted_backend": 8,
+  "wrapper_elapsed_seconds": 37.857321,
+  "selected_timing_helicity": {
+    "index": 3,
+    "physical_tuple": [
+      1,
+      -1,
+      1
+    ],
+    "weight": 1
+  },
+  "actual_base_points": 9906,
+  "timing_stage_labels": [
+    "boot",
+    "polarized_full",
+    "unpolarized_full",
+    "unpolarized_skip",
+    "polarized_skip"
+  ],
+  "accepted_profile": false,
+  "physical_pair_comparison": false,
+  "failure_result": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/qcd-1/6/0/result.json",
+    "sha256": "7dd446bd4ba1478643bf0a74191b423659832989b44d76906c68b6d861f0feaa",
+    "bytes": 3668
+  },
+  "terminal_cleanup": {
+    "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/pilot-launch-v2/terminal-cleanup.json",
+    "sha256": "4b5e25b016a59531e98055c89c7627738c27a668053f0cf48cbd79daf6307f10",
+    "bytes": 2171
+  },
+  "root_configuration_note": "Auto-saved local config is untracked; only its SHA is recorded in terminal cleanup, configuration itself excluded from staging"
+}

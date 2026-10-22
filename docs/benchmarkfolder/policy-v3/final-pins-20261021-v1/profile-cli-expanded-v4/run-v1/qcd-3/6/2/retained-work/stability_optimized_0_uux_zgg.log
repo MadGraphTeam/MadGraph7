@@ -1,0 +1,75 @@
+Stability check results
+
+Stability checking for u u~ > z g g [ virt = QCD ] (optimized mode)
+
+Data entries for the stability plot.
+First row is a maximal accuracy delta, second is the fraction of events with DP accuracy worse than delta.
+<plot_data reduction=NINJA>
+1.0000e-17  1.0000e+00
+1.5849e-17  1.0000e+00
+2.5119e-17  1.0000e+00
+3.9811e-17  1.0000e+00
+6.3096e-17  1.0000e+00
+1.0000e-16  1.0000e+00
+1.5849e-16  1.0000e+00
+2.5119e-16  1.0000e+00
+3.9811e-16  1.0000e+00
+6.3096e-16  1.0000e+00
+1.0000e-15  1.0000e+00
+1.5849e-15  1.0000e+00
+2.5119e-15  1.0000e+00
+3.9811e-15  1.0000e+00
+6.3096e-15  1.0000e+00
+1.0000e-14  1.0000e+00
+1.5849e-14  1.0000e+00
+2.5119e-14  1.0000e+00
+3.9811e-14  1.0000e+00
+6.3096e-14  9.5000e-01
+1.0000e-13  9.0000e-01
+1.5849e-13  8.5000e-01
+2.5119e-13  8.5000e-01
+3.9811e-13  8.0000e-01
+6.3096e-13  8.0000e-01
+1.0000e-12  8.0000e-01
+1.5849e-12  6.0000e-01
+2.5119e-12  5.0000e-01
+3.9811e-12  4.0000e-01
+6.3096e-12  2.0000e-01
+1.0000e-11  2.0000e-01
+1.5849e-11  2.0000e-01
+2.5119e-11  2.0000e-01
+3.9811e-11  1.5000e-01
+6.3096e-11  1.5000e-01
+1.0000e-10  5.0000e-02
+1.5849e-10  5.0000e-02
+2.5119e-10  0.0000e+00
+3.9811e-10  0.0000e+00
+6.3096e-10  0.0000e+00
+1.0000e-09  0.0000e+00
+</plot_data>
+
+List of accuracies recorded for the 20 evaluations with Ninja
+First row is DP, second is QP (if available).
+
+<accuracies reduction=NINJA>
+1.2355e-13  NA
+5.7718e-12  NA
+4.0993e-12  NA
+1.6514e-10  NA
+5.3433e-12  NA
+2.2285e-12  NA
+6.4368e-11  NA
+5.2747e-14  NA
+7.2713e-14  NA
+1.1303e-12  NA
+1.2759e-12  NA
+2.8406e-12  NA
+6.1166e-12  NA
+3.3357e-11  NA
+1.0380e-12  NA
+2.0057e-12  NA
+1.1882e-12  NA
+3.6761e-12  NA
+2.6118e-13  NA
+7.3434e-11  NA
+</accuracies>

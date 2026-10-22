@@ -1,0 +1,47 @@
+{
+  "scope": "Exactly QCD1 pilot indices0/1 only; no automatic remaining70",
+  "started_utc": "2026-10-21T22:13:59.331185+00:00",
+  "source_sha256": "2a67d147b99d3437b833bd117fb12c13f4ee02aebe944fe48bb10130d89d5501",
+  "producer_sha256": "8aed579e7bb3130651cf4fb585c5b701d60b35e2de2c7d79960301396882b20d",
+  "specification_sha256": "e24874d9ed1b5e694998c5ee08fb51d1721d55f2fa5bb3e405619d4fae3533ac",
+  "root_handoff_sha256": "678a4e0a012c707b52a75d318ab5ccc1555793decc1c1c6c086a6ff727cf2db1",
+  "root_operational_sha256": "1cbfc302aac964d2bd999c0f6795a9866257c12e41b8e520801d1e16fbd43ea7",
+  "supervisor": {
+    "pid": 3985078,
+    "start_ticks": 65454027,
+    "pgid": 3985078,
+    "session": 3985078
+  },
+  "commands": [
+    {
+      "index": 0,
+      "command": [
+        "taskset",
+        "-c",
+        "207",
+        "/nix/store/2y29sjpmmqrric37y8lis9qvw8n5ayxi-python3-3.14.7-env/bin/python3",
+        "-B",
+        "-u",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/tools/ninjars_profile_cli_v3.py",
+        "--spec",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v1/specification.json",
+        "--index",
+        "0",
+        "--handoff",
+        "/shared/external/madloop_ninjars/madgraph7_madloop_ninjars/docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded/run-v1/root-handoff-pilot.json",
+        "--execute-numerical"
+      ],
+      "process": {
+        "pid": 3985084,
+        "start_ticks": 65454045,
+        "pgid": 3985084,
+        "session": 3985084
+      },
+      "started_utc": "2026-10-21T22:13:59.335827+00:00",
+      "returncode": 1,
+      "finished_utc": "2026-10-21T22:14:37.187794+00:00"
+    }
+  ],
+  "completed_indices": [],
+  "status": "incomplete"
+}

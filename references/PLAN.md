@@ -1200,3 +1200,26 @@ actual-data collection and strict report reader offline, including cache,
 adaptive counts, runtime/source/card identities and transitive file inventories.
 The original failed result remains unchanged. These observer/collector changes
 do not alter the physics, RNG, timing formulas or numerical acceptance.
+
+### Final native profile outcome — 22 October 2026
+
+All 72 declared actual CLI sessions completed successfully on the frozen
+`464b441fe04d3cb5b3da7708897fa831e32c55eb` observer/collector source. This
+covers twelve processes, both explicit backends, and three timing repetitions.
+The strict reader validated every result and its retained inputs; all 146
+recorded process identities and isolated groups retired. No final-cohort cell
+failed or was repeated. The 20-point DP stability sample for each case/backend
+was reused unchanged in later sessions, with zero new stability points and zero
+QP entries. These samples are not timed automatic-rescue counts.
+
+Ten processes retain matching stage scopes across all three sessions. QCD1 and
+EW1 change their selected physical helicity/filter between their initial and
+reused sessions. Preserve their actual backend timings and mark their aggregate
+ratios unavailable under the unchanged conservative reader. Do not loosen the
+scope check or relabel these diagnostic data as the separate normal-rescue
+performance gate. The completed LIGHT6 seven-pair gate remains the applicable
+scoped performance acceptance evidence.
+
+The final publication still requires actual-data plots and tables, an elegant
+reproducible Typst PDF, independent final claims review, finite file cleanup and
+a final commit/push. No pull request is authorized yet.

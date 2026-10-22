@@ -1,0 +1,92 @@
+{
+  "schema": "final-installer-export-source-closure-audit-v1",
+  "utc": "2026-10-22T00:58:37.104583+00:00",
+  "status": "PASS-scoped-no-additional-checks-required",
+  "head": "464b441fe04d3cb5b3da7708897fa831e32c55eb",
+  "branch": "madloop_ninjars",
+  "tracked_worktree_clean": true,
+  "latest95_source_bindings_match_worktree_and_HEAD": {
+    "madgraph/various/process_checks.py": true,
+    "tools/ninjars_profile_cli_v3.py": true,
+    "tools/ninjars_cli_report_v3.py": true,
+    "tests/input_files/ninjars_profile_timing_legacy.py": true,
+    "tests/unit_tests/loop/test_ninjars_profile_timing_metadata.py": true,
+    "tests/unit_tests/loop/test_ninjars_profile_cli_v3.py": true,
+    "tests/unit_tests/loop/test_ninjars_cli_report_v3.py": true
+  },
+  "latest95_all_passed": true,
+  "prior135_four_changed_bindings_covered_by_latest95": {
+    "madgraph/various/process_checks.py": {
+      "historical": "1229ccfc599cd1ee3f733e3e4c28f2a12ec13ca2878da6b72df27b5e216df424",
+      "current": "59b2051d9ba17408046e9a7df188b70256e4081b71519b441623bc5e33358899"
+    },
+    "tools/ninjars_profile_cli_v3.py": {
+      "historical": "c8f2bd5dc63ec20b9dfa74ff7af1f84fbfcfdc04aa33d080f9078f82d611075c",
+      "current": "b0681842604b651eac164448f0ca5b19cc61ae02c16704ceb4e9e926516c8ff7"
+    },
+    "tests/unit_tests/loop/test_ninjars_profile_timing_metadata.py": {
+      "historical": "96fb3bf4edac1029d305966c4b5c3534c783cdc458890e6f04faef2416f8f7c6",
+      "current": "be2bc38e66df7a96784543d12c30eaf880c8f26e4c8fd28ded8b57b07a4d687c"
+    },
+    "tests/unit_tests/loop/test_ninjars_profile_cli_v3.py": {
+      "historical": "95335b618b8bc384b049efb1cb462230064bf71f05d9ff376eb2ae16b8453fe1",
+      "current": "dbf31ac2af3b2096f0a4ec8bb6aaee6158e89d5212f20fcd87ad343a966686fc"
+    }
+  },
+  "prior135_all_other_sources_unchanged": true,
+  "changed_process_methods_since135": [
+    "LoopMatrixElementTimer.time_matrix_element"
+  ],
+  "changed_cli_helper_methods_since135": [
+    "execute_one",
+    "report_snapshot"
+  ],
+  "added_cli_helper_functions": [
+    "selected_archive_matches"
+  ],
+  "installer_since856e": "Every existing function AST identical; only is_available helper and MG5DIR import added, covered by current defaults/installer tests",
+  "runtime_since856e": "No Template, Rust bridge, manifest or lock changes; only vendor UPSTREAM documentation differs",
+  "actual_update": {
+    "archived_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+    "pinned_git_without_local_overrides": true,
+    "previous_installation_preserved": true,
+    "compiled_smoke_passed": true,
+    "archive_sha256": "b0d69deb8c16deb13293176296afc5e18dbeeebe778a20fa39b61804fba89d4c"
+  },
+  "relocated_export_controls": {
+    "standalone_statuses": [
+      110,
+      120,
+      218
+    ],
+    "nlo_poles_passed": 20,
+    "nlo_tolerance": 1e-05,
+    "soft_collinear": "Passed, zero failures",
+    "focused_47_zero_skip": true
+  },
+  "default_controls": {
+    "defaults18_test_current": true,
+    "installer19_test_current": true,
+    "historical_defaultsmoke_only_process_checks_binding_differs": {
+      "madgraph/various/process_checks.py": "59b2051d9ba17408046e9a7df188b70256e4081b71519b441623bc5e33358899"
+    },
+    "current_check_timing_profile_selection_AST_matches_defaultsmoke_revision": true,
+    "installed_metadata_structural_availability": true,
+    "ordinary_installed": "8|6|7|1",
+    "ordinary_absent": "6|7|1",
+    "loop_induced": "7|6|1",
+    "explicit_choices_preserved": true
+  },
+  "all_relevant_test_source_paths_committed": true,
+  "user_doc": "vendor/ninjars/UPSTREAM.md",
+  "public_proofs": [
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-observer-contract-software-v1/README.md",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/install-export/README.md",
+    "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/ninjars-defaults-smoke-v1/README.md"
+  ],
+  "limits": [
+    "Scoped installer/default/export/software source closure only; final physics/performance/report acceptance belongs to separate authorities.",
+    "Historical source-bound capsules remain historical; their --live checks must not be represented as passing newer intentionally changed observer files.",
+    "No reinstalls, engine calls, unit-test reruns, network activity or native archive hashing performed."
+  ]
+}
