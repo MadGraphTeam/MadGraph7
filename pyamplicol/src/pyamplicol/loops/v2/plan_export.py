@@ -536,7 +536,7 @@ class _Exporter:
         objects: list[_Object] = []
         for c, order, weight, content in graph.entries:
             dimension = self.kinematics.shape(content).loop_in
-            seed = self.seeds.setdefault(((c, _ONE),), order), len(self.seeds))
+            seed = self.seeds.setdefault((((c, _ONE),), order), len(self.seeds))
             entries.append({"seed": seed, "weight": _complex_text(weight)})
             objects.append(_Object(self.rows, dimension, dimension, 0, leaf=len(entries) - 1))
         states: list[dict] = []

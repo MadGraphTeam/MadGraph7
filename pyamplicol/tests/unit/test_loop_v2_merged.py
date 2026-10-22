@@ -42,7 +42,7 @@ ARBITRARY_TOLERANCE = 1e-70
 
 
 def _points(name: str) -> tuple[list, list[str]]:
-    if name.endswith(".json") and "/" in name:
+    if name.endswith(".json"):
         data = json.loads(
             (ROOT / "tests" / "fixtures" / "loop" / name).read_text(), parse_float=str
         )
@@ -169,7 +169,10 @@ def test_planar_paths_certify_against_the_b_seeds(slices, name, everywhere):
     assert graph.families | set(graph.fallback) == families
     assert not graph.families & set(graph.fallback)
     assert (not graph.fallback) == everywhere
-    assert all("generic seed" in why for why in graph.fallback.values())
+    assert set(graph.fallback.values()) <= {
+        "generic seed (no certified primitive class)",
+        "the B seed is not a certified combination",
+    }
     expansion = merged.PlanarExpansion(slice_)
     positions = 0
     for skeleton in rx.plan_skeletons(slice_.plan):
