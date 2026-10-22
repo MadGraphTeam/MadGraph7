@@ -71,6 +71,8 @@ PT_MIN = 20.0
 DELTA_R_MIN = 0.4
 # Float(256): the native carrier runs at the digits plus 20 guard digits.
 TRUTH_DIGITS = 57
+RESCALED_SUFFIX = "-rescaled"
+CARRIERS = ("double", "double-double")
 LAURENT = ("finite", "single_pole", "double_pole")
 
 
@@ -346,12 +348,23 @@ def run(options) -> int:
     compiled = compile_loop_sm(options.ufo, options.model_cache)
     executor = NativeExecutor(build_slice(name, compiled), threads=options.threads)
     checks = StabilityChecks(rotations(), True)
-    carriers = [("double", Precision.double(), checks)]
+    # The rescaled reduction check is a second evaluation (one reduction
+    # check per evaluation); ``report`` merges its budget by point.
+    rescaled = StabilityChecks((), True, rescaled=True)
+    precisions = [("double", Precision.double())]
     if options.double_double:
-        carriers.append(("double-double", Precision.double_double(), checks))
-    carriers.append(("truth", Precision.arbitrary(TRUTH_DIGITS), None))
+        precisions.append(("double-double", Precision.double_double()))
+    carriers = [
+        (f"{carrier}{RESCALED_SUFFIX}", precision, rescaled)
+        for carrier, precision in precisions
+    ]
+    suffix = ".rescaled" if options.rescaled_only else ""
+    if not options.rescaled_only:
+        carriers = [(carrier, precision, checks) for carrier, precision in precisions]
+        carriers += [(f"{c}{RESCALED_SUFFIX}", p, rescaled) for c, p in precisions]
+        carriers.append(("truth", Precision.arbitrary(TRUTH_DIGITS), None))
     options.outdir.mkdir(parents=True, exist_ok=True)
-    path = options.outdir / f"{name}.{options.start}-{options.stop}.jsonl"
+    path = options.outdir / f"{name}.{options.start}-{options.stop}{suffix}.jsonl"
     done = set()
     if path.exists():
         done = {json.loads(line)["index"] for line in path.read_text().splitlines()}
@@ -371,7 +384,8 @@ def run(options) -> int:
                 ):
                     record[carrier] = value
             for record, point in zip(records, points, strict=True):
-                record["point"] = point
+                if not options.rescaled_only:
+                    record["point"] = point
                 out.write(json.dumps(record) + "\n")
             out.flush()
     return 0
@@ -386,11 +400,49 @@ class _Laurent:
 
 
 def _configurations(names: Sequence[str]) -> list[tuple[str, ...]]:
+    """Every subset of the checks one evaluation can run (one reduction
+    check: the reversed or the rescaled frame)."""
+
+    from pyamplicol.loops.v2.stability import FRAMES
+
     return [
         combination
         for size in range(1, len(names) + 1)
         for combination in combinations(sorted(names), size)
+        if len(set(combination) & set(FRAMES)) <= 1
     ]
+
+
+def _records(outdir: Path) -> list[dict[str, Any]]:
+    """The points of a directory with the budget of their rescaled reduction
+    check merged into each carrier's budgets (same binary64 evaluation: the
+    virtuals must agree exactly)."""
+
+    from pyamplicol.loops.v2.stability import RESCALED
+
+    records: dict[tuple[str, int], dict[str, Any]] = {}
+    extra: list[dict[str, Any]] = []
+    for path in sorted(outdir.glob("*.jsonl")):
+        for line in path.read_text().splitlines():
+            record = json.loads(line)
+            if "truth" in record:
+                records[(record["process"], record["index"])] = record
+            extra.append(record)
+    for record in extra:
+        target = records.get((record["process"], record["index"]))
+        if target is None:
+            continue
+        for carrier in CARRIERS:
+            source = record.get(f"{carrier}{RESCALED_SUFFIX}")
+            data = target.get(carrier)
+            if not source or "failure" in source or not data or "failure" in data:
+                continue
+            if source["virtual"] != data["virtual"]:
+                raise ValueError(
+                    f"{record['process']} {record['index']}: virtuals differ"
+                )
+            data["budgets"][RESCALED] = source["budgets"][RESCALED]
+    return list(records.values())
 
 
 def _quantiles(values: list[float]) -> dict[str, float]:
@@ -478,27 +530,23 @@ def report(options) -> int:
     rows: dict[tuple[str, str], list] = defaultdict(list)
     failures: dict[str, list] = defaultdict(list)
     seconds: dict[tuple[str, str], list] = defaultdict(list)
-    for path in sorted(options.outdir.glob("*.jsonl")):
-        for line in path.read_text().splitlines():
-            record = json.loads(line)
-            name = record["process"]
-            truth = record["truth"]
-            if "failure" in truth:
-                failures[name].append((record["index"], truth["failure"]))
+    for record in _records(options.outdir):
+        name = record["process"]
+        truth = record["truth"]
+        if "failure" in truth:
+            failures[name].append((record["index"], truth["failure"]))
+            continue
+        for carrier in CARRIERS:
+            data = record.get(carrier)
+            if data is None:
                 continue
-            for carrier in ("double", "double-double"):
-                data = record.get(carrier)
-                if data is None:
-                    continue
-                if "failure" in data:
-                    failures[f"{name} {carrier}"].append(
-                        (record["index"], data["failure"])
-                    )
-                    continue
-                rows[(name, carrier)].append(
-                    _point_report(record, carrier, truth["virtual"])
-                )
-                seconds[(name, carrier)].append(data["seconds"])
+            if "failure" in data:
+                failures[f"{name} {carrier}"].append((record["index"], data["failure"]))
+                continue
+            rows[(name, carrier)].append(
+                _point_report(record, carrier, truth["virtual"])
+            )
+            seconds[(name, carrier)].append(data["seconds"])
     payload: dict[str, Any] = {
         "safety": stability.SAFETY,
         "floor_units": stability.FLOOR_UNITS,
@@ -507,11 +555,13 @@ def report(options) -> int:
     }
     for (name, carrier), points in sorted(rows.items()):
         configurations = {}
-        for names in points[0][0]:
-            pairs = [p[0][names] for p in points]
+        names_seen = sorted({names for p in points for names in p[0]}, key=len)
+        for names in names_seen:
+            pairs = [p[0][names] for p in points if names in p[0]]
             vector_misses = sum(error > estimate for error, estimate, _, _ in pairs)
             finite_misses = sum(error > estimate for _, _, error, estimate in pairs)
             configurations[" + ".join(names)] = {
+                "points": len(pairs),
                 "false_negative_rate": vector_misses / len(pairs),
                 "false_negative_rate_finite": finite_misses / len(pairs),
                 "false_negatives": vector_misses,
@@ -528,22 +578,16 @@ def report(options) -> int:
                     for t in THRESHOLDS
                 },
             }
-        raw = {
-            check: {
-                "check_over_error": _quantiles(
-                    [
-                        p[1][check] / p[0][(check,)][0]
-                        for p in points
-                        if p[0][(check,)][0] > 0
-                    ]
-                ),
-                "false_negative_rate_unscaled": sum(
-                    p[1][check] < p[0][(check,)][0] for p in points
-                )
-                / len(points),
+        raw = {}
+        for check in sorted({check for p in points for check in p[1]}):
+            # (raw check budget, true error) of the points that ran it.
+            pairs = [(p[1][check], p[0][(check,)][0]) for p in points if check in p[1]]
+            raw[check] = {
+                "points": len(pairs),
+                "check_over_error": _quantiles([b / e for b, e in pairs if e > 0]),
+                "false_negative_rate_unscaled": sum(b < e for b, e in pairs)
+                / len(pairs),
             }
-            for check in points[0][1]
-        }
         errors = [p[0][next(iter(p[0]))][0] for p in points]
         payload["processes"].setdefault(name, {})[carrier] = {
             "points": len(points),
@@ -574,6 +618,11 @@ def main(argv: list[str] | None = None) -> int:
     runner.add_argument("--batch", type=int, default=8)
     runner.add_argument("--threads", type=int, default=1)
     runner.add_argument("--double-double", action="store_true")
+    runner.add_argument(
+        "--rescaled-only",
+        action="store_true",
+        help="only the rescaled reduction check (a supplement to a finished run)",
+    )
     runner.add_argument("--ufo", type=Path, default=UFO)
     runner.add_argument(
         "--model-cache", type=Path, default=Path.cwd() / ".loop-sm-model"
