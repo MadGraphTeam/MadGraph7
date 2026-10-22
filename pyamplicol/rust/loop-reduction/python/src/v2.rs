@@ -139,6 +139,47 @@ impl V2Reducer {
     }
 }
 
+/// Binary64 seed weights on certified regular symmetric-group orbits
+/// (`runtime::V2SeedFourier`). `kernels[k]` lists `(re, im)` of `k(x)` at the
+/// lexicographic ranks of `S_degree`; `pairs` are `(kernel, Born orbit, loop
+/// orbit)`. `weights` maps a batch with columns `a * |G| + g` (`B_a(g)`) to
+/// columns `l * |G| + h` holding `sum_{a,g} conj(B_a(g)) k_al(g^-1 h)`.
+#[pyclass]
+struct V2SeedFourier(runtime::V2SeedFourier);
+
+#[pymethods]
+impl V2SeedFourier {
+    #[new]
+    fn new(
+        degree: usize,
+        kernels: Vec<Vec<(f64, f64)>>,
+        pairs: Vec<[usize; 3]>,
+        born_orbits: usize,
+        loop_orbits: usize,
+    ) -> PyResult<Self> {
+        let kernels: Vec<Vec<_>> = kernels
+            .into_iter()
+            .map(|k| {
+                k.into_iter()
+                    .map(|(re, im)| rusticol_loop_reduction::C64::new(re, im))
+                    .collect()
+            })
+            .collect();
+        runtime::V2SeedFourier::new(degree, &kernels, &pairs, born_orbits, loop_orbits)
+            .map(Self)
+            .map_err(error)
+    }
+    #[getter]
+    fn group_order(&self) -> usize {
+        self.0.group_order()
+    }
+    fn weights(&mut self, py: Python<'_>, input: &NativeBatch) -> PyResult<NativeBatch> {
+        py.detach(|| self.0.weights(&input.0))
+            .map(NativeBatch)
+            .map_err(error)
+    }
+}
+
 /// Exponents `(q0, q1, q2, q3)` of every coefficient of a dense rank-`rank`
 /// tensor numerator, in NinjaRS's storage order.
 #[pyfunction]
@@ -148,5 +189,6 @@ fn v2_tensor_monomials(rank: usize) -> Vec<[u32; 4]> {
 
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<V2Reducer>()?;
+    module.add_class::<V2SeedFourier>()?;
     module.add_function(wrap_pyfunction!(v2_tensor_monomials, module)?)
 }

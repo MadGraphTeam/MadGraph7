@@ -308,6 +308,7 @@ class _Case:
         *,
         lc=False,
         forward=False,
+        compress=False,
     ):
         from pyamplicol.loops.compiler import prepare_loop_request_model
         from pyamplicol.loops.v2.blocks import build_tree_blocks
@@ -361,7 +362,11 @@ class _Case:
                 for row in full
             }
             self.seeds = rx.ColourSeeds.build(
-                colour, rx.reading_skeletons(self.plan), amplitudes, {(born, loop)}
+                colour,
+                rx.reading_skeletons(self.plan),
+                amplitudes,
+                {(born, loop)},
+                compress=compress,
             )
         else:
             colour = PlanarWords(legs)
@@ -520,6 +525,35 @@ def test_colour_word_schedules_agree_exactly(
     forward = rx.forward_targets(skeletons, case.masses)
     _assert_equal(m, case.executor(form="split").run_m(skeletons, forward))
     _assert_o5(case, executor, b)
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("process", "certified"),
+    [(GLUONS, True), (QUARKS, False)],
+    ids=["gg_gg", "uux_ddxg"],
+)
+def test_colour_certificates_gate_schedule_m(
+    compiled, kernels, layout, loop_native, process, certified
+):
+    """The WP2.4 certificate predicate (``ColourSeeds.certified``) admits M
+    at full colour exactly where every skeleton's seed is a certified
+    primitive: all of gg -> gg (adjoint rings, closed traces), but only some
+    of uu~ -> dd~g (generic seeds of two quark lines). Admitted runs still meet
+    M's structural checks; the seed contents are not colour-ordered, so M
+    falls back to B for that reason, with B's numerators."""
+
+    case = _Case(compiled, kernels, layout, process, "seed", compress=True)
+    seeds = case.seeds
+    skeletons = rx.plan_skeletons(case.plan)
+    assert all(map(seeds.certified, skeletons)) == certified
+    assert any(map(seeds.certified, skeletons))  # quark rings, closed traces
+    executor = case.executor()
+    b = executor.run_b(case.plan)
+    m = executor.run(case.plan, "M", "full", certified=seeds.certified)
+    assert ("certificates" in m.fallback) != certified
+    assert ("colour-ordered" in m.fallback) == certified
+    _assert_equal(m, b)
 
 
 @pytest.mark.loop_physics

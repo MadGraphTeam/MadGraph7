@@ -3,9 +3,10 @@
 
 Every value comes from the v2 generators and the Python reference executor;
 FeynKit diagrams appear only inside the frozen legacy oracles. The slice
-processes are gg -> gg (full and leading colour, massless b), uu~ -> dd~g and
-the identical-flavour sign controls uu~ -> uu~ and uu~ -> uu~g (O13), in
-binary64 and at 200 bits. Oracles:
+processes are gg -> gg (massless b), uu~ -> dd~g and the identical-flavour
+sign controls uu~ -> uu~ and uu~ -> uu~g (O13), in binary64 and at 200 bits,
+and the leading- and next-to-leading-colour projections of gg -> gg,
+uu~ -> ggg, uu~ -> dd~g, Drell-Yan and uu~ -> tt~. Oracles:
 
 * providers (O8): MadLoop, Recola and OpenLoops within 1e-9 (the
   required-references metric) for the virtual's three Laurent coefficients;
@@ -51,6 +52,7 @@ from pyamplicol.loops.v2.assemble import (
     _decimal_string,
 )
 from pyamplicol.loops.v2.conventions import FermionSignError
+from pyamplicol.loops.v2.ct_sites import CountertermCompletenessError
 from pyamplicol.loops.v2.families import shifts
 from pyamplicol.loops.v2.poly_affine import size, substitute
 from pyamplicol.loops.v2.stability import (
@@ -163,12 +165,58 @@ def test_born_and_components_equal_legacy(evaluated, name, carrier):
         assert list(result.totals) == totals
 
 
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("carrier", tuple(CARRIERS))
+def test_massive_quark_line_equals_legacy(slices, carrier):
+    """uu~ -> tt~: an open massive fermion line through the loop, read with
+    the transposed mass sign (``conventions.TreeReading.mass_signs``), gives
+    the legacy Born and components (no IR-pole prediction with massive legs)."""
+
+    fixture = _fixture("tt")
+    results = fixture["results"]["arbitrary-200"]
+    for index, (point, scale) in enumerate(
+        zip(fixture["points"], fixture["scales_squared"], strict=True)
+    ):
+        result = slices("tt").evaluate(
+            point, scale, parameters=PARAMETERS, precision=CARRIERS[carrier]
+        )
+        assert result.ir_poles is None
+        _assert_legacy(results, index, result, LEGACY_TOLERANCE[carrier])
+
+
 # ----------------------------------------------------------------- colour
+
+
+# Controls with legacy LC and NLC projections (``legacy_capture``); Drell-Yan
+# is the photon-only control, so the Z is excluded from its v2 request.
+PROJECTED = ("gg_gg", "uux_ggg", "uux_ddxg", "dy", "tt")
+DRELL_YAN_PARAMETERS = {"aS": "0.118", "aEWM1": "132.507"}
+
+
+def _request(name: str, **options) -> SliceRequest:
+    control = legacy_capture.CONTROLS[name]
+    process, ignored = control.process, ()
+    if control.drell_yan:
+        process, ignored = control.process.removesuffix(" / z"), (23,)
+    return SliceRequest(
+        process,
+        control.born_order_bounds,
+        control.loop_order_bounds,
+        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+        ignored_particle_ids=ignored,
+        **options,
+    )
+
+
+def _parameters(name: str) -> dict[str, str]:
+    return (
+        DRELL_YAN_PARAMETERS if legacy_capture.CONTROLS[name].drell_yan else PARAMETERS
+    )
 
 
 @pytest.fixture(scope="module")
 def declared(loop_sm_compiled_model, loop_native):
-    """gg -> gg with the committed QCD colour continuation, per accuracy."""
+    """A control with the committed QCD colour continuation, per accuracy."""
 
     from pyamplicol.models.loading import load_compiled_model
     from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
@@ -177,24 +225,16 @@ def declared(loop_sm_compiled_model, loop_native):
         json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
     )
     compiled = load_compiled_model(loop_sm_compiled_model)
-    control = legacy_capture.CONTROLS["gg_gg"]
-    built: dict[str, LoopSlice] = {}
+    built: dict[tuple[str, str], LoopSlice] = {}
 
-    def build(accuracy: str) -> LoopSlice:
-        if accuracy not in built:
-            built[accuracy] = LoopSlice.generate(
+    def build(name: str, accuracy: str) -> LoopSlice:
+        if (name, accuracy) not in built:
+            built[name, accuracy] = LoopSlice.generate(
                 compiled,
-                SliceRequest(
-                    control.process,
-                    control.born_order_bounds,
-                    control.loop_order_bounds,
-                    fixed_parameters=legacy_capture.FIXED_PARAMETERS,
-                    accuracy=accuracy,
-                    colour_declaration=declaration,
-                ),
+                _request(name, accuracy=accuracy, colour_declaration=declaration),
                 loop_native,
             )
-        return built[accuracy]
+        return built[name, accuracy]
 
     return build
 
@@ -213,13 +253,16 @@ def _assert_legacy(results, index, result, tolerance):
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("carrier", tuple(CARRIERS))
-def test_leading_colour_equals_legacy(declared, carrier):
-    """gg -> gg at LC: leading degrees and every component against the
-    legacy LC projection (four-gluon R2 from the general-N_c HV rule)."""
+@pytest.mark.parametrize("accuracy", ("lc", "nlc"))
+@pytest.mark.parametrize("name", PROJECTED)
+def test_colour_projections_equal_legacy(declared, name, accuracy, carrier):
+    """LC and NLC: leading degrees and every component against the legacy
+    projections (design §7.4-§7.6; graded Born amplitudes and U(1) pieces,
+    four-gluon R2 from the general-N_c HV rule)."""
 
-    slice_ = declared("lc")
-    fixture = _fixture("gg_gg")
-    reference = fixture["leading_colour"]
+    slice_ = declared(name, accuracy)
+    fixture = _fixture(name)
+    reference = fixture["colour_projections"][accuracy]
     born, virtual = _only(slice_.degrees()["born"]), _only(slice_.degrees()["virtual"])
     assert (born, virtual) == (reference["born_degree"], reference["virtual_degree"])
     results = reference["results"]["arbitrary-200"]
@@ -227,10 +270,73 @@ def test_leading_colour_equals_legacy(declared, carrier):
         zip(fixture["points"], fixture["scales_squared"], strict=True)
     ):
         result = slice_.evaluate(
-            point, scale, parameters=PARAMETERS, precision=CARRIERS[carrier]
+            point, scale, parameters=_parameters(name), precision=CARRIERS[carrier]
         )
         assert result.ir_poles is None  # Catani's operator is full colour
         _assert_legacy(results, index, result, LEGACY_TOLERANCE[carrier])
+
+
+@pytest.mark.loop_physics
+@pytest.mark.xfail(
+    strict=True,
+    raises=CountertermCompletenessError,
+    reason="closed-quark A g g triangles (Furry) need CertifiedZero witnesses "
+    "(WP3.5); then add the legacy control and include it in PROJECTED",
+)
+@pytest.mark.parametrize("accuracy", ("lc", "nlc"))
+def test_uux_emepgg_colour_projections_are_generable(
+    loop_sm_compiled_model, loop_native, accuracy
+):
+    """WP2.4 acceptance control uu~ -> e-e+gg (photon and Z): its LC/NLC slice
+    must generate before its projections can be compared with legacy O1."""
+
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+
+    declaration = LoopColorDeclaration.from_dict(
+        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+    )
+    LoopSlice.generate(
+        load_compiled_model(loop_sm_compiled_model),
+        SliceRequest(
+            "u u~ > e- e+ g g",
+            {"QCD": 2, "QED": 2},
+            {"QCD": 4, "QED": 2},
+            fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+            accuracy=accuracy,
+            colour_declaration=declaration,
+        ),
+        loop_native,
+    )
+
+
+# Appendix B rows of the projected controls; their leading-colour families do
+# not depend on the b mass (closed quark loops are subleading).
+APPENDIX_B_ROWS = {"gg_gg": "gg>gg", "uux_ggg": "uu~>ggg"}
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", tuple(APPENDIX_B_ROWS))
+def test_production_pruning_keeps_the_appendix_b_leading_families(declared, name):
+    """The slice's own LC pruning (``LoopSlice._prune_colour`` on exact seed
+    cells, design §7.5) keeps exactly the leading-colour families of DESIGN
+    Appendix B and their (N, rank) histogram; the colour-ordered skeleton
+    counts there belong to the planar face rule (families test)."""
+
+    import collections
+
+    appendix = json.loads((FIXTURES / "v2" / "appendix_b_counts.json").read_text())
+    (expected,) = (
+        entry["leading_colour"]
+        for entry in appendix["configurations"]["loop_sm"]
+        if entry["process"] == APPENDIX_B_ROWS[name]
+    )
+    schedules = declared(name, "lc").plan.schedules.values()
+    assert len(schedules) == expected["families"]
+    histogram = collections.Counter(
+        f"{size}:{rank}" for size, rank in (s.bucket for s in schedules)
+    )
+    assert dict(histogram) == expected.get("families_by_N_rank", dict(histogram))
 
 
 @pytest.mark.loop_physics
@@ -243,13 +349,64 @@ def test_declared_continuation_keeps_full_colour(declared):
     for index, (point, scale) in enumerate(
         zip(fixture["points"], fixture["scales_squared"], strict=True)
     ):
-        result = declared("full").evaluate(point, scale, parameters=PARAMETERS)
+        result = declared("gg_gg", "full").evaluate(point, scale, parameters=PARAMETERS)
         _assert_legacy(results, index, result, LEGACY_TOLERANCE["double"])
         ((single, double),) = result.ir_poles.values()
         virtual = _only(result.components["virtual"])
         scale_ = max(abs(single), abs(double))
         assert abs(virtual.single_pole - single) <= POLE_TOLERANCE * scale_
         assert abs(virtual.double_pole - double) <= POLE_TOLERANCE * scale_
+
+
+@pytest.mark.loop_physics
+def test_seed_fft_equals_direct_on_the_slice(
+    slices, declared, loop_sm_compiled_model, loop_native
+):
+    """Seed contraction policy (design §7.3): "auto" contracts the certified
+    orbits of gg -> gg with the native symmetric-group FFT in binary64 and
+    reports it; "direct" and the 200-bit carrier contract directly, and
+    every component agrees with the direct contraction to binary64
+    rounding. LC seeds are always direct."""
+
+    import dataclasses
+
+    from pyamplicol.models.loading import load_compiled_model
+
+    fft = slices("gg_gg")
+    assert fft.fourier is not None
+    direct = LoopSlice.generate(
+        load_compiled_model(loop_sm_compiled_model),
+        _request("gg_gg", colour_contraction="direct"),
+        loop_native,
+    )
+    assert direct.fourier is None
+    fixture = _fixture("gg_gg")
+    for point, scale in zip(fixture["points"], fixture["scales_squared"], strict=True):
+        mine = fft.evaluate(point, scale, parameters=PARAMETERS)
+        reference = direct.evaluate(point, scale, parameters=PARAMETERS)
+        assert mine.colour_contraction == "symmetric-group-fft"
+        assert reference.colour_contraction == "direct"
+        for component in COMPONENTS:
+            a = _only(mine.components[component]).coefficients
+            b = _only(reference.components[component]).coefficients
+            size = max(map(abs, b)) or abs(_only(reference.born))
+            for x, y in zip(a, b, strict=True):
+                assert abs(x - y) <= O2_TOLERANCE["double"] * size, (component, x, y)
+    precise = fft.evaluate(
+        fixture["points"][0],
+        fixture["scales_squared"][0],
+        parameters=PARAMETERS,
+        precision=CARRIERS["arbitrary-200"],
+    )
+    assert precise.colour_contraction == "direct"
+    leading = declared("gg_gg", "lc")
+    assert leading.fourier is None
+    forced = dataclasses.replace(
+        leading,
+        request=dataclasses.replace(leading.request, colour_contraction="fft"),
+    )
+    with pytest.raises(ValueError, match="leading-colour"):
+        forced._plan_contraction()
 
 
 # ----------------------------------------------------------------- O8 providers
@@ -471,6 +628,57 @@ def test_loop_fermion_vertices_must_be_vector(loop_sm_compiled_model, loop_nativ
         )
 
 
+@pytest.mark.loop_fast
+def test_loop_fermion_vertices_must_not_couple_through_the_line_mass():
+    """The tree reading flips the emitted loop line's mass in the whole
+    segment kernel (``TreeReading.mass_signs``), so a vector vertex whose
+    coupling depends on that mass, here through an internal parameter, is
+    refused; the same vertex with a mass-free coupling is admitted."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.conventions import LeafWeights
+
+    def parameter(name, expression=None):
+        return {"name": name, "expression": expression}
+
+    def model(coupling):
+        return {
+            "particles": [
+                {"name": "t", "antiname": "t~", "spin": 2, "mass": "MT"},
+                {"name": "t~", "antiname": "t", "spin": 2, "mass": "MT"},
+                {"name": "g", "antiname": "g", "spin": 3, "mass": "ZERO"},
+            ],
+            "parameters": [
+                parameter("ZERO", "0"),
+                parameter("MT"),
+                parameter("G"),
+                parameter("MTv", "MT/246"),
+            ],
+            "couplings": [{"name": "GC", "expression": coupling}],
+            "lorentz_structures": [
+                {"name": "FFV", "structure": "Gamma(idx(1,3),idx(1,1),idx(1,2))"}
+            ],
+            "vertex_rules": [
+                {
+                    "name": "V",
+                    "particles": ["t~", "t", "g"],
+                    "lorentz_structures": ["FFV"],
+                    "couplings": [["GC"]],
+                }
+            ],
+        }
+
+    vertex = SimpleNamespace(vertex=SimpleNamespace(rule="V"))
+    emits_top = SimpleNamespace(loop_in="g", loop_out="t", terms=(vertex,))
+    emits_gluon = SimpleNamespace(loop_in="t", loop_out="g", terms=(vertex,))
+    LeafWeights(model("-G*I"), {})._require_vector_couplings([emits_top])
+    massive = LeafWeights(model("-G*MTv"), {})
+    massive._require_vector_couplings([emits_gluon])
+    with pytest.raises(FermionSignError, match="couples through the mass MT"):
+        massive._require_vector_couplings([emits_top])
+
+
 # ----------------------------------------------------------------- O2 / O7
 
 
@@ -548,7 +756,7 @@ def _weights(layout, length, momenta):
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("carrier", tuple(CARRIERS))
-@pytest.mark.parametrize("name", SLICE)
+@pytest.mark.parametrize("name", (*SLICE, "tt"))
 def test_family_numerators_equal_o2(slices, name, carrier):
     """O2 and the O7 family sets: every v2 family numerator equals its legacy
     family's (200-bit capture) after an exact affine frame map, symmetrised

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 from fractions import Fraction
-from itertools import product
+from itertools import permutations, product
 
 import numpy as np
 import pytest
@@ -18,7 +18,12 @@ from pyamplicol.color import (
     exact_color_contraction_factor,
     reconstruct_symmetric_group_dense_exact,
 )
-from pyamplicol.color.adjoint_kernel import adjoint_color_kernel
+from pyamplicol.color.adjoint_kernel import (
+    DENSE_ADJOINT_GLUONS,
+    adjoint_color_factor,
+    adjoint_color_kernel,
+    ladder_overlap,
+)
 from pyamplicol.models.builtin.process_ir import build_process_ir
 
 
@@ -181,7 +186,30 @@ def test_ddm_plan_rejects_fundamental_domains_and_lc():
         build_color_plan(process, color_accuracy="full", basis="adjoint")
     with pytest.raises(ValueError, match="NLC or full"):
         _plan(4, accuracy="lc")
-    with pytest.raises(ValueError, match="at most 12"):
-        _plan(13)
-    with pytest.raises(ValueError, match="int64"):
-        adjoint_color_kernel(12, nc=100)
+
+
+@pytest.mark.parametrize("n", (2, 3, 4, 5, 6))
+@pytest.mark.parametrize("accuracy", ("lc", "nlc", "full"))
+@pytest.mark.parametrize("nc", (2, 3, 5))
+def test_single_ladder_overlaps_equal_the_dense_kernel(n, accuracy, nc):
+    """No gluon cap (design §7.8): the per-entry commutator expansion used
+    above DENSE_ADJOINT_GLUONS equals every dense kernel entry."""
+
+    kernel = adjoint_color_kernel(n, accuracy=accuracy, nc=nc)
+    left = tuple(range(1, n + 1))
+    for rank, middle in enumerate(permutations(left[1:-1])):
+        right = (left[0], *middle, left[-1])
+        assert ladder_overlap(left, right, accuracy=accuracy, nc=nc) == kernel[rank]
+
+
+def test_adjoint_kernel_has_no_gluon_or_int64_cap():
+    """Kernels beyond int64 use exact Python integers; ladders beyond the
+    dense size are evaluated entry by entry (design §7.8)."""
+
+    wide = adjoint_color_kernel(6, nc=10**6)
+    assert wide.dtype == object and not wide.flags.writeable
+    assert wide[0] == (10**12 - 1) * (2 * 10**6) ** 4
+    narrow = adjoint_color_kernel(6, nc=4)
+    assert narrow.dtype == np.int64
+    word = tuple(range(1, DENSE_ADJOINT_GLUONS + 2))
+    assert adjoint_color_factor(word, word, accuracy="full") == 8 * 6 ** (len(word) - 2)

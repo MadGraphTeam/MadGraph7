@@ -12,9 +12,11 @@ coefficients of the legacy capture.
 
 from __future__ import annotations
 
+import dataclasses
 import gzip
 import itertools
 import json
+import math
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -30,24 +32,32 @@ from pyamplicol.color.connections import (
     ColorTensor,
     ConnectedColorTensor,
     ExactColorCoefficient,
+    TensorTerm,
     contract_connected_tensor_nc_terms,
     evaluate_color_nc_terms,
 )
 from pyamplicol.loops.v2.blocks import block_colour_flow, build_tree_blocks
 from pyamplicol.loops.v2.colour import (
+    BornBasis,
     ColourProduct,
     ColourString,
+    Primitive,
     SeedColour,
+    _adjoint_chain,
     _exact_number,
+    _PrimitiveCells,
     block_colour_network,
     born_basis,
     build_seed_table,
+    canonical_primitive,
     certify_leading_colour,
+    decompose_vertex,
     face_count,
     multiply,
     project,
     reduce_network,
     relabel,
+    seed_fourier,
     spenso_colour_network,
 )
 from pyamplicol.loops.v2.families import (
@@ -277,6 +287,215 @@ def test_fierz_reduction_and_face_counts():
     assert face_count(single, ColorTensor(traces=((1, 2), (3, 4)))) == 3
 
 
+# ------------------------------------------------- certified compressions
+
+
+def _ring_network(kind: str, word) -> tuple:
+    """Tr_adj(F^w_1 ... F^w_n) as a chain of F's, or tr(tau^w)."""
+
+    if kind == "fundamental-trace":
+        return (ColourProduct(strings=(ColourString("x", tuple(word), "x"),)),)
+    chain = _adjoint_chain(word, "x", "y", "ring")
+    return multiply(chain, (ColourProduct(traces=(("x", "y"),)),))  # delta_xy
+
+
+@pytest.mark.loop_fast
+@pytest.mark.parametrize("kind", ["adjoint-ring", "fundamental-trace"])
+@pytest.mark.parametrize("word", [(1, 2), (1, 2, 3), (2, 1, 3), (1, 2, 3, 4)])
+def test_primitive_expansions_equal_their_networks(kind, word):
+    """Primitive.un_terms (the gl(N) trace of ad products) and the cycle-count
+    cells equal the exact SU(N_c) reduction of the generator networks."""
+
+    legs = [ColorLeg(label, 8) for label in sorted(word)]
+    external = {leg.label: leg.label for leg in legs}
+    primitive = Primitive(kind, word)
+    expected = reduce_network(_ring_network(kind, word), legs, external)
+    assert primitive.tensor(legs) == expected
+    canonical, sign = canonical_primitive(kind, word)
+    assert canonical.tensor(legs).terms == tuple(
+        TensorTerm(t.coefficient.scaled(sign), t.tensor, t.nc_power)
+        for t in expected.terms
+    )
+    # Cells by cycle counting (adjoint) or exact contraction (fundamental),
+    # relabelling cache included, against exact SU(N_c) contractions.
+    bras = [
+        ConnectedColorTensor(legs, (TensorTerm(ExactColorCoefficient(1, 1), tensor),))
+        for tensor in (
+            ColorTensor(traces=(tuple(sorted(word)),)),
+            ColorTensor(traces=(tuple(reversed(word)),)),
+            *(
+                [ColorTensor(traces=(tuple(sorted(word))[:2], tuple(sorted(word))[2:]))]
+                if len(word) == 4
+                else []
+            ),
+        )
+    ]
+    basis = BornBasis(
+        tuple(legs), tuple(range(len(bras))), tuple(bras), (frozenset(),) * len(bras)
+    )
+    cells = _PrimitiveCells(basis)
+    for bra, cell in zip(bras, cells(primitive), strict=True):
+        assert cell == contract_connected_tensor_nc_terms(bra, expected)
+
+
+def _rational(expression: str) -> tuple:
+    """A Spenso colour network with its 1/sqrt2 factors removed (the seeds'
+    normalisation: vertex networks absorb 2^(p/2))."""
+
+    return tuple(
+        ColourProduct(p.coefficient, p.strings, p.traces, p.nc_power)
+        for p in spenso_colour_network(_spenso(expression))
+    )
+
+
+@pytest.mark.loop_fast
+def test_vertex_decompositions_are_exact_identities():
+    """f^{x b y} is (F^b)_xy up to a constant, products of two f's are F
+    products, T^b is a tau string, and a symmetric d-like structure is no
+    Lie-type product (refused)."""
+
+    f = _rational("f(coad(8,e::x),coad(8,e::b),coad(8,e::y))")
+    found = decompose_vertex(f, "e::x", "e::y", ["e::b"], "adjoint-ring")
+    assert found is not None
+    ((c, order),) = found.terms
+    assert order == (0,) and c == ExactColorCoefficient(0, -1)
+
+    ff = _rational(
+        "f(coad(8,e::x),coad(8,e::a),coad(8,e::z))"
+        "*f(coad(8,e::z),coad(8,e::b),coad(8,e::y))"
+    )
+    found = decompose_vertex(ff, "e::x", "e::y", ["e::a", "e::b"], "adjoint-ring")
+    assert found is not None and [order for _c, order in found.terms] == [(0, 1)]
+    commutator = _rational(
+        "f(coad(8,e::x),coad(8,e::y),coad(8,e::z))"
+        "*f(coad(8,e::z),coad(8,e::a),coad(8,e::b))"
+    )
+    found = decompose_vertex(
+        commutator, "e::x", "e::y", ["e::a", "e::b"], "adjoint-ring"
+    )
+    assert found is not None
+    (c01, o01), (c10, o10) = found.terms
+    assert (o01, o10) == ((0, 1), (1, 0)) and c01 == c10.scaled(-1)
+
+    t = _rational("t(coad(8,e::b),cof(3,e::i),dind(cof(3,e::j)))")
+    found = decompose_vertex(t, "e::j", "e::i", ["e::b"], "fundamental-trace")
+    assert found is not None and found.forward and len(found.terms) == 1
+    reversed_ = decompose_vertex(t, "e::i", "e::j", ["e::b"], "fundamental-trace")
+    assert reversed_ is not None and not reversed_.forward
+
+    symmetric = (
+        ColourProduct(traces=(("x", "b", "y"),)),
+        ColourProduct(traces=(("x", "y", "b"),)),
+    )
+    assert decompose_vertex(symmetric, "x", "y", ["b"], "adjoint-ring") is None
+
+
+def _bdk_structures():
+    """BDK's tree and one-loop colour structures of qbar(1) q(2) g3 g4 g5
+    (hep-ph/9409393 eq. fiveqqdecomp), as v2 literal tensors.
+
+    BDK's T^a is tau^a. Tree: (T^s3 T^s4 T^s5)_{i2}^{ibar1} for s in S_3.
+    Loop: N_c (T T T) (A_{5;1}), Tr(T^x T^y) T^z (A_{5;3}, keyed by the
+    unordered pair and z), Tr(T3 T4 T5) and Tr(T5 T4 T3) delta (A_{5;4},
+    keyed by their cyclic class).
+    """
+
+    legs = [ColorLeg(1, 3), ColorLeg(2, -3), *(ColorLeg(a, 8) for a in (3, 4, 5))]
+    external = {
+        f"e::{name}": label for name, label in zip(("i1", "i2"), (1, 2), strict=True)
+    }
+    external.update({f"e::a{a}": a for a in (3, 4, 5)})
+
+    def t(a):
+        return f"t(coad(8,e::a{a}),in,out)"
+
+    def tensor(expression, nc=0):
+        # BDK normalise tr(T^a T^b) = delta^ab: T = tau, no 1/sqrt2 factors.
+        network = tuple(
+            ColourProduct(p.coefficient, p.strings, p.traces, p.nc_power + nc)
+            for p in spenso_colour_network(_spenso(expression))
+        )
+        return reduce_network(network, legs, external)
+
+    def chain(*gluons):
+        body = ",".join(t(a) for a in gluons)
+        return f"chain(cof(3,e::i2),dind(cof(3,e::i1)){',' if body else ''}{body})"
+
+    def trace(*gluons):
+        return "trace(cof(3),cyclic(" + ",".join(t(a) for a in gluons) + "))"
+
+    orders = list(itertools.permutations((3, 4, 5)))
+    tree = {s: tensor(chain(*s)) for s in orders}
+    loop = {("1", s): tensor(chain(*s), nc=1) for s in orders}
+    for z in (3, 4, 5):
+        x, y = (a for a in (3, 4, 5) if a != z)
+        loop["3", frozenset((x, y)), z] = tensor(trace(x, y) + "*" + chain(z))
+    for s in ((3, 4, 5), (5, 4, 3)):
+        loop["4", s] = tensor(trace(*s) + "*" + chain())
+    return tree, loop
+
+
+def _cyclic(s):
+    return min(s[i:] + s[:i] for i in range(3))
+
+
+@pytest.mark.loop_fast
+def test_bdk_five_point_colour_sum_o14():
+    """O14 (design §7.6, §14): the exact-N_c colour sum of qbar q g g g,
+    sum_colours A_tree^* A_loop, from v2's exact contractions of the BDK
+    colour structures equals hep-ph/9409393 eq. NLOCrossSection as Laurent
+    polynomials in N_c, entry by entry: for tree ordering s and every
+    one-loop partial amplitude, the coefficient is (N^2-1)/N times BDK's
+    bracket. It also fixes the NLC classification: relative to the leading
+    (N^2-1)^2 A_{5;1}(s), the coefficients of degree P-2 and P-4 are
+    exactly those of the bracket's N^2 and N^0 parts."""
+
+    tree, loop = _bdk_structures()
+
+    def laurent(*pairs):
+        return {power: Fraction(value) for power, value in pairs}
+
+    def times(cell, factor):
+        out = {}
+        for p, a in cell.items():
+            for q, b in factor.items():
+                out[p + q] = out.get(p + q, 0) + a * b
+        return {p: v for p, v in out.items() if v}
+
+    leading = laurent((4, 1), (2, -2), (0, 1))  # (N^2-1)^2
+    first = laurent((2, -1), (0, 1))  # -(N^2-1)
+    reversed_ = laurent((2, 1), (0, 1))  # N^2+1
+    trace = laurent((2, 1), (0, -2))  # N^2-2
+    prefactor = laurent((1, 1), (-1, -1))  # (N^2-1)/N
+    for s in tree:
+        s3, s4, s5 = s
+        bracket: dict = {}
+
+        def add(key, cell, bracket=bracket):
+            total = dict(bracket.get(key, {}))
+            for p, v in cell.items():
+                total[p] = total.get(p, 0) + v
+            bracket[key] = {p: v for p, v in total.items() if v}
+
+        add(("1", (s3, s4, s5)), leading)
+        add(("1", (s4, s3, s5)), first)
+        add(("1", (s3, s5, s4)), first)
+        add(("3", frozenset((s4, s5)), s3), times(first, {0: -1}))
+        add(("3", frozenset((s3, s4)), s5), times(first, {0: -1}))
+        add(("1", (s5, s4, s3)), reversed_)
+        add(("4", (3, 4, 5) if _cyclic(s) == (3, 4, 5) else (5, 4, 3)), trace)
+        add(("1", (s4, s5, s3)), {0: 1})
+        add(("1", (s5, s3, s4)), {0: 1})
+        add(("3", frozenset((s5, s3)), s4), {0: -1})
+        rev = (s5, s4, s3)
+        add(("4", (3, 4, 5) if _cyclic(rev) == (3, 4, 5) else (5, 4, 3)), {0: -2})
+        for key, structure in loop.items():
+            mine = contract_connected_tensor_nc_terms(tree[s], structure)
+            expected = times(bracket.get(key, {}), prefactor)
+            assert {p: v.real for p, v in mine.items()} == expected, (s, key)
+            assert all(not v.imag for v in mine.values())
+
+
 # ------------------------------------------------------------------ slice setup
 
 
@@ -367,6 +586,222 @@ def v2_slice(loop_sm_compiled_model):
         return built[name]
 
     return build
+
+
+def _skeleton_list(v2: V2Slice) -> list:
+    return [s for rows in v2.skeletons.values() for s in rows]
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("name", "kinds"),
+    [
+        ("gg_gg", {"adjoint-ring": 3, "fundamental-trace": 6}),
+        ("uux_ggg", {"quark-ring": None}),
+    ],
+)
+def test_compressions_are_certified(v2_slice, name, kinds):
+    """Certified compressions (design §3.4, §7.2): every compressed class is
+    certified by exact vertex decompositions, Lie-type tree vertices and the
+    smallest single-leg instance, whose generic seed equals its compressed
+    one; gg -> gg collapses to the (n-1)!/2 adjoint rings and (n-1)! closed
+    fundamental traces. The physics (family numerators, components) is
+    checked against the legacy engine with compression on (slice O1/O2)."""
+
+    from pyamplicol.loops.v2.colour import COMPRESSION_THEOREMS, Primitive
+
+    v2 = v2_slice(name)
+    table, class_of = build_seed_table(v2.colour, _skeleton_list(v2), compress=True)
+    found = {}
+    for seed in table.classes:
+        kind = seed.kind if isinstance(seed, Primitive) else "generic"
+        found[kind] = found.get(kind, 0) + 1
+    assert set(table.certificates) == set(kinds)
+    for kind, count in kinds.items():
+        if count is not None:
+            assert found[kind] == count
+        certificate = table.certificates[kind]
+        assert certificate.theorem == COMPRESSION_THEOREMS[kind]
+        assert certificate.vertices and certificate.tree_vertices
+        assert {rule for rule, _index in certificate.tree_vertices} >= {"V_3", "V_4"}
+    # Every skeleton is seeded: by its compressed combination or generically.
+    assert set(class_of) == set(_skeleton_list(v2))
+    assert all(class_of.values())
+
+
+@pytest.mark.loop_physics
+def test_quark_rings_reduce_once_per_relabelling(v2_slice):
+    """Quark-ring tensors and cells come from one reduction per relabelling
+    class of their external adjoint labels; every class of uu~ -> ggg equals
+    its direct SU(N_c) reduction and contraction, and the 93 rings need
+    fewer reductions than classes."""
+
+    from pyamplicol.loops.v2.colour import Primitive, _ring_relabelling
+
+    v2 = v2_slice("uux_ggg")
+    table, _class_of = build_seed_table(v2.colour, _skeleton_list(v2), compress=True)
+    legs = table.basis.legs
+    adjoint = frozenset(leg.label for leg in legs if leg.representation == 8)
+    external = {leg.label: leg.label for leg in legs}
+    rings = [
+        (c, seed)
+        for c, seed in enumerate(table.classes)
+        if isinstance(seed, Primitive) and seed.kind == "quark-ring"
+    ]
+    assert len(rings) == 93
+    canonical = set()
+    for c, seed in rings:
+        direct = reduce_network(seed.network(), legs, external)
+        assert seed.tensor(legs) == direct
+        assert table.cells[c] == tuple(
+            contract_connected_tensor_nc_terms(bra, direct)
+            for bra in table.basis.tensors
+        )
+        canonical.add(_ring_relabelling(seed, adjoint)[0])
+    assert len(canonical) < len(rings)
+
+
+def _born_rows(table, count: int, grades=(0,)) -> list[dict]:
+    """Deterministic, irregular binary64 Born rows over the whole basis."""
+
+    rows = []
+    for r in range(count):
+        row = {}
+        for b, orders in enumerate(table.basis.orders):
+            for order in orders:
+                row[b, order] = {
+                    grade: complex(
+                        math.sin(1.7 * b + 0.3 * r + grade + 0.1),
+                        math.cos(2.3 * b - 0.7 * r + 0.5 * grade),
+                    )
+                    for grade in grades
+                }
+        rows.append(row)
+    return rows
+
+
+def _assert_fft_equals_direct(table, fourier, rows, accuracy, native) -> None:
+    """The FFT seeds equal the direct contraction to binary64 rounding, per
+    (Born order, loop order) pair."""
+
+    born_orders = {a for orders in table.basis.orders for a in orders}
+    loop_orders = {o for orders in table.orders for o in orders}
+    for pairs in (frozenset({(a, o)}) for a in born_orders for o in loop_orders):
+        degree = None
+        if accuracy != "full":
+            grades = {key: tuple(value) for key, value in rows[0].items()}
+            degree = table.degree(pairs, grades)
+        fast = fourier.seeds(table, pairs, rows, accuracy, native, degree=degree)
+        for row, seeds in zip(rows, fast, strict=True):
+            direct = table.seeds(pairs, row, accuracy, cast=complex, degree=degree)
+            scale = max(map(abs, direct.values()))
+            assert scale > 0
+            for key in set(direct) | set(seeds):
+                error = abs(seeds.get(key, 0) - direct.get(key, 0))
+                assert error <= 1e-13 * scale, (key, accuracy, error / scale)
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize(
+    ("name", "orbits"),
+    [("gg_gg", (1, 2, 3)), ("uux_ggg", (1, 19, 3))],
+)
+def test_seed_fft_equals_direct_contraction(v2_slice, loop_native, name, orbits):
+    """Seed FFT (design §7.3, WP2.4 acceptance "FFT = direct"): the
+    certified symmetric-group orbits of the compressed seed table (adjoint
+    rings, closed fundamental traces, quark rings) contracted by the native
+    S_m FFT equal the direct contraction at full colour and NLC, Born
+    grades included. Each orbit pair is certified on every exact cell."""
+
+    v2 = v2_slice(name)
+    table, _class_of = build_seed_table(v2.colour, _skeleton_list(v2), compress=True)
+    fourier = seed_fourier(table)
+    assert fourier is not None
+    assert (
+        len(fourier.born_orbits),
+        len(fourier.loop_orbits),
+        fourier.degree,
+    ) == orbits
+    assert len(fourier.kernels) == len(fourier.born_orbits) * len(fourier.loop_orbits)
+    for a, j in fourier.kernels:
+        assert all(
+            fourier.covers(c, b)
+            for b in fourier.born_orbits[a]
+            for c, _sign in fourier.loop_orbits[j]
+        )
+    for accuracy in ("full", "nlc"):
+        _assert_fft_equals_direct(
+            table, fourier, _born_rows(table, 3, (0, -1)), accuracy, loop_native
+        )
+
+
+@pytest.mark.loop_nightly
+def test_seven_gluon_seed_tables_within_five_minutes(
+    loop_sm_compiled_model, loop_native
+):
+    """WP2.4 acceptance: the full-colour seed table of gg -> ggggg (every
+    skeleton, certified compressions, exact cells against the Born basis)
+    and its certified S_6 FFT orbits build in under five minutes, and the
+    FFT seeds equal the direct ones. Blocks, families and skeletons are
+    generated beforehand and not timed."""
+
+    import time
+
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+    from pyamplicol.loops.v2.colour import Primitive
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.processes.model import build_model_process_ir
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    born, loop = {"QCD": 5, "QED": 0}, {"QCD": 7, "QED": 0}
+    structure = prepare_loop_request_model(
+        compiled,
+        born_order_bounds=born,
+        loop_order_bounds=loop,
+        fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+    ).structure
+    data = json.loads(structure.native.to_json())
+    catalogue = ModelLoopCatalogue(
+        data, species_orders=structure.perturbative_species_orders
+    )
+    process = build_model_process_ir(
+        "g g > g g g g g", compiled.ir, color_accuracy="full"
+    )
+    blocks = build_tree_blocks(
+        process,
+        CompiledUFOModel(compiled),
+        born_coupling_orders=born,
+        block_coupling_orders=loop,
+    )
+    families = generate_families(
+        blocks.block_table(data),
+        catalogue,
+        LoopOrderSelection(
+            frozenset({"QCD"}), frozenset({add_orders(tuple(loop.items()))})
+        ),
+    )
+    colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
+    skeletons = [
+        s
+        for family in families.families.values()
+        for s in family_skeletons(families, family, colour, catalogue)
+    ]
+    start = time.perf_counter()
+    table, class_of = build_seed_table(colour, skeletons, compress=True)
+    fourier = seed_fourier(table)
+    seconds = time.perf_counter() - start
+    assert seconds < 300, seconds
+    kinds = [seed.kind for seed in table.classes if isinstance(seed, Primitive)]
+    assert len(kinds) == len(table.classes)  # no generic class left
+    assert (
+        kinds.count("adjoint-ring") == 360 and kinds.count("fundamental-trace") == 720
+    )
+    assert len(class_of) == len(skeletons)
+    assert fourier is not None and fourier.degree == 6
+    assert (len(fourier.born_orbits), len(fourier.loop_orbits)) == (1, 2)
+    assert len(fourier.kernels) == 2
+    _assert_fft_equals_direct(table, fourier, _born_rows(table, 2), "full", loop_native)
 
 
 @pytest.fixture(scope="module")
@@ -661,7 +1096,13 @@ class DiagramOracle:
 
     def __init__(self, v2: V2Slice):
         self.v2 = v2
-        self.formal = v2.colour.formal_nc
+        # FeynKit's trees are compared formally in N_c where no block carries
+        # a U(1)-subtraction piece (whose N_c grade v2 records), else at 3.
+        self.formal = all(
+            block.colour_flow.nc_grade == 0
+            for block in v2.colour.blocks.blocks
+            if block.key.auxiliary_kind is None
+        )
         self.particles = {p["name"]: p for p in v2.data["particles"]}
         self.by_pdg = {int(p["pdg_code"]): p for p in v2.data["particles"]}
         self.rules = {r["name"]: tuple(r["particles"]) for r in v2.data["vertex_rules"]}
@@ -813,7 +1254,7 @@ class DiagramOracle:
             if not found:
                 return None
             (skeleton,) = found
-            seed = self.v2.class_of[skeleton]
+            ((seed, _one),) = self.v2.class_of[skeleton]
             assert self.v2.table.classes[seed].normalization_power == 0
             coefficients[seed] = coefficients.get(seed, ZERO) + coefficient
             skeletons.add(skeleton)
@@ -1011,13 +1452,15 @@ def _seeded_family_numerators(
     weights = {}
     for h, amplitudes in enumerate(legacy_born):
         born = {
-            (b, v2.born_order): sum(
-                (
-                    a * row[b]
-                    for a, row in zip(amplitudes, analysis.transport, strict=True)
-                ),
-                ZERO,
-            )
+            (b, v2.born_order): {
+                0: sum(
+                    (
+                        a * row[b]
+                        for a, row in zip(amplitudes, analysis.transport, strict=True)
+                    ),
+                    ZERO,
+                )
+            }
             for b in range(len(table.basis))
         }
         seeds = table.seeds(
@@ -1135,7 +1578,7 @@ def test_feynkit_diagram_colours_equal_seed_predictions(
     assert set(analysis.decomposition) | analysis.certified_terms == set(
         range(len(analysis.loop))
     )
-    assert v2.colour.formal_nc == (name == "gg_gg")
+    assert v2.colour.formal_nc
 
 
 @pytest.mark.loop_physics
@@ -1260,7 +1703,7 @@ def test_leading_colour_degrees_equal_legacy_projection(
     table = v2.table
     degree = table.degree(v2.pairs)
     born_degree = table.basis.degree({(v2.born_order, v2.born_order)})
-    frozen = loop_reference("legacy/gg_gg")["leading_colour"]
+    frozen = loop_reference("legacy/gg_gg")["colour_projections"]["lc"]
     program = legacy_program("gg_gg", "lc")
     bare = legacy_capture._virtual(program).bare
     assert (born_degree, degree) == (frozen["born_degree"], frozen["virtual_degree"])
@@ -1292,7 +1735,7 @@ def test_leading_colour_degrees_equal_legacy_projection(
     certificate = certify_leading_colour(table, v2.pairs)
     assert certificate.degree == degree
     loop_kind = {}
-    for skeleton, c in v2.class_of.items():
+    for skeleton, ((c, _one),) in v2.class_of.items():
         species = {content.loop_in.rstrip("~") for content in skeleton.contents}
         loop_kind.setdefault(c, set()).update(species)
     for c, kinds in loop_kind.items():
@@ -1316,11 +1759,22 @@ def test_leading_colour_degrees_equal_legacy_projection(
 
 @pytest.mark.loop_physics
 def test_lc_needs_nc_exact_tree_currents(v2_slice):
+    """U(1)-subtraction pieces enter the blocks with their N_c grade (design
+    §3.2 item 4), so uu~ -> dd~g is formal in N_c; a table whose blocks mix
+    grades only allows full colour."""
+
     v2 = v2_slice("uux_ddxg")
-    assert not v2.table.formal_nc
+    grades = {
+        block.colour_flow.nc_grade
+        for block in v2.colour.blocks.blocks
+        if block.key.auxiliary_kind is None
+    }
+    assert grades == {0, -1} and v2.table.formal_nc
+    assert v2.table.seeds(v2.pairs, {}, "lc") == {}
+    mixed = dataclasses.replace(v2.table, formal_nc=False)
     with pytest.raises(ValueError, match="N_c-exact"):
-        v2.table.seeds(v2.pairs, {}, "lc")
-    assert v2.table.seeds(v2.pairs, {}, "full") == {}
+        mixed.seeds(v2.pairs, {}, "lc")
+    assert mixed.seeds(v2.pairs, {}, "full") == {}
 
 
 @pytest.mark.loop_physics

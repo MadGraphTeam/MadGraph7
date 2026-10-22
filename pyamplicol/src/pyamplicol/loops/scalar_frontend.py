@@ -164,6 +164,8 @@ class ScalarFunctionLibrary:
             for name, (_record_id, _args, body) in selected.items()
         }
         definitions, bodies, by_record = [], {}, {}
+        # head -> (parameters, lowered body part): exact bodies for ``inline``.
+        self._bodies: dict[Any, tuple[list[Any], Any]] = {}
         # An identically zero helper diagnostic needs no opaque call. Record
         # this exact proof in dependency order so callers can retain structural
         # zeros without evaluating any model parameter or predicate numerically.
@@ -181,6 +183,8 @@ class ScalarFunctionLibrary:
                 body, locals=dict(zip(arguments, parameters, strict=True)), closed=True
             )
             value, diagnostic, _ = self.helpers[name]
+            self._bodies[value] = (parameters, lowered.value)
+            self._bodies[diagnostic] = (parameters, lowered.diagnostic)
             if lowered.diagnostic == self.zero:
                 self._zero_diagnostic_heads.add(diagnostic)
             definitions.extend(
@@ -198,6 +202,51 @@ class ScalarFunctionLibrary:
         self.function_definitions = tuple(definitions)
         self.helper_bodies = MappingProxyType(bodies)
         self.helpers = MappingProxyType(self.helpers)
+
+    def inline(self, expression: Any, where: Any) -> Any:
+        """Replace every helper call (value or diagnostic) whose arguments
+        satisfy ``where(arguments)`` by its exact lowered body, recursively.
+
+        The bodies keep their native conditionals (``symbolica::if``), so a
+        caller can, e.g., collect a symbol that only reaches a helper through
+        its arguments (formal-N_c grading of source couplings).
+        """
+        from symbolica import Replacement
+
+        original = expression
+        while True:
+            before = expression
+            for head, (parameters, body) in self._bodies.items():
+                wildcards = [
+                    symbols.qualified(f"pyamplicol_inline::x{i}_")
+                    for i in range(len(parameters))
+                ]
+
+                def rewrite(
+                    match,
+                    head=head,
+                    parameters=parameters,
+                    body=body,
+                    wildcards=wildcards,
+                ):
+                    arguments = [match[w] for w in wildcards]
+                    if not where(arguments):
+                        return head(*arguments)
+                    return body.replace_multiple(
+                        [
+                            Replacement(parameter, argument)
+                            for parameter, argument in zip(
+                                parameters, arguments, strict=True
+                            )
+                        ]
+                    )
+
+                expression = expression.replace(
+                    head(*wildcards), rewrite, rhs_cache_size=0
+                )
+            if expression == before:
+                # Unchanged expressions keep their identity (and term order).
+                return original if expression == original else before
 
     def lower(
         self, source: str, *, locals: dict[str, Any] | None = None, closed: bool = False

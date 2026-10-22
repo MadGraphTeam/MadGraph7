@@ -478,7 +478,7 @@ The selection rule (§3.3) still applies to the cubic and quartic parts separate
 - **Certified compressions.** Each is re-certified at loop level per model and order, never inherited from tree certificates (MASTER_PLAN §2.16):
   - adjoint ring Tr(F^σ) for gluon and ghost loops [L hep-ph/9910563 §3 `NewLoopColor`; verified at `fcolor.tex:845-852` by the physics judge];
   - fundamental trace Tr(T^σ) for closed quark loops (automatic in colour flow);
-  - q̄q ring with left/right primitives for one quark line [L hep-ph/9910563 `LoopColorqqNew`].
+  - one quark line: the quark ring, one class per proportional colour vector of its generalised arc word (WP2.4, §7.2). The q̄q ring with left/right primitives [L hep-ph/9910563 `LoopColorqqNew`] would leave fewer classes but is not adopted (§7.2 states the seed-cost consequence).
 
   Compression changes only the seed-table size, never the dressing. It is also what makes M valid in FC/NLC.
 
@@ -948,10 +948,15 @@ The plan keeps the (k_μ², ε) monomial labels and the `MuTensorNumerator` ingr
   |---|---|
   | Gluon and ghost loops | Ordering σ: Tr(F^{σ₁}…F^{σₙ}) (DDM) [L] |
   | Closed fundamental loops | σ: Tr(T^σ) |
-  | One quark line | (σ, L/R): DDM q̄q ring [L] |
+  | One quark line | Quark ring: one class per proportional colour vector of its generalised arc word (WP2.4; the DDM (σ, L/R) q̄q ring [L] is not adopted, see below) |
   | Several quark lines | Generic, or published decompositions when certified [L-s 1111.4193, 1310.0413, 1908.02695] |
 
   With compression the per-point seed cost for gg→ggggg FC is ≈1.2×10⁸ complex MAC for 4 loop classes × 360 orderings [V-s Design 1 §5.1], about 2 % of dressing.
+
+  The quark-ring compression leaves more classes than the DDM L/R form would. uu~→ggggg keeps 7,620 classes on its 120-element basis, against 2·5! = 240 L/R primitives. Its direct seed cost is therefore ≈7,620 × 120 × 64 helicity rows ≈ 6×10⁷ complex MAC per point, against ≈2×10⁶ for L/R [I]. That is about 6 % of the modelled FC dressing of that row (9.1×10⁸, Appendix B), before the FFT takes over the 74 certified loop orbits. The L/R re-expression is not adopted because rings already share one row per colour vector and a linear re-expression adds terms per skeleton to the dressing side. WP2.8 revisits it if G1 measures the seed share above that estimate.
+- **Proportional classes (WP2.4).** With compression, the seed table also merges classes whose colour vectors are proportional (`colour._ClassKeys`). These are quark rings of different arc words, and generic seeds equal to them. On uu~→ggg this cuts 315 classes to 99.
+  - A quark ring is reduced once per relabelling of its external gluon labels (`_ring_relabelling`); keys, tensors and cells of the other members are relabelled. Measured compressed seed tables (Python, exact) [M]: uu~→gggg 828 classes on a 24-element basis in 10 s (53 s before); uu~→ggggg 7,620 classes on 120 elements from 103,770 skeletons in 176 s plus 11 s for the 74 certified FFT loop orbits (more than 40 min before; stopped).
+- **Certificate predicate (WP2.4, interface to WP2.8).** `SeedTable.certified(combination)` is true when every class of a seed is a `Primitive` whose compression is certified in the table; `ColourSeeds.certified` applies it per skeleton and is what `ReferenceExecutor.run(..., certified=...)` takes to admit schedule M at NLC and full colour. All gg→gg skeletons pass, uu~→dd~g only partly. Today M then still falls back to B on its structural check, because seed contents are not colour-ordered; colour-ordered certified contents are WP2.8's.
 - **Closed-fermion orientation folding** (Tr(σ) + (−1)ⁿ Tr(σᵀ) in one class) is used only when the attached vertices carry a C-parity certificate.
   - It is not used with Z or W attachments (judge finding 11). Those classes keep both orientations, and their dressing doubles.
   - The counts of Table 1a assume folding for the closed quark loops with QCD attachments (certified for loop_sm QCD vertices). Without folding, FC dressing of the gluon processes would be ≈1.75× (gluon loop plus three closed-quark classes doubled, with a massive b).
@@ -964,6 +969,13 @@ U0 = A0† K. Leading colour is diagonal.
 - The `auto | direct | fft` policy and the reported algorithm are kept (MASTER_PLAN §2.16).
 - DoubleFloat and arbitrary precision use exact direct contraction.
 - Correlated FFT stays unsupported, as today.
+- **Implemented (WP2.4).** `loops/v2/colour.seed_fourier` finds the orbits of S_m on the external adjoint labels (all of them, or all but one when every coloured leg is adjoint) directly on the literal Born tensors and the seed classes: regular Born orbits, and complete loop orbits whose stabilisers carry signs (an adjoint ring is fixed up to (−1)ⁿ by its reflection). Each Born/loop orbit pair is certified on every exact cell, K[class(g), b(h)]·sign_g = k(h⁻¹∘g). Other pairs stay direct. The native `V2SeedFourier` (`rust/loop-reduction/src/runtime/v2_seeds.rs`, binding `_loop.V2SeedFourier`) contracts the certified pairs for a batch of helicity rows with `SymmetricGroupFftPlan`. Kernels are projected exactly per sector degree P and Born grade, then rounded once.
+  - The slice's `SliceRequest.colour_contraction` defaults to `auto`: binary64 at NLC/FC, with `PointResult.colour_contraction` reporting the algorithm. `fft` refuses a table without a certified pair, and LC is refused. Exact dressing, DoubleFloat and arbitrary precision stay direct.
+  - `auto` has no size criterion, like the tree engine's `auto` (`tests/unit/test_automatic_fft_contraction.py`): every certified pair goes through the FFT, gg→gg's S_3 included. A measured threshold against the native direct kernel belongs to WP2.1 and G1. The Python slice keeps the projected kernels and the native plans per (sector degree P, Born grade) across points, so only the Born rows are transformed per point; WP2.1 builds them once per process as well.
+  - Orbits found:
+    - gg→gg and gg→ggg: one Born orbit and two loop orbits (adjoint rings and closed traces).
+    - uu~→ggg: 19 loop orbits cover every cell.
+    - gg→ggggg: S_6, with 1 080 classes in two orbits.
 
 ### 7.4 Projection
 
@@ -1047,7 +1059,13 @@ V_{αβ,k} = B†K^{αβ}_{BL}L_k + L_k†K^{αβ}_{LB}B, with K_{LB}^{αβ} = (
 
 ### 7.8 Caps
 
-The loop path never passes `max_sectors` (`color/plan_build.py:21` [V]) and does not inherit `MAX_ADJOINT_GLUONS = 12` (`color/adjoint_kernel.py:20` [V]). Direct contraction is always available when FFT eligibility (degree ≤ 10 today) fails.
+The loop path never passes `max_sectors` (`color/plan_build.py:21` [V]), and the 12-gluon/int64 guard of `color/adjoint_kernel.py` is removed (WP2.4). Direct contraction is always available when FFT eligibility fails.
+
+Verified for WP2.4 [V]:
+- `loops/v2` calls neither `color/plan_build.py` nor `color/adjoint_kernel.py`. Its Born plan is the tree engine's trace basis, and no caller in the repository passes `max_sectors`.
+- The seed FFT has no degree bound. It enumerates S_m only when |S_m| ≤ the Born basis size, the structural condition for a regular orbit, and contracts directly otherwise.
+- The native plan's own bound is its factorial and `u32` index storage.
+- `color/adjoint_kernel.py` has no gluon cap. The dense DDM kernel ((n−2)! entries, sweeps over S_{n−1}) uses int64 while its exact bound N_c^n·4^{n−2} fits, and exact Python integers otherwise. Above `DENSE_ADJOINT_GLUONS = 12` an overlap is evaluated on its own (`ladder_overlap`: both ladders' 2^{n−2} traces, integer cycle counting, about 6 s per entry at n = 13), so the tree DDM plan no longer refuses more than 12 gluons. The automatic tree basis choice still prefers the trace basis above that size; this is a resource preference, not a cap. Tests: every dense entry for n ≤ 6 at N_c = 2, 3, 5 equals `ladder_overlap` (all three accuracies), and the object fallback and a 13-gluon entry are checked.
 
 ---
 
@@ -1597,6 +1615,10 @@ Total ≈ 270 agent-days [I].
   - *Depends:* S1.
   - *Accept:* LC/NLC values and degrees equal O1 on gg→gg, uu~→ggg, DY, uu~→e⁻e⁺gg and tt in three carriers; O14; FFT = direct; pruning counts equal Appendix B; 7-gluon seed tables in < 5 min.
   - *Size:* L (13).
+  - *Status (branch `work/v2-colour-production`):*
+    - done: (1) DDM adjoint-ring and fundamental-trace certificates; (2) the q̄q ring as a certified quark-ring compression (generalised arc-letter form, proportional classes merged, one reduction per gluon relabelling); (3) NLC, graded U(1), structural LC/NLC pruning; (4) the exact BDK colour sum (O14 identity); (5) seed FFT (`auto | direct | fft`) and cap removal (§7.3, §7.8); the certificate predicate for schedule M (§7.2).
+    - acceptance: LC/NLC values and degrees equal O1 on gg→gg, uu~→ggg, uu~→dd~g, DY and tt in binary64 and at 200 bits (`test_colour_projections_equal_legacy`); FFT = direct (gg→gg, uu~→ggg, gg→ggggg); Appendix B leading-colour rows; gg→ggggg seed table and FFT orbits within 5 min (nightly).
+    - open: DoubleFloat is the third carrier only of the native executor (WP2.1, not integrated), so the LC/NLC O1 comparison runs there once it lands. uu~→e⁻e⁺gg does not generate until the closed-quark A g g triangles have CertifiedZero witnesses (WP3.5; pinned by a strict xfail). O14 with resolved-colour seed columns (partial amplitudes on the BDK structures) belongs to the directed seed columns of WP2.5. The DDM L/R re-expression of quark rings is not adopted for seeds: rings already share one row per colour vector, and a linear re-expression would trade fewer class contractions for more terms per skeleton (§7.2 gives the seed-cost estimate).
 - **WP2.5 Observables.**
   - *Goal:* §7.7, §8.4, §8.5, §9: mixed sectors; directed seed columns; spin sources including the asymmetric Ward mode (full kernels); resolved outputs; flavour members and aliases.
   - *Owns:* `loops/v2/observables.py`, `loop_v2/observables.rs`, `runtime/virtual.py` wiring.
