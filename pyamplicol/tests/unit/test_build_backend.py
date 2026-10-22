@@ -669,12 +669,17 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         assert f'symjit = {{ version = "={release["symjit"]["version"]}"' in cargo
         assert "symbolica = { workspace = true" in candidate_core
         assert "symjit = { workspace = true" in candidate_core
-        # The Python requirement follows the contributor Community candidate;
-        # the Rust requirement follows the candidate lock, which may differ.
+        # The Python requirement follows the contributor Community candidate
+        # (the retained historical pin table of dependencies/README.md); the
+        # Rust requirement follows the candidate lock, which may differ.
         with (ROOT / "dependencies" / "contributor-lock.toml").open("rb") as stream:
             candidate_python = tomllib.load(stream)["symbolica"]["candidate_version"]
+        published_python = release["symbolica"]["python_version"]
+        assert f'"symbolica=={published_python}"' in source_pyproject.decode()
         candidate_pyproject = (overlay / "pyproject.toml").read_text(encoding="utf-8")
         assert f'"symbolica=={candidate_python}"' in candidate_pyproject
+        if candidate_python != published_python:
+            assert f'"symbolica=={published_python}"' not in candidate_pyproject
         build_info = json.loads(
             (overlay / "src" / "pyamplicol" / "_build_info.json").read_text(
                 encoding="utf-8"
