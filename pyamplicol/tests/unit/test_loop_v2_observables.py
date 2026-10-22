@@ -564,6 +564,7 @@ def _assert_correlated(result, expected, index, tolerance):
         "gg_gg_lc",
         "gg_gg_nlc",
         "uux_ggg_lc",
+        "uux_ggg_nlc",
     ),
 )
 def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
