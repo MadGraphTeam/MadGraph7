@@ -828,11 +828,11 @@ class NativeExecutor:
         reduction-direction check is the native re-test pass.
         """
 
-        from .stability import REDUCTION, ROTATION, StabilityChecks, StabilityEstimate
+        from .stability import ROTATION, StabilityChecks, StabilityEstimate
 
         stability = stability or StabilityChecks()
         precision, evaluations = self._evaluated(
-            points, scales, parameters, precision, poles, stability.reduction_direction
+            points, scales, parameters, precision, poles, stability.frame
         )
         if not stability.enabled:
             return [evaluation.result for evaluation in evaluations]
@@ -845,15 +845,15 @@ class NativeExecutor:
                 for point in points
             ]
             rotated.append(
-                self._evaluated(moved, scales, parameters, precision, poles, False)[1]
+                self._evaluated(moved, scales, parameters, precision, poles, None)[1]
             )
         out = []
         for index, reference in enumerate(evaluations):
             budgets = {}
             for k, runs in enumerate(rotated):
                 budgets[ROTATION.format(k)] = reference.rotation_budget(runs[index])
-            if stability.reduction_direction:
-                budgets[REDUCTION] = reference.retest_budget
+            if stability.reduction:
+                budgets[stability.reduction] = reference.retest_budget
             estimate = StabilityEstimate.from_checks(
                 reference.result.components["virtual"],
                 budgets,
@@ -873,7 +873,10 @@ class NativeExecutor:
         arithmetic, digits = self._arithmetic(precision, False)
         native = self.native(arithmetic, digits, len(evaluations))
         output = native.evaluate(
-            self._inputs(evaluations, arithmetic), poles=poles, check=retest
+            self._inputs(evaluations, arithmetic),
+            poles=poles,
+            check=retest is not None,
+            rescale=retest == "rescaled",
         )
         exported = self.exported
         self.last_report = output["report"]

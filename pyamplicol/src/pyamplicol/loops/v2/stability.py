@@ -14,6 +14,14 @@ Two MadLoop-style checks, individually configurable and combinable:
   NinjaRS adapter's reversed frame), reusing the numerator coefficients and
   the cached masters. It measures the reduction alone, at the cost of a
   second reduction pass.
+* **Rescaled reduction check** (``StabilityChecks(rescaled=True)``). The
+  same re-reduction with every dimensionful input scaled by a non-dyadic
+  factor (``ReductionFrame::RESCALED``): the masters are evaluated anew at
+  differently rounded arguments instead of hitting the cache, so a master
+  integral's own rounding (e.g. a binary64 box near a vanishing Gram
+  determinant) is measured too. Neither the cached re-reduction nor a
+  rotation can see it: both keep every invariant, so every master returns
+  the same value. It costs the master evaluations of a second pass.
 
 Every check yields an absolute error budget per squared-order sector and
 Laurent coefficient that lets no two contributions cancel (design §10.2):
@@ -59,6 +67,9 @@ SAFETY = 2
 FLOOR_UNITS = 16
 ROTATION = "rotation-{}"
 REDUCTION = "reduction-direction"
+RESCALED = "reduction-rescaled"
+# The re-reduction frame of each reduction check (``V2Reducer.reduce``).
+FRAMES = {REDUCTION: "reversed", RESCALED: "rescaled"}
 
 _AXES = {"x": 1, "y": 2, "z": 3}
 
@@ -169,11 +180,14 @@ def _determinant(m) -> Fraction:
 
 @dataclass(frozen=True, slots=True)
 class StabilityChecks:
-    """Which checks an evaluation runs: rotations (any number) and/or the
-    reduction-direction check. The default runs none."""
+    """Which checks an evaluation runs: rotations (any number) and/or one
+    reduction check, the reduction-direction check (cached masters) or, with
+    ``rescaled``, its rescaled variant (masters recomputed). The default runs
+    none."""
 
     rotations: tuple[Rotation, ...] = ()
     reduction_direction: bool = False
+    rescaled: bool = False
 
     def __post_init__(self) -> None:
         rotations = tuple(self.rotations)
@@ -181,11 +195,26 @@ class StabilityChecks:
             raise TypeError("rotation checks take Rotation records")
         if any(r.is_identity for r in rotations):
             raise ValueError("the identity is no rotation check")
+        if self.rescaled and not self.reduction_direction:
+            raise ValueError("rescaled is a variant of the reduction-direction check")
         object.__setattr__(self, "rotations", rotations)
 
     @property
     def enabled(self) -> bool:
         return bool(self.rotations) or self.reduction_direction
+
+    @property
+    def reduction(self) -> str | None:
+        """The name of the reduction check that runs (``REDUCTION`` or
+        ``RESCALED``), or None."""
+        if not self.reduction_direction:
+            return None
+        return RESCALED if self.rescaled else REDUCTION
+
+    @property
+    def frame(self) -> str | None:
+        """The re-reduction frame of the reduction check, or None."""
+        return FRAMES.get(self.reduction)
 
 
 def relative(reference: Mapping[Any, Any], absolute: Mapping[Any, Any]) -> float:
@@ -302,12 +331,12 @@ class StabilityEstimate:
         unknown = [
             name
             for name in budgets
-            if name != REDUCTION and not name.startswith(ROTATION.format(""))
+            if name not in FRAMES and not name.startswith(ROTATION.format(""))
         ]
         if unknown:
             raise ValueError(f"unknown stability checks {unknown}")
-        rotations = [b for name, b in budgets.items() if name != REDUCTION]
-        reduction = budgets.get(REDUCTION)
+        rotations = [b for name, b in budgets.items() if name not in FRAMES]
+        reductions = [b for name, b in budgets.items() if name in FRAMES]
         combined = {}
         for sector, laurent in reference.items():
             width = len(laurent.coefficients)
@@ -317,7 +346,7 @@ class StabilityEstimate:
                     (_at(r[sector], k) for r in rotations),
                     default=0.0,
                 )
-                return rotated + (_at(reduction[sector], k) if reduction else 0.0)
+                return rotated + sum(_at(r[sector], k) for r in reductions)
 
             combined[sector] = Budget(
                 tuple(
@@ -348,7 +377,7 @@ class StabilityEstimate:
             {name: self.budgets[name] for name in names},
             scale=self.scale,
             roundoff=self.roundoff,
-            families=self.families if REDUCTION in names else None,
+            families=self.families if set(names) & set(FRAMES) else None,
         )
 
 
@@ -358,7 +387,9 @@ def _at(budget: Any, k: int) -> float:
 
 __all__ = [
     "FLOOR_UNITS",
+    "FRAMES",
     "REDUCTION",
+    "RESCALED",
     "ROTATION",
     "SAFETY",
     "Budget",

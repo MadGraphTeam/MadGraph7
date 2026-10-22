@@ -293,17 +293,16 @@ fn frames_true_rank_and_finite_only_mode() {
             reverse: false,
             rotation: 1,
             shift: true,
+            rescale: false,
         },
         ReductionFrame {
             reverse: true,
             rotation: 2,
             shift: true,
+            rescale: true,
         },
-        ReductionFrame {
-            reverse: true,
-            rotation: 1,
-            shift: false,
-        },
+        ReductionFrame::REVERSED,
+        ReductionFrame::RESCALED,
     ] {
         let output = reducer
             .reduce(
@@ -368,24 +367,31 @@ fn generic_double_double_agrees_with_the_fast_engine() {
     let dd_lanes = all_lanes("double-double");
     let mut reducer = V2Reducer::new("double-double", None, "generic", true).unwrap();
     assert!(reducer.take_master_statistics().is_none());
-    let output = reducer
-        .reduce(
-            &dd_lanes.iter().map(group).collect::<Vec<_>>(),
-            ReduceOptions {
-                poles: true,
-                check: Some(ReductionFrame::REVERSED),
-            },
-        )
-        .unwrap();
-    for ((dd, check), fast) in output
-        .direct
-        .iter()
-        .zip(output.check.as_ref().unwrap())
-        .zip(&fast.direct)
-    {
-        let dd = dd.values().unwrap();
-        assert!(relative(&values(&fast.values().unwrap()), &values(&dd), 3) < 1e-12);
-        assert!(relative_decimal(&check.values().unwrap(), &dd, 3) < 1e-28);
+    // The rescaled frame re-evaluates every master at scaled inputs and
+    // scales the integrals back: all three Laurent coefficients agree.
+    for frame in [ReductionFrame::REVERSED, ReductionFrame::RESCALED] {
+        let output = reducer
+            .reduce(
+                &dd_lanes.iter().map(group).collect::<Vec<_>>(),
+                ReduceOptions {
+                    poles: true,
+                    check: Some(frame),
+                },
+            )
+            .unwrap();
+        for ((dd, check), fast) in output
+            .direct
+            .iter()
+            .zip(output.check.as_ref().unwrap())
+            .zip(&fast.direct)
+        {
+            let dd = dd.values().unwrap();
+            assert!(relative(&values(&fast.values().unwrap()), &values(&dd), 3) < 1e-12);
+            assert!(
+                relative_decimal(&check.values().unwrap(), &dd, 3) < 1e-28,
+                "{frame:?}"
+            );
+        }
     }
     assert!(V2Reducer::new("double-double", None, "fast", true).is_err());
 }

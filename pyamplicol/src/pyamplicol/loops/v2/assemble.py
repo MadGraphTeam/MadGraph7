@@ -133,7 +133,6 @@ from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
 from .poly_affine import MonomialLayout, leg_momentum
 from .schedules import LoopSchedules, SkeletonView, build_schedules, cheapest
 from .stability import (
-    REDUCTION,
     ROTATION,
     Budget,
     StabilityChecks,
@@ -1188,7 +1187,7 @@ class LoopSlice:
             dict(parameters or {}),
             precision,
             poles,
-            stability.reduction_direction,
+            stability.frame,
         )
         if not stability.enabled:
             return reference.result
@@ -1200,11 +1199,11 @@ class LoopSlice:
                 dict(parameters or {}),
                 precision,
                 poles,
-                False,
+                None,
             )
             budgets[ROTATION.format(index)] = reference.rotation_budget(rotated)
-        if stability.reduction_direction:
-            budgets[REDUCTION] = reference.retest_budget
+        if stability.reduction:
+            budgets[stability.reduction] = reference.retest_budget
         estimate = StabilityEstimate.from_checks(
             reference.result.components["virtual"],
             budgets,
@@ -1557,7 +1556,7 @@ class _PointEvaluation:
         self._born_and_counterterms(rows, scalars, labels)
         self.rows = rows
 
-    def finish(self, retest: bool) -> _PointEvaluation:
+    def finish(self, retest: str | None) -> _PointEvaluation:
         """Dress (schedule B), reduce and assemble the complete virtual."""
         self._reduce(self.dress().numerators, retest)
         self._assemble()
@@ -1812,7 +1811,9 @@ class _PointEvaluation:
 
     # -- reduction -----------------------------------------------------------------
 
-    def _reduce(self, numerators, retest: bool) -> None:
+    def _reduce(self, numerators, retest: str | None) -> None:
+        """Reduce every lane; ``retest`` re-reduces them in that frame
+        (``stability.FRAMES``: "reversed" or "rescaled")."""
         slice_, numbers = self.slice, self.numbers
         native = slice_.native
         arithmetic = "double" if numbers.double else "arbitrary"
@@ -1860,7 +1861,12 @@ class _PointEvaluation:
         reducer = native.V2Reducer(
             arithmetic, digits, "fast" if numbers.double else "generic"
         )
-        direct, check = reducer.reduce(groups, poles=self.poles, check=retest)
+        direct, check = reducer.reduce(
+            groups,
+            poles=self.poles,
+            check=retest is not None,
+            rescale=retest == "rescaled",
+        )
         self.families = {}
         self.retest_families = {} if check is not None else None
         for lane, batch in zip(lanes, direct, strict=True):
