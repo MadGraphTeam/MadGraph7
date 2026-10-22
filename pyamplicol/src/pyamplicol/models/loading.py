@@ -1177,9 +1177,7 @@ class CountertermLoweredModel:
     @property
     def slot_orders(self) -> tuple[str, ...]:
         return tuple(
-            sorted(
-                {s.slot_order for s in (*self.couplings, *self.insertions)}
-            )
+            sorted({s.slot_order for s in (*self.couplings, *self.insertions)})
         )
 
 
@@ -1308,6 +1306,7 @@ def lower_counterterm_vertices(
         prefix=_COUNTERTERM_PARAMETER_BLOCK,
         insertion_order=COUNTERTERM_INSERTION_ORDER,
         slot_order=lambda structure: structure.slot_order,
+        weyl_fields=_weyl_fields(compiled),
     )
     if lines.refused:
         raise CountertermLoweringError(lines.refused)
@@ -1470,6 +1469,19 @@ def lower_counterterm_vertices(
     )
     return CountertermLoweredModel(
         lowered, names, tuple(sorted(parameters)), insertions=lines.clones
+    )
+
+
+def _weyl_fields(compiled: CompiledModel) -> frozenset[str]:
+    """Fermions whose tree currents are Weyl currents (``is_chiral_eligible``)."""
+
+    from .external import CompiledUFOModel
+
+    model = CompiledUFOModel(compiled)
+    return frozenset(
+        particle.name
+        for particle in compiled.ir.particles
+        if model.is_chiral_eligible(particle.pdg_code)
     )
 
 

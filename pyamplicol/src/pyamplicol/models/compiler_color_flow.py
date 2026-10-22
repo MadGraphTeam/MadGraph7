@@ -296,7 +296,11 @@ def synthesize_fundamental_fierz_auxiliaries(
     propagators: Sequence[CompiledPropagatorRecord],
     *,
     model_symbols: ModelSymbolRegistry,
-) -> tuple[tuple[CompiledParticleRecord, ...], tuple[CompiledOrientedKernel, ...]]:
+) -> tuple[
+    tuple[CompiledParticleRecord, ...],
+    tuple[CompiledOrientedKernel, ...],
+    tuple[CompiledPropagatorRecord, ...],
+]:
     """Materialize the singlet term of a proven fundamental Fierz identity.
 
     A certified ``T^a_ij`` kernel implies the SU(3) color-flow decomposition
@@ -305,9 +309,12 @@ def synthesize_fundamental_fierz_auxiliaries(
     no particle name or PDG label participates in the proof.
 
     This milestone deliberately targets the supported QCD-like contract:
-    massless self-conjugate adjoint vectors with a default propagator and
-    fundamental fermion lines. Models outside that contract keep the existing
-    exact sector-partition fallback instead of acquiring an unproven auxiliary.
+    massless self-conjugate adjoint vectors and fundamental fermion lines.
+    Models outside that contract keep the existing exact sector-partition
+    fallback instead of acquiring an unproven auxiliary. The auxiliary
+    propagates like its source: a source with a model-supplied propagator
+    (e.g. a counterterm clone line, ``models.ct_line_insertions``) gives its
+    auxiliary a copy of that propagator, returned with the propagators.
     """
 
     particle_by_name = {particle.name: particle for particle in particles}
@@ -316,15 +323,11 @@ def synthesize_fundamental_fierz_auxiliaries(
     }
     eligible_sources: set[str] = set()
     for kernel in kernels:
-        source_name = _eligible_adjoint_source(
-            kernel,
-            particle_by_name,
-            propagator_by_particle,
-        )
+        source_name = _eligible_adjoint_source(kernel, particle_by_name)
         if source_name is not None:
             eligible_sources.add(source_name)
     if not eligible_sources:
-        return tuple(particles), tuple(kernels)
+        return tuple(particles), tuple(kernels), tuple(propagators)
 
     used_pdgs = {abs(particle.pdg_code) for particle in particles}
     next_pdg = max(9_100_000, max(used_pdgs, default=0) + 1)
@@ -347,9 +350,17 @@ def synthesize_fundamental_fierz_auxiliaries(
         | {"electric_charge"}
     )
     auxiliary_by_source: dict[str, CompiledParticleRecord] = {}
+    auxiliary_propagators: list[CompiledPropagatorRecord] = []
     for source_name in sorted(eligible_sources):
         source = particle_by_name[source_name]
         auxiliary_name = f"__pyamplicol_u1_subtraction_{source_name}"
+        custom = propagator_by_particle.get(source_name)
+        if custom is not None and not custom.custom:
+            custom = None
+        if custom is not None:
+            auxiliary_propagators.append(
+                replace(custom, name=f"{auxiliary_name}_prop", particle=auxiliary_name)
+            )
         auxiliary_by_source[source_name] = CompiledParticleRecord(
             name=auxiliary_name,
             antiname=auxiliary_name,
@@ -363,7 +374,7 @@ def synthesize_fundamental_fierz_auxiliaries(
             ghost_number=0,
             propagating=False,
             goldstoneboson=False,
-            propagator=None,
+            propagator=None if custom is None else f"{auxiliary_name}_prop",
             component_dimension=compiled_particle_component_dimension(source),
             auxiliary_kind=U1_SUBTRACTION_AUXILIARY_KIND,
         )
@@ -463,6 +474,7 @@ def synthesize_fundamental_fierz_auxiliaries(
     return (
         (*particles, *auxiliary_by_source.values()),
         (*kernels, *synthetic),
+        (*propagators, *auxiliary_propagators),
     )
 
 
@@ -488,7 +500,6 @@ def _kernel_adjoint_source(
 def _eligible_adjoint_source(
     kernel: CompiledOrientedKernel,
     particles: dict[str, CompiledParticleRecord],
-    propagators: dict[str, CompiledPropagatorRecord],
 ) -> str | None:
     if kernel.color_projection_structure != "fundamental-generator":
         return None
@@ -509,13 +520,11 @@ def _eligible_adjoint_source(
     ):
         return None
     source = particles[kernel.particles[adjoint_slots[0]]]
-    propagator = propagators.get(source.name)
     if (
         source.spin != 3
         or source.mass.upper() != "ZERO"
         or source.width.upper() != "ZERO"
         or not source.self_conjugate
-        or (propagator is not None and propagator.custom)
     ):
         return None
     return source.name

@@ -292,7 +292,7 @@ def compile_ufo_model_ir(
         particles,
         terms,
     )
-    particles, oriented_kernels = synthesize_fundamental_fierz_auxiliaries(
+    particles, oriented_kernels, propagators = synthesize_fundamental_fierz_auxiliaries(
         particles,
         oriented_kernels,
         propagators,

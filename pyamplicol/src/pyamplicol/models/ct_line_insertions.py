@@ -81,12 +81,17 @@ def lower_line_insertions(
     prefix: str,
     insertion_order: str,
     slot_order: Callable[[Any], str],
+    weyl_fields: frozenset[str] = frozenset(),
 ) -> LineInsertions:
     """Clone lines of the two-point CT terms ``insertions`` (term -> coupling).
 
     ``payload`` is the compiled model payload whose ordinary vertices are
     copied (it is not modified); ``prefix`` prefixes every new record name,
     ``insertion_order`` and ``slot_order(term)`` name the pseudo-orders.
+    ``weyl_fields`` are the fermions whose currents the tree engine keeps as
+    Weyl currents (massless, standard propagator); their clone lines keep the
+    standard propagator and carry ``P Pi P = kappa P`` as the factor
+    ``kappa`` (``_line_factor``).
     """
 
     particles = {str(item["name"]): item for item in payload["particles"]}
@@ -126,6 +131,19 @@ def lower_line_insertions(
         if reason is not None:
             out.refused.update(dict.fromkeys(terms, reason))
             continue
+        factor = None
+        if source in weyl_fields:
+            factor = _line_factor(
+                str(payload["name"]),
+                propagators,
+                particles,
+                species,
+                [(insertions[term], term) for term in terms],
+                lorentz,
+            )
+            if isinstance(factor, str):
+                out.refused.update(dict.fromkeys(terms, factor))
+                continue
         for name, clone_name in species.items():
             record = dict(particles[name])
             record.update(
@@ -136,19 +154,22 @@ def lower_line_insertions(
             )
             out.particles.append(record)
             source_propagator = propagators[str(particles[name]["propagator"])]
-            out.propagators.append(
-                {
-                    "name": f"{clone_name}_prop",
-                    "particle": clone_name,
-                    "numerator": _line_numerator(
+            line = {**source_propagator, "name": f"{clone_name}_prop"}
+            if factor is None:
+                line.update(
+                    numerator=_line_numerator(
                         source_propagator["numerator"],
-                        [(insertions[term], term, lorentz, particles) for term in terms],
-                        name,
+                        _insertion_terms(
+                            [(insertions[term], term) for term in terms],
+                            lorentz,
+                            particles,
+                            name,
+                        ),
                     ),
-                    "denominator": f"({source_propagator['denominator']})^2",
-                    "pyamplicol_source": "model-supplied",
-                }
-            )
+                    denominator=f"({source_propagator['denominator']})^2",
+                    pyamplicol_source="model-supplied",
+                )
+            out.propagators.append({**line, "particle": clone_name})
         pdg += 1
         extra = {
             **{name: power // 2 for name, power in orders},
@@ -156,27 +177,36 @@ def lower_line_insertions(
             slot_order(terms[0]): 1,
         }
         out.clones.update(dict.fromkeys(terms, clone))
-        copied: dict[str, str] = {}
+        # A clone line joins a leg of the clone and a leg of its antiparticle,
+        # so the factor of a Weyl line sits on the copies of the latter.
+        scaled = {anti} if factor is not None else set()
+        copied: dict[tuple[str, bool], str] = {}
         for rule in copyable:
             legs = [str(name) for name in rule["particles"]]
             for name, clone_name in species.items():
                 if name not in legs:
                     continue
                 position = legs.index(name)
+                scale = name in scaled
                 rows = []
                 for row in rule["couplings"]:
                     for coupling in row:
-                        if coupling is not None and coupling not in copied:
-                            copied[coupling] = f"{clone}_C{len(copied)}"
+                        key = (coupling, scale)
+                        if coupling is not None and key not in copied:
+                            copied[key] = f"{clone}_C{len(copied)}"
                             original = couplings[coupling]
-                            out.couplings.append(
-                                {
-                                    **original,
-                                    "name": copied[coupling],
-                                    "orders": _added_orders(original["orders"], extra),
-                                }
-                            )
-                    rows.append([copied.get(coupling) for coupling in row])
+                            record = {
+                                **original,
+                                "name": copied[key],
+                                "orders": _added_orders(original["orders"], extra),
+                            }
+                            if scale:
+                                record.update(
+                                    expression=_scaled(original["expression"], factor),
+                                    value=[1.0, 0.0],
+                                )
+                            out.couplings.append(record)
+                    rows.append([copied.get((coupling, scale)) for coupling in row])
                 copy = f"{clone_name}__{rule['name']}"
                 out.vertex_rules.append(
                     {
@@ -250,22 +280,24 @@ def _refusal(
     return None
 
 
-def _line_numerator(
-    numerator: str,
-    terms: Sequence[tuple[str, Any, Mapping[str, Any], Mapping[str, Any]]],
+def _insertion_terms(
+    terms: Sequence[tuple[str, Any]],
+    lorentz: Mapping[str, Mapping[str, Any]],
+    particles: Mapping[str, Mapping[str, Any]],
     current: str,
-) -> str:
-    """``N(1, B) Pi(r -> A, o -> B) N(A, 2)`` in the payload's syntax."""
+) -> list[tuple[Any, Any]]:
+    """``(scale, Pi_t(r -> A, o -> B))`` of every term for a ``current`` line.
+
+    The scale is the term's coupling times the number of its colour; momenta
+    are the placeholder ``q`` of ``current`` (``P`` of the receiving leg ``r``
+    is ``q``, of the other leg ``-q``).
+    """
 
     from symbolica import E
 
     inner = [E(f"UFO::{{}}::dummy({index})") for index in _INNER]
-    first, second = (
-        _with_index(_momenta_as_placeholder(E(numerator)), leg, inner[slot], offset)
-        for leg, slot, offset in ((2, 1, _DUMMY_OFFSET[0]), (1, 0, _DUMMY_OFFSET[1]))
-    )
-    insertion = E("0")
-    for coupling, term, lorentz, particles in terms:
+    out = []
+    for coupling, term in terms:
         legs = list(term.particles)
         receiving = len(legs) - legs[::-1].index(current)  # 1-based UFO leg
         other = 3 - receiving
@@ -275,22 +307,139 @@ def _line_numerator(
         momentum = _placeholder()
         structure = structure.replace(
             E(f"UFO::{{}}::P(a_,UFO::{{}}::idx(1,{receiving}))"), momentum(E("a_"))
-        ).replace(
-            E(f"UFO::{{}}::P(a_,UFO::{{}}::idx(1,{other}))"), -momentum(E("a_"))
-        )
+        ).replace(E(f"UFO::{{}}::P(a_,UFO::{{}}::idx(1,{other}))"), -momentum(E("a_")))
         structure = structure.replace(
             E(f"UFO::{{}}::idx(1,{receiving})"), inner[0]
         ).replace(E(f"UFO::{{}}::idx(1,{other})"), inner[1])
         colour = two_point_colour_factor(
             term.colour, [int(particles[name]["color"]) for name in legs]
         )
-        insertion += (
-            E(coupling)
-            * E(f"{colour.numerator}/{colour.denominator}")
-            * structure
+        scale = E(coupling) * E(f"{colour.numerator}/{colour.denominator}")
+        out.append((scale, structure))
+    return out
+
+
+def _line_numerator(numerator: str, terms: Sequence[tuple[Any, Any]]) -> str:
+    """``N(1, B) Pi(r -> A, o -> B) N(A, 2)`` in the payload's syntax."""
+
+    from symbolica import E
+
+    insertion = E("0")
+    for scale, structure in terms:
+        insertion += scale * structure
+    return _composed(numerator, insertion)
+
+
+def _composed(numerator: str, insertion: Any) -> str:
+    from symbolica import E
+
+    inner = [E(f"UFO::{{}}::dummy({index})") for index in _INNER]
+    first, second = (
+        _with_index(_momenta_as_placeholder(E(numerator)), leg, inner[slot], offset)
+        for leg, slot, offset in ((2, 1, _DUMMY_OFFSET[0]), (1, 0, _DUMMY_OFFSET[1]))
+    )
+    return _momenta_restored(first * insertion * second).to_canonical_string()
+
+
+def _line_factor(
+    model_name: str,
+    propagators: Mapping[str, Mapping[str, Any]],
+    particles: Mapping[str, Mapping[str, Any]],
+    species: Mapping[str, str],
+    terms: Sequence[tuple[str, Any]],
+    lorentz: Mapping[str, Mapping[str, Any]],
+) -> Any:
+    """The scalar ``kappa`` with ``P Pi P = kappa P`` on a Weyl fermion line.
+
+    Each term's Lorentz structure must give a constant multiple ``r_t`` of
+    the field's propagator (``Pi_t`` proportional to the slashed momentum),
+    the same for the field and its antifield; ``kappa`` is then
+    ``sum_t r_t * scale_t``. Returns the reason as a string otherwise.
+    """
+
+    from .._internal.physics.symbols import symbols
+    from .external_evaluation import custom_propagator_components
+    from .tensors import normalize_lorentz_expression
+
+    model_symbols = symbols.model(model_name)
+
+    def components(numerator: str, denominator: str, spin: int) -> tuple[Any, ...]:
+        normalized = [
+            model_symbols.expression(
+                normalize_lorentz_expression(
+                    text, (spin, spin), model_symbols=model_symbols, vertex=False
+                ).expression
+            )
+            for text in (numerator, denominator)
+        ]
+        return custom_propagator_components(
+            model_symbols, model_name, spin, 4, *normalized
         )
-    composed = first * insertion * second
-    return _momenta_restored(composed).to_canonical_string()
+
+    ratios: dict[int, list[Any]] = {}
+    for name in species:
+        propagator = propagators[str(particles[name]["propagator"])]
+        spin = int(particles[name]["spin"])
+        # A Weyl current propagates massless whatever the mass parameter.
+        numerator, denominator = (
+            _massless(str(propagator[part]), str(particles[name]["mass"]))
+            for part in ("numerator", "denominator")
+        )
+        line = components(numerator, denominator, spin)
+        squared = f"({denominator})^2"
+        for index, (_scale, structure) in enumerate(
+            _insertion_terms(terms, lorentz, particles, name)
+        ):
+            ratio = _constant_ratio(
+                components(_composed(numerator, structure), squared, spin), line
+            )
+            if ratio is None:
+                return (
+                    f"two-point Lorentz structure {terms[index][1].lorentz} on the "
+                    f"Weyl line of {name} is not a multiple of its propagator"
+                )
+            ratios.setdefault(index, []).append(ratio)
+    if any(len(set(map(str, values))) != 1 for values in ratios.values()):
+        return "two-point insertion differs between a Weyl field and its antifield"
+    total = None
+    for index, (scale, _structure) in enumerate(
+        _insertion_terms(terms, lorentz, particles, next(iter(species)))
+    ):
+        term = ratios[index][0] * scale
+        total = term if total is None else total + term
+    return total
+
+
+def _massless(expression: str, mass: str) -> str:
+    from symbolica import E
+
+    if mass.upper() == "ZERO":
+        return expression
+    return E(expression).replace(E(f"UFO::{{}}::{mass}"), E("0")).to_canonical_string()
+
+
+def _constant_ratio(numerators: Sequence[Any], denominators: Sequence[Any]) -> Any:
+    """The number ``r`` with ``numerators == r * denominators``, or ``None``."""
+
+    from symbolica import E
+
+    ratio = None
+    for numerator, denominator in zip(numerators, denominators, strict=True):
+        if denominator.expand() == E("0"):
+            if numerator.expand() != E("0"):
+                return None
+            continue
+        value = (numerator / denominator).cancel()
+        if value.get_all_symbols(False) or (ratio is not None and value != ratio):
+            return None
+        ratio = value
+    return ratio
+
+
+def _scaled(expression: str, factor: Any) -> str:
+    from symbolica import E
+
+    return (E(expression) * factor).expand().to_canonical_string()
 
 
 def _placeholder() -> Any:
