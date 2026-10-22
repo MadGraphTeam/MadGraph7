@@ -3386,10 +3386,10 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             # part of the call key, but the leg number and the mass are wf's own:
             # argument is whichever wavefunction first had this key.
             if argument.get('offshell') and str(wf.get('mass')).upper() != 'ZERO':
-                call = call + 'offshell_mass<M_ACCESS>( m_pars->%%s, momenta, %d ), cHel[ihel][%%d],' \
+                call = call + 'offshell_mass<M_ACCESS>( m_pars->%%s, momenta, %d ), hel_sv[%%d],' \
                     % (wf.get('number_external') - 1)
             else:
-                call = call + 'm_pars->%s, cHel[ihel][%d],'
+                call = call + 'm_pars->%s, hel_sv[%d],'
         else:
             # AV This seems to be for scalars (spin==1???), pass neither mass nor helicity (#351)
             ###call = call + 'm_pars->%s,'

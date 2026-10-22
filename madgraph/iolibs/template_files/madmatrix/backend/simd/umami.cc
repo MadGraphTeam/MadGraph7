@@ -246,8 +246,8 @@ extern "C"
   UmamiStatus umami_supported_inputs( bool const** supported, int* count )
   {
     // MOMENTA, ALPHA_S, FLAVOR_INDEX, RANDOM_COLOR, RANDOM_HELICITY, RANDOM_DIAGRAM,
-    // HELICITY_INDEX=false, DIAGRAM_INDEX=true, CHANNEL_INDEX=false
-    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, false, true };
+    // HELICITY_INDEX, DIAGRAM_INDEX=true, CHANNEL_INDEX=false
+    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, true, true };
     *supported = data;
     *count = UMAMI_INPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
@@ -339,6 +339,7 @@ extern "C"
     const double* random_color_in = nullptr;
     const double* random_helicity_in = nullptr;
     const double* random_diagram_in = nullptr;
+    const int* helicity_in = nullptr;
     [[maybe_unused]] const int* diagram_in = nullptr; // TODO: unused
 
     for( std::size_t i = 0; i < input_count; ++i )
@@ -365,7 +366,8 @@ extern "C"
           random_diagram_in = static_cast<const double*>( input );
           break;
         case UMAMI_IN_HELICITY_INDEX:
-          return UMAMI_ERROR_UNSUPPORTED_INPUT;
+          helicity_in = static_cast<const int*>( input );
+          break;
         case UMAMI_IN_DIAGRAM_INDEX:
           diagram_in = static_cast<const int*>( input );
           break;
@@ -374,6 +376,20 @@ extern "C"
       }
     }
     if( !momenta_in ) return UMAMI_ERROR_MISSING_INPUT;
+    // UMAMI_IN_HELICITY_INDEX: evaluate each event for the one helicity it is given, an index
+    // into the full helicity table [0,ncomb) (the UMAMI_OUT_HELICITY_INDEX convention), instead
+    // of summing over the helicities. The |M|^2 is then the contribution of that helicity to
+    // the helicity-summed (and averaged) |M|^2, so that the sum over all ncomb helicities gives
+    // back the |M|^2 without this input; UMAMI_OUT_HELICITY_INDEX returns the given helicity,
+    // the color and diagram are chosen for it, and UMAMI_IN_RANDOM_HELICITY is not used.
+    if( helicity_in )
+    {
+      for( std::size_t i_event = 0; i_event < count; ++i_event )
+      {
+        const int ihel = helicity_in[i_event + offset];
+        if( ihel < 0 || ihel >= ProcessData::ncomb ) return UMAMI_ERROR;
+      }
+    }
 
     double* m2_out = nullptr;
     double* amp2_out = nullptr;
@@ -460,6 +476,7 @@ extern "C"
     HostBufferBase<fptype_amp, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );
+    HostBufferBase<int, false> helicity_given( rounded_count ); // as the other inputs, the padding lanes copy their source event
     // The input event of each lane. The padding lanes, which complete the last page
     // of a flavor, are copies of the first event of their page, as on GPUs. Left at
     // zero (momenta and g_s), they evaluated to nan, and the good-helicity filter of
@@ -486,6 +503,7 @@ extern "C"
       diagram_random[lane] = random_diagram_in ? random_diagram_in[i_event + offset] : 0.5;
       g_s[lane] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
       flavor_indices[lane] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
+      if( helicity_in ) helicity_given[lane] = helicity_in[i_event + offset];
     }
     computeDependentCouplings( g_s.data(), couplings.data(), rounded_count );
 
@@ -523,7 +541,8 @@ extern "C"
       // an interference |M|^2, see select_helicity_signed, unless the instance was asked
       // to keep the helicity sum (interference_helicity_summed); without the random number
       // the |M|^2 stays the helicity sum (systematics re-evaluation, standalone checks)
-      random_helicity_in != nullptr && !instance->summed_helicity );
+      random_helicity_in != nullptr && !instance->summed_helicity,
+      helicity_in ? helicity_given.data() : nullptr );
 
     if ( sort_flavors )
     {
