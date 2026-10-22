@@ -54,10 +54,7 @@ impl V2Backend<f64> for Instant0 {
                 group
                     .keys
                     .iter()
-                    .map(|_| LaneOutcome {
-                        status: "success".into(),
-                        value: Some(vec![Complex::new(0.0, 0.0); width]),
-                    })
+                    .map(|_| -> LaneOutcome<f64> { Ok(vec![Complex::new(0.0, 0.0); width]) })
                     .collect()
             })
             .collect();
