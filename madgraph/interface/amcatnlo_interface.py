@@ -638,8 +638,13 @@ generating the process (see arXiv:1804.10017).""" % (corr, ', '.join(resonances)
 
             if any(a.startswith('--diagram_filter') for a in args):
                 raise self.InvalidCmd("--diagram_filter is not supported for "
-                    "NLO (FKS) generation: use it with the MadLoop modes "
-                    "([virt=QCD], [noborn=QCD]) or at tree level.")
+                    "NLO (FKS) generation: use --tree_diagram_filter (Born "
+                    "and real emission diagrams) and/or --loop_diagram_filter "
+                    "(loop diagrams).")
+            tree_diagram_filter = self.extract_diagram_filter(args,
+                                                       '--tree_diagram_filter')
+            loop_diagram_filter = self.extract_diagram_filter(args,
+                                                       '--loop_diagram_filter')
 
             line = ' '.join(args[1:])
 
@@ -880,7 +885,9 @@ Please also cite ref. 'arXiv:1804.10017' when using results from this code.
                        'ncores_for_proc_gen': self.ncores_for_proc_gen,
                        'ewsudakov': self.ewsudakov,
                        'nlo_mixed_expansion': self.options['nlo_mixed_expansion'],
-                       'loop_filter':self._fks_multi_proc['loop_filter'] if hasattr(self, '_fks_multi_proc') else None}
+                       'loop_filter':self._fks_multi_proc['loop_filter'] if hasattr(self, '_fks_multi_proc') else None,
+                       'diagram_filter': tree_diagram_filter,
+                       'loop_diagram_filter': loop_diagram_filter}
 
         fksproc =fks_base.FKSMultiProcess(myprocdef,fks_options)
         try:

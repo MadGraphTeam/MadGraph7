@@ -2839,11 +2839,15 @@ class CompleteForCmd(cmd.CompleteCmd):
             return
 
         if text.startswith('--'):
-            filters = ['--diagram_filter=%s' % name for name in
-                       misc.plugin_diagram_filter(self.plugin_path, None)]
+            filters = ['%s=%s' % (opt, name) for name in
+                       misc.plugin_diagram_filter(self.plugin_path, None)
+                       for opt in ['--diagram_filter', '--tree_diagram_filter',
+                                   '--loop_diagram_filter']]
             return self.list_completion(text, ['--no_crossing', 
                                                '--no_warning=duplicate',
                                                '--diagram_filter',
+                                               '--tree_diagram_filter',
+                                               '--loop_diagram_filter',
                                                '--standalone'] + filters)
 
         try:
@@ -3983,18 +3987,19 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
 
     # Add a process to the existing multiprocess definition
     # Generate a new amplitude
-    def extract_diagram_filter(self, args):
+    def extract_diagram_filter(self, args, option='--diagram_filter'):
         """Remove the --diagram_filter[=PLUGINNAME] option from args and return
         the filter to use: False if absent, True for the filter of
         PLUGIN/user_filter.py (bare option, historical behaviour) or the
-        function new_diagram_filter of the plugin PLUGINNAME."""
+        function new_diagram_filter of the plugin PLUGINNAME. The option name
+        can be changed (--tree_diagram_filter, --loop_diagram_filter)."""
 
         diagram_filter = False
         for arg in list(args):
-            if arg == '--diagram_filter':
+            if arg == option:
                 diagram_filter = True
                 args.remove(arg)
-            elif arg.startswith('--diagram_filter='):
+            elif arg.startswith(option + '='):
                 args.remove(arg)
                 try:
                     diagram_filter = misc.plugin_diagram_filter(

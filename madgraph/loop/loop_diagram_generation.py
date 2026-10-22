@@ -82,12 +82,17 @@ class LoopAmplitude(diagram_generation.Amplitude):
         # subsequent diagram generation runs.
         self.lcutpartemployed=[]
 
-    def __init__(self, argument=None, loop_filter=None):
+    def __init__(self, argument=None, loop_filter=None, diagram_filter=False,
+                                                    loop_diagram_filter=False):
         """Allow initialization with Process.
         If loop_filter is not None, then it will be applied to all subsequent
-        diagram generation from this LoopAmplitude."""
+        diagram generation from this LoopAmplitude.
+        diagram_filter (--diagram_filter) is applied to the Born diagrams and,
+        loop_diagram_filter to the loop diagrams, see generate_diagrams."""
         
         self.loop_filter = loop_filter
+        self.diagram_filter = diagram_filter
+        self.loop_diagram_filter = loop_diagram_filter
         
         if isinstance(argument, base_objects.Process):
             super(LoopAmplitude, self).__init__()
@@ -599,8 +604,19 @@ class LoopAmplitude(diagram_generation.Amplitude):
                 res.append('%s=*'%order)
         return ','.join(res)
 
-    def generate_diagrams(self, loop_filter=None, diagram_filter=None):
+    def generate_diagrams(self, loop_filter=None, diagram_filter=None,
+                                                    loop_diagram_filter=None):
         """ Generates all diagrams relevant to this Loop Process """
+
+        # Without argument, use the filters given at initialization (separately
+        # for the Born and the loop diagrams); a --diagram_filter given here
+        # applies to both
+        if diagram_filter is None:
+            diagram_filter = self.diagram_filter
+            if loop_diagram_filter is None:
+                loop_diagram_filter = self.loop_diagram_filter
+        elif loop_diagram_filter is None:
+            loop_diagram_filter = diagram_filter
 
         # Description of the algorithm to guess the leading contribution.
         # The summed weighted order of each diagram will be compared to 
@@ -888,9 +904,9 @@ class LoopAmplitude(diagram_generation.Amplitude):
        
         # Filter selected with --diagram_filter (the Born diagrams were already
         # filtered at generation)
-        if diagram_filter:
+        if loop_diagram_filter:
             self['loop_diagrams'] = self.apply_user_filter(
-                                      self['loop_diagrams'], diagram_filter)
+                                 self['loop_diagrams'], loop_diagram_filter)
 
         # Apply here some user-defined filter.
         # For expert only, you can edit your own filter by modifying the
