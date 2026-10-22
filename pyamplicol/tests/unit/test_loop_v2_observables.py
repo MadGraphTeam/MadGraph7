@@ -670,7 +670,19 @@ def test_public_runtime_members_run_natively(generate):
                     assert _close(x, y, 1e-12, 1e-14), (process, label)
         left = through.evaluate_resolved(points[:1], mu_r2=scales[:1])
         right = direct.evaluate_resolved(points[:1], mu_r2=scales[:1])
-        assert left.values == pytest.approx(right.values, rel=1e-12, abs=1e-14)
+        flat_left, flat_right = _flat(left.values), _flat(right.values)
+        assert len(flat_left) == len(flat_right)
+        largest = max(map(abs, flat_right))
+        for a, b in zip(flat_left, flat_right, strict=True):
+            assert abs(a - b) <= 1e-12 * largest, process
+
+
+def _flat(values) -> list[float]:
+    """The scalars of nested public result tuples."""
+
+    if isinstance(values, tuple):
+        return [x for value in values for x in _flat(value)]
+    return [float(values)]
 
 
 # ------------------------------------------------------------------ O14
