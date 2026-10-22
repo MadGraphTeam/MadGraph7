@@ -182,6 +182,7 @@ def certified_source_counterterm_bases(source):
             # One self-conjugate adjoint vector species on every port; the
             # exact colour and Lorentz structures below fix the gluon rules.
             len(set(pdgs)) == 1
+            and particles[0]["name"] == particles[0]["antiname"]
             and spins == (3,) * len(pdgs)
             and colors == (8,) * len(pdgs)
         ):
