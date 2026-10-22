@@ -71,7 +71,10 @@ class LineInsertions:
 
     ``clones`` maps every lowered term to its clone particle, ``members``
     every vertex copy to the terms of its clone line and ``refused`` every
-    term that cannot be lowered to the reason.
+    term that cannot be lowered to the reason. ``factors`` maps the clone
+    particle of every Weyl line whose copies carry ``kappa`` (the clone of
+    the field's antiparticle, ``_line_factor``) to ``kappa`` in the payload's
+    syntax.
     """
 
     parameters: list[dict[str, Any]] = field(default_factory=list)
@@ -82,6 +85,7 @@ class LineInsertions:
     clones: dict[Any, str] = field(default_factory=dict)
     members: dict[str, tuple[Any, ...]] = field(default_factory=dict)
     refused: dict[Any, str] = field(default_factory=dict)
+    factors: dict[str, str] = field(default_factory=dict)
 
 
 def lower_line_insertions(
@@ -224,6 +228,8 @@ def lower_line_insertions(
         # A clone line joins a leg of the clone and a leg of its antiparticle,
         # so the factor of a Weyl line sits on the copies of the latter.
         scaled = {anti} if factor is not None else set()
+        if factor is not None:
+            out.factors[species[anti]] = factor.to_canonical_string()
         copied: dict[tuple[str, bool], str] = {}
         for rule in copyable:
             legs = [str(name) for name in rule["particles"]]

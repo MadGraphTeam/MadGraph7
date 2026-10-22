@@ -1160,7 +1160,9 @@ class CountertermLoweredModel:
 
     ``couplings`` names the model coupling of every lowered CT vertex term
     (arity >= 3) and ``insertions`` the clone particle of every lowered
-    two-point term (``models.ct_line_insertions``); ``parameters`` are the
+    two-point term (``models.ct_line_insertions``); ``line_factors`` maps the
+    clone particle whose vertex copies carry a Weyl line's factor ``kappa``
+    to ``kappa`` (``LineInsertions.factors``); ``parameters`` are the
     real external runtime parameters the coupling expressions introduced.
     CT vertices carry the physical orders of their entry and
     ``COUNTERTERM_INSERTION_ORDER`` and the order of their slot
@@ -1173,6 +1175,7 @@ class CountertermLoweredModel:
     parameters: tuple[str, ...]
     insertions: Mapping[CountertermStructure, str] = field(default_factory=dict)
     refused: Mapping[CountertermStructure, str] = field(default_factory=dict)
+    line_factors: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def slot_orders(self) -> tuple[str, ...]:
@@ -1469,7 +1472,11 @@ def lower_counterterm_vertices(
         conversion_seconds=compiled.conversion_seconds,
     )
     return CountertermLoweredModel(
-        lowered, names, tuple(sorted(parameters)), insertions=lines.clones
+        lowered,
+        names,
+        tuple(sorted(parameters)),
+        insertions=lines.clones,
+        line_factors=lines.factors,
     )
 
 

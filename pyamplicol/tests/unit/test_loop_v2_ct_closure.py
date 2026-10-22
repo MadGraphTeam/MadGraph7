@@ -1,0 +1,407 @@
+# SPDX-License-Identifier: 0BSD
+"""Counterterm amplitudes from the tree recursion, closed at leg 1 (design §6.1).
+
+The production form of the counterterms (``loops.v2.ct_closure``): CT = 1
+currents of the CT-lowered model's loop-request recursion, closed at the
+vertex of leg 1 with exact colour, as the slice closes its Born.
+
+Oracles:
+
+* O6: per component, squared order and Laurent coefficient, the closure of
+  the lowered rules equals their site closure (``loops.v2.ct_sites``);
+* O1: with the sites of the rules the recursion leaves to site closure, the
+  UV_local and R2 components equal the frozen legacy engine.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from decimal import Decimal, localcontext
+from itertools import product
+
+import pytest
+
+from pyamplicol.loops.v2.ct_sites import LAURENT_POWERS, ColourOverlaps, add_colour
+from pyamplicol.loops.v2.families import add_orders
+from tools.loop_reference import legacy_capture
+
+from .loop_v2_stage_rows import stage_rows
+from .test_loop_v2_counterterms import (
+    CONTROLS,
+    TOLERANCE,
+    WORKING_DIGITS,
+    DecimalComplex,
+    _carrier,
+    _components,
+    _exact_u1_weights,
+    _ordinary_entries,
+    _sector_orders,
+)
+from .test_loop_v2_ct_recursion import (  # noqa: F401 (fixtures)
+    _recursion,
+    ct_slice,
+    lowered_ct_model,
+)
+
+CT_COMPONENTS = ("uv_local", "r2")
+
+
+def _closure(ct, lowered):
+    """The CT program, its closure and the source scalar plan, cached."""
+
+    from pyamplicol.loops.v2.catalogue import build_loop_kernel_catalogue
+    from pyamplicol.loops.v2.ct_closure import (
+        CountertermBlocks,
+        CountertermClosure,
+        counterterm_closure_entries,
+    )
+    from pyamplicol.processes.model import build_model_process_ir
+
+    key = ("ct-closure", id(lowered))
+    if key in ct._caches:
+        return ct._caches[key]
+    recursion = _recursion(ct, lowered)
+    compiled = lowered.lowered.compiled
+    text = ct.control.process.split(" / ")[0]
+    process = build_model_process_ir(text, compiled.ir, color_accuracy="full")
+    program = CountertermBlocks.build(
+        recursion, process, ignored_particle_ids=ct.vetoed
+    )
+    ordinary = _ordinary_entries(ct)
+    sites = CountertermClosure.root_sites(
+        program, ct.families, ct.rules, ct.data, ct.selection, forbidden=ct.vetoed
+    )
+    catalogue = build_loop_kernel_catalogue(
+        ct.compiled, counterterm_entries=counterterm_closure_entries(sites, ordinary)
+    )
+    closure = CountertermClosure.build(program, sites, ordinary, ct.data, catalogue)
+    outputs = tuple(sorted({term.coupling for term in closure.terms}))
+    plan = ct.prepared.structure.scalar_bindings(outputs)
+    ct._caches[key] = (recursion, closure, plan)
+    return ct._caches[key]
+
+
+def _program_rows(closure, parameters, digits):
+    """Rows of the CT program's blocks, exactly (as ``_block_rows``)."""
+
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.runtime.symbolica_exact import _upcast_complex_inputs
+
+    compiled = closure.program.recursion.model.lowered.compiled
+    definitions = {
+        record.name: record.resolved_expression
+        for record in compiled.ir.parameters
+        if record.nature == "internal"
+    }
+    definitions.update(
+        {
+            f"derived_coupling_{term.id}": term.coupling_expression
+            for term in compiled.ir.vertex_terms
+        }
+    )
+    model_symbols = symbols.model(compiled.name)
+
+    def values(records):
+        external = {
+            record["name"]: Decimal(
+                str(parameters.get(record["name"], repr(record["default"])))
+            )
+            for record in records
+            if record["kind"] == "external_parameter"
+        }
+        substitutions = dict(
+            zip(
+                (
+                    E(model_symbols.symbol(name).to_canonical_string())
+                    for name in external
+                ),
+                _upcast_complex_inputs(
+                    [(value, Decimal(0)) for value in external.values()], digits
+                ),
+                strict=True,
+            )
+        )
+        derived, out = {}, []
+        for record in records:
+            if record["kind"] == "external_parameter":
+                out.append(external[record["name"]])
+                continue
+            name = record["runtime_name"]
+            if name not in derived:
+                value = E(definitions[name]).evaluate(
+                    substitutions, decimal_digit_precision=digits
+                )
+                derived[name] = tuple(Decimal(x) for x in value.to_decimal_tuple())
+            out.append(derived[name][record["complex_component"] == "imag"])
+        return out
+
+    return values, compiled
+
+
+def closure_components(ct, lowered, label: str, index: int) -> dict:
+    """CT amplitudes of the closure interfered with the Born, per (component,
+    squared order, power), at one fixture point (the ``_components`` oracle
+    arithmetic: exact colour at N_c = 3, rows at the carrier's digits)."""
+
+    from pyamplicol.loops.scalar_bindings import NativeScalarBindings
+    from pyamplicol.loops.v2.ct_closure import model_value
+    from pyamplicol.models.external import CompiledUFOModel
+
+    recursion, closure, plan = _closure(ct, lowered)
+    fixture, control = ct.fixture, ct.control
+    point = fixture["points"][index]
+    scale = DecimalComplex.CONTEXT.sqrt(Decimal(fixture["scales_squared"][index]))
+    parameters = {**legacy_capture.PARAMETERS, "MU_R": str(scale)}
+    parameters.update(legacy_capture.FIXED_PARAMETERS)
+    if control.drell_yan:
+        parameters["aEWM1"] = legacy_capture.DRELL_YAN_MODEL_VALUES[1]
+    digits = WORKING_DIGITS[label]
+    carrier, convert = _carrier(label)
+    model_parameters = {**parameters, **recursion.parameter_values()}
+    values, compiled = _program_rows(closure, model_parameters, digits)
+    momenta_rows = [[Decimal(x) for x in vector] for vector in point]
+    with _exact_u1_weights():
+        rows = stage_rows(
+            closure.program.blocks.blocks_dag,
+            CompiledUFOModel(compiled),
+            momenta_rows,
+            values,
+            digits,
+        )
+    arithmetic, scalar_digits, _, _ = legacy_capture.CARRIERS[label]
+    state = NativeScalarBindings(
+        plan,
+        arithmetic=arithmetic,
+        precision=scalar_digits,
+        parameters={
+            name: value
+            for name, value in parameters.items()
+            if name in plan.external_names
+        },
+    )
+    scalars = {
+        output: convert((Decimal(re), Decimal(im)))
+        for output, (re, im) in zip(
+            plan.outputs, state.values.to_decimal(), strict=True
+        )
+    }
+    scales = {}
+    for term in closure.terms:
+        if term.scale is not None and term.scale not in scales:
+            pair = model_value(compiled, term.scale, model_parameters, digits + 10)
+            scales[term.scale] = convert(tuple(Decimal(x) for x in pair))
+    blocks = closure.program.blocks
+    labels = sorted(leg.label for leg in blocks.process.legs)
+    initial = {leg.label for leg in blocks.process.legs if leg.is_initial}
+    momenta = {}
+    for mask in range(1, 1 << len(labels)):
+        total = [Decimal(0)] * 4
+        for label_ in labels:
+            if mask >> (label_ - 1) & 1:
+                for mu in range(4):
+                    value = Decimal(point[label_ - 1][mu])
+                    total[mu] = DecimalComplex.CONTEXT.add(
+                        total[mu], value.copy_negate() if label_ in initial else value
+                    )
+        momenta[mask] = [convert((value, Decimal(0))) for value in total]
+    helicities = defaultdict(set)
+    for block in blocks.blocks:
+        if block.is_source:
+            for row in block.rows:
+                ((leg, value),) = row.helicities
+                helicities[leg].add(value)
+
+    def kinematic(term, helicity):
+        values = []
+        for block in term.blocks:
+            want = tuple(sorted((leg, helicity[leg]) for leg in block.key.labels))
+            row = next((r for r in block.rows if r.helicities == want), None)
+            if row is None:
+                return None
+            variant = "source" if block.is_source else "propagated"
+            values.append([convert(v) for v in rows[(row.current_id, variant)]])
+        vectors = [momenta[block.key.external_mask] for block in term.blocks]
+        return term.sign * closure.closure.value(term, values, vectors, carrier)
+
+    born_amplitudes = _born_amplitudes(ct, label, index)
+    overlaps = ColourOverlaps(closure.closure.legs)
+    components = defaultdict(lambda: carrier.zero)
+    for choice in product(*(sorted(helicities[leg]) for leg in labels)):
+        helicity = dict(zip(labels, choice, strict=True))
+        loops = defaultdict(dict)
+        for item in closure.terms:
+            value = kinematic(item.term, helicity)
+            if value is None:
+                continue
+            value = item.multiplicity * scalars[item.coupling] * value
+            if item.scale is not None:
+                value = scales[item.scale] * value
+            add_colour(
+                loops[item.component, item.power, item.orders],
+                item.term.colour,
+                value,
+                carrier,
+            )
+        amplitudes = born_amplitudes[tuple(sorted(helicity.items()))]
+        for (component, power, loop_order), vector in loops.items():
+            for order, amplitude in amplitudes.items():
+                value = overlaps.interfere(amplitude, vector, carrier)
+                components[component, add_orders(order, loop_order), power] += (
+                    value + value.conjugate()
+                )
+    average = _average(ct)
+    return {key: value / average for key, value in components.items()}
+
+
+def _average(ct) -> int:
+    from pyamplicol.loops.request import prepare_loop_external_request
+
+    request = prepare_loop_external_request(
+        ct.prepared.structure.native, ct.control.incoming, ct.control.outgoing
+    )
+    return int(request.initial_average)
+
+
+def _born_amplitudes(ct, label: str, index: int) -> dict:
+    """Born colour vectors per helicity of the site oracle (``_components``)."""
+
+    key = ("born-amplitudes", label, index)
+    if key in ct._caches:
+        return ct._caches[key]
+    out = _born_vectors(ct, label, index)
+    ct._caches[key] = out
+    return out
+
+
+def _born_vectors(ct, label: str, index: int) -> dict:
+    from pyamplicol.loops.v2.ct_sites import SiteClosure
+
+    _components(ct, label, index)  # builds the oracle's closure cache
+    (cached,) = (
+        value
+        for key, value in ct._caches.items()
+        if isinstance(key, tuple) and key[:2] == ("closure", None)
+    )
+    _sites, _fields, closure, born_terms, _site_terms, plan, _names = cached
+    assert isinstance(closure, SiteClosure)
+    return _born_vectors_from(ct, closure, born_terms, label, index)
+
+
+def _born_vectors_from(ct, closure, born_terms, label: str, index: int) -> dict:
+    from .test_loop_v2_counterterms import _block_rows, _scalars
+
+    fixture, control = ct.fixture, ct.control
+    point = fixture["points"][index]
+    scale = DecimalComplex.CONTEXT.sqrt(Decimal(fixture["scales_squared"][index]))
+    parameters = {**legacy_capture.PARAMETERS, "MU_R": str(scale)}
+    parameters.update(legacy_capture.FIXED_PARAMETERS)
+    if control.drell_yan:
+        parameters["aEWM1"] = legacy_capture.DRELL_YAN_MODEL_VALUES[1]
+    carrier, convert = _carrier(label)
+    with _exact_u1_weights():
+        rows = _block_rows(ct, point, parameters, WORKING_DIGITS[label])
+    ordinary = sorted(
+        {term.entry.coupling.name for terms in born_terms.values() for term in terms}
+    )
+    plan = ct.prepared.structure.scalar_bindings(tuple((name, 0) for name in ordinary))
+    scalars = {
+        key: convert(value)
+        for key, value in _scalars(ct, plan, parameters, label).items()
+    }
+    labels = sorted(leg.label for leg in ct.blocks.process.legs)
+    initial = {leg.label for leg in ct.blocks.process.legs if leg.is_initial}
+    momenta = {}
+    for mask in range(1, 1 << len(labels)):
+        total = [Decimal(0)] * 4
+        for label_ in labels:
+            if mask >> (label_ - 1) & 1:
+                for mu in range(4):
+                    value = Decimal(point[label_ - 1][mu])
+                    total[mu] = DecimalComplex.CONTEXT.add(
+                        total[mu], value.copy_negate() if label_ in initial else value
+                    )
+        momenta[mask] = [convert((value, Decimal(0))) for value in total]
+    helicities = defaultdict(set)
+    for block in ct.blocks.blocks:
+        if block.is_source:
+            for row in block.rows:
+                ((leg, value),) = row.helicities
+                helicities[leg].add(value)
+    out = {}
+    for choice in product(*(sorted(helicities[leg]) for leg in labels)):
+        helicity = dict(zip(labels, choice, strict=True))
+        amplitudes = {}
+        for order, terms in born_terms.items():
+            vector = {}
+            for term in terms:
+                values = []
+                for block in term.blocks:
+                    want = tuple(
+                        sorted((leg, helicity[leg]) for leg in block.key.labels)
+                    )
+                    row = next((r for r in block.rows if r.helicities == want), None)
+                    if row is None:
+                        values = None
+                        break
+                    variant = "source" if block.is_source else "propagated"
+                    values.append(
+                        [convert(v) for v in rows[(row.current_id, variant)]]
+                    )
+                if values is None:
+                    continue
+                vectors = [momenta[block.key.external_mask] for block in term.blocks]
+                value = term.sign * closure.value(term, values, vectors, carrier)
+                coupling = scalars[term.entry.coupling.name, 0]
+                add_colour(vector, term.colour, coupling * value, carrier)
+            amplitudes[order] = vector
+        out[tuple(sorted(helicity.items()))] = amplitudes
+    return out
+
+
+def _site_value(rows, key) -> Decimal:
+    return Decimal(rows[key].real) if key in rows else Decimal(0)
+
+
+def _assert_closure_equals_sites_and_legacy(ct, lowered, label: str) -> None:
+    from .test_loop_v2_ct_recursion import _site_components
+
+    recursion = _recursion(ct, lowered)
+    fixture = ct.fixture
+    results = fixture["results"][label]
+    sectors = _sector_orders(fixture, "virtual")
+    tolerance = TOLERANCE[label]
+    with localcontext() as context:
+        context.prec = 120
+        for index in range(len(fixture["points"])):
+            mine_all = closure_components(ct, lowered, label, index)
+            sites = _site_components(ct, label, index, recursion.rules)
+            residual = _site_components(ct, label, index, recursion.residual)
+            scale_born = max(abs(Decimal(row[0])) for row in results["born"][index])
+            assert {key[0] for key in mine_all} <= set(CT_COMPONENTS)
+            for component in CT_COMPONENTS:
+                for s, order in enumerate(sectors):
+                    for k, power in enumerate(LAURENT_POWERS):
+                        key = (component, order, power)
+                        reference = Decimal(results[component][index][s][k][0])
+                        scale = abs(reference) or scale_born
+                        mine = _site_value(mine_all, key)
+                        site = _site_value(sites, key)
+                        total = mine + _site_value(residual, key)
+                        assert abs(mine - site) <= tolerance * scale, (key, index)
+                        assert abs(total - reference) <= tolerance * scale, (
+                            key,
+                            index,
+                        )
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", CONTROLS)
+def test_closure_equals_site_closure(ct_slice, lowered_ct_model, name):
+    """O6 and O1 of the closed CT amplitudes in binary64."""
+
+    ct = ct_slice(name)
+    lowered = lowered_ct_model(ct.vetoed).model
+    _assert_closure_equals_sites_and_legacy(ct, lowered, "double")

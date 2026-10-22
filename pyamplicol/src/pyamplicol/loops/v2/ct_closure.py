@@ -1,0 +1,474 @@
+# SPDX-License-Identifier: 0BSD
+"""Counterterm amplitudes closed at leg 1 like the Born (design §6.1, §6.4).
+
+The production form of the counterterms (CT) of the v2 engine. The tree
+recursion over the CT-lowered model (``loops.v2.ct_recursion``) builds, in
+loop-request mode, the colour-flow currents without and with one CT insertion
+over every leg set not containing leg 1. The CT amplitude is then closed at
+the vertex holding leg 1, exactly as the slice closes its Born
+(``loops.v2.assemble._born_terms``): no CT tree and no CT placement is
+listed, only the last step of the recursion, which every tree shares.
+
+A one-CT tree rooted at leg 1 has its insertion
+
+* **inside a block** (``ROOT_VERTEX``): an ordinary vertex at the root with
+  exactly one attached CT = 1 current, whose rows already carry the lowered
+  coupling ``S_slot * sum_rules M_rule * c_rule``;
+* **on the line between the root and a block** (``ROOT_LINE``): a clone line
+  (``models.ct_line_insertions``) whose consuming vertex copy is the root. The
+  root reads the ordinary vertex on the clone current (insertion order 1);
+  the copy's other half of the orders of ``Pi`` is added, and on a Weyl line
+  the copy of the clone's antiparticle leg carries ``kappa``
+  (``CountertermLoweredModel.line_factors``);
+* **at the root** (``ROOT_COUNTERTERM``): a CT vertex holding leg 1 on CT = 0
+  currents: the site closure of the rule with leg 1 as one block
+  (``loops.v2.ct_sites``), i.e. the recursion's last step for that vertex.
+
+Every term is a ``ct_sites.SiteTerm`` on the blocks of the CT program, so
+colour (exact tensors at any N_c grade), signs and kinematics follow the
+site and Born closures. Clone currents are read with the field they clone:
+their block keys carry the field's particle id, and the insertion order of
+their orders marks them.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
+from itertools import product
+from typing import Any, Literal
+
+from pyamplicol.models.loading import (
+    COUNTERTERM_INSERTION_ORDER,
+    counterterm_slot_order,
+)
+
+from .blocks import Block, TreeBlocks, _blocks
+from .ct_recursion import CountertermRecursion, _physical
+from .ct_sites import (
+    COMPONENT_BY_KIND,
+    CountertermSite,
+    SiteClosure,
+    SiteTerm,
+    generate_counterterm_sites,
+)
+from .families import (
+    FamilySet,
+    LoopOrderSelection,
+    Orders,
+    _set_partitions,
+    add_orders,
+    model_data,
+)
+
+RootKind = Literal["vertex", "line", "counterterm"]
+ROOT_VERTEX: RootKind = "vertex"
+ROOT_LINE: RootKind = "line"
+ROOT_COUNTERTERM: RootKind = "counterterm"
+
+
+@dataclass(frozen=True, slots=True)
+class RootReachability:
+    """Loop-request reachability of the currents a leg-1 closure attaches:
+    every leg set of the process that does not hold leg 1 (bit 0)."""
+
+    full_mask: int
+
+    def admits_mask(self, mask: int) -> bool:
+        return 0 < mask and not mask & 1 and mask & self.full_mask == mask
+
+    def admits_block(self, index: Any) -> bool:
+        return self.admits_mask(index.external_mask)
+
+
+@dataclass(frozen=True, slots=True)
+class CloneLine:
+    """A clone particle of the CT program read as the field it clones.
+
+    ``half`` are the physical orders of the vertex copy at either end of the
+    line (half of those of ``Pi``), ``slot`` its (component, power) and
+    ``factor`` the Weyl factor ``kappa`` that the copies of this clone's leg
+    carry, or ``None``.
+    """
+
+    field_id: int
+    half: Orders
+    slot: tuple[str, int]
+    factor: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ClosureTerm:
+    """One root term of a CT amplitude.
+
+    The value is ``multiplicity * scale * coupling * term.sign * kernel``
+    times ``term.colour``: ``coupling`` is the source scalar
+    ``(coupling name, epsilon power)`` of the root vertex entry (power 0 for
+    an ordinary root, ``power`` for a CT root), ``scale`` a model expression
+    (the Weyl factor) or ``None``. ``component``, ``power`` and ``orders``
+    (the physical amplitude orders) name the CT amplitude the term adds to.
+    """
+
+    term: SiteTerm
+    root: RootKind
+    component: str
+    power: int
+    orders: Orders
+    coupling: tuple[str, int]
+    multiplicity: int = 1
+    scale: str | None = None
+
+
+@dataclass(frozen=True)
+class CountertermBlocks:
+    """The block currents of a CT program and its clone lines.
+
+    ``blocks`` are the loop-request blocks of the CT-lowered model over the
+    leg sets without leg 1, with clone currents keyed by their field;
+    ``clones`` maps the id of every clone block to its ``CloneLine``.
+    """
+
+    recursion: CountertermRecursion
+    blocks: TreeBlocks
+    clones: Mapping[int, CloneLine]
+
+    @classmethod
+    def build(
+        cls,
+        recursion: CountertermRecursion,
+        process: Any,
+        *,
+        ignored_particle_ids: Iterable[int] = (),
+        progress_callback: Any = None,
+    ) -> CountertermBlocks:
+        """Compile the CT program's blocks for ``process`` (a model process IR
+        of the lowered model at full colour)."""
+
+        from pyamplicol.generation.dag_compiler import GenericDAGCompiler
+        from pyamplicol.models.external import CompiledUFOModel
+        from pyamplicol.models.prepared_catalog_builder import (
+            model_tree_kernel_variant,
+        )
+
+        lowered = recursion.model.lowered
+        model = CompiledUFOModel(lowered.compiled)
+        full = (1 << len(process.legs)) - 1
+        dag = GenericDAGCompiler(
+            model=model,
+            max_coupling_orders=recursion.coupling_order_limits(),
+            ignored_particle_ids=tuple(ignored_particle_ids),
+            progress_callback=progress_callback,
+            loop_blocks=True,
+            loop_block_reachability=RootReachability(full),
+        ).compile(replace(process, color_accuracy="full"))
+        variant = model_tree_kernel_variant(model)
+        lines = _clone_lines(recursion)
+        blocks, clones = [], {}
+        for block in _blocks(dag, model, variant):
+            line = lines.get(block.key.particle_id)
+            if line is not None:
+                clones[block.id] = line
+                block = replace(
+                    block, key=replace(block.key, particle_id=line.field_id)
+                )
+            blocks.append(block)
+        tree = TreeBlocks(
+            process=process,
+            blocks_dag=dag,
+            born_dag=dag,
+            blocks=tuple(blocks),
+            born_roots=(),
+            kernel_variant=variant,
+        )
+        return cls(recursion, tree, clones)
+
+
+def _clone_lines(recursion: CountertermRecursion) -> dict[int, CloneLine]:
+    """Clone particle id -> ``CloneLine`` (both charge states)."""
+
+    lowered = recursion.model.lowered
+    particles = {
+        str(item["name"]): item for item in lowered.compiled.model["particles"]
+    }
+    out: dict[int, CloneLine] = {}
+    for structure, clone in lowered.insertions.items():
+        half = tuple((name, power // 2) for name, power in structure.orders)
+        slot = (structure.component, structure.power)
+        source = next(
+            name
+            for name in structure.particles
+            if int(particles[name]["pdg_code"]) > 0
+            or particles[name]["antiname"] == name
+        )
+        for name, clone_name in (
+            (source, clone),
+            (str(particles[source]["antiname"]), str(particles[clone]["antiname"])),
+        ):
+            out[int(particles[clone_name]["pdg_code"])] = CloneLine(
+                int(particles[name]["pdg_code"]),
+                add_orders(half),
+                slot,
+                lowered.line_factors.get(clone_name),
+            )
+    return out
+
+
+def _insertions(orders: Orders) -> int:
+    return dict(orders).get(COUNTERTERM_INSERTION_ORDER, 0)
+
+
+def _slot(orders: Orders, slots: Mapping[str, tuple[str, int]]) -> tuple[str, int]:
+    (slot,) = (slots[name] for name, _power in orders if name in slots)
+    return slot
+
+
+@dataclass(frozen=True)
+class CountertermClosure:
+    """The root terms of a process's CT amplitudes (module docstring).
+
+    ``terms`` hold every root term; ``sites`` the CT-root sites (CT vertices
+    holding leg 1), whose rule entries the kernel catalogue must bind.
+    """
+
+    program: CountertermBlocks
+    closure: SiteClosure
+    sites: tuple[CountertermSite, ...]
+    terms: tuple[ClosureTerm, ...]
+
+    @staticmethod
+    def root_sites(
+        program: CountertermBlocks,
+        families: FamilySet,
+        rules: Mapping[str, Any],
+        native_model: Any,
+        selection: LoopOrderSelection,
+        *,
+        forbidden: Iterable[int] = (),
+    ) -> tuple[CountertermSite, ...]:
+        """Sites of the recursion's rules with leg 1 as one block (CT roots).
+
+        ``rules`` are all rules of the request, for the completeness check.
+        """
+
+        recursion = program.recursion
+        table = _PlainTable(program.blocks.block_table(native_model))
+        sites = generate_counterterm_sites(
+            families,
+            table,
+            rules,
+            native_model,
+            selection,
+            forbidden=forbidden,
+            closed_rules=recursion.rules,
+        )
+        return tuple(site for site in sites.sites if 1 in _site_masks(site))
+
+    @classmethod
+    def build(
+        cls,
+        program: CountertermBlocks,
+        sites: Sequence[CountertermSite],
+        ordinary: Sequence[Sequence[Any]],
+        native_model: Any,
+        catalogue: Any,
+    ) -> CountertermClosure:
+        """Root terms of ``program``.
+
+        ``sites`` are its ``root_sites``, ``ordinary`` the model's ordinary
+        tree vertex entries by vertex (the Born closure's) and ``catalogue`` a
+        loop kernel catalogue binding all of their entries.
+        """
+
+        recursion = program.recursion
+        closure = SiteClosure(program.blocks, native_model, catalogue)
+        table = program.blocks.block_table(native_model)
+        legs = table.legs
+        full = (1 << len(legs)) - 1
+        loop = set(recursion.loop_orders)
+        slots = {
+            name: slot
+            for slot in recursion.slots
+            for name in (_slot_order(slot),)
+        }
+        terms: list[ClosureTerm] = []
+        for entries in ordinary:
+            fields = entries[0].particle_names
+            order = add_orders(tuple(entries[0].order))
+            for parts in _set_partitions(full, len(fields), len(fields)):
+                if 1 not in parts:
+                    continue
+                for choice in product(*(table.currents(part) for part in parts)):
+                    if sorted(b.field for b in choice) != sorted(fields):
+                        continue
+                    inserted = [b for b in choice if _insertions(b.orders)]
+                    if len(inserted) != 1:
+                        continue
+                    (current,) = inserted
+                    clone = _insertions(current.orders) == 1
+                    physical = add_orders(order, *(_physical(b.orders) for b in choice))
+                    if not clone and physical not in loop:
+                        continue
+                    component, power = _slot(current.orders, slots)
+                    attachments = _assigned(fields, choice)
+                    index = attachments.index(current)
+                    for term in closure.vertex_terms(entries, attachments):
+                        line = program.clones.get(term.blocks[index].id)
+                        if clone:
+                            # The consuming copy (the root) carries the other
+                            # half of the orders of Pi and, on a Weyl line,
+                            # kappa if this is the clone of the antiparticle.
+                            total = add_orders(physical, line.half)
+                            if total not in loop:
+                                continue
+                        else:
+                            total = physical
+                        terms.append(
+                            ClosureTerm(
+                                term,
+                                ROOT_LINE if clone else ROOT_VERTEX,
+                                component,
+                                power,
+                                total,
+                                (term.entry.coupling.name, 0),
+                                scale=None if line is None else line.factor,
+                            )
+                        )
+        for site in sites:
+            for term in closure.terms(site):
+                for power in _powers(recursion, site):
+                    terms.append(
+                        ClosureTerm(
+                            term,
+                            ROOT_COUNTERTERM,
+                            COMPONENT_BY_KIND[site.kind],
+                            power,
+                            site.orders,
+                            (term.entry.coupling.name, power),
+                            multiplicity=len(site.alternatives),
+                        )
+                    )
+        return cls(program, closure, tuple(sites), tuple(terms))
+
+
+def _slot_order(slot: tuple[str, int]) -> str:
+    return counterterm_slot_order(*slot)
+
+
+
+def _powers(recursion: CountertermRecursion, site: CountertermSite) -> tuple[int, ...]:
+    """Epsilon powers of a CT-root site: those of its rule's lowered terms."""
+
+    return tuple(
+        sorted(
+            {structure.power for _entry, structure in recursion.terms[site.rule_name]}
+        )
+    )
+
+
+def _site_masks(site: CountertermSite) -> tuple[int, ...]:
+    return tuple(block.mask for block in site.blocks)
+
+
+def _assigned(fields: Sequence[str], choice: Sequence[Any]) -> list[Any]:
+    free, out = sorted(choice), []
+    for name in fields:
+        block = next(b for b in free if b.field == name)
+        free.remove(block)
+        out.append(block)
+    return out
+
+
+@dataclass(frozen=True)
+class _PlainTable:
+    """A block table restricted to currents without a CT insertion."""
+
+    table: Any
+    _cache: dict = field(default_factory=dict, compare=False)
+
+    @property
+    def legs(self):
+        return self.table.legs
+
+    def currents(self, mask: int):
+        found = self._cache.get(mask)
+        if found is None:
+            found = self._cache[mask] = tuple(
+                b for b in self.table.currents(mask) if not _insertions(b.orders)
+            )
+        return found
+
+
+def counterterm_closure_entries(
+    sites: Iterable[CountertermSite], ordinary: Iterable[Sequence[Any]]
+) -> list[Any]:
+    """The kernel entries a closure binds (catalogue ``counterterm_entries``)."""
+
+    entries = [e for site in sites for e in site.rule.entries]
+    entries += [e for rows in ordinary for e in rows]
+    return list({id(e): e for e in entries}.values())
+
+
+def model_value(compiled: Any, expression: str, parameters: Mapping[str, Any], digits):
+    """``expression`` (payload syntax) at the model ``parameters``.
+
+    Internal parameters resolve through their exact definitions, external
+    ones take ``parameters`` or their defaults; ``digits`` decimal digits
+    (Symbolica's arbitrary-precision evaluation), returned as a pair of
+    decimal strings.
+    """
+
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+    from pyamplicol.runtime.symbolica_exact import _upcast_complex_inputs
+
+    model_symbols = symbols.model(compiled.name)
+    value = E(expression)
+    internal = {
+        record.name: record.resolved_expression
+        for record in compiled.ir.parameters
+        if record.nature == "internal"
+    }
+    for _ in range(64):
+        found = False
+        for name, definition in internal.items():
+            symbol = E(model_symbols.symbol(name).to_canonical_string())
+            if value.contains(symbol):
+                value = value.replace(symbol, E(f"({definition})"))
+                found = True
+        if not found:
+            break
+    external = {
+        name: parameters.get(name, pair[0])
+        for name, pair in compiled.parameter_defaults.items()
+        if name not in internal
+    }
+    names = [
+        name
+        for name in external
+        if value.contains(E(model_symbols.symbol(name).to_canonical_string()))
+    ]
+    substitutions = dict(
+        zip(
+            (E(model_symbols.symbol(name).to_canonical_string()) for name in names),
+            _upcast_complex_inputs(
+                [(str(external[name]), "0") for name in names], digits
+            ),
+            strict=True,
+        )
+    )
+    return value.evaluate(substitutions, decimal_digit_precision=digits).to_decimal_tuple()
+
+
+__all__ = [
+    "ROOT_COUNTERTERM",
+    "ROOT_LINE",
+    "ROOT_VERTEX",
+    "CloneLine",
+    "ClosureTerm",
+    "CountertermBlocks",
+    "CountertermClosure",
+    "RootReachability",
+    "counterterm_closure_entries",
+    "model_value",
+]
