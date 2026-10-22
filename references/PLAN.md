@@ -1223,3 +1223,43 @@ scoped performance acceptance evidence.
 The final publication still requires actual-data plots and tables, an elegant
 reproducible Typst PDF, independent final claims review, finite file cleanup and
 a final commit/push. No pull request is authorized yet.
+
+### Final report and publication closure — 22 October 2026
+
+The implementation and the user's amended validation campaign are complete.
+The final fifteen-page `docs/benchmarkfolder/benchmark.pdf` contains the twelve
+actual Ninja/NinjaRS CLI profiles, including both SM two-to-four processes and
+`gg > HHH/HHHH`, reduction estimates, total and numerator-stage timings,
+uncertainty, native-DP stability distributions, correctness and higher-precision
+controls. A separate appendix reports 120 exact captured preparation costs from
+24 first-session metadata files. Those costs are not an additive total or a
+standalone symbolic-generation measurement.
+
+The independent numerical, installer/export, scientific-claim and appendix
+reviews passed. The ordinary Rust suite has 24 passes and seven ignored tests;
+the two failing explicitly enabled upstream diagnostics remain disclosed.
+All six scoped original-Ninja performance gates passed. The twelve-case CLI
+diagnostic study makes no universal speedup claim, preserves the two unavailable
+helicity-scope ratios, and does not replace that normal-rescue gate. No retired
+four-backend or exhaustive eight-process performance gate is claimed complete.
+
+Every report page was visually reviewed. The final PDF was also reproduced
+byte-for-byte from an isolated tree containing only 37 Git-index files: the
+36 declared offline inputs and their manifest. This uses pinned Typst and the
+bundled licensed fonts, with no native libraries, generated processes, network
+or amplitude evaluations. Its SHA256 is
+`076b136ae99083f8111e7d35489d45b7b00ad2383b44e3177b30c14c31ad3869`.
+Machine-readable measurements, original command cards, hashes, raw evidence,
+provenance and reproduction instructions accompany the report. The earlier
+partial report remains explicitly historical.
+
+Finite publication selections retain the scientific evidence and exclude
+temporary builds, executables, caches and redundant plaintext materializations.
+All native children and isolated process groups have retired. The final
+dependency watch found no new numerical source beyond the measured pins; the
+newer NinjaRS documentation-only revision is verified source-equivalent.
+
+Publish this final documentation milestone to `origin/madloop_ninjars`, verify
+that the remote and local heads agree and the working tree is clean, then mark
+the assigned goal complete under these recorded user amendments. Wait for the
+user's instructions before opening a pull request.

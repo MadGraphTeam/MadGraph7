@@ -1,0 +1,21 @@
+{
+  "byte_identical_to_git_index_pdf": true,
+  "compiler": "typst 0.15.1 (9dfd3a08)",
+  "elapsed_seconds": 0.2696259629447013,
+  "embedded_fonts_disabled": true,
+  "exit_code": 0,
+  "input_files": 37,
+  "inputs_from_git_index_only": true,
+  "manifest_inputs": 36,
+  "manifest_sha256": "fa09631c72feea05475e53b36ac6c37ba9e472b0566ee070064053e388e4088f",
+  "native_reads": 0,
+  "pdf_bytes": 345782,
+  "pdf_sha256": "076b136ae99083f8111e7d35489d45b7b00ad2383b44e3177b30c14c31ad3869",
+  "report_root": "isolated finite tree under .benchmark-work/final-index-reproduce-v3",
+  "runtime_libraries_or_generated_process_inputs_copied": false,
+  "schema": "git-index-isolated-offline-pdf-reproduction-v1",
+  "source_date_epoch": 1792627200,
+  "system_fonts_disabled": true,
+  "tree_contained_only_declared_files": true,
+  "working_directory": "repository root"
+}

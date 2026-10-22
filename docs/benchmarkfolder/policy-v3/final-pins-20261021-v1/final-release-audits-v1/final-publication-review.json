@@ -1,0 +1,460 @@
+{
+  "branch": "madloop_ninjars",
+  "cleanup": {
+    "compiled_payloads_selected": false,
+    "native_processes_and_groups_retired": true,
+    "new_review_receipts_in_finite_selection": [
+      "final-publication-review.json",
+      "isolated-index-pdf-reproduction.json"
+    ],
+    "redundant_plaintext": {
+      "action": "repository-local exact ignore; no deletion",
+      "bytes": 10672582,
+      "decoded_bytes_equal": true,
+      "path": "docs/benchmarkfolder/final-report-v1/cli-report.json",
+      "retained_gzip_sha256": "8234d9968f652eff6bb9c9dcffc41d967cffb9ec585477ce1ace05e23a948857",
+      "retained_representation": "docs/benchmarkfolder/final-report-v1/cli-report.json.gz",
+      "schema": "final-redundant-materialization-cleanup-v1",
+      "sha256": "8a1da525d23d21bd19b5c47b96aa1be479aa412bc13f3e0aebaf485dd55ac334",
+      "tracked_path_affected": false
+    },
+    "temporary_builds_and_caches_selected": false,
+    "unexplained_untracked_files": []
+  },
+  "document_authority_verification": {
+    "all_authorities_tracked": true,
+    "all_hashes_and_sizes_match": true,
+    "authorities_checked": 29,
+    "authority_checks": [
+      {
+        "bytes": 1761,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dependencies/pins.json",
+        "sha256": "a330299c567e9d2956f77537f19a875dce2bceac26df683012feb2d2c0a7d930"
+      },
+      {
+        "bytes": 732,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dependencies/upstream-watch-ca1009e-v1/manifest.json",
+        "sha256": "59ee4a920f1f921dd216ae739f67a5663192e4084cd4fb0dcfde5cf69d6c9ffc"
+      },
+      {
+        "bytes": 16025,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/install-export/installation.json",
+        "sha256": "df329e3b705d6793753531fab84671056f654849a3d033325882539da55abd5b"
+      },
+      {
+        "bytes": 11775,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/install-export/manifest.json",
+        "sha256": "dd5cbbefc2158c66c4b8b383465fd6cf7988d1722453ffc51c6241334e4e2841"
+      },
+      {
+        "bytes": 2089,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/install-export/runtime-results.json",
+        "sha256": "9c11ff64f4e0dd34818bb30a660f065a90ca231372f85e31e71122e59d761b90"
+      },
+      {
+        "bytes": 8781,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/main-install-publication/transition.json",
+        "sha256": "7f318d8b798ba60959df93b235b48df33da006c481cf9f9f62c251170281c95a"
+      },
+      {
+        "bytes": 67601,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/manifest-v2.json",
+        "sha256": "909d76260e4658181be09e9c7916b9896dd56eccc2b385b31e502d549f3bf987"
+      },
+      {
+        "bytes": 7822,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/numerical-controls-v1/verification-v2.json",
+        "sha256": "7f19cf47f11d7607450b4f51e31a67d40b710e23a2cfbc3bb71a97cce02d1caf"
+      },
+      {
+        "bytes": 26806,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/installed-precision/run-v1/result-portable.json",
+        "sha256": "3fe9ea08112d4ad7238155f9d7db07d3e3533467c58c3046b9a73e885bea0657"
+      },
+      {
+        "bytes": 100483,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/core-correctness/dataset-correctness-only-public-v2.json",
+        "sha256": "82ec747c1dc1b4e2624a4d7c2b90e7d69b72e589027dbb8e84951057d21b6e7d"
+      },
+      {
+        "bytes": 10081,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-execution-ninja-nrs-v1/physical-comparison.json",
+        "sha256": "4f79d0c82e312efa76f9a3a5e854ad3ae6c3fc8e04f53c704712d5d7df9a7042"
+      },
+      {
+        "bytes": 8866,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-controls-v2/actual-control-summary.json",
+        "sha256": "b0be98b39365f3479e82bf890bead61e74c84cab6bede8357b178263f55330ec"
+      },
+      {
+        "bytes": 6264,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/focused-light-hh-normal-anchor-v1/comparison.json",
+        "sha256": "4873f62e81c63d68a1d3b62f3beea24f4f83f5df1d850a350b73727acf934464"
+      },
+      {
+        "bytes": 4733,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/run-v1/result-finalized-v1.json",
+        "sha256": "6a61ff18068ce87dfd06c4ee6f56f7580329f6bd24f22a98fa64c9a6da6649a6"
+      },
+      {
+        "bytes": 22606,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/higher-higgs-controls/independent-review-v1/receipt.json",
+        "sha256": "37ca4cd94b4d52e08bec8bd4496c7b1d15b6a4450834e42266ab71a6b2693283"
+      },
+      {
+        "bytes": 15199,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/integrated-software-293-v1/manifest.json",
+        "sha256": "2ffaf7c06ff0f824d300fde6e103f2140b3f813ff8cde53e0525f5327bfb224b"
+      },
+      {
+        "bytes": 123422,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/runs/run-v1/result.json",
+        "sha256": "ab7f9b9dc0e870e1ba62aa534615250ddaaa8eed6d7dffa6b37846266aaf46ae"
+      },
+      {
+        "bytes": 8645,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/light-timing/terminal-summary-v1.json",
+        "sha256": "367eebf8c156a43a5ce37e318c3e21f0c840ff596662bf3c9e5cf5873c84a911"
+      },
+      {
+        "bytes": 5295,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/paper-comparison/lightweight-stability-figures-v1/manifest.json",
+        "sha256": "a19f26913c7b78ae576e11196c2644ad660bedd7e8650f4853c5743f4e9a2479"
+      },
+      {
+        "bytes": 7332985,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/paper-comparison/lightweight-final-science-v1/data/0001-summary.json",
+        "sha256": "c46368e08f039d39d4acb6369f067407785315cf5a591099db97f1e9adb6b12e"
+      },
+      {
+        "bytes": 5232,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/paper-comparison/lightweight-final-science-v1/data/1174-light-eight-final-independent-composite-audit-v1.json",
+        "sha256": "64ac6c50cb1712272e11dbca41e797e7389d893df88ca67c1189e8f1bdf14e33"
+      },
+      {
+        "bytes": 26489,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/final-validation-v1/publication-result.json",
+        "sha256": "1bb293b575590aec3bdd801f80f579a0fd7ba212363c37f92bf4eb74ca1f996d"
+      },
+      {
+        "bytes": 8247,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/result-list.json",
+        "sha256": "ea1d1ad683d15a1c4d07314410e381390764451696f27858276eb5555b66eb31"
+      },
+      {
+        "bytes": 21829,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/continuation-launch-v1/terminal-cleanup.json",
+        "sha256": "1f61210a1acee6fcd3aa367b68aa1f2877cda492e1f5e8fe83b4531aca26190e"
+      },
+      {
+        "bytes": 1253728,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-expanded-v4/run-v1/generated-source-closure-v1/closure.json",
+        "sha256": "a160171b0af9247bcdd8c283704a70e4966c8b7a0828a1955c139641a1b46971"
+      },
+      {
+        "bytes": 1025,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/dependencies/upstream-watch-final-20261022.json",
+        "sha256": "2be01f7bf06f6941bc594646c9dbc3f64bcaa279bd06a5fc7d18b02196500217"
+      },
+      {
+        "bytes": 2550,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/profile-cli-observer-contract-software-v1/live-result.json",
+        "sha256": "df4a3a8a91129e77e06f98b346c68742f294ece744efe4d8696947a1f2a5601d"
+      },
+      {
+        "bytes": 4334,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/final-release-audits-v1/installer-export-closure.json",
+        "sha256": "28d883477a9c41eaa59cf1c15539d072d78bbf3d3a607c9d00e0339fe2ecca1d"
+      },
+      {
+        "bytes": 14805,
+        "path": "docs/benchmarkfolder/policy-v3/final-pins-20261021-v1/final-release-audits-v1/scientific-claims-review.json",
+        "sha256": "58644f5045a1a2b0ea3cf059365d97388d5aec847b7b5991d4e8820a07ea3d7f"
+      }
+    ],
+    "native_reads": 0,
+    "preparation_sources_checked": 24,
+    "schema": "final-document-authorities-custody-verification-v1",
+    "scientific_recalculation": false
+  },
+  "document_index_verification": {
+    "all_git_index_bytes_match": true,
+    "file_count": 45,
+    "paths": [
+      {
+        "bytes": 957,
+        "path": "docs/benchmarkfolder/README.md",
+        "sha256": "3231f8ec394d2613086e7893ac87278dffe07d4876d107319df1fc9557bf8553"
+      },
+      {
+        "bytes": 345782,
+        "path": "docs/benchmarkfolder/benchmark.pdf",
+        "sha256": "076b136ae99083f8111e7d35489d45b7b00ad2383b44e3177b30c14c31ad3869"
+      },
+      {
+        "bytes": 23323,
+        "path": "docs/benchmarkfolder/benchmark.typ",
+        "sha256": "57998bc22991f2415c18abd2eb27b44a75ecd7c73fe796877d46aa82dc05a742"
+      },
+      {
+        "bytes": 5731,
+        "path": "docs/benchmarkfolder/final-report-v1/README.md",
+        "sha256": "a51e7ff4887c3f44a70583afd4364b7f36d423960aff8a5969696dd33b479579"
+      },
+      {
+        "bytes": 1351700,
+        "path": "docs/benchmarkfolder/final-report-v1/cli-report.json.gz",
+        "sha256": "8234d9968f652eff6bb9c9dcffc41d967cffb9ec585477ce1ace05e23a948857"
+      },
+      {
+        "bytes": 235,
+        "path": "docs/benchmarkfolder/final-report-v1/compile-environment.json",
+        "sha256": "6b6fc4cfff84db6fe8eeb661df3fbd45da22abaae08df70a6d1b5ab2cb64f39d"
+      },
+      {
+        "bytes": 267,
+        "path": "docs/benchmarkfolder/final-report-v1/expected-cli-pins.json",
+        "sha256": "e9ccc784d5beeb0ea526ece124fe9f72f6a147b247fce8785dbde2339738a7c1"
+      },
+      {
+        "bytes": 588848,
+        "path": "docs/benchmarkfolder/final-report-v1/fonts/LibertinusMath-Regular.otf",
+        "sha256": "ded714b0d3808af527438ed7a85f16933133f66a12104c4a83db4cc248888011"
+      },
+      {
+        "bytes": 59264,
+        "path": "docs/benchmarkfolder/final-report-v1/fonts/LibertinusMono-Regular.otf",
+        "sha256": "c1872d14ecedecc5fbf069ebd778a242c5f20f2687c5443f3409ff0a3b945d0d"
+      },
+      {
+        "bytes": 293908,
+        "path": "docs/benchmarkfolder/final-report-v1/fonts/LibertinusSerif-Bold.otf",
+        "sha256": "0264914210ed51b3231ebc92ce529e9f2e166ba9eebf0cd4a579558690a27b64"
+      },
+      {
+        "bytes": 259176,
+        "path": "docs/benchmarkfolder/final-report-v1/fonts/LibertinusSerif-BoldItalic.otf",
+        "sha256": "47a665259f09f554f5d133d7718cdad43ff462c6a6b2328f38023465e62d57ce"
+      },
+      {
+        "bytes": 332312,
+        "path": "docs/benchmarkfolder/final-report-v1/fonts/LibertinusSerif-Italic.otf",
+        "sha256": "9a393d63d6e05f620d3dc0190dfd35a8ede58c0808cf0fc9de7fcb9c723e4c24"
+      },
+      {
+        "bytes": 337132,
+        "path": "docs/benchmarkfolder/final-report-v1/fonts/LibertinusSerif-Regular.otf",
+        "sha256": "fcf06307a77367394fcb0ccb241e59eea70dba3d732be309647611224679c733"
+      },
+      {
+        "bytes": 291640,
+        "path": "docs/benchmarkfolder/final-report-v1/fonts/LibertinusSerif-Semibold.otf",
+        "sha256": "a4b3f28e85881db34695c1f005e4c79233a6caf3a2bd286c9b418c025fb99308"
+      },
+      {
+        "bytes": 4426,
+        "path": "docs/benchmarkfolder/final-report-v1/fonts/OFL.txt",
+        "sha256": "9aeecc8107c489ec1ec0068b0313e531a760edf3493705b32ab8ab8215a8794e"
+      },
+      {
+        "bytes": 5393,
+        "path": "docs/benchmarkfolder/final-report-v1/formatter-source.py",
+        "sha256": "f15e07d1092648fd3d40f06c8c0c2469132b904d74e23d722edfae588497b8ad"
+      },
+      {
+        "bytes": 27806,
+        "path": "docs/benchmarkfolder/final-report-v1/historical-optimization-facts.json",
+        "sha256": "58c066c29841acba15da4ccfaaa7cc830c01136fbb47f0c997f4520de209ea38"
+      },
+      {
+        "bytes": 6535,
+        "path": "docs/benchmarkfolder/final-report-v1/manifest.json",
+        "sha256": "fa09631c72feea05475e53b36ac6c37ba9e472b0566ee070064053e388e4088f"
+      },
+      {
+        "bytes": 19049,
+        "path": "docs/benchmarkfolder/final-report-v1/measurements.csv",
+        "sha256": "6f38a85e220728d07e176dd25e02385adcc93af956203f4a386a21ae664454d6"
+      },
+      {
+        "bytes": 3751,
+        "path": "docs/benchmarkfolder/final-report-v1/plot.py",
+        "sha256": "9e70db18efeace27059e72bd18a192fc651bed5af4e65c8a5c3c6675cc49d0a4"
+      },
+      {
+        "bytes": 28083,
+        "path": "docs/benchmarkfolder/final-report-v1/preparation-costs.csv",
+        "sha256": "ca7901b27d6a51f4ecf1bcabb023ff92313300724a3b23a3464473b594bbf34b"
+      },
+      {
+        "bytes": 16644,
+        "path": "docs/benchmarkfolder/final-report-v1/provenance.json",
+        "sha256": "0e262d26653fe61999c438fd2b932fdaa8e0dcc926a7495cd36f506c4328518a"
+      },
+      {
+        "bytes": 288111,
+        "path": "docs/benchmarkfolder/final-report-v1/report-data.json",
+        "sha256": "bc42cc02076418eeba4b188de167575196f86139bc9c8b463349d2e766011e9c"
+      },
+      {
+        "bytes": 2402,
+        "path": "docs/benchmarkfolder/final-report-v1/reproduce.py",
+        "sha256": "d47adcb9306964c788bd63515a756f0844de2c3503003bf4ba00f104c44ae5ea"
+      },
+      {
+        "bytes": 1849,
+        "path": "docs/benchmarkfolder/final-report-v1/reproduction.json",
+        "sha256": "6a20e49429360ebdcf265382d0ac10a14b8ad14974fa02938f6a3e9f66d8bfac"
+      },
+      {
+        "bytes": 79241,
+        "path": "docs/benchmarkfolder/final-report-v1/stability/combined-loop-induced.svg",
+        "sha256": "83751162b57f04707aa3b0bf965ca37865d9aee38302afe313983b937a5da369"
+      },
+      {
+        "bytes": 70298,
+        "path": "docs/benchmarkfolder/final-report-v1/stability/combined-on-shell.svg",
+        "sha256": "865e148f64e246115cadc8f48d7e056b34a5764fd52cf4efd15b4e6bb5b6d506"
+      },
+      {
+        "bytes": 83380,
+        "path": "docs/benchmarkfolder/final-report-v1/stability/combined-three-particle.svg",
+        "sha256": "dc7ee9c7983ddd35f95c356dc1983fd4f3a616597f0fc93650d359c83144f902"
+      },
+      {
+        "bytes": 75197,
+        "path": "docs/benchmarkfolder/final-report-v1/stability/combined-two-particle.svg",
+        "sha256": "bdf406ef339dfdffbd3c1a47b3f585c4c9c6a0166fce4cc9b22f0b4552657382"
+      },
+      {
+        "bytes": 76397,
+        "path": "docs/benchmarkfolder/final-report-v1/stability/direction-loop-induced.svg",
+        "sha256": "b69447d7fc57e11e80db18c5ad4d072f88cbebd9987ed0453102bee12449db38"
+      },
+      {
+        "bytes": 65884,
+        "path": "docs/benchmarkfolder/final-report-v1/stability/direction-on-shell.svg",
+        "sha256": "3091ca65c8155237898c318580ce2066995b54bac34ed37ffaa27d9bc227b6ce"
+      },
+      {
+        "bytes": 82105,
+        "path": "docs/benchmarkfolder/final-report-v1/stability/direction-three-particle.svg",
+        "sha256": "f89f4321768e79caef179ab79e2ec742a0ed459db52d48e4d9c616d0147bff03"
+      },
+      {
+        "bytes": 68752,
+        "path": "docs/benchmarkfolder/final-report-v1/stability/direction-two-particle.svg",
+        "sha256": "83007d873524765ae8c8d4a4c93b33e6545be247a884e756ae0d784a81fcfdf5"
+      },
+      {
+        "bytes": 75393,
+        "path": "docs/benchmarkfolder/final-report-v1/stability/lorentz-loop-induced.svg",
+        "sha256": "82c60ca00af45bc8f9a48dfc6f299a15aba8c442468ceb0b9751b90460871470"
+      },
+      {
+        "bytes": 61080,
+        "path": "docs/benchmarkfolder/final-report-v1/stability/lorentz-on-shell.svg",
+        "sha256": "b77944f57d0a1184d3054708e16f63cf773f2327f264da320a1eeb3ae9fec70d"
+      },
+      {
+        "bytes": 80779,
+        "path": "docs/benchmarkfolder/final-report-v1/stability/lorentz-three-particle.svg",
+        "sha256": "c91c65a26599c03574f20d958af5d4e98457189b68299f89ac9a9b5ae5a467ac"
+      },
+      {
+        "bytes": 67728,
+        "path": "docs/benchmarkfolder/final-report-v1/stability/lorentz-two-particle.svg",
+        "sha256": "7a09948ca2127df20fddad9f3029296d0ff3ed669fc2f3c68cb4166db1746580"
+      },
+      {
+        "bytes": 2733,
+        "path": "docs/benchmarkfolder/final-report-v1/style.typ",
+        "sha256": "6940ffd9613dde9c4f9554255a418024b99d04dfef383818d4c4f8ee368bbf4c"
+      },
+      {
+        "bytes": 136922,
+        "path": "docs/benchmarkfolder/final-report-v1/timing.svg",
+        "sha256": "9d313f9efddc72320179532e268d91f564a41fd41260f57e9ec25e04550004ff"
+      },
+      {
+        "bytes": 12825,
+        "path": "docs/benchmarkfolder/historical/20261021-partial/README.md",
+        "sha256": "e8df6f1dfaf1760e4a154503ce8422ff9cc483c33042186173bdbacc5df86001"
+      },
+      {
+        "bytes": 228084,
+        "path": "docs/benchmarkfolder/historical/20261021-partial/benchmark.pdf",
+        "sha256": "4f721beef932e897c1de5649e5e49ad6ff74c57b5e85507a9b6a748fd481b588"
+      },
+      {
+        "bytes": 17167,
+        "path": "docs/benchmarkfolder/historical/20261021-partial/benchmark.typ",
+        "sha256": "a2a51a2ec93b441eb20fc82899b8d041d80ba492acdf4973f7f0ac453e301be5"
+      },
+      {
+        "bytes": 869,
+        "path": "docs/benchmarkfolder/historical/20261021-partial/manifest.json",
+        "sha256": "2bddbcd4b623dc9a1f5f324ca9183cdfbf5fabd22488a51ae5288ccca59495e6"
+      },
+      {
+        "bytes": 3202556,
+        "path": "docs/benchmarkfolder/historical/20261021-partial/report-data.json",
+        "sha256": "8d2e7fd907046d5179f4c9ce09a96e2bf6b6b5e32d1299e0e997e534bb92ebc8"
+      },
+      {
+        "bytes": 3416,
+        "path": "docs/benchmarkfolder/historical/20261021-partial/style.typ",
+        "sha256": "6ceb2b7181fec52a9e97ef2a6a88a010abe1a297039759882a97aad32df479c0"
+      }
+    ],
+    "schema": "final-document-index-verification-v1",
+    "total_bytes": 8785130
+  },
+  "final_observer_revision": "464b441fe04d3cb5b3da7708897fa831e32c55eb",
+  "independent_reviews": {
+    "installer_export": "installer-export-closure.json",
+    "preparation_appendix": {
+      "displayed_rounding": "three significant digits; all matched",
+      "exact_values": 120,
+      "metadata_files": 24,
+      "reviewer": "audit_final",
+      "scope": "read-only comparison of captured values and labels; no new evaluations",
+      "verdict": "pass"
+    },
+    "scientific_claims": "scientific-claims-review.json"
+  },
+  "numerical_revision": "856e76e669618ec8d0f799b9c8e6f86819dcd986",
+  "observed_utc": "2026-10-22T01:20:05.549097+00:00",
+  "publication_status": "Reviewed final artifacts ready for commit and push; remote equality and clean status must be checked after publication",
+  "pull_request_opened": false,
+  "raw_evidence_revision": "c68d90feb2bbc3ad521d8cf72f556027038e5477",
+  "schema": "madloop-ninjars-final-publication-review-v1",
+  "scientific_scope": {
+    "cli_ratio_scopes": {
+      "matching": 10,
+      "reason": "selected physical helicity/filter changed across sessions",
+      "unavailable": 2,
+      "unavailable_cases": [
+        "QCD1",
+        "EW1"
+      ]
+    },
+    "core_correctness": "8 Standard Model processes, 100 unique points each; accepted normal-rescue comparisons",
+    "higher_higgs": "HHH/HHHH two fixed-point correctness controls and all CLI profile sessions",
+    "known_upstream_diagnostic_and_provider_limits_disclosed": true,
+    "native_cli_profile": "12 processes, 3 sessions per backend, 72 complete observations; Ninja6/NinjaRS8",
+    "original_code_performance_gate": "6 declared processes, 10 fixed points, 7 pairs; every upper95 ratio limit below1.05",
+    "primary_profile_metric": "stock CLI FULL minus SKIP reduction estimate; total and numerator-stage context retained",
+    "random_dp_stability": "8 affordable cases, 100 points/tool; distinct from reused20-point profile caches",
+    "retired_four_backend_or_exhaustive_eight_process_performance_gate_claimed": false,
+    "timed_automatic_rescue_histogram_claimed": false,
+    "universal_speedup_claimed": false
+  },
+  "visual_review": {
+    "all_pages_reviewed": true,
+    "appendix_page_reviewed_at_full_size": true,
+    "final_refresh_changed_only_nonrendered_scope_and_trailing_whitespace": true,
+    "pages": 15,
+    "reviewer": "root"
+  }
+}
