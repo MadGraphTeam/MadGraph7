@@ -80,3 +80,14 @@ choices, etc. may be adopted whenever measured faster at equal correctness.
 
 - Per squared-coupling-order partial results must be accessible at tree level too,
   through the same public API conventions (Python, CLI, SDKs where applicable).
+
+## F. 45-minute generation rule (user, 2026-10-22)
+
+Do not try, verify or compare against any process whose generation time exceeds
+45 minutes, whether the generation is pyAmpliCol's own or a reference provider's.
+Under this rule g g > g g g g g and u u~ > g g g g g are excluded (provider
+generation: MadLoop > 17 h / 12.2 h; Recola > 57 h / 2.8 h), and the MadLoop
+reference for g g > g g g g (2.4 h) is excluded (Recola, 34 min, and OpenLoops
+remain). If pyAmpliCol's generation of a process would exceed 45 minutes, report it
+as a scaling blocker instead of running it. Exclusions are stated explicitly in
+MASTER_PLAN and the live report; substitute targets need the user's approval.
