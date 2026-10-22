@@ -133,7 +133,6 @@ from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
 from .poly_affine import MonomialLayout, leg_momentum
 from .schedules import LoopSchedules, SkeletonView, build_schedules, cheapest
 from .stability import (
-    REDUCTION,
     ROTATION,
     Budget,
     StabilityChecks,
@@ -148,6 +147,9 @@ LAURENT = ("finite", "single_pole", "double_pole")
 GUARD_DIGITS = 20
 # Interpreted Symbolica replays derive their precision from the inputs' digits.
 _SYMBOLICA_PRECISION_FLOOR = 40
+# Decimal digits of a DoubleFloat (106 bits): the inputs of a double-double
+# evaluation are formed with these plus the guard digits.
+DOUBLE_DOUBLE_DIGITS = 32
 
 
 # --------------------------------------------------------------------- precision
@@ -155,15 +157,23 @@ _SYMBOLICA_PRECISION_FLOOR = 40
 
 @dataclass(frozen=True, slots=True)
 class Precision:
-    """Arithmetic of an evaluation: binary64 or ``digits`` decimal digits."""
+    """Arithmetic of an evaluation: binary64, double-double or ``digits``
+    decimal digits.
 
-    arithmetic: Literal["double", "arbitrary"] = "double"
+    Double-double (``DoubleFloat``) is a carrier of the native executor
+    (``plan_export.NativeExecutor``): its per-point inputs (trees, Born,
+    counterterm scalars) are formed in Decimal arithmetic at
+    ``working_digits``, dressing and reduction run in DoubleFloat. The Python
+    reference path has no double-double arithmetic and refuses it.
+    """
+
+    arithmetic: Literal["double", "double-double", "arbitrary"] = "double"
     digits: int | None = None
 
     def __post_init__(self) -> None:
-        if self.arithmetic == "double":
+        if self.arithmetic in ("double", "double-double"):
             if self.digits is not None:
-                raise ValueError("binary64 takes no digits")
+                raise ValueError(f"{self.arithmetic} takes no digits")
         elif self.arithmetic == "arbitrary":
             if not isinstance(self.digits, int) or self.digits < 1:
                 raise ValueError("arbitrary precision needs a positive digit count")
@@ -175,23 +185,40 @@ class Precision:
         return cls("double")
 
     @classmethod
+    def double_double(cls) -> Precision:
+        return cls("double-double")
+
+    @classmethod
     def arbitrary(cls, digits: int) -> Precision:
         return cls("arbitrary", digits)
 
     @property
     def unit_roundoff(self) -> float:
-        """The unit roundoff: 2^-53 in binary64, half a unit of the last of
-        ``digits`` decimal digits otherwise."""
-        if self.digits is None:
+        """The unit roundoff: 2^-53 in binary64, 2^-104 in double-double (a
+        DoubleFloat operation rounds to about 2^-104 relative, not to its
+        106-bit significand), half a unit of the last of ``digits`` decimal
+        digits otherwise."""
+        if self.arithmetic == "double":
             return 2.0**-53
+        if self.arithmetic == "double-double":
+            return 2.0**-104
         return 0.5 * 10.0 ** (1 - self.digits)
 
     @property
     def working_digits(self) -> int:
         """Decimal digits of the Python arithmetic and of the tree replay."""
-        if self.digits is None:
+        if self.arithmetic == "double":
             return _SYMBOLICA_PRECISION_FLOOR
-        return max(self.digits + GUARD_DIGITS, _SYMBOLICA_PRECISION_FLOOR)
+        digits = DOUBLE_DOUBLE_DIGITS if self.digits is None else self.digits
+        return max(digits + GUARD_DIGITS, _SYMBOLICA_PRECISION_FLOOR)
+
+    def require_reference(self) -> None:
+        """Refuse a carrier the Python reference path has no arithmetic for."""
+        if self.arithmetic == "double-double":
+            raise ValueError(
+                "double-double evaluations run in the native executor "
+                "(plan_export.NativeExecutor)"
+            )
 
 
 class _Numbers:
@@ -1190,6 +1217,7 @@ class LoopSlice:
         """
 
         precision = precision or Precision.double()
+        precision.require_reference()
         stability = stability or StabilityChecks()
         exact_point = tuple(tuple(_fraction(x) for x in momentum) for momentum in point)
         scale = _fraction(scale_squared)
@@ -1199,7 +1227,7 @@ class LoopSlice:
             dict(parameters or {}),
             precision,
             poles,
-            stability.reduction_direction,
+            stability.frame,
         )
         if not stability.enabled:
             return reference.result
@@ -1211,11 +1239,11 @@ class LoopSlice:
                 dict(parameters or {}),
                 precision,
                 poles,
-                False,
+                None,
             )
             budgets[ROTATION.format(index)] = reference.rotation_budget(rotated)
-        if stability.reduction_direction:
-            budgets[REDUCTION] = reference.retest_budget
+        if stability.reduction:
+            budgets[stability.reduction] = reference.retest_budget
         estimate = StabilityEstimate.from_checks(
             reference.result.components["virtual"],
             budgets,
@@ -1261,6 +1289,7 @@ class LoopSlice:
         """
 
         precision = precision or Precision.double()
+        precision.require_reference()
         exact_point = tuple(tuple(_fraction(x) for x in momentum) for momentum in point)
         with _Numbers(precision).scope():
             evaluation = self._point(
@@ -1611,7 +1640,7 @@ class _PointEvaluation:
         self._born_and_counterterms(rows, scalars, labels, loop_rows)
         self.rows = loop_rows
 
-    def finish(self, retest: bool) -> _PointEvaluation:
+    def finish(self, retest: str | None) -> _PointEvaluation:
         """Dress (schedule B), reduce and assemble the complete virtual."""
         self._reduce(self.dress().numerators, retest)
         self._assemble()
@@ -1691,8 +1720,12 @@ class _PointEvaluation:
 
         accuracy = slice_.request.accuracy
 
+        weights: dict = {}
+
         def interfere(bra, ket, degree, grade=0):
-            return _interfere(bra, ket, degree, accuracy, overlap, numbers, grade)
+            return _interfere(
+                bra, ket, degree, accuracy, overlap, numbers, grade, weights
+            )
 
         def degree_of(kind, sector):
             return None if degrees is None else degrees[kind][sector]
@@ -1893,9 +1926,11 @@ class _PointEvaluation:
 
     # -- reduction -----------------------------------------------------------------
 
-    def _reduce(self, numerators, retest: bool, columns=None) -> None:
+    def _reduce(self, numerators, retest: str | None, columns=None) -> None:
         """Reduce every nonzero (family, loop order, column) lane; lanes are
-        labelled by ``columns[column]`` (by default the column's sector)."""
+        labelled by ``columns[column]`` (by default the column's sector).
+        ``retest`` re-reduces them in that frame (``stability.FRAMES``:
+        "reversed" or "rescaled")."""
 
         slice_, numbers = self.slice, self.numbers
         if columns is None:
@@ -1946,7 +1981,12 @@ class _PointEvaluation:
         reducer = native.V2Reducer(
             arithmetic, digits, "fast" if numbers.double else "generic"
         )
-        direct, check = reducer.reduce(groups, poles=self.poles, check=retest)
+        direct, check = reducer.reduce(
+            groups,
+            poles=self.poles,
+            check=retest is not None,
+            rescale=retest == "rescaled",
+        )
         self.families = {}
         self.retest_families = {} if check is not None else None
         for lane, batch in zip(lanes, direct, strict=True):
@@ -2203,11 +2243,14 @@ def _interfere(
     overlaps,
     numbers,
     grade: int = 0,
+    weights: dict | None = None,
 ) -> Any:
     """N_c^grade sum conj(bra) ket <t|t'> at N_c = 3, keeping the N_c powers
     that ``accuracy`` keeps below the leading degree ``degree``
-    (``colour.kept``)."""
+    (``colour.kept``). ``weights`` caches the carrier colour weights of one
+    point (they do not depend on the helicities)."""
 
+    weights = {} if weights is None else weights
     total = numbers.zero
     for (left, p), a in bra.items():
         conjugate = a.conjugate()
@@ -2216,7 +2259,12 @@ def _interfere(
                 exponent = power + p + q + grade
                 if not kept(exponent, degree, accuracy):
                     continue
-                weight = numbers.colour(cell.scaled(Fraction(NC) ** exponent), 0)
+                key = (left, right, power, exponent)
+                weight = weights.get(key)
+                if weight is None:
+                    weight = weights[key] = numbers.colour(
+                        cell.scaled(Fraction(NC) ** exponent), 0
+                    )
                 total = total + conjugate * b * weight
     return total
 

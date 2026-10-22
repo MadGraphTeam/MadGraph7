@@ -80,3 +80,33 @@ choices, etc. may be adopted whenever measured faster at equal correctness.
 
 - Per squared-coupling-order partial results must be accessible at tree level too,
   through the same public API conventions (Python, CLI, SDKs where applicable).
+
+## F. Heavy processes and slow references (user, 2026-10-22, refined)
+
+- All MASTER_PLAN §5.7 2->5 processes, including g g > g g g g g and
+  u u~ > g g g g g, remain pyAmpliCol targets. Push pyAmpliCol's own generation
+  and validation for them whenever it has a realistic shot at completing
+  generation (estimate the cost first; otherwise report a precise scaling blocker).
+- Do not launch or wait for a reference-provider generation that cannot complete
+  in about 45 minutes or in a time comparable to pyAmpliCol's own generation of
+  the process. Validate by other means then (Ward/gauge identities, Catani pole
+  structure, LC/NLC/FC and DD/AP consistency, stability checks, lower-multiplicity
+  oracles) and use references that already exist.
+- Measured provider generation on the development host: g g > g g g g g MadLoop
+  > 17 h (colour factors ~89 days by MG5's estimate), Recola > 57 h unfinished;
+  u u~ > g g g g g MadLoop 12.2 h, Recola 2.8 h (results exist); g g > g g g g
+  MadLoop 2.4 h, Recola 34 min (results exist).
+- Where no matched provider timing is obtainable, the speed gate is reported as
+  such (never extrapolated) and the user decides how it is judged.
+
+## G. Portable prepared artifacts (user, 2026-10-22)
+
+Artifacts prepared and compiled with SymJIT at -O2 (the default
+jit_optimization_level) must be portable so that prepared artifacts for heavy
+processes can be distributed: relocatable to another machine, user and path; no
+absolute paths or workspace locations needed at load; no load-time regeneration
+of the process (the full program, including trees, Born and counterterm scalars,
+is in the artifact); no dependence on the build host's CPU features (SymJIT
+applications are stored as IR and recompiled at load, as the tree engine's
+storage-v4 plane kernels already are); bitwise-identical binary64 results after
+relocation with the same native build. A dedicated acceptance test covers this.

@@ -437,7 +437,7 @@ impl V2Executor {
     /// `families` (per point `((family, order, column), Laurent)`), `check`
     /// (the re-test integrals or None), `bare` (per point and column),
     /// `budget` (re-test error budgets), `failures` and `report`.
-    #[pyo3(signature = (inputs, *, poles=true, check=false, reverse=true, rotation=1, shift=false, chunk_families=None))]
+    #[pyo3(signature = (inputs, *, poles=true, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -448,6 +448,7 @@ impl V2Executor {
         reverse: bool,
         rotation: usize,
         shift: bool,
+        rescale: bool,
         chunk_families: Option<usize>,
     ) -> PyResult<Evaluation> {
         let mut options = V2Options {
@@ -456,6 +457,7 @@ impl V2Executor {
                 reverse,
                 rotation,
                 shift,
+                rescale,
             }),
             ..V2Options::default()
         };
