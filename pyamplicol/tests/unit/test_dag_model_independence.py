@@ -22,6 +22,7 @@ from pyamplicol.generation.dag_types import ColorState, CurrentIndex
 from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.base import Model, Particle, Vertex
 from pyamplicol.models.builtin.process_ir import build_process_ir
+from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND
 from pyamplicol.processes.ir import (
     CanonicalProcessIR,
     ColorEndpointSummary,
@@ -372,7 +373,7 @@ def test_relabelled_fundamental_line_auxiliary_requires_model_declaration() -> N
         fermions=(fermion, -fermion),
         massless_adjoint_vectors=(adjoint,),
         vertices=(auxiliary_vertex,),
-        auxiliary_kinds={auxiliary: "u1-subtraction-color-flow-vector"},
+        auxiliary_kinds={auxiliary: U1_SUBTRACTION_AUXILIARY_KIND},
     )
     one_line_process = _process(
         (-fermion, fermion, adjoint, adjoint),
