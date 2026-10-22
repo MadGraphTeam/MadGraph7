@@ -43,10 +43,10 @@ chunks never merge, so the executor runs chunks independently and releases
 each chunk's states with it (design §5.3). A state's key holds its dressed
 positions, so a chunk key of depth 1 loses no merge at all; deeper keys
 repeat the shallower (cheap, low-rank) states in every chunk below them.
-Every skeleton of a family starts at the family's first position, so the
-chunks of a family are consecutive (chunks are ordered by their leading leg
-sets): a family is complete, and its accumulator can stream into the
-reduction, as soon as its chunks are done.
+Every skeleton of a family starts at the family's first position and chunks
+are ordered by their leading leg sets, so a family's chunks lie in the run
+of chunks of its first leg set: a family is complete, and its accumulator
+can stream into the reduction, once that run is done.
 Within a chunk states are ordered by their dressed positions, a depth-first
 topological order (a parent's positions are a prefix of its child's) that
 keeps few open-loop objects live.

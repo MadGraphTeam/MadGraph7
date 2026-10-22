@@ -37,8 +37,8 @@
 //! part (fused factors, split vertex tensors and currents) are built before it
 //! and kept only while a later part reads them, and every family whose last
 //! closure lies in a finished part is handed to the caller. A family's chunks
-//! are consecutive (they share its first position), so families stream into
-//! the reduction part by part.
+//! lie in the run of chunks of its first leg set (chunks are ordered by it),
+//! so families stream into the reduction part by part.
 
 use super::closure::{FamilyNumerator, frame_shift, substitute, trace_into};
 use super::dress::{Carrier, ChunkInputs, LaneData, Pool, Reads, cadd, dress_edge};

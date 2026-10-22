@@ -15,10 +15,10 @@ Checks:
   keys of depth 0, 1 and 2, every kernel form and both ring readings;
   binary64 and arbitrary precision agree with B to the carrier's precision;
 * a native evaluation with schedule M equals schedule B at 32 digits (all
-  three Laurent coefficients, finite-only included); in binary64 M's virtual
-  lies within 1e-12 of the 32-digit value, or within its own
-  reduction-direction estimate on ill-conditioned points; the report has
-  M's memory per lane;
+  three Laurent coefficients); in binary64 M's virtual lies within 1e-12 of
+  the 32-digit value, or within its own reduction-direction estimate on
+  ill-conditioned points, and finite-only runs give its finite parts; the
+  report has M's memory per lane;
 * leading colour: M = B on the pruned LC slices.
 """
 
@@ -220,16 +220,21 @@ def test_planar_paths_certify_against_the_b_seeds(slices, name, everywhere):
         merged.merged_graph(slice_, chunk_depth=2).counts()["states"]
         >= counts["states"]
     )
-    # The chunks of a family are consecutive, so it streams once they ran.
-    chunk_of = {}
+    # A family's chunks share its first leg set, and the chunks of a leg set
+    # are consecutive: the family streams once that run of chunks ran.
+    leg_sets: dict = {}
+    run: list = []
     start = 0
-    for k, end in enumerate(graph.chunks):
+    for end in graph.chunks:
+        (masks, *_rest), *_ = graph.states[start].key
+        if not run or run[-1] != masks:
+            assert masks not in run
+            run.append(masks)
         for state in graph.states[start:end]:
             if state.closure is not None:
-                chunk_of.setdefault(state.closure[0], set()).add(k)
+                leg_sets.setdefault(state.closure[0], set()).add(masks)
         start = end
-    for chunks in chunk_of.values():
-        assert max(chunks) - min(chunks) + 1 == len(chunks)
+    assert all(len(sets) == 1 for sets in leg_sets.values())
 
 
 @pytest.mark.loop_physics
@@ -389,54 +394,56 @@ def test_native_evaluation_with_m_equals_b(slices, name):
     streaming M's completed families into the reduction.
 
     At 32 digits M = B to 1e-25 (all components, all three Laurent
-    coefficients, finite only too). In binary64 the two schedules sum the
-    same numerators in different orders and the reduction amplifies that
-    rounding on ill-conditioned points (gg -> ggg's first point loses five
-    digits in either schedule), so M's binary64 virtual is held to 1e-12 of
-    the 32-digit value, or to its own reduction-direction estimate where
-    that is larger; the counterterm components equal B's to 1e-12. The
-    report has M's memory per lane."""
+    coefficients). In binary64 the two schedules sum the same numerators in
+    different orders and the reduction amplifies that rounding on
+    ill-conditioned points (gg -> ggg's first point loses five digits in
+    either schedule), so M's binary64 virtual is held to 1e-12 of the
+    32-digit value, or to its own reduction-direction estimate where that is
+    larger; the counterterm components equal B's to 1e-12, and finite-only
+    runs give M's finite parts bit for bit. The report has M's memory per
+    lane."""
 
     slice_ = slices(name)
     executor = _executor(slice_)
     points, scales = _points(PROCESSES[name][3])
     points, scales = points[:2], scales[:2]
-    counterterms = tuple(c for c in COMPONENTS if c not in ("virtual", "bare"))
-    for poles in (True, False):
-        options = {"parameters": PARAMETERS, "poles": poles}
-        exact = {
-            schedule: executor.evaluate(
-                points,
-                scales,
-                precision=Precision.arbitrary(32),
-                schedule=schedule,
-                **options,
-            )
-            for schedule in "BM"
-        }
-        for left, right in zip(exact["M"], exact["B"], strict=True):
-            _assert_laurent_close(left, right, Decimal("1e-25"))
-        b = executor.evaluate(points, scales, **options)
-        m = executor.evaluate(
+    options = {"parameters": PARAMETERS}
+    exact = {
+        schedule: executor.evaluate(
             points,
             scales,
-            schedule="M",
-            stability=StabilityChecks(reduction_direction=True),
+            precision=Precision.arbitrary(32),
+            schedule=schedule,
             **options,
         )
-        report = executor.last_report
-        for mine, theirs, truth in zip(m, b, exact["B"], strict=True):
-            _assert_laurent_close(mine, theirs, 1e-12, counterterms)
-            reference = {
-                sector: Laurent(*[float(x) for x in value.coefficients])
-                for sector, value in truth.components["virtual"].items()
-            }
-            error = deviation(reference, mine.components["virtual"])
-            assert error <= max(1e-12, mine.stability.relative), (
-                poles,
-                error,
-                mine.stability,
-            )
+        for schedule in "BM"
+    }
+    for left, right in zip(exact["M"], exact["B"], strict=True):
+        _assert_laurent_close(left, right, Decimal("1e-25"))
+    b = executor.evaluate(points, scales, **options)
+    m = executor.evaluate(
+        points,
+        scales,
+        schedule="M",
+        stability=StabilityChecks(reduction_direction=True),
+        **options,
+    )
+    report = executor.last_report
+    counterterms = tuple(c for c in COMPONENTS if c not in ("virtual", "bare"))
+    for mine, theirs, truth in zip(m, b, exact["B"], strict=True):
+        _assert_laurent_close(mine, theirs, 1e-12, counterterms)
+        reference = {
+            sector: Laurent(*[float(x) for x in value.coefficients])
+            for sector, value in truth.components["virtual"].items()
+        }
+        error = deviation(reference, mine.components["virtual"])
+        assert error <= max(1e-12, mine.stability.relative), (error, mine.stability)
+    finite = executor.evaluate(points, scales, schedule="M", poles=False, **options)
+    for value, full in zip(finite, m, strict=True):
+        for component in COMPONENTS:
+            for sector, laurent in value.components[component].items():
+                assert laurent.single_pole is None and laurent.double_pole is None
+                assert laurent.finite == full.components[component][sector].finite
     reals = report["reals_per_lane"]
     assert reals["merged family accumulators"] > 0
     assert reals["open objects (one merged chunk)"] > 0
