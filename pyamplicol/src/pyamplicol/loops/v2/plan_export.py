@@ -531,7 +531,6 @@ class _Exporter:
         helicity row links) and closures (family accumulator, frame map into
         the family's trie frame), and the end of every chunk."""
 
-        targets = rx.trie_targets(self.slice_.plan)
         entries = []
         objects: list[_Object] = []
         for c, order, weight, content in graph.entries:
@@ -544,20 +543,19 @@ class _Exporter:
         for state in graph.states:
             edges = []
             weights = []
-            for source, step in state.edges:
+            for source, step, weight in state.edges:
                 edges.append((step.content, objects[-1 - source] if source < 0 else outputs[source]))
-                weights.append(step.coefficient)
+                weights.append(weight)
             record = self._state(edges, state.out_mask, state.shift)
             for edge, weight in zip(record["edges"], weights, strict=True):
                 edge["weight"] = None if weight == _ONE else _complex_text(weight)
             closure = None
             if state.closure is not None:
-                skeleton = state.closure
-                _frame, relabelled = targets[skeleton]
-                family = family_index[skeleton.family]
+                family_key, orders, relabelled = state.closure
+                family = family_index[family_key]
                 closure = {
                     "family": family,
-                    "accumulator": accumulator_of[family][skeleton.orders],
+                    "accumulator": accumulator_of[family][orders],
                     "relabel": None
                     if relabelled is None
                     else [relabelled.sign, relabelled.shift_mask],

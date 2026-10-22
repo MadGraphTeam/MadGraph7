@@ -25,7 +25,7 @@ the reals per lane of every live store, and the design's adoption rule
 
 Usage:
     python tools/loop_v2_schedules.py export --output DIR [--process KEY ...]
-        [--accuracy fc lc] [--chunk-tokens 2] [--ufo PATH]
+        [--accuracy fc lc] [--chunk-depth 1] [--ufo PATH]
     python tools/loop_v2_schedules.py report BENCH.json [...]
 """
 
@@ -126,7 +126,7 @@ def export(options: argparse.Namespace) -> int:
                 slice_ = generate(compiled, native, key, ACCURACIES[label])
                 generated = time.perf_counter() - start
                 start = time.perf_counter()
-                graph = merged_graph(slice_, chunk_tokens=options.chunk_tokens)
+                graph = merged_graph(slice_, chunk_depth=options.chunk_depth)
                 graphed = time.perf_counter() - start
                 start = time.perf_counter()
                 exported = export_plan(slice_, forward=False, merged=graph)
@@ -135,7 +135,7 @@ def export(options: argparse.Namespace) -> int:
                 summary = {
                     "process": PROCESSES[key][0],
                     "accuracy": ACCURACIES[label],
-                    "chunk_tokens": options.chunk_tokens,
+                    "chunk_depth": options.chunk_depth,
                     "families": len(slice_.plan.schedules),
                     "b_trie_nodes": sum(
                         len(s.trie.nodes) for s in slice_.plan.schedules.values()
@@ -202,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     writer.add_argument(
         "--accuracy", nargs="+", default=["fc", "lc"], choices=list(ACCURACIES)
     )
-    writer.add_argument("--chunk-tokens", type=int, default=2)
+    writer.add_argument("--chunk-depth", type=int, default=1)
     writer.add_argument("--ufo", type=Path, default=UFO)
     reader = commands.add_parser("report", help="the adoption table of bench runs")
     reader.add_argument("bench", nargs="+", type=Path)

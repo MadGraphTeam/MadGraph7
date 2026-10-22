@@ -11,11 +11,14 @@ Checks:
 * the planar paths of every certified skeleton sum to its B seed exactly and
   the state graph has one cut-to-closure path per planar path; families with
   generic seeds (several quark lines) stay on schedule B;
-* O4 in Rust: the native exact carrier gives M = B bit for bit, with chunked
-  and unchunked graphs and every kernel form; binary64 and arbitrary
+* O4 in Rust: the native exact carrier gives M = B bit for bit, with chunk
+  keys of depth 0, 1 and 2 and every kernel form; binary64 and arbitrary
   precision agree with B to the carrier's precision;
-* a native evaluation with schedule M equals schedule B (all three Laurent
-  coefficients, finite-only included) and reports M's memory per lane;
+* a native evaluation with schedule M equals schedule B at 32 digits (all
+  three Laurent coefficients, finite-only included); in binary64 M's virtual
+  lies within 1e-12 of the 32-digit value, or within its own
+  reduction-direction estimate on ill-conditioned points; the report has
+  M's memory per lane;
 * leading colour: M = B on the pruned LC slices.
 """
 
@@ -30,9 +33,15 @@ import pytest
 
 from pyamplicol.loops.v2 import assemble, ct_sites, merged
 from pyamplicol.loops.v2 import reference_executor as rx
-from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
-from pyamplicol.loops.v2.assemble import COMPONENTS
+from pyamplicol.loops.v2.assemble import (
+    COMPONENTS,
+    Laurent,
+    LoopSlice,
+    Precision,
+    SliceRequest,
+)
 from pyamplicol.loops.v2.plan_export import NativeExecutor, _degree, export_plan
+from pyamplicol.loops.v2.stability import StabilityChecks, deviation
 
 ROOT = Path(__file__).resolve().parents[2]
 PARAMETERS = {"aS": "0.118", "MT": "173"}
@@ -144,8 +153,25 @@ def _point(name: str, index: int = 0):
     return points[index], scales[index]
 
 
-def _executor(slice_, chunk_tokens=2, forms="rule") -> NativeExecutor:
-    graph = merged.merged_graph(slice_, chunk_tokens=chunk_tokens)
+def _conserving(point: list) -> list:
+    """The point with its last momentum set to conserve momentum exactly.
+
+    Schedule M closes a ring in its cut frame and maps it into the family's
+    trie frame by a loop-momentum shift that assumes momentum conservation;
+    decimal fixtures conserve it to their last digit only (the dilepton
+    points to 1e-13 GeV), which M and B then read in different frames.
+    """
+
+    momenta = [[Fraction(x) for x in momentum] for momentum in point]
+    momenta[-1] = [
+        momenta[0][mu] + momenta[1][mu] - sum(p[mu] for p in momenta[2:-1])
+        for mu in range(4)
+    ]
+    return [[str(x) for x in momentum] for momentum in momenta]
+
+
+def _executor(slice_, chunk_depth=1, forms="rule") -> NativeExecutor:
+    graph = merged.merged_graph(slice_, chunk_depth=chunk_depth)
     return NativeExecutor(slice_, forward=False, merged=graph, forms=forms)
 
 
@@ -183,10 +209,22 @@ def test_planar_paths_certify_against_the_b_seeds(slices, name, everywhere):
         1 for s in rx.plan_skeletons(slice_.plan) if s.family in graph.families
     )
     assert counts["states"] < positions
-    # Chunks only cut merges: the unchunked graph has the fewest states.
-    whole = merged.merged_graph(slice_, chunk_tokens=0)
+    # Chunks keyed by the first position lose no merge; deeper keys repeat
+    # the shallow states in every chunk below them.
+    whole = merged.merged_graph(slice_, chunk_depth=0)
     assert whole.counts()["chunks"] == 1
-    assert whole.counts()["states"] <= counts["states"]
+    assert whole.counts()["states"] == counts["states"]
+    assert merged.merged_graph(slice_, chunk_depth=2).counts()["states"] >= counts["states"]
+    # The chunks of a family are consecutive, so it streams once they ran.
+    chunk_of = {}
+    start = 0
+    for k, end in enumerate(graph.chunks):
+        for state in graph.states[start:end]:
+            if state.closure is not None:
+                chunk_of.setdefault(state.closure[0], set()).add(k)
+        start = end
+    for chunks in chunk_of.values():
+        assert max(chunks) - min(chunks) + 1 == len(chunks)
 
 
 @pytest.mark.loop_physics
@@ -220,48 +258,63 @@ def _assert_exact(left, right, label):
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("name", ["gg_gg", "uux_gg", "uux_ddxg"])
+@pytest.mark.parametrize("name", ["gg_gg", "uux_gg", "uux_ddxg", "uux_emepgg"])
 def test_exact_m_equals_b(slices, name):
     """O4 in Rust: exact rational numerators of M equal B's bit for bit,
-    chunked or not, in every kernel form."""
+    chunked or not, in every kernel form (at momentum-conserving points)."""
 
     slice_ = slices(name)
     point, scale = _point(name)
+    point = _conserving(point)
     reference = None
-    for chunk_tokens, forms in ((2, "rule"), (0, "fused"), (3, "split")):
-        executor = _executor(slice_, chunk_tokens, forms)
+    for chunk_depth, forms in ((1, "rule"), (0, "fused"), (2, "split")):
+        executor = _executor(slice_, chunk_depth, forms)
         options = {"parameters": PARAMETERS, "exact": True}
         if reference is None:
             (reference,) = executor.family_numerators([point], [scale], **options)
         (mine,) = executor.family_numerators(
             [point], [scale], schedule="M", **options
         )
-        _assert_exact(mine, reference, (chunk_tokens, forms))
+        _assert_exact(mine, reference, (chunk_depth, forms))
 
 
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", ["gg_ggg", "uux_ggg", "uux_emepgg"])
 def test_binary64_m_equals_b(slices, name):
-    """Binary64 numerators of M against B: within 1e-13 of each family's
-    largest sqrt(s)^r-weighted coefficient."""
+    """Binary64 numerators of M against B (momentum-conserving points):
+    within 1e-13 of each family's largest sqrt(s)^r-weighted coefficient.
+
+    Families that vanish identically (Furry's theorem: the two orientations
+    of a closed quark loop with one photon and two gluons cancel) have no
+    scale of their own. B cancels them leaf by leaf, M only at the closure
+    of the two orderings, so their rounding is held to 1e-13 of the point's
+    largest weighted coefficient instead; a family counts as vanishing when
+    B's value is below that bound.
+    """
 
     slice_ = slices(name)
     executor = _executor(slice_)
     points, scales = _points(PROCESSES[name][3])
-    b = executor.family_numerators(points[:2], scales[:2], parameters=PARAMETERS)
-    m = executor.family_numerators(
-        points[:2], scales[:2], parameters=PARAMETERS, schedule="M"
-    )
+    points, scales = [_conserving(p) for p in points[:2]], scales[:2]
+    b = executor.family_numerators(points, scales, parameters=PARAMETERS)
+    m = executor.family_numerators(points, scales, parameters=PARAMETERS, schedule="M")
     for index, (left, right) in enumerate(zip(m, b, strict=True)):
         energy = float(Fraction(points[index][0][0]) + Fraction(points[index][1][0]))
         assert left.keys() == right.keys()
-        for key, mine in left.items():
-            theirs = right[key]
-            scale = max(
+
+        def weighted(numerator):
+            return max(
                 abs(complex(x)) * energy ** _degree(k)
-                for column in theirs.columns
+                for column in numerator.columns
                 for k, x in enumerate(column)
             )
+
+        largest = max(weighted(numerator) for numerator in right.values())
+        for key, mine in left.items():
+            theirs = right[key]
+            scale = weighted(theirs)
+            if scale < DOUBLE_TOLERANCE * largest:
+                scale = largest
             for x, y in zip(mine.columns, theirs.columns, strict=True):
                 for k, (a, c) in enumerate(zip(x, y, strict=True)):
                     assert abs(complex(a) - complex(c)) * energy ** _degree(k) <= (
@@ -304,32 +357,76 @@ def _magnitude(value) -> Decimal:
 # ----------------------------------------------------------------- evaluation
 
 
+def _assert_laurent_close(left, right, tolerance, components=COMPONENTS):
+    """Every sector's Laurent coefficients within ``tolerance`` of the
+    sector's largest coefficient in ``right``."""
+
+    assert left.born == right.born
+    for component in components:
+        assert left.components[component].keys() == right.components[component].keys()
+        for sector, value in right.components[component].items():
+            mine = left.components[component][sector]
+            assert len(mine.coefficients) == len(value.coefficients)
+            scale = max(abs(x) for x in value.coefficients) or 1
+            for x, y in zip(mine.coefficients, value.coefficients, strict=True):
+                assert abs(x - y) <= tolerance * scale, (component, sector)
+
+
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", ["gg_ggg", "uux_ggg"])
 def test_native_evaluation_with_m_equals_b(slices, name):
-    """The complete native evaluation with schedule M equals schedule B (all
-    three Laurent coefficients, finite only too), streaming M's completed
-    families into the reduction; the report has M's memory per lane."""
+    """The complete native evaluation with schedule M equals schedule B,
+    streaming M's completed families into the reduction.
+
+    At 32 digits M = B to 1e-25 (all components, all three Laurent
+    coefficients, finite only too). In binary64 the two schedules sum the
+    same numerators in different orders and the reduction amplifies that
+    rounding on ill-conditioned points (gg -> ggg's first point loses five
+    digits in either schedule), so M's binary64 virtual is held to 1e-12 of
+    the 32-digit value, or to its own reduction-direction estimate where
+    that is larger; the counterterm components equal B's to 1e-12. The
+    report has M's memory per lane."""
 
     slice_ = slices(name)
     executor = _executor(slice_)
     points, scales = _points(PROCESSES[name][3])
     points, scales = points[:2], scales[:2]
+    counterterms = tuple(c for c in COMPONENTS if c not in ("virtual", "bare"))
     for poles in (True, False):
-        b = executor.evaluate(points, scales, parameters=PARAMETERS, poles=poles)
+        options = {"parameters": PARAMETERS, "poles": poles}
+        exact = {
+            schedule: executor.evaluate(
+                points,
+                scales,
+                precision=Precision.arbitrary(32),
+                schedule=schedule,
+                **options,
+            )
+            for schedule in "BM"
+        }
+        for left, right in zip(exact["M"], exact["B"], strict=True):
+            _assert_laurent_close(left, right, Decimal("1e-25"))
+        b = executor.evaluate(points, scales, **options)
         m = executor.evaluate(
-            points, scales, parameters=PARAMETERS, poles=poles, schedule="M"
+            points,
+            scales,
+            schedule="M",
+            stability=StabilityChecks(reduction_direction=True),
+            **options,
         )
         report = executor.last_report
-        for left, right in zip(m, b, strict=True):
-            assert left.born == right.born
-            for component in COMPONENTS:
-                for sector, value in right.components[component].items():
-                    mine = left.components[component][sector]
-                    assert len(mine.coefficients) == len(value.coefficients)
-                    scale = max(abs(complex(x)) for x in value.coefficients) or 1.0
-                    for x, y in zip(mine.coefficients, value.coefficients, strict=True):
-                        assert abs(complex(x) - complex(y)) <= 1e-12 * scale, component
+        for mine, theirs, truth in zip(m, b, exact["B"], strict=True):
+            _assert_laurent_close(mine, theirs, 1e-12, counterterms)
+            reference = {
+                sector: Laurent(*[float(x) for x in value.coefficients])
+                for sector, value in truth.components["virtual"].items()
+            }
+            error = deviation(reference, mine.components["virtual"])
+            assert error <= max(1e-12, mine.stability.relative), (
+                poles,
+                error,
+                mine.stability,
+            )
     reals = report["reals_per_lane"]
     assert reals["merged family accumulators"] > 0
     assert reals["open objects (one merged chunk)"] > 0
