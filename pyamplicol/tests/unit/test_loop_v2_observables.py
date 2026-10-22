@@ -511,7 +511,16 @@ def _assert_correlated(result, expected, index, tolerance):
 
 @pytest.mark.parametrize("carrier", tuple(CARRIERS))
 @pytest.mark.parametrize(
-    "name", ("ddgg_ssgg", "gg_gg", "uux_ggg", "gg_gg_lc", "gg_gg_nlc", "uux_ggg_lc")
+    "name",
+    (
+        "ddgg_ssgg",
+        "gg_gg",
+        "uux_ggg",
+        "uux_ggg_spin",
+        "gg_gg_lc",
+        "gg_gg_nlc",
+        "uux_ggg_lc",
+    ),
 )
 def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
     """O1: every legacy directed history (dipoles, Casimirs, ordered two-
