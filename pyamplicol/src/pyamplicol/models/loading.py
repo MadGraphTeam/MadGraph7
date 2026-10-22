@@ -10,7 +10,7 @@ import shutil
 import sys
 import threading
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass, field, replace
@@ -1084,6 +1084,292 @@ def _distribution_version(name: str, default: str) -> str:
         return importlib.metadata.version(name)
     except importlib.metadata.PackageNotFoundError:
         return default
+
+
+# ----------------------------------------------------------- counterterm lowering
+
+# Pseudo-order of a counterterm (CT) insertion. A CT vertex carries it once, so
+# the order limit 1 interns CT = 0 and CT = 1 currents in one tree recursion.
+COUNTERTERM_INSERTION_ORDER = "PYAMPLICOL_CT_INSERTION"
+COUNTERTERM_COMPONENTS = ("r2", "uv_local")
+COUNTERTERM_POWERS = (0, -1, -2)
+_COUNTERTERM_PARAMETER_BLOCK = "PYAMPLICOL_CT"
+# The imaginary unit of the loader's canonical expression strings.
+_IMAGINARY_UNIT = "\N{MATHEMATICAL ITALIC SMALL I}"
+
+
+def counterterm_slot_order(component: str, power: int) -> str:
+    """Pseudo-order of one CT slot (component x epsilon power, design §6.1).
+
+    Each CT vertex carries the order of its slot, so CT = 1 currents and roots
+    stay separate per slot and the squared-order partials of the tree runtime
+    split the Born x CT interference into components and Laurent coefficients.
+    """
+
+    if component not in COUNTERTERM_COMPONENTS or power not in COUNTERTERM_POWERS:
+        raise ValueError(f"unknown counterterm slot ({component!r}, {power})")
+    return f"{_COUNTERTERM_PARAMETER_BLOCK}_{component.upper()}_EPS{-power}"
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class CountertermStructure:
+    """One CT vertex term of one slot: what the tree recursion lowers.
+
+    ``particles`` are the UFO particle names in vertex-leg order, ``colour``
+    the CT entry's UFO colour (``models.ct_color_flow``), ``lorentz`` the name
+    of a Lorentz structure of the model, ``orders`` the physical coupling
+    orders of the entry, ``component`` ``"r2"`` or ``"uv_local"`` and
+    ``power`` the epsilon power of the slot.
+    """
+
+    particles: tuple[str, ...]
+    colour: str
+    lorentz: str
+    orders: tuple[tuple[str, int], ...]
+    component: str
+    power: int
+
+    @property
+    def slot_order(self) -> str:
+        return counterterm_slot_order(self.component, self.power)
+
+
+class CountertermLoweringError(ValueError):
+    """CT vertex terms the tree compiler compiled but cannot decompose.
+
+    ``refused`` maps each such ``CountertermStructure`` to the reason.
+    """
+
+    def __init__(self, refused: Mapping[CountertermStructure, str]):
+        self.refused = dict(refused)
+        super().__init__(
+            "counterterm vertices the tree compiler cannot lower: "
+            + "; ".join(sorted({reason for reason in self.refused.values()}))
+        )
+
+
+@dataclass(frozen=True)
+class CountertermLoweredModel:
+    """A compiled model whose tree vertices include lowered CT vertices.
+
+    Every ``CountertermStructure`` is one vertex term whose coupling is
+    ``re + i im`` of its two real runtime parameters (``parameters``). They
+    are runtime sources, bound per evaluation to the sum of the CT couplings'
+    Laurent coefficients of the slot over the admitted rules
+    (``loops.v2.ct_recursion``); their defaults are 1, never 0, because the
+    tree compiler treats a coupling that vanishes at its default as a
+    structural zero. CT vertices carry the physical orders of their entry,
+    ``COUNTERTERM_INSERTION_ORDER`` once and the order of their slot once.
+    """
+
+    compiled: CompiledModel
+    parameters: Mapping[CountertermStructure, tuple[str, str]]
+    refused: Mapping[CountertermStructure, str] = field(default_factory=dict)
+
+    @property
+    def slot_orders(self) -> tuple[str, ...]:
+        return tuple(sorted({structure.slot_order for structure in self.parameters}))
+
+
+def counterterm_lorentz_error(compiled: CompiledModel, name: str) -> str | None:
+    """Why the tree compiler cannot normalise Lorentz structure ``name``.
+
+    ``None`` when it can. The tree vocabulary has no Levi-Civita tensor, which
+    some CT vertices (e.g. the gluon-gluon-Z R2) use.
+    """
+
+    from .._internal.physics.symbols import symbols
+    from .tensors import normalize_lorentz_expression
+
+    (record,) = (
+        item for item in compiled.model["lorentz_structures"] if item["name"] == name
+    )
+    try:
+        normalize_lorentz_expression(
+            str(record["structure"]),
+            tuple(int(value) for value in record["spins"]),
+            model_symbols=symbols.model(compiled.name),
+        )
+    except (NotImplementedError, ValueError) as error:
+        return str(error)
+    return None
+
+
+def lower_counterterm_vertices(
+    compiled: CompiledModel,
+    structures: Iterable[CountertermStructure],
+) -> CountertermLoweredModel:
+    """Lower CT vertex terms into the tree model of ``compiled`` (design §6.1).
+
+    The CT vertices become ordinary UFO vertex rules of a copy of the compiled
+    payload: one rule per (particles, orders, slot) with a coupling matrix
+    over its colour and Lorentz structures. They go through the ordinary
+    tree compiler (``compile_ufo_model_ir``), so Lorentz normalisation,
+    oriented kernels and contact decompositions are those of tree vertices,
+    in the model's kernel variant. Two-point insertions need the unary node
+    of design §6.1 and colours outside the tree colour flow need the
+    multi-trace colour state; both are refused here. Contact vertices the
+    tree compiler has no colour-flow decomposition for (e.g. two gluons and
+    two colour-singlet bosons) raise ``CountertermLoweringError`` naming
+    them, so that a caller can close their rules as sites.
+    """
+
+    from .compiler_entry import compile_ufo_model_ir
+    from .ct_color_flow import tree_colour_source
+
+    structures = tuple(sorted(set(structures)))
+    payload = json.loads(json.dumps(compiled.model))
+    particles = {str(item["name"]): item for item in payload["particles"]}
+    lorentz_names = {str(item["name"]) for item in payload["lorentz_structures"]}
+    groups: dict[tuple[object, ...], list[CountertermStructure]] = {}
+    for structure in structures:
+        if len(structure.particles) < 3:
+            raise ValueError(
+                f"two-point counterterm {structure.particles} needs the unary node "
+                "of design §6.1"
+            )
+        if structure.lorentz not in lorentz_names:
+            raise ValueError(f"unknown Lorentz structure {structure.lorentz!r}")
+        groups.setdefault(
+            (
+                structure.particles,
+                structure.orders,
+                structure.component,
+                structure.power,
+            ),
+            [],
+        ).append(structure)
+    parameters: dict[CountertermStructure, tuple[str, str]] = {}
+    couplings: dict[CountertermStructure, str] = {}
+    defaults = dict(compiled.parameter_defaults)
+    for index, structure in enumerate(structures):
+        names = (
+            f"{_COUNTERTERM_PARAMETER_BLOCK}_{index}_RE",
+            f"{_COUNTERTERM_PARAMETER_BLOCK}_{index}_IM",
+        )
+        parameters[structure] = names
+        for offset, name in enumerate(names):
+            payload["parameters"].append(
+                {
+                    "expression": None,
+                    "lhablock": _COUNTERTERM_PARAMETER_BLOCK,
+                    "lhacode": [2 * index + offset + 1],
+                    "name": name,
+                    "nature": "external",
+                    "parameter_type": "real",
+                    "value": [1.0, 0.0],
+                }
+            )
+            defaults[name] = (1.0, 0.0)
+        couplings[structure] = f"{_COUNTERTERM_PARAMETER_BLOCK}C_{index}"
+        payload["couplings"].append(
+            {
+                "expression": (
+                    f"UFO::{{}}::{names[0]}+{_IMAGINARY_UNIT}*UFO::{{}}::{names[1]}"
+                ),
+                "name": couplings[structure],
+                "orders": [
+                    *([name, value] for name, value in structure.orders),
+                    [COUNTERTERM_INSERTION_ORDER, 1],
+                    [structure.slot_order, 1],
+                ],
+                "value": [1.0, 1.0],
+            }
+        )
+    vertex_members: dict[str, list[CountertermStructure]] = {}
+    for number, ((names, *_slot), members) in enumerate(sorted(groups.items())):
+        representations = [int(particles[name]["color"]) for name in names]
+        colours = sorted({member.colour for member in members})
+        lorentz = sorted({member.lorentz for member in members})
+        cells = {
+            (member.colour, member.lorentz): couplings[member] for member in members
+        }
+        vertex_members[f"{_COUNTERTERM_PARAMETER_BLOCK}_V{number}"] = members
+        payload["vertex_rules"].append(
+            {
+                "name": f"{_COUNTERTERM_PARAMETER_BLOCK}_V{number}",
+                "particles": list(names),
+                "color_structures": [
+                    tree_colour_source(colour, representations) for colour in colours
+                ],
+                "lorentz_structures": lorentz,
+                "couplings": [
+                    [cells.get((colour, name)) for name in lorentz]
+                    for colour in colours
+                ],
+            }
+        )
+    hierarchy = max((int(item["hierarchy"]) for item in payload["orders"]), default=0)
+    for offset, name in enumerate(
+        sorted(
+            {COUNTERTERM_INSERTION_ORDER}
+            | {structure.slot_order for structure in structures}
+        ),
+        start=1,
+    ):
+        payload["orders"].append(
+            {"expansion_order": -1, "hierarchy": hierarchy + offset, "name": name}
+        )
+    started = time.perf_counter()
+    ir = compile_ufo_model_ir(payload)
+    lowered_vertices = {
+        rule["name"]
+        for rule in payload["vertex_rules"]
+        if str(rule["name"]).startswith(_COUNTERTERM_PARAMETER_BLOCK)
+    }
+    contact = {
+        term.id
+        for term in ir.vertex_terms
+        if term.valence > 3 and term.vertex in lowered_vertices
+    }
+    lowered_contact = {
+        term_id
+        for kernel in ir.oriented_kernels
+        if "::contact-" in kernel.vertex and "final" in kernel.vertex
+        for term_id in (kernel.term_ids or (kernel.term_id,))
+    }
+    if contact - lowered_contact:
+        failed = {
+            term.vertex
+            for term in ir.vertex_terms
+            if term.id in contact - lowered_contact
+        }
+        raise CountertermLoweringError(
+            {
+                structure: "no colour-flow contact decomposition of "
+                f"{'-'.join(structure.particles)}"
+                for vertex, members in vertex_members.items()
+                if vertex in failed
+                for structure in members
+            }
+        )
+    digest = hashlib.sha256(
+        json.dumps(
+            [
+                [list(s.particles), s.colour, s.lorentz, s.orders, s.component, s.power]
+                for s in structures
+            ],
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+    lowered = CompiledModel(
+        source={**compiled.source, "counterterm_lowering": digest},
+        producer=compiled.producer,
+        model=payload,
+        ir=ir,
+        parameter_defaults=defaults,
+        capabilities={
+            **compiled.capabilities,
+            "counterterm_vertex_term_count": len(structures),
+        },
+        issues=compiled.issues,
+        phase_timings={
+            **compiled.phase_timings,
+            "counterterm_lowering": time.perf_counter() - started,
+        },
+        conversion_seconds=compiled.conversion_seconds,
+    )
+    return CountertermLoweredModel(lowered, parameters)
 
 
 def _raise_for_unsupported(

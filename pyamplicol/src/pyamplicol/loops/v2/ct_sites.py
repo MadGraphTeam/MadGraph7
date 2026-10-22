@@ -385,6 +385,7 @@ def generate_counterterm_sites(
     forbidden: Iterable[int] = (),
     zeros: Iterable[CertifiedZero] = (),
     whole_rules: bool = False,
+    closed_rules: Iterable[str] | None = None,
 ) -> CountertermSites:
     """Admitted CT sites of a process, after the completeness check.
 
@@ -395,15 +396,22 @@ def generate_counterterm_sites(
     excludes; ``zeros`` are certified zeros of divergent witnesses.
     ``whole_rules`` admits rules carrying a whole-rule colour continuation;
     the caller then closes their replacement terms (``SiteClosure.close``)
-    instead of ``SiteClosure.terms``.
+    instead of ``SiteClosure.terms``. ``closed_rules`` restricts the sites to
+    the named rules (the rules the CT recursion leaves to site closure,
+    ``loops.v2.ct_recursion``); completeness is still checked on all rules.
     """
 
     data = model_data(native_model)
     names = {int(entry["pdg_code"]): entry["name"] for entry in data["particles"]}
+    closed = None if closed_rules is None else frozenset(closed_rules)
     for name, rule in rules.items():
         if rule.kind not in COUNTERTERM_KINDS:
             raise ValueError(f"counterterm rule {name} has unknown kind {rule.kind!r}")
-        if rule.whole_rule_continuation is not None and not whole_rules:
+        if (
+            rule.whole_rule_continuation is not None
+            and not whole_rules
+            and (closed is None or name in closed)
+        ):
             raise NotImplementedError(
                 f"counterterm rule {name} carries a whole-rule colour continuation; "
                 "site closure needs its UFO entries"
@@ -419,6 +427,8 @@ def generate_counterterm_sites(
     for name in sorted(rules):
         rule = rules[name]
         if not _selected(rule, corrections):
+            continue
+        if closed is not None and name not in closed:
             continue
         fields = tuple(names[pdg] for pdg in rule.particle_pdgs)
         for parts in _set_partitions(full, len(fields), len(fields)):
