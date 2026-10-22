@@ -317,26 +317,26 @@ def _record(result, seconds: float) -> dict[str, Any]:
 
 
 def _evaluate(executor, points, precision, checks):
-    """Evaluate a batch; on a failure, every point alone (failures recorded)."""
+    """Evaluate a batch; a failed point is recorded with its reasons."""
+
+    from pyamplicol.loops.v2.plan_export import FailedPoints
 
     scales = [SCALE_SQUARED] * len(points)
     start = time.perf_counter()
+    failures = {}
     try:
         results = executor.evaluate(
             points, scales, parameters=PARAMETERS, precision=precision, stability=checks
         )
-    except ArithmeticError:
-        if len(points) == 1:
-            raise
-        out = []
-        for point in points:
-            try:
-                out.extend(_evaluate(executor, [point], precision, checks))
-            except ArithmeticError as error:
-                out.append({"failure": str(error)})
-        return out
+    except FailedPoints as failed:
+        results, failures = failed.results, failed.failures
     seconds = (time.perf_counter() - start) / len(points)
-    return [_record(result, seconds) for result in results]
+    return [
+        {"failure": "; ".join(failures[index])}
+        if result is None
+        else _record(result, seconds)
+        for index, result in enumerate(results)
+    ]
 
 
 def run(options) -> int:
