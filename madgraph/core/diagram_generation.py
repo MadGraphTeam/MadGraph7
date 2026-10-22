@@ -1504,8 +1504,10 @@ class Amplitude(base_objects.PhysicsObject):
         return res
 
     def apply_user_filter(self, diag_list, diagram_filter=True):
-        """Applies the user specified squared order constraints on the diagram
-        list in argument."""
+        """Applies the user diagram filter on the diagram list in argument.
+        diagram_filter is either a function remove_diag(diag, model) provided
+        by a plugin (--diagram_filter=PLUGINNAME) or True to use the one of
+        PLUGIN/user_filter.py."""
 
         if callable(diagram_filter):
             # function provided by a plugin (--diagram_filter=PLUGINNAME)
