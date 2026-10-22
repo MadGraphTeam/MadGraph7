@@ -1084,6 +1084,9 @@ fn split_candidate(
     Ok(Some((SplitStep { groups, parts }, cost)))
 }
 
+/// A step's split form (None: fused) and its modelled costs (fused, split).
+type FormChoice = (Option<SplitStep>, (StepCost, Option<StepCost>));
+
 /// A step's kernel form under the plan's policy (gate G0's rule by
 /// default), with the split inputs it reads registered, and its modelled
 /// costs in both forms.
@@ -1093,7 +1096,7 @@ fn choose_form(
     shared: &Shared<'_>,
     tables: &mut Tables,
     split_inputs: &mut SplitInputs,
-) -> RusticolResult<(Option<SplitStep>, (StepCost, Option<StepCost>))> {
+) -> RusticolResult<FormChoice> {
     let fused_cost = fused_cost(shape.seeded, shape.d_alpha, edges, shared.contents);
     let candidate = split_candidate(shape, edges, shared, tables)?;
     let split_cost = candidate.as_ref().map(|(_, cost)| *cost);
