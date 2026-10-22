@@ -67,11 +67,14 @@ struct PlanFile {
     forward: Option<ForwardFile>,
 }
 
+/// One exported kernel term: (constant id, monomial as (input, power)).
+type TermFileEntry = (usize, Vec<(usize, u32)>);
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct KernelFile {
     inputs: Vec<(String, usize, usize)>,
-    outputs: Vec<Vec<(usize, Vec<(usize, u32)>)>>,
+    outputs: Vec<Vec<TermFileEntry>>,
 }
 
 #[derive(Deserialize)]
@@ -623,7 +626,7 @@ impl Tables {
 /// Row links `(target, source, block)` of one helicity row each, expanded
 /// over the observable columns: object row `row * columns + column`.
 fn expand_links(flat: &[u32], columns: usize) -> RusticolResult<Vec<super::kernels::RowLink>> {
-    require(flat.len() % 3 == 0, "row links are not triples")?;
+    require(flat.len().is_multiple_of(3), "row links are not triples")?;
     let columns = u32::try_from(columns).map_err(|_| invalid("too many columns"))?;
     let mut out = Vec::with_capacity(flat.len() / 3 * columns as usize);
     for link in flat.chunks_exact(3) {
@@ -684,10 +687,14 @@ fn layouts(file: &ContentFile) -> RusticolResult<(SegmentLayout, SegmentLayout)>
 
 /// The split vertex of one routing term: its vertex (shared by every term of
 /// equal key) and, per vertex entry, the term's fused entry.
+/// A resolved split kernel of a routing term: kernel, inputs and, per
+/// output, (fused entry, block component `ν`).
+type SplitKernel = (usize, Vec<KernelInput>, Vec<(usize, usize)>);
+
 fn term_vertex(
     term: &TermFile,
     content: &ContentFile,
-    split: &[(usize, Vec<KernelInput>, Vec<(usize, usize)>)],
+    split: &[SplitKernel],
     width: usize,
 ) -> RusticolResult<(Vertex, Vec<usize>)> {
     let key = |e: usize, nu: usize| -> VertexEntry {

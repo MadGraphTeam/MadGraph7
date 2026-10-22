@@ -2531,7 +2531,7 @@ pub mod v2 {
             s_matrix: Vec::new(),
             coefficients: Vec::new(),
         };
-        for lane in 0..data.active {
+        for (lane, invariants) in invariants.iter_mut().enumerate().take(data.active) {
             let point = data.points[lane];
             if failed[point] {
                 continue;
@@ -2558,7 +2558,7 @@ pub mod v2 {
                     for &mask in &masks {
                         lanes
                             .shifts
-                            .extend(invariants[lane].momentum(mask).iter().cloned());
+                            .extend(invariants.momentum(mask).iter().cloned());
                     }
                     lanes.masses.extend(
                         family
@@ -2566,10 +2566,10 @@ pub mod v2 {
                             .iter()
                             .map(|&(_, mass)| masses[mass].clone()),
                     );
-                    lanes.scales.push(invariants[lane].scale.clone());
+                    lanes.scales.push(invariants.scale.clone());
                     for &a in &masks {
                         for &b in &masks {
-                            lanes.s_matrix.push(invariants[lane].square(a ^ b));
+                            lanes.s_matrix.push(invariants.square(a ^ b));
                         }
                     }
                     lanes.coefficients.extend(coefficients);
