@@ -37,6 +37,7 @@ from .contracts import (
     PROPAGATOR_SOURCE_FIELD,
     TENSOR_ORDERING_CONTRACT_VERSION,
     CompiledModelIR,
+    TreeKernelVariant,
 )
 
 COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
@@ -1199,6 +1200,7 @@ def lower_counterterm_vertices(
     *,
     parameters: Mapping[str, float] = MappingProxyType({}),
     excluded_particles: Iterable[str] = (),
+    tree_kernel_variant: TreeKernelVariant = "full",
 ) -> CountertermLoweredModel:
     """Lower CT vertex terms into the tree model of ``compiled`` (design §6.1).
 
@@ -1231,6 +1233,10 @@ def lower_counterterm_vertices(
     forbids those particles (MadGraph's ``/ z``), which the tree generator
     has no option for. Terms whose coupling the model's restriction makes
     vanish are dropped (absent from ``couplings`` of the result).
+
+    The tree kernels are compiled in the ``"full"`` variant by default: a
+    CT = 1 current is not conserved, so the transverse Yang-Mills shortcut,
+    exact only for conserved inputs, does not apply to it (design §3.2).
     """
 
     from .compiler_entry import compile_ufo_model_ir
@@ -1345,7 +1351,7 @@ def lower_counterterm_vertices(
             {"expansion_order": -1, "hierarchy": hierarchy + offset, "name": name}
         )
     started = time.perf_counter()
-    ir = compile_ufo_model_ir(payload)
+    ir = compile_ufo_model_ir(payload, tree_kernel_variant=tree_kernel_variant)
     # Couplings the model's restriction makes vanish (e.g. off-diagonal CKM
     # entries) are structural zeros: their terms are dropped, not lowered.
     vanishing = {
@@ -1360,6 +1366,7 @@ def lower_counterterm_vertices(
             {s: e for s, e in couplings.items() if names.get(s) not in vanishing},
             parameters=parameters,
             excluded_particles=excluded,
+            tree_kernel_variant=tree_kernel_variant,
         )
     lowered_vertices = {
         rule["name"]

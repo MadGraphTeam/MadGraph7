@@ -859,7 +859,7 @@ Counterterm amplitudes then sit in the Born colour sectors (plus the few multi-t
   - whole-rule continuations;
   - ghost legs.
 - O6: recursion = sites of the lowered rules, and recursion + remaining sites = O1 UV_local and R2, at 1e-12 on all 8 controls in both lanes. The 200-bit carrier is checked on gg→gg, uu~→ggg and DY. uu~→dd~g at 200 bits is a strict xfail: the tree runtime's U(1)-subtraction colour weight is binary64, so its 200-bit Born is only good to about 1e-17.
-- 7-leg CT programs on the Rust recurrence lane: uu~→e⁻e⁺dd~g generates in 37 s and 0.63 GB, gg→ggggg in 45 s and 0.58 GB, after a one-off 3-minute model preparation.
+- 7-leg CT programs on the Rust recurrence lane: uu~→e⁻e⁺dd~g generates in 31 s and 0.54 GB, gg→ggggg in 38 s and 0.54 GB. The lowered model is prepared once, in 2.6 minutes. The lowered tree kernels are the full variant (§3.2), since CT = 1 currents are not conserved.
 
 ### 6.2 Admission: the witness table
 
