@@ -2024,7 +2024,8 @@ def _canonical_transition_alias_key(
     unordered parent pair would receive the vertex twice.
     """
 
-    order = tuple(int(value) for value in binding.canonical_input_order)
+    first, second = binding.canonical_input_order
+    order = (int(first), int(second))
     contribution_factor = _multiply_exact(
         transition.exact_factor,
         color.exact_coefficient,
