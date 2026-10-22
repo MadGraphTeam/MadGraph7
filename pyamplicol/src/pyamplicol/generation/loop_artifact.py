@@ -211,7 +211,7 @@ class LoopV2ExecutionMetadata:
     interference: str = ORDINARY_INTERFERENCE
     scheme_status: str = "declared-not-certified"
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not isinstance(self.scheme, LoopSchemeDeclaration):
             raise TypeError("loop metadata requires a typed scheme declaration")
         if not self.born_orders or not self.sectors or self.families < 1:
@@ -266,7 +266,7 @@ class LoopV2ProcessArtifact(LoopProcessArtifact):
     state_legs: tuple[dict[str, object], ...] = ()
     helicities: tuple[tuple[int, ...], ...] = ()
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not isinstance(self.metadata, LoopV2ExecutionMetadata):
             raise TypeError("v2 loop processes require LoopV2ExecutionMetadata")
         if self.color_accuracy != self.metadata.color_accuracy or self.aliases:
@@ -284,7 +284,9 @@ class LoopV2ProcessArtifact(LoopProcessArtifact):
         return LOOP_V2_RUNTIME_CAPABILITY
 
 
-def _v2_process_payloads(process: LoopV2ProcessArtifact, staged_plan: Path):
+def _v2_process_payloads(
+    process: LoopV2ProcessArtifact, staged_plan: Path
+) -> tuple[dict[str, object], dict[str, object]]:
     from pyamplicol.loops.v2.artifact import plan_digest, read_plan
 
     if plan_digest(read_plan(staged_plan)) != process.plan_sha256:

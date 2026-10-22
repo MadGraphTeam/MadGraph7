@@ -286,7 +286,7 @@ def _recall(model: str, record: Mapping[str, Any], plan: str) -> Any:
 
 
 def _select(manifest: Any, process: str | None) -> Mapping[str, Any]:
-    records = manifest.processes
+    records = cast(tuple[Mapping[str, Any], ...], manifest.processes)
     if process is None:
         if manifest.default_process_id is not None:
             process = manifest.default_process_id
@@ -409,6 +409,7 @@ class V2VirtualRuntime:
                 )
             found = generated.slice, generated.exported
         slice_, exported = found
+        self._generated = slice_, exported
         self._executor = NativeExecutor(slice_, exported=exported)
         # Constructing the f64 executor validates the stored program natively.
         self._executor.native("double")
@@ -582,13 +583,31 @@ class V2VirtualRuntime:
                 f"v2 virtual evaluation failed at point {failed[0]}: "
                 f"{results[failed[0]]}"
             )
-        return self._result(results, setting, carrier, r2, poles, checks)
+        return self._result(
+            results,
+            setting,
+            cast(Literal["double", "arbitrary"], carrier),
+            r2,
+            poles,
+            checks,
+        )
 
-    def _run(self, points, scales, parameters, setting, poles, checks) -> list:
+    def _run(
+        self,
+        points: list[list[list[str]]],
+        scales: list[str],
+        parameters: dict[str, str],
+        setting: Any,
+        poles: bool,
+        checks: VirtualStabilityChecks,
+    ) -> list[Any]:
         """One batch through the native executor; on a failed lane, every point
-        alone, so a failure stays with its point."""
+        alone, so a failure stays with its point. A failed point is its error
+        text."""
 
-        def batch(selected_points, selected_scales):
+        def batch(
+            selected_points: list[list[list[str]]], selected_scales: list[str]
+        ) -> list[Any]:
             return self._executor.evaluate(
                 selected_points,
                 selected_scales,
@@ -602,19 +621,25 @@ class V2VirtualRuntime:
             return []
         try:
             return list(batch(points, scales))
-        except (ArithmeticError, ValueError) as error:
+        except ArithmeticError as error:
             if len(points) == 1:
                 return [str(error)]
-        out: list = []
+        out: list[Any] = []
         for point, scale in zip(points, scales, strict=True):
             try:
                 out.extend(batch([point], [scale]))
-            except (ArithmeticError, ValueError) as error:
+            except ArithmeticError as error:
                 out.append(str(error))
         return out
 
     def _result(
-        self, results, setting, carrier, r2, poles, checks
+        self,
+        results: list[Any],
+        setting: Any,
+        carrier: Literal["double", "arbitrary"],
+        r2: R2Strategy,
+        poles: bool,
+        checks: VirtualStabilityChecks,
     ) -> VirtualEvaluation:
         bits = _precision_bits(None if carrier == "double" else setting.working_digits)
         contraction = VirtualColorContraction(
@@ -622,7 +647,10 @@ class V2VirtualRuntime:
             "direct",
             "native seeds contract the exact colour weights K[c, b] directly",
         )
-        born_values, values, diagnostics, estimates = [], [], [], []
+        born_values: list[tuple[Any, ...] | None] = []
+        values: list[tuple[LaurentCoefficients, ...] | None] = []
+        diagnostics: list[VirtualLaneDiagnostic] = []
+        estimates: list[VirtualStabilityEstimate | None] = []
         for index, result in enumerate(results):
             if isinstance(result, str):
                 born_values.append(None)
@@ -658,7 +686,9 @@ class V2VirtualRuntime:
                 tuple(
                     LaurentCoefficients(*virtual[sector.order].coefficients)
                     if poles
-                    else LaurentCoefficients(virtual[sector.order].finite, None, None)
+                    else LaurentCoefficients(
+                        virtual[sector.order].finite, *_ABSENT_POLES
+                    )
                     for sector in self._sectors
                 )
             )
@@ -693,10 +723,12 @@ class V2VirtualRuntime:
     def evaluate_correlated(self, momenta: Momenta, **kwargs: Any) -> Any:
         raise CompatibilityError(_AWAITS_OBSERVABLES.format("colour/spin correlations"))
 
-    def evaluate_correlated_many(self, momenta: Momenta, requests: Any, **kwargs: Any):
+    def evaluate_correlated_many(
+        self, momenta: Momenta, requests: Any, **kwargs: Any
+    ) -> Any:
         raise CompatibilityError(_AWAITS_OBSERVABLES.format("colour/spin correlations"))
 
-    def available_color_correlations(self) -> tuple:
+    def available_color_correlations(self) -> tuple[Any, ...]:
         raise CompatibilityError(_AWAITS_OBSERVABLES.format("colour/spin correlations"))
 
     def set_spin_correlation_vectors(self, vectors: Any) -> None:
@@ -710,7 +742,10 @@ class V2VirtualRuntime:
     def clear(self) -> None:
         """Drop the native executors (and their master caches)."""
         with self._lock:
-            self._executor._native.clear()
+            from .plan_export import NativeExecutor
+
+            slice_, exported = self._generated
+            self._executor = NativeExecutor(slice_, exported=exported)
 
     def mute_warnings(self) -> None:
         self._muted = True
@@ -760,10 +795,19 @@ def _arithmetic(value: str | None) -> str | None:
     return value
 
 
+_CONTRACTIONS: dict[str, Literal["auto", "direct", "symmetric-group-fft"]] = {
+    "auto": "auto",
+    "direct": "direct",
+    "fft": "symmetric-group-fft",
+}
+# Finite-only Laurent coefficients carry explicitly absent poles.
+_ABSENT_POLES = cast(tuple[Any, Any], (None, None))
+
+
 def _requested_contraction(
     policy: str,
 ) -> Literal["auto", "direct", "symmetric-group-fft"]:
-    return {"auto": "auto", "direct": "direct", "fft": "symmetric-group-fft"}[policy]
+    return _CONTRACTIONS[policy]
 
 
 def _estimate(estimate: Any, poles: bool) -> VirtualStabilityEstimate | None:

@@ -23,7 +23,10 @@ EPSILON_POWERS = (0, -1, -2)
 
 
 class LaurentCoefficients(NamedTuple):
-    """Physical coefficients in the declared C_epsilon convention."""
+    """Physical coefficients in the declared C_epsilon convention.
+
+    The poles are ``None`` in a finite-only evaluation, which never computed them.
+    """
 
     finite: VirtualScalar
     single_pole: VirtualScalar
@@ -402,8 +405,9 @@ def _freeze_axes(
         # Finite-only evaluations never computed the poles: explicitly absent.
         if values[1] is not None or values[2] is not None:
             raise ValueError("finite-only results carry no pole coefficients")
+        absent = cast(VirtualScalar, None)
         return LaurentCoefficients(
-            _scalar(values[0], correlated, arithmetic), None, None
+            _scalar(values[0], correlated, arithmetic), absent, absent
         )
     frozen = tuple(
         _freeze_axes(value, dimensions[1:], correlated, arithmetic, laurent, poles)
@@ -663,7 +667,7 @@ class VirtualEvaluation:
                 *(
                     _sum(tuple(sector[epsilon] for sector in point))
                     if epsilon == 0 or self.poles
-                    else None
+                    else cast(VirtualScalar, None)
                     for epsilon in range(3)
                 )
             )
