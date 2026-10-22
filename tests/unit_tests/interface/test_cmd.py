@@ -1196,13 +1196,6 @@ class LaunchCopiesOnlyRunTimeSetsTest(unittest.TestCase):
                              amcatnlo_run, 'aMCatNLOCmd')
         self.assertEqual(sent, ['set nb_core 4'])
 
-    def test_from_mg5_for_madweight(self):
-        import madgraph.interface.madgraph_interface as mg_interface
-        import madgraph.interface.madweight_interface as madweight
-        sent = self.replayed(mg_interface.MadGraphCmd.do_launch, 'madweight',
-                             madweight, 'MadWeightCmd')
-        self.assertEqual(sent, ['set nb_core 4'])
-
     def test_from_the_amcatnlo_prompt(self):
         import shutil
         import madgraph.interface.amcatnlo_interface as amcatnlo_interface

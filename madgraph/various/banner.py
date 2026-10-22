@@ -5907,7 +5907,9 @@ template_on = \
 # CONTROL The extra running scale (not QCD)                       *
 #    Such running is NOT include in systematics computation            *
 #***********************************************************************
+ %(fixed_extra_scale)s = fixed_extra_scale ! False means dynamical scale
  %(mue_ref_fixed)s  =  mue_ref_fixed ! scale to use if fixed scale mode
+ %(mue_over_ref)s   =  mue_over_ref  ! ratio to mur if dynamical scale
 """
 running_block_nlo = RunBlock('RUNNING', template_on=template_on, template_off="")
     
@@ -5994,7 +5996,7 @@ class RunCardNLO(RunCard):
         self.add_param('mcatnlo_delta', False)
         self.add_param('fixed_ren_scale', False)
         self.add_param('fixed_fac_scale', False)
-        self.add_param('fixed_extra_scale', True, hidden=True, system=True) # set system since running from Ellis-Sexton scale not implemented
+        self.add_param('fixed_extra_scale', True, hidden=True) # False: the extra (EFT) running scale follows muR event by event
         self.add_param('mur_ref_fixed', 91.118, shortcut={'mz':91.118, 'mw':80.419, 'mt':172.5, 'mh':125.0})                       
         self.add_param('muf1_ref_fixed', -1.0, hidden=True)
         self.add_param('muf_ref_fixed', 91.118, shortcut={'mz':91.118, 'mw':80.419, 'mt':172.5, 'mh':125.0})                       
@@ -6010,7 +6012,7 @@ class RunCardNLO(RunCard):
         self.add_param('muf_over_ref', 1.0)                       
         self.add_param('muf1_over_ref', -1.0, hidden=True)                       
         self.add_param('muf2_over_ref', -1.0, hidden=True)
-        self.add_param('mue_over_ref', 1.0, hidden=True, system=True) # forbid the user to modigy due to incorrect handling of the Ellis-Sexton scale
+        self.add_param('mue_over_ref', 1.0, hidden=True, comment='ratio mu_other/muR for dynamical scale') # the Ellis-Sexton scale must stay equal to muR when this is used
         self.add_param('qes_over_ref', -1.0, hidden=True)
         self.add_param('reweight_scale', [True], fortran_name='lscalevar')
         self.add_param('rw_rscale_down', -1.0, hidden=True)        
@@ -6700,6 +6702,16 @@ class RunCardMG7(RunCard):
         if auto:
             self.auto_set.add(internal)
 
+    def gzip_configuration(self):
+        """The ``misc.configure_gzip`` settings given by the [run] section:
+        'auto' lets misc pick pigz, and a positive thread pool size caps it."""
+        run = self['run']
+        threads = run['cpu_thread_pool_size']
+        return {
+            'use_pigz': None if run['use_pigz'] == 'auto' else run['use_pigz'],
+            'nb_core': threads if threads > 0 else None,
+        }
+
     def default_setup(self):
         """Define every parameter of the default ``run_card.toml``."""
 
@@ -6726,6 +6738,9 @@ class RunCardMG7(RunCard):
             comment="-1 chooses automatically; x86: 1, 4, 8; Apple silicon: 1, 2")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,
             comment="threads for the cpu devices; -1 chooses automatically")
+        self.add_toml_param('run', 'use_pigz', False, gridpack=True, auto=True,
+            allowed=['auto', True, False],
+            comment="compress large event files with pigz when available; auto detects it, false uses gzip")
         self.add_toml_param('run', 'gpu_thread_pool_size', 1, gridpack=True,
             comment="threads per gpu device")
         self.add_toml_param('run', 'combine_thread_pool_size', -1, gridpack=True,

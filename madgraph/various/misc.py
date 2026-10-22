@@ -1475,6 +1475,8 @@ def configure_gzip(configuration=None):
     configuration = {'use_pigz': None, 'nb_core': None} | configuration
 
     global _gzip_tool, _gzip_tool_supports_multithreading, _gzip_tool_max_cores
+    _gzip_tool_supports_multithreading = False
+    _gzip_tool_max_cores = None
 
     use_pigz = configuration['use_pigz']
     if use_pigz is None:
@@ -1482,15 +1484,16 @@ def configure_gzip(configuration=None):
         _gzip_tool = open_file.find_valid(['pigz', 'gzip'], 'gzip') 
     elif use_pigz:
         _gzip_tool = open_file.find_valid(['pigz'], 'pigz')
-        if not which(_gzip_tool):
-            logger.warning('Could not find valid `pigz` executable.')
+        if not _gzip_tool:
+            logger.warning('Could not find valid `pigz` executable; using gzip.')
+            _gzip_tool = open_file.find_valid(['gzip'], 'gzip')
     else:
         _gzip_tool = open_file.find_valid(['gzip'], 'gzip')
-        if not which(_gzip_tool):
+        if not _gzip_tool:
             logger.warning('Could not find valid `gzip` executable.')
 
     # If we use the pigz binary, enable multithreading support
-    if 'pigz' in _gzip_tool:
+    if _gzip_tool and 'pigz' in _gzip_tool:
         _gzip_tool_supports_multithreading = True
         if configuration['nb_core'] is not None:
             _gzip_tool_max_cores = configuration['nb_core']
@@ -1504,16 +1507,30 @@ def configure_gzip(configuration=None):
 GZIP_COMPRESSLEVEL = 6
 
 
+def _remove_partial_gz(path):
+    """Delete the truncated archive left behind by a failed compression."""
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
 def gzip(path, stdout=None, error=True, forceexternal=False,
-         compresslevel=GZIP_COMPRESSLEVEL):
+         compresslevel=GZIP_COMPRESSLEVEL, keep=False):
     """ a standard replacement for os.system('gzip %s ' % path)"""
 
     # For large files (>256M), it is faster and safer to use a separate tool.
-    if os.path.getsize(path) > 256e6 or forceexternal:
+    if _gzip_tool and (os.path.getsize(path) > 256e6 or forceexternal):
+        command = [_gzip_tool]
         if _gzip_tool_supports_multithreading and _gzip_tool_max_cores is not None:
-            call([_gzip_tool, '-p', str(_gzip_tool_max_cores), '-f', path])
-        else:
-            call([_gzip_tool, '-f', path])
+            command += ['-p', str(_gzip_tool_max_cores)]
+        if keep:
+            command.append('-k')
+        if call(command + ['-f', path]) != 0:
+            _remove_partial_gz('%s.gz' % path)
+            if error:
+                raise RuntimeError('compressing %s with %s failed' % (path, _gzip_tool))
+            return
 
         if stdout:
             if not stdout.endswith(".gz"):
@@ -1532,14 +1549,19 @@ def gzip(path, stdout=None, error=True, forceexternal=False,
         with open(path, 'rb') as fsock, \
              ziplib.open(stdout, 'wb', compresslevel=compresslevel) as f:
             shutil.copyfileobj(fsock, f, 4 * 1024 * 1024)
-    except OverflowError:
-        gzip(path, stdout, error=error, forceexternal=True)
-    except Exception:
-        if error:
+    except BaseException as err:
+        # Only a complete archive may replace the source: a failed or
+        # interrupted copy leaves no truncated .gz and keeps the source.
+        _remove_partial_gz(stdout)
+        if isinstance(err, OverflowError):
+            if not _gzip_tool:
+                raise
+            return gzip(path, stdout, error=error, forceexternal=True,
+                        compresslevel=compresslevel, keep=keep)
+        if error or not isinstance(err, Exception):
             raise
-        else:
-            return
-    finally:
+        return
+    if not keep:
         os.remove(path)
     
 #

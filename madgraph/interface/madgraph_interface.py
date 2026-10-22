@@ -2010,6 +2010,9 @@ This will take effect only in a NEW terminal
             raise self.InvalidCmd('%s is not a valid directory' % args[0])
 
         mode = self.find_output_type(path)
+        if mode == 'madweight':
+            raise self.InvalidCmd('launch on a madweight directory is no longer supported; '
+                                  'MadWeight has been removed')
 
         args[0] = mode
         args.append(path)
@@ -8168,6 +8171,47 @@ This implies that with decay chains:
                 continue
         return False
 
+    def get_rge_parameters_used(self):
+        """Parameters evolved by the RGE of the model (running.py, aS excluded)
+        on which a coupling of the generated diagrams depends."""
+
+        model = self._curr_model
+        if not model or not model.get('running_elements'):
+            return set()
+        couplings = set()
+        for amp in self._curr_amps or []:
+            try:
+                amps = amp.get_amplitudes() if hasattr(amp, 'get_amplitudes') else [amp]
+                for one_amp in amps:
+                    for diag in one_amp.get('diagrams'):
+                        for vertex in diag.get('vertices'):
+                            if not vertex.get('id'):
+                                continue
+                            inter = model.get_interaction(vertex.get('id'))
+                            couplings.update(inter.get('couplings').values())
+            except Exception:
+                # unknown amplitude layout (loop, NLO...): assume the worst
+                couplings.update(c.name for coups in model.get('couplings').values()
+                                 for c in coups)
+        return model.get_rge_parameters_used(couplings)
+
+    def warn_rge_not_supported(self):
+        """The RGE of running.py is only implemented in the madevent and
+        aMC@NLO Fortran code: say loudly that the other outputs keep the
+        running parameters at their param_card value."""
+
+        used = self.get_rge_parameters_used()
+        if not used:
+            return
+        logger.warning(
+            "The model evolves some parameters with the scale (running.py), "
+            "and the process depends on %s. 'output %s' does NOT implement this "
+            "running: these parameters keep the value given in the param_card "
+            "(at the scale Q= of their block) for every event, whatever "
+            "fixed_extra_scale / mue_ref_fixed / mue_over_ref say. Only alpha_s "
+            "runs. Use 'output madevent' to include the running."
+            % (', '.join(sorted(used)), self._export_format))
+
     def has_fock_state(self, args):
         """True if one of the process tokens names a Fock state or a bound-state
         label (which expands into Fock states)."""
@@ -9764,22 +9808,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             ext_program = launch_ext.aMCatNLOLauncher( args[1], self,
                                                        shell = isinstance(self, cmd.CmdShell),
                                                         **options)
-        elif args[0] == 'madweight':
-            import madgraph.interface.madweight_interface as madweight_interface
-            if options['interactive']:
-                if isinstance(self, cmd.CmdShell):
-                    MW = madweight_interface.MadWeightCmdShell(me_dir=args[1], options=self.options)
-                else:
-                    MW = madweight_interface.MadWeightCmd(me_dir=args[1],options=self.options)
-                # transfer interactive configuration (without the
-                # generation-time options the run interface rejects)
-                for line in cmd.set_lines_for_run(self.history):
-                    MW.exec_cmd(line)
-                stop = self.define_child_cmd_interface(MW)                
-                return stop
-            ext_program = launch_ext.MWLauncher( self, args[1],
-                                                 shell = isinstance(self, cmd.CmdShell),
-                                                 options=self.options,**options)            
         elif args[0] == 'mg7':
             me_dir = args[1]
             # An mg7 output runs in this process, exactly like a madevent one:
@@ -12574,6 +12602,9 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     "with 'output %s', not with 'output %s'."
                     % ("' or 'output ".join(self._onia_formats), self._export_format))
 
+        if self._export_format not in self._v4_export_formats + ['aloha']:
+            self.warn_rge_not_supported()
+
         noclean = '-noclean' in args
         force = '-f' in args
         nojpeg = '-nojpeg' in args
@@ -13799,7 +13830,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         run) plus a ready-to-use citations.bib and a citations.md summary.
         """
         runnable = ['madevent', 'standalone_fortran', 'NLO',
-                    'madweight', 'matchbox', 'mg7', 'mg7_v5', 'standalone']
+                    'matchbox', 'mg7', 'mg7_v5', 'standalone']
         if self._export_format not in runnable or not self._export_dir:
             return
         try:
