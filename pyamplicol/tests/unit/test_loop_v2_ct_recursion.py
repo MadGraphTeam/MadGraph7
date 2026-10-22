@@ -45,12 +45,10 @@ def ct_slice(loop_sm_compiled_model):
 
 @pytest.fixture(scope="module")
 def lowered_ct_model(loop_sm_compiled_model, tmp_path_factory):
-    """``forbidden |PDG| codes -> (CountertermModel, prepared source)``:
-    loop_sm with every lowerable CT rule in its tree model, prepared once per
-    veto."""
+    """``forbidden |PDG| codes -> LoweredSource``: loop_sm with every
+    lowerable CT rule in its tree model, once per veto; the prepared model
+    source of the tree generator is built on first use."""
 
-    from pyamplicol import ModelSource
-    from pyamplicol.config import EvaluatorConfig
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.v2.ct_recursion import lower_model_counterterms
     from pyamplicol.models.loading import load_compiled_model
@@ -64,14 +62,34 @@ def lowered_ct_model(loop_sm_compiled_model, tmp_path_factory):
     def build(forbidden=()):
         key = tuple(sorted(forbidden))
         if key not in built:
-            lowered = lower_model_counterterms(
+            model = lower_model_counterterms(
                 compiled,
                 prepared.counterterms.rules,
                 fixed_parameters=prepared.structure.fixed_parameters,
                 forbidden=key,
             )
-            root = tmp_path_factory.mktemp("ct-lowered")
-            path = lowered.lowered.compiled.write(
+            built[key] = LoweredSource(model, tmp_path_factory)
+        return built[key]
+
+    return build
+
+
+class LoweredSource:
+    """A ``CountertermModel`` and, lazily, its prepared tree-model source."""
+
+    def __init__(self, model, tmp_path_factory):
+        self.model = model
+        self._factory = tmp_path_factory
+        self._source = None
+
+    @property
+    def source(self):
+        from pyamplicol import ModelSource
+        from pyamplicol.config import EvaluatorConfig
+
+        if self._source is None:
+            root = self._factory.mktemp("ct-lowered")
+            path = self.model.lowered.compiled.write(
                 root / "loop-sm-ct.pyamplicol-model.json"
             )
             bundle = root / "loop-sm-ct.pyamplicol-model"
@@ -80,10 +98,8 @@ def lowered_ct_model(loop_sm_compiled_model, tmp_path_factory):
                 prepared_output=bundle,
                 evaluator=EvaluatorConfig(),
             )
-            built[key] = (lowered, ModelSource.from_path(bundle))
-        return built[key]
-
-    return build
+            self._source = ModelSource.from_path(bundle)
+        return self._source
 
 
 def _recursion(ct, lowered):
@@ -310,14 +326,91 @@ def _assert_eager_equal_sites_and_legacy(ct, recursion, runtime) -> None:
 
 
 @pytest.mark.loop_fast
+def test_tree_colour_vocabulary():
+    """CT colours lower into the tree colour flow or are refused whole."""
+
+    from pyamplicol.models.ct_color_flow import (
+        UnloweredCountertermColour,
+        tree_colour_source,
+    )
+
+    assert tree_colour_source("T(3,2,1)", (-3, 3, 8)) == "UFO::{}::T(3,2,1)"
+    assert tree_colour_source("Tr(1,2)", (8, 8, 1)) == ("1/2*UFO::{}::Identity(1,2)")
+    assert tree_colour_source("f(-1,1,2)*f(3,4,-1)", (8, 8, 8, 8)) == (
+        "UFO::{}::f(-1,1,2)*UFO::{}::f(3,4,-1)"
+    )
+    for source, representations in (
+        ("d(-1,1,3)*d(-1,2,4)", (8, 8, 8, 8)),
+        ("Identity(1,2)*Identity(3,4)", (8, 8, 8, 8)),
+        ("d(1,2,3)", (8, 8, 8, 1)),
+        ("Tr(1,2,3)", (8, 8, 8)),
+        ("Tr(1,2)", (3, -3)),
+    ):
+        with pytest.raises(UnloweredCountertermColour):
+            tree_colour_source(source, representations)
+
+
+@pytest.mark.loop_fast
+def test_exact_numeric_literals():
+    from fractions import Fraction
+
+    from pyamplicol.loops.v2.ct_recursion import _exact_literal
+
+    assert _exact_literal("3.0") == 3
+    assert _exact_literal("(4.0/3.0)") == Fraction(4, 3)
+    assert _exact_literal("-1.5e-3") == Fraction(-3, 2000)
+    assert _exact_literal("2*cmath.sqrt(aS)") is None
+
+
+@pytest.mark.loop_fast
+def test_lowered_couplings_are_exact_model_expressions(lowered_ct_model):
+    """The lowered couplings are S_slot * sum M_rule * c_rule: the top-loop UV
+    coefficients keep log(MT^2/MU_R^2) under the assumption MT != 0, the
+    massless b (MB fixed to 0) contributes no finite UV term, and parameters
+    that break an assumption are refused."""
+
+    model = lowered_ct_model().model
+    assert model.lowered.slot_orders == (
+        "PYAMPLICOL_CT_R2_EPS0",
+        "PYAMPLICOL_CT_UV_LOCAL_EPS0",
+        "PYAMPLICOL_CT_UV_LOCAL_EPS1",
+    )
+    assert set(model.switches.values()) == {
+        "PYAMPLICOL_CT_S_R2_EPS0",
+        "PYAMPLICOL_CT_S_UV_LOCAL_EPS0",
+        "PYAMPLICOL_CT_S_UV_LOCAL_EPS1",
+    }
+    assert model.assumptions == (
+        "UFO::{}::MT",
+        "UFO::{}::MT^2*UFO::{}::MU_R^(-2)",
+    )
+    couplings = {
+        record["name"]: record["expression"]
+        for record in model.lowered.compiled.model["couplings"]
+    }
+    lowered = {couplings[name] for name in model.lowered.couplings.values()}
+    assert any("log(UFO::{}::MT^2*UFO::{}::MU_R^(-2))" in e for e in lowered)
+    assert not any("MB" in e or "value_" in e for e in lowered)
+    assert all("PYAMPLICOL_CT_S_" in e and "PYAMPLICOL_CT_M" in e for e in lowered)
+    assert {
+        reason.split(":")[0].split(" of ")[0] for reason in model.residual.values()
+    } >= {
+        "two-point insertion",
+        "no colour-flow contact decomposition",
+    }
+    model.check_parameters({"MT": 173.0, "MU_R": 91.188})
+    with pytest.raises(ValueError, match="vanish"):
+        model.check_parameters({"MT": 0.0})
+
+
+@pytest.mark.loop_fast
 def test_rules_split_between_recursion_and_sites(ct_slice, lowered_ct_model):
     """Two-point insertions and the fixed-SU(3) four-gluon R2 stay sites; every
     three-gluon, quark-gluon and four-gluon UV rule is in the recursion with
     its admitted alternatives."""
 
-    lowered, _source = lowered_ct_model()
     ct = ct_slice("gg_gg")
-    recursion = _recursion(ct, lowered)
+    recursion = _recursion(ct, lowered_ct_model().model)
     assert set(recursion.rules) | set(recursion.residual) == set(ct.rules)
     reasons = Counter(
         "two-point" if "two-point" in reason else "multi-trace"
@@ -355,9 +448,9 @@ def test_recursion_equals_site_closure(
     per slot summed over squared orders (it has no order partials)."""
 
     ct = ct_slice(name)
-    lowered, source = lowered_ct_model(ct.vetoed)
-    recursion = _recursion(ct, lowered)
-    runtime = _program(ct, recursion, source, tmp_path / "artifact", lane)
+    lowered = lowered_ct_model(ct.vetoed)
+    recursion = _recursion(ct, lowered.model)
+    runtime = _program(ct, recursion, lowered.source, tmp_path / "artifact", lane)
     if lane == "eager":
         _assert_eager_equal_sites_and_legacy(ct, recursion, runtime)
     else:
@@ -390,9 +483,11 @@ def test_recursion_equals_site_closure_at_200_bits(
     """O6 and O1 in the 200-bit carrier, with exact inputs (recurrence lane)."""
 
     ct = ct_slice(name)
-    lowered, source = lowered_ct_model(ct.vetoed)
-    recursion = _recursion(ct, lowered)
-    runtime = _program(ct, recursion, source, tmp_path / "artifact", "recurrence")
+    lowered = lowered_ct_model(ct.vetoed)
+    recursion = _recursion(ct, lowered.model)
+    runtime = _program(
+        ct, recursion, lowered.source, tmp_path / "artifact", "recurrence"
+    )
     _assert_equal_sites_and_legacy(ct, recursion, runtime, "arbitrary-200")
 
 
@@ -401,10 +496,12 @@ def test_finite_only_binds_no_pole_slot(ct_slice, lowered_ct_model, tmp_path):
     """Finite-only evaluation of the same program: pole slots are exactly zero
     and the finite slots are unchanged."""
 
-    lowered, source = lowered_ct_model()
+    lowered = lowered_ct_model()
     ct = ct_slice("uux_ddxg")
-    recursion = _recursion(ct, lowered)
-    runtime = _program(ct, recursion, source, tmp_path / "artifact", "recurrence")
+    recursion = _recursion(ct, lowered.model)
+    runtime = _program(
+        ct, recursion, lowered.source, tmp_path / "artifact", "recurrence"
+    )
     _, full = _recursion_components(ct, recursion, runtime, 0)
     _, finite = _recursion_components(ct, recursion, runtime, 0, poles=False)
     assert any(power and value for (_c, _o, power), value in full.items())
