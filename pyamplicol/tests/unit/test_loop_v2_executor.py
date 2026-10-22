@@ -316,18 +316,35 @@ def test_numerators_equal_the_reference_in_binary64(slices, name):
             )
 
 
+# gg -> ggg in arbitrary precision: schedule B in the rule's forms only (the
+# Python 60-digit reference runs for minutes per schedule; F and the split
+# forms are covered by the other processes).
+SLOW_ARBITRARY = ("gg_ggg",)
+
+
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("name", (*SLICE, "uux_ggg", "uux_emepgg"))
+@pytest.mark.parametrize(
+    "name",
+    (
+        *SLICE,
+        "uux_ggg",
+        "uux_emepgg",
+        *(pytest.param(n, marks=pytest.mark.loop_nightly) for n in SLOW_ARBITRARY),
+    ),
+)
 def test_numerators_equal_the_reference_in_arbitrary_precision(slices, name):
     slice_, executor = slices(name)
     point, scale = _point(name)
-    for schedule in ("B", "F"):
+    runs = {"B": ("rule", "split"), "F": ("rule",)}
+    if name in SLOW_ARBITRARY:
+        runs = {"B": ("rule",)}
+    for schedule, forms_of_schedule in runs.items():
         reference, _ = slice_.family_numerators(
             point, scale, parameters=PARAMETERS, precision=ARBITRARY, schedule=schedule
         )
         vanishing = _vanishing(reference.numerators, point)
         assert bool(vanishing) == (name in CERTIFIED_ZEROS), sorted(vanishing)[:3]
-        for forms in ("rule", "split") if schedule == "B" else ("rule",):
+        for forms in forms_of_schedule:
             (native,) = _with_forms(executor, forms).family_numerators(
                 [point],
                 [scale],
@@ -356,7 +373,7 @@ def test_kernel_forms_follow_the_g0_rule(slices):
         steps = sum(forms["fused"].values())
         assert forms["fused"] == {"fused": steps, "split": 0}
         assert sum(forms["rule"].values()) == sum(forms["split"].values()) == steps
-        assert 0 < forms["split"]["split"]
+        assert forms["split"]["split"] > 0
         assert forms["rule"]["split"] <= forms["split"]["split"]
 
 
@@ -453,17 +470,24 @@ def _assert_close(native, reference, tolerance):
                 assert abs(complex(a) - complex(b)) <= tolerance * scale, component
 
 
+# The dilepton fixture's decimal momenta are massless to 17 digits only, which
+# the slice's massless Catani pole check refuses: compared finite-only.
+FINITE_ONLY = ("uux_emepgg",)
+
+
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("name", SLICE)
+@pytest.mark.parametrize("name", (*SLICE, "uux_ggg", *FINITE_ONLY))
 def test_native_virtual_equals_the_slice(slices, name):
     """Dressing and reduction natively give the slice's complete virtual
-    (Born and counterterms are shared), all three Laurent coefficients."""
+    (Born and counterterms are shared), all three Laurent coefficients, on
+    the slice processes and two 2 -> 3 processes."""
 
     slice_, executor = slices(name)
     points, scales = PROCESSES[name][2]()
-    natives = executor.evaluate(points, scales, parameters=PARAMETERS)
+    poles = name not in FINITE_ONLY
+    natives = executor.evaluate(points, scales, parameters=PARAMETERS, poles=poles)
     for native, point, scale in zip(natives, points, scales, strict=True):
-        reference = slice_.evaluate(point, scale, parameters=PARAMETERS)
+        reference = slice_.evaluate(point, scale, parameters=PARAMETERS, poles=poles)
         _assert_close(native, reference, 1e-12)
     report = executor.last_report
     assert report["lanes"] == 16
@@ -471,7 +495,7 @@ def test_native_virtual_equals_the_slice(slices, name):
 
 
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("name", ["gg_gg", "uux_ddxg"])
+@pytest.mark.parametrize("name", ["gg_gg", "uux_ddxg", "uux_ggg"])
 def test_native_finite_only_equals_the_finite_part(slices, name):
     """poles=False: one artifact, finite parts bitwise equal, poles absent."""
 

@@ -155,6 +155,48 @@ pub(super) fn cadd<T: Carrier, const L: usize>(acc: &mut [T], a: &[T]) {
 
 // ------------------------------------------------------------------ chunk data
 
+/// Exact invariants of one chunk, per distinct point: the summed incoming
+/// momentum `p(mask)` and `s[mask] = p(mask)²` of each leg subset in use.
+/// A subset's momentum is its lowest leg added to the cached momentum of
+/// the rest, so every subset costs one exact addition per component, once
+/// per chunk, however many factors, closures and reduction lanes read it.
+struct ExactInvariants {
+    /// Per distinct point, `4 × legs` momentum components.
+    legs: Vec<Vec<Rational>>,
+    momenta: Vec<HashMap<u64, [Rational; 4]>>,
+    squares: Vec<HashMap<u64, Rational>>,
+}
+
+impl ExactInvariants {
+    fn momentum(&mut self, point: usize, mask: u64) -> [Rational; 4] {
+        if mask == 0 {
+            return std::array::from_fn(|_| Rational::from(0));
+        }
+        if let Some(found) = self.momenta[point].get(&mask) {
+            return found.clone();
+        }
+        let leg = mask.trailing_zeros() as usize;
+        let rest = self.momentum(point, mask & (mask - 1));
+        let legs = &self.legs[point];
+        let value: [Rational; 4] = std::array::from_fn(|mu| rest[mu].clone() + &legs[4 * leg + mu]);
+        self.momenta[point].insert(mask, value.clone());
+        value
+    }
+
+    fn square(&mut self, point: usize, mask: u64) -> Rational {
+        if let Some(found) = self.squares[point].get(&mask) {
+            return found.clone();
+        }
+        let p = self.momentum(point, mask);
+        let value = p[0].clone() * &p[0]
+            - p[1].clone() * &p[1]
+            - p[2].clone() * &p[2]
+            - p[3].clone() * &p[3];
+        self.squares[point].insert(mask, value.clone());
+        value
+    }
+}
+
 /// The inputs of one chunk of `L` lanes as lane vectors.
 pub struct LaneData<T, const L: usize> {
     /// Batch point of each lane (padded lanes repeat the last point).
@@ -162,7 +204,9 @@ pub struct LaneData<T, const L: usize> {
     /// Number of real (unpadded) lanes.
     pub active: usize,
     pub zero: T,
-    momenta: Vec<Vec<Rational>>,
+    /// Distinct point of each lane (padded lanes share the last one).
+    distinct: [usize; L],
+    exact: std::sync::Mutex<ExactInvariants>,
     /// Exact `mu_R²` per lane.
     pub scales: Vec<Rational>,
     momentum: std::sync::Mutex<HashMap<u64, std::sync::Arc<Vec<T>>>>,
@@ -220,10 +264,17 @@ impl<T: Carrier, const L: usize> LaneData<T, L> {
                 born[slot * v + L + l] = z.im.clone();
             }
         }
+        let distinct = std::array::from_fn(|l| l.min(points.len() - 1));
+        let exact = ExactInvariants {
+            legs: points.iter().map(|&p| batch.momenta[p].clone()).collect(),
+            momenta: vec![HashMap::new(); points.len()],
+            squares: vec![HashMap::new(); points.len()],
+        };
         Ok(Self {
             points: lanes,
             active: points.len(),
-            momenta: lanes.iter().map(|&p| batch.momenta[p].clone()).collect(),
+            distinct,
+            exact: std::sync::Mutex::new(exact),
             scales: lanes.iter().map(|&p| batch.scales[p].clone()).collect(),
             momentum: std::sync::Mutex::new(HashMap::new()),
             constants: batch.constants.clone(),
@@ -237,22 +288,24 @@ impl<T: Carrier, const L: usize> LaneData<T, L> {
         cast(&self.zero, value)
     }
 
-    /// Exact summed incoming momentum of the legs in `mask`, per lane.
+    /// Exact summed incoming momentum of the legs in `mask` at `lane`.
     pub fn exact_momentum(&self, lane: usize, mask: u64) -> [Rational; 4] {
-        let momenta = &self.momenta[lane];
-        std::array::from_fn(|mu| {
-            let mut total = Rational::from(0);
-            for leg in 0..momenta.len() / 4 {
-                if mask >> leg & 1 == 1 {
-                    total += &momenta[4 * leg + mu];
-                }
-            }
-            total
-        })
+        self.exact
+            .lock()
+            .expect("exact invariants")
+            .momentum(self.distinct[lane], mask)
+    }
+
+    /// Exact `p(mask)²` at `lane`.
+    pub fn exact_square(&self, lane: usize, mask: u64) -> Rational {
+        self.exact
+            .lock()
+            .expect("exact invariants")
+            .square(self.distinct[lane], mask)
     }
 
     /// The momentum of `mask` as four complex lane vectors `[mu][re | im]`
-    /// (exact sums cast once, zero imaginary parts).
+    /// (exact sums cast once per distinct point, zero imaginary parts).
     pub fn momentum(&self, mask: u64) -> std::sync::Arc<Vec<T>> {
         if let Some(found) = self.momentum.lock().expect("momentum cache").get(&mask) {
             return found.clone();
@@ -260,6 +313,13 @@ impl<T: Carrier, const L: usize> LaneData<T, L> {
         let v = lane_vector_len(L);
         let mut out = vec![self.zero.clone(); 4 * v];
         for l in 0..L {
+            let source = self.distinct[l];
+            if source != l {
+                for mu in 0..4 {
+                    out[mu * v + l] = out[mu * v + source].clone();
+                }
+                continue;
+            }
             let p = self.exact_momentum(l, mask);
             for mu in 0..4 {
                 out[mu * v + l] = self.cast(&p[mu]);
@@ -732,6 +792,31 @@ mod tests {
         }
         let third = Rational::from((1, 3));
         assert_eq!(cast(&Rational::from(0), &third), third);
+    }
+
+    #[test]
+    fn exact_invariants_equal_direct_sums() {
+        let legs: Vec<Rational> = (0..12)
+            .map(|k| Rational::from(((k * 7 % 11) as i64 - 5, (k % 4 + 1) as i64)))
+            .collect();
+        let mut table = ExactInvariants {
+            legs: vec![legs.clone()],
+            momenta: vec![HashMap::new()],
+            squares: vec![HashMap::new()],
+        };
+        for mask in [0b101u64, 0b111, 0b010, 0] {
+            let direct: [Rational; 4] = std::array::from_fn(|mu| {
+                (0..3)
+                    .filter(|leg| mask >> leg & 1 == 1)
+                    .fold(Rational::from(0), |total, leg| total + &legs[4 * leg + mu])
+            });
+            assert_eq!(table.momentum(0, mask), direct);
+            let square = direct[0].clone() * &direct[0]
+                - direct[1].clone() * &direct[1]
+                - direct[2].clone() * &direct[2]
+                - direct[3].clone() * &direct[3];
+            assert_eq!(table.square(0, mask), square);
+        }
     }
 
     #[test]

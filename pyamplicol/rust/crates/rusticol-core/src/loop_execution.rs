@@ -2495,12 +2495,7 @@ pub mod v2 {
             if let Some(found) = self.squares.get(&mask) {
                 return found.clone();
             }
-            let p = self.data.exact_momentum(self.lane, mask);
-            let value = p[0].clone() * &p[0]
-                - p[1].clone() * &p[1]
-                - p[2].clone() * &p[2]
-                - p[3].clone() * &p[3];
-            let value = self.complex(&value);
+            let value = self.complex(&self.data.exact_square(self.lane, mask));
             self.squares.insert(mask, value.clone());
             value
         }
