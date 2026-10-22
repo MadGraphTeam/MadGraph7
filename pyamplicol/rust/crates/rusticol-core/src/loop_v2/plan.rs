@@ -65,6 +65,7 @@ struct PlanFile {
     seeds: Vec<SeedFile>,
     families: Vec<FamilyFile>,
     forward: Option<ForwardFile>,
+    merged: Option<MergedFile>,
 }
 
 /// One exported kernel term: (constant id, monomial as (input, power)).
@@ -189,6 +190,53 @@ struct ClosureFile {
     seed: usize,
     weight: String,
     rows: Vec<i64>,
+    relabel: Option<(i8, u64)>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MergedFile {
+    families: Vec<usize>,
+    entries: Vec<EntryFile>,
+    states: Vec<MergedStateFile>,
+    chunks: Vec<usize>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EntryFile {
+    seed: usize,
+    weight: [String; 2],
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MergedStateFile {
+    seeded: bool,
+    rows: usize,
+    d_alpha: usize,
+    d_out: usize,
+    degree: usize,
+    rank_in: usize,
+    edges: Vec<MergedEdgeFile>,
+    closure: Option<MergedClosureFile>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MergedEdgeFile {
+    entry: i64,
+    parent: i64,
+    factor: usize,
+    weight: Option<[String; 2]>,
+    links: Vec<u32>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MergedClosureFile {
+    family: usize,
+    accumulator: usize,
     relabel: Option<(i8, u64)>,
 }
 
@@ -387,6 +435,13 @@ pub enum FormPolicy {
 /// gg→gggg FC program at 16 lanes in the production code generation
 /// (`workspace/tmp/g0-real-tries/run2/costmodel.json`, `selection_rule`).
 /// Only the ratio of the two forms' times matters.
+///
+/// Deviation from §5.4 item 4: the rule chooses between fused-structured and
+/// split-structured only. G0's third form, fused-blocked
+/// (`kernels::fused_edge_blocked`), is not selectable: the fitted rule
+/// (11.67 ns per iteration, 1.429 G/s) picks it on 1,470 of 18,712 gg→gggg
+/// steps (rank_in ≥ 3) and saves about 1–2 % on them, far below the 15 %
+/// that a wave-4 kernel optimisation must measure to be kept.
 struct FormModel {
     per_iteration: f64,
     rate: f64,
@@ -554,6 +609,145 @@ impl State {
     }
 }
 
+/// A schedule-M entry: the seed of one colour ordering read from the cut,
+/// times its exact complex weight (leaf weight, primitive sign, class ratio).
+#[derive(Clone, Debug)]
+pub struct Entry {
+    pub seed: usize,
+    pub weight: [Rational; 2],
+}
+
+/// The closure of a full schedule-M state into a family accumulator, in the
+/// family's frame map `variant` ([`Merged::variants`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MergedClosure {
+    pub family: usize,
+    pub accumulator: usize,
+    pub variant: usize,
+}
+
+/// One schedule-M state: a dressing step whose edges read entries
+/// ([`Source::Leaf`]) or earlier states ([`Source::Step`]), each with an
+/// optional exact weight (index into [`Merged::weights`]).
+#[derive(Clone, Debug)]
+pub struct MergedState {
+    pub step: Step,
+    pub weights: Vec<Option<usize>>,
+    pub closure: Option<MergedClosure>,
+    /// Edges that read this state's output.
+    pub readers: usize,
+}
+
+/// Schedule M: the planar state graph of the certified families
+/// (`loops.v2.merged`), states in execution order, chunk by chunk.
+#[derive(Clone, Debug)]
+pub struct Merged {
+    /// Families dressed by M (ascending); the others run schedule B.
+    pub families: Vec<usize>,
+    pub entries: Vec<Entry>,
+    pub states: Vec<MergedState>,
+    /// End (exclusive) of every chunk; no edge crosses a chunk boundary.
+    pub chunks: Vec<usize>,
+    /// Distinct exact edge weights.
+    pub weights: Vec<[Rational; 2]>,
+    /// Per family, the distinct frame maps of its closures (`None`: the
+    /// trie frame itself).
+    pub variants: Vec<Vec<Option<(i8, u64)>>>,
+    /// Per family, the last chunk that closes into it.
+    pub last_chunk: Vec<Option<usize>>,
+    /// Per chunk, its parallel layout.
+    pub layout: Vec<ChunkLayout>,
+}
+
+/// The parallel layout of one schedule-M chunk: its seeded states, which
+/// read entries only, and the groups of its other states. A group reads
+/// seeded states of its chunk and states of its own group, so the seeded
+/// states run first and the groups after them, independently. Indices are
+/// ascending (execution order) within the head and within each group;
+/// groups are ordered by their first state.
+#[derive(Clone, Debug, Default)]
+pub struct ChunkLayout {
+    pub head: Vec<usize>,
+    pub groups: Vec<Vec<usize>>,
+}
+
+impl ChunkLayout {
+    /// The layout of the states `range` (no edge leaves the range).
+    fn of(states: &[MergedState], range: std::ops::Range<usize>) -> Self {
+        let start = range.start;
+        let mut parent: Vec<usize> = (0..range.len()).collect();
+        fn root(parent: &mut [usize], mut x: usize) -> usize {
+            while parent[x] != x {
+                parent[x] = parent[parent[x]];
+                x = parent[x];
+            }
+            x
+        }
+        let mut layout = Self::default();
+        for s in range.clone() {
+            let step = &states[s].step;
+            if step.seeded {
+                layout.head.push(s);
+                continue;
+            }
+            for edge in &step.edges {
+                if let Source::Step(p) = edge.source
+                    && !states[p].step.seeded
+                {
+                    let (a, b) = (root(&mut parent, s - start), root(&mut parent, p - start));
+                    parent[a.max(b)] = a.min(b);
+                }
+            }
+        }
+        let mut group_of: HashMap<usize, usize> = HashMap::new();
+        for s in range {
+            if states[s].step.seeded {
+                continue;
+            }
+            let r = root(&mut parent, s - start);
+            let next = layout.groups.len();
+            let g = *group_of.entry(r).or_insert(next);
+            if g == next {
+                layout.groups.push(Vec::new());
+            }
+            layout.groups[g].push(s);
+        }
+        layout
+    }
+}
+
+impl Merged {
+    /// The states of chunk `k`.
+    pub fn chunk(&self, k: usize) -> std::ops::Range<usize> {
+        let start = if k == 0 { 0 } else { self.chunks[k - 1] };
+        start..self.chunks[k]
+    }
+
+    /// Inputs read by the states of chunks `chunks`.
+    pub fn reads(&self, chunks: std::ops::Range<usize>) -> (Vec<usize>, Vec<usize>, Vec<usize>) {
+        let mut factors = BTreeSet::new();
+        let mut vertices = BTreeSet::new();
+        let mut currents = BTreeSet::new();
+        for k in chunks {
+            for state in &self.states[self.chunk(k)] {
+                let step = &state.step;
+                match &step.split {
+                    None => factors.extend(step.edges.iter().map(|edge| edge.factor)),
+                    Some(split) => {
+                        vertices.extend(split.groups.iter().map(|group| group.instance));
+                        currents.extend(split.parts.iter().flatten().map(|part| part.current));
+                    }
+                }
+            }
+        }
+        (
+            factors.into_iter().collect(),
+            vertices.into_iter().collect(),
+            currents.into_iter().collect(),
+        )
+    }
+}
+
 /// A validated plan v4 with its derived executor tables.
 #[derive(Debug)]
 pub struct LoopProgramV4 {
@@ -579,6 +773,7 @@ pub struct LoopProgramV4 {
     pub seeds: Vec<Seed>,
     pub families: Vec<Family>,
     pub forward: Option<Vec<State>>,
+    pub merged: Option<Merged>,
     pub products: Vec<MonomialProductTable>,
     /// Loop orders labels used by the families (indices as exported).
     pub order_count: usize,
@@ -783,6 +978,13 @@ struct Shared<'a> {
     policy: FormPolicy,
 }
 
+/// What the kernel-form choice reads of a step.
+struct StepShape {
+    seeded: bool,
+    d_alpha: usize,
+    rank_in: usize,
+}
+
 /// Cut index and input coefficients of a step's kernels: a seeded step's
 /// input is `δ_αβ` times one value per row.
 fn step_shape(seeded: bool, d_alpha: usize, rank: usize) -> (usize, usize) {
@@ -809,7 +1011,7 @@ fn fused_cost(seeded: bool, d_alpha: usize, edges: &[Edge], contents: &[Content]
 /// every term of every edge's content has a vertex, and every source is
 /// stored at the step's input rank (one accumulator layout per group).
 fn split_candidate(
-    s: &StepFile,
+    s: &StepShape,
     edges: &[Edge],
     shared: &Shared<'_>,
     tables: &mut Tables,
@@ -887,6 +1089,41 @@ fn split_candidate(
         iterations: iterations as u64,
     };
     Ok(Some((SplitStep { groups, parts }, cost)))
+}
+
+/// A step's split form (None: fused) and its modelled costs (fused, split).
+type FormChoice = (Option<SplitStep>, (StepCost, Option<StepCost>));
+
+/// A step's kernel form under the plan's policy (gate G0's rule by
+/// default), with the split inputs it reads registered, and its modelled
+/// costs in both forms.
+fn choose_form(
+    shape: &StepShape,
+    edges: &[Edge],
+    shared: &Shared<'_>,
+    tables: &mut Tables,
+    split_inputs: &mut SplitInputs,
+) -> RusticolResult<FormChoice> {
+    let fused_cost = fused_cost(shape.seeded, shape.d_alpha, edges, shared.contents);
+    let candidate = split_candidate(shape, edges, shared, tables)?;
+    let split_cost = candidate.as_ref().map(|(_, cost)| *cost);
+    let split = match (shared.policy, candidate) {
+        (_, None) | (FormPolicy::Fused, _) => None,
+        (FormPolicy::Split, Some((split, _))) => Some(split),
+        (FormPolicy::Rule, Some((split, cost))) => {
+            (SPLIT_MODEL.seconds(cost) < FUSED_MODEL.seconds(fused_cost)).then_some(split)
+        }
+    };
+    let split = split.map(|mut split| {
+        for group in &mut split.groups {
+            group.instance = split_inputs.instance(group.vertex, group.shift);
+        }
+        for part in split.parts.iter_mut().flatten() {
+            part.current = split_inputs.current(part.content, part.term);
+        }
+        split
+    });
+    Ok((split, (fused_cost, split_cost)))
 }
 
 impl LoopProgramV4 {
@@ -1156,6 +1393,11 @@ impl LoopProgramV4 {
             .as_ref()
             .map(|forward| Self::forward(forward, &file, &contents, &families, &mut tables))
             .transpose()?;
+        let merged = file
+            .merged
+            .as_ref()
+            .map(|merged| Self::merged(merged, &shared, &families, &mut tables, &mut split_inputs))
+            .transpose()?;
         Ok(Self {
             legs: file.legs,
             rows: file.rows,
@@ -1174,6 +1416,7 @@ impl LoopProgramV4 {
             seeds,
             families,
             forward,
+            merged,
             products: tables.tables,
             order_count,
         })
@@ -1225,6 +1468,7 @@ impl LoopProgramV4 {
                     s.rows == 1 && s.d_alpha == s.d_out,
                     "trace of an open object",
                 )?;
+                require(rank_out <= f.rank, "a trace step above the family rank")?;
             }
             let mut edges = Vec::with_capacity(s.edges.len());
             for e in &s.edges {
@@ -1279,29 +1523,18 @@ impl LoopProgramV4 {
                 });
             }
             require(!edges.is_empty(), "a step without edges")?;
-            let fused_cost = fused_cost(s.seeded, s.d_alpha, &edges, contents);
-            let candidate = split_candidate(s, &edges, shared, tables)?;
-            let split_cost = candidate.as_ref().map(|(_, cost)| *cost);
-            let split = match (shared.policy, candidate) {
-                (_, None) | (FormPolicy::Fused, _) => None,
-                (FormPolicy::Split, Some((split, _))) => Some(split),
-                (FormPolicy::Rule, Some((split, cost))) => {
-                    (SPLIT_MODEL.seconds(cost) < FUSED_MODEL.seconds(fused_cost)).then_some(split)
-                }
+            let shape = StepShape {
+                seeded: s.seeded,
+                d_alpha: s.d_alpha,
+                rank_in: s.rank_in,
             };
-            let split = split.map(|mut split| {
-                for group in &mut split.groups {
-                    group.instance = split_inputs.instance(group.vertex, group.shift);
-                    instances.insert(group.instance);
+            let (split, costs) = choose_form(&shape, &edges, shared, tables, split_inputs)?;
+            match &split {
+                None => factors.extend(edges.iter().map(|edge| edge.factor)),
+                Some(split) => {
+                    instances.extend(split.groups.iter().map(|group| group.instance));
+                    currents.extend(split.parts.iter().flatten().map(|part| part.current));
                 }
-                for part in split.parts.iter_mut().flatten() {
-                    part.current = split_inputs.current(part.content, part.term);
-                    currents.insert(part.current);
-                }
-                split
-            });
-            if split.is_none() {
-                factors.extend(edges.iter().map(|edge| edge.factor));
             }
             steps.push(Step {
                 seeded: s.seeded,
@@ -1314,7 +1547,7 @@ impl LoopProgramV4 {
                 rank_out,
                 edges,
                 split,
-                costs: (fused_cost, split_cost),
+                costs,
             });
         }
         for (index, step) in steps.iter().enumerate() {
@@ -1437,6 +1670,213 @@ impl LoopProgramV4 {
             });
         }
         Ok(states)
+    }
+
+    fn merged(
+        merged: &MergedFile,
+        shared: &Shared<'_>,
+        families: &[Family],
+        tables: &mut Tables,
+        split_inputs: &mut SplitInputs,
+    ) -> RusticolResult<Merged> {
+        let (file, contents) = (shared.file, shared.contents);
+        let complex = |pair: &[String; 2]| -> RusticolResult<[Rational; 2]> {
+            Ok([exact(&pair[0])?, exact(&pair[1])?])
+        };
+        require(
+            merged.families.windows(2).all(|w| w[0] < w[1])
+                && merged.families.iter().all(|&f| f < families.len()),
+            "merged families",
+        )?;
+        let entries = merged
+            .entries
+            .iter()
+            .map(|entry| {
+                require(entry.seed < shared.seeds, "entry seed index")?;
+                Ok(Entry {
+                    seed: entry.seed,
+                    weight: complex(&entry.weight)?,
+                })
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let mut weights: Vec<[Rational; 2]> = Vec::new();
+        let mut weight_index: HashMap<[Rational; 2], usize> = HashMap::new();
+        let mut variants: Vec<Vec<Option<(i8, u64)>>> = vec![Vec::new(); families.len()];
+        let mut last_chunk: Vec<Option<usize>> = vec![None; families.len()];
+        let mut chunk_of = Vec::with_capacity(merged.states.len());
+        let mut start = 0;
+        for (k, &end) in merged.chunks.iter().enumerate() {
+            require(
+                end > start && end <= merged.states.len(),
+                "merged chunk bounds",
+            )?;
+            chunk_of.extend(std::iter::repeat_n(k, end - start));
+            start = end;
+        }
+        require(
+            start == merged.states.len(),
+            "merged chunks cover every state",
+        )?;
+        let mut states: Vec<MergedState> = Vec::with_capacity(merged.states.len());
+        for (index, s) in merged.states.iter().enumerate() {
+            let mut edges = Vec::with_capacity(s.edges.len());
+            let mut edge_weights = Vec::with_capacity(s.edges.len());
+            for e in &s.edges {
+                require(e.factor < file.factors.len(), "merged edge factor index")?;
+                let content = file.factors[e.factor].0;
+                let c = &contents[content];
+                require(
+                    c.d_out == s.d_out && c.degree <= s.degree,
+                    "merged edge content does not fit its state",
+                )?;
+                let (source, source_rank, source_rows) = match (e.entry, e.parent) {
+                    (entry, -1) if entry >= 0 => {
+                        require(s.seeded, "entry edge of an open state")?;
+                        require((entry as usize) < entries.len(), "merged entry index")?;
+                        require(c.d_in == s.d_alpha, "entry does not fit its content")?;
+                        (Source::Leaf(entry as usize), 0, file.rows)
+                    }
+                    (-1, parent) if parent >= 0 => {
+                        let parent = parent as usize;
+                        require(!s.seeded, "parent edge of a seeded state")?;
+                        require(parent < index, "parent state after its child")?;
+                        require(
+                            chunk_of[parent] == chunk_of[index],
+                            "a merged edge crosses a chunk",
+                        )?;
+                        let previous = &states[parent];
+                        require(
+                            previous.closure.is_none()
+                                && previous.step.d_alpha == s.d_alpha
+                                && previous.step.d_out == c.d_in,
+                            "parent object does not fit its edge",
+                        )?;
+                        states[parent].readers += 1;
+                        let previous = &states[parent].step;
+                        (Source::Step(parent), previous.rank_out, previous.rows)
+                    }
+                    _ => return Err(invalid("merged edge needs one entry or one parent")),
+                };
+                require(source_rank <= s.rank_in, "source rank above state rank")?;
+                for link in e.links.chunks(3) {
+                    require(
+                        link.len() == 3
+                            && (link[0] as usize) < s.rows
+                            && (link[1] as usize) < source_rows
+                            && (link[2] as usize) < c.rows,
+                        "merged row link out of range",
+                    )?;
+                }
+                edges.push(Edge {
+                    source,
+                    factor: e.factor,
+                    content,
+                    source_rank,
+                    products: tables.get(source_rank, c.degree),
+                    links: expand_links(&e.links, file.columns)?,
+                });
+                edge_weights.push(
+                    e.weight
+                        .as_ref()
+                        .map(|pair| {
+                            let value = complex(pair)?;
+                            let next = weights.len();
+                            Ok(*weight_index.entry(value.clone()).or_insert_with(|| {
+                                weights.push(value);
+                                next
+                            }))
+                        })
+                        .transpose()?,
+                );
+            }
+            require(!edges.is_empty(), "a merged state without edges")?;
+            let closure = s
+                .closure
+                .as_ref()
+                .map(|closure| {
+                    let family = families
+                        .get(closure.family)
+                        .ok_or_else(|| invalid("closure family index"))?;
+                    require(
+                        merged.families.binary_search(&closure.family).is_ok()
+                            && closure.accumulator < family.orders.len()
+                            && s.rows == 1
+                            && s.d_alpha == s.d_out
+                            && s.rank_in + s.degree <= family.rank
+                            && closure
+                                .relabel
+                                .is_none_or(|(sign, _)| sign == 1 || sign == -1),
+                        "merged closure",
+                    )?;
+                    let list = &mut variants[closure.family];
+                    let variant = match list.iter().position(|v| *v == closure.relabel) {
+                        Some(found) => found,
+                        None => {
+                            list.push(closure.relabel);
+                            list.len() - 1
+                        }
+                    };
+                    last_chunk[closure.family] = Some(chunk_of[index]);
+                    Ok(MergedClosure {
+                        family: closure.family,
+                        accumulator: closure.accumulator,
+                        variant,
+                    })
+                })
+                .transpose()?;
+            let shape = StepShape {
+                seeded: s.seeded,
+                d_alpha: s.d_alpha,
+                rank_in: s.rank_in,
+            };
+            let (split, costs) = choose_form(&shape, &edges, shared, tables, split_inputs)?;
+            states.push(MergedState {
+                step: Step {
+                    seeded: s.seeded,
+                    trace: None,
+                    rows: s.rows,
+                    d_alpha: s.d_alpha,
+                    d_out: s.d_out,
+                    degree: s.degree,
+                    rank_in: s.rank_in,
+                    rank_out: s.rank_in + s.degree,
+                    edges,
+                    split,
+                    costs,
+                },
+                weights: edge_weights,
+                closure,
+                readers: 0,
+            });
+        }
+        for state in &states {
+            require(
+                state.closure.is_some() == (state.readers == 0),
+                "every open merged state is read and every closing one is not",
+            )?;
+        }
+        for &family in &merged.families {
+            require(
+                last_chunk[family].is_some(),
+                "a merged family without closures",
+            )?;
+        }
+        let mut layout = Vec::with_capacity(merged.chunks.len());
+        let mut start = 0;
+        for &end in &merged.chunks {
+            layout.push(ChunkLayout::of(&states, start..end));
+            start = end;
+        }
+        Ok(Merged {
+            families: merged.families.clone(),
+            entries,
+            states,
+            chunks: merged.chunks.clone(),
+            weights,
+            variants,
+            last_chunk,
+            layout,
+        })
     }
 
     /// Families grouped by NinjaRS bucket `(propagators, rank)`, buckets in

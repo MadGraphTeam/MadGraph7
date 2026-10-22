@@ -206,6 +206,7 @@ _NON_NATIVE_RUST_PATHS = frozenset(
         Path("rust/crates/rusticol-core/tests/compiled_binary64_with_symbolica.rs"),
         Path("rust/crates/rusticol-capi/tests/runtime_selectors.rs"),
         Path("rust/crates/rusticol-core/benches/loop_v2_kernels.rs"),
+        Path("rust/crates/rusticol-core/benches/loop_v2_schedules.rs"),
         Path("rust/crates/rusticol-core/src/artifact_tests.rs"),
         Path("rust/crates/rusticol-core/src/eager_layout_tests.rs"),
         Path("rust/crates/rusticol-core/src/eager_lowering_v3_tests.rs"),
