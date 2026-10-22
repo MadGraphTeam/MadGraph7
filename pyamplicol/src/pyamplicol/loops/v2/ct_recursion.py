@@ -208,7 +208,9 @@ class CoefficientLowering:
     """
 
     def __init__(self, compiled: CompiledModel, fixed_parameters: Mapping[str, Any]):
-        from symbolica import E, S
+        from symbolica import E
+
+        from pyamplicol._internal.physics.symbols import symbols
 
         if compiled.raw_loop_model is None:
             raise ValueError("counterterm coefficients need the model's NLO sidecar")
@@ -224,8 +226,7 @@ class CoefficientLowering:
             )
         ]
         self._zero = E("0")
-        self._log = S("symbolica::log")
-        self._conj = S("symbolica::conj")
+        self._log, self._conj = symbols.qualified("symbolica::log", "symbolica::conj")
         self.assumptions: set[str] = set()
 
     def __call__(self, entry: Any, power: int) -> Any:
@@ -235,7 +236,9 @@ class CoefficientLowering:
         return self._resolve(expression).expand()
 
     def _resolve(self, atom: Any) -> Any:
-        from symbolica import AtomType, S
+        from symbolica import AtomType
+
+        from pyamplicol._internal.physics.symbols import symbols
 
         kind = atom.get_type()
         if kind in (AtomType.Num, AtomType.Var):
@@ -253,7 +256,7 @@ class CoefficientLowering:
         if not (
             name.startswith("pyamplicol_scalar_model_") and head.startswith("value_")
         ):
-            return S(name)(*children)
+            return symbols.qualified(name)(*children)
         helper = self._helpers.get(int(head.removeprefix("value_")))
         if helper == "cond":
             condition, if_zero, otherwise = children
