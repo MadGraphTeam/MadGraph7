@@ -27,10 +27,16 @@ colour construction, reproduces totals and restricted orders, also at leading
 colour where MadGraph has no reference (an external gluon).
 
 u u~ > d d~ s s~ c c~ has four quark lines that W pairings join across the
-generations, so four-point WWA/WWZ/WWAA/WWZZ vertices join all four lines.
-The eager lane is checked pure-electroweak (its own export, all colour-flow
-amplitudes assigned), with at most two gluons and at all orders, and on the
-relabelled process; the recurrence lane per squared order at all orders.
+generations, so WWA/WWZ vertices and the four-point contact vertices
+WWAA/WWZA/WWZZ/WWWW join all four lines. The eager lane is checked
+pure-electroweak (its own export, all colour-flow amplitudes assigned, also at
+NLC and with identical quarks), with at most two gluons and at all orders, and
+on relabelled processes; the recurrence lane per squared order at all orders.
+
+A massless fermion line through a massive internal fermion (the t channel of
+v_tau v_tau~ > W+ W-) leaves a Dirac current that no closure contraction joins
+to the line's Weyl sink: the eager lane refuses it, and the recurrence lane
+drops those diagrams (strict xfail).
 """
 
 from __future__ import annotations
@@ -45,7 +51,7 @@ from pathlib import Path
 import pytest
 
 from pyamplicol import Generator, ModelSource, Runtime, TreeOrderEvaluation
-from pyamplicol.api.errors import CompatibilityError
+from pyamplicol.api.errors import CompatibilityError, GenerationError
 from pyamplicol.artifacts.process_groups import (
     initial_process_groups,
     write_process_groups,
@@ -287,29 +293,39 @@ def test_restricted_madgraph_exports_reproduce_their_all_order_column(
 ) -> None:
     """MadGraph 3.7 leaves colour-flow amplitudes of multi-line exports
     unassigned (zeroed by the tool); a restricted export, whose amplitudes are
-    all assigned, must reproduce its column of the all-order export."""
+    all assigned, must reproduce the columns of the all-order export that it
+    holds completely: those whose amplitude pairs all lie within its limit (a
+    QCD=2 export lacks the QCD=0 x QCD=4 interference in QCD^4)."""
 
     path = REFERENCE if colour == "full" else LC_REFERENCE
     entries = json.loads(path.read_text(encoding="utf-8"))["processes"]
     processes = {entry["process"] for entry in entries}
-    # Pure-electroweak exports; a QCD=2 export also lacks the interference of
-    # its orders with those it excludes.
     restricted = [
         entry
         for entry in entries
         if entry["process"].split(" QCD=")[0] in processes - {entry["process"]}
-        and len(entry["squared_orders"]) == 1
     ]
-    assert len(restricted) == (7 if colour == "full" else 6)
+    assert len(restricted) == (8 if colour == "full" else 7)
+    compared = 0
     for entry in restricted:
-        reference = _reference(entry["process"].split(" QCD=")[0], path)
+        process, limit = entry["process"].split(" QCD=")
+        reference = _reference(process, path)
         assert entry["points"] == reference["points"]
-        (order,) = entry["squared_orders"]
-        column = reference["squared_orders"].index(order)
-        for total, partials in zip(entry["total"], reference["partials"], strict=True):
-            assert math.isclose(total, partials[column], rel_tol=1e-13), entry[
-                "process"
-            ]
+        # The amplitude orders of a squared order p pair from the lowest one up.
+        lowest = min(order["QCD"] for order in reference["squared_orders"]) // 2
+        for index, order in enumerate(entry["squared_orders"]):
+            if order["QCD"] - lowest > int(limit):
+                continue
+            column = reference["squared_orders"].index(order)
+            compared += 1
+            for partials, expected in zip(
+                entry["partials"], reference["partials"], strict=True
+            ):
+                assert math.isclose(partials[index], expected[column], rel_tol=1e-13), (
+                    entry["process"],
+                    order,
+                )
+    assert compared == len(restricted) + 1
 
 
 def test_leading_colour_lanes_agree_per_order_with_a_gluon_and_a_lepton_pair(
@@ -414,12 +430,14 @@ def _reordered(points: list[object], process: str, reference: str) -> list[objec
     return [[point[index] for index in order] for point in points]
 
 
-# Four quark lines whose W pairings join the two generations, so that
-# four-point WWA/WWZ/WWAA/WWZZ contact vertices join all four lines.
+# Quark lines whose W pairings join the generations, so that WWA/WWZ vertices
+# and the four-point contact vertices WWAA/WWZA/WWZZ/WWWW join all four lines.
 # Pure-electroweak, with at most two gluons (QCD=2) and at all orders; the
 # second method relabels every line (u~ u > c c~ s s~ d d~), so that other
 # traversal sectors and other orientations of every colour-singlet vertex
-# build the same diagrams.
+# build the same diagrams. Identical quarks (u u~ > d d~ d d~ s s~,
+# u c~ > d s~ d d~) and W pairings of the incoming d line are checked pure
+# electroweak.
 @pytest.mark.parametrize(
     ("process", "reference", "limits"),
     [
@@ -427,10 +445,13 @@ def _reordered(points: list[object], process: str, reference: str) -> list[objec
         ("u~ u > c c~ s s~ d d~", f"{_FOUR_LINES} QCD=0", {"QCD": 0, "QED": 6}),
         (_FOUR_LINES, f"{_FOUR_LINES} QCD=2", {"QCD": 2, "QED": 6}),
         (_FOUR_LINES, _FOUR_LINES, ORDER_LIMITS),
+        ("u u~ > d d~ d d~ s s~", "u u~ > d d~ d d~ s s~ QCD=0", {"QCD": 0, "QED": 6}),
+        ("d d~ > u u~ s s~ c c~", "d d~ > u u~ s s~ c c~ QCD=0", {"QCD": 0, "QED": 6}),
+        ("u c~ > d s~ d d~", "u c~ > d s~ d d~ QCD=0", {"QCD": 0, "QED": 4}),
     ],
 )
 @pytest.mark.parametrize("accuracy", ["full", "lc"])
-def test_eager_lane_pairs_w_exchanges_among_four_quark_lines(
+def test_eager_lane_pairs_w_exchanges_among_quark_lines(
     sm_model: ModelSource,
     tmp_path: Path,
     process: str,
@@ -441,11 +462,12 @@ def test_eager_lane_pairs_w_exchanges_among_four_quark_lines(
     """The full-colour traversal sectors close on different sinks; each
     merge of a contact vertex keeping the three-leg orientation built some
     of these diagrams twice and their mirror images not at all
-    (pure-electroweak 1.48x MadGraph at the first point, 2.5x at QCD=2, the
-    all-order total off by 6 %). The W pairings give four interfering colour
-    flows. MadGraph's QCD=0 export assigns all its colour-flow amplitudes,
-    and the recurrence lane, which builds the all-order process, matches the
-    all-order export in every squared order
+    (pure-electroweak u u~ > d d~ s s~ c c~ 1.48x MadGraph at the first point,
+    2.5x at QCD=2, the all-order total off by 6 %; u u~ > d d~ d d~ s s~ 4-13 %
+    and d d~ > u u~ s s~ c c~ 2.9-4.4x). The W pairings give four interfering
+    colour flows. MadGraph's QCD=0 exports assign all their colour-flow
+    amplitudes, and the recurrence lane, which builds the all-order process,
+    matches the all-order export in every squared order
     (``test_partials_match_madgraph_and_keep_the_total``)."""
 
     expected = _reference(reference, REFERENCE if accuracy == "full" else LC_REFERENCE)
@@ -457,9 +479,95 @@ def test_eager_lane_pairs_w_exchanges_among_four_quark_lines(
         execution_mode="eager",
         limits=limits,
     )
-    points = _reordered(expected["points"], process, _FOUR_LINES)
+    base = reference.split(" QCD=")[0]
+    points = expected["points"]
+    if process != base:
+        points = _reordered(points, process, base)
 
     _assert_total_matches_madgraph(runtime.evaluate(points), expected)
+
+
+def test_next_to_leading_colour_keeps_the_pure_electroweak_flows(
+    sm_model: ModelSource, tmp_path: Path
+) -> None:
+    """NLC builds every traversal sector of a line pairing like full colour,
+    and the W-paired flows of pure-electroweak u u~ > d d~ s s~ c c~ interfere
+    at most at relative order 1/N^2: NLC is the full-colour result (before the
+    contact-vertex fix it moved by 5-38 % under relabelling)."""
+
+    expected = _reference(f"{_FOUR_LINES} QCD=0")
+    for name, process in (
+        ("direct", _FOUR_LINES),
+        ("relabelled", "u~ u > c c~ s s~ d d~"),
+    ):
+        runtime = _runtime(
+            sm_model,
+            process,
+            tmp_path / name,
+            accuracy="nlc",
+            execution_mode="eager",
+            limits={"QCD": 0, "QED": 6},
+        )
+        points = _reordered(expected["points"], process, _FOUR_LINES)
+        _assert_total_matches_madgraph(runtime.evaluate(points), expected)
+
+
+def test_recurrence_lane_refuses_flows_without_roots(
+    sm_model: ModelSource, tmp_path: Path
+) -> None:
+    """WP2.9 (open): the recurrence demands an exact closure in every physical
+    colour flow, also in one without roots at the requested orders (the d-s~
+    pairing of u u~ > d d~ s s~ without gluons); it fails closed instead of
+    taking the flow as zero. The eager lane builds it
+    (``test_eager_lane_counts_a_three_line_triple_gauge_vertex_once``)."""
+
+    with pytest.raises(
+        GenerationError, match="no exact closure for physical LC sector"
+    ):
+        _runtime(
+            sm_model,
+            _THREE_LINE_TRIPLE_GAUGE,
+            tmp_path / "artifact",
+            limits={"QCD": 0, "QED": 4},
+        )
+
+
+# A massless fermion line through a massive internal fermion: the tau t channel
+# of v_tau v_tau~ > W+ W- (b b~ > W+ W- with a massless b, or five quark lines
+# whose b line turns into a top) leaves a Dirac (chirality-0) current on a line
+# of Weyl (chirality +-1) external states, and models install no Dirac-Weyl
+# closure contraction. The eager lane dropped those roots wherever the line
+# closes on its own sink (the gauge cancellation of the t channel lost:
+# b b~ > W+ W- 150x MadGraph, five lines labelling-dependent); it now refuses.
+_MASSLESS_LINE_THROUGH_A_MASSIVE_FERMION = "vt vt~ > w+ w-"
+
+
+def test_eager_lane_refuses_a_massless_line_through_a_massive_fermion(
+    sm_model: ModelSource, tmp_path: Path
+) -> None:
+    with pytest.raises(GenerationError, match=r"Dirac \(chirality-0\) current"):
+        _runtime(
+            sm_model,
+            _MASSLESS_LINE_THROUGH_A_MASSIVE_FERMION,
+            tmp_path / "artifact",
+            execution_mode="eager",
+        )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="WP2.9: the recurrence drops the tau t channel of a massless line "
+    "(Dirac current, Weyl sink): 58 against MadGraph's 0.0116 at the first point",
+)
+def test_recurrence_lane_keeps_a_massless_line_through_a_massive_fermion(
+    sm_model: ModelSource, tmp_path: Path
+) -> None:
+    reference = _reference(_MASSLESS_LINE_THROUGH_A_MASSIVE_FERMION)
+    runtime = _runtime(
+        sm_model, _MASSLESS_LINE_THROUGH_A_MASSIVE_FERMION, tmp_path / "artifact"
+    )
+
+    _assert_total_matches_madgraph(runtime.evaluate(reference["points"]), reference)
 
 
 @pytest.mark.parametrize("accuracy", ["full", "lc"])
