@@ -1559,6 +1559,19 @@ class TestRunCardMG7(unittest.TestCase):
             self.assertEqual(
                 tomllib.loads(full_output.getvalue())["run"]["use_pigz"], value)
 
+    def test_gzip_configuration(self):
+        card = bannermod.RunCardMG7()
+        card.set("run.use_pigz", "auto")
+        card.set("run.cpu_thread_pool_size", -1)
+        self.assertEqual(card.gzip_configuration(),
+                         {'use_pigz': None, 'nb_core': None})
+        card.set("run.use_pigz", True)
+        card.set("run.cpu_thread_pool_size", 4)
+        self.assertEqual(card.gzip_configuration(),
+                         {'use_pigz': True, 'nb_core': 4})
+        card.set("run.use_pigz", False)
+        self.assertEqual(card.gzip_configuration()['use_pigz'], False)
+
     template = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files',
                      'mg7', 'run_card.toml')
 

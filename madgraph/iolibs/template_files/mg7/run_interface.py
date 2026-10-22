@@ -105,14 +105,8 @@ class MG7RunCmd(madevent_interface.MadEventCmd):
         merged.update(self.options_madgraph)
         merged.update(self.options_madevent)
         merged.update(options or {})
-        run_args = banner_mod.RunCardMG7(
-            pjoin(me_dir, 'Cards', 'run_card.toml'))['run']
-        use_pigz = run_args['use_pigz']
-        cpu_threads = run_args['cpu_thread_pool_size']
-        compression = {
-            'use_pigz': None if use_pigz == 'auto' else use_pigz,
-            'nb_core': cpu_threads if cpu_threads > 0 else None,
-        }
+        compression = banner_mod.RunCardMG7(
+            pjoin(me_dir, 'Cards', 'run_card.toml')).gzip_configuration()
         # Make the run directory look enough like a madevent run for the
         # results-db scan (and the tools' event-file lookup) to be happy.
         misc.configure_gzip(compression)

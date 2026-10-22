@@ -299,12 +299,7 @@ class MadgraphProcess:
 
     def load_cards(self) -> None:
         self.run_card = RunCardMG7(os.path.join("Cards", "run_card.toml"))
-        use_pigz = self.run_card["run"]["use_pigz"]
-        cpu_threads = self.run_card["run"]["cpu_thread_pool_size"]
-        misc.configure_gzip({
-            "use_pigz": None if use_pigz == "auto" else use_pigz,
-            "nb_core": cpu_threads if cpu_threads > 0 else None,
-        })
+        misc.configure_gzip(self.run_card.gzip_configuration())
         # Resolved once so every generator built during this run shares the same
         # seed; the concrete value (even if randomly drawn) is recorded in each
         # generator's info.json.

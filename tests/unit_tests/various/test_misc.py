@@ -36,6 +36,64 @@ class TEST_misc(unittest.TestCase):
             with gzip.open(path + '.gz', 'rb') as inp:
                 self.assertEqual(inp.read(), data)
 
+    def test_gzip_failure_keeps_source_and_leaves_no_archive(self):
+        data = b"<event>\n1 2 3\n</event>\n" * 100
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'events.lhe')
+            with open(path, 'wb') as out:
+                out.write(data)
+            target = os.path.join(tmp, 'missing_dir', 'events.lhe.gz')
+            misc.gzip(path, stdout=target, error=False)
+            with open(path, 'rb') as inp:
+                self.assertEqual(inp.read(), data)
+            self.assertFalse(os.path.exists(target))
+            with self.assertRaises(OSError):
+                misc.gzip(path, stdout=target, error=True)
+            self.assertTrue(os.path.exists(path))
+
+    def test_interrupted_gzip_removes_partial_archive(self):
+        data = b"<event>\n1 2 3\n</event>\n" * 100
+        def truncated_copy(fsrc, fdst, length):
+            fdst.write(b'\x1f\x8b')
+            raise OSError('disk full')
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'events.lhe')
+            with open(path, 'wb') as out:
+                out.write(data)
+            with mock.patch.object(misc.shutil, 'copyfileobj',
+                                   side_effect=truncated_copy):
+                misc.gzip(path, error=False)
+            self.assertFalse(os.path.exists(path + '.gz'))
+            with open(path, 'rb') as inp:
+                self.assertEqual(inp.read(), data)
+
+    def test_external_gzip_failure_removes_partial_archive(self):
+        original = (misc._gzip_tool, misc._gzip_tool_supports_multithreading,
+                    misc._gzip_tool_max_cores)
+        def failing_tool(command, *args, **kwargs):
+            with open(command[-1] + '.gz', 'wb') as out:
+                out.write(b'\x1f\x8b')
+            return 1
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, 'events.lhe')
+                with open(path, 'wb') as out:
+                    out.write(b'<event>\n</event>\n')
+                with mock.patch.object(misc.open_file, 'find_valid',
+                                       return_value='gzip'), \
+                     mock.patch.object(misc, 'call', side_effect=failing_tool):
+                    misc.configure_gzip({'use_pigz': False})
+                    misc.gzip(path, forceexternal=True, error=False)
+                    self.assertFalse(os.path.exists(path + '.gz'))
+                    self.assertTrue(os.path.exists(path))
+                    with self.assertRaises(RuntimeError):
+                        misc.gzip(path, forceexternal=True, error=True)
+                    self.assertFalse(os.path.exists(path + '.gz'))
+                    self.assertTrue(os.path.exists(path))
+        finally:
+            (misc._gzip_tool, misc._gzip_tool_supports_multithreading,
+             misc._gzip_tool_max_cores) = original
+
     def test_external_gzip_keep_passes_thread_limit(self):
         original = (misc._gzip_tool, misc._gzip_tool_supports_multithreading,
                     misc._gzip_tool_max_cores)

@@ -1507,6 +1507,14 @@ def configure_gzip(configuration=None):
 GZIP_COMPRESSLEVEL = 6
 
 
+def _remove_partial_gz(path):
+    """Delete the truncated archive left behind by a failed compression."""
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
 def gzip(path, stdout=None, error=True, forceexternal=False,
          compresslevel=GZIP_COMPRESSLEVEL, keep=False):
     """ a standard replacement for os.system('gzip %s ' % path)"""
@@ -1519,6 +1527,7 @@ def gzip(path, stdout=None, error=True, forceexternal=False,
         if keep:
             command.append('-k')
         if call(command + ['-f', path]) != 0:
+            _remove_partial_gz('%s.gz' % path)
             if error:
                 raise RuntimeError('compressing %s with %s failed' % (path, _gzip_tool))
             return
@@ -1540,19 +1549,20 @@ def gzip(path, stdout=None, error=True, forceexternal=False,
         with open(path, 'rb') as fsock, \
              ziplib.open(stdout, 'wb', compresslevel=compresslevel) as f:
             shutil.copyfileobj(fsock, f, 4 * 1024 * 1024)
-    except OverflowError:
-        if not _gzip_tool:
+    except BaseException as err:
+        # Only a complete archive may replace the source: a failed or
+        # interrupted copy leaves no truncated .gz and keeps the source.
+        _remove_partial_gz(stdout)
+        if isinstance(err, OverflowError):
+            if not _gzip_tool:
+                raise
+            return gzip(path, stdout, error=error, forceexternal=True,
+                        compresslevel=compresslevel, keep=keep)
+        if error or not isinstance(err, Exception):
             raise
-        return gzip(path, stdout, error=error, forceexternal=True,
-                    compresslevel=compresslevel, keep=keep)
-    except Exception:
-        if error:
-            raise
-        else:
-            return
-    else:
-        if not keep:
-            os.remove(path)
+        return
+    if not keep:
+        os.remove(path)
     
 #
 # Global function to open supported file types
