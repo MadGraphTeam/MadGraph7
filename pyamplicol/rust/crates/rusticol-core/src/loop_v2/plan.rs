@@ -1461,6 +1461,7 @@ impl LoopProgramV4 {
                     s.rows == 1 && s.d_alpha == s.d_out,
                     "trace of an open object",
                 )?;
+                require(rank_out <= f.rank, "a trace step above the family rank")?;
             }
             let mut edges = Vec::with_capacity(s.edges.len());
             for e in &s.edges {
@@ -1794,6 +1795,7 @@ impl LoopProgramV4 {
                             && closure.accumulator < family.orders.len()
                             && s.rows == 1
                             && s.d_alpha == s.d_out
+                            && s.rank_in + s.degree <= family.rank
                             && closure
                                 .relabel
                                 .is_none_or(|(sign, _)| sign == 1 || sign == -1),

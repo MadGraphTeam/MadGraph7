@@ -314,7 +314,7 @@ impl<T: Carrier, const L: usize> Context<'_, T, L> {
     }
 
     /// Trace a full state into `sums` (its target's slot).
-    fn close(&self, s: usize, out: &[T], sums: &mut Sums<T>) -> RusticolResult<()> {
+    fn close(&self, s: usize, out: &[T], sums: &mut Sums<T>) {
         let (plan, state) = (self.plan, &self.merged.states[s]);
         let closure = state.closure.expect("a closing state");
         let target = (closure.family, closure.accumulator, closure.variant);
@@ -338,7 +338,7 @@ impl<T: Carrier, const L: usize> Context<'_, T, L> {
             plan.columns,
             rank,
             zero,
-        )
+        );
     }
 
     /// Run one group of a chunk on the chunk's seeded outputs `head`
@@ -379,7 +379,7 @@ impl<T: Carrier, const L: usize> Context<'_, T, L> {
                 }
             }
             if merged.states[s].closure.is_some() {
-                self.close(s, &out, &mut sums)?;
+                self.close(s, &out, &mut sums);
                 pool.give(out);
             } else {
                 outputs.insert(s, out);
@@ -411,7 +411,7 @@ impl<T: Carrier, const L: usize> Context<'_, T, L> {
         let mut head_reals = 0;
         for (&s, out) in layout.head.iter().zip(head) {
             if merged.states[s].closure.is_some() {
-                self.close(s, &out, &mut sums[0])?;
+                self.close(s, &out, &mut sums[0]);
             } else {
                 head_reals += out.len();
                 outputs[s - start] = Some(out);
@@ -695,6 +695,28 @@ mod tests {
             .replace("FAMILY", FAMILY);
         let error = LoopProgramV4::load(text.as_bytes()).unwrap_err();
         assert!(error.message().contains("crosses a chunk"), "{error}");
+    }
+
+    /// Closures above their family's rank are refused when the plan loads
+    /// (a closure never truncates a coefficient while it evaluates).
+    #[test]
+    fn plans_refuse_closures_above_the_family_rank() {
+        let load = |plan: &str, family: &str| {
+            let text = plan
+                .replace("CONTENT0", &CONTENT.replace("KERNEL", "0"))
+                .replace("CONTENT1", &CONTENT.replace("KERNEL", "1"))
+                .replace("FAMILY", family);
+            LoopProgramV4::load(text.as_bytes())
+        };
+        let state = "\"rank_in\":0,\n                 \"edges\":[{\"entry\":-1,\"parent\":3";
+        assert_eq!(PLAN.matches(state).count(), 1);
+        let error = load(&PLAN.replace(state, &state.replace(":0,", ":1,")), FAMILY).unwrap_err();
+        assert!(error.message().contains("merged closure"), "{error}");
+        let trace = "\"trace\":0,\"rows\":1,\"d_alpha\":1,\"d_out\":1,\"degree\":0,";
+        assert_eq!(FAMILY.matches(trace).count(), 1);
+        let family = FAMILY.replace(trace, &trace.replace("\"degree\":0", "\"degree\":1"));
+        let error = load(PLAN, &family).unwrap_err();
+        assert!(error.message().contains("above the family rank"), "{error}");
     }
 
     /// Exact numerators of M equal B's, family by family; each part hands

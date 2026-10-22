@@ -123,7 +123,7 @@ pub fn run_family<T: Carrier, const L: usize>(
                     columns,
                     family.rank,
                     zero,
-                )?;
+                );
                 pool.give(out);
             }
             None => outputs[s] = Some(out),
