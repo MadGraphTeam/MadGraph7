@@ -601,9 +601,7 @@ def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
         for index, results in enumerate(native):
             for history, values in directed.items():
                 result = results[history]
-                _assert_correlated(
-                    result, values, index, _bound(result, tolerance)
-                )
+                _assert_correlated(result, values, index, _bound(result, tolerance))
     for process, runner in runners:
         expected = record["results"]["arbitrary-200"][process]
         for index, (point, scale) in enumerate(
@@ -621,9 +619,7 @@ def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
                 )
                 for history, values in directed.items():
                     result = results[history]
-                    _assert_correlated(
-                        result, values, index, _bound(result, tolerance)
-                    )
+                    _assert_correlated(result, values, index, _bound(result, tolerance))
             for legs, values in expected.get("spin", {}).items():
                 spin = {int(leg): vectors[k] for k, leg in enumerate(legs.split(","))}
                 (result,) = runner.evaluate(
@@ -1363,9 +1359,16 @@ def test_native_observable_estimates_follow_the_stability_api(generate, carrier)
         (StabilityChecks((rotation,)), {ROTATION.format(0)}),
         (StabilityChecks(reduction_direction=True), {REDUCTION}),
         (StabilityChecks((rotation,), True), {ROTATION.format(0), REDUCTION}),
-        (StabilityChecks((rotation,), True, rescaled=True), {ROTATION.format(0), RESCALED}),
+        (
+            StabilityChecks((rotation,), True, rescaled=True),
+            {ROTATION.format(0), RESCALED},
+        ),
     ):
-        options = {"parameters": PARAMETERS, "precision": precision, "stability": checks}
+        options = {
+            "parameters": PARAMETERS,
+            "precision": precision,
+            "stability": checks,
+        }
         results = native.evaluate(points, scales, **options)
         references = inclusive.evaluate(points, scales, **options)
         for result, reference, truth in zip(results, references, exact, strict=True):
