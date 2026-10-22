@@ -1038,15 +1038,22 @@ class V2VirtualRuntime:
     It answers ``evaluate``, ``evaluate_resolved``, ``evaluate_correlated`` and
     ``evaluate_correlated_many`` with the public result types from an
     ``loops.v2.observables.ObservableSlice``: the colour histories and spin
-    classes declared at its generation, the Python reference executor in
-    binary64 or arbitrary precision. Resolved colour components are the Born
-    basis elements (``born-basis-anchored-interference``, design §1.6
-    decision 3), with IDs ``basis-<index>``. Accuracy is not established by
-    this surface (no stability policy); values are the v2 engine's.
+    classes declared at its generation, optionally for an admitted flavour
+    ``member`` (``loops.v2.observables.admit_member``) evaluated by the
+    representative. ``executor="native"`` (the default) dresses and reduces
+    every batch in the native v2 executor (binary64, ``double-double`` or
+    MPFR arbitrary precision; one native plan per output column set, built
+    once); ``"python"`` runs the Python reference executor (binary64 or
+    arbitrary precision). Resolved colour components are the Born basis
+    elements (``born-basis-anchored-interference``, design §1.6 decision 3),
+    with IDs ``basis-<index>``. Accuracy is not established by this surface
+    (no stability policy); values are the v2 engine's.
     """
 
     contribution_kind = "virtual"
     execution_mode = "loop_v2"
+    # Decimal digits of the trees under the native DoubleFloat carrier.
+    DOUBLE_DOUBLE_DIGITS = 32
 
     def __init__(
         self,
@@ -1055,8 +1062,22 @@ class V2VirtualRuntime:
         model_parameters: Mapping[str, object] | None = None,
         arithmetic: str | None = None,
         precision: int | None = None,
+        executor: Literal["native", "python"] = "native",
+        member: Any = None,
+        lanes: int | None = None,
+        threads: int | None = None,
     ) -> None:
+        if executor not in ("native", "python"):
+            raise ValueError(f"unknown v2 executor {executor!r}")
         self._observables = observables
+        self._member = member
+        self._executor = executor
+        self._native_options = {
+            key: value
+            for key, value in (("lanes", lanes), ("threads", threads))
+            if value is not None
+        }
+        self._native: dict[tuple, Any] = {}
         self._parameters = {
             name: real
             for name, (real, _imaginary) in (
@@ -1098,9 +1119,42 @@ class V2VirtualRuntime:
         with self._lock:
             self._spin_vectors = {}
 
+    # -- executors --------------------------------------------------------------
+
+    def _runner(self) -> Any:
+        """The Python reference evaluation of the slice or of the member."""
+
+        from pyamplicol.loops.v2.observables import MemberObservables
+
+        if self._member is None:
+            return self._observables
+        return MemberObservables(self._observables, self._member)
+
+    def _native_columns(self, key: tuple) -> Any:
+        """The native executor of one output column set (built once):
+        ``("correlated", histories)`` or ``("resolved", spin legs)``."""
+
+        from pyamplicol.loops.v2.observables import NativeObservables
+
+        with self._lock:
+            found = self._native.get(key)
+            if found is None:
+                kind, value = key
+                options = {"member": self._member, **self._native_options}
+                found = self._native[key] = (
+                    NativeObservables.correlated(self._observables, value, **options)
+                    if kind == "correlated"
+                    else NativeObservables.resolved(
+                        self._observables, spin_legs=value, **options
+                    )
+                )
+            return found
+
     # -- evaluation -----------------------------------------------------------
 
     def _precision(self, arithmetic: str | None, precision: int | None):
+        """(public arithmetic, tree carrier, native DoubleFloat flag)."""
+
         from pyamplicol.loops.v2.assemble import Precision
 
         precision = self.default_precision if precision is None else precision
@@ -1109,11 +1163,13 @@ class V2VirtualRuntime:
         )
         arithmetic = arithmetic or ("double" if precision == 16 else "arbitrary")
         if arithmetic == "double":
-            return arithmetic, Precision.double()
+            return arithmetic, Precision.double(), False
         if arithmetic == "arbitrary":
-            return arithmetic, Precision.arbitrary(precision)
+            return arithmetic, Precision.arbitrary(precision), False
+        if arithmetic == "double-double" and self._executor == "native":
+            return arithmetic, Precision.arbitrary(self.DOUBLE_DOUBLE_DIGITS), True
         raise CompatibilityError(
-            "the v2 reference runtime evaluates in double or arbitrary precision"
+            f"the v2 {self._executor} executor does not evaluate in {arithmetic!r}"
         )
 
     def _scalar(self, value: Any, arithmetic: str, correlated: bool) -> VirtualScalar:
@@ -1137,17 +1193,16 @@ class V2VirtualRuntime:
         )
 
     def _diagnostic(self, arithmetic: str, precision) -> VirtualLaneDiagnostic:
-        bits = (
-            53
-            if arithmetic == "double"
-            else math.ceil(precision.digits * math.log2(10))
+        bits = {"double": 53, "double-double": 106}.get(arithmetic) or math.ceil(
+            precision.digits * math.log2(10)
         )
+        executor = "native" if self._executor == "native" else "Python reference"
         return VirtualLaneDiagnostic(
             "success",
             arithmetic,  # type: ignore[arg-type]
             bits,
             False,
-            "v2 reference executor; no stability policy requested",
+            f"v2 {executor} executor; no stability policy requested",
         )
 
     def _evaluation(
@@ -1226,10 +1281,11 @@ class V2VirtualRuntime:
         _correlated: bool = True,
     ) -> dict[str, VirtualEvaluation]:
         """Every request on one batch; requests with equal spin sources share
-        their seed columns (one dressing per point and source assignment)."""
+        their seed columns (one dressing per point and source assignment; one
+        native batch per source assignment)."""
 
         observables = self._observables
-        arithmetic, carrier = self._precision(arithmetic, precision)
+        arithmetic, carrier, double_double = self._precision(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
         known = {item.id for item in self.available_color_correlations()}
         with self._lock:
@@ -1265,17 +1321,29 @@ class V2VirtualRuntime:
             histories = tuple(
                 dict.fromkeys(requests[label].color_correlation for label in labels)
             )
-            per_point = [
-                observables.evaluate(
-                    point,
-                    scale,
-                    correlations=histories,
-                    spin=spin or None,
+            spins = [spin or None for spin in sources[key]]
+            if self._executor == "native":
+                per_point = self._native_columns(("correlated", histories)).evaluate(
+                    points,
+                    scales,
+                    spin=spins,
                     parameters=self._parameters,
                     precision=carrier,
+                    double_double=double_double,
                 )
-                for point, scale, spin in zip(points, scales, sources[key], strict=True)
-            ]
+            else:
+                runner = self._runner()
+                per_point = [
+                    runner.evaluate(
+                        point,
+                        scale,
+                        correlations=histories,
+                        spin=spin,
+                        parameters=self._parameters,
+                        precision=carrier,
+                    )
+                    for point, scale, spin in zip(points, scales, spins, strict=True)
+                ]
             for label in labels:
                 history = requests[label].color_correlation
                 out[label] = self._evaluation(
@@ -1299,16 +1367,29 @@ class V2VirtualRuntime:
         from pyamplicol.loops.strategy import R2Selection
 
         observables = self._observables
-        arithmetic, carrier = self._precision(arithmetic, precision)
+        arithmetic, carrier, double_double = self._precision(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
         rows = observables.rows
+        if self._member is not None:
+            # The member's rows in its own catalogue order.
+            rows = tuple(sorted(self._member.row(row) for row in rows))
         components = observables.components
-        resolved = [
-            observables.evaluate_resolved(
-                point, scale, parameters=self._parameters, precision=carrier
+        if self._executor == "native":
+            entries = self._native_columns(("resolved", ())).evaluate(
+                points,
+                scales,
+                parameters=self._parameters,
+                precision=carrier,
+                double_double=double_double,
             )
-            for point, scale in zip(points, scales, strict=True)
-        ]
+        else:
+            runner = self._runner()
+            entries = [
+                runner.evaluate_resolved(
+                    point, scale, parameters=self._parameters, precision=carrier
+                ).entries
+                for point, scale in zip(points, scales, strict=True)
+            ]
         born_orders = self._default_born_orders()
 
         def born_value(entry, order):
@@ -1317,13 +1398,12 @@ class V2VirtualRuntime:
 
         born_values = []
         values = []
-        for result in resolved:
-            entries = result.entries
+        for result in entries:
             born_values.append(
                 tuple(
                     tuple(
                         tuple(
-                            born_value(entries.get((row, b)), order) for b in components
+                            born_value(result.get((row, b)), order) for b in components
                         )
                         for row in rows
                     )
@@ -1335,7 +1415,7 @@ class V2VirtualRuntime:
                     tuple(
                         tuple(
                             self._laurent(
-                                entries[(row, b)].components["virtual"][sector.order],
+                                result[(row, b)].components["virtual"][sector.order],
                                 arithmetic,
                                 False,
                             )
@@ -1352,7 +1432,7 @@ class V2VirtualRuntime:
             values=tuple(values),
             born_orders=born_orders,
             sectors=self._sectors,
-            diagnostics=tuple(self._diagnostic(arithmetic, carrier) for _ in resolved),
+            diagnostics=tuple(self._diagnostic(arithmetic, carrier) for _ in entries),
             r2=R2Selection(R2Strategy.MODEL, R2Strategy.MODEL, "model-supplied R2"),
             helicity_ids=tuple(f"h{i}" for i in range(len(rows))),
             born_color_ids=ids,

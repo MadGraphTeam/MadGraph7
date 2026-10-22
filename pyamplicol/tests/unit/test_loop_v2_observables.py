@@ -22,11 +22,13 @@ the observable seed columns of ``loops.v2.observables``. Oracles:
 from __future__ import annotations
 
 import json
+import math
 from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
+from pyamplicol.api.errors import CompatibilityError
 from pyamplicol.color.connections import EmitGluon
 from pyamplicol.color.correlator_matrices import ColorCorrelator
 from pyamplicol.correlators import CorrelatorConfig
@@ -316,6 +318,20 @@ def _ward_scale(result) -> list[float]:
     ]
 
 
+def _lane_scale(result, average: int) -> list[float]:
+    """Per Laurent coefficient the absolute sum of the family lanes' bare
+    contributions, 2 |Omega| / (16 pi^2 average): the terms that cancel."""
+
+    from pyamplicol.loops.v2.conventions import LOOP_FACTOR_DENOMINATOR
+
+    factor = 2 / (LOOP_FACTOR_DENOMINATOR * math.pi**2 * average)
+    return [
+        factor
+        * sum(abs(complex(lane.coefficients[k])) for lane in result.families.values())
+        for k in range(3)
+    ]
+
+
 @pytest.mark.parametrize(
     "process,name,legs",
     [("g g > g g", "gg_gg", (1, 3)), ("u u~ > g g g", "uux_ggg", (3, 5))],
@@ -324,7 +340,11 @@ def _ward_scale(result) -> list[float]:
 def test_asymmetric_ward_identity(generate, process, name, legs, carrier):
     """O10: with epsilon_j -> p_j on the loop side only (blocks, counterterm
     currents, field insertions; full kernels) the renormalised interference
-    with the physical Born vanishes per Laurent coefficient and sector."""
+    with the physical Born vanishes per Laurent coefficient and sector,
+    relative to the largest physical component. In binary64 the scale is at
+    least the absolute sum of the Ward evaluation's family lanes: the bare
+    lanes cancel among themselves by orders of magnitude (gauge cancellation
+    across families), so rounding is relative to them."""
 
     born = {"QCD": 3, "QED": 0} if name == "uux_ggg" else QCD2
     loop = {"QCD": 5, "QED": 0} if name == "uux_ggg" else QCD4
@@ -335,12 +355,15 @@ def test_asymmetric_ward_identity(generate, process, name, legs, carrier):
     physical = observables.slice.evaluate(
         point, scale, parameters=PARAMETERS, precision=precision
     )
-    reference = _ward_scale(physical)
     tolerance = 1e-11 if carrier == "double" else 1e-45
     for leg in legs:
         (ward,) = observables.evaluate(
             point, scale, ward=leg, parameters=PARAMETERS, precision=precision
         ).values()
+        reference = _ward_scale(physical)
+        if carrier == "double":
+            lanes = _lane_scale(ward, observables.slice.normalisation.average)
+            reference = [max(a, b) for a, b in zip(reference, lanes, strict=True)]
         for sector, laurent in ward.components["virtual"].items():
             for k, value in enumerate(laurent.coefficients):
                 assert abs(complex(value)) <= tolerance * reference[k], (leg, sector, k)
@@ -543,10 +566,13 @@ def test_helicity_resolved_outputs_equal_legacy(generate, name):
 # ------------------------------------------------------------------ public surface
 
 
-def test_public_runtime_surface(generate, loop_reference):
+@pytest.mark.parametrize("executor", ("native", "python"))
+def test_public_runtime_surface(generate, loop_reference, executor):
     """``runtime.virtual.V2VirtualRuntime`` answers the public calls with the
-    public result types: ordinary, correlated (colour and spin, grouped by
-    source assignment) and resolved evaluations."""
+    public result types, natively (the default) or with the Python reference
+    executor: ordinary, correlated (colour and spin, grouped by source
+    assignment, per-point source vectors) and resolved evaluations, in
+    binary64 and arbitrary precision (and natively in DoubleFloat)."""
 
     from pyamplicol.correlators import CorrelatedRequest
     from pyamplicol.runtime.virtual import V2VirtualRuntime
@@ -556,7 +582,9 @@ def test_public_runtime_surface(generate, loop_reference):
         spin_correlations=((3,),),
     )
     observables = generate("u u~ > g g", correlators=declarations)
-    runtime = V2VirtualRuntime(observables, model_parameters=PARAMETERS)
+    runtime = V2VirtualRuntime(
+        observables, model_parameters=PARAMETERS, executor=executor
+    )
     rows = loop_reference("spin-recola-control")["rows"]
     points = [row["point"] for row in rows]
     scales = [row["mu_r2"] for row in rows]
@@ -566,6 +594,7 @@ def test_public_runtime_surface(generate, loop_reference):
     ]
     ordinary = runtime.evaluate(points, mu_r2=scales)
     assert ordinary.shape == (2, 1, 3) and not ordinary.correlated
+    assert executor in ordinary.diagnostics[0].detail.lower()
     grouped = runtime.evaluate_correlated_many(
         points,
         {
@@ -588,27 +617,135 @@ def test_public_runtime_surface(generate, loop_reference):
     assert resolved.shape == (1, 1, 16, len(observables.components), 3)
     for a, b in zip(resolved.total().values[0][0], ordinary.values[0][0], strict=True):
         assert _close(a, b, 1e-12, 1e-14)
-    precise = runtime.evaluate(
-        points[:1], mu_r2=scales[:1], arithmetic="arbitrary", precision=40
+    carriers = [("arbitrary", 40)]
+    if executor == "native":
+        carriers.append(("double-double", None))
+    else:
+        with pytest.raises(CompatibilityError, match="double-double"):
+            runtime.evaluate(points[:1], mu_r2=scales[:1], arithmetic="double-double")
+    for arithmetic, digits in carriers:
+        precise = runtime.evaluate(
+            points[:1], mu_r2=scales[:1], arithmetic=arithmetic, precision=digits
+        )
+        assert precise.diagnostics[0].arithmetic == arithmetic
+        for a, b in zip(precise.values[0][0], ordinary.values[0][0], strict=True):
+            assert _close(float(a), b, 1e-13)
+
+
+def test_public_runtime_members_run_natively(generate):
+    """A flavour member and a permutation alias through the public runtime
+    (native executor) equal the runtime of the process generated directly:
+    directed histories, per-point spin sources and resolved rows."""
+
+    from pyamplicol.correlators import CorrelatedRequest
+    from pyamplicol.runtime.virtual import V2VirtualRuntime
+
+    declarations = CorrelatorConfig(
+        color_correlations=(ColorCorrelator.dipole("casimir", 1, 1), ORDERED),
+        spin_correlations=((3, 4),),
     )
-    for a, b in zip(precise.values[0][0], ordinary.values[0][0], strict=True):
-        assert _close(float(a), b, 1e-13)
+    representative = generate("d d~ > g g", correlators=declarations)
+    points = _points("uudd_qcd")[:2]
+    scales = ["1000000"] * 2
+    requests = {
+        "ordered": CorrelatedRequest("ordered", {}),
+        "casimir": CorrelatedRequest("casimir", {}),
+        "spin": CorrelatedRequest(
+            "born", {3: [VECTORS[0], VECTORS[1]], 4: [VECTORS[1], VECTORS[0]]}
+        ),
+    }
+    for process in ("s s~ > g g", "s~ s > g g"):
+        member = admit_member(representative.slice, process)
+        through = V2VirtualRuntime(
+            representative, model_parameters=PARAMETERS, member=member
+        )
+        direct = V2VirtualRuntime(
+            generate(process, correlators=declarations), model_parameters=PARAMETERS
+        )
+        left = through.evaluate_correlated_many(points, requests, mu_r2=scales)
+        right = direct.evaluate_correlated_many(points, requests, mu_r2=scales)
+        for label in requests:
+            for a, b in zip(left[label].values, right[label].values, strict=True):
+                for x, y in zip(a[0], b[0], strict=True):
+                    assert _close(x, y, 1e-12, 1e-14), (process, label)
+        left = through.evaluate_resolved(points[:1], mu_r2=scales[:1])
+        right = direct.evaluate_resolved(points[:1], mu_r2=scales[:1])
+        assert left.values == pytest.approx(right.values, rel=1e-12, abs=1e-14)
 
 
 # ------------------------------------------------------------------ O14
 
 
+def _rank(vectors: list[list[Fraction]]) -> int:
+    """The rank of rational vectors (exact elimination)."""
+
+    rows: list[tuple[int, list[Fraction]]] = []
+    for vector in vectors:
+        vector = list(vector)
+        for lead, row in rows:
+            if vector[lead]:
+                factor = vector[lead] / row[lead]
+                vector = [a - factor * b for a, b in zip(vector, row, strict=True)]
+        lead = next((k for k, value in enumerate(vector) if value), None)
+        if lead is not None:
+            rows.append((lead, vector))
+    return len(rows)
+
+
+def _inverse(matrix: list[list[Fraction]]) -> list[list[Fraction]]:
+    """The exact inverse of a nonsingular rational matrix (Gauss-Jordan)."""
+
+    size = len(matrix)
+    rows = [
+        [*row, *(Fraction(int(i == j)) for j in range(size))]
+        for i, row in enumerate(matrix)
+    ]
+    for column in range(size):
+        pivot = next(r for r in range(column, size) if rows[r][column])
+        rows[column], rows[pivot] = rows[pivot], rows[column]
+        lead = rows[column][column]
+        rows[column] = [value / lead for value in rows[column]]
+        for r in range(size):
+            if r != column and rows[r][column]:
+                factor = rows[r][column]
+                rows[r] = [
+                    a - factor * b for a, b in zip(rows[r], rows[column], strict=True)
+                ]
+    return [row[size:] for row in rows]
+
+
+def _generalised_inverse(gram: list[list[Fraction]]) -> list[list[Fraction]]:
+    """An exact generalised inverse M (G M G = G) of a symmetric positive
+    semidefinite rational matrix: the inverse of its principal submatrix on a
+    maximal independent column set, zero elsewhere."""
+
+    size = len(gram)
+    columns = [[gram[row][column] for row in range(size)] for column in range(size)]
+    chosen: list[int] = []
+    for column in range(size):
+        if _rank([columns[c] for c in (*chosen, column)]) > len(chosen):
+            chosen.append(column)
+    inverse = _inverse([[gram[a][b] for b in chosen] for a in chosen])
+    out = [[Fraction(0)] * size for _ in range(size)]
+    for i, a in enumerate(chosen):
+        for j, b in enumerate(chosen):
+            out[a][b] = inverse[i][j]
+    return out
+
+
 def test_bdk_partial_amplitudes_reproduce_the_colour_sum_o14(generate):
-    """O14 with resolved-colour seed columns (design §7.6, §14): the
-    projections of v2's bare loop amplitude of qbar q g g g onto BDK's one-loop
-    colour structures (``ObservableSlice.project_loop``) determine partial
-    amplitudes A_{5;1}, A_{5;3}, A_{5;4} (least squares on the N_c = 3 Gram
-    matrix, which has one null direction; residual at rounding). With the tree
+    """O14 with resolved-colour seed columns (design §7.6, §14), at 200 bits:
+    the projections of v2's bare loop amplitude of qbar q g g g onto BDK's
+    one-loop colour structures (``ObservableSlice.project_loop``) determine
+    partial amplitudes A_{5;1}, A_{5;3}, A_{5;4} through an exact generalised
+    inverse of the N_c = 3 Gram matrix (which has null directions; the
+    projections lie in its range to the carrier's rounding). With the tree
     partial amplitudes of v2's Born, BDK's colour sum (N^2-1)/N sum_s
     A_tree(s)^* bracket(s) (hep-ph/9409393 eq. NLOCrossSection) reproduces
-    v2's helicity-resolved bare virtual."""
+    v2's helicity-resolved bare virtual. Gram, tree and BDK matrices are
+    exact; every product runs at the carrier's working digits."""
 
-    import numpy as np
+    from decimal import Decimal, localcontext
 
     from pyamplicol.color.connections import (
         contract_connected_tensor_nc_terms,
@@ -633,87 +770,139 @@ def test_bdk_partial_amplitudes_reproduce_the_colour_sum_o14(generate):
     point = list(fixture["points"][0])
     point[0], point[1] = point[1], point[0]
     scale = fixture["scales_squared"][0]
+    precision = CARRIERS["arbitrary-200"]
 
-    def at_three(cell) -> complex:
-        return complex(evaluate_color_nc_terms(cell))
+    def at_three(cell) -> Fraction:
+        value = evaluate_color_nc_terms(cell)
+        assert not value.imag
+        return value.real
 
     trees, loops = list(tree), list(loop)
-    gram_tree = np.array(
+    gram_tree = [
+        [at_three(contract_connected_tensor_nc_terms(tree[a], tree[b])) for b in trees]
+        for a in trees
+    ]
+    gram_loop = [
+        [at_three(contract_connected_tensor_nc_terms(loop[a], loop[b])) for b in loops]
+        for a in loops
+    ]
+    bdk = [
         [
-            [
-                at_three(contract_connected_tensor_nc_terms(tree[a], tree[b]))
-                for b in trees
-            ]
-            for a in trees
-        ]
-    )
-    gram_loop = np.array(
-        [
-            [
-                at_three(contract_connected_tensor_nc_terms(loop[a], loop[b]))
-                for b in loops
-            ]
-            for a in loops
-        ]
-    )
-    bdk = np.array(
-        [
-            [
-                sum(
-                    float(v) * 3.0**p
+            sum(
+                (
+                    v * Fraction(3) ** p
                     for p, v in _laurent_times(
                         _bdk_bracket(s).get(key, {}), BDK_PREFACTOR
                     ).items()
-                )
-                for key in loops
-            ]
-            for s in trees
+                ),
+                Fraction(0),
+            )
+            for key in loops
         ]
-    )
-    evaluation = observables.point(point, scale, PARAMETERS)
+        for s in trees
+    ]
+    tree_inverse = _inverse(gram_tree)
+    loop_inverse = _generalised_inverse(gram_loop)
+    assert _rank(gram_loop) < len(loops)
+    evaluation = observables.point(point, scale, PARAMETERS, precision)
+    with localcontext(prec=precision.working_digits):
 
-    def born(row) -> np.ndarray:
-        """Tree partial amplitudes: Born = sum_s a_s tree_s."""
+        def number(value):
+            if isinstance(value, Fraction):
+                return Decimal(value.numerator) / value.denominator
+            return value
 
-        projections = []
-        for s in trees:
-            total = 0j
-            for vector in evaluation.born_vectors[row].values():
-                for (tensor, power), value in vector.items():
-                    overlap = contract_connected_tensor_nc_terms(
-                        tree[s], _single(tensor, slice_.basis.legs)
-                    )
-                    total += complex(value) * 3**power * at_three(overlap)
-            projections.append(total)
-        return np.linalg.solve(gram_tree, np.array(projections))
+        def apply(matrix, vector):
+            """A rational matrix times a vector of (real, imaginary) Decimals."""
 
-    amplitudes = {row: born(row) for row in observables.rows}
-    largest = max(np.abs(a).max() for a in amplitudes.values())
-    rows = [row for row, a in amplitudes.items() if np.abs(a).max() > 1e-3 * largest]
-    rows = rows[:2]
-    assert rows
+            return [
+                (
+                    sum(
+                        (number(m) * x for m, (x, _y) in zip(row, vector, strict=True)),
+                        Decimal(0),
+                    ),
+                    sum(
+                        (number(m) * y for m, (_x, y) in zip(row, vector, strict=True)),
+                        Decimal(0),
+                    ),
+                )
+                for row in matrix
+            ]
+
+        def size(vector):
+            return max(abs(x) + abs(y) for x, y in vector)
+
+        def tree_amplitudes(row):
+            """Tree partial amplitudes: Born = sum_s a_s tree_s."""
+
+            projected = []
+            for s in trees:
+                re = im = Decimal(0)
+                for vector in evaluation.born_vectors[row].values():
+                    for (tensor, power), value in vector.items():
+                        overlap = number(
+                            at_three(
+                                contract_connected_tensor_nc_terms(
+                                    tree[s], _single(tensor, slice_.basis.legs)
+                                )
+                            )
+                            * Fraction(3) ** power
+                        )
+                        re += overlap * value.real
+                        im += overlap * value.imag
+                projected.append((re, im))
+            return apply(tree_inverse, projected)
+
+        amplitudes = {row: tree_amplitudes(row) for row in observables.rows}
+        largest = max(size(a) for a in amplitudes.values())
+        rows = [row for row, a in amplitudes.items() if size(a) > largest / 1000][:2]
+    assert len(rows) == 2
     projections = observables.project_loop(
-        point, scale, [loop[key] for key in loops], rows=rows, parameters=PARAMETERS
+        point,
+        scale,
+        [loop[key] for key in loops],
+        rows=rows,
+        parameters=PARAMETERS,
+        precision=precision,
     )
     resolved = observables.evaluate_resolved(
-        point, scale, resolution="helicity", parameters=PARAMETERS
+        point, scale, resolution="helicity", parameters=PARAMETERS, precision=precision
     )
     (order,) = {label[2] for label in projections}
-    for row in rows:
-        (bare,) = resolved.entries[row, None].components["bare"].values()
-        for k in range(3):
-            target = np.array(
-                [
-                    complex(projections[row, j, order].coefficients[k])
+    with localcontext(prec=precision.working_digits):
+        for row in rows:
+            (bare,) = resolved.entries[row, None].components["bare"].values()
+            expected = []
+            for k in range(3):
+                target = [
+                    (
+                        Decimal(projections[row, j, order].coefficients[k].real),
+                        Decimal(projections[row, j, order].coefficients[k].imag),
+                    )
                     for j in range(len(loops))
                 ]
-            )
-            partial, *_ = np.linalg.lstsq(gram_loop, target, rcond=None)
-            residual = np.abs(gram_loop @ partial - target).max()
-            assert residual <= 1e-11 * np.abs(target).max()
-            interference = np.conj(amplitudes[row]) @ (bdk @ partial)
-            expected = 2 * interference.real / slice_.normalisation.average
-            assert _close(bare.coefficients[k], expected, 1e-10)
+                partial = apply(loop_inverse, target)
+                residual = [
+                    (a - c, b - d)
+                    for (a, b), (c, d) in zip(
+                        apply(gram_loop, partial), target, strict=True
+                    )
+                ]
+                assert size(residual) <= Decimal("1e-45") * size(target)
+                contracted = apply(bdk, partial)
+                interference = sum(
+                    (
+                        a * c + b * d
+                        for (a, b), (c, d) in zip(
+                            amplitudes[row], contracted, strict=True
+                        )
+                    ),
+                    Decimal(0),
+                )
+                expected.append(2 * interference / slice_.normalisation.average)
+            scale_ = max(abs(x) for x in expected)
+            for actual, value in zip(bare.coefficients, expected, strict=True):
+                assert abs(Decimal(actual) - value) <= Decimal("1e-40") * scale_, row
 
 
 # ------------------------------------------------------------------ native
@@ -774,6 +963,80 @@ def test_native_observables_equal_python(generate, carrier):
     for key, value in reference.entries.items():
         for a, b in zip(resolved[key].totals, value.totals, strict=True):
             assert abs(complex(a) - complex(b)) <= tolerance * largest, key
+
+
+def test_native_members_per_point_sources_and_stability(generate):
+    """Natively: a permutation alias through its representative equals the
+    Python member evaluation (directed histories, one spin source per point,
+    resolved rows); the native rotation and reduction-direction estimates
+    bound the deviation from the 200-bit evaluation."""
+
+    from pyamplicol.loops.v2.observables import NativeObservables
+    from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
+
+    declarations = CorrelatorConfig(
+        color_correlations=(ColorCorrelator.dipole("casimir", 1, 1), ORDERED),
+        spin_correlations=((3,),),
+    )
+    representative = generate("d d~ > g g", correlators=declarations)
+    member = admit_member(representative.slice, "s~ s > g g")
+    python = MemberObservables(representative, member)
+    points = _points("uudd_qcd")[:2]
+    scales = ["1000000"] * 2
+    histories = (INCLUSIVE, "casimir", "ordered")
+    native = NativeObservables.correlated(
+        representative, histories, member=member, lanes=4
+    )
+    spins = [{3: VECTORS[0]}, {3: VECTORS[1]}]
+    for spin in (None, spins):
+        results = native.evaluate(points, scales, spin=spin, parameters=PARAMETERS)
+        for index, (point, result) in enumerate(zip(points, results, strict=True)):
+            reference = python.evaluate(
+                point,
+                "1000000",
+                correlations=histories,
+                spin=None if spin is None else spin[index],
+                parameters=PARAMETERS,
+            )
+            for key, value in reference.items():
+                for a, b in zip(result[key].totals, value.totals, strict=True):
+                    assert _close(a, b, 1e-12, 1e-14), (key, spin)
+    resolved = NativeObservables.resolved(
+        representative, "helicity", member=member, lanes=4
+    ).evaluate(points[:1], scales[:1], parameters=PARAMETERS)[0]
+    reference = python.evaluate_resolved(
+        points[0], "1000000", resolution="helicity", parameters=PARAMETERS
+    )
+    assert resolved.keys() == reference.entries.keys()
+    for key, value in reference.entries.items():
+        for a, b in zip(resolved[key].totals, value.totals, strict=True):
+            assert _close(a, b, 1e-12, 1e-14), key
+    checks = StabilityChecks((Rotation.about("z", "3/5", "4/5"),), True)
+    checked = NativeObservables.correlated(representative, histories, lanes=4)
+    for spin in (None, spins):
+        results = checked.evaluate(
+            points, scales, spin=spin, parameters=PARAMETERS, stability=checks
+        )
+        for index, (point, result) in enumerate(zip(points, results, strict=True)):
+            exact = representative.evaluate(
+                point,
+                "1000000",
+                correlations=histories,
+                spin=None if spin is None else spin[index],
+                parameters=PARAMETERS,
+                precision=CARRIERS["arbitrary-200"],
+            )
+            for key, value in result.items():
+                estimate = value.stability
+                assert estimate is not None and 0 < estimate.relative < 1e-9
+                for sector, laurent in value.components["virtual"].items():
+                    target = exact[key].components["virtual"][sector].coefficients
+                    size = max(abs(complex(x)) for x in target)
+                    error = max(
+                        abs(complex(a) - complex(b))
+                        for a, b in zip(laurent.coefficients, target, strict=True)
+                    )
+                    assert error <= estimate.relative * size, (key, error / size)
 
 
 # ------------------------------------------------------------------ stability

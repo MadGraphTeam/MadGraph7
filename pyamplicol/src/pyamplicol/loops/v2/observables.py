@@ -710,27 +710,17 @@ class ObservableSlice:
         for rotation in stability.rotations:
             evaluation = self._evaluated(
                 plan,
-                rotation.apply(tuple(tuple(_fraction(x) for x in p) for p in point)),
+                _rotated_point(rotation, point),
                 scale_squared,
                 parameters,
                 precision,
                 poles,
-                None
-                if spin is None
-                else {leg: _rotated(rotation, value) for leg, value in spin.items()},
+                _rotated_spin(rotation, spin),
                 ward,
                 False,
             )
             rotated.append((evaluation, plan.results(evaluation)))
-        return {
-            key: replace(
-                result,
-                stability=plan.estimate(
-                    key, reference, result, rotated, precision.unit_roundoff
-                ),
-            )
-            for key, result in results.items()
-        }
+        return plan.checked(results, reference, rotated, precision.unit_roundoff)
 
     def _evaluated(
         self,
@@ -823,6 +813,18 @@ def _rotated(rotation: Any, value: Any) -> list[tuple[Fraction, Fraction]]:
     real = rotation.apply([[re for re, _im in parts]])[0]
     imag = rotation.apply([[im for _re, im in parts]])[0]
     return list(zip(real, imag, strict=True))
+
+
+def _rotated_point(rotation: Any, point: Sequence[Sequence[Any]]) -> Any:
+    return rotation.apply(tuple(tuple(_fraction(x) for x in p) for p in point))
+
+
+def _rotated_spin(rotation: Any, spin: Mapping[int, Any] | None) -> Any:
+    """Spin sources rotated with the momenta (``None`` stays ``None``)."""
+
+    if spin is None:
+        return None
+    return {leg: _rotated(rotation, value) for leg, value in spin.items()}
 
 
 def _vector(value: Any) -> tuple[ComplexPair, ...]:
@@ -931,6 +933,25 @@ class ColumnPlan:
                 for k, value in enumerate(laurent.coefficients):
                     budget[sector][k] += abs(complex(value))
         return {sector: Budget(tuple(values)) for sector, values in budget.items()}
+
+    def checked(
+        self,
+        results: Mapping[Hashable, PointResult],
+        reference,
+        rotated: Sequence[tuple[Any, Mapping[Hashable, PointResult]]],
+        roundoff: float,
+    ) -> dict[Hashable, PointResult]:
+        """``results`` of the evaluation ``reference`` with their stability
+        estimates from the rotated (evaluation, results) runs and the
+        reference's re-test lanes."""
+
+        return {
+            key: replace(
+                result,
+                stability=self.estimate(key, reference, result, rotated, roundoff),
+            )
+            for key, result in results.items()
+        }
 
     def estimate(
         self, key, reference, result: PointResult, rotated, roundoff: float
@@ -1226,10 +1247,12 @@ class NativeObservables:
         observables: ObservableSlice,
         columns: Iterable[Column],
         *,
+        member: FlavourMember | None = None,
         lanes: int = DEFAULT_LANES,
         threads: int | None = None,
     ):
         self.observables = observables
+        self.member = member
         self.plan = ColumnPlan(observables, columns)
         exported = export_plan(
             observables.slice, forward=False, columns=self.plan.seed_columns
@@ -1240,13 +1263,22 @@ class NativeObservables:
 
     @classmethod
     def correlated(
-        cls, observables: ObservableSlice, correlations: Sequence[str], **options
+        cls,
+        observables: ObservableSlice,
+        correlations: Sequence[str],
+        *,
+        member: FlavourMember | None = None,
+        **options,
     ) -> NativeObservables:
-        return cls(
-            observables,
-            [Column(name, observables.history(name)) for name in correlations],
-            **options,
+        """Colour-history outputs (of an admitted ``member``: its histories
+        on the representative's labels)."""
+
+        columns = (
+            [Column(name, observables.history(name)) for name in correlations]
+            if member is None
+            else member.columns(observables, correlations)
         )
+        return cls(observables, columns, member=member, **options)
 
     @classmethod
     def resolved(
@@ -1255,11 +1287,19 @@ class NativeObservables:
         resolution: Resolution = "helicity-colour",
         *,
         spin_legs: Iterable[int] = (),
+        member: FlavourMember | None = None,
         **options,
     ) -> NativeObservables:
+        """Resolved outputs; ``spin_legs`` are the source legs the evaluations
+        will carry (each keeps one helicity row)."""
+
+        sources = dict.fromkeys(spin_legs)
+        if member is not None:
+            sources = member.spin(sources)
         return cls(
             observables,
-            observables.resolved_columns(resolution, dict.fromkeys(spin_legs)),
+            observables.resolved_columns(resolution, sources),
+            member=member,
             **options,
         )
 
@@ -1268,33 +1308,130 @@ class NativeObservables:
         points: Sequence[Sequence[Sequence[Any]]],
         scales: Sequence[Any],
         *,
-        spin: Mapping[int, Any] | None = None,
+        spin: Mapping[int, Any] | Sequence[Mapping[int, Any] | None] | None = None,
         ward: int | None = None,
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
         poles: bool = True,
         double_double: bool = False,
+        stability: StabilityChecks | None = None,
     ) -> list[dict[Hashable, PointResult]]:
-        """The outputs of every point (one batch, one source assignment).
+        """The outputs of every point, dressed and reduced in one native batch.
 
-        ``double_double`` dresses and reduces in the native DoubleFloat
-        carrier from the trees of an arbitrary ``precision``."""
+        ``spin`` is one source assignment for every point or one per point
+        (``None`` entries: ordinary helicities). ``double_double`` dresses
+        and reduces in the native DoubleFloat carrier from the trees of an
+        arbitrary ``precision``. ``stability`` re-evaluates the rotated
+        points (spin vectors rotate with the momenta) and runs the native
+        reduction-direction re-test; without checks no estimate exists."""
 
-        precision = precision or Precision.double()
+        stability = stability or StabilityChecks()
+        spins = (
+            list(spin)
+            if spin is not None and not isinstance(spin, Mapping)
+            else [spin] * len(points)
+        )
+        if len(spins) != len(points):
+            raise ValueError("one spin source assignment per point")
+        member = self.member
+        if member is not None:
+            points = [member.point(point) for point in points]
+            spins = [member.spin(value) for value in spins]
+            ward = None if ward is None else member.label(ward)
+        batch = _Batch(
+            tuple(scales),
+            parameters,
+            precision or Precision.double(),
+            poles,
+            ward,
+            double_double,
+        )
+        references = self._evaluations(
+            batch, points, spins, stability.reduction_direction
+        )
+        results = [self.plan.results(evaluation) for evaluation in references]
+        if stability.enabled:
+            runs = [
+                [
+                    (evaluation, self.plan.results(evaluation))
+                    for evaluation in self._evaluations(
+                        batch,
+                        [_rotated_point(rotation, point) for point in points],
+                        [_rotated_spin(rotation, value) for value in spins],
+                        False,
+                    )
+                ]
+                for rotation in stability.rotations
+            ]
+            results = [
+                self.plan.checked(
+                    result,
+                    reference,
+                    [run[index] for run in runs],
+                    batch.roundoff,
+                )
+                for index, (reference, result) in enumerate(
+                    zip(references, results, strict=True)
+                )
+            ]
+        if member is not None:
+            results = [
+                {_member_key(member, key): value for key, value in result.items()}
+                for result in results
+            ]
+        return results
+
+    def _evaluations(self, batch: _Batch, points, spins, retest: bool) -> list:
+        """Point evaluations with the plan's lanes reduced natively."""
+
         evaluations = [
             self.observables.point(
-                point, scale, parameters, precision, poles, spin, ward
+                point,
+                scale,
+                batch.parameters,
+                batch.precision,
+                batch.poles,
+                spin,
+                batch.ward,
             )
-            for point, scale in zip(points, scales, strict=True)
+            for point, scale, spin in zip(points, batch.scales, spins, strict=True)
         ]
         self.executor.reduce(
-            evaluations, precision, poles, False, double_double=double_double
+            evaluations,
+            batch.precision,
+            batch.poles,
+            retest,
+            double_double=batch.double_double,
         )
-        out = []
-        for evaluation in evaluations:
-            with evaluation.numbers.scope():
-                out.append(self.plan.results(evaluation))
-        return out
+        return evaluations
+
+
+@dataclass(frozen=True)
+class _Batch:
+    """The point-independent inputs of one native observable batch."""
+
+    scales: tuple[Any, ...]
+    parameters: Mapping[str, str] | None
+    precision: Precision
+    poles: bool
+    ward: int | None
+    double_double: bool
+
+    @property
+    def roundoff(self) -> float:
+        """The carrier's unit roundoff (DoubleFloat: 2^-104)."""
+
+        return 2.0**-104 if self.double_double else self.precision.unit_roundoff
+
+
+def _member_key(member: FlavourMember, key: Hashable) -> Hashable:
+    """A member's output key: resolved (row, component) keys carry member
+    helicity rows; history ids are unchanged."""
+
+    if isinstance(key, tuple):
+        row, component = key
+        return (None if row is None else member.row(row), component)
+    return key
 
 
 # --------------------------------------------------------------------- flavour
@@ -1366,6 +1503,38 @@ class FlavourMember:
             representative: member for member, representative in enumerate(self.legs)
         }
         return tuple(sorted((inverse[leg], h) for leg, h in row))
+
+    def spin(self, spin: Mapping[int, Any] | None) -> dict[int, Any] | None:
+        """Member spin sources on the representative's labels."""
+
+        if spin is None:
+            return None
+        return {self.label(leg): value for leg, value in spin.items()}
+
+    def columns(
+        self, observables: ObservableSlice, correlations: Iterable[str]
+    ) -> list[Column]:
+        """The output columns of member colour histories (declared by id on
+        the representative, read on the member's labels)."""
+
+        return [
+            Column(name, self.history(observables.history(name)))
+            for name in correlations
+        ]
+
+    def resolved(self, resolved: ResolvedObservables) -> ResolvedObservables:
+        """Representative resolved outputs keyed by member helicity rows."""
+
+        return replace(
+            resolved,
+            entries={
+                (None if row is None else self.row(row), b): value
+                for (row, b), value in resolved.entries.items()
+            },
+            helicities=None
+            if resolved.helicities is None
+            else tuple(self.row(row) for row in resolved.helicities),
+        )
 
 
 def admit_member(slice_: LoopSlice, process: str) -> FlavourMember:
@@ -1440,49 +1609,48 @@ def admit_member(slice_: LoopSlice, process: str) -> FlavourMember:
 
 
 class MemberObservables:
-    """Observables of an admitted member through its representative."""
+    """Observables of an admitted member through its representative: member
+    momenta, spin legs, the Ward leg and colour histories are relabelled onto
+    the representative, resolved helicity rows back onto the member."""
 
     def __init__(self, observables: ObservableSlice, member: FlavourMember):
         self.observables = observables
         self.member = member
 
     def evaluate(
-        self, point, scale_squared, *, correlations=(INCLUSIVE,), spin=None, **options
+        self,
+        point,
+        scale_squared,
+        *,
+        correlations=(INCLUSIVE,),
+        spin=None,
+        ward=None,
+        **options,
     ) -> dict[str, PointResult]:
         member = self.member
         observables = self.observables
-        histories = []
-        for identifier in correlations:
-            if identifier == INCLUSIVE:
-                continue
-            histories.append(member.history(observables.history(identifier)))
-        relabelled = replace(observables, histories=tuple(histories))
-        relabelled._directed = observables._directed
-        return relabelled.evaluate(
+        columns = member.columns(observables, correlations)
+        results = observables._run(
+            columns,
             member.point(point),
             scale_squared,
-            correlations=correlations,
-            spin=None
-            if spin is None
-            else {member.label(leg): value for leg, value in spin.items()},
-            **options,
+            options.get("parameters"),
+            options.get("precision"),
+            options.get("poles", True),
+            member.spin(spin),
+            None if ward is None else member.label(ward),
+            options.get("stability"),
         )
+        return {column.key: results[column.key] for column in columns}
 
-    def evaluate_resolved(self, point, scale_squared, **options) -> ResolvedObservables:
+    def evaluate_resolved(
+        self, point, scale_squared, *, spin=None, **options
+    ) -> ResolvedObservables:
         member = self.member
         resolved = self.observables.evaluate_resolved(
-            member.point(point), scale_squared, **options
+            member.point(point), scale_squared, spin=member.spin(spin), **options
         )
-        return ResolvedObservables(
-            {
-                (None if row is None else member.row(row), b): value
-                for (row, b), value in resolved.entries.items()
-            },
-            None
-            if resolved.helicities is None
-            else tuple(member.row(row) for row in resolved.helicities),
-            resolved.components,
-        )
+        return member.resolved(resolved)
 
 
 __all__ = [
