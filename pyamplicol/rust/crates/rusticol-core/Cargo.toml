@@ -20,9 +20,10 @@ python-generation-bridge = ["f64-symjit"]
 # feature is deliberately absent from production/default builds.
 on-the-fly-test-support = ["f64-symjit"]
 symbolica-runtime = ["dep:symbolica"]
-# Native core of the loop engine v2 (open-loop polynomials in the NinjaRS
-# tensor layout). Off by default until the v2 runtime consumes it.
-loop-v2 = ["dep:ninjars", "dep:symbolica"]
+# Native core of the loop engine v2: plan v4 and its executor (open-loop
+# polynomials in the NinjaRS tensor layout). Enabled by the loop consumer
+# (rusticol-loop-reduction), so the native extension ships it.
+loop-v2 = ["dep:ninjars", "symbolica-runtime"]
 
 [dependencies]
 bincode.workspace = true

@@ -420,7 +420,11 @@ pub fn split_vertex<T: FloatLike, const L: usize>(
     let v = lane_vector_len(L);
     let accumulator_row = segment.accumulator_row_len() * v;
     let output_row = segment.output_row_len() * v;
-    debug_assert_eq!(vertex.len(), layout.entries().len() * v);
+    assert_eq!(
+        vertex.len(),
+        layout.entries().len() * v,
+        "vertex tensor does not match its layout"
+    );
     debug_assert_eq!(accumulator.len() % accumulator_row, 0);
     debug_assert_eq!(output.len() % output_row, 0, "output is not whole rows");
     debug_assert!(accumulator.len() >= rows * accumulator_row && output.len() >= rows * output_row);
