@@ -42,6 +42,8 @@ from typing import Any, Protocol
 
 from pyamplicol.loops.orders import LoopEligibility
 
+from ..._internal.physics.symbols import symbols
+
 Orders = tuple[tuple[str, int], ...]
 
 ZERO = "0"
@@ -809,17 +811,24 @@ def _momentum_degree(expression: str, slots: tuple[int, int] | None) -> int:
     A vertex momentum in any other form than ``P(mu, leg)`` is rejected rather
     than read as degree 0 (stand-in for WP1.1 ``LoopSegmentBinding.degree``).
     """
-    from symbolica import E, S
+    from symbolica import E
 
-    t, q = S("pyamplicol_v2_t"), S("pyamplicol_v2_q")
-    momentum, slash, lorentz, rest = S("P"), S("PSlash"), S("x_"), S("x___")
+    t, q = symbols.qualified("pyamplicol_v2_t"), symbols.qualified("pyamplicol_v2_q")
+    momentum, slash, lorentz, rest = (
+        symbols.qualified("P"),
+        symbols.qualified("PSlash"),
+        symbols.qualified("x_"),
+        symbols.qualified("x___"),
+    )
     value = E(expression)
     if slots is None:
         value = value.replace(momentum(rest), t * momentum(rest))
         value = value.replace(slash(rest), t * slash(rest))
     else:
-        index, label = S("idx"), S("y_")
-        other = value.replace(momentum(lorentz, index(label, S("z_"))), t)
+        index, label = symbols.qualified("idx"), symbols.qualified("y_")
+        other = value.replace(
+            momentum(lorentz, index(label, symbols.qualified("z_"))), t
+        )
         if other.matches(momentum(rest)) or other.matches(slash(rest)):
             raise NotImplementedError(
                 f"vertex momentum outside P(mu, leg) form in {expression!r}"

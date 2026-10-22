@@ -15,6 +15,7 @@ from threading import Lock
 from types import MappingProxyType
 from typing import Any
 
+from .._internal.physics.symbols import symbols as symbol_registry
 from .kernels import require_finite_batch
 from .model_expressions import LaurentExpression
 from .scalar_frontend import ScalarExpression, ScalarProgram, lower_scalar_program
@@ -200,7 +201,6 @@ def prepare_scalar_bindings(
     Adjustable external parameters cannot be replaced: fix them explicitly so
     their runtime updates cannot silently become ineffective.
     """
-    from symbolica import S
 
     from .exact import require_exact_numbers
     from .scalar_frontend import require_laurent_scalar
@@ -293,10 +293,15 @@ def prepare_scalar_bindings(
     external = tuple(record for record in all_external if record["name"] not in fixed)
     external_names = tuple(record["name"] for record in external)
     types = tuple(record["fields"].get("type") for record in external)
-    symbols = tuple(S(f"loop_model_input::{name}") for name in external_names)
+    symbols = tuple(
+        symbol_registry.qualified(f"loop_model_input::{name}")
+        for name in external_names
+    )
     inputs = dict(zip(external_names, symbols, strict=True))
-    by_symbol = {S(f"UFO::{name}"): name for name in sources}
-    anonymous_symbols = {S(f"UFO::{name}") for name in anonymous}
+    by_symbol = {symbol_registry.qualified(f"UFO::{name}"): name for name in sources}
+    anonymous_symbols = {
+        symbol_registry.qualified(f"UFO::{name}") for name in anonymous
+    }
     dependencies = {}
     for name, source in sources.items():
         if name in records:
@@ -635,7 +640,6 @@ class NativeScaleBindings:
         *,
         scale_parameter="MU_R",
     ):
-        from symbolica import S
 
         if not isinstance(global_state, NativeScalarBindings):
             raise TypeError("scale bindings require a NativeScalarBindings owner")
@@ -663,7 +667,7 @@ class NativeScaleBindings:
         self.scale_parameter, self._scale_index = scale_parameter, index
         self.backend = global_state.backend
         library = plan.program.library
-        scale = S("loop_model_scale::mu_r2")
+        scale = symbol_registry.qualified("loop_model_scale::mu_r2")
         scale_outputs = (
             library.lower(
                 "1 / (1 if s.imag == 0 and s.real > 0 else 0)",

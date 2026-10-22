@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 
+from .._internal.physics.symbols import symbols as symbol_registry
 from .color_bilinears import PhysicalColorSpace, external_color_tensor
 from .exact import require_exact_numbers
 from .family_projectors import bind_family_projector, validate_projector_engine
@@ -225,7 +226,7 @@ class NativeBareProcessProgram:
             from .native import load_loop_native
 
             backend = load_loop_native()
-        from symbolica import E, S
+        from symbolica import E
         from symbolica.community import tensor as t
 
         self.projector_engine = validate_projector_engine(projector_engine, arithmetic)
@@ -320,7 +321,9 @@ class NativeBareProcessProgram:
             else None
         )
         self.model_inputs = model_inputs
-        self.scale_squared_symbol = S("loop_physical_process::mu_r2")
+        self.scale_squared_symbol = symbol_registry.qualified(
+            "loop_physical_process::mu_r2"
+        )
         self.model_names = tuple(sorted(self.model_expressions))
         self.model_positions = {name: i for i, name in enumerate(self.model_names)}
         self.model_output_indices = (
@@ -643,7 +646,9 @@ class NativeBareProcessProgram:
         )
         poles = {
             (sector, family): [
-                S(f"loop_physical_process::family{family}_order{sector}_pole{p}")
+                symbol_registry.qualified(
+                    f"loop_physical_process::family{family}_order{sector}_pole{p}"
+                )
                 for p in range(3)
             ]
             for sector, family in self.order_channels
@@ -666,11 +671,16 @@ class NativeBareProcessProgram:
         )
         self.zero_poles = self._record_evaluator("zero_poles", _saved([E("0")] * 3, []))
         born_orders = [
-            S(f"loop_physical_process::born_order{i}")
+            symbol_registry.qualified(f"loop_physical_process::born_order{i}")
             for i in range(len(self.order_layout.born))
         ]
         virtual_orders = [
-            [S(f"loop_physical_process::virtual_order{i}_pole{p}") for p in range(3)]
+            [
+                symbol_registry.qualified(
+                    f"loop_physical_process::virtual_order{i}_pole{p}"
+                )
+                for p in range(3)
+            ]
             for i in range(len(self.order_layout.virtual))
         ]
         self.sum_order_values = self._record_evaluator(
@@ -729,12 +739,11 @@ class NativeBareProcessProgram:
         )
 
     def _born_symbols(self, *, helicities=None):
-        from symbolica import S
 
         helicities = self.helicities if helicities is None else helicities
         return [
             [
-                S(f"loop_physical_process::born{helicity}_{i}")
+                symbol_registry.qualified(f"loop_physical_process::born{helicity}_{i}")
                 for i in range(len(self.born_colors))
             ]
             for helicity in range(len(helicities))
@@ -843,7 +852,6 @@ class NativeBareProcessProgram:
         self, indices, powers, sector_indices, *, metrics=None, helicities=None
     ):
         """Prepare exact projection bytes and widths without a numerical workspace."""
-        from symbolica import S
 
         metrics = (self.loop_metric,) if metrics is None else metrics
         projected = {
@@ -866,7 +874,7 @@ class NativeBareProcessProgram:
                 for local_term, labels in enumerate(self.loop_reduction_powers[index]):
                     term_index = self.loop_term_offsets[index] + local_term
                     for column, power in enumerate(labels):
-                        coefficient = S(
+                        coefficient = symbol_registry.qualified(
                             f"loop_physical_process::coefficient{helicity}_{index}_{local_term}_{column}"
                         )
                         parameters.append(coefficient)
@@ -1600,7 +1608,7 @@ def quark_gluon_qcd_program(**options):
 
 
 def _qcd_process_program(incoming, outgoing, state_kinds, average, **options):
-    from symbolica import E, S
+    from symbolica import E
 
     from .control_models import qcd_qed_control_model
 
@@ -1612,13 +1620,15 @@ def _qcd_process_program(incoming, outgoing, state_kinds, average, **options):
         born_order_bounds={"QCD": 2, "QED": 0},
         loop_order_bounds={"QCD": 4, "QED": 0},
     )
-    alpha_s, top_mass = S("loop_model_input::alpha_s", "loop_model_input::top_mass")
+    alpha_s, top_mass = symbol_registry.qualified(
+        "loop_model_input::alpha_s", "loop_model_input::top_mass"
+    )
     strong = (4 * E("pi") * alpha_s) ** E("1/2")
     expressions = {"UFO::MB": E("0"), "UFO::MC": E("0"), "UFO::MT": top_mass}
     for name in ("GC_10", "GC_11", "GC_12"):
         coupling = model.coupling(name)
         expressions[coupling.symbol.get_name()] = coupling.expression.replace(
-            S("UFO::G"), strong
+            symbol_registry.qualified("UFO::G"), strong
         )
     return NativeBareProcessProgram(
         process,

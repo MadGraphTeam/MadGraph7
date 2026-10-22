@@ -332,20 +332,26 @@ def _parse_proc_stat(text: str, *, clock_ticks_per_second: int) -> tuple[int, fl
     return ppid, cpu_ticks / clock_ticks_per_second
 
 
-def _parse_proc_status_rss(text: str) -> int:
-    """Return RSS bytes from one Linux ``/proc/PID/status`` payload."""
+def _parse_proc_stat_rss(text: str, *, page_size: int) -> int:
+    """Return RSS bytes from one Linux ``/proc/PID/stat`` row.
 
-    for line in text.splitlines():
-        if not line.startswith("VmRSS:"):
-            continue
-        fields = line.split()
-        if len(fields) != 3 or fields[2].lower() != "kb":
-            raise ValueError(f"invalid VmRSS record: {line!r}")
-        rss_kib = int(fields[1])
-        if rss_kib < 0:
-            raise ValueError("negative VmRSS value")
-        return rss_kib * 1024
-    return 0
+    The resident page count is the same counter that ``status`` reports as
+    VmRSS, so one read per process suffices.
+    """
+
+    if page_size <= 0:
+        raise ValueError("page_size must be positive")
+    closing_parenthesis = text.rfind(")")
+    if closing_parenthesis < 0:
+        raise ValueError("missing process-name terminator")
+    fields = text[closing_parenthesis + 1 :].split()
+    # fields starts at the kernel's field 3 (state); rss is field 24.
+    if len(fields) < 22:
+        raise ValueError("incomplete /proc stat record")
+    rss_pages = int(fields[21])
+    if rss_pages < 0:
+        raise ValueError("negative /proc rss value")
+    return rss_pages * page_size
 
 
 def _parse_ps_output(text: str) -> dict[int, ProcessRecord]:
@@ -427,11 +433,18 @@ def _linux_proc_snapshot(
     proc_root: Path = Path("/proc"),
     *,
     clock_ticks_per_second: int | None = None,
+    page_size: int | None = None,
 ) -> dict[int, ProcessRecord]:
-    """Collect a Linux process snapshot directly from procfs."""
+    """Collect a Linux process snapshot directly from procfs.
+
+    Each process costs one ``stat`` read: on busy hosts the scan of every
+    process bounds how quickly the supervisor reacts between samples.
+    """
 
     if clock_ticks_per_second is None:
         clock_ticks_per_second = int(os.sysconf("SC_CLK_TCK"))
+    if page_size is None:
+        page_size = int(os.sysconf("SC_PAGE_SIZE"))
     try:
         entries = tuple(proc_root.iterdir())
     except OSError as error:
@@ -443,10 +456,6 @@ def _linux_proc_snapshot(
             continue
         try:
             stat = (entry / "stat").read_text(encoding="utf-8", errors="replace")
-            status = (entry / "status").read_text(
-                encoding="utf-8",
-                errors="replace",
-            )
             ppid, cpu_seconds = _parse_proc_stat(
                 stat,
                 clock_ticks_per_second=clock_ticks_per_second,
@@ -455,7 +464,7 @@ def _linux_proc_snapshot(
             records[pid] = ProcessRecord(
                 pid=pid,
                 ppid=ppid,
-                rss_bytes=_parse_proc_status_rss(status),
+                rss_bytes=_parse_proc_stat_rss(stat, page_size=page_size),
                 cpu_seconds=cpu_seconds,
             )
         except (OSError, ValueError):

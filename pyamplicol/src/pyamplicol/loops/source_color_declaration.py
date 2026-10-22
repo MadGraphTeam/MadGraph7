@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, cast
 from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
 from pyamplicol.models.loop_declaration import LoopSchemeDeclaration
 
+from .._internal.physics.symbols import symbols as symbol_registry
 from .scalar_bindings import _normalize_parameter_values
 
 if TYPE_CHECKING:
@@ -78,7 +79,7 @@ def _expressions(
     nc: Expression,
 ) -> tuple[dict[str, Expression], dict[str, Expression]]:
     """Use the exact scalar frontend for source dependencies of formal identities."""
-    from symbolica import E, Replacement, S
+    from symbolica import E, Replacement
 
     from .model_expressions import parse_exact_ufo
 
@@ -89,13 +90,17 @@ def _expressions(
             "formal Nc placeholder collides with a source parameter; "
             "choose another name"
         )
-    placeholder = S(f"UFO::{declaration.formal_symbol}")
-    source_symbols = {S(f"UFO::{name}"): name for name in names}
+    placeholder = symbol_registry.qualified(f"UFO::{declaration.formal_symbol}")
+    source_symbols = {symbol_registry.qualified(f"UFO::{name}"): name for name in names}
     identities = {}
     for name, text in declaration.parameter_identities.items():
         expression = parse_exact_ufo(text).replace(placeholder, nc)
         symbols = set(expression.get_all_symbols(False))
-        unknown = symbols - {nc, S("symbolica::pi")} - source_symbols.keys()
+        unknown = (
+            symbols
+            - {nc, symbol_registry.qualified("symbolica::pi")}
+            - source_symbols.keys()
+        )
         if unknown:
             raise ValueError(
                 f"source colour identity {name!r} has unbound symbols: {unknown!r}"
@@ -121,7 +126,7 @@ def _expressions(
                 )
             expression = expression.replace_multiple(
                 [
-                    Replacement(S(f"UFO::{item}"), value.value)
+                    Replacement(symbol_registry.qualified(f"UFO::{item}"), value.value)
                     for item, value in zip(dependencies, plan.expressions, strict=True)
                 ]
             )
@@ -150,7 +155,6 @@ def prepare_declared_source_color(
     Whole-rule recipes outside this request's admitted order scope remain unused;
     every applied recipe is checked against the complete original source group.
     """
-    from symbolica import S
 
     from .counterterms import prepare_counterterm_model
     from .model import CovariantKernelCatalogue
@@ -163,7 +167,7 @@ def prepare_declared_source_color(
         raise TypeError("expected explicit source colour model data")
     if declaration.scheme != scheme:
         raise ValueError("source colour continuation and effective loop scheme differ")
-    nc = S("source_color_declaration::Nc")
+    nc = symbol_registry.qualified("source_color_declaration::Nc")
     identities, ties = _expressions(prepared, declaration, nc)
     actual_fields = {
         (rule.particle_id, rule.correction, rule.loop_group_index)

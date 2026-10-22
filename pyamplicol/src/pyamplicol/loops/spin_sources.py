@@ -10,6 +10,7 @@ from types import MappingProxyType
 from pyamplicol.correlators import CorrelatorConfig
 from pyamplicol.runtime.correlated_exact import _prepare_spin_vectors
 
+from .._internal.physics.symbols import symbols
 from .kernels import require_finite_batch
 from .physical import _saved
 
@@ -39,7 +40,7 @@ class NativeSpinSourcePlan:
     """
 
     def __init__(self, bare, spin_correlations, *, source_contracts=None):
-        from symbolica import E, S
+        from symbolica import E
 
         from pyamplicol.models._physics_ir import CrossingIR, SourceIR
 
@@ -57,7 +58,8 @@ class NativeSpinSourcePlan:
         phase_evaluators = {}
         phase_states = {}
         components = tuple(
-            S(f"loop_spin_source::component_{index}") for index in range(4)
+            symbols.qualified(f"loop_spin_source::component_{index}")
+            for index in range(4)
         )
         for leg in declarations.spin_legs:
             if leg not in edges or bare.state_kinds[leg - 1] not in {

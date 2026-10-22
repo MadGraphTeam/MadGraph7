@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from .._internal.physics.symbols import symbols
 from .counterterms import prepare_counterterm_model
 from .model import CovariantKernelCatalogue
 from .qcd_r2_color import prepare_qcd_four_gluon_r2
@@ -20,7 +21,7 @@ def prepare_loop_sm_four_gluon_color(prepared, continuation):
     and alternatives retained. Other caller-declared kernels are unchanged and
     gain no certificate from this operation.
     """
-    from symbolica import E, S
+    from symbolica import E
 
     if not isinstance(continuation, SourceColorContinuation):
         raise TypeError("four-gluon preparation requires source colour model data")
@@ -62,7 +63,7 @@ def prepare_loop_sm_four_gluon_color(prepared, continuation):
             catalogue,
             rule.entries,
             tied.nc,
-            gauge_coupling=S("UFO::G"),
+            gauge_coupling=symbols.qualified("UFO::G"),
             contribution="gauge" if gauge else "fundamental-dirac",
             scheme="HV",
         )

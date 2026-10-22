@@ -590,10 +590,19 @@ class DefaultCliServices:
         requested_output = config.generation.output
         prepared_output = requested_output.name.lower().endswith(".pyamplicol-model")
         default_evaluator = EvaluatorConfig()
+        # The resolver records the execution mode and JIT compression that
+        # 'auto' selects, so compare with the default resolved the same way.
         resolved_default_evaluator = replace(
             default_evaluator,
+            execution_mode=replace(
+                config, evaluator=default_evaluator
+            ).resolved_execution_mode,
+        )
+        resolved_default_evaluator = replace(
+            resolved_default_evaluator,
             jit=replace(
-                default_evaluator.jit, compress=default_evaluator.resolved_jit_compress
+                resolved_default_evaluator.jit,
+                compress=resolved_default_evaluator.resolved_jit_compress,
             ),
         )
         if not prepared_output and config.evaluator not in (

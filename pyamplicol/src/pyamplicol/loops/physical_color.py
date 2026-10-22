@@ -14,6 +14,7 @@ from typing import Any
 
 from pyamplicol.config.models import ColorAccuracy
 
+from .._internal.physics.symbols import symbols
 from .color_bilinears import SUNColorSpace
 from .color_projection import prepare_color_projection
 
@@ -193,12 +194,12 @@ def expand_color_conditionals(expression, nc):
     the *same runtime condition*. No mass or kinematic condition is evaluated.
     Nc-dependent conditions and opaque functional Nc dependence are rejected.
     """
-    from symbolica import E, S
+    from symbolica import E
 
-    condition, yes, no = S(
+    condition, yes, no = symbols.qualified(
         "loop_color_if::condition_", "loop_color_if::yes_", "loop_color_if::no_"
     )
-    conditional = S("symbolica::if")
+    conditional = symbols.qualified("symbolica::if")
 
     def coefficients(branch):
         result = {}

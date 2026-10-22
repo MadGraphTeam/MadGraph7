@@ -12,13 +12,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .._internal.physics.symbols import symbols
+
 
 @dataclass(frozen=True, slots=True)
 class ClosedVectorlikeFermionKernels:
     """Reusable unbound provider; each recurrence gets independent validation."""
 
     def bind(self, graph, loop_components, q):
-        from symbolica import E, S
+        from symbolica import E
 
         if graph.loop_count != 1 or not graph.loop_edges:
             raise NotImplementedError("closed fermion kernels require one native cycle")
@@ -55,7 +57,9 @@ class ClosedVectorlikeFermionKernels:
             raise NotImplementedError(
                 "physical loop routing must have a common unit sign"
             )
-        mu, epsilon = S("loop_evanescent::mu", "loop_evanescent::epsilon")
+        mu, epsilon = symbols.qualified(
+            "loop_evanescent::mu", "loop_evanescent::epsilon"
+        )
         return BoundClosedFermionKernels(graph, edges, vertices, sign, (mu, epsilon))
 
 
@@ -72,10 +76,9 @@ class BoundClosedFermionKernels:
 
     @staticmethod
     def _gamma(expression):
-        from symbolica import S
         from symbolica.community import tensor as t
 
-        row, column, vector = S(
+        row, column, vector = symbols.qualified(
             "evanescent_row_", "evanescent_column_", "evanescent_vector_"
         )
         gamma = t.TensorName.dirac_gamma().to_expression()
@@ -192,10 +195,12 @@ def closed_even_columns(recurrence, *, rational_only=False):
     ``rational_only`` selects positive mu powers for this epsilon-free source
     domain. It is not a generic R2 extractor for epsilon-dependent source rules.
     """
-    from symbolica import S
 
     node = recurrence.dag.nodes[recurrence.final_node]
-    expected = (S("loop_evanescent::mu"), S("loop_evanescent::epsilon"))
+    expected = (
+        symbols.qualified("loop_evanescent::mu"),
+        symbols.qualified("loop_evanescent::epsilon"),
+    )
     if tuple(recurrence.dag.variables[4:]) != expected or node.axes:
         raise ValueError("expected a closed single-evanescent-slash recurrence")
     if any(label.powers[5] for label in node.output_labels):

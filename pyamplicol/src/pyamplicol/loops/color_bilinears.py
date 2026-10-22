@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from .._internal.physics.symbols import symbols
 from .exact import require_exact_numbers
 
 
@@ -49,7 +50,7 @@ class PhysicalColorSpace:
 
     def overlap(self, left: Any, right: Any) -> Any:
         """Return exact left† right, without averaging or formal continuation."""
-        from symbolica import E, S
+        from symbolica import E
         from symbolica.community import tensor as t
 
         if left.to_expression() == 0 or right.to_expression() == 0:
@@ -65,11 +66,11 @@ class PhysicalColorSpace:
             # no canonicalization or numerical equality enters the cache key.
             if key[0] not in self._bras:
                 self._bras[key[0]] = left.wrap_indices(
-                    S("physical_color_bilinear::bra"), dummies_only=True
+                    symbols.qualified("physical_color_bilinear::bra"), dummies_only=True
                 ).dirac_adjoint(preserve_indices=True)
             if key[1] not in self._kets:
                 self._kets[key[1]] = right.wrap_indices(
-                    S("physical_color_bilinear::ket"), dummies_only=True
+                    symbols.qualified("physical_color_bilinear::ket"), dummies_only=True
                 )
             bra, ket = self._bras[key[0]], self._kets[key[1]]
             settings = dict(
@@ -133,24 +134,23 @@ class SUNColorSpace:
     _adjoint_dimension: Any = field(init=False, repr=False)
 
     def __post_init__(self):
-        from symbolica import AtomType, Expression, S
+        from symbolica import AtomType, Expression
 
         if not isinstance(self.nc, Expression) or self.nc.get_type() != AtomType.Var:
             raise TypeError("formal Nc must be a symbolic variable")
         object.__setattr__(
             self,
             "_adjoint_dimension",
-            S(f"{self.nc.get_name()}__adjoint_dimension", is_real=True),
+            symbols.qualified(f"{self.nc.get_name()}__adjoint_dimension", is_real=True),
         )
 
     def lift(self, expression: Any) -> Any:
         """Use dependency port patterns for physical representation dimensions."""
-        from symbolica import S
         from symbolica.community import tensor as t
 
         value = expression.to_expression()
         require_exact_numbers(value)
-        index = S("loop_color_bilinear::index_")
+        index = symbols.qualified("loop_color_bilinear::index_")
         for old, new in (
             (t.Representation.cof(3), t.Representation.cof(self.nc)),
             (t.Representation.cof(3).dual(), t.Representation.cof(self.nc).dual()),
@@ -171,7 +171,7 @@ class SUNColorSpace:
         dependency. Adjoint construction preserves physical external labels.
         Complex rectangular weights are retained exactly.
         """
-        from symbolica import E, S
+        from symbolica import E
         from symbolica.community import tensor as t
 
         if left.to_expression() == 0 or right.to_expression() == 0:
@@ -180,11 +180,13 @@ class SUNColorSpace:
             raise ValueError("Born and loop color ports differ")
         bra = (
             self.lift(left)
-            .wrap_indices(S("loop_color_bilinear::bra"), dummies_only=True)
+            .wrap_indices(
+                symbols.qualified("loop_color_bilinear::bra"), dummies_only=True
+            )
             .dirac_adjoint(preserve_indices=True)
         )
         ket = self.lift(right).wrap_indices(
-            S("loop_color_bilinear::ket"), dummies_only=True
+            symbols.qualified("loop_color_bilinear::ket"), dummies_only=True
         )
         original = bra * ket
         overlap = original.simplify_algebra(

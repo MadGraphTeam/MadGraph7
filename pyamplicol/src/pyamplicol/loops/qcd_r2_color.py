@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from itertools import permutations
 from typing import Any, Literal
 
+from .._internal.physics.symbols import symbols
 from .exact import require_exact_numbers
 from .model import CovariantKernelCatalogue, KernelBasisEntry, NativeLocalKernel
 from .model_expressions import parse_exact_ufo
@@ -58,7 +59,7 @@ class QCDR2Continuation:
 
 
 def _terms(nc, coupling, contribution, frame, names):
-    from symbolica import E, S
+    from symbolica import E
     from symbolica.community import hepkit as h
     from symbolica.community import tensor as t
 
@@ -66,7 +67,7 @@ def _terms(nc, coupling, contribution, frame, names):
     metric = t.TensorExpression.g(t.Representation.mink(4))
     delta = t.TensorExpression.g(t.Representation.coad(8))
     generator = t.TensorExpression.color_t(8, 3)
-    prefactor = E("1i") * coupling**4 / (16 * S("symbolica::pi") ** 2)
+    prefactor = E("1i") * coupling**4 / (16 * symbols.qualified("symbolica::pi") ** 2)
     terms = []
     for order in permutations((1, 2, 3)):
         a, b, c, d = (ports[i] for i in (0, *order))
@@ -109,14 +110,14 @@ def _metric_components(kernel):
 
 def _check_source_tensor(entries, catalogue, terms, nc, coupling):
     """Compare every SU(3) colour component in an exact Lorentz basis."""
-    from symbolica import E, S
+    from symbolica import E
 
     # The accepted source Lorentz structures and the analytic rule both lie in
     # the three metric-product span. These three independent components then
     # test the entire off-shell tensor, not selected on-shell polarizations.
     known = tuple(parse_exact_ufo(value) for value in _FOUR_R2_LORENTZ)
     source, replacement = [None] * 3, [None] * 3
-    prefactor = E("1i") * coupling**4 / (16 * S("symbolica::pi") ** 2)
+    prefactor = E("1i") * coupling**4 / (16 * symbols.qualified("symbolica::pi") ** 2)
     for entry in entries:
         if not any(
             (parse_exact_ufo(entry.lorentz) - value).expand() == 0 for value in known

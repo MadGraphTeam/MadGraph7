@@ -12,6 +12,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from .._internal.physics.symbols import symbols
 from .graphs import GraphIR, LoopProcessIR
 from .model import LoopModelIR
 from .model_expressions import LaurentExpression, epsilon_symbol, parse_exact_ufo
@@ -30,7 +31,7 @@ def _entries(value, context):
 
 
 def _laurent(value, source):
-    from symbolica import E, S
+    from symbolica import E
 
     if source.scalar_program is not None:
         library = source.scalar_program.library
@@ -90,7 +91,8 @@ def _laurent(value, source):
             or definition.source != definition.value.expression
         ):
             expression = expression.replace(
-                S(f"UFO::{definition.name}"), definition.value.expression
+                symbols.qualified(f"UFO::{definition.name}"),
+                definition.value.expression,
             )
     return LaurentExpression(expression), E("0")
 

@@ -377,8 +377,10 @@ class Runtime:
     def __init__(self, backend: RuntimeBackend) -> None:
         # Python 3.11 runtime Protocol checks invoke properties. Match the
         # static lookup used by newer Python versions, preserving lazy physics.
+        # Like the Protocol check, require presence: a member may hold None.
+        missing = object()
         if not all(
-            inspect.getattr_static(backend, name, None) is not None
+            inspect.getattr_static(backend, name, missing) is not missing
             for name in (
                 "physics",
                 "evaluate",

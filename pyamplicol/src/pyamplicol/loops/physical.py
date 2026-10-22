@@ -16,6 +16,7 @@ from typing import Any
 
 import numpy as np
 
+from .._internal.physics.symbols import symbols as symbol_registry
 from .graphs import build_loop_process
 from .kernels import CoefficientDAG, NativeCoefficientDAG
 from .recurrence import (
@@ -43,11 +44,10 @@ class DrellYanBareResult:
 
 
 def _denominator(edge, library):
-    from symbolica import S
     from symbolica.community import hepkit as h
     from symbolica.community import tensor as t
 
-    edge_id, momentum, mass, value = S(
+    edge_id, momentum, mass, value = symbol_registry.qualified(
         "loop_denominator::e_",
         "loop_denominator::p_",
         "loop_denominator::m_",
@@ -145,7 +145,7 @@ class DrellYanBareProgram:
             from .native import load_loop_native
 
             backend = load_loop_native()
-        from symbolica import E, S
+        from symbolica import E
         from symbolica.community import tensor as t
 
         from .control_models import qcd_qed_control_model
@@ -213,7 +213,7 @@ class DrellYanBareProgram:
             )
             / 36
         )
-        alpha_s, inverse_alpha = S(
+        alpha_s, inverse_alpha = symbol_registry.qualified(
             "loop_physical::alpha_s", "loop_physical::inverse_alpha"
         )
         electromagnetic = (4 * E("pi") / inverse_alpha) ** E("1/2")
@@ -284,15 +284,18 @@ class DrellYanBareProgram:
         projection_parameters, weighted = [], [[] for _ in labels]
         post_parameters, born_sum, virtual = [], [], [[], [], []]
         for helicity in range(len(self.helicities)):
-            born = S(f"loop_physical::born{helicity}")
+            born = symbol_registry.qualified(f"loop_physical::born{helicity}")
             coefficients = [
-                S(f"loop_physical::coefficient{helicity}_{i}")
+                symbol_registry.qualified(f"loop_physical::coefficient{helicity}_{i}")
                 for i in range(len(labels))
             ]
             projection_parameters.extend([born, *coefficients])
             for i, coefficient in enumerate(coefficients):
                 weighted[i].append(self.interference_weight * born.conj() * coefficient)
-            poles = [S(f"loop_physical::loop{helicity}_{pole}") for pole in range(3)]
+            poles = [
+                symbol_registry.qualified(f"loop_physical::loop{helicity}_{pole}")
+                for pole in range(3)
+            ]
             post_parameters.extend([born, *poles])
             born_sum.append(self.born_weight * born.conj() * born)
             for pole in range(3):
@@ -313,7 +316,7 @@ class DrellYanBareProgram:
         self.oracle_postprocess = backend.CoefficientEvaluator(
             _saved([born_sum, *virtual], post_parameters), **self.native_options
         )
-        projected_born, *projected_poles = S(
+        projected_born, *projected_poles = symbol_registry.qualified(
             "loop_physical::born_sum",
             "loop_physical::finite",
             "loop_physical::single",

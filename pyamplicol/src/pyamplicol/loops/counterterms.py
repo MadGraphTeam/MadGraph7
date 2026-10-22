@@ -22,6 +22,7 @@ from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any
 
+from .._internal.physics.symbols import symbols
 from .graphs import (
     GraphIR,
     LoopProcessIR,
@@ -509,14 +510,16 @@ def _rooted_current_key(current, physical_external_indices, symmetric_slots=None
     Port nodes retain each native interaction slot, except for full Bose
     permutation classes proved on that complete model vertex.
     """
-    from symbolica import Graph, S
+    from symbolica import Graph
 
-    vertex_color, port_color, external_color, root_color, particle_color = S(
-        "loop_current::vertex",
-        "loop_current::port",
-        "loop_current::external",
-        "loop_current::root",
-        "loop_current::particle",
+    vertex_color, port_color, external_color, root_color, particle_color = (
+        symbols.qualified(
+            "loop_current::vertex",
+            "loop_current::port",
+            "loop_current::external",
+            "loop_current::root",
+            "loop_current::particle",
+        )
     )
     payload = json.loads(current.to_json())
     names = {vertex.id: vertex.interaction for vertex in current.vertices}
