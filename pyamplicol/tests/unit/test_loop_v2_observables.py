@@ -160,7 +160,10 @@ def test_singleton_spin_source_matches_recola(generate, loop_reference, carrier)
 def test_mixed_sectors_match_madloop_split_orders(generate, loop_reference):
     """uu~ -> dd~ with QCD and photon Born currents: every squared-order
     sector (QCD^6, QCD^4 QED^2, QCD^2 QED^4) against MadLoop, also for the
-    directed Casimir column (C_F times each sector)."""
+    directed Casimir column (C_F times each sector), with the Python
+    reference executor and natively."""
+
+    from pyamplicol.loops.v2.observables import NativeObservables
 
     reference = loop_reference("mixed-uudd-qcd-control")
     orders = {
@@ -181,21 +184,26 @@ def test_mixed_sectors_match_madloop_split_orders(generate, loop_reference):
         ignored_particle_ids=(23, 24, -24, 25, 250, 251, -251),
     )
     point = _points("uudd_qcd")[0]
-    results = observables.evaluate(
-        point, "1000000", correlations=(INCLUSIVE, "casimir"), parameters=PARAMETERS
+    histories = (INCLUSIVE, "casimir")
+    python = observables.evaluate(
+        point, "1000000", correlations=histories, parameters=PARAMETERS
+    )
+    (native,) = NativeObservables.correlated(observables, histories).evaluate(
+        [point], ["1000000"], parameters=PARAMETERS
     )
     row = reference["rows"][0]
-    inclusive, casimir = results[INCLUSIVE], results["casimir"]
-    for key, order in born_orders.items():
-        assert _close(inclusive.born[order], row["born"][key], 1e-12, 1e-16)
-    for key, sector in orders.items():
-        virtual = inclusive.components["virtual"][sector]
-        for name in ("finite", "single_pole", "double_pole"):
-            expected = row["full"][key][name]
-            assert _close(getattr(virtual, name), expected, 1e-11, 1e-16)
-            correlated = getattr(casimir.components["virtual"][sector], name)
-            assert _close(correlated, 4 / 3 * expected, 1e-11, 2e-16)
-    assert len(inclusive.components["virtual"]) == 3
+    for results in (python, native):
+        inclusive, casimir = results[INCLUSIVE], results["casimir"]
+        for key, order in born_orders.items():
+            assert _close(inclusive.born[order], row["born"][key], 1e-12, 1e-16)
+        for key, sector in orders.items():
+            virtual = inclusive.components["virtual"][sector]
+            for name in ("finite", "single_pole", "double_pole"):
+                expected = row["full"][key][name]
+                assert _close(getattr(virtual, name), expected, 1e-11, 1e-16)
+                correlated = getattr(casimir.components["virtual"][sector], name)
+                assert _close(correlated, 4 / 3 * expected, 1e-11, 2e-16)
+        assert len(inclusive.components["virtual"]) == 3
 
 
 # ------------------------------------------------------------------ identities
@@ -443,6 +451,16 @@ def _legacy_runners(generate, record):
     )
     (name, process), *members = record["processes"]
     born = {"QCD": len(process.split()) - 3, "QED": 0}
+    options = {}
+    if record.get("accuracy", "full") != "full":
+        from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+
+        options = {
+            "accuracy": record["accuracy"],
+            "colour_declaration": LoopColorDeclaration.from_dict(
+                json.loads((ROOT / record["colour_declaration"]).read_text())
+            ),
+        }
     observables = generate(
         process,
         born=born,
@@ -451,6 +469,7 @@ def _legacy_runners(generate, record):
             color_correlations=histories,
             spin_correlations=tuple(map(tuple, record["spin_classes"])),
         ),
+        **options,
     )
     runners = [(name, observables)]
     for member_name, member_process in members:
@@ -476,17 +495,32 @@ def _assert_correlated(result, expected, index, tolerance):
 
 
 @pytest.mark.parametrize("carrier", tuple(CARRIERS))
-@pytest.mark.parametrize("name", ("ddgg_ssgg", "gg_gg", "uux_ggg"))
+@pytest.mark.parametrize(
+    "name", ("ddgg_ssgg", "gg_gg", "uux_ggg", "gg_gg_lc", "gg_gg_nlc", "uux_ggg_lc")
+)
 def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
     """O1: every legacy directed history (dipoles, Casimirs, ordered two-
     emission histories and their swaps, complex) and every joint complex spin
     source, for the representative and its flavour members, against the
-    200-bit legacy values."""
+    200-bit legacy values; at LC and NLC the histories' complete-family
+    degrees (design §7.7) and the projected values. In binary64 the
+    representative's directed histories also run natively."""
+
+    from pyamplicol.loops.v2.observables import NativeObservables
 
     record = _legacy(name)
-    _observables, runners = _legacy_runners(generate, record)
+    observables, runners = _legacy_runners(generate, record)
     precision, tolerance = CARRIERS[carrier], LEGACY_TOLERANCE[carrier]
     vectors = record["spin_vectors"]
+    if carrier == "double":
+        process = runners[0][0]
+        directed = record["results"]["arbitrary-200"][process].get("directed", {})
+        native = NativeObservables.correlated(observables, tuple(directed)).evaluate(
+            record["points"], record["scales_squared"], parameters=PARAMETERS
+        )
+        for index, results in enumerate(native):
+            for history, values in directed.items():
+                _assert_correlated(results[history], values, index, tolerance)
     for process, runner in runners:
         expected = record["results"]["arbitrary-200"][process]
         for index, (point, scale) in enumerate(

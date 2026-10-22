@@ -63,7 +63,7 @@ from __future__ import annotations
 import json
 import math
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
@@ -892,16 +892,22 @@ class LoopSlice:
     alpha_s_parameter: str | None
     loop_catalogue: Any = None
     fourier: SeedFourier | None = None
+    # Whether LC/NLC pruning dropped skeletons (``_prune_colour``).
+    colour_pruned: bool = False
     _cache: dict = field(default_factory=dict, repr=False)
 
     # -- generation ------------------------------------------------------------
 
     @classmethod
-    def generate(cls, compiled: Any, request: SliceRequest, native: Any) -> LoopSlice:
+    def generate(
+        cls, compiled: Any, request: SliceRequest, native: Any, *, prune: bool = True
+    ) -> LoopSlice:
         """Build every generation object of ``request`` (no diagram is listed).
 
         ``compiled`` is the compiled loop model and ``native`` the staged loop
-        core (``loops.native.load_loop_native``).
+        core (``loops.native.load_loop_native``). ``prune=False`` defers the
+        LC/NLC colour pruning to the caller (``_prune_colour`` with the seed
+        tables of further observables).
         """
 
         from pyamplicol.loops.compiler import prepare_loop_request_model
@@ -1074,7 +1080,7 @@ class LoopSlice:
             alpha_s_parameter=alpha_s_parameter,
             loop_catalogue=loop_catalogue,
         )
-        if request.accuracy != "full":
+        if request.accuracy != "full" and prune:
             slice_._prune_colour()
         slice_._plan_contraction()
         return slice_
@@ -1097,33 +1103,34 @@ class LoopSlice:
                 "the seed table has no certified symmetric-group orbit pair"
             )
 
-    def _prune_colour(self) -> None:
+    def _prune_colour(
+        self, observables: Iterable[tuple[SeedTable, Mapping[Orders, Any]]] = ()
+    ) -> None:
         """LC and NLC: drop, before any numerics, every skeleton whose seed
         cells all lie below the N_c powers the projection keeps (design §7.5,
         §7.6). Structural: exact seed cells, Born grades and the sector
-        degrees P; the projection itself is unchanged.
+        degrees P; the projection itself is unchanged. ``observables`` adds
+        the seed tables of further outputs (directed colour histories) with
+        their virtual sector degrees: a skeleton live in any table is kept.
         """
 
-        degrees = self.degrees()["virtual"]
         accuracy = self.request.accuracy
         grades = self._born_grades()
-        pairs = [
-            (degrees[sector], a, loop)
-            for sector, sector_pairs in self.sectors
-            for a, loop in sector_pairs
-        ]
+        criteria = [(self.table, self.degrees()["virtual"]), *observables]
         live: dict[tuple[int, Orders], bool] = {}
 
         def class_live(c: int, order: Orders) -> bool:
             found = live.get((c, order))
             if found is None:
                 found = live[c, order] = any(
-                    value and kept(power + grade, degree, accuracy)
-                    for degree, a, loop in pairs
+                    value and kept(power + grade, degrees[sector], accuracy)
+                    for table, degrees in criteria
+                    for sector, sector_pairs in self.sectors
+                    for a, loop in sector_pairs
                     if loop == order
                     for b, born_orders in enumerate(self.basis.orders)
                     if a in born_orders
-                    for power, value in self.table.cells[c][b].items()
+                    for power, value in table.cells[c][b].items()
                     for grade in grades.get((b, a), ())
                 )
             return found
@@ -1161,6 +1168,7 @@ class LoopSlice:
             rx.reading_skeletons(self.plan),
             compress=self.request.compress_colour,
         )
+        self.colour_pruned = True
 
     # -- evaluation ------------------------------------------------------------
 
@@ -1400,17 +1408,26 @@ class LoopSlice:
         self._cache["born-grades"] = out
         return out
 
-    def degrees(self) -> dict[str, dict[Orders, int | None]]:
+    def degrees(
+        self,
+        overlaps: Callable[[Any, Any], Mapping[int, Any]] | None = None,
+        table: SeedTable | None = None,
+    ) -> dict[str, dict[Orders, int | None]]:
         """Leading N_c degrees P per squared-order sector (design §7.4).
 
         ``"born"`` per squared Born order; ``"virtual"`` per virtual sector, the
         largest degree of a nonzero exact cell among the seed, counterterm and
         field cells (coupling grades included). Structural: no numerics.
+        ``overlaps`` and ``table`` replace the Born colour metric and the seed
+        table, e.g. by those of a directed colour history (observables).
         """
 
-        found = self._cache.get("degrees")
+        inclusive = overlaps is None and table is None
+        found = self._cache.get("degrees") if inclusive else None
         if found is not None:
             return found
+        overlaps = overlaps or self.overlaps
+        table = table or self.table
         _plan, layout = self._scalar_plan(LAURENT_POWERS)
 
         def grades(name: str, powers=LAURENT_POWERS) -> set[int]:
@@ -1429,7 +1446,8 @@ class LoopSlice:
                 power + p + q + offset
                 for left, p in bra
                 for right, q in ket
-                for power in self.overlaps(left, right)
+                for power, value in overlaps(left, right).items()
+                if value
             ]
             return max(powers, default=None)
 
@@ -1454,7 +1472,7 @@ class LoopSlice:
             out["born"][squared] = _max(out["born"].get(squared), value)
         born_grades = self._born_grades()
         for sector, pairs in self.sectors:
-            value = self.table.degree(pairs, born_grades)
+            value = table.degree(pairs, born_grades)
             for a, b in pairs:
                 value = _max(value, degree(born[a], counterterms.get(b, set())))
             for insertion in self.fields:
@@ -1467,7 +1485,8 @@ class LoopSlice:
                         value, degree(born[a], born[insertion.born_order], grade)
                     )
             out["virtual"][sector] = value
-        self._cache["degrees"] = out
+        if inclusive:
+            self._cache["degrees"] = out
         return out
 
     # -- colour correlations (IR-pole check) ------------------------------------

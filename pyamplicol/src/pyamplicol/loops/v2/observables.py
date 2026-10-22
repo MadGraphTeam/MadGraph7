@@ -14,7 +14,11 @@ colour-basis elements on the Born (bra) side.
   first term is seeded with the directed seed table, the second with the
   table of the swapped history and conjugated after reduction (one column if
   the history is symmetric). Counterterm and field components use the same
-  directed overlaps; the Born is B^dagger K_BB B. Results are complex.
+  directed overlaps; the Born is B^dagger K_BB B. Results are complex. At LC
+  and NLC every directed output is projected at the leading degree of its
+  history's complete family (all diagonal catalogue histories of its order
+  and output legs, every pair, both directions; ``colour_family``), and the
+  slice's colour pruning keeps the skeletons live in any of those tables.
 * **Spin sources** (§8.4). Literal complex four-vectors replace the
   wavefunction of their legs in the Born and in every block (the tree runtime's
   source slots, crossing phase applied once, nothing else); each source leg
@@ -47,6 +51,13 @@ colour-basis elements on the Born (bra) side.
 Mixed coupling-order sectors are kept apart: every column is split per
 squared-order sector, so each output carries its per-coupling-order partials
 (REQUIREMENTS_ADDENDUM A).
+
+``ObservableSlice`` evaluates with the Python reference executor;
+``NativeObservables`` runs a fixed column set in the native v2 executor
+(binary64, DoubleFloat, MPFR), one batch per call with per-point spin
+sources, for the representative or an admitted member. Both attach rotation
+and reduction-direction stability estimates on request
+(REQUIREMENTS_ADDENDUM C).
 """
 
 from __future__ import annotations
@@ -57,6 +68,7 @@ from collections.abc import Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
+from functools import cached_property
 from itertools import permutations, product
 from typing import Any, Literal
 
@@ -169,9 +181,15 @@ class DirectedColour:
         self._legs = legs
         self._images: dict[tuple[bool, Any], ConnectedColorTensor] = {}
         self._overlaps: dict[tuple[Any, Any, bool], dict] = {}
+        self._seeds = table
         self.symmetric = history.bra == history.ket
         self.table = self._table(table, swapped=False)
-        self.swapped = self.table if self.symmetric else self._table(table, True)
+
+    @cached_property
+    def swapped(self) -> SeedTable:
+        """The seed table of the history with bra and ket exchanged."""
+
+        return self.table if self.symmetric else self._table(self._seeds, True)
 
     def _image(self, tensor: ConnectedColorTensor, bra: bool) -> ConnectedColorTensor:
         key = (bra, tensor)
@@ -205,6 +223,41 @@ class DirectedColour:
                 if value
             }
         return found
+
+
+def colour_family(
+    legs: Sequence[Any], history: ColorCorrelator
+) -> tuple[ColorConnection, ...]:
+    """The complete family of a directed colour history: every diagonal
+    catalogue history of its order and output legs (the LC/NLC degree
+    authority of design §7.7, legacy ``sun-graded-complete-history-family``).
+    The identity history is its own family."""
+
+    from pyamplicol.color.connection_catalogue import (
+        build_color_correlator_catalogue,
+        canonical_color_connections,
+    )
+
+    legs = tuple(legs)
+    bra, ket = canonical_color_connections(
+        (ColorConnection(legs, history.bra), ColorConnection(legs, history.ket))
+    )
+    if bra.order == 0:
+        return (bra,)
+    family = []
+    for item in build_color_correlator_catalogue(
+        legs, through_order=bra.order, include_physical_splittings=True
+    ):
+        if item.order != bra.order or item.bra != item.ket:
+            continue
+        connection = ColorConnection(legs, item.bra)
+        if connection.output_legs == bra.output_legs:
+            family.append(connection)
+    if bra not in family or ket not in family:
+        raise ValueError(
+            f"colour history {history.id!r} is absent from its complete family"
+        )
+    return tuple(family)
 
 
 # --------------------------------------------------------------------- seeds
@@ -372,6 +425,8 @@ class ObservableSlice:
     spin_classes: tuple[tuple[int, ...], ...] = ()
     ward: bool = False
     _directed: dict[Hashable, DirectedColour] = field(default_factory=dict, repr=False)
+    # Complete-family LC/NLC degrees per colour family (design §7.7).
+    _families: dict[tuple, dict] = field(default_factory=dict, repr=False)
 
     @classmethod
     def generate(
@@ -389,7 +444,9 @@ class ObservableSlice:
             from .catalogue import compile_tree_kernel_variant
 
             compiled = compile_tree_kernel_variant(compiled, "full")
-        slice_ = LoopSlice.generate(compiled, request, native)
+        # LC/NLC colour histories prune with their own seed tables (``of``).
+        prune = not correlators.color_correlations
+        slice_ = LoopSlice.generate(compiled, request, native, prune=prune)
         return cls.of(slice_, correlators=correlators, ward=ward)
 
     @classmethod
@@ -400,7 +457,14 @@ class ObservableSlice:
         correlators: CorrelatorConfig | None = None,
         ward: bool = False,
     ) -> ObservableSlice:
-        """The observables of an already generated slice."""
+        """The observables of an already generated slice.
+
+        At LC/NLC a slice generated without colour pruning is pruned here,
+        keeping every skeleton live in the inclusive seed table or in the
+        seed table of any history pair of a declared directed history's
+        complete family (at that family's degrees). A slice already pruned
+        for the inclusive virtual alone cannot serve directed histories.
+        """
 
         from pyamplicol.color.correlator_matrices import process_color_legs
 
@@ -421,6 +485,26 @@ class ObservableSlice:
             tuple(correlators.spin_correlations),
             ward,
         )
+        directed = [history for history in out.histories if history.bra]
+        if slice_.request.accuracy != "full":
+            if slice_.colour_pruned and directed:
+                raise ValueError(
+                    "an LC/NLC slice pruned for the inclusive virtual cannot "
+                    "serve directed colour histories; generate it with "
+                    "ObservableSlice.generate"
+                )
+            if not slice_.colour_pruned:
+                criteria: list = []
+                for history in directed:
+                    family = colour_family(slice_.basis.legs, history)
+                    if family not in out._families:
+                        tables: list[SeedTable] = []
+                        degrees = out._families[family] = out._family_degrees(
+                            family, tables
+                        )
+                        criteria += [(table, degrees["virtual"]) for table in tables]
+                slice_._prune_colour(criteria)
+                slice_._plan_contraction()
         for history in out.histories:
             out.directed(history)
         return out
@@ -433,13 +517,58 @@ class ObservableSlice:
         key = (history.bra, history.ket)
         found = self._directed.get(key)
         if found is None:
-            if self.slice.request.accuracy != "full" and history.bra:
-                raise NotImplementedError(
-                    "directed colour correlations at LC/NLC need the complete-"
-                    "family degree convention (design §7.7); use full colour"
-                )
             found = self._directed[key] = DirectedColour(self.slice.table, history)
         return found
+
+    def degrees(self, history: ColorCorrelator | None) -> dict[str, dict]:
+        """Leading N_c degrees P of an output's colour (LC/NLC, design §7.7):
+        the slice's for the Born colour metric; for a directed history the
+        largest over every history pair (alpha, beta) of its complete family
+        (``colour_family``), per squared-order sector, of the Born, seed,
+        counterterm and field cells, both directions included."""
+
+        if history is None or not history.bra:
+            return self.slice.degrees()
+        family = colour_family(self.slice.basis.legs, history)
+        found = self._families.get(family)
+        if found is None:
+            if self.slice.colour_pruned:
+                raise ValueError(
+                    f"colour history {history.id!r} was not declared when the "
+                    "LC/NLC slice was pruned"
+                )
+            found = self._families[family] = self._family_degrees(family)
+        return found
+
+    def _family_degrees(
+        self,
+        family: Sequence[ColorConnection],
+        tables: list[SeedTable] | None = None,
+    ) -> dict[str, dict]:
+        """The complete-family degrees; ``tables`` collects every pair's
+        seed table (the pruning criteria)."""
+
+        slice_ = self.slice
+        out: dict[str, dict] = {"born": {}, "virtual": {}}
+        for alpha in family:
+            for beta in family:
+                pair = DirectedColour(
+                    slice_.table,
+                    ColorCorrelator("family", alpha.emissions, beta.emissions),
+                )
+                degrees = slice_.degrees(overlaps=pair.overlap, table=pair.table)
+                for kind, values in degrees.items():
+                    for sector, value in values.items():
+                        if value is not None:
+                            known = out[kind].get(sector)
+                            out[kind][sector] = (
+                                value if known is None else max(known, value)
+                            )
+                        else:
+                            out[kind].setdefault(sector, None)
+                if tables is not None:
+                    tables.append(pair.table)
+        return out
 
     def history(self, identifier: str) -> ColorCorrelator:
         if identifier == INCLUSIVE:
@@ -855,8 +984,12 @@ class ColumnPlan:
         self.seed_columns: list[SeedColumn] = []
         self.lanes: dict[tuple[Hashable, Orders], tuple[int, int]] = {}
         accuracy = slice_.request.accuracy
-        degrees = slice_.degrees()["virtual"] if accuracy != "full" else {}
         for column in self.columns:
+            degrees = (
+                observables.degrees(column.history)["virtual"]
+                if accuracy != "full"
+                else {}
+            )
             tables = (slice_.table, slice_.table)
             if column.directed:
                 directed = observables.directed(column.history)
@@ -1132,7 +1265,9 @@ class _Assembly:
         slice_, numbers = self.slice, self.numbers
         evaluation = self.evaluation
         accuracy = slice_.request.accuracy
-        degrees = slice_.degrees() if accuracy != "full" else None
+        degrees = (
+            self.observables.degrees(column.history) if accuracy != "full" else None
+        )
         index = {tensor: b for b, tensor in enumerate(slice_.basis.tensors)}
         legs = slice_.basis.legs
         directed = (
