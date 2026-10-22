@@ -774,3 +774,58 @@ def test_native_observables_equal_python(generate, carrier):
     for key, value in reference.entries.items():
         for a, b in zip(resolved[key].totals, value.totals, strict=True):
             assert abs(complex(a) - complex(b)) <= tolerance * largest, key
+
+
+# ------------------------------------------------------------------ stability
+
+
+def test_observable_stability_estimates_bracket_the_true_error(generate):
+    """Rotation and reduction-direction checks per observable output
+    (REQUIREMENTS_ADDENDUM C): the binary64 estimate of a directed ordered
+    history, a dipole and a rotated complex spin source bounds the deviation
+    from the 200-bit evaluation; without checks no estimate exists."""
+
+    from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
+
+    declarations = CorrelatorConfig(
+        color_correlations=(ColorCorrelator.dipole("T12", 1, 2), ORDERED),
+        spin_correlations=((3,),),
+    )
+    observables = generate("d d~ > g g", correlators=declarations)
+    checks = StabilityChecks(
+        (
+            Rotation.about("z", "3/5", "4/5"),
+            Rotation.about("x", "-4/5", "3/5") @ Rotation.about("y", "5/13", "12/13"),
+        ),
+        True,
+    )
+    for point in _points("uudd_qcd")[:2]:
+        for options in (
+            {"correlations": ("T12", "ordered")},
+            {"spin": {3: VECTORS[0]}},
+        ):
+            plain = observables.evaluate(
+                point, "1000000", parameters=PARAMETERS, **options
+            )
+            assert all(value.stability is None for value in plain.values())
+            checked = observables.evaluate(
+                point, "1000000", parameters=PARAMETERS, stability=checks, **options
+            )
+            exact = observables.evaluate(
+                point,
+                "1000000",
+                parameters=PARAMETERS,
+                precision=CARRIERS["arbitrary-200"],
+                **options,
+            )
+            for key, value in checked.items():
+                estimate = value.stability
+                assert estimate is not None and 0 < estimate.relative < 1e-9
+                for sector, laurent in value.components["virtual"].items():
+                    reference = exact[key].components["virtual"][sector].coefficients
+                    scale = max(abs(complex(x)) for x in reference)
+                    error = max(
+                        abs(complex(a) - complex(b))
+                        for a, b in zip(laurent.coefficients, reference, strict=True)
+                    )
+                    assert error <= estimate.relative * scale, (key, error / scale)

@@ -51,10 +51,12 @@ squared-order sector, so each output carries its per-coupling-order partials
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from collections.abc import Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, localcontext
+from fractions import Fraction
 from itertools import permutations, product
 from typing import Any, Literal
 
@@ -73,6 +75,7 @@ from .assemble import (
     COMPONENTS,
     FIELD_COMPONENT,
     LAURENT,
+    LOCAL_COMPONENTS,
     Laurent,
     LoopSlice,
     PointResult,
@@ -89,6 +92,13 @@ from .conventions import LOOP_FACTOR_DENOMINATOR
 from .ct_sites import LAURENT_POWERS
 from .families import Orders, add_orders
 from .plan_export import DEFAULT_LANES, NativeExecutor, SeedColumn, export_plan
+from .stability import (
+    REDUCTION,
+    ROTATION,
+    Budget,
+    StabilityChecks,
+    StabilityEstimate,
+)
 
 Resolution = Literal["helicity", "colour", "helicity-colour"]
 ComplexPair = tuple[Decimal, Decimal]
@@ -470,20 +480,31 @@ class ObservableSlice:
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
         poles: bool = True,
+        stability: StabilityChecks | None = None,
     ) -> dict[str, PointResult]:
         """Correlated outputs at one point, one ``PointResult`` per history id.
 
         ``spin`` maps source legs (a declared spin class) to literal complex
         four-vectors: four real decimals or (real, imaginary) pairs.
         ``ward`` is the vector leg of the asymmetric Ward mode. Directed
-        outputs are complex; the others real.
+        outputs are complex; the others real. ``stability`` runs rotation
+        and reduction-direction checks per output (``stability``; spin
+        vectors rotate with the momenta); without checks no estimate exists.
         """
 
         columns = [
             Column(identifier, self.history(identifier)) for identifier in correlations
         ]
         results = self._run(
-            columns, point, scale_squared, parameters, precision, poles, spin, ward
+            columns,
+            point,
+            scale_squared,
+            parameters,
+            precision,
+            poles,
+            spin,
+            ward,
+            stability,
         )
         return {column.key: results[column.key] for column in columns}
 
@@ -497,12 +518,21 @@ class ObservableSlice:
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
         poles: bool = True,
+        stability: StabilityChecks | None = None,
     ) -> ResolvedObservables:
         """Helicity- and/or colour-resolved outputs (design §8.5)."""
 
         columns = self.resolved_columns(resolution, spin)
         results = self._run(
-            columns, point, scale_squared, parameters, precision, poles, spin, None
+            columns,
+            point,
+            scale_squared,
+            parameters,
+            precision,
+            poles,
+            spin,
+            None,
+            stability,
         )
         return self.resolved_result(columns, results, precision)
 
@@ -648,18 +678,83 @@ class ObservableSlice:
         return out
 
     def _run(
-        self, columns, point, scale_squared, parameters, precision, poles, spin, ward
+        self,
+        columns,
+        point,
+        scale_squared,
+        parameters,
+        precision,
+        poles,
+        spin,
+        ward,
+        stability=None,
     ) -> dict[Hashable, PointResult]:
         plan = ColumnPlan(self, columns)
+        stability = stability or StabilityChecks()
+        precision = precision or Precision.double()
+        reference = self._evaluated(
+            plan,
+            point,
+            scale_squared,
+            parameters,
+            precision,
+            poles,
+            spin,
+            ward,
+            stability.reduction_direction,
+        )
+        results = plan.results(reference)
+        if not stability.enabled:
+            return results
+        rotated = []
+        for rotation in stability.rotations:
+            evaluation = self._evaluated(
+                plan,
+                rotation.apply(tuple(tuple(_fraction(x) for x in p) for p in point)),
+                scale_squared,
+                parameters,
+                precision,
+                poles,
+                None
+                if spin is None
+                else {leg: _rotated(rotation, value) for leg, value in spin.items()},
+                ward,
+                False,
+            )
+            rotated.append((evaluation, plan.results(evaluation)))
+        return {
+            key: replace(
+                result,
+                stability=plan.estimate(
+                    key, reference, result, rotated, precision.unit_roundoff
+                ),
+            )
+            for key, result in results.items()
+        }
+
+    def _evaluated(
+        self,
+        plan,
+        point,
+        scale_squared,
+        parameters,
+        precision,
+        poles,
+        spin,
+        ward,
+        retest,
+    ):
+        """One point's evaluation with the plan's lanes reduced."""
+
         evaluation = self.point(
             point, scale_squared, parameters, precision, poles, spin, ward
         )
         with evaluation.numbers.scope():
             execution = evaluation.dress(seeds=plan.seeds(evaluation))
             evaluation._reduce(
-                execution.numerators, False, columns=list(range(plan.width))
+                execution.numerators, retest, columns=list(range(plan.width))
             )
-            return plan.results(evaluation)
+        return evaluation
 
     def point(
         self,
@@ -703,8 +798,8 @@ class ObservableSlice:
             )
 
 
-def _vector(value: Any) -> tuple[ComplexPair, ...]:
-    """A literal complex four-vector as decimal (real, imaginary) pairs."""
+def _components(value: Any) -> list[tuple[Fraction, Fraction]]:
+    """A literal complex four-vector as exact (real, imaginary) pairs."""
 
     components = list(value)
     if len(components) != 4:
@@ -717,8 +812,23 @@ def _vector(value: Any) -> tuple[ComplexPair, ...]:
             re, im = component
         else:
             re, im = component, 0
-        out.append((_to_decimal(_fraction(re)), _to_decimal(_fraction(im))))
-    return tuple(out)
+        out.append((_fraction(re), _fraction(im)))
+    return out
+
+
+def _rotated(rotation: Any, value: Any) -> list[tuple[Fraction, Fraction]]:
+    """A spin vector rotated with the momenta (real and imaginary parts)."""
+
+    parts = _components(value)
+    real = rotation.apply([[re for re, _im in parts]])[0]
+    imag = rotation.apply([[im for _re, im in parts]])[0]
+    return list(zip(real, imag, strict=True))
+
+
+def _vector(value: Any) -> tuple[ComplexPair, ...]:
+    """A literal complex four-vector as decimal (real, imaginary) pairs."""
+
+    return tuple((_to_decimal(re), _to_decimal(im)) for re, im in _components(value))
 
 
 # --------------------------------------------------------------------- one point
@@ -781,8 +891,119 @@ class ColumnPlan:
         )
 
     def results(self, evaluation) -> dict[Hashable, PointResult]:
-        assembly = _Assembly(self, evaluation)
-        return {column.key: assembly.result(column) for column in self.columns}
+        with evaluation.numbers.scope():
+            assembly = _Assembly(self, evaluation)
+            return {column.key: assembly.result(column) for column in self.columns}
+
+    def _lanes_of(self, key: Hashable) -> dict[int, tuple[Orders, int]]:
+        """Numerator column -> (sector, multiplicity in the output's bare):
+        2 for a single column (2 Re), 1 each for a direct/swapped pair."""
+
+        out: dict[int, tuple[Orders, int]] = {}
+        for (column, sector), (direct, swapped) in self.lanes.items():
+            if column == key:
+                if direct == swapped:
+                    out[direct] = (sector, 2)
+                else:
+                    out[direct] = (sector, 1)
+                    out[swapped] = (sector, 1)
+        return out
+
+    def _budget(self, key, lanes, width: int, local=()) -> dict[Orders, Budget]:
+        """Per sector sum_lanes m |delta Omega| / (16 pi^2 average) plus the
+        absolute local components (``assemble._PointEvaluation._lane_budget``
+        for observable columns)."""
+
+        factor = 1 / (
+            LOOP_FACTOR_DENOMINATOR * math.pi**2 * self.slice.normalisation.average
+        )
+        mine = self._lanes_of(key)
+        budget = {sector: [0.0] * width for sector, _pairs in self.slice.sectors}
+        for (_family, _loop, column), errors in lanes.items():
+            found = mine.get(column)
+            if found is None:
+                continue
+            sector, multiplicity = found
+            for k, error in enumerate(errors):
+                budget[sector][k] += multiplicity * factor * abs(complex(error))
+        for components in local:
+            for sector, laurent in components.items():
+                for k, value in enumerate(laurent.coefficients):
+                    budget[sector][k] += abs(complex(value))
+        return {sector: Budget(tuple(values)) for sector, values in budget.items()}
+
+    def estimate(
+        self, key, reference, result: PointResult, rotated, roundoff: float
+    ) -> StabilityEstimate:
+        """The stability estimate of output ``key`` (``stability``): rotation
+        budgets from the rotated evaluations' lanes and local components, the
+        reduction-direction budget from the re-test lanes."""
+
+        width = 3 if reference.poles else 1
+        local = [result.components[name] for name in LOCAL_COMPONENTS]
+        scale = self._budget(
+            key,
+            {lane: value.coefficients for lane, value in reference.families.items()},
+            width,
+            local,
+        )
+        budgets = {}
+        zero = Laurent(*[0] * width)
+        for index, (evaluation, results) in enumerate(rotated):
+            other = results[key]
+            lanes = {
+                lane: tuple(
+                    complex(a) - complex(b)
+                    for a, b in zip(
+                        evaluation.families.get(lane, zero).coefficients,
+                        reference.families.get(lane, zero).coefficients,
+                        strict=True,
+                    )
+                )
+                for lane in reference.families.keys() | evaluation.families.keys()
+            }
+            changes = [
+                {
+                    sector: Budget(
+                        tuple(
+                            abs(complex(a) - complex(b))
+                            for a, b in zip(
+                                laurent.coefficients,
+                                other.components[name][sector].coefficients,
+                                strict=True,
+                            )
+                        )
+                    )
+                    for sector, laurent in result.components[name].items()
+                }
+                for name in LOCAL_COMPONENTS
+            ]
+            budgets[ROTATION.format(index)] = self._budget(key, lanes, width, changes)
+        deviations = None
+        if reference.retest_families is not None:
+            deviations = {
+                lane: tuple(
+                    abs(complex(a) - complex(b))
+                    for a, b in zip(
+                        value.coefficients,
+                        reference.retest_families[lane].coefficients,
+                        strict=True,
+                    )
+                )
+                for lane, value in reference.families.items()
+            }
+            budgets[REDUCTION] = self._budget(key, deviations, width)
+        magnitudes = {
+            sector: Laurent(*[abs(complex(x)) for x in laurent.coefficients])
+            for sector, laurent in result.components["virtual"].items()
+        }
+        return StabilityEstimate.from_checks(
+            magnitudes,
+            budgets,
+            scale=scale,
+            roundoff=roundoff,
+            families=deviations,
+        )
 
 
 class _Assembly:
