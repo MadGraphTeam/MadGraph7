@@ -1046,8 +1046,9 @@ class V2VirtualRuntime:
     once); ``"python"`` runs the Python reference executor (binary64 or
     arbitrary precision). Resolved colour components are the Born basis
     elements (``born-basis-anchored-interference``, design §1.6 decision 3),
-    with IDs ``basis-<index>``. Accuracy is not established by this surface
-    (no stability policy); values are the v2 engine's.
+    with IDs ``basis-<index>``; a member's are its representative's elements
+    on the member's labels. Accuracy is not established by this surface (no
+    stability policy); values are the v2 engine's.
     """
 
     contribution_kind = "virtual"

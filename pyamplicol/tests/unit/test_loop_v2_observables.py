@@ -718,7 +718,9 @@ def test_public_runtime_surface(generate, loop_reference, executor):
 def test_public_runtime_members_run_natively(generate):
     """A flavour member and a permutation alias through the public runtime
     (native executor) equal the runtime of the process generated directly:
-    directed histories, per-point spin sources and resolved rows."""
+    directed histories, per-point spin sources and resolved rows (an alias's
+    colour components are its representative's Born basis elements, so its
+    rows are compared summed over them)."""
 
     from pyamplicol.correlators import CorrelatedRequest
     from pyamplicol.runtime.virtual import V2VirtualRuntime
@@ -751,13 +753,33 @@ def test_public_runtime_members_run_natively(generate):
             for a, b in zip(left[label].values, right[label].values, strict=True):
                 for x, y in zip(a[0], b[0], strict=True):
                     assert _close(x, y, 1e-12, 1e-14), (process, label)
-        left = through.evaluate_resolved(points[:1], mu_r2=scales[:1])
-        right = direct.evaluate_resolved(points[:1], mu_r2=scales[:1])
-        flat_left, flat_right = _flat(left.values), _flat(right.values)
+        left = through.evaluate_resolved(points[:1], mu_r2=scales[:1]).values
+        right = direct.evaluate_resolved(points[:1], mu_r2=scales[:1]).values
+        if member.alias:
+            # An alias keeps the representative's Born basis elements as its
+            # colour components; compare the helicity rows summed over them.
+            left, right = _colour_summed(left), _colour_summed(right)
+        flat_left, flat_right = _flat(left), _flat(right)
         assert len(flat_left) == len(flat_right)
         largest = max(map(abs, flat_right))
         for a, b in zip(flat_left, flat_right, strict=True):
             assert abs(a - b) <= 1e-12 * largest, process
+
+
+def _colour_summed(values) -> tuple:
+    """Public resolved values [point][sector][row][component] summed over
+    the colour components."""
+
+    return tuple(
+        tuple(
+            tuple(
+                tuple(sum(float(entry[k]) for entry in row) for k in range(3))
+                for row in sector
+            )
+            for sector in point
+        )
+        for point in values
+    )
 
 
 def _flat(values) -> list[float]:
