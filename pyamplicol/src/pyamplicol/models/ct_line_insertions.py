@@ -14,6 +14,14 @@ which the tree engine expresses without a new node kind:
   number of its colour (``c * delta``, ``ct_color_flow.two_point_colour_factor``)
   times its Lorentz structure. A fermion field and its antifield get a clone
   pair; a self-conjugate field one self-conjugate clone.
+* **Weyl lines.** The tree engine propagates massless fermions as Weyl
+  currents with its own propagator, which a model-supplied propagator would
+  turn into Dirac currents that no external source closes. Such a clone
+  keeps the field's propagator instead: on a Weyl line ``Pi`` must be a
+  multiple of the slashed momentum, so ``P Pi P = kappa P`` with an exact
+  scalar ``kappa`` (``_line_factor``), which multiplies the couplings of the
+  copies on the clone's antiparticle leg. A clone line joins one leg of the
+  clone and one of its antiparticle, so it carries ``kappa`` once.
 * **Vertex copies.** Every ordinary vertex with a leg of the field (or of its
   antifield) is copied once per such species, with that leg on the clone;
   the copy's couplings carry the original orders, half of the orders of
@@ -38,8 +46,9 @@ vertex with legs ``r`` (the current's particle, incoming momentum ``p``) and
 Refused (``refused``, the caller keeps such rules as site closures): mixing
 insertions between different fields, orders of ``Pi`` that are not even,
 spins other than 0, 1/2 and 1, fields without a propagator record,
-Lorentz structures with momentum heads other than ``P``, and vertices with
-two legs of the same fermion species of the field.
+Lorentz structures with momentum heads other than ``P``, vertices with two
+legs of the same fermion species of the field, and on Weyl lines terms that
+are no multiple of the slashed momentum (they flip the chirality).
 """
 
 from __future__ import annotations
