@@ -33,6 +33,7 @@ their orders marks them.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import product
@@ -333,6 +334,7 @@ class CountertermClosure:
                                 scale=None if line is None else line.factor,
                             )
                         )
+        _refuse_u1_couplings(program, terms)
         for site in sites:
             for term in closure.terms(site):
                 for power in _powers(recursion, site):
@@ -348,6 +350,97 @@ class CountertermClosure:
                         )
                     )
         return cls(program, closure, tuple(sites), tuple(terms))
+
+
+def _u1_coupling_kinds(compiled: Any) -> frozenset[int]:
+    """Kernels of CT colours that couple to the U(1) part of a gluon line.
+
+    d-symbols and identities between adjoint legs do (structure constants
+    and fundamental generators do not, or have their U(1)-subtraction
+    auxiliaries, ``compiler_color_flow``).
+    """
+
+    out = set()
+    for kernel in compiled.ir.oriented_kernels:
+        rule = kernel.lc_recurrence_color_rule_kind or ""
+        source = kernel.color_source or ""
+        if not kernel.vertex.startswith("PYAMPLICOL_CT_V"):
+            continue
+        if "d(" in source or rule in {"adjoint-symmetric-invariant", "color-identity"}:
+            out.add(int(kernel.kind))
+    return frozenset(out)
+
+
+def _refuse_u1_couplings(program: CountertermBlocks, terms: Sequence[ClosureTerm]):
+    """Fail closed where the U(1) part of a gluon line would leak.
+
+    The tree engine subtracts the U(1) part of a gluon between fermion lines
+    with auxiliaries that only fermion vertices produce and absorb. A CT
+    vertex whose colour couples to that part (``_u1_coupling_kinds``) inside
+    a block therefore must neither absorb a gluon current of a fermion line
+    nor feed its gluon into a fermion line; at the root the exact colour
+    closure projects every block onto SU(N). Only the currents the root
+    terms use (and their derivations) are checked.
+    """
+
+    dag = program.blocks.blocks_dag
+    lowered = program.recursion.model.lowered.compiled
+    kinds = _u1_coupling_kinds(lowered)
+    if not kinds:
+        return
+    currents = dag.currents
+    produced = defaultdict(list)
+    for interaction in dag.interactions:
+        produced[interaction.result_id].append(interaction)
+    used: set[int] = set()
+    stack = [row.current_id for term in terms for b in term.term.blocks for row in b.rows]
+    while stack:
+        current = stack.pop()
+        if current in used:
+            continue
+        used.add(current)
+        for interaction in produced.get(current, ()):
+            stack.extend((interaction.left_id, interaction.right_id))
+    colours = {int(p.pdg_code): int(p.color) for p in lowered.ir.particles}
+    fundamental = {
+        leg.label
+        for leg in dag.process.legs
+        if leg.outgoing_pdg is not None and abs(colours[int(leg.outgoing_pdg)]) == 3
+    }
+    generator_kinds = {
+        int(kernel.kind)
+        for kernel in lowered.ir.oriented_kernels
+        if kernel.color_projection_structure == "fundamental-generator"
+    }
+    coupled_outputs: set[int] = set()
+    for interaction in dag.interactions:
+        if interaction.result_id not in used:
+            continue
+        if int(interaction.vertex_kind) in kinds:
+            for input_id in (interaction.left_id, interaction.right_id):
+                index = currents[input_id].index
+                if colours.get(int(index.particle_id)) == 8 and (
+                    fundamental & set(index.external_labels)
+                ):
+                    raise NotImplementedError(
+                        "a counterterm vertex coupling to the U(1) part of a "
+                        "gluon absorbs the gluon current of a fermion line "
+                        "inside a block (U(1)-subtraction auxiliaries of "
+                        "counterterm vertices are not implemented)"
+                    )
+            if colours.get(int(currents[interaction.result_id].index.particle_id)) == 8:
+                coupled_outputs.add(interaction.result_id)
+    for interaction in dag.interactions:
+        if interaction.result_id not in used:
+            continue
+        if int(interaction.vertex_kind) in generator_kinds and (
+            {interaction.left_id, interaction.right_id} & coupled_outputs
+        ):
+            raise NotImplementedError(
+                "a counterterm vertex coupling to the U(1) part of a gluon feeds "
+                "a fermion line inside a block (U(1)-subtraction auxiliaries of "
+                "counterterm vertices are not implemented)"
+            )
 
 
 def _slot_order(slot: tuple[str, int]) -> str:
