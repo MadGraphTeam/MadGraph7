@@ -284,6 +284,8 @@ def measure(options: argparse.Namespace) -> int:
                 "points": options.points,
                 "lanes": options.lanes,
                 "threads": threads,
+                "chunk_families": options.chunk_families,
+                "part_chunks": options.part_chunks,
             }
             best: dict[str, tuple] = {}
             # One untimed run per schedule, then the schedules alternate.
@@ -291,7 +293,12 @@ def measure(options: argparse.Namespace) -> int:
                 for schedule in ("B", "M"):
                     start = time.perf_counter()
                     output = executor.evaluate(
-                        inputs, poles=False, check=False, schedule=schedule
+                        inputs,
+                        poles=False,
+                        check=False,
+                        schedule=schedule,
+                        chunk_families=options.chunk_families,
+                        part_chunks=options.part_chunks,
                     )
                     seconds = (time.perf_counter() - start) / options.points
                     report = output["report"]
@@ -429,6 +436,16 @@ def main(argv: list[str] | None = None) -> int:
     runner.add_argument("--lanes", type=int, default=16)
     runner.add_argument("--reps", type=int, default=3)
     runner.add_argument("--seed", type=int, default=20261022)
+    runner.add_argument(
+        "--chunk-families",
+        type=int,
+        help="families per streamed bucket chunk of B (default: the executor's)",
+    )
+    runner.add_argument(
+        "--part-chunks",
+        type=int,
+        help="M chunks per streamed part (default: the executor's)",
+    )
     reader = commands.add_parser("report", help="the adoption table")
     reader.add_argument("results", nargs="+", type=Path)
     options = parser.parse_args(argv)
