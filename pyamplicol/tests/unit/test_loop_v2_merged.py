@@ -12,8 +12,8 @@ Checks:
   the state graph has one cut-to-closure path per planar path; families with
   generic seeds (several quark lines) stay on schedule B;
 * O4 in Rust: the native exact carrier gives M = B bit for bit, with chunk
-  keys of depth 0, 1 and 2 and every kernel form; binary64 and arbitrary
-  precision agree with B to the carrier's precision;
+  keys of depth 0, 1 and 2, every kernel form and both ring readings;
+  binary64 and arbitrary precision agree with B to the carrier's precision;
 * a native evaluation with schedule M equals schedule B at 32 digits (all
   three Laurent coefficients, finite-only included); in binary64 M's virtual
   lies within 1e-12 of the 32-digit value, or within its own
@@ -142,7 +142,9 @@ def slices(loop_sm_compiled_model, loop_native):
                         "generate_counterterm_sites",
                         _furry_zeros(assemble.generate_counterterm_sites),
                     )
-                built[name, accuracy] = LoopSlice.generate(compiled, request, loop_native)
+                built[name, accuracy] = LoopSlice.generate(
+                    compiled, request, loop_native
+                )
         return built[name, accuracy]
 
     return build
@@ -170,8 +172,8 @@ def _conserving(point: list) -> list:
     return [[str(x) for x in momentum] for momentum in momenta]
 
 
-def _executor(slice_, chunk_depth=1, forms="rule") -> NativeExecutor:
-    graph = merged.merged_graph(slice_, chunk_depth=chunk_depth)
+def _executor(slice_, chunk_depth=1, forms="rule", reading="trie") -> NativeExecutor:
+    graph = merged.merged_graph(slice_, chunk_depth=chunk_depth, reading=reading)
     return NativeExecutor(slice_, forward=False, merged=graph, forms=forms)
 
 
@@ -214,7 +216,10 @@ def test_planar_paths_certify_against_the_b_seeds(slices, name, everywhere):
     whole = merged.merged_graph(slice_, chunk_depth=0)
     assert whole.counts()["chunks"] == 1
     assert whole.counts()["states"] == counts["states"]
-    assert merged.merged_graph(slice_, chunk_depth=2).counts()["states"] >= counts["states"]
+    assert (
+        merged.merged_graph(slice_, chunk_depth=2).counts()["states"]
+        >= counts["states"]
+    )
     # The chunks of a family are consecutive, so it streams once they ran.
     chunk_of = {}
     start = 0
@@ -261,21 +266,26 @@ def _assert_exact(left, right, label):
 @pytest.mark.parametrize("name", ["gg_gg", "uux_gg", "uux_ddxg", "uux_emepgg"])
 def test_exact_m_equals_b(slices, name):
     """O4 in Rust: exact rational numerators of M equal B's bit for bit,
-    chunked or not, in every kernel form (at momentum-conserving points)."""
+    chunked or not, in every kernel form, from the trie readings and from
+    the skeletons' own readings (closures through the family frame maps),
+    at momentum-conserving points."""
 
     slice_ = slices(name)
     point, scale = _point(name)
     point = _conserving(point)
     reference = None
-    for chunk_depth, forms in ((1, "rule"), (0, "fused"), (2, "split")):
-        executor = _executor(slice_, chunk_depth, forms)
+    for chunk_depth, forms, reading in (
+        (1, "rule", "trie"),
+        (0, "fused", "trie"),
+        (2, "split", "trie"),
+        (1, "rule", "skeleton"),
+    ):
+        executor = _executor(slice_, chunk_depth, forms, reading)
         options = {"parameters": PARAMETERS, "exact": True}
         if reference is None:
             (reference,) = executor.family_numerators([point], [scale], **options)
-        (mine,) = executor.family_numerators(
-            [point], [scale], schedule="M", **options
-        )
-        _assert_exact(mine, reference, (chunk_depth, forms))
+        (mine,) = executor.family_numerators([point], [scale], schedule="M", **options)
+        _assert_exact(mine, reference, (chunk_depth, forms, reading))
 
 
 @pytest.mark.loop_physics
@@ -302,7 +312,7 @@ def test_binary64_m_equals_b(slices, name):
         energy = float(Fraction(points[index][0][0]) + Fraction(points[index][1][0]))
         assert left.keys() == right.keys()
 
-        def weighted(numerator):
+        def weighted(numerator, energy=energy):
             return max(
                 abs(complex(x)) * energy ** _degree(k)
                 for column in numerator.columns

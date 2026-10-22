@@ -49,8 +49,8 @@ from pyamplicol.color.connections import ExactColorCoefficient
 from . import reference_executor as rx
 from .colour import project
 from .families import FamilyKey, Orders
-from .poly_affine import size
 from .merged import MergedGraph, merged_graph
+from .poly_affine import size
 from .schedules import forward_graph
 
 PLAN_SCHEMA = 4
@@ -519,7 +519,6 @@ class _Exporter:
             del record["_rows"]
         return {"states": states}
 
-
     # -- schedule M -----------------------------------------------------------
 
     def merged(
@@ -537,14 +536,21 @@ class _Exporter:
             dimension = self.kinematics.shape(content).loop_in
             seed = self.seeds.setdefault((((c, _ONE),), order), len(self.seeds))
             entries.append({"seed": seed, "weight": _complex_text(weight)})
-            objects.append(_Object(self.rows, dimension, dimension, 0, leaf=len(entries) - 1))
+            objects.append(
+                _Object(self.rows, dimension, dimension, 0, leaf=len(entries) - 1)
+            )
         states: list[dict] = []
         outputs: list[_Object] = []
         for state in graph.states:
             edges = []
             weights = []
             for source, step, weight in state.edges:
-                edges.append((step.content, objects[-1 - source] if source < 0 else outputs[source]))
+                edges.append(
+                    (
+                        step.content,
+                        objects[-1 - source] if source < 0 else outputs[source],
+                    )
+                )
                 weights.append(weight)
             record = self._state(edges, state.out_mask, state.shift)
             for edge, weight in zip(record["edges"], weights, strict=True):
@@ -594,7 +600,9 @@ class _Exporter:
             for position, row in enumerate(source.rows):
                 block = block_index.get(rx.restrict(row, content.mask))
                 if block is not None:
-                    target = targets.setdefault(rx.restrict(row, out_mask), len(targets))
+                    target = targets.setdefault(
+                        rx.restrict(row, out_mask), len(targets)
+                    )
                     links += [target, position, block]
             records.append(
                 {
@@ -613,7 +621,9 @@ class _Exporter:
             "degree": degree,
             "rank_in": storage,
             "edges": records,
-            "_object": _Object(tuple(targets), d_alpha, d_out, storage + degree, step=-1),
+            "_object": _Object(
+                tuple(targets), d_alpha, d_out, storage + degree, step=-1
+            ),
         }
 
 

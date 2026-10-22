@@ -19,10 +19,17 @@ decomposition term. This module runs every choice as one colour-ordered
   the entry weight w_s sign(w) x_c (leaf weight, primitive sign, class
   ratio);
 * each **step** dresses one position content and carries the coefficient
-  c_t of its term as an exact edge weight;
+  c_t of its term as an exact edge weight (moved towards the entries where
+  the graph allows, ``_fold_weights``);
 * the path's **tokens** are the letters of its terms (adjoint letters,
   directed fundamental letters, exact quark-ring positions) plus a token for
   the legs of a position outside its letters (colour singlets).
+
+A path reads its skeleton's ring from the cut and in the orientation of
+the family's B trie (the cost-optimal reading of design §4.2), so its
+closure lands in the trie frame and M dresses the same positions in the
+same order as B; the skeleton's own reading is the alternative (closures
+then map into the trie frame per family frame map).
 
 States are keyed by (chunk, cut species, short ring, dressed (leg set,
 species) positions, remaining tokens, prefix orders, total orders), so two
@@ -31,14 +38,15 @@ cut word is the same: prefixes are shared across compositions and families
 (design §3.5). Entries add the seed and weight to that key.
 
 The **chunk** of a path is its cut species and its first ``chunk_depth``
-dressed positions (``chunk_depth`` 0: one chunk). States of different chunks never merge, so the executor
-runs chunks independently and releases each chunk's states with it (design
-§5.3). A state's key holds its dressed positions, so a chunk key of depth 1
-loses no merge at all; deeper keys repeat the shallower (cheap, low-rank)
-states in every chunk below them. Every skeleton of a family starts at the
-family's first position, so the chunks of a family are consecutive (chunks
-are ordered by their leading leg sets): a family is complete, and its
-accumulator can stream into the reduction, as soon as its chunks are done.
+dressed positions (``chunk_depth`` 0: one chunk). States of different
+chunks never merge, so the executor runs chunks independently and releases
+each chunk's states with it (design §5.3). A state's key holds its dressed
+positions, so a chunk key of depth 1 loses no merge at all; deeper keys
+repeat the shallower (cheap, low-rank) states in every chunk below them.
+Every skeleton of a family starts at the family's first position, so the
+chunks of a family are consecutive (chunks are ordered by their leading leg
+sets): a family is complete, and its accumulator can stream into the
+reduction, as soon as its chunks are done.
 Within a chunk states are ordered by their dressed positions, a depth-first
 topological order (a parent's positions are a prefix of its child's) that
 keeps few open-loop objects live.
@@ -54,8 +62,8 @@ schedule B ("generic fallback to B per class").
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
-from collections.abc import Hashable, Mapping, Sequence
+from collections import defaultdict
+from collections.abc import Hashable, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import product
 from typing import Any, Literal
@@ -381,8 +389,9 @@ def merged_graph(
         for position_mask, _species in dressed:
             mask |= position_mask
         state.out_mask = full ^ mask
+
     def position(s: int) -> tuple:
-        chunk, cut, short, dressed, rest, orders, total = states[s].key
+        chunk, _cut, short, dressed, rest, orders, total = states[s].key
         return (chunk[0], repr(chunk[1:]), dressed, repr((rest, orders, total, short)))
 
     order = sorted(range(len(states)), key=position)
@@ -416,7 +425,9 @@ def _certify(states: Sequence[MergedState], paths: int) -> None:
         counts.append(
             sum(1 if source < 0 else counts[source] for source, *_ in state.edges)
         )
-    closing = sum(count for count, state in zip(counts, states) if state.closure)
+    closing = sum(
+        count for count, state in zip(counts, states, strict=True) if state.closure
+    )
     if closing != paths:
         raise MergedUnavailable(
             f"the merged graph has {closing} closing paths for {paths} planar paths"
