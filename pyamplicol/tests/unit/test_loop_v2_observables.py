@@ -352,7 +352,10 @@ def test_asymmetric_ward_identity(generate, process, name, legs, carrier):
     relative to the largest physical component. In binary64 the scale is at
     least the absolute sum of the Ward evaluation's family lanes: the bare
     lanes cancel among themselves by orders of magnitude (gauge cancellation
-    across families), so rounding is relative to them."""
+    across families), so rounding is relative to them. In binary64 the Ward
+    vector also runs through the native executor (batch inputs only)."""
+
+    from pyamplicol.loops.v2.observables import NativeObservables
 
     born = {"QCD": 3, "QED": 0} if name == "uux_ggg" else QCD2
     loop = {"QCD": 5, "QED": 0} if name == "uux_ggg" else QCD4
@@ -364,19 +367,31 @@ def test_asymmetric_ward_identity(generate, process, name, legs, carrier):
         point, scale, parameters=PARAMETERS, precision=precision
     )
     tolerance = 1e-11 if carrier == "double" else 1e-45
+    native = NativeObservables.correlated(observables, (INCLUSIVE,), lanes=4)
     for leg in legs:
         (ward,) = observables.evaluate(
             point, scale, ward=leg, parameters=PARAMETERS, precision=precision
         ).values()
-        reference = _ward_scale(physical)
+        runs = [ward]
         if carrier == "double":
-            lanes = _lane_scale(ward, observables.slice.normalisation.average)
-            reference = [max(a, b) for a, b in zip(reference, lanes, strict=True)]
-        for sector, laurent in ward.components["virtual"].items():
-            for k, value in enumerate(laurent.coefficients):
-                assert abs(complex(value)) <= tolerance * reference[k], (leg, sector, k)
-        # The test is not empty: the physical Born and bare amplitude are not.
-        assert abs(float(ward.totals[0])) > 0
+            (result,) = native.evaluate(
+                [point], [scale], ward=leg, parameters=PARAMETERS
+            )
+            runs.append(result[INCLUSIVE])
+        for run in runs:
+            reference = _ward_scale(physical)
+            if carrier == "double":
+                lanes = _lane_scale(run, observables.slice.normalisation.average)
+                reference = [max(a, b) for a, b in zip(reference, lanes, strict=True)]
+            for sector, laurent in run.components["virtual"].items():
+                for k, value in enumerate(laurent.coefficients):
+                    assert abs(complex(value)) <= tolerance * reference[k], (
+                        leg,
+                        sector,
+                        k,
+                    )
+            # The test is not empty: the physical Born is not.
+            assert abs(float(run.totals[0])) > 0
 
 
 # ------------------------------------------------------------------ flavour (§9)

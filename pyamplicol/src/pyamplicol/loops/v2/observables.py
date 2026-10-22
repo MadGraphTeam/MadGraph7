@@ -95,6 +95,7 @@ from .assemble import (
     SliceRequest,
     _fraction,
     _interfere,
+    _max,
     _Numbers,
     _single,
     _to_decimal,
@@ -559,13 +560,7 @@ class ObservableSlice:
                 degrees = slice_.degrees(overlaps=pair.overlap, table=pair.table)
                 for kind, values in degrees.items():
                     for sector, value in values.items():
-                        if value is not None:
-                            known = out[kind].get(sector)
-                            out[kind][sector] = (
-                                value if known is None else max(known, value)
-                            )
-                        else:
-                            out[kind].setdefault(sector, None)
+                        out[kind][sector] = _max(out[kind].get(sector), value)
                 if tables is not None:
                     tables.append(pair.table)
         return out
