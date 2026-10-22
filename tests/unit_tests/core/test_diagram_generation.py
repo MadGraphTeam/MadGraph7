@@ -3554,7 +3554,13 @@ class MultiProcessTest(unittest.TestCase):
             self.assertEqual(diagram_generation.MultiProcess.\
                              find_optimal_process_orders(my_process_definition),
                              {})
-        
+
+            # allow_decay runs the search on the decay itself (used at NLO)
+            self.assertEqual(diagram_generation.MultiProcess.\
+                             find_optimal_process_orders(my_process_definition,
+                                                         allow_decay=True),
+                             {'WEIGHTED': orders[nfs-2]})
+
             my_process_definition.set('is_decay_chain', True)
             self.assertEqual(diagram_generation.MultiProcess.\
                              find_optimal_process_orders(my_process_definition),
