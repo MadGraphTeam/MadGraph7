@@ -138,7 +138,7 @@ pub fn run_family<T: Carrier, const L: usize>(
 /// The split-form segment of `step` for `vertex`, with products table
 /// `products`: a seeded step reads `δ_αβ` seeds (cut and open end of
 /// dimension 1, output end `α × β'`).
-fn split_segment<'a>(
+pub(super) fn split_segment<'a>(
     plan: &'a LoopProgramV4,
     step: &Step,
     vertex: usize,
@@ -168,7 +168,7 @@ fn split_segment<'a>(
 }
 
 /// `O' += T · V` for every vertex group of a split step, once per target row.
-fn apply_vertices<T: Carrier, const L: usize>(
+pub(super) fn apply_vertices<T: Carrier, const L: usize>(
     plan: &LoopProgramV4,
     step: &Step,
     split: &SplitStep,
