@@ -1224,6 +1224,8 @@ def test_defaults_and_invalid_limits() -> None:
 @pytest.mark.skipif(os.name != "posix", reason="process groups require POSIX")
 def test_supervisor_terminates_runaway_append_at_output_cap(tmp_path: Path) -> None:
     output = tmp_path / "runaway.log"
+    # About 4 MB/s: the 8 MiB bound below leaves the 50 ms storage guard two
+    # seconds of scheduling delay, so a loaded host does not overshoot it.
     script = (
         "import time\n"
         "from pathlib import Path\n"
@@ -1231,7 +1233,7 @@ def test_supervisor_terminates_runaway_append_at_output_cap(tmp_path: Path) -> N
         "block = b'x' * 4096\n"
         "while True:\n"
         "    stream.write(block)\n"
-        "    time.sleep(0.0001)\n"
+        "    time.sleep(0.001)\n"
     )
 
     result = supervise_worker(
