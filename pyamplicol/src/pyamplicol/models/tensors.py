@@ -58,7 +58,7 @@ def _ensure_symbolica() -> None:
         as_tensor = tensor_converter
         _INDEX_PATTERN = E("UFO::idx(component_,leg_)")
         _DUMMY_PATTERN = E("UFO::dummy(label_)")
-        _WILDCARDS = {name: E(name) for name in ("a_", "b_", "c_", "d_")}
+        _WILDCARDS = {name: E(name) for name in ("a_", "b_", "c_", "d_", "n_")}
         _SYMBOLICA_READY = True
 
 
@@ -97,7 +97,7 @@ def normalize_lorentz_expression(
     expression = _replace(expression, "UFO::Identity(a_,b_)", context.identity)
     expression = _replace(expression, "UFO::Metric(a_,b_)", context.metric)
     expression = _replace(expression, "UFO::P(a_,b_)", context.momentum)
-    expression = _replace(expression, "UFO::P(a_)^2", context.momentum_square)
+    expression = _replace(expression, "UFO::P(a_)^n_", context.momentum_power)
     expression = _replace(expression, "UFO::P(a_)", context.propagator_momentum)
     _reject_residual_ufo_tensors(expression, context="Lorentz expression")
     _reject_indeterminate(expression, context="Lorentz expression")
@@ -262,6 +262,28 @@ class _LorentzContext:
             * self._momentum_tensor(leg, left)
             * self._momentum_tensor(leg, right)
         )
+
+    def momentum_power(
+        self,
+        match: Mapping[Expression, Expression],
+    ) -> Expression:
+        """An even power ``P(a)^(2k)`` of a momentum: ``k`` momentum squares.
+
+        Each square has its own contraction labels, so that powers ``k > 1``
+        (the squared denominators of counterterm-inserted lines) stay valid
+        tensor networks. A negative ``k`` is a non-scalar tensor power, which
+        the tensor normaliser refuses; propagators therefore normalise their
+        numerator and denominator separately.
+        """
+
+        exponent = str(match[_WILDCARDS["n_"]])
+        power = int(exponent) if exponent.lstrip("-").isdigit() else 1
+        if power % 2:
+            raise ValueError(f"momentum power {exponent} is not an even integer")
+        squares = E("1")
+        for _ in range(abs(power) // 2):
+            squares *= self.momentum_square(match)
+        return squares if power > 0 else squares**-1
 
     def propagator_momentum(
         self,

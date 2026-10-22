@@ -2,17 +2,21 @@
 """Counterterms inside the tree recursion: the production form of design §6.1.
 
 The model's counterterm (CT) vertices are lowered into its tree model as
-ordinary vertices (``models.loading.lower_counterterm_vertices``), so the tree
-engine itself (the Python generic DAG and the Rust recurrence alike) builds
-CT = 0 and CT = 1 currents in one recursion. Its roots then hold the Born and
-the CT amplitudes in the Born's own colour sectors, and the tree runtime's
-squared-coupling-order partials give the Born x CT interference directly; no
-CT tree and no site is listed:
+ordinary vertices (``models.loading.lower_counterterm_vertices``), and its
+two-point CTs as clone lines (``models.ct_line_insertions``: a clone of the
+field with the propagator ``P Pi P`` and copies of the field's vertices), so
+the tree engine itself (the Python generic DAG and the Rust recurrence alike)
+builds the currents without and with one insertion in one recursion. Its
+roots then hold the Born and the CT amplitudes in the Born's own colour
+sectors, and the tree runtime's squared-coupling-order partials give the
+Born x CT interference directly; no CT tree and no site is listed:
 
-* **Pseudo-orders.** Every CT vertex carries ``COUNTERTERM_INSERTION_ORDER``
-  once (limit 1), plus the order of its *slot* (component x epsilon power,
-  ``models.loading.counterterm_slot_order``). UV_local and R2 therefore stay
-  separate down to each Laurent coefficient.
+* **Pseudo-orders.** One insertion carries ``COUNTERTERM_INSERTION_ORDER``
+  and the order of its *slot* (component x epsilon power,
+  ``models.loading.counterterm_slot_order``) twice each: a CT vertex itself,
+  a clone line once on each of its two vertex copies. The insertion limit
+  is 2. UV_local and R2 therefore stay separate down to each Laurent
+  coefficient.
 * **Couplings.** The coupling of a lowered CT vertex term is a derived model
   coupling, ``S_slot * sum_rules M_rule * c_rule``: ``c_rule`` is the exact
   Laurent coefficient of the rule's UFO coupling (the source scalar program
@@ -28,17 +32,18 @@ CT tree and no site is listed:
   It follows the witness table of ``loops.v2.ct_sites``: per rule, the
   alternatives ``admitted_alternatives`` gives on every divergent witness of
   the rule's field multiset and orders. In QCD this is field level (leg masks
-  enter only through LSZ, which the arity >= 3 of lowered rules excludes);
-  a rule whose admission differs between witness signatures fails closed.
+  enter only through LSZ, which clone lines exclude structurally: a clone is
+  never external); a rule whose admission differs between witness
+  signatures fails closed.
 * **Not lowered yet** (``residual`` with the reason; these rules stay site
   closures, ``loops.v2.ct_sites``, restricted with ``closed_rules``):
-  two-point insertions (the unary node of design §6.1), colours outside the
-  tree colour flow (d-symbol and δδ products of the four-gluon R2: the
-  multi-trace colour state, ``models.ct_color_flow``), Lorentz structures
-  the tree compiler does not normalise (Levi-Civita), contact vertices
-  without a colour-flow decomposition, whole-rule colour continuations,
-  ghost legs and coefficients with UFO helpers other than ``cond`` and
-  ``reglog``.
+  colours outside the tree colour flow (d-symbol and δδ products of the
+  four-gluon R2: the multi-trace colour state, ``models.ct_color_flow``),
+  Lorentz structures the tree compiler does not normalise (Levi-Civita),
+  contact vertices without a colour-flow decomposition, the two-point terms
+  ``models.ct_line_insertions`` refuses (mixing between fields), whole-rule
+  colour continuations, ghost legs and coefficients with UFO helpers other
+  than ``cond`` and ``reglog``.
 
 The site closure stays the oracle (O6): per component, squared order and
 Laurent coefficient, the recursion's partials equal the sites of the lowered
@@ -61,6 +66,7 @@ from pyamplicol.models.ct_color_flow import (
 )
 from pyamplicol.models.loading import (
     COUNTERTERM_INSERTION_ORDER,
+    COUNTERTERM_INSERTION_WEIGHT,
     COUNTERTERM_POWERS,
     CompiledModel,
     CountertermLoweredModel,
@@ -163,8 +169,8 @@ class TreeVocabulary:
 
         if rule.kind not in COUNTERTERM_KINDS:
             return f"unknown counterterm kind {rule.kind!r}"
-        if len(rule.particle_pdgs) < 3:
-            return "two-point insertion: needs the unary node of design §6.1"
+        if len(rule.particle_pdgs) < 2:
+            return "one-point counterterm"
         if rule.whole_rule_continuation is not None:
             return "whole-rule colour continuation"
         for entry in rule.entries:
@@ -566,7 +572,6 @@ def field_level_admission(
 
 
 # ---------------------------------------------------------------------- recursion
-# ---------------------------------------------------------------------- recursion
 
 
 @dataclass(frozen=True)
@@ -637,7 +642,7 @@ class CountertermRecursion:
     # -- program -----------------------------------------------------------------
 
     def coupling_order_limits(self) -> dict[str, int]:
-        """Order limits of the tree program: Born and loop orders, CT <= 1.
+        """Order limits of the tree program: Born and loop orders, one insertion.
 
         Every physical order of the model is bounded (by 0 when no Born or
         loop order carries it), since the tree generator leaves an unlisted
@@ -652,7 +657,7 @@ class CountertermRecursion:
         for orders in (*self.born_orders, *self.loop_orders):
             for name, power in orders:
                 limits[name] = max(limits.get(name, 0), int(power))
-        limits[COUNTERTERM_INSERTION_ORDER] = 1
+        limits[COUNTERTERM_INSERTION_ORDER] = COUNTERTERM_INSERTION_WEIGHT
         return limits
 
     @property
@@ -701,8 +706,9 @@ class CountertermRecursion:
         """Born x CT interference per (component, squared order, power).
 
         ``evaluation`` is the tree runtime's ``TreeOrderEvaluation`` of the
-        CT program; its squared orders with one insertion are 2 Re of the Born
-        times the CT amplitude of one slot (the pseudo-orders are removed from
+        CT program; its squared orders with one insertion (insertion order
+        ``COUNTERTERM_INSERTION_WEIGHT``) are 2 Re of the Born times the CT
+        amplitude of one slot (the pseudo-orders are removed from
         the returned squared order). Every amplitude-order pair of such a
         squared order must pair a Born order with a loop order of the slot,
         otherwise an unrequested order would leak into the sector and the
@@ -718,7 +724,7 @@ class CountertermRecursion:
         out: dict[tuple[str, Orders, int], tuple] = {}
         for index, sector in enumerate(evaluation.sectors):
             orders = dict(sector.order)
-            if orders.get(COUNTERTERM_INSERTION_ORDER) != 1:
+            if orders.get(COUNTERTERM_INSERTION_ORDER) != COUNTERTERM_INSERTION_WEIGHT:
                 continue
             (slot,) = (name for name in orders if name in slots)
             for left, right in sector.pairs:

@@ -31,6 +31,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from fractions import Fraction
 
 _UFO_NAMESPACE = "UFO::{}::"
 _FACTOR = re.compile(
@@ -119,6 +120,34 @@ def tree_colour_source(source: str, representations: Sequence[int]) -> str:
     return "*".join(parts) if parts else "1"
 
 
+def two_point_colour_factor(source: str, representations: Sequence[int]) -> Fraction:
+    """The number ``c`` of a two-point CT colour ``c * delta(1,2)``.
+
+    A two-point insertion keeps the colour of the line it sits on, so its
+    colour must be proportional to the identity between its two legs:
+    ``Identity(1,2)`` or, between adjoint legs, ``Tr(1,2) = delta/2``.
+    """
+
+    lowered = tree_colour_source(source, representations)
+    identities = (f"{_UFO_NAMESPACE}Identity(1,2)", f"{_UFO_NAMESPACE}Identity(2,1)")
+    factor = Fraction(1)
+    identity = 0
+    for text in lowered.split("*"):
+        if text in identities:
+            identity += 1
+        elif text.lstrip("-").replace("/", "").isdigit():
+            factor *= Fraction(text)
+        else:
+            identity = -1
+            break
+    if identity != int(any(abs(int(value)) != 1 for value in representations)):
+        raise UnloweredCountertermColour(
+            f"two-point counterterm colour {source!r} is not proportional to the "
+            "identity of its line"
+        )
+    return factor
+
+
 def _quartic_structure_constants(tensors: Sequence[_Factor]) -> bool:
     """``f*f`` sharing exactly one summed (negative) index: a quartic contact."""
 
@@ -128,4 +157,8 @@ def _quartic_structure_constants(tensors: Sequence[_Factor]) -> bool:
     return len(left) == len(right) == 1 and left == right
 
 
-__all__ = ["UnloweredCountertermColour", "tree_colour_source"]
+__all__ = [
+    "UnloweredCountertermColour",
+    "tree_colour_source",
+    "two_point_colour_factor",
+]
