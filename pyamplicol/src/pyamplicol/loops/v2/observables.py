@@ -104,9 +104,14 @@ from .colour import SeedTable
 from .conventions import LOOP_FACTOR_DENOMINATOR
 from .ct_sites import LAURENT_POWERS
 from .families import Orders, add_orders
-from .plan_export import DEFAULT_LANES, NativeExecutor, SeedColumn, export_plan
+from .plan_export import (
+    DEFAULT_LANES,
+    FailedPoints,
+    NativeExecutor,
+    SeedColumn,
+    export_plan,
+)
 from .stability import (
-    REDUCTION,
     ROTATION,
     Budget,
     StabilityChecks,
@@ -694,6 +699,7 @@ class ObservableSlice:
 
         from .colour import BornBasis
 
+        (precision or Precision.double()).require_reference()
         slice_ = self.slice
         if slice_.request.accuracy != "full":
             raise ValueError("loop colour projections are full colour")
@@ -741,7 +747,7 @@ class ObservableSlice:
             seeds = ColumnSeeds(columns, slice_.class_of, born, numbers, "full")
             execution = evaluation.dress(seeds=seeds)
             evaluation._reduce(
-                execution.numerators, False, columns=list(range(len(columns)))
+                execution.numerators, None, columns=list(range(len(columns)))
             )
             factor = numbers.pair(0, 1) * (
                 1 / (LOOP_FACTOR_DENOMINATOR * numbers.pi * numbers.pi)
@@ -827,6 +833,7 @@ class ObservableSlice:
         plan = ColumnPlan(self, columns)
         stability = stability or StabilityChecks()
         precision = precision or Precision.double()
+        precision.require_reference()
         reference = self._evaluated(
             plan,
             point,
@@ -836,7 +843,7 @@ class ObservableSlice:
             poles,
             spin,
             ward,
-            stability.reduction_direction,
+            stability.frame,
         )
         results = plan.results(reference)
         if not stability.enabled:
@@ -852,10 +859,12 @@ class ObservableSlice:
                 poles,
                 _rotated_spin(rotation, spin),
                 ward,
-                False,
+                None,
             )
             rotated.append((evaluation, plan.results(evaluation)))
-        return plan.checked(results, reference, rotated, precision.unit_roundoff)
+        return plan.checked(
+            results, reference, rotated, precision.unit_roundoff, stability.reduction
+        )
 
     def _evaluated(
         self,
@@ -869,7 +878,8 @@ class ObservableSlice:
         ward,
         retest,
     ):
-        """One point's evaluation with the plan's lanes reduced."""
+        """One point's evaluation with the plan's lanes reduced (and
+        re-reduced in the re-test frame ``retest``, ``stability.FRAMES``)."""
 
         evaluation = self.point(
             point, scale_squared, parameters, precision, poles, spin, ward
@@ -1079,25 +1089,36 @@ class ColumnPlan:
         reference,
         rotated: Sequence[tuple[Any, Mapping[Hashable, PointResult]]],
         roundoff: float,
+        reduction: str | None,
     ) -> dict[Hashable, PointResult]:
         """``results`` of the evaluation ``reference`` with their stability
-        estimates from the rotated (evaluation, results) runs and the
+        estimates from the rotated (evaluation, results) runs and, for the
+        reduction check ``reduction`` (``StabilityChecks.reduction``), the
         reference's re-test lanes."""
 
         return {
             key: replace(
                 result,
-                stability=self.estimate(key, reference, result, rotated, roundoff),
+                stability=self.estimate(
+                    key, reference, result, rotated, roundoff, reduction
+                ),
             )
             for key, result in results.items()
         }
 
     def estimate(
-        self, key, reference, result: PointResult, rotated, roundoff: float
+        self,
+        key,
+        reference,
+        result: PointResult,
+        rotated,
+        roundoff: float,
+        reduction: str | None,
     ) -> StabilityEstimate:
         """The stability estimate of output ``key`` (``stability``): rotation
         budgets from the rotated evaluations' lanes and local components, the
-        reduction-direction budget from the re-test lanes."""
+        budget of the reduction check ``reduction`` (reversed or rescaled
+        frame) from the re-test lanes."""
 
         width = 3 if reference.poles else 1
         local = [result.components[name] for name in LOCAL_COMPONENTS]
@@ -1140,7 +1161,9 @@ class ColumnPlan:
             ]
             budgets[ROTATION.format(index)] = self._budget(key, lanes, width, changes)
         deviations = None
-        if reference.retest_families is not None:
+        if reduction is not None:
+            if reference.retest_families is None:
+                raise ValueError(f"the {reduction} check did not run")
             deviations = {
                 lane: tuple(
                     abs(complex(a) - complex(b))
@@ -1152,7 +1175,7 @@ class ColumnPlan:
                 )
                 for lane, value in reference.families.items()
             }
-            budgets[REDUCTION] = self._budget(key, deviations, width)
+            budgets[reduction] = self._budget(key, deviations, width)
         magnitudes = {
             sector: Laurent(*[abs(complex(x)) for x in laurent.coefficients])
             for sector, laurent in result.components["virtual"].items()
@@ -1454,17 +1477,20 @@ class NativeObservables:
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
         poles: bool = True,
-        double_double: bool = False,
         stability: StabilityChecks | None = None,
     ) -> list[dict[Hashable, PointResult]]:
         """The outputs of every point, dressed and reduced in one native batch.
 
         ``spin`` is one source assignment for every point or one per point
-        (``None`` entries: ordinary helicities). ``double_double`` dresses
-        and reduces in the native DoubleFloat carrier from the trees of an
-        arbitrary ``precision``. ``stability`` re-evaluates the rotated
-        points (spin vectors rotate with the momenta) and runs the native
-        reduction-direction re-test; without checks no estimate exists."""
+        (``None`` entries: ordinary helicities). ``precision`` selects the
+        native carrier: binary64, double-double (``Precision.double_double``:
+        trees formed at its working digits, dressing and reduction in
+        DoubleFloat) or MPFR. ``stability`` re-evaluates the rotated points
+        (spin vectors rotate with the momenta) and runs the native re-test in
+        the reduction check's frame (``stability.StabilityChecks``); without
+        checks no estimate exists (``stability=None``). A failed point fails
+        alone, also in a rotation check's evaluation: ``FailedPoints`` carries
+        the complete outputs of the others (``None`` for a failed point)."""
 
         stability = stability or StabilityChecks()
         spins = (
@@ -1480,50 +1506,48 @@ class NativeObservables:
             spins = [member.spin(value) for value in spins]
             ward = None if ward is None else member.label(ward)
         batch = _Batch(
-            tuple(scales),
-            parameters,
-            precision or Precision.double(),
-            poles,
-            ward,
-            double_double,
+            tuple(scales), parameters, precision or Precision.double(), poles, ward
         )
-        references = self._evaluations(
-            batch, points, spins, stability.reduction_direction
-        )
-        results = [self.plan.results(evaluation) for evaluation in references]
-        if stability.enabled:
-            runs = [
-                [
-                    (evaluation, self.plan.results(evaluation))
-                    for evaluation in self._evaluations(
-                        batch,
-                        [_rotated_point(rotation, point) for point in points],
-                        [_rotated_spin(rotation, value) for value in spins],
-                        False,
-                    )
-                ]
-                for rotation in stability.rotations
-            ]
-            results = [
-                self.plan.checked(
+        references, failures = self._evaluations(batch, points, spins, stability.frame)
+        runs = []
+        for k, rotation in enumerate(stability.rotations):
+            evaluations, failed = self._evaluations(
+                batch,
+                [_rotated_point(rotation, point) for point in points],
+                [_rotated_spin(rotation, value) for value in spins],
+                None,
+            )
+            runs.append(evaluations)
+            for index, reasons in failed.items():
+                failures.setdefault(index, []).extend(
+                    f"{ROTATION.format(k)}: {reason}" for reason in reasons
+                )
+        out: list[dict[Hashable, PointResult] | None] = []
+        for index, reference in enumerate(references):
+            if index in failures:
+                out.append(None)
+                continue
+            result = self.plan.results(reference)
+            if stability.enabled:
+                result = self.plan.checked(
                     result,
                     reference,
-                    [run[index] for run in runs],
-                    batch.roundoff,
+                    [(run[index], self.plan.results(run[index])) for run in runs],
+                    batch.precision.unit_roundoff,
+                    stability.reduction,
                 )
-                for index, (reference, result) in enumerate(
-                    zip(references, results, strict=True)
-                )
-            ]
-        if member is not None:
-            results = [
-                {_member_key(member, key): value for key, value in result.items()}
-                for result in results
-            ]
-        return results
+            if member is not None:
+                result = {_member_key(member, key): v for key, v in result.items()}
+            out.append(result)
+        if failures:
+            raise FailedPoints(out, failures)
+        return out
 
-    def _evaluations(self, batch: _Batch, points, spins, retest: bool) -> list:
-        """Point evaluations with the plan's lanes reduced natively."""
+    def _evaluations(
+        self, batch: _Batch, points, spins, retest: str | None
+    ) -> tuple[list, dict[int, list[str]]]:
+        """Point evaluations with the plan's lanes reduced natively (and
+        re-reduced in the frame ``retest``); also the failures per point."""
 
         evaluations = [
             self.observables.point(
@@ -1537,14 +1561,10 @@ class NativeObservables:
             )
             for point, scale, spin in zip(points, batch.scales, spins, strict=True)
         ]
-        self.executor.reduce(
-            evaluations,
-            batch.precision,
-            batch.poles,
-            retest,
-            double_double=batch.double_double,
+        failures = self.executor.reduce(
+            evaluations, batch.precision, batch.poles, retest
         )
-        return evaluations
+        return evaluations, failures
 
 
 @dataclass(frozen=True)
@@ -1556,13 +1576,6 @@ class _Batch:
     precision: Precision
     poles: bool
     ward: int | None
-    double_double: bool
-
-    @property
-    def roundoff(self) -> float:
-        """The carrier's unit roundoff (DoubleFloat: 2^-104)."""
-
-        return 2.0**-104 if self.double_double else self.precision.unit_roundoff
 
 
 def _member_key(member: FlavourMember, key: Hashable) -> Hashable:

@@ -1057,8 +1057,9 @@ def test_native_observables_equal_python(generate, carrier):
     """The native executor runs the same observable columns (exported seed
     weights; ``column_rows`` for helicity-resolved columns): directed
     histories (ordered, complex), spin sources and helicity x colour entries
-    equal the Python reference executor; DoubleFloat dresses and reduces the
-    200-bit trees natively."""
+    equal the Python reference executor (200 bits for the double-double
+    carrier, whose trees are formed at its working digits and dressed and
+    reduced in DoubleFloat)."""
 
     from pyamplicol.loops.v2.observables import NativeObservables
 
@@ -1069,8 +1070,10 @@ def test_native_observables_equal_python(generate, carrier):
     observables = generate("d d~ > g g", correlators=declarations)
     points = _points("uudd_qcd")[:2]
     scales = ["1000000"] * 2
-    precision = CARRIERS["double" if carrier == "double" else "arbitrary-200"]
-    options = {"double_double": carrier == "double-double"}
+    reference_precision = CARRIERS["double" if carrier == "double" else "arbitrary-200"]
+    precision = (
+        Precision.double_double() if carrier == "double-double" else reference_precision
+    )
     tolerance = {"double": 1e-12, "double-double": 1e-26, "arbitrary-200": 1e-50}[
         carrier
     ]
@@ -1083,7 +1086,6 @@ def test_native_observables_equal_python(generate, carrier):
             spin=spin,
             parameters=PARAMETERS,
             precision=precision,
-            **options,
         )
         for point, scale, result in zip(points, scales, results, strict=True):
             reference = observables.evaluate(
@@ -1092,16 +1094,16 @@ def test_native_observables_equal_python(generate, carrier):
                 correlations=histories,
                 spin=spin,
                 parameters=PARAMETERS,
-                precision=precision,
+                precision=reference_precision,
             )
             for key, value in reference.items():
                 for a, b in zip(result[key].totals, value.totals, strict=True):
                     assert _close(a, b, tolerance, tolerance * 1e-2), (key, spin)
     resolved = NativeObservables.resolved(observables, lanes=4).evaluate(
-        points[:1], scales[:1], parameters=PARAMETERS, precision=precision, **options
+        points[:1], scales[:1], parameters=PARAMETERS, precision=precision
     )[0]
     reference = observables.evaluate_resolved(
-        points[0], scales[0], parameters=PARAMETERS, precision=precision
+        points[0], scales[0], parameters=PARAMETERS, precision=reference_precision
     )
     largest = max(abs(complex(x)) for v in reference.entries.values() for x in v.totals)
     for key, value in reference.entries.items():
@@ -1236,3 +1238,146 @@ def test_observable_stability_estimates_bracket_the_true_error(generate):
                         for a, b in zip(laurent.coefficients, reference, strict=True)
                     )
                     assert error <= estimate.relative * scale, (key, error / scale)
+
+
+class _FailingPoint:
+    """A native executor whose evaluations after the first ``after`` report
+    a failed reduction lane for point ``index`` (as an ``ImpreciseResult``
+    master does)."""
+
+    def __init__(self, inner, index: int, *, after: int = 0):
+        self.inner = inner
+        self.index = index
+        self.after = after
+        self.calls = 0
+
+    def evaluate(self, inputs, **options):
+        output = self.inner.evaluate(inputs, **options)
+        self.calls += 1
+        if self.calls > self.after:
+            failures = [list(f) for f in output["failures"]]
+            failures[self.index] = ["lane 0: ImpreciseResult (injected)"]
+            output = dict(output, failures=failures)
+        return output
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
+@pytest.mark.parametrize("carrier", ("double", "double-double"))
+def test_native_observable_estimates_follow_the_stability_api(generate, carrier):
+    """The native observables share the integrated stability API (WP2.3):
+    for every combination of a rotation and the cached or rescaled
+    reduction check, the inclusive column's estimate has the check names,
+    absolute sums S and unit roundoff of the native inclusive evaluation,
+    and the inclusive and directed estimates bracket the deviation from 200
+    bits; zero checks give no estimate (explicitly absent)."""
+
+    from pyamplicol.loops.v2.observables import NativeObservables
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
+    from pyamplicol.loops.v2.stability import (
+        REDUCTION,
+        RESCALED,
+        ROTATION,
+        Rotation,
+        StabilityChecks,
+    )
+
+    declarations = CorrelatorConfig(
+        color_correlations=(ColorCorrelator.dipole("T12", 1, 2),)
+    )
+    observables = generate("d d~ > g g", correlators=declarations)
+    points = _points("uudd_qcd")[:2]
+    scales = ["1000000"] * 2
+    precision = (
+        Precision.double_double() if carrier == "double-double" else Precision.double()
+    )
+    native = NativeObservables.correlated(observables, (INCLUSIVE, "T12"), lanes=4)
+    inclusive = NativeExecutor(observables.slice, lanes=4)
+    exact = [
+        observables.evaluate(
+            point,
+            scale,
+            correlations=(INCLUSIVE, "T12"),
+            parameters=PARAMETERS,
+            precision=CARRIERS["arbitrary-200"],
+        )
+        for point, scale in zip(points, scales, strict=True)
+    ]
+    rotation = Rotation.about("z", "3/5", "4/5")
+    for checks, names in (
+        (StabilityChecks((rotation,)), {ROTATION.format(0)}),
+        (StabilityChecks(reduction_direction=True), {REDUCTION}),
+        (StabilityChecks((rotation,), True), {ROTATION.format(0), REDUCTION}),
+        (StabilityChecks((rotation,), True, rescaled=True), {ROTATION.format(0), RESCALED}),
+    ):
+        options = {"parameters": PARAMETERS, "precision": precision, "stability": checks}
+        results = native.evaluate(points, scales, **options)
+        references = inclusive.evaluate(points, scales, **options)
+        for result, reference, truth in zip(results, references, exact, strict=True):
+            mine, theirs = result[INCLUSIVE].stability, reference.stability
+            assert set(mine.checks) == set(theirs.checks) == names
+            assert mine.roundoff == theirs.roundoff == precision.unit_roundoff
+            for sector, budget in theirs.scale.items():
+                for a, b in zip(
+                    mine.scale[sector].coefficients, budget.coefficients, strict=True
+                ):
+                    assert abs(a - b) <= 1e-12 * b
+            for key, value in result.items():
+                estimate = value.stability
+                assert 0 < estimate.relative < 1e-9
+                for sector, laurent in value.components["virtual"].items():
+                    target = truth[key].components["virtual"][sector].coefficients
+                    size = max(abs(complex(x)) for x in target)
+                    error = max(
+                        abs(complex(a) - complex(b))
+                        for a, b in zip(laurent.coefficients, target, strict=True)
+                    )
+                    assert error <= estimate.relative * size, (key, checks)
+    for checks in (None, StabilityChecks()):
+        plain = native.evaluate(
+            points, scales, parameters=PARAMETERS, precision=precision, stability=checks
+        )
+        assert all(v.stability is None for result in plain for v in result.values())
+
+
+@pytest.mark.parametrize("after", [0, 1], ids=["reference", "rotation"])
+def test_a_failed_observable_point_fails_alone(generate, after):
+    """``NativeObservables.evaluate`` follows ``NativeExecutor.evaluate``: a
+    failed lane fails its point only, in the reference evaluation or in a
+    rotation check's; ``FailedPoints`` keeps the other points' complete
+    outputs (estimates included) and invents none for the failed one."""
+
+    from pyamplicol.loops.v2.observables import NativeObservables
+    from pyamplicol.loops.v2.plan_export import FailedPoints
+    from pyamplicol.loops.v2.stability import ROTATION, Rotation, StabilityChecks
+
+    declarations = CorrelatorConfig(
+        color_correlations=(ColorCorrelator.dipole("T12", 1, 2),),
+        spin_correlations=((3,),),
+    )
+    observables = generate("d d~ > g g", correlators=declarations)
+    points = _points("uudd_qcd")[:2]
+    scales = ["1000000"] * 2
+    native = NativeObservables.correlated(observables, (INCLUSIVE, "T12"), lanes=4)
+    checks = StabilityChecks((Rotation.about("z", "3/5", "4/5"),), True)
+    spin = [{3: VECTORS[0]}, {3: VECTORS[1]}]
+    options = {"parameters": PARAMETERS, "stability": checks, "spin": spin}
+    clean = native.evaluate(points, scales, **options)
+    executor = native.executor
+    key = ("double", None, executor.lanes_for("double", len(points)))
+    inner = executor.native("double", None, len(points))
+    executor._native[key] = _FailingPoint(inner, 1, after=after)
+    try:
+        with pytest.raises(FailedPoints) as caught:
+            native.evaluate(points, scales, **options)
+    finally:
+        executor._native[key] = inner
+    failed = caught.value
+    assert failed.results[1] is None and set(failed.failures) == {1}
+    reason = failed.failures[1][0]
+    assert "ImpreciseResult" in reason
+    assert reason.startswith(ROTATION.format(0)) == bool(after)
+    for name, value in failed.results[0].items():
+        assert value.totals == clean[0][name].totals
+        assert value.stability.relative == clean[0][name].stability.relative

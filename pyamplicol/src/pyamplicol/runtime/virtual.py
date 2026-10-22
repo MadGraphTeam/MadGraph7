@@ -1053,8 +1053,6 @@ class V2VirtualRuntime:
 
     contribution_kind = "virtual"
     execution_mode = "loop_v2"
-    # Decimal digits of the trees under the native DoubleFloat carrier.
-    DOUBLE_DOUBLE_DIGITS = 32
 
     def __init__(
         self,
@@ -1154,7 +1152,7 @@ class V2VirtualRuntime:
     # -- evaluation -----------------------------------------------------------
 
     def _precision(self, arithmetic: str | None, precision: int | None):
-        """(public arithmetic, tree carrier, native DoubleFloat flag)."""
+        """(public arithmetic, v2 ``Precision`` carrier)."""
 
         from pyamplicol.loops.v2.assemble import Precision
 
@@ -1164,11 +1162,11 @@ class V2VirtualRuntime:
         )
         arithmetic = arithmetic or ("double" if precision == 16 else "arbitrary")
         if arithmetic == "double":
-            return arithmetic, Precision.double(), False
+            return arithmetic, Precision.double()
         if arithmetic == "arbitrary":
-            return arithmetic, Precision.arbitrary(precision), False
+            return arithmetic, Precision.arbitrary(precision)
         if arithmetic == "double-double" and self._executor == "native":
-            return arithmetic, Precision.arbitrary(self.DOUBLE_DOUBLE_DIGITS), True
+            return arithmetic, Precision.double_double()
         raise CompatibilityError(
             f"the v2 {self._executor} executor does not evaluate in {arithmetic!r}"
         )
@@ -1286,7 +1284,7 @@ class V2VirtualRuntime:
         native batch per source assignment)."""
 
         observables = self._observables
-        arithmetic, carrier, double_double = self._precision(arithmetic, precision)
+        arithmetic, carrier = self._precision(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
         known = {item.id for item in self.available_color_correlations()}
         with self._lock:
@@ -1330,7 +1328,6 @@ class V2VirtualRuntime:
                     spin=spins,
                     parameters=self._parameters,
                     precision=carrier,
-                    double_double=double_double,
                 )
             else:
                 runner = self._runner()
@@ -1368,7 +1365,7 @@ class V2VirtualRuntime:
         from pyamplicol.loops.strategy import R2Selection
 
         observables = self._observables
-        arithmetic, carrier, double_double = self._precision(arithmetic, precision)
+        arithmetic, carrier = self._precision(arithmetic, precision)
         points, scales = _inputs(momenta, mu_r2, self.external_count)
         rows = observables.rows
         if self._member is not None:
@@ -1381,7 +1378,6 @@ class V2VirtualRuntime:
                 scales,
                 parameters=self._parameters,
                 precision=carrier,
-                double_double=double_double,
             )
         else:
             runner = self._runner()
