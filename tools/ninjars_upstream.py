@@ -11,7 +11,6 @@ import json
 from pathlib import Path
 import re
 import subprocess
-import tomllib
 from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +60,8 @@ def git_dependencies(packages):
 
 
 def read_pins(manifest, lockfile):
+    import tomllib
+
     manifest = Path(manifest)
     lockfile = Path(lockfile)
     cargo = tomllib.loads(manifest.read_text())
@@ -140,6 +141,8 @@ def query(url, timeout=30):
 
 
 def check(manifest, lockfile, query_remote=query):
+    import tomllib
+
     pins = read_pins(manifest, lockfile)  # Reject local inconsistency before network.
     results = {}
     for name, url in REPOSITORIES.items():

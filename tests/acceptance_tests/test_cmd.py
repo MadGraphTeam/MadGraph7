@@ -235,6 +235,7 @@ class TestCmdShell1(unittest.TestCase):
                     'max_npoint_for_channel': 0,
                     'low_mem_multicore_nlo_generation': False,
                     'ninja': './HEPTools/lib',
+                    'ninjars': None,
                     'samurai': None,
                     'max_t_for_channel': 99,
                     'zerowidth_tchannel': True,

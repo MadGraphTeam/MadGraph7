@@ -18,6 +18,34 @@ if sys.version_info >= (3, 11):
     SPEC.loader.exec_module(upstream)
 
 
+class TestNinjaRSUpstreamImport(unittest.TestCase):
+    def test_optional_checker_import_and_ref_parser_do_not_require_tomllib(self):
+        import_module = __import__
+        parser_imports = []
+
+        def without_tomllib(name, *args, **kwargs):
+            if name == 'tomllib':
+                parser_imports.append(name)
+                raise ModuleNotFoundError("No module named 'tomllib'", name=name)
+            return import_module(name, *args, **kwargs)
+
+        spec = importlib.util.spec_from_file_location(
+            'ninjars_upstream_without_tomllib', ROOT/'tools/ninjars_upstream.py')
+        module = importlib.util.module_from_spec(spec)
+        with mock.patch('builtins.__import__', side_effect=without_tomllib):
+            spec.loader.exec_module(module)
+            pin = '1'*40
+            remote = module.parse_remote(
+                'ref: refs/heads/main\tHEAD\n%s\tHEAD\n%s\trefs/heads/main\n' % (pin,pin))
+            self.assertEqual(remote['main'], pin)
+            self.assertEqual(parser_imports, [])
+            with self.assertRaisesRegex(ModuleNotFoundError, 'tomllib'):
+                module.read_pins('unread-manifest', 'unread-lock')
+            with self.assertRaisesRegex(ModuleNotFoundError, 'tomllib'):
+                module.check('unread-manifest', 'unread-lock')
+        self.assertEqual(parser_imports, ['tomllib', 'tomllib'])
+
+
 @unittest.skipIf(upstream is None, 'The optional upstream checker requires Python 3.11+')
 class TestNinjaRSUpstream(unittest.TestCase):
     def setUp(self):

@@ -15,7 +15,6 @@ import shlex
 import shutil
 import subprocess
 import tempfile
-import tomllib
 
 from madgraph import MadGraph5Error, MG5DIR
 
@@ -139,6 +138,8 @@ def _copy_source(source, destination, required):
 
 def _dependency_provenance(bridge):
     """Identify the actual locked sources, including transitive Git patches."""
+    import tomllib
+
     manifest = (bridge / 'Cargo.toml').read_bytes()
     lock = (bridge / 'Cargo.lock').read_bytes()
     try:

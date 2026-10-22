@@ -77,6 +77,27 @@ source = "git+https://github.com/alphal00p/oneloopmaster.git?rev=bbbbbbbbbbbbbbb
             'native_libs':['-lgmp'], 'link_before':['-lgcc_s'], 'link_order_version':1}))
         return previous
 
+    def test_optional_backend_import_does_not_require_cargo_lock_parser(self):
+        import_module = __import__
+        parser_imports = []
+
+        def without_tomllib(name, *args, **kwargs):
+            if name == 'tomllib':
+                parser_imports.append(name)
+                raise ModuleNotFoundError("No module named 'tomllib'", name=name)
+            return import_module(name, *args, **kwargs)
+
+        module = types.ModuleType('ninjars_without_tomllib')
+        filename = ninjars_install.__file__
+        with mock.patch('builtins.__import__', side_effect=without_tomllib):
+            exec(compile(Path(filename).read_text(), filename, 'exec'), module.__dict__)
+            self.assertFalse(module.is_available(None))
+            self.assertIsNone(module.build_parser().parse_args([]).source)
+            self.assertEqual(parser_imports, [])
+            with self.assertRaisesRegex(ModuleNotFoundError, 'tomllib'):
+                module._dependency_provenance(self.bridge)
+        self.assertEqual(parser_imports, ['tomllib'])
+
     def test_publish_and_idempotent_install(self):
         with mock.patch.object(ninjars_install.shutil, 'which', return_value='/bin/tool'), \
                 mock.patch.object(ninjars_install, '_run', side_effect=self.fake_build) as run:

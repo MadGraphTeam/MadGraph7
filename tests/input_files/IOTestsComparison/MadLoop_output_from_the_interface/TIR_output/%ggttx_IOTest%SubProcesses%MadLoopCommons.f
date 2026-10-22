@@ -278,7 +278,8 @@ C     Not stable.
 C     U == 1
 C     Stable with CutTools in double precision.
 C     U == 2
-C     Stable with PJFry++.
+C     Stable with PJFry++ (H=2), or NinjaRS in quadruple precision
+C      (H=3).
 C     U == 3
 C     Stable with IREGI.
 C     U == 4
@@ -290,7 +291,8 @@ C     Stable with Ninja in double precision.
 C     U == 7
 C     Stable with COLLIER.
 C     U == 8
-C     Stable with Ninja in quadruple precision.
+C     Stable with Ninja in quadruple precision (H=3), or NinjaRS in
+C      double precision (H=2).
 C     U == 9
 C     Stable with CutTools in quadruple precision.
 C     
@@ -323,15 +325,19 @@ C
         ELSEIF(MLRED.EQ.6)THEN
           SET_RET_CODE_U=8
           RETURN
+        ELSEIF(MLRED.EQ.8)THEN
+          SET_RET_CODE_U=2
+          RETURN
         ELSE
-          STOP 'Only CutTools and Ninja can use quardruple precision'
+          STOP 'Only CutTools, Ninja and NinjaRS can use quadruple'
+     $     //' precision'
         ENDIF
       ENDIF
-      IF(MLRED.GE.1.AND.MLRED.LE.7)THEN
+      IF(MLRED.GE.1.AND.MLRED.LE.8)THEN
         SET_RET_CODE_U=MLRED
       ELSE
-        STOP 'Only CutTools, PJFry++, IREGI, Golem95, Samurai, Ninja'
-     $   //' and COLLIER are available'
+        STOP 'Unknown MadLoop reduction library; supported IDs are 1'
+     $   //' through 8'
       ENDIF
       END
 
@@ -382,9 +388,12 @@ C       Ninja
       ELSEIF(LIBNUM.EQ.7)THEN
 C       Collier 
         CALL DETECT_COLLIER(NLOOPLINE,RANK,COMPLEX_MASS,LPASS)
+      ELSEIF(LIBNUM.EQ.8)THEN
+C       NinjaRS
+        CALL DETECT_NINJARS(NLOOPLINE,RANK,COMPLEX_MASS,LPASS)
       ELSE
-        STOP 'Only CutTools, PJFry++, IREGI, Golem95, Samurai, Ninja'
-     $   //' and COLLIER are available'
+        STOP 'Unknown MadLoop reduction library; supported IDs are 1'
+     $   //' through 8'
       ENDIF
       RETURN
       END
@@ -496,6 +505,16 @@ C     It can easily be increased if necessary.
         LPASS=.FALSE.
       ENDIF
       RETURN
+      END
+
+      SUBROUTINE DETECT_NINJARS(NLOOPLINE,RANK,COMPLEX_MASS,LPASS)
+C     NinjaRS tensor reduction supports rank at most n+2 in both
+C      precisions.
+      IMPLICIT NONE
+      INTEGER NLOOPLINE,RANK
+      LOGICAL COMPLEX_MASS,LPASS
+      LPASS=NLOOPLINE.GE.1.AND.RANK.GE.0.AND.
+     &      RANK.LE.NLOOPLINE+2
       END
 
       SUBROUTINE DETECT_COLLIER(NLOOPLINE,RANK,COMPLEX_MASS,LPASS)
