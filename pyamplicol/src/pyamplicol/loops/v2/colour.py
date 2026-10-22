@@ -2421,6 +2421,12 @@ def _relabelled(
 
 
 # ------------------------------------------------------ planar leading colour
+#
+# The structural face rule of design §7.5 for colour-ordered skeletons. The
+# slice's skeletons are not colour-ordered yet, so production LC/NLC pruning
+# is ``LoopSlice._prune_colour`` on exact seed cells; this rule (and its flow
+# helpers) serves the Appendix B cost model and its tests until the
+# colour-ordered skeletons of schedule M (WP2.8) adopt it.
 
 # (strings q -> adjoints -> qbar, sorted; traces, canonical rotation, sorted)
 FlowKey = tuple[tuple[tuple[int, ...], ...], tuple[tuple[int, ...], ...]]

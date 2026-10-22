@@ -310,6 +310,35 @@ def test_uux_emepgg_colour_projections_are_generable(
     )
 
 
+# Appendix B rows of the projected controls; their leading-colour families do
+# not depend on the b mass (closed quark loops are subleading).
+APPENDIX_B_ROWS = {"gg_gg": "gg>gg", "uux_ggg": "uu~>ggg"}
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", tuple(APPENDIX_B_ROWS))
+def test_production_pruning_keeps_the_appendix_b_leading_families(declared, name):
+    """The slice's own LC pruning (``LoopSlice._prune_colour`` on exact seed
+    cells, design §7.5) keeps exactly the leading-colour families of DESIGN
+    Appendix B and their (N, rank) histogram; the colour-ordered skeleton
+    counts there belong to the planar face rule (families test)."""
+
+    import collections
+
+    appendix = json.loads((FIXTURES / "v2" / "appendix_b_counts.json").read_text())
+    (expected,) = (
+        entry["leading_colour"]
+        for entry in appendix["configurations"]["loop_sm"]
+        if entry["process"] == APPENDIX_B_ROWS[name]
+    )
+    schedules = declared(name, "lc").plan.schedules.values()
+    assert len(schedules) == expected["families"]
+    histogram = collections.Counter(
+        f"{size}:{rank}" for size, rank in (s.bucket for s in schedules)
+    )
+    assert dict(histogram) == expected.get("families_by_N_rank", dict(histogram))
+
+
 @pytest.mark.loop_physics
 def test_declared_continuation_keeps_full_colour(declared):
     """The continued couplings and the HV four-gluon rule reproduce the UFO
