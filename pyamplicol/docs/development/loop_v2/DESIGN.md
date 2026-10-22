@@ -871,7 +871,7 @@ The rules are lowered into the tree model as ordinary vertices.
 - **Lorentz.** The same normalisation and oriented-kernel path as tree vertices (`models/tensors.py:72`, `compiler_kernels.py:223` [V-s]), always in the full-kernel variant. Contact CT vertices of any arity use the existing contact decomposition.
 - **Order.** The pseudo-order is capped at 1. `CurrentIndex.coupling_orders` then interns CT = 0 and CT = 1 currents in one recursion; CT = 1 roots are the CT amplitudes.
 - **Slots.** Kind × ε power become coefficient columns on CT = 1 currents: at most 12, sparse. UV_local, R2 and the fields therefore stay separable, and the coefficients are runtime scalars from the `counterterm_scale` source view (contracts K1).
-- **Two-point insertions on internal lines** use a new unary node, J′(S) = Π(S)·V₂(S)·J(S) (Rust: a finalization row). Insertions on external legs are excluded and replaced by field terms.
+- **Two-point insertions on internal lines** are the unary step J′(S) = P(S)·Π(S)·J(S). It is realised without a new node kind, as clone lines of the tree model (Status below). Insertions on external legs are excluded and replaced by field terms.
 - **Colour.** CT colour structures are lowered with Idenso into colour-flow components in a new module, `models/ct_color_flow.py`.
   - Besides singlet, identity, T and f, this covers the d-symbol and δδ forms. Today the recurrence compiler accepts only singlet, identity, T and f (`compiler_color_flow.py:180-280` [V-s]).
   - δδ and d·d produce a new colour-state kind, open string ⊗ closed trace. The Rust state already has `Trace` components (`recurrence/color.rs:16` [V-s]).
@@ -882,23 +882,25 @@ Counterterm amplitudes then sit in the Born colour sectors (plus the few multi-t
 **Status (WP2.2 increment, `work/v2-ct-recursion`).** The lowering path is in place, through the existing tree engine rather than a CT-specific builder [V `loops/v2/ct_recursion.py`, `models/loading.py` `lower_counterterm_vertices`, `models/ct_color_flow.py`]:
 
 - Every CT rule of arity ≥ 3 whose colour, Lorentz structure and contacts the tree compiler lowers becomes an ordinary vertex of a copy of the tree model (one lowered model per model and veto set, shared by all processes). The tree engine then builds CT = 0 and CT = 1 currents in one recursion, in both builders: the Python generic DAG (eager lane) and the Rust recurrence. No CT-specific Rust code was needed.
-- Pseudo-orders: `PYAMPLICOL_CT_INSERTION` (limit 1) and one order per slot (component × ε power, `PYAMPLICOL_CT_{R2,UV_LOCAL}_EPS{0,1,2}`). The tree runtime's squared-order partials are then the Born × CT interference per component, squared order and Laurent coefficient. The program bounds every physical order, and the split refuses a CT sector that pairs an amplitude outside the Born or loop orders.
+- Pseudo-orders: `PYAMPLICOL_CT_INSERTION` and one order per slot (component × ε power, `PYAMPLICOL_CT_{R2,UV_LOCAL}_EPS{0,1,2}`). One insertion carries each of them twice: a CT vertex itself, a clone line once on each of its two vertex copies; the insertion limit is 2. The tree runtime's squared-order partials are then the Born × CT interference per component, squared order and Laurent coefficient. The program bounds every physical order, and the split refuses a CT sector that pairs an amplitude outside the Born or loop orders.
 - Couplings are derived model couplings, `S_slot · Σ_rules M_rule · c_rule`. Here `c_rule` is the exact Laurent coefficient of the rule's UFO coupling (fixed parameters and numeric constants substituted, `cond`/`reglog` resolved, non-vanishing assumptions recorded and checked). `M_rule` (admitted alternatives) and `S_slot` (slot switch: 0 drops a slot, e.g. the poles in finite-only mode) are integer runtime parameters set once per process. Nothing is bound per point, and every carrier evaluates the couplings itself.
 - Admission is field level, taken from the witness table, and fails closed when it would depend on leg masks.
+- Two-point insertions are clone lines [V `models/ct_line_insertions.py`]. Each (field, orders of Π, slot) class gets a clone particle with the field's quantum numbers, plus copies of the field's ordinary vertices with the clone on one leg. Each copy carries the original orders, half of Π's orders and the insertion and slot orders once.
+  - Every internal line is a current of the recursion (closures pair the all-but-sink current with the sink source). Clone lines therefore cover each internal line exactly once, and the external-leg lines (LSZ) never close, since the clone's id differs from the sink's.
+  - Vectors and Dirac fermions (massive, or with a non-zero mass parameter): the clone carries the model-supplied propagator P Π P = N Π N / D². Propagator numerator and denominator are normalised separately, and momentum powers stay valid tensor networks (`models/tensors.py`, `external_evaluation.custom_propagator_components`).
+  - Weyl fermions (massless, `is_chiral_eligible`): a model-supplied propagator would turn their currents into Dirac currents, which no external source closes. The clone therefore keeps the field's propagator. Π must be a multiple of p̸ (a chirality-flipping term is refused), so P Π P = κ·P, with κ derived exactly from the composed Lorentz structures (`_line_factor`). κ sits on the copies of the clone's antiparticle leg, which a clone line meets exactly once.
+  - Two engine defects showed up and are fixed generically. (1) The colour-flow sign of an oriented structure-constant kernel ignored the parity of its leg permutation (`compiler_entry._annotate_oriented_kernel_color_projections`). One-species f vertices only orient cyclically, so this was invisible; a clone next to two gluons, or the ghost vertices, got the symmetric (d-like) colour. (2) A gluon with a model-supplied propagator had no U(1)-subtraction auxiliary, so its −1/N_c exchange between quark lines was lost. The auxiliary now gets a copy of its source's propagator (`compiler_color_flow.synthesize_fundamental_fierz_auxiliaries`).
+  - A clone current inside a fermion line changes the downstream currents' flavour flow (e.g. d → C → d). They stay separate from the CT-vertex currents of the same mask and orders, which costs memory but not correctness.
 - Not lowered yet; these rules stay site closures (`ct_sites.generate_counterterm_sites(closed_rules=...)`):
-  - two-point insertions (the unary node);
   - the d-symbol and δδ colours of the fixed-SU(3) four-gluon R2 and of the gggV R2 (the multi-trace state);
   - the Levi-Civita R2_GGZ;
   - ggVV/ggSS contacts, for which the tree compiler has no colour-flow decomposition;
+  - two-point mixing between different fields and chirality-flipping two-point terms on Weyl lines (none in loop_sm);
   - whole-rule continuations;
   - ghost legs.
-- O6: recursion = sites of the lowered rules, and recursion + remaining sites = O1 UV_local and R2, at 1e-12 on all 8 controls in both lanes. The 200-bit carrier is checked on gg→gg, uu~→ggg and DY. uu~→dd~g at 200 bits is a strict xfail: the tree runtime's U(1)-subtraction colour weight is binary64, so its 200-bit Born is only good to about 1e-17.
-- 7-leg CT programs on the Rust recurrence lane: uu~→e⁻e⁺dd~g generates in 31 s and 0.54 GB, gg→ggggg in 38 s and 0.54 GB. The lowered model is prepared once, in 2.6 minutes. The lowered tree kernels are the full variant (§3.2), since CT = 1 currents are not conserved.
-- Two-point insertions, planned without a new node kind. Each (field, slot) gets a clone particle carrying the same quantum numbers, with copies of the ordinary vertices that put the clone on one leg. Each copy carries `PYAMPLICOL_CT_LINE` (so that a single insertion has `LINE = 2`), half of Π's orders and the slot order.
-  - Every internal line is a current of the recursion (closures pair the all-but-sink current with the sink source). Clone lines therefore cover each internal line exactly once, and the external-leg lines (LSZ) never close, since the clone's id differs from the sink's.
-  - Massless fermions: P Π P = (i A)·P for Π = A p̸. The clone keeps the standard (Weyl) propagator, and the factor i A sits only on the copies with the clone's antiparticle leg, which a fermion line meets exactly once.
-  - Vectors and massive fermions: these need the propagator P Π P with a (p² − m²)² denominator. The tree compiler's custom UFO propagators cannot express that yet: `normalize_lorentz_expression` handles only the momentum square `P(a)^2`, and refuses a product of two such squares raised to a negative power. This, or a genuine unary node, is the open item.
-- Each CT program also evaluates the CT × CT squared orders (`PYAMPLICOL_CT_INSERTION = 2`). They are unused; skipping them needs an amplitude-order selection in the tree runtime.
+- O6: recursion = sites of the lowered rules (two-point insertions included), and recursion + remaining sites = O1 UV_local and R2, at 1e-12 on all 8 controls in both lanes. The 200-bit carrier is checked on gg→gg, uu~→ggg and DY. uu~→dd~g at 200 bits is a strict xfail: the tree runtime's U(1)-subtraction colour weight is binary64, so its 200-bit Born is only good to about 1e-17.
+- 7-leg CT programs on the Rust recurrence lane, with the two-point clone lines (2026-10-22, host load ≈ 250 on 384 cores): uu~→e⁻e⁺dd~g generates in 70 s with a 0.73 GB peak, gg→ggggg in 77 s and 0.76 GB. The lowered model is prepared once per model and veto set: 41 s lowering plus 4.7 min for the prepared bundle, 0.81 GB. The lowered tree kernels are the full variant (§3.2), since CT = 1 currents are not conserved.
+- Each CT program also evaluates the CT × CT squared orders (`PYAMPLICOL_CT_INSERTION = 4`). They are unused; skipping them needs an amplitude-order selection in the tree runtime.
 
 ### 6.2 Admission: the witness table
 
@@ -1654,10 +1656,10 @@ Total ≈ 270 agent-days [I].
       - CT vertices with the pseudo-order and slots, lowered into the tree model with exact derived couplings;
       - Python (eager) and Rust (recurrence) builders through the tree engine;
       - field-level admission;
+      - two-point insertions as clone lines (custom P Π P propagators; κ on Weyl lines);
       - O6 and O1 for the lowered rules on all controls;
       - 7-leg generation within the gate.
     - Open:
-      - the unary node for two-point insertions;
       - the multi-trace colour state with the general-N_c four-gluon R2 asset;
       - chiral and mixing δZ sources;
       - ggVV/ggSS contact colour flow and Levi-Civita Lorentz structures;
