@@ -17,7 +17,7 @@ Python eager compiler.
 from __future__ import annotations
 
 from collections import Counter
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from pathlib import Path
 
 import pytest
@@ -29,9 +29,7 @@ from .test_loop_v2_counterterms import (
     CONTROLS,
     TOLERANCE,
     WORKING_DIGITS,
-    DecimalComplex,
     _components,
-    _scalars,
     _sector_orders,
     counterterm_slices,
 )
@@ -47,8 +45,9 @@ def ct_slice(loop_sm_compiled_model):
 
 @pytest.fixture(scope="module")
 def lowered_ct_model(loop_sm_compiled_model, tmp_path_factory):
-    """``forbidden |PDG| codes -> (lowered model, prepared source)``: loop_sm
-    with every lowerable CT rule in its tree model, prepared once per veto."""
+    """``forbidden |PDG| codes -> (CountertermModel, prepared source)``:
+    loop_sm with every lowerable CT rule in its tree model, prepared once per
+    veto."""
 
     from pyamplicol import ModelSource
     from pyamplicol.config import EvaluatorConfig
@@ -57,17 +56,24 @@ def lowered_ct_model(loop_sm_compiled_model, tmp_path_factory):
     from pyamplicol.models.loading import load_compiled_model
 
     compiled = load_compiled_model(loop_sm_compiled_model)
-    rules = prepare_loop_request_model(
+    prepared = prepare_loop_request_model(
         compiled, fixed_parameters=legacy_capture.FIXED_PARAMETERS
-    ).counterterms.rules
+    )
     built = {}
 
     def build(forbidden=()):
         key = tuple(sorted(forbidden))
         if key not in built:
-            lowered = lower_model_counterterms(compiled, rules, forbidden=key)
+            lowered = lower_model_counterterms(
+                compiled,
+                prepared.counterterms.rules,
+                fixed_parameters=prepared.structure.fixed_parameters,
+                forbidden=key,
+            )
             root = tmp_path_factory.mktemp("ct-lowered")
-            path = lowered.compiled.write(root / "loop-sm-ct.pyamplicol-model.json")
+            path = lowered.lowered.compiled.write(
+                root / "loop-sm-ct.pyamplicol-model.json"
+            )
             bundle = root / "loop-sm-ct.pyamplicol-model"
             ModelSource.from_path(path).compile(
                 cache_dir=root / "cache",
@@ -144,29 +150,21 @@ def _model_parameters(ct, index: int) -> dict[str, str]:
     return parameters
 
 
-def _bound_inputs(ct, recursion, index: int, label: str):
-    """Model parameters, CT scalars and momenta of one fixture point."""
+def _inputs(ct, index: int, label: str):
+    """Model parameters and momenta of one fixture point in a carrier."""
 
     parameters = _model_parameters(ct, index)
-    plan = ct.prepared.structure.scalar_bindings(recursion.scalar_outputs())
-    bound = _scalars(ct, plan, parameters, label)
     point = ct.fixture["points"][index]
     if label == "double":
-        scalars = {
-            key: complex(float(re), float(im)) for key, (re, im) in bound.items()
-        }
         model = {name: float(value) for name, value in parameters.items()}
-        return model, scalars, [[float(x) for x in momentum] for momentum in point]
-    scalars = {key: DecimalComplex(re, im) for key, (re, im) in bound.items()}
+        return model, [[float(x) for x in momentum] for momentum in point]
     model = {name: Decimal(value) for name, value in parameters.items()}
-    return model, scalars, [list(momentum) for momentum in point]
+    return model, [list(momentum) for momentum in point]
 
 
-def _ct_values(recursion, scalars, label: str, **options) -> dict:
-    values = recursion.parameter_values(scalars, **options)
-    if label == "double":
-        return values
-    return {name: Decimal(value) for name, value in values.items()}
+def _set_parameters(recursion, runtime, model, **options) -> None:
+    recursion.model.check_parameters(model)
+    runtime.set_model_parameters({**model, **recursion.parameter_values(**options)})
 
 
 def _recursion_components(
@@ -178,10 +176,8 @@ def _recursion_components(
     tree runtime at ``WORKING_DIGITS`` decimal digits with exact inputs.
     """
 
-    model, scalars, momenta = _bound_inputs(ct, recursion, index, label)
-    runtime.set_model_parameters(
-        {**model, **_ct_values(recursion, scalars, label, poles=poles)}
-    )
+    model, momenta = _inputs(ct, index, label)
+    _set_parameters(recursion, runtime, model, poles=poles)
     evaluation = runtime.evaluate_orders(
         [momenta], precision=None if label == "double" else WORKING_DIGITS[label]
     )
@@ -197,23 +193,23 @@ def _recursion_components(
 def _eager_slot_totals(ct, recursion, runtime, index: int):
     """Born and Born x CT per slot from totals of an eager (Python) artifact.
 
-    Eager artifacts have no order partials. The CT couplings are linear runtime
-    sources, so with one slot bound to +c and to -c the totals differ by
-    4 Re(Born* CT_slot); 32 digits keep the subtraction exact to binary64.
+    Eager artifacts have no order partials. The CT couplings are linear in the
+    slot switches, so with one slot switched to +1 and to -1 the totals
+    differ by 4 Re(Born* CT_slot); 32 digits keep the subtraction exact to
+    binary64.
     """
 
-    model, scalars, momenta = _bound_inputs(ct, recursion, index, "double")
-    negated = {key: -value for key, value in scalars.items()}
+    model, momenta = _inputs(ct, index, "double")
 
-    def total(values):
-        runtime.set_model_parameters({**model, **values})
+    def total(**options):
+        _set_parameters(recursion, runtime, model, **options)
         return _real(runtime.evaluate([momenta], precision=32)[0])
 
-    born = total(_ct_values(recursion, scalars, "double", slots=()))
+    born = total(slots=())
     parts = {}
     for slot in recursion.slots:
-        plus = total(_ct_values(recursion, scalars, "double", slots=(slot,)))
-        minus = total(_ct_values(recursion, negated, "double", slots=(slot,)))
+        plus = total(slots=(slot,))
+        minus = total(slots=(slot,), sign=-1)
         parts[slot] = (plus - minus) / 2
     return born, parts
 
@@ -245,8 +241,15 @@ def _site_value(rows, key) -> Decimal:
 
 def _assert_equal_sites_and_legacy(ct, recursion, runtime, label: str) -> None:
     """Per (component, squared order, power): recursion = sites of its rules,
-    and recursion + remaining sites = O1."""
+    and recursion + remaining sites = O1 (Decimal arithmetic at 120 digits,
+    above every carrier)."""
 
+    with localcontext() as context:
+        context.prec = 120
+        _compare_with_sites_and_legacy(ct, recursion, runtime, label)
+
+
+def _compare_with_sites_and_legacy(ct, recursion, runtime, label: str) -> None:
     fixture = ct.fixture
     results = fixture["results"][label]
     sectors = _sector_orders(fixture, "virtual")
@@ -361,8 +364,26 @@ def test_recursion_equals_site_closure(
         _assert_equal_sites_and_legacy(ct, recursion, runtime, "double")
 
 
+# The tree runtime keeps the U(1)-subtraction colour weight 1/N_c of
+# processes with several quark lines in binary64 (``GenericDAG.color_weight``,
+# wave01-open-minors), so their 200-bit Born is exact to ~1e-17 only.
+_BINARY64_U1_WEIGHT = pytest.mark.xfail(
+    strict=True,
+    reason="tree runtime U(1)-subtraction colour weight is binary64 "
+    "(several quark lines): the 200-bit Born is exact to ~1e-17",
+)
+
+
 @pytest.mark.loop_nightly
-@pytest.mark.parametrize("name", ("gg_gg", "uux_ddxg", "uux_ggg"))
+@pytest.mark.parametrize(
+    "name",
+    (
+        "gg_gg",
+        "uux_ggg",
+        "dy",
+        pytest.param("uux_ddxg", marks=_BINARY64_U1_WEIGHT),
+    ),
+)
 def test_recursion_equals_site_closure_at_200_bits(
     ct_slice, lowered_ct_model, loop_native, tmp_path, name
 ):

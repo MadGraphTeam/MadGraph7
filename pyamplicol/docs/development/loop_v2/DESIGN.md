@@ -845,6 +845,22 @@ The rules are lowered into the tree model as ordinary vertices.
 
 Counterterm amplitudes then sit in the Born colour sectors (plus the few multi-trace CT states) and are contracted with the Born like the Born itself. This costs about #CT kinds × tree cost and needs no per-site colour seed. That is why the recursion beats the site closure in FC at 7 legs: site seeds would cost #sites × #Born × #h ≈ 3×10⁹ complex MAC per point [I].
 
+**Status (WP2.2 increment, `work/v2-ct-recursion`).** The lowering path is in place, through the existing tree engine rather than a CT-specific builder [V `loops/v2/ct_recursion.py`, `models/loading.py` `lower_counterterm_vertices`, `models/ct_color_flow.py`]:
+
+- Every CT rule of arity ≥ 3 whose colour, Lorentz structure and contacts the tree compiler lowers becomes an ordinary vertex of a copy of the tree model (one lowered model per model and veto set, shared by all processes). The tree engine then builds CT = 0 and CT = 1 currents in one recursion, in both builders: the Python generic DAG (eager lane) and the Rust recurrence. No CT-specific Rust code was needed.
+- Pseudo-orders: `PYAMPLICOL_CT_INSERTION` (limit 1) and one order per slot (component × ε power, `PYAMPLICOL_CT_{R2,UV_LOCAL}_EPS{0,1,2}`). The tree runtime's squared-order partials are then the Born × CT interference per component, squared order and Laurent coefficient. The program bounds every physical order, and the split refuses a CT sector that pairs an amplitude outside the Born or loop orders.
+- Couplings are derived model couplings, `S_slot · Σ_rules M_rule · c_rule`. Here `c_rule` is the exact Laurent coefficient of the rule's UFO coupling (fixed parameters and numeric constants substituted, `cond`/`reglog` resolved, non-vanishing assumptions recorded and checked). `M_rule` (admitted alternatives) and `S_slot` (slot switch: 0 drops a slot, e.g. the poles in finite-only mode) are integer runtime parameters set once per process. Nothing is bound per point, and every carrier evaluates the couplings itself.
+- Admission is field level, taken from the witness table, and fails closed when it would depend on leg masks.
+- Not lowered yet; these rules stay site closures (`ct_sites.generate_counterterm_sites(closed_rules=...)`):
+  - two-point insertions (the unary node);
+  - the d-symbol and δδ colours of the fixed-SU(3) four-gluon R2 and of the gggV R2 (the multi-trace state);
+  - the Levi-Civita R2_GGZ;
+  - ggVV/ggSS contacts, for which the tree compiler has no colour-flow decomposition;
+  - whole-rule continuations;
+  - ghost legs.
+- O6: recursion = sites of the lowered rules, and recursion + remaining sites = O1 UV_local and R2, at 1e-12 on all 8 controls in both lanes. The 200-bit carrier is checked on gg→gg, uu~→ggg and DY. uu~→dd~g at 200 bits is a strict xfail: the tree runtime's U(1)-subtraction colour weight is binary64, so its 200-bit Born is only good to about 1e-17.
+- 7-leg CT programs on the Rust recurrence lane: uu~→e⁻e⁺dd~g generates in 37 s and 0.63 GB, gg→ggggg in 45 s and 0.58 GB, after a one-off 3-minute model preparation.
+
 ### 6.2 Admission: the witness table
 
 The witness table is built at generation from the **divergent witness families**: families whose structural rank satisfies R_f ≥ 2N − 4. The bound is derived from the generated families' ranks, not fixed. For renormalisable Feynman-gauge models, R_f ≤ N already implies N ≤ 4.
@@ -1576,6 +1592,21 @@ Total ≈ 270 agent-days [I].
   - *Depends:* S1.
   - *Accept:* O6 on every control; components equal O1; 7-leg CT generation < 10 min and < 4 GB.
   - *Size:* L (14).
+  - *Status:* increment on `work/v2-ct-recursion` (§6.1 "Status").
+    - Done:
+      - CT vertices with the pseudo-order and slots, lowered into the tree model with exact derived couplings;
+      - Python (eager) and Rust (recurrence) builders through the tree engine;
+      - field-level admission;
+      - O6 and O1 for the lowered rules on all controls;
+      - 7-leg generation within the gate.
+    - Open:
+      - the unary node for two-point insertions;
+      - the multi-trace colour state with the general-N_c four-gluon R2 asset;
+      - chiral and mixing δZ sources;
+      - ggVV/ggSS contact colour flow and Levi-Civita Lorentz structures;
+      - LC/NLC grading of the lowered couplings;
+      - skipping the CT × CT squared orders the program computes.
+    - Until these land, those rules are closed as sites.
 - **WP2.3 Precision, re-test and rescue.**
   - *Goal:* §10:
     - DD/AP prepared kernels in the tree recurrence; exact seeds; generic NinjaRS (measure the `PolynomialNumerator` compile cost at ranks 6–7);

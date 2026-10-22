@@ -12,26 +12,33 @@ CT tree and no site is listed:
 * **Pseudo-orders.** Every CT vertex carries ``COUNTERTERM_INSERTION_ORDER``
   once (limit 1), plus the order of its *slot* (component x epsilon power,
   ``models.loading.counterterm_slot_order``). UV_local and R2 therefore stay
-  separate down to each Laurent coefficient, and a finite-only evaluation
-  never needs a pole slot.
-* **Couplings.** A lowered CT vertex term has one complex runtime coupling per
-  slot (two real parameters). ``CountertermRecursion.parameter_values`` binds
-  it, per evaluation, to the sum over the admitted rules of that term of
-  ``(number of admitted alternatives) x (Laurent coefficient)``; the Laurent
-  coefficients come from the source scalar program (``loops.v2.fields``), as
-  for the sites.
+  separate down to each Laurent coefficient.
+* **Couplings.** The coupling of a lowered CT vertex term is a derived model
+  coupling, ``S_slot * sum_rules M_rule * c_rule``: ``c_rule`` is the exact
+  Laurent coefficient of the rule's UFO coupling (the source scalar program
+  of ``loops.model``, with the model's fixed parameters substituted and the
+  UFO helpers ``cond``/``reglog`` resolved, ``CoefficientLowering``),
+  ``M_rule`` an integer runtime parameter (the number of admitted
+  alternatives of the rule in the process, 0 when not admitted) and
+  ``S_slot`` an integer slot switch (0 drops the slot: finite-only mode
+  zeroes the pole slots). The tree runtime evaluates the couplings from the
+  model parameters in every carrier, so no per-point binding is needed and
+  arbitrary precision stays exact.
 * **Admission** (design §6.2) is a precomputed predicate, never a site list.
   It follows the witness table of ``loops.v2.ct_sites``: per rule, the
   alternatives ``admitted_alternatives`` gives on every divergent witness of
   the rule's field multiset and orders. In QCD this is field level (leg masks
   enter only through LSZ, which the arity >= 3 of lowered rules excludes);
   a rule whose admission differs between witness signatures fails closed.
-* **Not lowered yet** (``CountertermRecursion.residual`` with the reason;
-  these rules stay site closures, ``loops.v2.ct_sites``, restricted with
-  ``closed_rules``): two-point insertions (the unary node of design §6.1),
-  colours outside the tree colour flow (d-symbol and δδ products of the
-  four-gluon R2: the multi-trace colour state, ``models.ct_color_flow``),
-  whole-rule colour continuations and vertices with ghost legs.
+* **Not lowered yet** (``residual`` with the reason; these rules stay site
+  closures, ``loops.v2.ct_sites``, restricted with ``closed_rules``):
+  two-point insertions (the unary node of design §6.1), colours outside the
+  tree colour flow (d-symbol and δδ products of the four-gluon R2: the
+  multi-trace colour state, ``models.ct_color_flow``), Lorentz structures
+  the tree compiler does not normalise (Levi-Civita), contact vertices
+  without a colour-flow decomposition, whole-rule colour continuations,
+  ghost legs and coefficients with UFO helpers other than ``cond`` and
+  ``reglog``.
 
 The site closure stays the oracle (O6): per component, squared order and
 Laurent coefficient, the recursion's partials equal the sites of the lowered
@@ -43,6 +50,9 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
+from fractions import Fraction
+from functools import reduce
+from operator import add, mul
 from typing import Any
 
 from pyamplicol.models.ct_color_flow import (
@@ -71,12 +81,39 @@ from .ct_sites import (
 )
 from .families import FamilySet, LoopOrderSelection, Orders, add_orders, model_data
 
+Slot = tuple[str, int]  # (component, epsilon power)
+RuleKey = tuple[object, ...]
+_PREFIX = "PYAMPLICOL_CT_"
+
 
 class CountertermAdmissionError(NotImplementedError):
     """A rule's admission depends on more than its fields and orders."""
 
 
+class CountertermCouplingError(NotImplementedError):
+    """A CT coupling coefficient the tree model cannot express exactly."""
+
+
 # --------------------------------------------------------------------- structures
+
+
+def rule_key(rule: Any) -> RuleKey:
+    """Identity of a rule across preparations of the same model.
+
+    Rule names are numbered per preparation; kind, entries (UFO vertex,
+    colour and Lorentz cell, coupling) and loop-species alternatives are not.
+    """
+
+    return (
+        rule.kind,
+        tuple(
+            sorted(
+                (e.vertex_name, e.color_index, e.lorentz_index, e.coupling.name)
+                for e in rule.entries
+            )
+        ),
+        tuple(tuple(alternative) for alternative in rule.alternatives),
+    )
 
 
 def _coefficient_is_zero(entry: Any, power: int) -> bool:
@@ -146,34 +183,258 @@ class TreeVocabulary:
         return None
 
 
+# ------------------------------------------------------------------- coefficients
+
+
+class CoefficientLowering:
+    """Laurent coefficients of CT couplings as exact tree-model expressions.
+
+    The coefficients are those of the source scalar program
+    (``KernelBasisEntry.coupling``), in the model's UFO parameter symbols, so
+    they are valid coupling expressions of the compiled payload once
+
+    * the model's fixed parameters (restriction zeros, ``fixed_parameters`` of
+      the preparation) and its internal numeric constants (``CA``, ``TF``,
+      ``Ncol``, ``lhv`` in loop_sm, exact from their UFO source literals) are
+      substituted; the compiled payload keeps such constants only as binary64
+      values, which would cap arbitrary precision at about 1e-16, and
+    * the UFO helper calls are resolved: ``cond(c, a, b)`` is ``a`` for a
+      vanishing number ``c`` and ``b`` otherwise, ``reglog(z)`` is 0 for a
+      vanishing number and ``log(z)`` otherwise, ``complexconjugate`` is
+      ``conj``. A symbolic ``c`` or ``z`` is recorded in ``assumptions``
+      (expressions that must not vanish at runtime, checked by
+      ``CountertermModel.check_parameters``); any other helper raises
+      ``CountertermCouplingError``.
+    """
+
+    def __init__(self, compiled: CompiledModel, fixed_parameters: Mapping[str, Any]):
+        from symbolica import E, S
+
+        if compiled.raw_loop_model is None:
+            raise ValueError("counterterm coefficients need the model's NLO sidecar")
+        bindings = compiled.raw_loop_model.metadata.get("function_bindings", {})
+        self._helpers = {int(record): str(name) for name, record in bindings.items()}
+        self._fixed = [
+            (E(f"UFO::{{}}::{name}"), _number(value))
+            for name, value in sorted(
+                {
+                    **_numeric_constants(compiled.raw_loop_model),
+                    **fixed_parameters,
+                }.items()
+            )
+        ]
+        self._zero = E("0")
+        self._log = S("symbolica::log")
+        self._conj = S("symbolica::conj")
+        self.assumptions: set[str] = set()
+
+    def __call__(self, entry: Any, power: int) -> Any:
+        expression = entry.coupling.value.coefficient(power)
+        for symbol, value in self._fixed:
+            expression = expression.replace(symbol, value)
+        return self._resolve(expression).expand()
+
+    def _resolve(self, atom: Any) -> Any:
+        from symbolica import AtomType, S
+
+        kind = atom.get_type()
+        if kind in (AtomType.Num, AtomType.Var):
+            return atom
+        children = [self._resolve(child) for child in atom]
+        if kind == AtomType.Add:
+            return reduce(add, children)
+        if kind == AtomType.Mul:
+            return reduce(mul, children)
+        if kind == AtomType.Pow:
+            base, exponent = children
+            return base**exponent
+        name = atom.get_name()
+        head = name.rsplit("::", 1)[-1]
+        if not (
+            name.startswith("pyamplicol_scalar_model_") and head.startswith("value_")
+        ):
+            return S(name)(*children)
+        helper = self._helpers.get(int(head.removeprefix("value_")))
+        if helper == "cond":
+            condition, if_zero, otherwise = children
+            return if_zero if self._vanishes(condition) else otherwise
+        if helper == "reglog":
+            (argument,) = children
+            if self._vanishes(argument):
+                return self._zero
+            return self._log(argument)
+        if helper == "complexconjugate":
+            (argument,) = children
+            return self._conj(argument)
+        raise CountertermCouplingError(
+            f"counterterm coefficient uses the UFO helper {helper!r}, which the "
+            "tree model has no exact form of"
+        )
+
+    def _vanishes(self, value: Any) -> bool:
+        from symbolica import AtomType
+
+        value = value.expand()
+        if value.get_type() == AtomType.Num:
+            return value == self._zero
+        self.assumptions.add(value.to_canonical_string())
+        return False
+
+
+def _numeric_constants(raw: Any) -> dict[str, str]:
+    """Internal parameters of ``raw`` whose exact source is a number literal."""
+
+    out = {}
+    for record in raw.collections["parameters"]:
+        fields = record["fields"]
+        value = fields.get("value") or {}
+        if fields.get("nature") != "internal" or value.get("kind") != "expression":
+            continue
+        if not (fields.get("value_source") or {}).get("exact", False):
+            continue
+        number = _exact_literal(str(value["expression"]))
+        if number is not None:
+            out[str(fields["name"])] = f"{number.numerator}/{number.denominator}"
+    return out
+
+
+def _exact_literal(source: str) -> Fraction | None:
+    """The exact rational of an arithmetic expression of number literals."""
+
+    import ast
+
+    def value(node: ast.AST) -> Fraction:
+        if isinstance(node, ast.Expression):
+            return value(node.body)
+        if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+            return Fraction(ast.get_source_segment(source, node) or repr(node.value))
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+            return -value(node.operand)
+        if isinstance(node, ast.BinOp):
+            left, right = value(node.left), value(node.right)
+            operations = {
+                ast.Add: left + right,
+                ast.Sub: left - right,
+                ast.Mult: left * right,
+            }
+            if isinstance(node.op, ast.Div) and right:
+                return left / right
+            if type(node.op) in operations:
+                return operations[type(node.op)]
+        raise ValueError(source)
+
+    try:
+        return value(ast.parse(source, mode="eval"))
+    except (SyntaxError, ValueError):
+        return None
+
+
+def _number(value: Any) -> Any:
+    from symbolica import E, Expression
+
+    real, imaginary = value if isinstance(value, tuple) else (value, "0")
+    return E(str(real)) + E(str(imaginary)) * Expression.I
+
+
+# ------------------------------------------------------------------------ model
+
+
+@dataclass(frozen=True)
+class CountertermModel:
+    """The model-level CT lowering shared by every process of one model.
+
+    ``multiplicities`` names the integer runtime parameter of every lowered
+    rule (by ``rule_key``) and ``switches`` that of every slot;
+    ``assumptions`` are model-parameter expressions the lowered couplings
+    assume non-zero (``CoefficientLowering``); ``residual`` maps every rule
+    left to site closure to the reason.
+    """
+
+    lowered: CountertermLoweredModel
+    multiplicities: Mapping[RuleKey, str]
+    switches: Mapping[Slot, str]
+    assumptions: tuple[str, ...]
+    residual: Mapping[RuleKey, str]
+
+    def check_parameters(self, values: Mapping[str, Any]) -> None:
+        """Fail if runtime model parameter ``values`` break an assumption.
+
+        Parameters absent from ``values`` take the compiled defaults.
+        """
+
+        from symbolica import AtomType, E, Expression
+
+        defaults = {
+            name: complex(*pair)
+            for name, pair in self.lowered.compiled.parameter_defaults.items()
+        }
+        defaults.update(values)
+        for assumption in self.assumptions:
+            expression = E(assumption)
+            for name, value in defaults.items():
+                value = complex(value)
+                expression = expression.replace(
+                    E(f"UFO::{{}}::{name}"),
+                    E(repr(value.real)) + E(repr(value.imag)) * Expression.I,
+                )
+            expression = expression.expand()
+            if expression.get_type() != AtomType.Num:
+                raise ValueError(f"cannot decide counterterm assumption {assumption}")
+            if expression == E("0"):
+                raise ValueError(
+                    f"model parameters make {assumption} vanish, which the lowered "
+                    "counterterm couplings assume non-zero"
+                )
+
+
 def lower_model_counterterms(
     compiled: CompiledModel,
     rules: Mapping[str, Any],
     *,
+    fixed_parameters: Mapping[str, Any] | None = None,
     forbidden: Iterable[int] = (),
-) -> CountertermLoweredModel:
+) -> CountertermModel:
     """The tree model of ``compiled`` with every lowerable rule's CT vertices.
 
     ``rules`` are prepared counterterm rules (``PreparedCountertermModel.rules``)
-    of any request; preparing the model without order bounds gives all of
-    them, so one lowered model serves every process of the model that forbids
-    the same particles (|PDG| codes ``forbidden``, removed from the tree model).
+    of any request and ``fixed_parameters`` the exact fixed parameter values of
+    that preparation (``structure.fixed_parameters``); preparing the model
+    without order bounds gives every rule, so one lowered model serves every
+    process of the model that forbids the same particles (|PDG| codes
+    ``forbidden``, removed from the tree model).
     """
 
     vocabulary = TreeVocabulary(compiled)
-    terms = {
-        name: rule_terms(rule)
-        for name, rule in rules.items()
-        if vocabulary.residual_reason(rule) is None
+    coefficients = CoefficientLowering(compiled, fixed_parameters or {})
+    residual: dict[RuleKey, str] = {}
+    # Exact coefficient of every rule on each of its lowered vertex terms.
+    values: dict[RuleKey, dict[CountertermStructure, Any]] = {}
+    for rule in rules.values():
+        key = rule_key(rule)
+        reason = vocabulary.residual_reason(rule)
+        if reason is not None:
+            residual[key] = reason
+            continue
+        rows: dict[CountertermStructure, Any] = {}
+        try:
+            for entry, structure in rule_terms(rule):
+                value = coefficients(entry, structure.power)
+                rows[structure] = (
+                    rows[structure] + value if structure in rows else value
+                )
+        except CountertermCouplingError as error:
+            residual[key] = str(error)
+            continue
+        # A coefficient the fixed parameters make vanish has no vertex term.
+        values[key] = {s: value for s, value in rows.items() if not _is_zero(value)}
+    multiplicities = {
+        key: f"{_PREFIX}M{index}" for index, key in enumerate(sorted(values, key=repr))
     }
-    # Terms of the same slot fed by the same couplings of the same rules share
-    # one lowered coupling.
-    contributions: dict[CountertermStructure, set[tuple[str, str]]] = defaultdict(set)
-    for name, rows in terms.items():
-        for entry, structure in rows:
-            contributions[structure].add((name, entry.coupling.name))
-    classes = {
-        structure: tuple(sorted(rows)) for structure, rows in contributions.items()
+    switches = {
+        slot: f"{_PREFIX}S_{slot[0].upper()}_EPS{-slot[1]}"
+        for slot in sorted(
+            {(s.component, s.power) for rows in values.values() for s in rows}
+        )
     }
     forbidden = {abs(int(pdg)) for pdg in forbidden}
     excluded = {
@@ -181,28 +442,67 @@ def lower_model_counterterms(
         for item in compiled.model["particles"]
         if abs(int(item["pdg_code"])) in forbidden
     }
+    parameters = dict.fromkeys((*multiplicities.values(), *switches.values()), 1.0)
     refused: dict[CountertermStructure, str] = {}
     while True:
-        # A rule is lowered whole or not at all.
-        structures = {
-            structure
-            for rows in terms.values()
-            if not any(structure in refused for _entry, structure in rows)
-            for _entry, structure in rows
-        }
         try:
             lowered = lower_counterterm_vertices(
                 compiled,
-                structures,
-                coupling_classes={s: classes[s] for s in structures},
+                _coupling_expressions(values, multiplicities, switches),
+                parameters=parameters,
                 excluded_particles=excluded,
             )
         except CountertermLoweringError as error:
             if not error.refused or set(error.refused) <= set(refused):
                 raise
             refused.update(error.refused)
+            # A rule is lowered whole or not at all.
+            for key in [
+                k for k, rows in values.items() if rows.keys() & refused.keys()
+            ]:
+                structure = next(s for s in values.pop(key) if s in refused)
+                residual[key] = refused[structure]
+                del multiplicities[key]
             continue
-        return replace(lowered, refused=refused)
+        return CountertermModel(
+            lowered=replace(lowered, refused=refused),
+            multiplicities=multiplicities,
+            switches=switches,
+            assumptions=tuple(sorted(coefficients.assumptions)),
+            residual=residual,
+        )
+
+
+def _coupling_expressions(
+    values: Mapping[RuleKey, Mapping[CountertermStructure, Any]],
+    multiplicities: Mapping[RuleKey, str],
+    switches: Mapping[Slot, str],
+) -> dict[CountertermStructure, str]:
+    """``S_slot * sum_rules M_rule * c_rule`` of every lowered vertex term."""
+
+    from symbolica import E
+
+    sums: dict[CountertermStructure, Any] = {}
+    for key in sorted(values, key=repr):
+        multiplicity = E(f"UFO::{{}}::{multiplicities[key]}")
+        for structure, value in values[key].items():
+            term = multiplicity * value
+            sums[structure] = sums[structure] + term if structure in sums else term
+    return {
+        structure: (
+            E(f"UFO::{{}}::{switches[structure.component, structure.power]}") * total
+        )
+        .expand()
+        .to_canonical_string()
+        for structure, total in sums.items()
+        if not _is_zero(total)
+    }
+
+
+def _is_zero(value: Any) -> bool:
+    from symbolica import E
+
+    return value.expand() == E("0")
 
 
 # ---------------------------------------------------------------------- admission
@@ -263,21 +563,19 @@ def field_level_admission(
 
 
 # ---------------------------------------------------------------------- recursion
-
-
-Slot = tuple[str, int]  # (component, epsilon power)
+# ---------------------------------------------------------------------- recursion
 
 
 @dataclass(frozen=True)
 class CountertermRecursion:
     """The CT rules of one loop request, split between recursion and sites.
 
-    ``lowered`` is the model-level lowered tree model; ``admission`` maps
-    every rule in the recursion to its admitted alternatives and ``residual``
-    every other rule to the reason it stays a site closure.
+    ``rules`` are the request's rules in the recursion with their admitted
+    alternatives (``admission``) and lowered ``terms``; ``residual`` maps
+    every other rule of the request to the reason it stays a site closure.
     """
 
-    lowered: CountertermLoweredModel
+    model: CountertermModel
     rules: Mapping[str, Any]
     terms: Mapping[str, tuple[tuple[Any, CountertermStructure], ...]]
     admission: Mapping[str, tuple[int, ...]]
@@ -288,7 +586,7 @@ class CountertermRecursion:
     @classmethod
     def build(
         cls,
-        lowered: CountertermLoweredModel,
+        model: CountertermModel,
         rules: Mapping[str, Any],
         families: FamilySet,
         native_model: Any,
@@ -304,35 +602,28 @@ class CountertermRecursion:
         the exact Born amplitude orders.
         """
 
-        vocabulary = TreeVocabulary(lowered.compiled)
         residual: dict[str, str] = {}
-        lowered_rules: dict[str, Any] = {}
+        lowered: dict[str, Any] = {}
         terms: dict[str, tuple[tuple[Any, CountertermStructure], ...]] = {}
         for name, rule in rules.items():
-            reason = vocabulary.residual_reason(rule)
-            if reason is None:
+            key = rule_key(rule)
+            if key in model.multiplicities:
+                lowered[name] = rule
                 terms[name] = rule_terms(rule)
-                missing = [s for _e, s in terms[name] if s not in lowered.parameters]
-                if missing:
-                    reason = lowered.refused.get(
-                        missing[0], "a vertex term is not in the lowered tree model"
-                    )
-                    del terms[name]
-            if reason is None:
-                lowered_rules[name] = rule
             else:
-                residual[name] = reason
-        witnesses = divergent_witnesses(families, native_model)
+                residual[name] = model.residual.get(
+                    key, "the rule is not in the lowered model"
+                )
         admission = field_level_admission(
-            lowered_rules,
-            witnesses,
+            lowered,
+            divergent_witnesses(families, native_model),
             native_model,
             selection,
             forbidden=forbidden,
         )
         return cls(
-            lowered=lowered,
-            rules=lowered_rules,
+            model=model,
+            rules=lowered,
             terms=terms,
             admission=admission,
             residual=residual,
@@ -352,8 +643,8 @@ class CountertermRecursion:
 
         limits: dict[str, int] = {
             str(item["name"]): 0
-            for item in self.lowered.compiled.model["orders"]
-            if not str(item["name"]).startswith("PYAMPLICOL_CT")
+            for item in self.model.lowered.compiled.model["orders"]
+            if not str(item["name"]).startswith(_PREFIX)
         }
         for orders in (*self.born_orders, *self.loop_orders):
             for name, power in orders:
@@ -373,68 +664,33 @@ class CountertermRecursion:
             )
         )
 
-    # -- couplings ---------------------------------------------------------------
-
-    def scalar_outputs(self) -> tuple[tuple[str, int], ...]:
-        """Source scalar outputs (CT coupling name, epsilon power) to bind."""
-
-        return tuple(
-            sorted(
-                {
-                    (entry.coupling.name, structure.power)
-                    for name, terms in self.terms.items()
-                    if self.admission[name]
-                    for entry, structure in terms
-                }
-            )
-        )
-
     def parameter_values(
         self,
-        scalars: Mapping[tuple[str, int], Any],
         *,
         poles: bool = True,
         slots: Iterable[Slot] | None = None,
-    ) -> dict[str, Any]:
-        """Runtime values of the lowered CT parameters at one point.
+        sign: int = 1,
+    ) -> dict[str, int]:
+        """Runtime values of the CT multiplicities and slot switches.
 
-        ``scalars`` maps ``scalar_outputs()`` to the bound Laurent
-        coefficients (any carrier with ``+``, ``*`` by int, ``.real`` and
-        ``.imag``). Without ``poles`` the pole slots are zero, and with
-        ``slots`` only those (component, power) slots are bound. Every lowered
-        parameter is returned; terms of rules this request does not admit
-        are zero.
+        Each lowered rule of the model gets its number of admitted
+        alternatives in this request (0 for rules of other requests). Slot
+        switches are ``sign`` for the selected ``slots`` (default: all) and
+        0 otherwise; without ``poles`` the pole slots are 0 (finite-only
+        mode). The values are integers, exact in every carrier; they are set
+        once per process and do not depend on the phase-space point.
         """
 
+        values = dict.fromkeys(self.model.multiplicities.values(), 0)
+        for name, rule in self.rules.items():
+            values[self.model.multiplicities[rule_key(rule)]] = len(
+                self.admission[name]
+            )
         selected = None if slots is None else frozenset(slots)
-
-        values: dict[CountertermStructure, Any] = {}
-        for name, terms in self.terms.items():
-            multiplicity = len(self.admission[name])
-            for entry, structure in terms:
-                if not multiplicity or (structure.power and not poles):
-                    continue
-                if selected is not None and (
-                    (structure.component, structure.power) not in selected
-                ):
-                    continue
-                term = multiplicity * scalars[entry.coupling.name, structure.power]
-                known = values.get(structure)
-                values[structure] = term if known is None else known + term
-        out: dict[str, Any] = {}
-        bound: dict[tuple[str, str], Any] = {}
-        for structure, names in self.lowered.parameters.items():
-            value = values.get(structure)
-            if names in bound and bound[names] != value:
-                raise ValueError(
-                    f"lowered CT coupling {names} is shared by vertex terms whose "
-                    "couplings differ in this request"
-                )
-            bound[names] = value
-            real, imaginary = names
-            out[real] = 0 if value is None else value.real
-            out[imaginary] = 0 if value is None else value.imag
-        return out
+        for slot, switch in self.model.switches.items():
+            on = (selected is None or slot in selected) and (poles or not slot[1])
+            values[switch] = sign if on else 0
+        return values
 
     # -- partials ----------------------------------------------------------------
 
@@ -497,10 +753,14 @@ def _physical(orders: Iterable[tuple[str, int]]) -> Orders:
 
 
 __all__ = [
+    "CoefficientLowering",
     "CountertermAdmissionError",
+    "CountertermCouplingError",
+    "CountertermModel",
     "CountertermRecursion",
     "TreeVocabulary",
     "field_level_admission",
     "lower_model_counterterms",
+    "rule_key",
     "rule_terms",
 ]

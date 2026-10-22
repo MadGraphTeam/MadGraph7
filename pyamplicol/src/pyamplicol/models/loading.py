@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -1094,8 +1095,6 @@ COUNTERTERM_INSERTION_ORDER = "PYAMPLICOL_CT_INSERTION"
 COUNTERTERM_COMPONENTS = ("r2", "uv_local")
 COUNTERTERM_POWERS = (0, -1, -2)
 _COUNTERTERM_PARAMETER_BLOCK = "PYAMPLICOL_CT"
-# The imaginary unit of the loader's canonical expression strings.
-_IMAGINARY_UNIT = "\N{MATHEMATICAL ITALIC SMALL I}"
 
 
 def counterterm_slot_order(component: str, power: int) -> str:
@@ -1152,23 +1151,22 @@ class CountertermLoweringError(ValueError):
 class CountertermLoweredModel:
     """A compiled model whose tree vertices include lowered CT vertices.
 
-    Every ``CountertermStructure`` is one vertex term whose coupling is
-    ``re + i im`` of its two real runtime parameters (``parameters``). They
-    are runtime sources, bound per evaluation to the sum of the CT couplings'
-    Laurent coefficients of the slot over the admitted rules
-    (``loops.v2.ct_recursion``); their defaults are 1, never 0, because the
-    tree compiler treats a coupling that vanishes at its default as a
-    structural zero. CT vertices carry the physical orders of their entry,
-    ``COUNTERTERM_INSERTION_ORDER`` once and the order of their slot once.
+    ``couplings`` names the model coupling of every lowered
+    ``CountertermStructure``; ``parameters`` are the real external runtime
+    parameters the coupling expressions introduced. CT vertices carry the
+    physical orders of their entry, ``COUNTERTERM_INSERTION_ORDER`` once and
+    the order of their slot once. ``refused`` lists vertex terms the tree
+    compiler could not lower (``CountertermLoweringError``).
     """
 
     compiled: CompiledModel
-    parameters: Mapping[CountertermStructure, tuple[str, str]]
+    couplings: Mapping[CountertermStructure, str]
+    parameters: tuple[str, ...]
     refused: Mapping[CountertermStructure, str] = field(default_factory=dict)
 
     @property
     def slot_orders(self) -> tuple[str, ...]:
-        return tuple(sorted({structure.slot_order for structure in self.parameters}))
+        return tuple(sorted({structure.slot_order for structure in self.couplings}))
 
 
 def counterterm_lorentz_error(compiled: CompiledModel, name: str) -> str | None:
@@ -1197,9 +1195,9 @@ def counterterm_lorentz_error(compiled: CompiledModel, name: str) -> str | None:
 
 def lower_counterterm_vertices(
     compiled: CompiledModel,
-    structures: Iterable[CountertermStructure],
+    couplings: Mapping[CountertermStructure, str],
     *,
-    coupling_classes: Mapping[CountertermStructure, object] | None = None,
+    parameters: Mapping[str, float] = MappingProxyType({}),
     excluded_particles: Iterable[str] = (),
 ) -> CountertermLoweredModel:
     """Lower CT vertex terms into the tree model of ``compiled`` (design §6.1).
@@ -1216,22 +1214,28 @@ def lower_counterterm_vertices(
     two colour-singlet bosons) raise ``CountertermLoweringError`` naming
     them, so that a caller can close their rules as sites.
 
-    Terms of one slot and orders with the same ``coupling_classes`` value
-    share one coupling (and parameter pair): terms whose coupling is the same
-    in every rule, like the three colour-Lorentz cells of the four-gluon UV
-    counterterm, then fuse into one contact kernel as the ordinary quartic
-    vertex does. By default every term has its own coupling.
+    ``couplings`` maps every vertex term to its coupling expression in the
+    payload's canonical syntax; terms of one slot and orders with the same
+    expression share one model coupling, so that cells with a common
+    coupling (the three colour-Lorentz cells of the four-gluon UV
+    counterterm) fuse into one contact kernel as the ordinary quartic vertex
+    does. The expressions are derived model couplings: the runtime evaluates
+    them from the model parameters in every carrier, exactly in arbitrary
+    precision. ``parameters`` declares the real external parameters they
+    introduce, with their defaults. A coupling that vanishes at the defaults
+    is a structural zero to the tree compiler, so defaults must not make a
+    lowered coupling vanish.
 
     ``excluded_particles`` (UFO names, both charge states) removes every
     vertex, ordinary or CT, with such a leg: the tree model of a process that
     forbids those particles (MadGraph's ``/ z``), which the tree generator
-    has no option for.
+    has no option for. Terms whose coupling the model's restriction makes
+    vanish are dropped (absent from ``couplings`` of the result).
     """
 
     from .compiler_entry import compile_ufo_model_ir
     from .ct_color_flow import tree_colour_source
 
-    structures = tuple(sorted(set(structures)))
     payload = json.loads(json.dumps(compiled.model))
     particles = {str(item["name"]): item for item in payload["particles"]}
     excluded = set(excluded_particles)
@@ -1243,7 +1247,7 @@ def lower_counterterm_vertices(
     ]
     lorentz_names = {str(item["name"]) for item in payload["lorentz_structures"]}
     groups: dict[tuple[object, ...], list[CountertermStructure]] = {}
-    structures = tuple(s for s in structures if not excluded & set(s.particles))
+    structures = tuple(sorted(s for s in couplings if not excluded & set(s.particles)))
     for structure in structures:
         if len(structure.particles) < 3:
             raise ValueError(
@@ -1261,66 +1265,64 @@ def lower_counterterm_vertices(
             ),
             [],
         ).append(structure)
+    defaults = dict(compiled.parameter_defaults)
+    known = {str(item["name"]) for item in payload["parameters"]}
+    for index, (name, default) in enumerate(sorted(parameters.items())):
+        if name in known:
+            raise ValueError(f"counterterm parameter {name!r} already exists")
+        payload["parameters"].append(
+            {
+                "expression": None,
+                "lhablock": _COUNTERTERM_PARAMETER_BLOCK,
+                "lhacode": [index + 1],
+                "name": name,
+                "nature": "external",
+                "parameter_type": "real",
+                "value": [float(default), 0.0],
+            }
+        )
+        defaults[name] = (float(default), 0.0)
     classes: dict[tuple[object, ...], list[CountertermStructure]] = {}
     for structure in structures:
-        identity = (
-            structure if coupling_classes is None else coupling_classes[structure]
-        )
         classes.setdefault(
-            (structure.orders, structure.component, structure.power, identity), []
+            (
+                structure.orders,
+                structure.component,
+                structure.power,
+                couplings[structure],
+            ),
+            [],
         ).append(structure)
-    parameters: dict[CountertermStructure, tuple[str, str]] = {}
-    couplings: dict[CountertermStructure, str] = {}
-    defaults = dict(compiled.parameter_defaults)
-    for index, members in enumerate(classes.values()):
-        names = (
-            f"{_COUNTERTERM_PARAMETER_BLOCK}_{index}_RE",
-            f"{_COUNTERTERM_PARAMETER_BLOCK}_{index}_IM",
-        )
-        for offset, name in enumerate(names):
-            payload["parameters"].append(
-                {
-                    "expression": None,
-                    "lhablock": _COUNTERTERM_PARAMETER_BLOCK,
-                    "lhacode": [2 * index + offset + 1],
-                    "name": name,
-                    "nature": "external",
-                    "parameter_type": "real",
-                    "value": [1.0, 0.0],
-                }
-            )
-            defaults[name] = (1.0, 0.0)
+    names: dict[CountertermStructure, str] = {}
+    for index, ((orders, _component, _power, expression), members) in enumerate(
+        classes.items()
+    ):
         coupling = f"{_COUNTERTERM_PARAMETER_BLOCK}C_{index}"
         for member in members:
-            parameters[member] = names
-            couplings[member] = coupling
+            names[member] = coupling
         payload["couplings"].append(
             {
-                "expression": (
-                    f"UFO::{{}}::{names[0]}+{_IMAGINARY_UNIT}*UFO::{{}}::{names[1]}"
-                ),
+                "expression": expression,
                 "name": coupling,
                 "orders": [
-                    *([name, value] for name, value in members[0].orders),
+                    *([name, value] for name, value in orders),
                     [COUNTERTERM_INSERTION_ORDER, 1],
                     [members[0].slot_order, 1],
                 ],
-                "value": [1.0, 1.0],
+                "value": [1.0, 0.0],
             }
         )
     vertex_members: dict[str, list[CountertermStructure]] = {}
-    for number, ((names, *_slot), members) in enumerate(sorted(groups.items())):
-        representations = [int(particles[name]["color"]) for name in names]
+    for number, ((legs, *_slot), members) in enumerate(sorted(groups.items())):
+        representations = [int(particles[name]["color"]) for name in legs]
         colours = sorted({member.colour for member in members})
         lorentz = sorted({member.lorentz for member in members})
-        cells = {
-            (member.colour, member.lorentz): couplings[member] for member in members
-        }
+        cells = {(member.colour, member.lorentz): names[member] for member in members}
         vertex_members[f"{_COUNTERTERM_PARAMETER_BLOCK}_V{number}"] = members
         payload["vertex_rules"].append(
             {
                 "name": f"{_COUNTERTERM_PARAMETER_BLOCK}_V{number}",
-                "particles": list(names),
+                "particles": list(legs),
                 "color_structures": [
                     tree_colour_source(colour, representations) for colour in colours
                 ],
@@ -1344,6 +1346,21 @@ def lower_counterterm_vertices(
         )
     started = time.perf_counter()
     ir = compile_ufo_model_ir(payload)
+    # Couplings the model's restriction makes vanish (e.g. off-diagonal CKM
+    # entries) are structural zeros: their terms are dropped, not lowered.
+    vanishing = {
+        term.coupling
+        for term in ir.vertex_terms
+        if term.coupling.startswith(f"{_COUNTERTERM_PARAMETER_BLOCK}C_")
+        and term.coupling_expression == "0"
+    }
+    if vanishing:
+        return lower_counterterm_vertices(
+            compiled,
+            {s: e for s, e in couplings.items() if names.get(s) not in vanishing},
+            parameters=parameters,
+            excluded_particles=excluded,
+        )
     lowered_vertices = {
         rule["name"]
         for rule in payload["vertex_rules"]
@@ -1379,6 +1396,7 @@ def lower_counterterm_vertices(
         json.dumps(
             [
                 sorted(excluded),
+                sorted(parameters.items()),
                 [
                     [
                         list(s.particles),
@@ -1387,6 +1405,7 @@ def lower_counterterm_vertices(
                         s.orders,
                         s.component,
                         s.power,
+                        couplings[s],
                     ]
                     for s in structures
                 ],
@@ -1411,7 +1430,7 @@ def lower_counterterm_vertices(
         },
         conversion_seconds=compiled.conversion_seconds,
     )
-    return CountertermLoweredModel(lowered, parameters)
+    return CountertermLoweredModel(lowered, names, tuple(sorted(parameters)))
 
 
 def _raise_for_unsupported(
