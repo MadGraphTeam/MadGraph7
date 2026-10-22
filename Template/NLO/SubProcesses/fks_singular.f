@@ -6892,6 +6892,9 @@ C to keep track of the various split orders
       double precision amp_tot
 c surrogate/Born ratio subtracted from (and added back to) the virtual
       double precision ave_ratio(0:amp_split_size)
+c fitted surrogate of the virtual needed for this point (grid setup, or
+c its channel uses it), and links-only pass of the I(reg) loop
+      logical vs_need,links_only
 
       include "pmass.inc"
       
@@ -7060,36 +7063,17 @@ C end of the external particle loop
 c     If doing MC over helicities, must sum over the two
 c     helicity contributions for the Q-terms of collinear limit.
  547  continue
-      if (fold.eq.0) vs_nlinks=0
-      if (abrv.eq.'virt') then
-c The fitted surrogate of the virtual needs the colour-linked Borns,
-c which the I(reg) terms below compute: separate virtual events skip
-c those, so compute them here in the same way.
-         if (VirtTrickSurrogate.ge.1 .and. fold.eq.0 .and.
-     $        need_color_links_used) then
-            nFKSprocess_save = nFKSprocess
-            need_color_links=need_color_links_used
-            need_charge_links=.false.
-            nFKSprocess=nFKSprocess_col
-            call fks_inc_chooser()
-            call sborn_frame(p_born,wgt1)
-            do i=1,fks_j_from_i(i_fks,0)
-               do j=1,i
-                  m=fks_j_from_i(i_fks,i)
-                  n=fks_j_from_i(i_fks,j)
-                  if ((m.ne.n .or. (m.eq.n .and. pmass(m).ne.ZERO))
-     &                 .and.n.ne.i_fks.and.m.ne.i_fks) then
-                     call sborn_sf_frame(p_born,m,n,wgt)
-                     if (wgt.ne.0d0) call virt_surrogate_add_link(m,n
-     $                    ,wgt)
-                  endif
-               enddo
-            enddo
-            nFKSprocess = nFKSprocess_save
-            call fks_inc_chooser()
-         endif
-         goto 548
+      if (fold.eq.0) then
+         vs_nlinks=0
+         vs_need=VirtTrickSurrogate.ge.1 .and. ichan.ge.1 .and.
+     $        ichan.le.vs_maxchan
+         if (vs_need) vs_need=imode.eq.0 .or. vs_on(ichan)
       endif
+c Separate virtual events skip the I(reg) terms. The fitted surrogate of
+c the virtual still needs their colour-linked Borns: then the loop below
+c runs for the QCD links only, without the I(reg) contributions.
+      links_only=abrv.eq.'virt'
+      if (links_only .and. .not.(vs_need .and. fold.eq.0)) goto 548
 c
 c I(reg) terms, eq 5.5 of FKS
       nFKSprocess_save = nFKSprocess
@@ -7100,7 +7084,7 @@ c I(reg) terms, eq 5.5 of FKS
             need_charge_links=.false.
             nFKSprocess=nFKSprocess_col
          else if (iord.eq.qed_pos) then
-            if (.not. need_charge_links_used) cycle
+            if (.not. need_charge_links_used .or. links_only) cycle
             need_charge_links=need_charge_links_used
             need_color_links=.false.
             nFKSprocess=nFKSprocess_chg
@@ -7124,10 +7108,11 @@ c because there is a call above in this subroutine
 C wgt includes the gs/w^2 
                   call sborn_sf_frame(p_born,m,n,wgt)
                   if (wgt.ne.0d0) then
+                     if (fold.eq.0 .and. iord.eq.qcd_pos .and. vs_need)
+     $                    call virt_surrogate_add_link(m,n,wgt)
+                     if (links_only) cycle
                      call eikonal_Ireg(p,m,n,xicut_used,eikIreg)
                      contr=contr+wgt*eikIreg
-                     if (fold.eq.0 .and. iord.eq.qcd_pos)
-     $                    call virt_surrogate_add_link(m,n,wgt)
                      do k=1,amp_split_size
                         amp_split_bsv(k) = amp_split_bsv(k) - 2d0 *
      $                       eikIreg * oneo8pi2 * amp_split_soft(k)
@@ -7181,14 +7166,12 @@ c polynomial fit or the grid. Chosen at the first fold and kept for the
 c other folds of the same point.
       if (fold.eq.0) then
          vs_ratio_set=.false.
-         if (VirtTrickSurrogate.ge.1) then
+         vs_featok=.false.
+         if (vs_need) then
             call virt_surrogate_features(born_wgt)
-            if (vs_featok .and. born_wgt.ne.0d0 .and. ichan.ge.1 .and.
-     $           ichan.le.vs_maxchan) then
-               if (vs_on(ichan)) then
-                  vs_ratio=vs_value(ichan)/born_wgt
-                  vs_ratio_set=.true.
-               endif
+            if (vs_featok .and. born_wgt.ne.0d0 .and. vs_on(ichan)) then
+               vs_ratio=vs_value(ichan)/born_wgt
+               vs_ratio_set=.true.
             endif
          endif
       endif

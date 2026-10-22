@@ -64,6 +64,13 @@
 ! nintegrals>6 : virtual and born order by order
 !
 
+module mint_dims
+! dimensions shared by virt_surrogate and mint_module
+  implicit none
+  integer, parameter, public :: maxchannels=20 ! set as least as large as in amcatnlo_run_interface
+end module mint_dims
+
+
 module virt_surrogate
 ! Fitted surrogate A of the virtual V for the virt-trick (VirtTrickSurrogate
 ! = 1, 2 in FKS_params.dat). The virt-trick computes V only at a fraction
@@ -85,8 +92,9 @@ module virt_surrogate
 ! grid. In event generation that means a smaller weight of the negative
 ! residual, sum |c| max(0,A-V) (this sets the negative separate-virtual
 ! events); in fixed order a smaller residual variance.
+  use mint_dims, only: maxchannels
   implicit none
-  integer, parameter :: vs_maxlinks=400, vs_maxfeat=94, vs_maxchan=20, vs_minpts=50
+  integer, parameter :: vs_maxlinks=400, vs_maxfeat=94, vs_maxchan=maxchannels, vs_minpts=50
 ! colour-linked Borns of the current point (I_reg terms); the partons (m,n)
 ! are numbered in the real-emission process whose i_fks is vs_lifks
   integer :: vs_nlinks=0, vs_lifks=0
@@ -105,11 +113,12 @@ module virt_surrogate
        vs_xty(vs_maxfeat,vs_maxchan)=0d0, vs_yty(vs_maxchan)=0d0
   double precision :: vs_theta(vs_maxfeat,vs_maxchan)=0d0
   logical :: vs_fitted(vs_maxchan)=.false., vs_on(vs_maxchan)=.false.
-  integer :: vs_npt(vs_maxchan)=0, vs_it_npt(vs_maxchan)=0
-! residual of the grid in the current iteration (first choice), and, on
-! the points computed since the first fit (both surrogates out of sample),
-! the residual second moments and the weights of the negative residuals
-  double precision :: vs_it_s2grid(vs_maxchan)=0d0
+  integer :: vs_npt(vs_maxchan)=0
+! residual second moment of the grid on all the points of the fit (first
+! choice), and, on the points computed since the first fit (both
+! surrogates out of sample), the residual second moments and the weights
+! of the negative residuals
+  double precision :: vs_s2grid(vs_maxchan)=0d0
   integer :: vs_cum_npt(vs_maxchan)=0
   double precision :: vs_cum_s2grid(vs_maxchan)=0d0, vs_cum_s2fit(vs_maxchan)=0d0, &
        vs_cum_neggrid(vs_maxchan)=0d0, vs_cum_negfit(vs_maxchan)=0d0
@@ -134,8 +143,7 @@ contains
     vs_xty(1:vs_nfeat,kchan)=vs_xty(1:vs_nfeat,kchan)+w*vs_feat(1:vs_nfeat)*virt
     vs_yty(kchan)=vs_yty(kchan)+w*virt**2
     vs_npt(kchan)=vs_npt(kchan)+1
-    vs_it_npt(kchan)=vs_it_npt(kchan)+1
-    vs_it_s2grid(kchan)=vs_it_s2grid(kchan)+w*(virt-surr_grid)**2
+    vs_s2grid(kchan)=vs_s2grid(kchan)+w*(virt-surr_grid)**2
     if (vs_fitted(kchan)) then
        afit=vs_value(kchan)
        vs_cum_npt(kchan)=vs_cum_npt(kchan)+1
@@ -199,19 +207,22 @@ contains
           else
              vs_on(kchan)=vs_cum_s2fit(kchan).lt.vs_cum_s2grid(kchan)
           endif
-       elseif (vs_it_npt(kchan).gt.0) then
-          ! first fit: in-sample residual of the fit against the grid's
+       elseif (signaware) then
+          ! first fit, event generation: the sign of the residual can only be
+          ! judged out of sample, so keep the grid until the next iteration
+          vs_on(kchan)=.false.
+       else
+          ! first fit, fixed order: in-sample residual of the fit against the
+          ! grid's on the same points
           s2fit=vs_yty(kchan)-2d0*dot_product(b(1:nf),vs_xty(1:nf,kchan)) &
                +dot_product(b(1:nf),matmul(vs_xtx(1:nf,1:nf,kchan),b(1:nf)))
-          vs_on(kchan)=s2fit/vs_npt(kchan).lt.vs_it_s2grid(kchan)/vs_it_npt(kchan)
+          vs_on(kchan)=s2fit.lt.vs_s2grid(kchan)
        endif
        vs_theta(1:nf,kchan)=b(1:nf)
        vs_fitted(kchan)=.true.
        write (*,'(a,i3,a,i7,a,l2)') ' fitted surrogate of the virtual, channel',kchan, &
             ': points',vs_npt(kchan),', used',vs_on(kchan)
     endif
-    vs_it_npt(kchan)=0
-    vs_it_s2grid(kchan)=0d0
   end subroutine vs_solve
 
 end module virt_surrogate
@@ -219,6 +230,7 @@ end module virt_surrogate
 
 module mint_module
   use FKSParams ! contains use_poly_virtual
+  use mint_dims
   use virt_surrogate
   implicit none
   integer, parameter, private :: nintervals=32    ! max number of intervals in the integration grids
@@ -231,7 +243,6 @@ module mint_module
   integer, parameter, private :: min_it1=5        ! minimal number of iterations in the mint step 1 phase
   integer, parameter, public :: max_fold=512     ! 8*8*8 is max folding for the three variables
   integer, parameter, private :: max_points=100000! maximum number of points to trow per iteration if not enough non-zero points can be found.
-  integer, parameter, public  :: maxchannels=20 ! set as least as large as in amcatnlo_run_interface
   ! Note that the number of intervals in the integration grids, 'nintervals', cannot be arbitrarily large.
   ! It should be equal to
   !     nintervals = min_inter * 2^n,
@@ -1278,24 +1289,27 @@ contains
        write (12,*) 'SPE',ncalls0,itmax,nhits_in_grids(kchan)
        write (12,*) 'AVE',virtual_fraction(kchan),average_virtual(0,kchan)
     enddo
-    if (use_poly_virtual) call save_polyfit(12)
     if (VirtTrickSurrogate.ge.1) then
-       ! fitted surrogate: used (0/1), fitted (0/1), number of features, coefficients
-       ! (numbers only: the split-order jobs' grids are combined line by line)
+       ! fitted surrogate: used (0/1), fitted (0/1), number of features,
+       ! coefficients. Numbers only, one record per channel, and before the
+       ! polynomial-fit (POL) lines: the grids of split-order jobs are combined
+       ! line by line, with the POL lines moved to the end.
        do kchan=1,nchans
-          write (12,*) 'VSU',merge(1,0,vs_on(kchan)),merge(1,0,vs_fitted(kchan)),vs_nfeat, &
-               vs_theta(1:vs_nfeat,kchan)
+          write (12,'(a,3(1x,i0),*(1x,es24.16e3))') 'VSU',merge(1,0,vs_on(kchan)), &
+               merge(1,0,vs_fitted(kchan)),vs_nfeat,vs_theta(1:vs_nfeat,kchan)
        enddo
     endif
+    if (use_poly_virtual) call save_polyfit(12)
     close (12)
   end subroutine write_grids_to_file
   
   subroutine read_grids_from_file
 ! Read the MINT integration grids from file
     implicit none
-    integer :: i,j,k,kchan,idum,ion,ifit
+    integer :: i,j,k,kchan,idum,ion,ifit,ios
     integer,dimension(maxchannels) :: points
     character(len=3) :: dummy
+    character(len=4096) :: line
     open (unit=12, file='mint_grids',status='old')
     ans(1,0)=0d0
     unc(1,0)=0d0
@@ -1327,6 +1341,21 @@ contains
     enddo
     unc(1,0)=sqrt(unc(1,0))
     ! polyfit stuff:
+    ! fitted surrogate: VSU lines, absent from grids written with
+    ! VirtTrickSurrogate=0 (then the grid surrogate is used)
+    vs_on(1:nchans)=.false.
+    vs_fitted(1:nchans)=.false.
+    do kchan=1,nchans
+       read (12,'(a)',iostat=ios) line
+       if (ios.ne.0) exit
+       if (index(adjustl(line),'VSU ').ne.1) then
+          backspace(12)
+          exit
+       endif
+       read (line,*) dummy,ion,ifit,vs_nfeat,(vs_theta(i,kchan),i=1,vs_nfeat)
+       vs_on(kchan)=ion.eq.1 .and. VirtTrickSurrogate.ge.1
+       vs_fitted(kchan)=ifit.eq.1
+    enddo
     if (use_poly_virtual) then
        do kchan=1,nchans
           read (12,*) dummy,points(kchan)
@@ -1337,13 +1366,6 @@ contains
        call init_polyfit(ndim-3,nchans,n_ord_virt,maxval(points(1:nchans)))
        call restore_polyfit(12)
        call do_polyfit()
-    endif
-    if (VirtTrickSurrogate.ge.1) then
-       do kchan=1,nchans
-          read (12,*) dummy,ion,ifit,vs_nfeat,(vs_theta(i,kchan),i=1,vs_nfeat)
-          vs_on(kchan)=ion.eq.1
-          vs_fitted(kchan)=ifit.eq.1
-       enddo
     endif
     close (12)
 ! check for zero cross-section: if restoring grids corresponding to
