@@ -496,6 +496,42 @@ impl V2Executor {
     }
 }
 
+/// Admit one plan v4 process of an artifact through the native loader
+/// (`rusticol_core::loop_artifact::open_loop_v2_artifact`) and describe it as
+/// JSON: identity, plan digest, families, reduction buckets, program shape,
+/// the declared metadata and the generation request.
+#[pyfunction]
+#[pyo3(signature = (path, process=None))]
+fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyResult<String> {
+    use rusticol_core::loop_artifact::{LOOP_V2_RUNTIME_CAPABILITY, open_loop_v2_artifact};
+
+    let loaded = py
+        .detach(|| open_loop_v2_artifact(path, process))
+        .map_err(error)?;
+    let program = &loaded.program;
+    let buckets: Vec<[usize; 3]> = program
+        .buckets()
+        .into_iter()
+        .map(|((n, r), families)| [n, r, families.len()])
+        .collect();
+    serde_json::to_string(&serde_json::json!({
+        "artifact_id": loaded.artifact_id,
+        "process_id": loaded.selection.process.id,
+        "runtime_capability": LOOP_V2_RUNTIME_CAPABILITY,
+        "plan_sha256": loaded.plan_sha256,
+        "plan_bytes": loaded.plan_json.len(),
+        "families": program.families.len(),
+        "buckets": buckets,
+        "legs": program.legs,
+        "rows": program.rows,
+        "columns": program.columns,
+        "metadata": loaded.metadata,
+        "request": loaded.request,
+    }))
+    .map_err(error)
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<V2Executor>()
+    module.add_class::<V2Executor>()?;
+    module.add_function(wrap_pyfunction!(admit_v2_artifact, module)?)
 }

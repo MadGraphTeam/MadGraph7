@@ -14,6 +14,13 @@ Checks, on the public surface only (TOML card, ``Generator``, ``Runtime``, CLI):
   true error, and no estimate without checks;
 * a fresh interpreter rebuilds the per-point inputs from the artifact and
   refuses a stored plan that differs from the regenerated one;
+* the native artifact loader (``load_loop_v2_artifact``) admits each plan v4
+  process, cross-checks families, buckets, legs, helicity rows and sectors
+  against the declarations, and refuses tampered declarations and digests;
+  the legacy native virtual runtime (the SDK's loader) refuses plan v4 with
+  its reason;
+* ``pyamplicol inspect`` summarizes v2 and legacy loop artifacts (engine,
+  sectors, families, buckets, colour degrees, plan digest);
 * requests v2 does not cover yet fail with the reason and leave
   ``loop.engine = "legacy"`` (the default) selectable;
 * a six-gluon plan v4 artifact stays below 20 MB (nightly).
@@ -464,6 +471,150 @@ def test_fresh_interpreter_rebuilds_inputs_and_refuses_a_different_plan(
         Runtime.load(full_colour, process="gg")
 
 
+def _rewrite_payloads(source: Path, destination: Path, edits) -> Path:
+    """Copy an artifact and replace JSON payloads under a re-signed manifest."""
+
+    import shutil
+
+    from pyamplicol.artifacts import ArtifactBuilder, load_manifest
+
+    shutil.copytree(source, destination)
+    manifest = load_manifest(destination)
+    records = {record.path: record for record in manifest.payloads}
+    with ArtifactBuilder(destination, mode="append") as builder:
+        for path, edit in edits.items():
+            value = edit(json.loads((destination / path).read_text()))
+            record = records[path]
+            builder.discard_payloads(path)
+            builder.add_json(
+                path,
+                value,
+                role=record.role,
+                process_id=record.process_id,
+                compact=True,
+            )
+        builder.finalize(
+            kind=manifest.kind,
+            producer=manifest.producer,
+            model=manifest.model,
+            configuration=manifest.configuration,
+            processes=manifest.processes,
+            runtime=manifest.runtime,
+            dependencies=manifest.dependencies,
+            default_process_id=manifest.default_process_id,
+            extensions=manifest.extensions,
+        )
+    return destination
+
+
+def test_native_loader_admits_plan_v4_and_refuses_tampering(
+    full_colour, loop_native, tmp_path
+):
+    from pyamplicol import Runtime
+    from pyamplicol.api.errors import ArtifactError
+    from pyamplicol.loops.v2.artifact import admit
+
+    for process, families in (("gg", 24), ("uux_ddxg", 42)):
+        admitted = admit(loop_native, full_colour, process)
+        physics = json.loads(
+            (full_colour / f"processes/{process}/physics.json").read_text()
+        )
+        execution = json.loads(
+            (full_colour / f"processes/{process}/execution.json").read_text()
+        )
+        assert admitted["runtime_capability"] == "rusticol.loop-runtime.v4"
+        assert admitted["plan_sha256"] == execution["plan_sha256"]
+        assert admitted["families"] == families == physics["metadata"]["families"]
+        assert admitted["buckets"] == physics["metadata"]["buckets"]
+        assert admitted["metadata"] == physics["metadata"]
+        assert admitted["request"] == execution["request"]
+        assert admitted["legs"] == len(physics["state_legs"])
+        assert admitted["rows"] == len(physics["helicities"])
+        assert admitted["columns"] == len(physics["metadata"]["sectors"])
+    info = Runtime.load(full_colour, process="gg").inspect()
+    assert info["native_admission"]["runtime_capability"] == "rusticol.loop-runtime.v4"
+    assert info["plan_bytes"] > 0
+
+    # The legacy virtual runtime, which the standalone SDK wraps, names the
+    # plan v4 loader instead of misreading the artifact.
+    with pytest.raises(ValueError, match="load_loop_v2_artifact"):
+        loop_native.NativeVirtualRuntime(str(full_colour), process="gg")
+
+    def shuffle_buckets(physics):
+        buckets = physics["metadata"]["buckets"]
+        buckets[0][2] += 1
+        buckets[-1][2] -= 1
+        return physics
+
+    def foreign_digest(execution):
+        execution["plan_sha256"] = "0" * 64
+        return execution
+
+    for name, edits, reason in (
+        (
+            "buckets",
+            {"processes/gg/physics.json": shuffle_buckets},
+            "buckets",
+        ),
+        (
+            "digest",
+            {"processes/gg/execution.json": foreign_digest},
+            "differs from its declared digest",
+        ),
+    ):
+        tampered = _rewrite_payloads(full_colour, tmp_path / name, edits)
+        with pytest.raises(ArtifactError, match=reason):
+            admit(loop_native, tampered, "gg")
+        with pytest.raises(ArtifactError, match=reason):
+            Runtime.load(tampered, process="gg")
+
+
+def test_inspect_summarizes_v2_loop_artifacts(full_colour):
+    from pyamplicol.artifacts import inspect_artifact
+    from pyamplicol.cli.main import main
+
+    inspection = inspect_artifact(full_colour)
+    by_id = {process.id: process for process in inspection.processes}
+    gg = by_id["gg"]
+    assert gg.execution_mode == "loop_recurrence"
+    assert gg.physical_helicities == 16 and gg.physical_color_components == 1
+    loop = gg.loop
+    assert loop is not None and loop.engine == "v2"
+    assert loop.runtime_capability == "rusticol.loop-runtime.v4"
+    assert loop.born_orders == ("QCD^4",)
+    assert loop.sectors == (("QCD^6", (("QCD^2", "QCD^4"),)),)
+    assert loop.families == 24 and sum(b[2] for b in loop.buckets) == 24
+    assert loop.color_degrees is None and loop.schedule == "backward"
+    assert loop.poles == "runtime-optional"
+    assert loop.stability_checks == ("rotation", "reduction-direction")
+    execution = json.loads((full_colour / "processes/gg/execution.json").read_text())
+    assert loop.plan_sha256 == execution["plan_sha256"]
+    assert by_id["uux_ddxg"].loop.families == 42
+
+    stdout = io.StringIO()
+    from contextlib import redirect_stdout
+
+    with redirect_stdout(stdout):
+        code = main(["inspect", str(full_colour), "--color", "never"])
+    assert code == 0
+    text = stdout.getvalue()
+    assert "families / buckets" in text and "24 families in 3 (N, R) buckets" in text
+    assert "rusticol.loop-runtime.v4" in text and "plan v4" in text
+
+
+def test_inspect_summarizes_legacy_loop_artifacts(saved_loop_fixture):
+    from pyamplicol.artifacts import inspect_artifact
+
+    inspection = inspect_artifact(saved_loop_fixture("sdk-mixed-source"))
+    (process,) = inspection.processes
+    loop = process.loop
+    assert loop is not None and loop.engine == "legacy"
+    assert loop.runtime_capability == "rusticol.loop-runtime.v3"
+    assert loop.families is None and loop.plan_sha256 is None
+    assert len(loop.sectors) == 3 and len(loop.born_orders) == 3
+    assert process.execution_mode == "loop_recurrence"
+
+
 @pytest.mark.loop_physics
 def test_cli_generates_and_evaluates_through_v2(
     loop_sm_compiled_model, loop_native, tmp_path
@@ -613,7 +764,7 @@ def test_six_gluon_plan_v4_artifact_is_below_twenty_megabytes(
 ):
     """gg -> gggg (1100 families, 98 MB of plan JSON) publishes < 20 MB."""
 
-    from pyamplicol.loops.v2.artifact import plan_digest, read_plan
+    from pyamplicol.loops.v2.artifact import admit, plan_digest, read_plan
 
     entries = (("gg4g", "g g > g g g g"),)
     card = _card(loop_sm_compiled_model, tmp_path / "artifact", entries).replace(
@@ -621,8 +772,12 @@ def test_six_gluon_plan_v4_artifact_is_below_twenty_megabytes(
     )
     output = _generate(card, tmp_path, entries)
     size = sum(path.stat().st_size for path in output.rglob("*") if path.is_file())
+    print(f"gg > gggg plan v4 artifact: {size} bytes")
     assert size < 20 * 10**6, size
     execution = json.loads((output / "processes/gg4g/execution.json").read_text())
     plan = read_plan(output / "processes/gg4g/loop-runtime.pacbin")
     assert plan_digest(plan) == execution["plan_sha256"]
     assert len(json.loads(plan)["families"]) == 1100
+    admitted = admit(loop_native, output, "gg4g")
+    assert admitted["families"] == 1100
+    assert admitted["plan_sha256"] == execution["plan_sha256"]

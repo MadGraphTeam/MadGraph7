@@ -285,6 +285,25 @@ def _recall(model: str, record: Mapping[str, Any], plan: str) -> Any:
 # --------------------------------------------------------------------- runtime
 
 
+def admit(native: Any, root: Path, process_id: str) -> dict[str, Any]:
+    """Admit one plan v4 process through the native artifact loader.
+
+    ``rusticol_core::loop_artifact::load_loop_v2_artifact`` checks the
+    envelope, the execution and physics declarations, the plan member's
+    digest, and validates the program, whose families, reduction buckets,
+    legs, helicity rows and sectors must equal the declarations. Returns its
+    description (identity, plan digest and size, buckets, program shape,
+    metadata and request).
+    """
+
+    try:
+        return cast(
+            dict[str, Any], json.loads(native.admit_v2_artifact(str(root), process_id))
+        )
+    except ValueError as error:
+        raise ArtifactError(f"plan v4 admission failed: {error}") from error
+
+
 def _select(manifest: Any, process: str | None) -> Mapping[str, Any]:
     records = cast(tuple[Mapping[str, Any], ...], manifest.processes)
     if process is None:
@@ -386,6 +405,10 @@ class V2VirtualRuntime:
             or physics.get("process_id") != process_id
         ):
             raise ArtifactError(f"process {process_id!r} is not a v2 virtual process")
+        native = load_loop_native()
+        admission = admit(native, root, process_id)
+        if admission["plan_sha256"] != execution["plan_sha256"]:
+            raise ArtifactError("the native loader admitted a different plan v4")
         plan_json = read_plan(
             root / f"processes/{process_id}/{execution['runtime_path']}"
         )
@@ -395,7 +418,6 @@ class V2VirtualRuntime:
         model = model_digest(model_payload)
         request = execution["request"]
         found = _recall(model, request, execution["plan_sha256"])
-        native = load_loop_native()
         if found is None:
             compiled = CompiledModel.from_dict(
                 model_payload, validate_fingerprint=False
@@ -414,6 +436,7 @@ class V2VirtualRuntime:
         # Constructing the f64 executor validates the stored program natively.
         self._executor.native("double")
         self._load_seconds = time.perf_counter() - started
+        self._admission = admission
         self._manifest = manifest
         self._process_id = process_id
         self._expression = str(selected["expression"])
@@ -508,6 +531,11 @@ class V2VirtualRuntime:
                     "engine": ENGINE,
                     **self._metadata,
                     "plan_sha256": self._execution["plan_sha256"],
+                    "plan_bytes": self._admission["plan_bytes"],
+                    "native_admission": {
+                        key: self._admission[key]
+                        for key in ("runtime_capability", "legs", "rows", "columns")
+                    },
                     "request": self._execution["request"],
                     "load_seconds": self._load_seconds,
                     "default_arithmetic": self.default_arithmetic,

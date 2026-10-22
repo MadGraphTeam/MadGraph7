@@ -13,6 +13,8 @@ from typing import Any, cast
 
 from pyamplicol._internal.versions import (
     EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
+    LOOP_RUNTIME_CAPABILITY,
+    LOOP_V2_RUNTIME_CAPABILITY,
     ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_RUNTIME_CAPABILITY,
@@ -92,6 +94,41 @@ class ArtifactAliasInspection:
     expression: str
     representative_id: str
     external_pdgs: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactLoopInspection:
+    """The virtual contribution of one loop process (design §12.3).
+
+    ``engine`` is ``"v2"`` for plan v4 processes (the shared recursion) and
+    ``"legacy"`` for the oracle runtime. ``born_orders`` are the squared Born
+    coupling orders and ``sectors`` the squared coupling-order sectors of the
+    virtual, each a separately returned partial result, with its (Born, loop)
+    amplitude orders. Families, reduction buckets ``(propagators, rank,
+    families)``, the leading N_c degree kept per sector at LC/NLC, the
+    schedule, the runtime options and the plan digest are declared by v2
+    processes only; ``runtime_bytes`` is the stored runtime PACBIN.
+    """
+
+    engine: str
+    runtime_capability: str
+    scheme_status: str
+    r2_strategy: str
+    arithmetic: tuple[str, ...]
+    born_orders: tuple[str, ...]
+    sectors: tuple[tuple[str, tuple[tuple[str, str], ...]], ...]
+    correlations: bool
+    resolved: bool
+    runtime_bytes: int
+    families: int | None = None
+    buckets: tuple[tuple[int, int, int], ...] = ()
+    color_degrees: tuple[tuple[str, int | None], ...] | None = None
+    color_contraction: str | None = None
+    schedule: str | None = None
+    poles: str | None = None
+    stability_checks: tuple[str, ...] = ()
+    rescue_policy: str | None = None
+    plan_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,6 +218,7 @@ class ArtifactProcessInspection:
     packed_output_bytes: int | None = None
     scatter_bytes: int | None = None
     native_profile_phases: tuple[str, ...] = ()
+    loop: ArtifactLoopInspection | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -2947,6 +2985,230 @@ def _process_inspection(
     )
 
 
+def _orders_text(value: object, context: str) -> str:
+    terms = []
+    for index, raw in enumerate(_sequence(value, context)):
+        term = _sequence(raw, f"{context}[{index}]")
+        if len(term) != 2:
+            raise ArtifactError(f"{context}[{index}] must be a (name, power) pair")
+        terms.append(
+            f"{_string(term[0], f'{context}[{index}]')}^"
+            f"{_integer(term[1], f'{context}[{index}]')}"
+        )
+    return " ".join(terms)
+
+
+def _loop_sectors(
+    value: object, context: str
+) -> tuple[tuple[str, tuple[tuple[str, str], ...]], ...]:
+    sectors = []
+    for index, raw in enumerate(_sequence(value, context)):
+        sector = _mapping(raw, f"{context}[{index}]")
+        pairs = []
+        for position, raw_pair in enumerate(
+            _sequence(sector.get("pairs"), f"{context}[{index}].pairs")
+        ):
+            pair = _mapping(raw_pair, f"{context}[{index}].pairs[{position}]")
+            pairs.append(
+                (
+                    _orders_text(pair.get("born"), f"{context}[{index}].born"),
+                    _orders_text(pair.get("loop"), f"{context}[{index}].loop"),
+                )
+            )
+        sectors.append(
+            (
+                _orders_text(sector.get("order"), f"{context}[{index}].order"),
+                tuple(pairs),
+            )
+        )
+    return tuple(sectors)
+
+
+def _loop_process_inspection(
+    manifest: ArtifactManifest,
+    process: Mapping[str, object],
+    execution_path: Path,
+    capability: str,
+) -> ArtifactProcessInspection:
+    """Summarize one virtual process from its execution and physics records."""
+
+    from pyamplicol.generation.loop_artifact import (
+        LOOP_PHYSICS_KIND,
+        LOOP_RUNTIME_KIND,
+    )
+
+    process_id = str(process["id"])
+    v2 = capability == LOOP_V2_RUNTIME_CAPABILITY
+    execution = _json_mapping(execution_path, "process execution manifest")
+    if (
+        execution.get("kind") != LOOP_RUNTIME_KIND
+        or execution.get("process_id") != process_id
+        or execution.get("schema_version") != (4 if v2 else 3)
+        or execution.get("required_runtime_capabilities") != [capability]
+        or (v2 and execution.get("engine") != "v2")
+    ):
+        raise ArtifactError(
+            f"process {process_id} execution record disagrees with {capability}"
+        )
+    physics_path = str(process["physics_path"])
+    physics = _json_mapping(
+        _artifact_path(manifest, physics_path, f"process {process_id}.physics_path"),
+        f"runtime physics metadata {physics_path}",
+    )
+    if (
+        physics.get("kind") != LOOP_PHYSICS_KIND
+        or physics.get("process_id") != process_id
+        or physics.get("schema_version") != (2 if v2 else 1)
+    ):
+        raise ArtifactError(f"{physics_path} is not the loop physics of {process_id}")
+    metadata = _mapping(physics.get("metadata"), f"{physics_path}.metadata")
+    if metadata.get("color_accuracy") != process.get("color_accuracy"):
+        raise ArtifactError(
+            f"{physics_path} colour accuracy disagrees with process {process_id}"
+        )
+    helicities = len(_sequence(physics.get("helicities"), f"{physics_path}.helicities"))
+    runtime_path = (
+        Path(execution_path).relative_to(manifest.root).parent
+        / _string(execution.get("runtime_path"), f"{execution_path}.runtime_path")
+    ).as_posix()
+    runtime = tuple(
+        payload for payload in manifest.payloads if payload.path == runtime_path
+    )
+    if len(runtime) != 1 or runtime[0].role != "evaluator-state":
+        raise ArtifactError(f"process {process_id} runtime payload is not declared")
+    context = f"{physics_path}.metadata"
+    if v2:
+        born = tuple(
+            _orders_text(order, f"{context}.born_orders")
+            for order in _sequence(metadata.get("born_orders"), context)
+        )
+        sectors = _loop_sectors(metadata.get("sectors"), f"{context}.sectors")
+        degrees = metadata.get("color_degrees")
+        loop = ArtifactLoopInspection(
+            engine="v2",
+            runtime_capability=capability,
+            scheme_status=_string(metadata.get("scheme_status"), context),
+            r2_strategy=_string(metadata.get("r2_strategy"), context),
+            arithmetic=tuple(
+                str(value)
+                for value in _sequence(metadata.get("arithmetic"), context)
+            ),
+            born_orders=born,
+            sectors=sectors,
+            correlations=False,
+            resolved=False,
+            runtime_bytes=runtime[0].size_bytes,
+            families=_integer(metadata.get("families"), f"{context}.families"),
+            buckets=tuple(
+                (
+                    _integer(bucket[0], f"{context}.buckets"),
+                    _integer(bucket[1], f"{context}.buckets"),
+                    _integer(bucket[2], f"{context}.buckets"),
+                )
+                for bucket in (
+                    _sequence(raw, f"{context}.buckets")
+                    for raw in _sequence(metadata.get("buckets"), context)
+                )
+            ),
+            color_degrees=(
+                None
+                if degrees is None
+                else tuple(
+                    (str(sector), None if degree is None else int(cast(int, degree)))
+                    for sector, degree in _mapping(
+                        degrees, f"{context}.color_degrees"
+                    ).items()
+                )
+            ),
+            color_contraction=_string(metadata.get("color_contraction"), context),
+            schedule=_string(metadata.get("schedule"), context),
+            poles=_string(metadata.get("poles"), context),
+            stability_checks=tuple(
+                str(value)
+                for value in _sequence(metadata.get("stability_checks"), context)
+            ),
+            rescue_policy=_string(metadata.get("rescue_policy"), context),
+            plan_sha256=_string(execution.get("plan_sha256"), str(execution_path)),
+        )
+    else:
+        orders = _mapping(metadata.get("orders"), f"{context}.orders")
+        born = tuple(
+            _orders_text(
+                _mapping(raw, f"{context}.orders.born").get("order"),
+                f"{context}.orders.born",
+            )
+            for raw in _sequence(orders.get("born"), f"{context}.orders.born")
+        )
+        loop = ArtifactLoopInspection(
+            engine="legacy",
+            runtime_capability=capability,
+            scheme_status=_string(metadata.get("scheme_status"), context),
+            r2_strategy=_string(metadata.get("r2_strategy"), context),
+            arithmetic=tuple(
+                str(value)
+                for value in _sequence(metadata.get("arithmetic"), context)
+            ),
+            born_orders=born,
+            sectors=_loop_sectors(orders.get("virtual"), f"{context}.orders.virtual"),
+            correlations=bool(metadata.get("correlations")),
+            resolved=bool(metadata.get("resolved")),
+            runtime_bytes=runtime[0].size_bytes,
+        )
+    external_pdgs = tuple(
+        cast(int, value)
+        for value in _sequence(
+            process.get("external_pdgs"), f"process {process_id}.external_pdgs"
+        )
+    )
+    return ArtifactProcessInspection(
+        id=process_id,
+        expression=str(process["expression"]),
+        color_accuracy=str(process["color_accuracy"]),
+        external_pdgs=external_pdgs,
+        default=process_id == manifest.default_process_id,
+        physical_helicities=helicities,
+        computed_helicities=helicities,
+        physical_color_components=1,
+        computed_color_components=1,
+        helicity_coverage="complete",
+        color_coverage="complete",
+        aliases=(),
+        execution_mode="loop_recurrence",
+        loop=loop,
+    )
+
+
+def _artifact_process_inspection(
+    manifest: ArtifactManifest,
+    process: Mapping[str, object],
+    execution_path: Path,
+) -> ArtifactProcessInspection:
+    capabilities = tuple(
+        str(value)
+        for value in _sequence(
+            process.get("required_runtime_capabilities"),
+            f"process {process['id']} required runtime capabilities",
+        )
+    )
+    loop = {LOOP_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPABILITY}.intersection(
+        capabilities
+    )
+    if loop:
+        if len(capabilities) != 1:
+            raise ArtifactError(
+                f"loop process {process['id']} must declare exactly its runtime "
+                "capability"
+            )
+        return _loop_process_inspection(manifest, process, execution_path, *loop)
+    return _process_inspection(
+        manifest,
+        process,
+        _execution_inspection(
+            manifest, execution_path, capabilities, process=process
+        ),
+    )
+
+
 def _group_member_inspection(
     member: GroupMember,
 ) -> ArtifactProcessGroupMemberInspection:
@@ -3129,18 +3391,8 @@ def inspect_artifact(artifact: str | Path) -> ArtifactInspection:
     runtime = manifest.runtime
     execution_paths = _execution_paths(manifest)
     processes = tuple(
-        _process_inspection(
-            manifest,
-            process,
-            _execution_inspection(
-                manifest,
-                execution_paths[str(process["id"])],
-                _sequence(
-                    process.get("required_runtime_capabilities"),
-                    f"process {process['id']} required runtime capabilities",
-                ),
-                process=process,
-            ),
+        _artifact_process_inspection(
+            manifest, process, execution_paths[str(process["id"])]
         )
         for process in manifest.processes
     )
@@ -3241,6 +3493,7 @@ __all__ = [
     "ArtifactAliasInspection",
     "ArtifactDependencyInspection",
     "ArtifactInspection",
+    "ArtifactLoopInspection",
     "ArtifactProcessGroupInspection",
     "ArtifactProcessGroupMemberInspection",
     "ArtifactProcessGroupSelection",
