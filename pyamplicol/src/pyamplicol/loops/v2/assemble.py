@@ -1599,8 +1599,12 @@ class _PointEvaluation:
 
         accuracy = slice_.request.accuracy
 
+        weights: dict = {}
+
         def interfere(bra, ket, degree, grade=0):
-            return _interfere(bra, ket, degree, accuracy, overlap, numbers, grade)
+            return _interfere(
+                bra, ket, degree, accuracy, overlap, numbers, grade, weights
+            )
 
         def degree_of(kind, sector):
             return None if degrees is None else degrees[kind][sector]
@@ -2083,11 +2087,14 @@ def _interfere(
     overlaps,
     numbers,
     grade: int = 0,
+    weights: dict | None = None,
 ) -> Any:
     """N_c^grade sum conj(bra) ket <t|t'> at N_c = 3, keeping the N_c powers
     that ``accuracy`` keeps below the leading degree ``degree``
-    (``colour.kept``)."""
+    (``colour.kept``). ``weights`` caches the carrier colour weights of one
+    point (they do not depend on the helicities)."""
 
+    weights = {} if weights is None else weights
     total = numbers.zero
     for (left, p), a in bra.items():
         conjugate = a.conjugate()
@@ -2096,7 +2103,12 @@ def _interfere(
                 exponent = power + p + q + grade
                 if not kept(exponent, degree, accuracy):
                     continue
-                weight = numbers.colour(cell.scaled(Fraction(NC) ** exponent), 0)
+                key = (left, right, power, exponent)
+                weight = weights.get(key)
+                if weight is None:
+                    weight = weights[key] = numbers.colour(
+                        cell.scaled(Fraction(NC) ** exponent), 0
+                    )
                 total = total + conjugate * b * weight
     return total
 
