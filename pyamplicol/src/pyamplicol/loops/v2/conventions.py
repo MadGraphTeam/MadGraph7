@@ -73,7 +73,7 @@ from typing import Any
 from pyamplicol.generation.fermion_ordering import _fermion_rep_requires_exterior_sign
 
 from .blocks import _open_last, _parity, identity_pairing_sign
-from .families import _model_data
+from .families import model_data
 from .skeletons import Content, Skeleton
 
 GHOST_SPIN = -1
@@ -143,7 +143,7 @@ class TreeReading:
     """``reference_executor.CatalogueKinematics`` leg hook for tree rows."""
 
     def __init__(self, native_model: Any):
-        data = _model_data(native_model)
+        data = model_data(native_model)
         self._particles = {
             rule["name"]: rule["particles"] for rule in data["vertex_rules"]
         }
@@ -164,7 +164,7 @@ class LeafWeights:
     """
 
     def __init__(self, native_model: Any, ends: Mapping[int, int]):
-        data = _model_data(native_model)
+        data = model_data(native_model)
         self._particles = {p["name"]: p for p in data["particles"]}
         self._rules = {rule["name"]: rule for rule in data["vertex_rules"]}
         self._lorentz = {

@@ -20,6 +20,15 @@ Example::
 ``[E, px, py, pz]`` momenta in MadGraph's leg order; ``--work`` receives one
 MadGraph standalone output per process. T-channel widths are kept
 (``zerowidth_tchannel False``) so propagators match a fixed-width recursion.
+
+Colour-flow amplitudes ``JAMP`` are zeroed before MadGraph assigns them:
+MadGraph 3.7 leaves the entries no diagram feeds unset (u u~ > d d~ s s~).
+
+``--colour lc`` records pyAmpliCol's leading colour instead: the diagonal of
+MadGraph's colour matrix, off-diagonal entries set to zero. That is the
+colour-flow leading colour only where MadGraph's colour basis is the colour-flow
+basis, products of Kronecker deltas ``T(i,j)``, so it is refused for processes
+with external gluons.
 """
 
 from __future__ import annotations
@@ -32,6 +41,16 @@ from pathlib import Path
 
 _SPLIT_ORDER_NAMES = ("QCD", "QED")
 _DATA_RE = re.compile(r"DATA \(SQSPLITORDERS\(\s*(\d+),I\),I=\s*1,\s*\d+\) /([^/]*)/")
+# One packed colour-matrix row and the basis element it belongs to.
+_CF_RE = re.compile(
+    r"(DATA \(CF\(I\),I=\s*\d+,\s*\d+\) /)([^/]*)(/\n)((?:C\s+-?\d.*\n)+)"
+)
+_DELTA_RE = re.compile(r"T\(\d+,\d+\)")
+# The declaration of the colour-flow amplitudes and the first statement that
+# assigns one of them, in each MATRIX routine.
+_JAMP_RE = re.compile(
+    r"(COMPLEX\*16 JAMP\(NCOLOR,NAMPSO\)\n.*?\n)(      (?:TMP_)?JAMP\()", re.S
+)
 _DRIVER = """      PROGRAM PYAMPLICOL_SPLIT_ORDERS
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
@@ -97,6 +116,45 @@ def _squared_orders(matrix: str) -> list[dict[str, int]]:
     ]
 
 
+def _zero_colour_amplitudes(matrix: str) -> str:
+    """Zero ``JAMP`` before it is assigned.
+
+    MadGraph 3.7 skips the assignment of colour-flow amplitudes that no
+    diagram of an amplitude order feeds (u u~ > d d~ s s~ leaves three entries
+    of the pure-electroweak order unset), so they would hold whatever the
+    stack held and the squared orders would differ between identical runs.
+    """
+
+    matrix, count = _JAMP_RE.subn(r"\1      JAMP(:,:) = (0D0,0D0)\n\2", matrix)
+    if count == 0:
+        raise SystemExit("MadGraph colour-flow amplitudes JAMP not found")
+    return matrix
+
+
+def _leading_colour(matrix: str) -> str:
+    """Keep the diagonal of the packed colour matrix (one DATA row per basis
+    element: diagonal entry first, then the doubled off-diagonal entries)."""
+
+    rows = _CF_RE.findall(matrix)
+    if not rows:
+        raise SystemExit("MadGraph colour matrix not found")
+    for _head, _values, _end, basis in rows:
+        for line in basis.splitlines():
+            factors = line[1:].split()[1:]
+            if not factors or not all(_DELTA_RE.fullmatch(f) for f in factors):
+                raise SystemExit(
+                    "leading colour needs a basis of Kronecker deltas, got "
+                    + line.strip()
+                )
+
+    def diagonal(match: re.Match[str]) -> str:
+        values = match.group(2).split(",")
+        kept = [values[0]] + [re.sub(r"-?\d+", "0", value) for value in values[1:]]
+        return match.group(1) + ",".join(kept) + match.group(3) + match.group(4)
+
+    return _CF_RE.sub(diagonal, matrix)
+
+
 def _evaluate(
     subprocess_dir: Path, points: list[list[list[float]]]
 ) -> list[list[float]]:
@@ -142,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--process", action="append", required=True)
     parser.add_argument("--work", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--colour", choices=("full", "lc"), default="full")
     options = parser.parse_args(argv)
     points = json.loads(options.points.read_text())
     options.work.mkdir(parents=True, exist_ok=True)
@@ -153,7 +212,13 @@ def main(argv: list[str] | None = None) -> int:
             process,
             options.work.resolve() / f"process-{index}",
         )
-        orders = _squared_orders((subprocess_dir / "matrix.f").read_text())
+        matrix = subprocess_dir / "matrix.f"
+        source = matrix.read_text()
+        orders = _squared_orders(source)
+        source = _zero_colour_amplitudes(source)
+        if options.colour == "lc":
+            source = _leading_colour(source)
+        matrix.write_text(source)
         values = _evaluate(subprocess_dir, points[process])
         if any(len(row) != len(orders) + 1 for row in values):
             raise SystemExit("MadGraph split-order output has the wrong width")
@@ -172,6 +237,7 @@ def main(argv: list[str] | None = None) -> int:
                 "kind": "pyamplicol-madgraph-split-orders-v1",
                 "madgraph": options.madgraph.name,
                 "model": options.model,
+                "colour": options.colour,
                 "zerowidth_tchannel": False,
                 "processes": references,
             },

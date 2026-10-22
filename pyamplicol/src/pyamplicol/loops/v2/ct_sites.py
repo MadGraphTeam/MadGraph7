@@ -114,9 +114,9 @@ from .families import (
     FamilySet,
     LoopOrderSelection,
     Orders,
-    _model_data,
     _set_partitions,
     add_orders,
+    model_data,
 )
 
 # Kinds whose alternatives must equal a witness's loop species (MadLoop).
@@ -255,7 +255,7 @@ def ghost_partners(native_model: Any) -> dict[int, int]:
     such unique vertex has no partner and its witnesses need their own rules.
     """
 
-    data = _model_data(native_model)
+    data = model_data(native_model)
     by_name = _particles(data)
     found: dict[int, set[int]] = defaultdict(set)
     for rule in data["vertex_rules"]:
@@ -288,7 +288,7 @@ def divergent_witnesses(
     counting (effective theories); such models are refused here.
     """
 
-    by_name = _particles(_model_data(native_model))
+    by_name = _particles(model_data(native_model))
     members: dict[str, set[str]] = defaultdict(set)
     for member, representative in families.merged.items():
         members[representative].add(member)
@@ -398,7 +398,7 @@ def generate_counterterm_sites(
     instead of ``SiteClosure.terms``.
     """
 
-    data = _model_data(native_model)
+    data = model_data(native_model)
     names = {int(entry["pdg_code"]): entry["name"] for entry in data["particles"]}
     for name, rule in rules.items():
         if rule.kind not in COUNTERTERM_KINDS:
@@ -611,7 +611,7 @@ class SiteClosure:
     def __init__(
         self, blocks: TreeBlocks, native_model: Any, catalogue: LoopKernelCatalogue
     ):
-        data = _model_data(native_model)
+        data = model_data(native_model)
         self.tree = blocks
         self.catalogue = catalogue
         self._fields = _NativeFields.of(data)
