@@ -620,23 +620,42 @@ class NativeExecutor:
         self.threads = threads
         self.forms = forms
         self._plan_json = self.exported.json()
-        self._native: dict[tuple[str, int | None], Any] = {}
+        self._native: dict[tuple[str, int | None, int], Any] = {}
 
-    def native(self, arithmetic: Arithmetic, digits: int | None = None) -> Any:
-        """The native executor of one carrier (``digits`` for ``arbitrary``)."""
+    def native(
+        self,
+        arithmetic: Arithmetic,
+        digits: int | None = None,
+        points: int | None = None,
+    ) -> Any:
+        """The native executor of one carrier (``digits`` for ``arbitrary``)
+        for batches of ``points`` points (``lanes_for``)."""
 
-        key = (arithmetic, digits)
+        lanes = self.lanes_for(arithmetic, points)
+        key = (arithmetic, digits, lanes)
         found = self._native.get(key)
         if found is None:
             found = self._native[key] = self.slice.native.V2Executor(
                 self._plan_json,
                 arithmetic,
                 digits,
-                lanes=self.lanes,
+                lanes=lanes,
                 threads=self.threads,
                 forms=self.forms,
             )
         return found
+
+    def lanes_for(self, arithmetic: Arithmetic, points: int | None) -> int:
+        """Lanes per chunk: the configured count in binary64 (SIMD lanes);
+        in the other carriers, whose lanes are scalar loops that cost as much
+        padded as filled, the smallest supported count holding the batch."""
+
+        if arithmetic == "double" or points is None:
+            return self.lanes
+        lanes = 1
+        while lanes < min(points, self.lanes):
+            lanes *= 2
+        return lanes
 
     # -- inputs ---------------------------------------------------------------
 
@@ -771,7 +790,7 @@ class NativeExecutor:
             if arithmetic != "arbitrary":
                 raise ValueError("double-double reads arbitrary-precision inputs")
             arithmetic, digits = "double-double", None
-        native = self.native(arithmetic, digits)
+        native = self.native(arithmetic, digits, len(evaluations))
         raw = native.numerators(inputs, schedule)
         return [self._numerators(point, arithmetic) for point in raw]
 
@@ -852,7 +871,7 @@ class NativeExecutor:
             points, scales, parameters, precision, poles
         )
         arithmetic, digits = self._arithmetic(precision, False)
-        native = self.native(arithmetic, digits)
+        native = self.native(arithmetic, digits, len(evaluations))
         output = native.evaluate(
             self._inputs(evaluations, arithmetic), poles=poles, check=retest
         )
