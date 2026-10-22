@@ -1977,6 +1977,9 @@ This will take effect only in a NEW terminal
             raise self.InvalidCmd('%s is not a valid directory' % args[0])
 
         mode = self.find_output_type(path)
+        if mode == 'madweight':
+            raise self.InvalidCmd('launch on a madweight directory is no longer supported; '
+                                  'MadWeight has been removed')
 
         args[0] = mode
         args.append(path)
@@ -9555,23 +9558,6 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             ext_program = launch_ext.aMCatNLOLauncher( args[1], self,
                                                        shell = isinstance(self, cmd.CmdShell),
                                                         **options)
-        elif args[0] == 'madweight':
-            import madgraph.interface.madweight_interface as madweight_interface
-            if options['interactive']:
-                if isinstance(self, cmd.CmdShell):
-                    MW = madweight_interface.MadWeightCmdShell(me_dir=args[1], options=self.options)
-                else:
-                    MW = madweight_interface.MadWeightCmd(me_dir=args[1],options=self.options)
-                # transfer interactive configuration
-                config_line = [l for l in self.history if l.strip().startswith('set')
-                               and not cmd.is_question_answer(l)]
-                for line in config_line:
-                    MW.exec_cmd(line)
-                stop = self.define_child_cmd_interface(MW)                
-                return stop
-            ext_program = launch_ext.MWLauncher( self, args[1],
-                                                 shell = isinstance(self, cmd.CmdShell),
-                                                 options=self.options,**options)            
         elif args[0] == 'mg7':
             me_dir = args[1]
             # An mg7 output runs in this process, exactly like a madevent one:
@@ -13119,7 +13105,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         run) plus a ready-to-use citations.bib and a citations.md summary.
         """
         runnable = ['madevent', 'standalone_fortran', 'NLO',
-                    'madweight', 'matchbox', 'mg7', 'mg7_v5', 'standalone']
+                    'matchbox', 'mg7', 'mg7_v5', 'standalone']
         if self._export_format not in runnable or not self._export_dir:
             return
         try:
