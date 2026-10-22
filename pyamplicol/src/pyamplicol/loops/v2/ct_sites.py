@@ -386,6 +386,7 @@ def generate_counterterm_sites(
     zeros: Iterable[CertifiedZero] = (),
     whole_rules: bool = False,
     closed_rules: Iterable[str] | None = None,
+    root_mask: int | None = None,
 ) -> CountertermSites:
     """Admitted CT sites of a process, after the completeness check.
 
@@ -399,6 +400,8 @@ def generate_counterterm_sites(
     instead of ``SiteClosure.terms``. ``closed_rules`` restricts the sites to
     the named rules (the rules the CT recursion leaves to site closure,
     ``loops.v2.ct_recursion``); completeness is still checked on all rules.
+    ``root_mask`` keeps only the sites with that leg set as one block (the
+    CT vertices at the root of the counterterm closure, ``ct_closure``).
     """
 
     data = model_data(native_model)
@@ -431,7 +434,16 @@ def generate_counterterm_sites(
         if closed is not None and name not in closed:
             continue
         fields = tuple(names[pdg] for pdg in rule.particle_pdgs)
-        for parts in _set_partitions(full, len(fields), len(fields)):
+        if root_mask is None:
+            partitions = _set_partitions(full, len(fields), len(fields))
+        else:
+            partitions = (
+                (root_mask, *rest)
+                for rest in _set_partitions(
+                    full & ~root_mask, len(fields) - 1, len(fields) - 1
+                )
+            )
+        for parts in partitions:
             if len(parts) == 2 and any(part & (part - 1) == 0 for part in parts):
                 continue  # an external-leg insertion: an LSZ field factor
             for choice in product(*(blocks.currents(part) for part in parts)):

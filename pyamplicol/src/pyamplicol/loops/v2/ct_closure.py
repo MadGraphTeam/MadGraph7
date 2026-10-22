@@ -261,8 +261,9 @@ class CountertermClosure:
             selection,
             forbidden=forbidden,
             closed_rules=recursion.rules,
+            root_mask=1,
         )
-        return tuple(site for site in sites.sites if 1 in _site_masks(site))
+        return sites.sites
 
     @classmethod
     def build(
@@ -458,10 +459,6 @@ def _powers(recursion: CountertermRecursion, site: CountertermSite) -> tuple[int
     )
 
 
-def _site_masks(site: CountertermSite) -> tuple[int, ...]:
-    return tuple(block.mask for block in site.blocks)
-
-
 def _assigned(fields: Sequence[str], choice: Sequence[Any]) -> list[Any]:
     free, out = sorted(choice), []
     for name in fields:
@@ -553,6 +550,170 @@ def model_value(compiled: Any, expression: str, parameters: Mapping[str, Any], d
     return value.evaluate(substitutions, decimal_digit_precision=digits).to_decimal_tuple()
 
 
+
+
+
+# ------------------------------------------------------------------ production
+
+_LOWERED: dict[tuple[object, ...], tuple[Any, Any]] = {}
+
+
+def lowered_counterterm_model(
+    compiled: Any,
+    fixed_parameters: Mapping[str, Any],
+    *,
+    forbidden: Iterable[int] = (),
+) -> Any:
+    """The CT-lowered model of ``compiled`` for the closure, cached.
+
+    Every rule of the model (an unbounded preparation with the request's
+    ``fixed_parameters``) is lowered once per model, fixed parameters and
+    vetoed |PDG| codes, with the multi-trace colours.
+    """
+
+    from pyamplicol.loops.compiler import prepare_loop_request_model
+
+    from .ct_recursion import lower_model_counterterms
+
+    key = (
+        id(compiled),
+        tuple(sorted((str(k), str(v)) for k, v in fixed_parameters.items())),
+        tuple(sorted({abs(int(pdg)) for pdg in forbidden})),
+    )
+    found = _LOWERED.get(key)
+    if found is None or found[0] is not compiled:
+        prepared = prepare_loop_request_model(
+            compiled, fixed_parameters=dict(fixed_parameters)
+        )
+        lowered = lower_model_counterterms(
+            compiled,
+            prepared.counterterms.rules,
+            fixed_parameters=prepared.structure.fixed_parameters,
+            forbidden=key[2],
+            multi_trace=True,
+        )
+        found = _LOWERED[key] = (compiled, lowered)
+    return found[1]
+
+
+@dataclass
+class CountertermProgram:
+    """The CT amplitudes of one loop request in production (design §6.1).
+
+    ``blocks`` is the CT program (``CountertermBlocks``), ``root_sites`` its
+    CT-root sites; ``residual`` names the request's rules left to site
+    closure. ``bind`` attaches the root terms (``closure``) and the program's
+    tree rows (``rows``, an ``assemble.TreeRows``); ``point`` evaluates the
+    rows and Weyl factors at one point.
+    """
+
+    blocks: CountertermBlocks
+    root_sites: tuple[CountertermSite, ...]
+    closure: CountertermClosure | None = None
+    rows: Any = None
+
+    @property
+    def recursion(self) -> CountertermRecursion:
+        return self.blocks.recursion
+
+    @property
+    def residual(self) -> tuple[str, ...]:
+        return tuple(sorted(self.recursion.residual))
+
+    @classmethod
+    def build(
+        cls,
+        compiled: Any,
+        prepared: Any,
+        process: str,
+        families: FamilySet,
+        native_model: Any,
+        selection: LoopOrderSelection,
+        born_orders: Iterable[Orders],
+        *,
+        forbidden: Iterable[int] = (),
+        fixed_parameters: Mapping[str, Any] | None = None,
+    ) -> CountertermProgram:
+        """The CT program of a request (``prepared`` its loop-request model).
+
+        ``process`` is the request's process text, ``families`` and
+        ``native_model`` its family set and native model; ``fixed_parameters``
+        the request's fixed parameters (those of ``prepared``).
+        """
+
+        from pyamplicol.processes.model import build_model_process_ir
+
+        forbidden = tuple(forbidden)
+        lowered = lowered_counterterm_model(
+            compiled, dict(fixed_parameters or {}), forbidden=forbidden
+        )
+        rules = prepared.counterterms.rules
+        recursion = CountertermRecursion.build(
+            lowered,
+            rules,
+            families,
+            native_model,
+            selection,
+            born_orders,
+            forbidden=forbidden,
+        )
+        ir = build_model_process_ir(
+            process, lowered.lowered.compiled.ir, color_accuracy="full"
+        )
+        program = CountertermBlocks.build(
+            recursion, ir, ignored_particle_ids=forbidden
+        )
+        sites = CountertermClosure.root_sites(
+            program, families, rules, native_model, selection, forbidden=forbidden
+        )
+        return cls(program, sites)
+
+    def bind(
+        self, ordinary: Sequence[Sequence[Any]], native_model: Any, catalogue: Any
+    ) -> CountertermProgram:
+        """Attach the root terms and the tree rows (``catalogue`` binds the
+        ``counterterm_closure_entries``)."""
+
+        from .assemble import TreeRows
+
+        self.closure = CountertermClosure.build(
+            self.blocks, self.root_sites, ordinary, native_model, catalogue
+        )
+        self.rows = TreeRows(
+            self.blocks.blocks.blocks_dag, self.recursion.model.lowered.compiled
+        )
+        return self
+
+    def point(
+        self, point: Any, parameters: Mapping[str, str], numbers: Any, poles: bool
+    ) -> tuple[Any, dict[str, Any]]:
+        """Rows of the program and Weyl factors at one point.
+
+        ``parameters`` are the model parameters of the point (decimal
+        strings); the CT multiplicities and slot switches (pole slots off
+        without ``poles``) are added.
+        """
+
+        values = dict(parameters)
+        recursion = self.recursion
+        values.update(
+            {name: str(v) for name, v in recursion.parameter_values(poles=poles).items()}
+        )
+        recursion.model.check_parameters(
+            {name: complex(float(v)) for name, v in parameters.items()}
+        )
+        rows = self.rows.evaluate(point, values, numbers)
+        digits = numbers.precision.working_digits
+        scales = {}
+        for term in self.closure.terms:
+            if term.scale is not None and term.scale not in scales:
+                real, imag = model_value(
+                    recursion.model.lowered.compiled, term.scale, values, digits
+                )
+                scales[term.scale] = numbers.pair(real, imag)
+        return rows, scales
+
+
 __all__ = [
     "ROOT_COUNTERTERM",
     "ROOT_LINE",
@@ -561,7 +722,9 @@ __all__ = [
     "ClosureTerm",
     "CountertermBlocks",
     "CountertermClosure",
+    "CountertermProgram",
     "RootReachability",
     "counterterm_closure_entries",
+    "lowered_counterterm_model",
     "model_value",
 ]

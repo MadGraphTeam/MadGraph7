@@ -219,18 +219,26 @@ def _logical_model_parameter_symbols(
                 )
         else:
             logical_symbols[slot_name] = symbol
+    from symbolica import E
+
+    # Symbolica's exact imaginary unit: a binary64 1j would turn every exact
+    # rational it multiplies (e.g. a colour weight 1/N_c) into a binary64
+    # float, which caps arbitrary-precision evaluations at ~1e-17.
+    imaginary_unit = E("1i")
     for runtime_name, components in complex_components.items():
         domain = complex_domains[runtime_name]
         if "real" not in components and domain == "imaginary":
-            components["real"] = 0.0
+            components["real"] = 0
         if "imag" not in components and domain == "real":
-            components["imag"] = 0.0
+            components["imag"] = 0
         if set(components) != {"real", "imag"}:
             raise ValueError(
                 f"runtime model parameter {runtime_name!r} is missing a real "
                 "or imaginary slot"
             )
-        logical_symbols[runtime_name] = components["real"] + 1j * components["imag"]
+        logical_symbols[runtime_name] = (
+            components["real"] + imaginary_unit * components["imag"]
+        )
     return logical_symbols
 
 

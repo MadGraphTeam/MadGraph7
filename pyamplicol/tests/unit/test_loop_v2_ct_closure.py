@@ -101,8 +101,11 @@ def _closure(ct, lowered):
     sites = CountertermClosure.root_sites(
         program, ct.families, ct.rules, ct.data, ct.selection, forbidden=ct.vetoed
     )
+    # The request's rules declare the loop species (as the slice's sites do).
+    every = [entry for rule in ct.rules.values() for entry in rule.entries]
+    entries = [*counterterm_closure_entries(sites, ordinary), *every]
     catalogue = build_loop_kernel_catalogue(
-        ct.compiled, counterterm_entries=counterterm_closure_entries(sites, ordinary)
+        ct.compiled, counterterm_entries=list({id(e): e for e in entries}.values())
     )
     closure = CountertermClosure.build(program, sites, ordinary, ct.data, catalogue)
     outputs = tuple(sorted({term.coupling for term in closure.terms}))
@@ -434,3 +437,14 @@ def test_closure_equals_site_closure(ct_slice, closure_ct_model, name):
 
     ct = ct_slice(name)
     _assert_closure_equals_sites_and_legacy(ct, closure_ct_model(ct.vetoed), "double")
+
+
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize("name", ("gg_gg", "uux_ggg", "uux_ddxg", "dy"))
+def test_closure_equals_site_closure_at_200_bits(ct_slice, closure_ct_model, name):
+    """O6 and O1 of the closed CT amplitudes in the 200-bit carrier."""
+
+    ct = ct_slice(name)
+    _assert_closure_equals_sites_and_legacy(
+        ct, closure_ct_model(ct.vetoed), "arbitrary-200"
+    )

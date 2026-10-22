@@ -887,6 +887,9 @@ class LoopSlice:
     alpha_s_parameter: str | None
     loop_catalogue: Any = None
     fourier: SeedFourier | None = None
+    # The CT amplitudes from the tree recursion (``ct_closure``); the sites
+    # then hold only the rules it leaves to site closure.
+    counterterm_program: Any = None
     _cache: dict = field(default_factory=dict, repr=False)
 
     # -- generation ------------------------------------------------------------
@@ -974,6 +977,23 @@ class LoopSlice:
             colour,
             policy=_FRAME_POLICY,
         )
+        program = None
+        if request.accuracy == "full" and continuation is None:
+            # Production form of the counterterms (design §6.1): the tree
+            # recursion over the CT-lowered model, closed at leg 1.
+            from .ct_closure import CountertermProgram
+
+            program = CountertermProgram.build(
+                compiled,
+                prepared,
+                request.process,
+                families,
+                data,
+                selection,
+                blocks.born_orders,
+                forbidden=request.ignored_particle_ids,
+                fixed_parameters=fixed,
+            )
         sites = generate_counterterm_sites(
             families,
             table,
@@ -982,6 +1002,7 @@ class LoopSlice:
             selection,
             forbidden=request.ignored_particle_ids,
             whole_rules=continuation is not None,
+            closed_rules=None if program is None else program.residual,
         )
         insertions = external_field_insertions(
             table.legs,
@@ -993,10 +1014,14 @@ class LoopSlice:
         )
         ordinary = _ordinary_entries(prepared, data)
         entries = [e for site in sites.sites for e in site.rule.entries]
+        if program is not None:
+            entries += [e for site in program.root_sites for e in site.rule.entries]
         entries += [e for rows in ordinary for e in rows]
         catalogue = build_loop_kernel_catalogue(
             compiled, counterterm_entries=list({id(e): e for e in entries}.values())
         )
+        if program is not None:
+            program.bind(ordinary, data, catalogue)
         closure = SiteClosure(blocks, data, catalogue)
         readings = rx.reading_skeletons(plan)
         weights = LeafWeights(data, closure.fermion_ends)
@@ -1068,6 +1093,7 @@ class LoopSlice:
             scale_parameter=scale_parameter,
             alpha_s_parameter=alpha_s_parameter,
             loop_catalogue=loop_catalogue,
+            counterterm_program=program,
         )
         if request.accuracy != "full":
             slice_._prune_colour()
@@ -1289,6 +1315,12 @@ class LoopSlice:
                 for terms in self.born_terms.values()
                 for term in terms
             )
+            if self.counterterm_program is not None:
+                outputs.update(
+                    term.coupling
+                    for term in self.counterterm_program.closure.terms
+                    if term.coupling[1] in powers
+                )
             outputs.update(
                 (name, 0)
                 for terms in self.site_terms.values()
@@ -1551,6 +1583,12 @@ class _PointEvaluation:
             ]
         rows = slice_.tree_rows.evaluate(decimal_point, parameters, numbers)
         scalars = slice_.scalars(parameters, numbers, poles)
+        program = slice_.counterterm_program
+        self.counterterm_rows = (
+            None
+            if program is None
+            else program.point(decimal_point, parameters, numbers, poles)
+        )
         self.parameters = parameters
         self.scale = scale
         self._born_and_counterterms(rows, scalars, labels)
@@ -1695,6 +1733,8 @@ class _PointEvaluation:
                                 grade,
                                 numbers,
                             )
+            if self.counterterm_rows is not None:
+                self._closed_counterterms(loops, helicity, momenta, scalars, carrier)
             for (component, power, loop_order), vector in loops.items():
                 for order, amplitude in vectors.items():
                     sector = sectors.get((order, loop_order))
@@ -1725,6 +1765,42 @@ class _PointEvaluation:
         self.counterterms = {
             key: value.real / average for key, value in counterterms.items()
         }
+
+    def _closed_counterterms(self, loops, helicity, momenta, scalars, carrier) -> None:
+        """CT amplitudes of the tree recursion at one helicity row, into
+        ``loops`` (component, power, loop orders) -> colour vector
+        (``ct_closure``: root terms on the CT program's blocks)."""
+
+        program = self.slice.counterterm_program
+        rows, scales = self.counterterm_rows
+        numbers = self.numbers
+        powers = LAURENT_POWERS if self.poles else (0,)
+        closure = program.closure.closure
+        for item in program.closure.terms:
+            if item.power not in powers:
+                continue
+            values = []
+            for block in item.term.blocks:
+                want = tuple(sorted((leg, helicity[leg]) for leg in block.key.labels))
+                row = next((r for r in block.rows if r.helicities == want), None)
+                if row is None:
+                    break
+                variant = "source" if block.is_source else "propagated"
+                values.append(rows[(row.current_id, variant)])
+            else:
+                vectors = [momenta[block.key.external_mask] for block in item.term.blocks]
+                value = item.term.sign * closure.value(item.term, values, vectors, carrier)
+                value = item.multiplicity * value
+                if item.scale is not None:
+                    value = scales[item.scale] * value
+                for grade, coupling in scalars.get(item.coupling, {}).items():
+                    _add_graded(
+                        loops[item.component, item.power, item.orders],
+                        item.term.colour,
+                        coupling * value,
+                        grade,
+                        numbers,
+                    )
 
     def _amplitudes(self, vectors, index) -> dict[tuple[int, Orders], dict[int, Any]]:
         """A0 per (Born tensor, Born order) split into N_c grades (seeds).
