@@ -76,14 +76,38 @@ def _documented_payload(text: str) -> dict[str, object]:
     return tomllib.loads("\n".join(lines))
 
 
+# Virtual-only settings that the tree card cannot combine with its compiled
+# evaluator: they are documented as commented example assignments. Every other
+# registry leaf must be an active setting.
+_VIRTUAL_ONLY_LEAVES = frozenset(
+    {
+        "process.loop_coupling_orders",
+        "evaluation.arithmetic",
+        "evaluation.correlated_requests",
+        "evaluation.mu_r2",
+        "evaluation.mu_r2_file",
+        "evaluation.stability.absolute_tolerance",
+        "evaluation.stability.relative_tolerance",
+    }
+)
+_VIRTUAL_ONLY_SECTIONS = ("loop.model.", "loop.preparation")
+
+
+def _is_virtual_only(path: str) -> bool:
+    return path in _VIRTUAL_ONLY_LEAVES or path.startswith(_VIRTUAL_ONLY_SECTIONS)
+
+
 def test_all_options_is_an_exhaustive_commented_registry_snapshot() -> None:
     card = EXAMPLES / "all_options.toml"
     payload = _read_toml(card)
     text = card.read_text(encoding="utf-8")
 
-    # Virtual-only leaves that a tree card cannot combine stay commented.
-    assert _schema_leaf_paths(payload) <= set(FIELD_REGISTRY)
-    assert _schema_leaf_paths(_documented_payload(text)) == set(FIELD_REGISTRY)
+    active = _schema_leaf_paths(payload)
+    documented = _schema_leaf_paths(_documented_payload(text))
+    assert active <= set(FIELD_REGISTRY)
+    assert documented == set(FIELD_REGISTRY)
+    commented_only = documented - active
+    assert not {path for path in commented_only if not _is_virtual_only(path)}
     for path in FIELD_REGISTRY:
         assert f"# {path}:" in text, f"missing all-options comment for {path}"
 
