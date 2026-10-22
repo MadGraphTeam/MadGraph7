@@ -132,8 +132,8 @@ C     Coefficient construction for loop diagram with ID 7
      $ )
       CALL MP_FFV1L2_1(PL(0,13),W(5),GC_5,ZERO,ZERO,PL(0,14),COEFS)
       CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)
-      CALL MP_ML5_0_TERMINAL_WL_2_1(WL(1,0,1,13),4,COEFS,4,4,WL(1,0,1
-     $ ,14),WL_ENTRY_INEXACT)
+      CALL MP_ML5_0_TERMINAL_WL_2_1_FACTOR_FFV1L2_1(WL(1,0,1,13),4
+     $ ,COEFS,4,4,WL(1,0,1,14),WL_ENTRY_INEXACT)
       CALL MP_ML5_0_CREATE_LOOP_COEFS(WL(1,0,1,14),3,4,5,1,1,33,H)
 C     Coefficient construction for loop diagram with ID 8
       CALL MP_FFV1L1_2(PL(0,6),W(5),GC_5,ZERO,ZERO,PL(0,15),COEFS)
