@@ -40,12 +40,16 @@ with u the unit roundoff of the carrier and S the absolute sum of the
 contributions (sum_f |bare_f| plus the absolute local components): the
 factor 2 covers a difference of two evaluations with comparable rounding,
 which understates either one's error by up to about 2, and the floor covers
-roundings no check samples (master integrals at the same exact invariants,
-couplings, kernel constants, the final sums). Calibration on every slice point
-and on two exact rotations of each (36 binary64 samples, four processes)
-bounds the true error by 0.9 E or less for every configuration: the
-reduction check alone, one rotation, two rotations, and either with the
-reduction check.
+roundings no check samples (couplings, kernel constants, the final sums, and
+the master integrals unless the rescaled check runs).
+
+Calibration against Float(256) (DESIGN §10.4, O15: 2000 binary64 and 400
+double-double points each of gg -> ggg and uu~ -> e-e+dd~g) gives the rate at
+which the true error exceeds E in binary64: about 2.5 % for the cached
+reduction check alone (it cannot see the masters' own rounding), up to 0.6 %
+for one rotation, 0.2 % for the rescaled check and at most 0.1 % for the
+rescaled check with a rotation, the recommended configuration (none of the
+800 double-double points).
 
 ``StabilityEstimate.relative`` measures E against each sector's largest
 Laurent coefficient (the comparison metric of the oracles); ``coefficients``
