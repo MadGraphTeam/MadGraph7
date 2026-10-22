@@ -1523,7 +1523,6 @@ class Amplitude(base_objects.PhysicsObject):
 
         res = diag_list.__class__()                
         nb_removed = 0
-        misc.sprint('Diagram filter is ON', type(diag_list))
         model = self['process']['model'] 
         for diag in diag_list:
             if remove_diag(diag, model):

@@ -42,13 +42,12 @@ latest_validated_version = (99, 0, 0)
 """
 
 KEEP_ALL = "def remove_diag(diag, model=None):\n    return False\n"
-# keeps everything but writes the type of each diagram in the file RECORD
-# (written by setUp), also from the worker processes of a multicore generation
+# keeps everything but writes the type of each diagram in the file 'record'
+# of the plugin, also from the worker processes of a multicore generation
 RECORD_ALL = """import os
 def remove_diag(diag, model=None):
     with open(os.path.join(os.path.dirname(__file__), 'record'), 'a') as fsock:
-        fsock.write('%s %s\\n' % (type(diag).__name__,
-                    ' '.join(str(l['id']) for l in model and [] or [])))
+        fsock.write('%s\\n' % type(diag).__name__)
     return False
 """
 REMOVE_ALL = "def remove_diag(diag, model=None):\n    return True\n"

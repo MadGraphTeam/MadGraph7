@@ -60,18 +60,13 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
             self['ncores_for_proc_gen'] = 0
 
         self['loop_filter'] = None
-        # filter (see --loop_diagram_filter) applied to the loop diagrams of
-        # the virtual amplitudes; the one of the tree-level diagrams (born,
-        # real) is the 'diagram_filter' of the MultiProcess. Both are passed
-        # to each FKSProcess, which generates its virtual
-        self['loop_diagram_filter'] = False
     
     def get_sorted_keys(self):
         """Return particle property names as a nicely sorted list."""
         keys = super(FKSMultiProcess, self).get_sorted_keys()
         keys += ['born_processes', 'real_amplitudes', 'real_pdgs', 'has_isr', 
                  'has_fsr', 'spltting_types', 'OLP', 'ncores_for_proc_gen', 'ewsudakov',
-                 'loop_filter', 'loop_diagram_filter']
+                 'loop_filter']
         return keys
 
     def filter(self, name, value):
@@ -185,6 +180,10 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
             self['init_lep_split']=options['init_lep_split']
             del options['init_lep_split']
 
+        # filter (see --loop_diagram_filter) of the loop diagrams of the
+        # virtual amplitudes; the one of the tree-level diagrams (born, real)
+        # is the 'diagram_filter' of the MultiProcess. Both are given to each
+        # FKSProcess, which keeps them
         loop_diagram_filter = options.pop('loop_diagram_filter', False)
 
         # ncores_for_proc_gen has the following meaning
@@ -210,7 +209,6 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
                " For this, use the 'virt=' mode, without multiparticle labels.")
 
         self['OLP'] = olp
-        self['loop_diagram_filter'] = loop_diagram_filter
         self['ewsudakov'] = ewsudakov 
         self['ncores_for_proc_gen'] = ncores_for_proc_gen
 
@@ -277,7 +275,7 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
                                    init_lep_split=self['init_lep_split'], \
                                    ewsudakov = self['ewsudakov'], \
                                    diagram_filter = self['diagram_filter'],
-                                   loop_diagram_filter = self['loop_diagram_filter'])
+                                   loop_diagram_filter = loop_diagram_filter)
             self['born_processes'].append(born)
 
             born.generate_reals(self['pdgs'], self['real_amplitudes'], combine = False)

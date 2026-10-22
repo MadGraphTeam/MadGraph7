@@ -3985,8 +3985,6 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         
         return value
 
-    # Add a process to the existing multiprocess definition
-    # Generate a new amplitude
     def extract_diagram_filter(self, args, option='--diagram_filter'):
         """Remove the --diagram_filter[=PLUGINNAME] option from args and return
         the filter to use: False if absent, True for the filter of
@@ -4008,6 +4006,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     raise self.InvalidCmd(str(error))
         return diagram_filter
 
+    # Add a process to the existing multiprocess definition
+    # Generate a new amplitude
     def do_add(self, line, counter=0):
         """Generate an amplitude for a given process and add to
         existing amplitudes
