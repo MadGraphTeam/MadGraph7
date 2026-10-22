@@ -2012,14 +2012,33 @@ def _canonical_transition_alias_key(
     color: ColorContractionTemplateV1,
     transition: TransitionTemplateV1,
 ) -> str:
-    """Return an exact, orientation-independent transition proof key."""
+    """Return an exact, orientation-independent transition proof key.
+
+    A kernel whose two inputs exchange with a proven factor (WWA, WWZ, HWW,
+    any vertex with two same-dimension legs) admits both input orders of its
+    class representative, and the model keeps the order (0, 1) for both
+    mirrored orientations, e.g. (W+, W-) -> A and (W-, W+) -> A. The key
+    then states the inputs in the order that lists their state IDs
+    increasingly, carrying the exchange factor when that reverses the
+    certified order, so both orientations compare equal: kept twice, every
+    unordered parent pair would receive the vertex twice.
+    """
 
     order = tuple(int(value) for value in binding.canonical_input_order)
-    inverse_order = tuple(order.index(index) for index in (0, 1))
     contribution_factor = _multiply_exact(
         transition.exact_factor,
         color.exact_coefficient,
     )
+    if transition.input_exchange_factor is not None:
+        mirrored = (order[1], order[0])
+        states = transition.input_state_template_ids
+        if [states[index] for index in mirrored] < [states[index] for index in order]:
+            order = mirrored
+            contribution_factor = _multiply_exact(
+                contribution_factor,
+                transition.input_exchange_factor,
+            )
+    inverse_order = tuple(order.index(index) for index in (0, 1))
 
     def reordered(values: Sequence[Any]) -> list[Any]:
         return [values[index] for index in order]
