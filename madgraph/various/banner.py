@@ -6699,6 +6699,16 @@ class RunCardMG7(RunCard):
         if auto:
             self.auto_set.add(internal)
 
+    def gzip_configuration(self):
+        """The ``misc.configure_gzip`` settings given by the [run] section:
+        'auto' lets misc pick pigz, and a positive thread pool size caps it."""
+        run = self['run']
+        threads = run['cpu_thread_pool_size']
+        return {
+            'use_pigz': None if run['use_pigz'] == 'auto' else run['use_pigz'],
+            'nb_core': threads if threads > 0 else None,
+        }
+
     def default_setup(self):
         """Define every parameter of the default ``run_card.toml``."""
 
@@ -6725,6 +6735,9 @@ class RunCardMG7(RunCard):
             comment="-1 chooses automatically; x86: 1, 4, 8; Apple silicon: 1, 2")
         self.add_toml_param('run', 'cpu_thread_pool_size', -1, gridpack=True,
             comment="threads for the cpu devices; -1 chooses automatically")
+        self.add_toml_param('run', 'use_pigz', False, gridpack=True, auto=True,
+            allowed=['auto', True, False],
+            comment="compress large event files with pigz when available; auto detects it, false uses gzip")
         self.add_toml_param('run', 'gpu_thread_pool_size', 1, gridpack=True,
             comment="threads per gpu device")
         self.add_toml_param('run', 'combine_thread_pool_size', -1, gridpack=True,

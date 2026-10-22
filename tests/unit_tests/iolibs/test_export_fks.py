@@ -17,7 +17,8 @@
 from __future__ import absolute_import
 import copy
 import fractions
-import os 
+import os
+import re
 import sys
 import tempfile
 import glob
@@ -35,6 +36,7 @@ import tests.IOTests as IOTests
 import madgraph.interface.master_interface as MGCmd
 
 import madgraph.fks.fks_common as fks_common
+import madgraph.fks.fks_helas_objects as fks_helas
 import madgraph.core.base_objects as base_objects
 import madgraph.core.helas_objects as helas_objects
 import madgraph.iolibs.export_fks as export_fks
@@ -119,6 +121,71 @@ class TestBornDirCollision(unittest.TestCase):
         exporter.mkdir_born_dir('P%s' % right.shell_string(), right)
         self.assertEqual(sorted(os.listdir('.')),
                          ['P0_cc_c99c', 'P0_cc_c9c', 'P0_cc_cc'])
+
+
+class TestBornGscale(unittest.TestCase):
+    """gscale: when only alpha_S changed, born.f rescales its cached Born
+    amplitudes by (G'/G)**n instead of recomputing them (BORN_GSCALE). With
+    several split orders each one has its own power n, which must follow the
+    QCD order of the amplitudes, and each coupling is checked against the
+    QCD order of its interaction."""
+
+    @classmethod
+    def setUpClass(cls):
+        interface = MGCmd.MasterCmd()
+        interface.do_import('model loop_sm')
+        # s-channel gluon (QCD order 2) and photon/Z (QCD order 0)
+        interface.do_generate('u u~ > t t~ QCD^2<=4 QED^2<=4 [real=QCD]')
+        helas = fks_helas.FKSHelasMultiProcess(interface._fks_multi_proc)
+        cls.born_me = helas.get_matrix_elements()[0].born_me
+        cls.model = interface._curr_model
+
+    @staticmethod
+    def data(lines, name):
+        """The values of the Fortran array NAME in the DATA lines"""
+        values = []
+        for m in re.finditer(r'DATA \(%s\(I\),I=\d+,\d+\) /([-0-9,]+)/'
+                             % name, lines):
+            values += [int(v) for v in m.group(1).split(',')]
+        return values
+
+    def test_mixed_split_order_powers(self):
+        """Each amplitude, amplitude split order and squared split order
+        gets the power of G of its own QCD order."""
+
+        out = export_fks.ProcessExporterFortranFKS.get_born_gscale_data(
+                                                                self.born_me)
+        lines = out['gscale_data_lines']
+        amp_qcd = self.data(lines, 'AMPQCD')
+        self.assertEqual(sorted(amp_qcd), [0, 0, 2])
+        # the amplitude split orders are sorted by weight: QCD first
+        squared_orders, amp_orders = self.born_me.get_split_orders_mapping()
+        self.assertEqual(self.data(lines, 'AMPSOQCD'), [2, 0])
+        for (orders, numbers), power in zip(amp_orders, [2, 0]):
+            self.assertEqual(set(amp_qcd[n - 1] for n in numbers), {power})
+        # QCD^2=4, QCD^2=2 QED^2=2 and QED^2=4
+        self.assertEqual(self.data(lines, 'SQSOQCD'), [4, 2, 0])
+        self.assertIn('DATA GSCALE_FAST /.TRUE./', lines)
+        self.assertEqual(out['maxqcdpow'], 4)
+
+    def test_coupling_powers(self):
+        """The coupling of the gluon to the quarks must scale as G, the
+        electroweak ones not at all."""
+
+        out = export_fks.ProcessExporterFortranFKS.get_born_coupling_check_dict(
+                                                                self.born_me)
+        self.assertEqual(out['born_checks_amps'], '.TRUE.')
+        self.assertEqual(out['born_gscale'], '.TRUE.')
+        gluon = set()
+        for inter in self.model.get('interactions'):
+            pdgs = sorted(p.get_pdg_code() for p in inter.get('particles'))
+            if pdgs in ([-6, 6, 21], [-2, 2, 21]):
+                gluon.update(inter.get('couplings').values())
+        powers = dict(re.findall(r'abs\((\w+)-saved_coup\(\d+\)\*rpow\((\d)\)',
+                                 out['coup_gscale_lines']))
+        self.assertTrue(gluon & set(powers))
+        for name, power in powers.items():
+            self.assertEqual(power, '1' if name in gluon else '0', name)
 
 
 class IOExportFKSTest(IOTests.IOTestManager):

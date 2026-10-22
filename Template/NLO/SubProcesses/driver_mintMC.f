@@ -724,6 +724,8 @@ c
       common /cfl/fold,ifold_counter
       logical calculatedBorn
       common/ccalculatedBorn/calculatedBorn
+      logical check_born_amps, born_checks_amps
+      common/c_born_amps_check/check_born_amps,born_checks_amps
       integer              MCcntcalled
       common/c_MCcntcalled/MCcntcalled
       double precision virtual_over_born
@@ -795,7 +797,16 @@ c "npNLO".
 c The nbody contributions
          if (abrv.eq.'real') goto 11
          nbody=.true.
-         calculatedBorn=.false.
+c The folds of a phase-space point share its Born momenta (only xi_i,
+c y_ij and phi_i are folded), so a Born that checks its cached
+c amplitudes (born_checks_amps) keeps them: it compares the momenta and
+c the couplings at its next call, and recomputes or rescales them only
+c if they differ.
+         if (born_checks_amps) then
+            check_born_amps=.true.
+         else
+            calculatedBorn=.false.
+         endif
 c Pick the first one because that's the one with the soft singularity
          nFKS_picked_nbody=proc_map(proc_map(0,1),1)
          if (sum.eq.0) then
@@ -847,8 +858,15 @@ c The n+1-body contributions (including counter terms)
          if (abrv.eq.'born'.or.abrv(1:2).eq.'vi') goto 12
 c Set calculated Born to zero to prevent numerical inaccuracies: not
 c always exactly the same momenta in computation of Born when computed
-c for different nFKSprocess.
-         if(sum.eq.0) calculatedBorn=.false.
+c for different nFKSprocess. A Born that checks its cached amplitudes
+c compares all the components of the momenta instead.
+         if(sum.eq.0) then
+            if (born_checks_amps) then
+               check_born_amps=.true.
+            else
+               calculatedBorn=.false.
+            endif
+         endif
          nbody=.false.
          do i=1,proc_map(proc_map(0,1),0)
             wgt_me_real=0d0

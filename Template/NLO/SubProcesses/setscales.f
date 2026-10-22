@@ -216,8 +216,9 @@ c coupling should be set according to the real-emission kinematics,
 c even when computing the Born matrix elements.
 c A Born that checks its cached amplitudes (born_checks_amps) does not
 c need this: the next time it is called it compares the couplings it
-c uses and the momenta with the ones of its cached amplitudes, and
-c recomputes them if any differ.
+c uses and the momenta with the ones of its cached amplitudes. If only
+c alpha_S changed it rescales them by the power of g of each amplitude
+c (gscale), otherwise it recomputes them if any differ.
       if (born_checks_amps) then
         check_born_amps=.true.
       else
