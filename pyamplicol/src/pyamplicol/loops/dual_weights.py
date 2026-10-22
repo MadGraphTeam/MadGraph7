@@ -12,6 +12,7 @@ from itertools import combinations
 from math import factorial
 from typing import TYPE_CHECKING
 
+from .._internal.physics.symbols import symbols as symbol_registry
 from .physical import _saved
 from .symbolic_sums import symbolic_sum
 
@@ -293,10 +294,12 @@ def configure_dual_born_weights(program, requested, *, unavailable_reason=None):
 
 def prepare_dual_born_weights(bare, metrics=None):
     """Compile each exact order/metric bank before any family routing scatter."""
-    from symbolica import S
 
     metrics = (bare.loop_metric,) if metrics is None else tuple(metrics)
-    born = tuple(S(f"loop_dual_weights::born{i}") for i in range(len(bare.born_colors)))
+    born = tuple(
+        symbol_registry.qualified(f"loop_dual_weights::born{i}")
+        for i in range(len(bare.born_colors))
+    )
     loop_orders = tuple(
         graph.order
         for graph, terms in zip(
@@ -330,7 +333,6 @@ def family_weight_projection_state(
     bare, weights, indices, powers, sectors, *, helicities=None
 ):
     """Assemble routed coefficients using explicit selections of shared weights."""
-    from symbolica import S
 
     helicities = bare.helicities if helicities is None else helicities
     selected = weights.family_columns(bare, indices, sectors)
@@ -343,7 +345,9 @@ def family_weight_projection_state(
     parameters = []
     for helicity in range(len(helicities)):
         symbols = {
-            weights.columns[column]: S(f"loop_dual_weights::weight{helicity}_{column}")
+            weights.columns[column]: symbol_registry.qualified(
+                f"loop_dual_weights::weight{helicity}_{column}"
+            )
             for column in selected
         }
         parameters.extend(symbols.values())
@@ -351,7 +355,7 @@ def family_weight_projection_state(
             for local, labels in enumerate(bare.loop_reduction_powers[index]):
                 term = bare.loop_term_offsets[index] + local
                 for column, power in enumerate(labels):
-                    coefficient = S(
+                    coefficient = symbol_registry.qualified(
                         f"loop_dual_weights::coefficient{helicity}_{index}_{local}_{column}"
                     )
                     parameters.append(coefficient)

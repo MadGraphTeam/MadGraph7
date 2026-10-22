@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .._internal.physics.symbols import symbols
+
 
 @dataclass(frozen=True, slots=True)
 class DimensionalYangMillsKernels:
@@ -20,7 +22,7 @@ class DimensionalYangMillsKernels:
     weighted_edge: int | None = None
 
     def bind(self, graph, loop_components, q):
-        from symbolica import E, S
+        from symbolica import E
 
         if self.dimension not in (4, 5, 6, 7):
             raise ValueError("prototype component dimensions are four through seven")
@@ -70,7 +72,10 @@ class DimensionalYangMillsKernels:
             chosen,
             sign,
             species == {-1},
-            (S("loop_evanescent::mu"), S("loop_evanescent::epsilon")),
+            (
+                symbols.qualified("loop_evanescent::mu"),
+                symbols.qualified("loop_evanescent::epsilon"),
+            ),
         )
 
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .._internal.physics.symbols import symbols
 from .family_projectors import bind_family_projector
 from .physical import _saved
 from .symbolic_sums import symbolic_sum
@@ -95,7 +96,7 @@ class PreparedDirectedModel:
 
 
 def prepare_directed_bare(bare, histories, *, spin_layout=None, color_bank=None):
-    from symbolica import E, S
+    from symbolica import E
 
     from pyamplicol.color.connections import ColorConnection
 
@@ -128,7 +129,7 @@ def prepare_directed_bare(bare, histories, *, spin_layout=None, color_bank=None)
         for connection in pair
     ):
         raise ValueError("history legs differ from the native physical colour ports")
-    nc = S("loop_directed_physical::Nc", is_real=True)
+    nc = symbols.qualified("loop_directed_physical::Nc", is_real=True)
     space = SUNColorSpace(nc)
 
     def fixed(matrix):
@@ -198,7 +199,8 @@ def prepare_directed_bare(bare, histories, *, spin_layout=None, color_bank=None)
     )
     poles = {
         channel: tuple(
-            S(f"loop_directed_physical::pole_{index}_{pole}") for pole in range(3)
+            symbols.qualified(f"loop_directed_physical::pole_{index}_{pole}")
+            for pole in range(3)
         )
         for index, channel in enumerate(channels)
     }
@@ -248,7 +250,7 @@ def prepare_directed_model(model, prepared):
         () if prepared is None else prepared.histories,
         color_bank=None if prepared is None else prepared.color_bank,
     )
-    from symbolica import E, S
+    from symbolica import E
 
     from .color_bilinears import SUNColorSpace
     from .color_connections import directed_color_bilinears
@@ -260,7 +262,7 @@ def prepare_directed_model(model, prepared):
     prepared.require_owner(model.bare)
     bare = model.bare
     _, born_colors, _ = _physical_color_ports(bare)
-    nc = S("loop_directed_model::Nc", is_real=True)
+    nc = symbols.qualified("loop_directed_model::Nc", is_real=True)
     space = SUNColorSpace(nc)
     color_cache = {}
 
@@ -324,7 +326,7 @@ def prepare_directed_model(model, prepared):
     parameters = []
     for helicity in range(len(prepared.helicities)):
         born = tuple(
-            S(f"loop_directed_model::born_{helicity}_{index}")
+            symbols.qualified(f"loop_directed_model::born_{helicity}_{index}")
             for index in range(len(born_colors))
         )
         parameters.extend(born)
@@ -332,7 +334,7 @@ def prepare_directed_model(model, prepared):
             zip(model.currents, current_weights, strict=True)
         ):
             amplitudes = tuple(
-                S(f"loop_directed_model::ct_{helicity}_{index}_{term}")
+                symbols.qualified(f"loop_directed_model::ct_{helicity}_{index}_{term}")
                 for term in range(current.term_count)
             )
             parameters.extend(amplitudes)
@@ -352,7 +354,7 @@ def prepare_directed_model(model, prepared):
         for index, (current, weights) in enumerate(
             zip(model.field_currents, field_weights, strict=True)
         ):
-            factor = S(f"loop_directed_model::field_{helicity}_{index}")
+            factor = symbols.qualified(f"loop_directed_model::field_{helicity}_{index}")
             parameters.append(factor)
             amplitudes = tuple(factor * born[right] for right in current.born_indices)
             _accumulate_counterterm(
@@ -371,7 +373,9 @@ def prepare_directed_model(model, prepared):
         [symbolic_sum(terms) for row in cross_terms for terms in row], parameters
     )
     # Input rows are bare first/second then the six effective-rule blocks.
-    inputs = tuple(S(f"loop_directed_model::sum_{i}") for i in range(8 * width))
+    inputs = tuple(
+        symbols.qualified(f"loop_directed_model::sum_{i}") for i in range(8 * width)
+    )
     first = [
         sum((inputs[k * width + i] for k in (0, 2, 4, 6)), E("0")) for i in range(width)
     ]
@@ -438,12 +442,12 @@ def _directed_order_sum_state(histories, order_layout):
     Each block packs history/order/(pole). Outputs pack history/(Born + eight
     Laurent triples).
     """
-    from symbolica import E, S
+    from symbolica import E
 
     born, virtual = len(order_layout.born), len(order_layout.virtual)
     width = histories * virtual * 3
     inputs = tuple(
-        S(f"loop_directed_model::order_sum_{index}")
+        symbols.qualified(f"loop_directed_model::order_sum_{index}")
         for index in range(histories * born + 8 * width)
     )
     outputs = []

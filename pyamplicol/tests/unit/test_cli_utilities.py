@@ -143,6 +143,41 @@ def test_examples_copy_requires_force_for_nonempty_destination(
     assert run_cli(("examples", "copy", str(destination), "--force")) == 0
 
 
+def _installed_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    environment["PATH"] = "/usr/bin:/bin"
+    return environment
+
+
+def test_copied_profiling_campaign_launcher_runs_from_installed_package(
+    tmp_path: Path,
+) -> None:
+    # Outside a checkout the launcher imports the campaign controller that only
+    # the built wheel bundles; source-tree runs cannot provide it.
+    probe = subprocess.run(
+        (sys.executable, "-c", "import pyamplicol._performance_report"),
+        check=False,
+        capture_output=True,
+        env=_installed_environment(),
+    )
+    if probe.returncode != 0:
+        pytest.skip(
+            "needs the installed pyAmpliCol wheel (just dev-install), which "
+            "bundles pyamplicol._performance_report for copied campaigns"
+        )
+    destination = tmp_path / "profiling-campaign"
+    assert run_cli(("profiling-campaign", "copy", str(destination))) == 0
+    direct = subprocess.run(
+        (str(destination / "steer_performance_campaign.py"), "--help"),
+        check=False,
+        capture_output=True,
+        env=_installed_environment(),
+        text=True,
+    )
+    assert direct.returncode == 0, direct.stderr
+
+
 def test_profiling_campaign_copy_is_reset_and_requires_force(
     tmp_path: Path,
 ) -> None:
@@ -168,17 +203,6 @@ def test_profiling_campaign_copy_is_reset_and_requires_force(
     assert launcher.read_text(encoding="utf-8").splitlines()[0] == (
         f"#!{sys.executable}"
     )
-    environment = os.environ.copy()
-    environment.pop("PYTHONPATH", None)
-    environment["PATH"] = "/usr/bin:/bin"
-    direct = subprocess.run(
-        (str(launcher), "--help"),
-        check=False,
-        capture_output=True,
-        env=environment,
-        text=True,
-    )
-    assert direct.returncode == 0, direct.stderr
     table_filling = (destination / "TABLE_FILLING.md").read_text(encoding="utf-8")
     assert "compact retained evidence" in table_filling
     assert "keep attempts and large artifacts" not in table_filling

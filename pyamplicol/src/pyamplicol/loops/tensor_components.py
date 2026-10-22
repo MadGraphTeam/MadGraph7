@@ -9,13 +9,17 @@ This does not define a dimensional gamma-five or UFO import prescription.
 
 from functools import cache
 
+from .._internal.physics.symbols import symbols
+
 
 @cache
 def _native_epsilon_components():
-    from symbolica import E, S
+    from symbolica import E
     from symbolica.community import tensor as t
 
-    labels = S(*(f"loop_epsilon_components::axis_{index}" for index in range(4)))
+    labels = symbols.qualified(
+        *(f"loop_epsilon_components::axis_{index}" for index in range(4))
+    )
     gamma = t.TensorExpression.dirac_gamma(4)
     trace = t.TensorExpression.gamma5(4)(0, 1)
     for index, label in enumerate(labels):

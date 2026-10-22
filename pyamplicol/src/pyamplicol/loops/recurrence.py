@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .._internal.physics.symbols import symbols
 from .graphs import GraphIR
 from .kernels import CoefficientDAG
 
@@ -184,7 +185,6 @@ def momentum_component_library(graph: GraphIR, loops: tuple, momenta: tuple):
 
 def attach_external_spin_components(graph: GraphIR, local: dict, library: Any):
     """Attach exact independent spin inputs in native half-edge slot order."""
-    from symbolica import S
     from symbolica.community import hepkit as h
     from symbolica.community import tensor as t
 
@@ -202,7 +202,8 @@ def attach_external_spin_components(graph: GraphIR, local: dict, library: Any):
 
         count = prod(int(slot.representation.dimension) for slot in axes)
         components = tuple(
-            S(f"loop_recurrence::state{edge.external_index}_{i}") for i in range(count)
+            symbols.qualified(f"loop_recurrence::state{edge.external_index}_{i}")
+            for i in range(count)
         )
         name = t.TensorName(f"loop_recurrence::state{edge.external_index}")
         library.register(

@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 
+from .._internal.physics.symbols import symbols
 from .exact import require_exact_numbers
 from .graph_basis import build_color_tree_recurrence
 from .kernels import NativeCoefficientDAG, require_finite_batch
@@ -162,7 +163,7 @@ class NativeModelVirtualProgram:
         color_accuracy="full",
         r2_strategy="model",
     ):
-        from symbolica import E, Replacement, S
+        from symbolica import E, Replacement
 
         from pyamplicol.config.models import ColorAccuracy
 
@@ -327,7 +328,8 @@ class NativeModelVirtualProgram:
                     )
                     expression = wrap_indices(parse_exact_ufo(entry.lorentz))
                     if (
-                        S("UFO::Epsilon") in expression.get_all_symbols()
+                        symbols.qualified("UFO::Epsilon")
+                        in expression.get_all_symbols()
                         and not certified_neutral_qcd_basis(entry, raw)
                     ):
                         raise NotImplementedError(
@@ -756,7 +758,9 @@ class NativeModelVirtualProgram:
             )
         width = 3 * len(sectors)
         self.projector = self._make_projector()
-        poles = [S(f"loop_counterterm::pole{i}") for i in range(4 * width)]
+        poles = [
+            symbols.qualified(f"loop_counterterm::pole{i}") for i in range(4 * width)
+        ]
         self.assemble = self._record_evaluator(
             "assemble",
             _saved(
@@ -773,7 +777,8 @@ class NativeModelVirtualProgram:
         # Sum every returned component in the selected carrier, before strings.
         born_count = len(bare.order_layout.born)
         sum_parameters = [
-            S(f"loop_counterterm::sum{i}") for i in range(born_count + 6 * width)
+            symbols.qualified(f"loop_counterterm::sum{i}")
+            for i in range(born_count + 6 * width)
         ]
         self.sum_order_values = self._record_evaluator(
             "sum_order_values",
@@ -811,7 +816,6 @@ class NativeModelVirtualProgram:
         Anchor masking changes neither that degree nor the coherent currents.
         Outputs are component-major, then UV/R2/field, order and epsilon.
         """
-        from symbolica import S
 
         bare = self.bare
         width = 3 * len(self.sector_pairs)
@@ -838,13 +842,15 @@ class NativeModelVirtualProgram:
             len(bare.helicities) if helicities is None else len(helicities)
         ):
             born = [
-                S(f"loop_counterterm::born{helicity}_{i}")
+                symbols.qualified(f"loop_counterterm::born{helicity}_{i}")
                 for i in range(len(bare.born_colors))
             ]
             parameters.extend(born)
             for index, current in enumerate(self.currents):
                 amplitudes = [
-                    S(f"loop_counterterm::amplitude{helicity}_{index}_{term}")
+                    symbols.qualified(
+                        f"loop_counterterm::amplitude{helicity}_{index}_{term}"
+                    )
                     for term in range(current.term_count)
                 ]
                 parameters.extend(amplitudes)
@@ -873,7 +879,7 @@ class NativeModelVirtualProgram:
                             (value, value.conj())
                         )
             for index, current in enumerate(self.field_currents):
-                factor = S(f"loop_counterterm::field{helicity}_{index}")
+                factor = symbols.qualified(f"loop_counterterm::field{helicity}_{index}")
                 parameters.append(factor)
                 # The source includes delta-Z/2. Right-hand terms belong to
                 # the insertion's exact Born graph; only the left order is masked.
@@ -1228,7 +1234,7 @@ def drell_yan_model_virtual_program(
     Its exact source-vector basis is tied explicitly to the native ordinary
     representative calibrated by the physical Drell--Yan control.
     """
-    from symbolica import E, S
+    from symbolica import E
 
     from .control_models import qcd_qed_control_model
     from .counterterms import match_counterterms, prepare_counterterm_model
@@ -1276,11 +1282,11 @@ def drell_yan_model_virtual_program(
         raise NotImplementedError(
             "DY control requires the one matched model R2 insertion"
         )
-    alpha_s, inverse_alpha = S(
+    alpha_s, inverse_alpha = symbols.qualified(
         "loop_model_input::alpha_s", "loop_model_input::inverse_alpha"
     )
     nc = (
-        S("loop_physical_color::Nc", is_real=True)
+        symbols.qualified("loop_physical_color::Nc", is_real=True)
         if formal_color or color_accuracy != "full"
         else None
     )
@@ -1289,10 +1295,10 @@ def drell_yan_model_virtual_program(
         (4 * E("pi") / inverse_alpha) ** E("1/2"),
     )
     substitutions = [
-        (S("UFO::G"), strong),
-        (S("UFO::ee"), electromagnetic),
-        (S("UFO::Ncol"), E("3") if nc is None else nc),
-        (S("UFO::lhv"), E("1")),
+        (symbols.qualified("UFO::G"), strong),
+        (symbols.qualified("UFO::ee"), electromagnetic),
+        (symbols.qualified("UFO::Ncol"), E("3") if nc is None else nc),
+        (symbols.qualified("UFO::lhv"), E("1")),
     ]
     expressions = {}
     for name in ("GC_2", "GC_3", "GC_11"):
@@ -1389,7 +1395,7 @@ def _qcd_model_virtual_program(
     r2_strategy="model",
     **options,
 ):
-    from symbolica import E, S
+    from symbolica import E
 
     from .control_models import qcd_qed_control_model
     from .counterterms import match_counterterms, prepare_counterterm_model
@@ -1503,9 +1509,11 @@ def _qcd_model_virtual_program(
         process,
         selected_corrections=["QCD"],
     )
-    alpha_s, top_mass = S("loop_model_input::alpha_s", "loop_model_input::top_mass")
+    alpha_s, top_mass = symbols.qualified(
+        "loop_model_input::alpha_s", "loop_model_input::top_mass"
+    )
     nc = (
-        S("loop_physical_color::Nc", is_real=True)
+        symbols.qualified("loop_physical_color::Nc", is_real=True)
         if formal_color or color_accuracy != "full"
         else None
     )
@@ -1514,7 +1522,7 @@ def _qcd_model_virtual_program(
     for name in ("GC_10", "GC_11", "GC_12"):
         coupling = model.coupling(name)
         expressions[coupling.symbol.get_name()] = coupling.expression.replace(
-            S("UFO::G"), strong
+            symbols.qualified("UFO::G"), strong
         )
     bare = NativeBareProcessProgram(
         process,
@@ -1526,16 +1534,19 @@ def _qcd_model_virtual_program(
         **options,
     )
     substitutions = [
-        (S("UFO::G"), strong),
-        (S("UFO::MT"), top_mass),
-        (S("UFO::MB"), E("0")),
-        (S("UFO::MC"), E("0")),
-        (S("UFO::Ncol"), E("3") if nc is None else nc),
-        (S("UFO::CA"), E("3") if nc is None else nc),
-        (S("UFO::CF"), E("4/3") if nc is None else (nc**2 - 1) / (2 * nc)),
-        (S("UFO::TF"), E("1/2")),
-        (S("UFO::lhv"), E("1")),
-        (S("UFO::MU_R"), bare.scale_squared_symbol ** E("1/2")),
+        (symbols.qualified("UFO::G"), strong),
+        (symbols.qualified("UFO::MT"), top_mass),
+        (symbols.qualified("UFO::MB"), E("0")),
+        (symbols.qualified("UFO::MC"), E("0")),
+        (symbols.qualified("UFO::Ncol"), E("3") if nc is None else nc),
+        (symbols.qualified("UFO::CA"), E("3") if nc is None else nc),
+        (
+            symbols.qualified("UFO::CF"),
+            E("4/3") if nc is None else (nc**2 - 1) / (2 * nc),
+        ),
+        (symbols.qualified("UFO::TF"), E("1/2")),
+        (symbols.qualified("UFO::lhv"), E("1")),
+        (symbols.qualified("UFO::MU_R"), bare.scale_squared_symbol ** E("1/2")),
     ]
     fields = match_external_field_counterterms(
         source,

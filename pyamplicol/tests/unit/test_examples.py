@@ -4,6 +4,7 @@ from __future__ import annotations
 import ast
 import json
 import math
+import re
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -32,6 +33,8 @@ def _schema_leaf_paths(
         path = f"{prefix}.{key}" if prefix else key
         if path in FIELD_REGISTRY:
             paths.add(path)
+            if FIELD_REGISTRY[path].kind == "section" and isinstance(value, Mapping):
+                paths.update(_schema_leaf_paths(value, prefix=path))
         elif isinstance(value, Mapping):
             paths.update(_schema_leaf_paths(value, prefix=path))
         else:
@@ -60,12 +63,51 @@ def test_run_cards_parse_and_resolve_without_domain_backends(card: Path) -> None
         assert config.evaluation.artifact is not None
 
 
+_COMMENTED_SETTING = re.compile(r"^# (\[[A-Za-z0-9_.]+\]|[A-Za-z0-9_\"-]+ = .*)$")
+
+
+def _documented_payload(text: str) -> dict[str, object]:
+    """Parse active settings together with commented example assignments."""
+
+    lines = (
+        match.group(1) if (match := _COMMENTED_SETTING.match(line)) else line
+        for line in text.splitlines()
+    )
+    return tomllib.loads("\n".join(lines))
+
+
+# Virtual-only settings that the tree card cannot combine with its compiled
+# evaluator: they are documented as commented example assignments. Every other
+# registry leaf must be an active setting.
+_VIRTUAL_ONLY_LEAVES = frozenset(
+    {
+        "process.loop_coupling_orders",
+        "evaluation.arithmetic",
+        "evaluation.correlated_requests",
+        "evaluation.mu_r2",
+        "evaluation.mu_r2_file",
+        "evaluation.stability.absolute_tolerance",
+        "evaluation.stability.relative_tolerance",
+    }
+)
+_VIRTUAL_ONLY_SECTIONS = ("loop.model.", "loop.preparation")
+
+
+def _is_virtual_only(path: str) -> bool:
+    return path in _VIRTUAL_ONLY_LEAVES or path.startswith(_VIRTUAL_ONLY_SECTIONS)
+
+
 def test_all_options_is_an_exhaustive_commented_registry_snapshot() -> None:
     card = EXAMPLES / "all_options.toml"
     payload = _read_toml(card)
     text = card.read_text(encoding="utf-8")
 
-    assert _schema_leaf_paths(payload) == set(FIELD_REGISTRY)
+    active = _schema_leaf_paths(payload)
+    documented = _schema_leaf_paths(_documented_payload(text))
+    assert active <= set(FIELD_REGISTRY)
+    assert documented == set(FIELD_REGISTRY)
+    commented_only = documented - active
+    assert not {path for path in commented_only if not _is_virtual_only(path)}
     for path in FIELD_REGISTRY:
         assert f"# {path}:" in text, f"missing all-options comment for {path}"
 

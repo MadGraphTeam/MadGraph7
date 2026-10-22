@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from math import prod
 from typing import Any
 
+from .._internal.physics.symbols import symbols
 from .exact import require_exact_numbers
 
 
@@ -100,7 +101,7 @@ class CoefficientDAG:
 
     def add(self, name: str, factor: Any, dependencies: tuple[int, ...] = ()) -> int:
         """Contract a local exact tensor with already-computed open currents."""
-        from symbolica import E, Expression, S
+        from symbolica import E, Expression
         from symbolica.community import tensor as t
 
         if len(set(dependencies)) != len(dependencies):
@@ -119,7 +120,9 @@ class CoefficientDAG:
             node = self.nodes[dependency]
             components = [E("0")] * prod(node.shape)
             for column, label in enumerate(node.output_labels):
-                symbol = S(f"loop_coefficient::input_{position}_{column}")
+                symbol = symbols.qualified(
+                    f"loop_coefficient::input_{position}_{column}"
+                )
                 input_symbols.append(symbol)
                 input_labels.append((dependency, label))
                 monomial = symbol

@@ -14,6 +14,7 @@ from typing import Any
 
 from pyamplicol.color.connections import ColorConnection, EmitGluon
 
+from .._internal.physics.symbols import symbols
 from .color_bilinears import SUNColorSpace
 from .exact import require_exact_numbers
 
@@ -41,7 +42,7 @@ def apply_native_color_connection(expression: Any, connection: ColorConnection):
     no colour index. Emitted legs may be used by later operations, including a
     gluon splitting into a quark pair. No kinematic splitting factor is included.
     """
-    from symbolica import E, S
+    from symbolica import E
     from symbolica.community import tensor as t
 
     if not isinstance(connection, ColorConnection):
@@ -58,13 +59,13 @@ def apply_native_color_connection(expression: Any, connection: ColorConnection):
     # Integer external labels cannot collide with the inserted symbolic dummies;
     # scope existing dummies first so even user-chosen internal names are safe.
     value = expression.wrap_indices(
-        S("loop_color_connection::input"), dummies_only=True
+        symbols.qualified("loop_color_connection::input"), dummies_only=True
     )
     active = {leg.label: leg.representation for leg in connection.initial_legs}
     generator = t.TensorExpression.color_t(8, 3)
     structure = t.TensorExpression.color_f(8)
     for index, operation in enumerate(connection.emissions):
-        dummy = S(f"loop_color_connection::contracted_{index}")
+        dummy = symbols.qualified(f"loop_color_connection::contracted_{index}")
         if isinstance(operation, EmitGluon):
             parent, emitted = operation.emitter_label, operation.emitted_label
             representation = active[parent]

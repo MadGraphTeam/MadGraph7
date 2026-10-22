@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .._internal.physics.symbols import symbols
 from .exact import require_exact_numbers
 from .recurrence import momentum_component_library
 
@@ -200,10 +201,9 @@ def build_loop_kinematics(
                 if signed in external and external[signed] != mass:
                     raise ValueError("external routing identifies incompatible masses")
                 external[signed] = mass
-        from symbolica import S
 
         replacements = [
-            Replacement(S(name), value)
+            Replacement(symbols.qualified(name), value)
             for name, value in (model_expressions or {}).items()
         ]
 

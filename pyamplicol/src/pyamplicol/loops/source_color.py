@@ -14,6 +14,7 @@ from typing import Any
 
 from pyamplicol.models.loop_declaration import LoopSchemeDeclaration
 
+from .._internal.physics.symbols import symbols as symbol_registry
 from .model import LoopModelIR
 from .physical_color import split_color_grades
 from .scalar_bindings import ScalarBindingPlan, prepare_scalar_bindings
@@ -327,7 +328,7 @@ def prepare_source_color_formal(
     Diagnostics and helper ownership are preserved, never algebraically
     interpreted as colour powers or dropped when a value coefficient vanishes.
     """
-    from symbolica import AtomType, E, Expression, Replacement, S
+    from symbolica import AtomType, E, Expression, Replacement
 
     if not isinstance(nc, Expression) or nc.get_type() != AtomType.Var:
         raise TypeError("Nc must be an exact symbolic variable")
@@ -339,7 +340,7 @@ def prepare_source_color_formal(
         raise TypeError("prepared scalar outputs require an exact-expression mapping")
     exact_outputs = dict(exact_outputs or {})
     source_symbols = {
-        S(f"UFO::{record['name']}"): record["name"]
+        symbol_registry.qualified(f"UFO::{record['name']}"): record["name"]
         for record in raw.collections["parameters"]
     }
     source_names = {
@@ -365,7 +366,11 @@ def prepare_source_color_formal(
             )
         require_exact_numbers(expression)
         symbols = set(expression.get_all_symbols(False))
-        unknown = symbols - {nc, S("symbolica::pi")} - source_symbols.keys()
+        unknown = (
+            symbols
+            - {nc, symbol_registry.qualified("symbolica::pi")}
+            - source_symbols.keys()
+        )
         if unknown:
             raise ValueError(
                 "prepared scalar coefficient has unbound symbols: " + repr(unknown)
@@ -414,7 +419,9 @@ def prepare_source_color_formal(
     if exact_outputs:
         resolved = dict(zip(formal.outputs, formal.expressions, strict=True))
         substitutions = [
-            Replacement(S(f"UFO::{name}"), resolved[name, 0].value)
+            Replacement(
+                symbol_registry.qualified(f"UFO::{name}"), resolved[name, 0].value
+            )
             for name in dependencies
         ]
         # Every referenced source output remains in the same evaluated plan,

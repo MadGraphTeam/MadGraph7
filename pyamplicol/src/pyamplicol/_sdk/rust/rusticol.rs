@@ -619,7 +619,7 @@ pub mod virtual_amplitudes {
             pub values: *const ComplexPair,
             pub value_count: usize,
         }
-        extern "C" {
+        unsafe extern "C" {
             pub(super) fn rusticol_virtual_evaluate_correlated_with_sources(
                 handle: *mut c_void,
                 request: *const BatchRequest,

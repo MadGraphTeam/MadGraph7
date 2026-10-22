@@ -14,15 +14,17 @@ from collections.abc import Iterable
 from functools import cache
 from typing import Any
 
+from .._internal.physics.symbols import symbols
+
 
 @cache
 def _sum_pattern():
-    from symbolica import S, T
+    from symbolica import T
 
     # Private names: no generated expression can contain this head, so the
     # replacement only ever matches the one wrapper built below.
-    head = S("pyamplicol_symbolic_sum::terms")
-    terms = S("pyamplicol_symbolic_sum::terms__")
+    head = symbols.qualified("pyamplicol_symbolic_sum::terms")
+    terms = symbols.qualified("pyamplicol_symbolic_sum::terms__")
     return head, head(terms), terms.hold(T().sum())
 
 

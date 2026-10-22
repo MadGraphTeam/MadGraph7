@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import json
 import shutil
 from fractions import Fraction
 from pathlib import Path
@@ -14,11 +15,16 @@ from pyamplicol.artifacts.inspection import (
     process_group_selection,
     stored_process_groups,
 )
+from pyamplicol.artifacts.manifest import MANIFEST_NAME, canonical_manifest_bytes
 from pyamplicol.artifacts.process_groups import (
     initial_process_groups,
     write_process_groups,
 )
-from pyamplicol.generation.process_grouping import GroupingBasis, GroupMember
+from pyamplicol.generation.process_grouping import (
+    PROCESS_GROUPS_PATH,
+    GroupingBasis,
+    GroupMember,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 PORTABLE_ARTIFACT = ROOT / "src/pyamplicol/assets/selftest/portable-64le/artifact"
@@ -111,8 +117,26 @@ def _grouped_artifact(tmp_path: Path) -> Path:
     return root
 
 
-def test_artifact_without_group_map_inspects_as_identity_groups() -> None:
-    groups = inspect_artifact(PORTABLE_ARTIFACT).process_groups
+def _ungrouped_artifact(tmp_path: Path) -> Path:
+    """The self-test artifact as written before generation stored group maps."""
+
+    root = tmp_path / "artifact"
+    shutil.copytree(PORTABLE_ARTIFACT, root)
+    (root / PROCESS_GROUPS_PATH).unlink()
+    manifest_path = root / MANIFEST_NAME
+    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    raw["payloads"] = [
+        item for item in raw["payloads"] if item["path"] != PROCESS_GROUPS_PATH
+    ]
+    manifest_path.write_bytes(canonical_manifest_bytes(raw))
+    return root
+
+
+def test_artifact_without_group_map_inspects_as_identity_groups(
+    tmp_path: Path,
+) -> None:
+    root = _ungrouped_artifact(tmp_path)
+    groups = inspect_artifact(root).process_groups
 
     assert groups is not None
     assert not groups.stored
@@ -131,8 +155,8 @@ def test_artifact_without_group_map_inspects_as_identity_groups() -> None:
             generated=True,
         ),
     )
-    assert process_group_selection(PORTABLE_ARTIFACT, "d_dbar_to_z") is None
-    assert stored_process_groups(PORTABLE_ARTIFACT) is None
+    assert process_group_selection(root, "d_dbar_to_z") is None
+    assert stored_process_groups(root) is None
 
 
 def test_artifact_inspection_lists_stored_process_groups(tmp_path: Path) -> None:

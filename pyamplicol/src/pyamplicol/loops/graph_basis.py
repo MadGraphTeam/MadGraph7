@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from itertools import pairwise
 from typing import Any
 
+from .._internal.physics.symbols import symbols
 from .color_terms import (
     ColorCurrent,
     ColorTermDAG,
@@ -72,17 +73,19 @@ class ColorGraphRecurrence:
 
 
 def _symbols(graph, variables=None, momenta=None):
-    from symbolica import S
 
     q = (
-        tuple(S(f"loop_recurrence::q{axis}") for axis in range(4))
+        tuple(symbols.qualified(f"loop_recurrence::q{axis}") for axis in range(4))
         if variables is None
         else tuple(variables)
     )
     external_count = len(graph.native.edges[0].momentum_signature().external)
     if momenta is None:
         momenta = tuple(
-            tuple(S(f"loop_recurrence::p{leg}_{axis}") for axis in range(4))
+            tuple(
+                symbols.qualified(f"loop_recurrence::p{leg}_{axis}")
+                for axis in range(4)
+            )
             for leg in range(external_count)
         )
     momenta = tuple(tuple(vector) for vector in momenta)
@@ -272,11 +275,10 @@ def _global_factor(graph, builder, current, library):
 
 def routed_edge_denominator(edge, library):
     """Materialize the dependency's exact propagator denominator locally."""
-    from symbolica import S
     from symbolica.community import hepkit as h
     from symbolica.community import tensor as t
 
-    edge_id, momentum, mass, value = S(
+    edge_id, momentum, mass, value = symbols.qualified(
         "loop_denominator::e_",
         "loop_denominator::p_",
         "loop_denominator::m_",
