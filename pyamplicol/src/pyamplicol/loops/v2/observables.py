@@ -506,6 +506,89 @@ class ObservableSlice:
         )
         return self.resolved_result(columns, results, precision)
 
+    def project_loop(
+        self,
+        point: Sequence[Sequence[Any]],
+        scale_squared: Any,
+        tensors: Sequence[ConnectedColorTensor],
+        *,
+        rows: Iterable[rx.Row] | None = None,
+        parameters: Mapping[str, str] | None = None,
+        precision: Precision | None = None,
+        poles: bool = True,
+    ) -> dict[tuple[rx.Row, int, Orders], Laurent]:
+        """Colour projections <T_k|M(h)> of the bare loop amplitude.
+
+        Resolved seed columns on arbitrary literal colour structures
+        ``tensors`` (e.g. a published colour decomposition, oracle O14): the
+        seed of column (h, k) is K'[c, k] = <T_k|kappa_c> on Born helicity row
+        h with a unit Born, so its numerator is the loop amplitude's colour
+        projection, i/(16 pi^2) sum_c K'[c, k] L_c(h), at amplitude level
+        (complex, no initial average) per loop-amplitude order. Full colour.
+        """
+
+        from .colour import BornBasis
+
+        slice_ = self.slice
+        if slice_.request.accuracy != "full":
+            raise ValueError("loop colour projections are full colour")
+        table = slice_.table
+        legs = table.basis.legs
+        tensors = tuple(tensors)
+        if any(tensor.legs != legs for tensor in tensors):
+            raise ValueError("projection tensors need the process's colour legs")
+        unit: Orders = ()
+        basis = BornBasis(
+            legs,
+            tuple(range(len(tensors))),
+            tensors,
+            tuple(frozenset({unit}) for _ in tensors),
+        )
+        cells = tuple(
+            tuple(
+                contract_connected_tensor_nc_terms(tensor, table.tensor(c))
+                for tensor in tensors
+            )
+            for c in range(len(table.classes))
+        )
+        projection = replace(table, basis=basis, cells=cells)
+        loops = sorted({order for orders in table.orders for order in orders})
+        rows = tuple(self.rows if rows is None else rows)
+        evaluation = self.point(point, scale_squared, parameters, precision, poles)
+        numbers = evaluation.numbers
+        columns, labels = [], []
+        for row in rows:
+            for k in range(len(tensors)):
+                for loop in loops:
+                    columns.append(
+                        SeedColumn(
+                            projection,
+                            frozenset({(unit, loop)}),
+                            None,
+                            frozenset({row}),
+                            frozenset({k}),
+                        )
+                    )
+                    labels.append((row, k, loop))
+        with numbers.scope():
+            one = {0: numbers.pair(1)}
+            born = {row: {(k, unit): one for k in range(len(tensors))} for row in rows}
+            seeds = ColumnSeeds(columns, slice_.class_of, born, numbers, "full")
+            execution = evaluation.dress(seeds=seeds)
+            evaluation._reduce(
+                execution.numerators, False, columns=list(range(len(columns)))
+            )
+            factor = numbers.pair(0, 1) * (
+                1 / (LOOP_FACTOR_DENOMINATOR * numbers.pi * numbers.pi)
+            )
+            width = 3 if poles else 1
+            out = {label: [numbers.zero] * width for label in labels}
+            for (_family, _loop, k), value in evaluation.families.items():
+                terms = out[labels[k]]
+                for i, coefficient in enumerate(value.coefficients):
+                    terms[i] = terms[i] + factor * coefficient
+            return {label: Laurent(*terms) for label, terms in out.items()}
+
     def resolved_columns(
         self, resolution: Resolution, spin: Mapping[int, Any] | None = None
     ) -> list[Column]:
@@ -969,8 +1052,12 @@ class NativeObservables:
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
         poles: bool = True,
+        double_double: bool = False,
     ) -> list[dict[Hashable, PointResult]]:
-        """The outputs of every point (one batch, one source assignment)."""
+        """The outputs of every point (one batch, one source assignment).
+
+        ``double_double`` dresses and reduces in the native DoubleFloat
+        carrier from the trees of an arbitrary ``precision``."""
 
         precision = precision or Precision.double()
         evaluations = [
@@ -979,7 +1066,9 @@ class NativeObservables:
             )
             for point, scale in zip(points, scales, strict=True)
         ]
-        self.executor.reduce(evaluations, precision, poles, False)
+        self.executor.reduce(
+            evaluations, precision, poles, False, double_double=double_double
+        )
         out = []
         for evaluation in evaluations:
             with evaluation.numbers.scope():

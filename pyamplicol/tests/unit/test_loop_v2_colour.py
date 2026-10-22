@@ -439,6 +439,55 @@ def _cyclic(s):
     return min(s[i:] + s[:i] for i in range(3))
 
 
+def _laurent_times(cell, factor):
+    out = {}
+    for p, a in cell.items():
+        for q, b in factor.items():
+            out[p + q] = out.get(p + q, 0) + a * b
+    return {p: v for p, v in out.items() if v}
+
+
+def _bdk_bracket(s):
+    """BDK's bracket of tree ordering ``s`` (hep-ph/9409393 eq.
+    NLOCrossSection): one-loop structure key -> Laurent polynomial in N_c;
+    sum_colours A_tree^* A_loop = (N^2-1)/N sum_s A_tree(s)^* sum_key
+    bracket(s)[key] A_key."""
+
+    def laurent(*pairs):
+        return {power: Fraction(value) for power, value in pairs}
+
+    leading = laurent((4, 1), (2, -2), (0, 1))  # (N^2-1)^2
+    first = laurent((2, -1), (0, 1))  # -(N^2-1)
+    reversed_ = laurent((2, 1), (0, 1))  # N^2+1
+    trace = laurent((2, 1), (0, -2))  # N^2-2
+    s3, s4, s5 = s
+    bracket: dict = {}
+
+    def add(key, cell):
+        total = dict(bracket.get(key, {}))
+        for p, v in cell.items():
+            total[p] = total.get(p, 0) + v
+        bracket[key] = {p: v for p, v in total.items() if v}
+
+    add(("1", (s3, s4, s5)), leading)
+    add(("1", (s4, s3, s5)), first)
+    add(("1", (s3, s5, s4)), first)
+    add(("3", frozenset((s4, s5)), s3), _laurent_times(first, {0: -1}))
+    add(("3", frozenset((s3, s4)), s5), _laurent_times(first, {0: -1}))
+    add(("1", (s5, s4, s3)), reversed_)
+    add(("4", (3, 4, 5) if _cyclic(s) == (3, 4, 5) else (5, 4, 3)), trace)
+    add(("1", (s4, s5, s3)), {0: 1})
+    add(("1", (s5, s3, s4)), {0: 1})
+    add(("3", frozenset((s5, s3)), s4), {0: -1})
+    rev = (s5, s4, s3)
+    add(("4", (3, 4, 5) if _cyclic(rev) == (3, 4, 5) else (5, 4, 3)), {0: -2})
+    return bracket
+
+
+# (N^2-1)/N, BDK's overall colour factor of the tree-loop interference.
+BDK_PREFACTOR = {1: Fraction(1), -1: Fraction(-1)}
+
+
 @pytest.mark.loop_fast
 def test_bdk_five_point_colour_sum_o14():
     """O14 (design §7.6, §14): the exact-N_c colour sum of qbar q g g g,
@@ -451,47 +500,11 @@ def test_bdk_five_point_colour_sum_o14():
     exactly those of the bracket's N^2 and N^0 parts."""
 
     tree, loop = _bdk_structures()
-
-    def laurent(*pairs):
-        return {power: Fraction(value) for power, value in pairs}
-
-    def times(cell, factor):
-        out = {}
-        for p, a in cell.items():
-            for q, b in factor.items():
-                out[p + q] = out.get(p + q, 0) + a * b
-        return {p: v for p, v in out.items() if v}
-
-    leading = laurent((4, 1), (2, -2), (0, 1))  # (N^2-1)^2
-    first = laurent((2, -1), (0, 1))  # -(N^2-1)
-    reversed_ = laurent((2, 1), (0, 1))  # N^2+1
-    trace = laurent((2, 1), (0, -2))  # N^2-2
-    prefactor = laurent((1, 1), (-1, -1))  # (N^2-1)/N
     for s in tree:
-        s3, s4, s5 = s
-        bracket: dict = {}
-
-        def add(key, cell, bracket=bracket):
-            total = dict(bracket.get(key, {}))
-            for p, v in cell.items():
-                total[p] = total.get(p, 0) + v
-            bracket[key] = {p: v for p, v in total.items() if v}
-
-        add(("1", (s3, s4, s5)), leading)
-        add(("1", (s4, s3, s5)), first)
-        add(("1", (s3, s5, s4)), first)
-        add(("3", frozenset((s4, s5)), s3), times(first, {0: -1}))
-        add(("3", frozenset((s3, s4)), s5), times(first, {0: -1}))
-        add(("1", (s5, s4, s3)), reversed_)
-        add(("4", (3, 4, 5) if _cyclic(s) == (3, 4, 5) else (5, 4, 3)), trace)
-        add(("1", (s4, s5, s3)), {0: 1})
-        add(("1", (s5, s3, s4)), {0: 1})
-        add(("3", frozenset((s5, s3)), s4), {0: -1})
-        rev = (s5, s4, s3)
-        add(("4", (3, 4, 5) if _cyclic(rev) == (3, 4, 5) else (5, 4, 3)), {0: -2})
+        bracket = _bdk_bracket(s)
         for key, structure in loop.items():
             mine = contract_connected_tensor_nc_terms(tree[s], structure)
-            expected = times(bracket.get(key, {}), prefactor)
+            expected = _laurent_times(bracket.get(key, {}), BDK_PREFACTOR)
             assert {p: v.real for p, v in mine.items()} == expected, (s, key)
             assert all(not v.imag for v in mine.values())
 

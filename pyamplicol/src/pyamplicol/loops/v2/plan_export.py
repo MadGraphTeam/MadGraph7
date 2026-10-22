@@ -910,19 +910,31 @@ class NativeExecutor:
                 evaluation._assemble()
         return precision, evaluations
 
-    def reduce(self, evaluations, precision, poles: bool, retest: bool) -> None:
+    def reduce(
+        self,
+        evaluations,
+        precision,
+        poles: bool,
+        retest: bool,
+        *,
+        double_double: bool = False,
+    ) -> None:
         """Dress and reduce prepared point evaluations (``assemble``'s
         ``_PointEvaluation``) natively: sets each evaluation's ``families``
         (and ``retest_families``), lanes labelled (family, loop orders,
-        column label)."""
+        column label). ``double_double`` runs the native DoubleFloat carrier
+        on the inputs of an arbitrary ``precision``."""
 
         from .assemble import Laurent, _Numbers
 
         arithmetic, digits = self._arithmetic(precision, False)
+        inputs = self._inputs(evaluations, arithmetic)
+        if double_double:
+            if arithmetic != "arbitrary":
+                raise ValueError("double-double reads arbitrary-precision inputs")
+            arithmetic, digits = "double-double", None
         native = self.native(arithmetic, digits)
-        output = native.evaluate(
-            self._inputs(evaluations, arithmetic), poles=poles, check=retest
-        )
+        output = native.evaluate(inputs, poles=poles, check=retest)
         exported = self.exported
         self.last_report = output["report"]
         self.last_bare = output["bare"]

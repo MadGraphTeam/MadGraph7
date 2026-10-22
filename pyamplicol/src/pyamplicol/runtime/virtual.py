@@ -8,6 +8,7 @@ one complete batch, including source parameters, counterterms and reduction.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import asdict
@@ -1029,3 +1030,332 @@ class VirtualRuntimeBackend:
 
     def unmute_warnings(self) -> None:
         self._muted = False
+
+
+class V2VirtualRuntime:
+    """The public virtual-runtime surface over a generated v2 slice.
+
+    It answers ``evaluate``, ``evaluate_resolved``, ``evaluate_correlated`` and
+    ``evaluate_correlated_many`` with the public result types from an
+    ``loops.v2.observables.ObservableSlice``: the colour histories and spin
+    classes declared at its generation, the Python reference executor in
+    binary64 or arbitrary precision. Resolved colour components are the Born
+    basis elements (``born-basis-anchored-interference``, design §1.6
+    decision 3), with IDs ``basis-<index>``. Accuracy is not established by
+    this surface (no stability policy); values are the v2 engine's.
+    """
+
+    contribution_kind = "virtual"
+    execution_mode = "loop_v2"
+
+    def __init__(
+        self,
+        observables: Any,
+        *,
+        model_parameters: Mapping[str, object] | None = None,
+        arithmetic: str | None = None,
+        precision: int | None = None,
+    ) -> None:
+        self._observables = observables
+        self._parameters = {
+            name: real
+            for name, (real, _imaginary) in (
+                _parameters(model_parameters) or {}
+            ).items()
+        }
+        self.default_arithmetic = arithmetic or (
+            "double" if precision in (None, 16) else "arbitrary"
+        )
+        self.default_precision = precision if precision is not None else 16
+        self._spin_vectors: dict[int, object] = {}
+        self._lock = RLock()
+        slice_ = observables.slice
+        self._sectors = tuple(
+            VirtualOrderSector(
+                canonical_order(sector),
+                tuple(BornLoopPair(born, loop) for born, loop in sorted(pairs)),
+            )
+            for sector, pairs in slice_.sectors
+        )
+
+    # -- declarations ---------------------------------------------------------
+
+    @property
+    def external_count(self) -> int:
+        return len(self._observables.slice.blocks.process.legs)
+
+    def available_color_correlations(self) -> tuple[ColorCorrelator, ...]:
+        return (ColorCorrelator("born"), *self._observables.histories)
+
+    def set_spin_correlation_vectors(
+        self, vectors: Mapping[int, object] | None
+    ) -> None:
+        copied = _copy_spin_vectors(vectors, self._observables.spin_classes)
+        with self._lock:
+            self._spin_vectors = copied
+
+    def clear(self) -> None:
+        with self._lock:
+            self._spin_vectors = {}
+
+    # -- evaluation -----------------------------------------------------------
+
+    def _precision(self, arithmetic: str | None, precision: int | None):
+        from pyamplicol.loops.v2.assemble import Precision
+
+        precision = self.default_precision if precision is None else precision
+        arithmetic = arithmetic or (
+            self.default_arithmetic if precision == self.default_precision else None
+        )
+        arithmetic = arithmetic or ("double" if precision == 16 else "arbitrary")
+        if arithmetic == "double":
+            return arithmetic, Precision.double()
+        if arithmetic == "arbitrary":
+            return arithmetic, Precision.arbitrary(precision)
+        raise CompatibilityError(
+            "the v2 reference runtime evaluates in double or arbitrary precision"
+        )
+
+    def _scalar(self, value: Any, arithmetic: str, correlated: bool) -> VirtualScalar:
+        if arithmetic == "double":
+            return complex(value) if correlated else float(value)
+        if correlated:
+            real, imaginary = (
+                (value.real, value.imag)
+                if not isinstance(value, Decimal)
+                else (value, Decimal(0))
+            )
+            return CorrelatedValue(Decimal(real), Decimal(imaginary))
+        return Decimal(value)
+
+    def _laurent(self, laurent: Any, arithmetic: str, correlated: bool) -> tuple:
+        if laurent.single_pole is None:
+            raise CompatibilityError("public virtual results carry all three poles")
+        return tuple(
+            self._scalar(value, arithmetic, correlated)
+            for value in laurent.coefficients
+        )
+
+    def _diagnostic(self, arithmetic: str, precision) -> VirtualLaneDiagnostic:
+        bits = (
+            53
+            if arithmetic == "double"
+            else math.ceil(precision.digits * math.log2(10))
+        )
+        return VirtualLaneDiagnostic(
+            "success",
+            arithmetic,  # type: ignore[arg-type]
+            bits,
+            False,
+            "v2 reference executor; no stability policy requested",
+        )
+
+    def _evaluation(
+        self, results: Sequence[Any], arithmetic: str, precision, correlated: bool
+    ) -> VirtualEvaluation:
+        from pyamplicol.loops.strategy import R2Selection
+
+        born_orders = self._default_born_orders()
+        return VirtualEvaluation(
+            born_values=tuple(
+                tuple(
+                    self._scalar(result.born.get(order, 0), arithmetic, correlated)
+                    for order in born_orders
+                )
+                for result in results
+            ),
+            values=tuple(
+                tuple(
+                    self._laurent(
+                        result.components["virtual"][sector.order],
+                        arithmetic,
+                        correlated,
+                    )
+                    for sector in self._sectors
+                )
+                for result in results
+            ),
+            born_orders=born_orders,
+            sectors=self._sectors,
+            diagnostics=tuple(self._diagnostic(arithmetic, precision) for _ in results),
+            r2=R2Selection(R2Strategy.MODEL, R2Strategy.MODEL, "model-supplied R2"),
+            correlated=correlated,
+            color_accuracy=self._observables.slice.request.accuracy,
+        )
+
+    def _default_born_orders(self) -> tuple[tuple[tuple[str, int], ...], ...]:
+        """The squared Born orders (the keys of ``PointResult.born``)."""
+
+        from pyamplicol.loops.v2.families import add_orders
+
+        orders = self._observables.slice.blocks.born_orders
+        return tuple(sorted({add_orders(a, b) for a in orders for b in orders}))
+
+    def evaluate(
+        self,
+        momenta: Momenta,
+        *,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        precision: int | None = None,
+        arithmetic: str | None = None,
+    ) -> VirtualEvaluation:
+        return self.evaluate_correlated_many(
+            momenta,
+            {"born": CorrelatedRequest("born", {})},
+            mu_r2=mu_r2,
+            precision=precision,
+            arithmetic=arithmetic,
+            _correlated=False,
+        )["born"]
+
+    def evaluate_correlated(
+        self, momenta: Momenta, *, color_correlation: str = "born", **kwargs: Any
+    ) -> VirtualEvaluation:
+        return self.evaluate_correlated_many(
+            momenta, {"selected": CorrelatedRequest(color_correlation)}, **kwargs
+        )["selected"]
+
+    def evaluate_correlated_many(
+        self,
+        momenta: Momenta,
+        requests: Mapping[str, CorrelatedRequest],
+        *,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        precision: int | None = None,
+        arithmetic: str | None = None,
+        _correlated: bool = True,
+    ) -> dict[str, VirtualEvaluation]:
+        """Every request on one batch; requests with equal spin sources share
+        their seed columns (one dressing per point and source assignment)."""
+
+        observables = self._observables
+        arithmetic, carrier = self._precision(arithmetic, precision)
+        points, scales = _inputs(momenta, mu_r2, self.external_count)
+        known = {item.id for item in self.available_color_correlations()}
+        with self._lock:
+            inherited = dict(self._spin_vectors)
+        classes = observables.spin_classes
+        allowed = tuple(sorted({leg for group in classes for leg in group}))
+        groups: dict[tuple, list[str]] = {}
+        sources: dict[tuple, tuple[dict[int, Any], ...]] = {}
+        for label, request in requests.items():
+            if not isinstance(request, CorrelatedRequest):
+                raise TypeError("correlated requests require CorrelatedRequest records")
+            if request.color_correlation not in known:
+                raise CompatibilityError(
+                    "undeclared virtual colour correlation "
+                    f"{request.color_correlation!r}"
+                )
+            vectors = _copy_spin_vectors(
+                inherited if request.spin_vectors is None else request.spin_vectors,
+                classes,
+                point_count=len(points),
+            )
+            prepared = _prepare_spin_vectors(
+                vectors, allowed_legs=allowed, point_count=len(points)
+            )
+            key = tuple(
+                tuple(sorted((leg, wave) for leg, wave in point.items()))
+                for point in prepared
+            )
+            groups.setdefault(key, []).append(label)
+            sources[key] = prepared
+        out: dict[str, VirtualEvaluation] = {}
+        for key, labels in groups.items():
+            histories = tuple(
+                dict.fromkeys(requests[label].color_correlation for label in labels)
+            )
+            per_point = [
+                observables.evaluate(
+                    point,
+                    scale,
+                    correlations=histories,
+                    spin=spin or None,
+                    parameters=self._parameters,
+                    precision=carrier,
+                )
+                for point, scale, spin in zip(points, scales, sources[key], strict=True)
+            ]
+            for label in labels:
+                history = requests[label].color_correlation
+                out[label] = self._evaluation(
+                    [results[history] for results in per_point],
+                    arithmetic,
+                    carrier,
+                    _correlated,
+                )
+        return {label: out[label] for label in requests}
+
+    def evaluate_resolved(
+        self,
+        momenta: Momenta,
+        *,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        precision: int | None = None,
+        arithmetic: str | None = None,
+    ) -> ResolvedVirtualEvaluation:
+        """Per Born helicity row and Born basis element (design §8.5)."""
+
+        from pyamplicol.loops.strategy import R2Selection
+
+        observables = self._observables
+        arithmetic, carrier = self._precision(arithmetic, precision)
+        points, scales = _inputs(momenta, mu_r2, self.external_count)
+        rows = observables.rows
+        components = observables.components
+        resolved = [
+            observables.evaluate_resolved(
+                point, scale, parameters=self._parameters, precision=carrier
+            )
+            for point, scale in zip(points, scales, strict=True)
+        ]
+        born_orders = self._default_born_orders()
+
+        def born_value(entry, order):
+            value = entry.born.get(order, 0) if entry is not None else 0
+            return self._scalar(value, arithmetic, False)
+
+        born_values = []
+        values = []
+        for result in resolved:
+            entries = result.entries
+            born_values.append(
+                tuple(
+                    tuple(
+                        tuple(
+                            born_value(entries.get((row, b)), order) for b in components
+                        )
+                        for row in rows
+                    )
+                    for order in born_orders
+                )
+            )
+            values.append(
+                tuple(
+                    tuple(
+                        tuple(
+                            self._laurent(
+                                entries[(row, b)].components["virtual"][sector.order],
+                                arithmetic,
+                                False,
+                            )
+                            for b in components
+                        )
+                        for row in rows
+                    )
+                    for sector in self._sectors
+                )
+            )
+        ids = tuple(f"basis-{b}" for b in components)
+        return ResolvedVirtualEvaluation(
+            born_values=tuple(born_values),
+            values=tuple(values),
+            born_orders=born_orders,
+            sectors=self._sectors,
+            diagnostics=tuple(self._diagnostic(arithmetic, carrier) for _ in resolved),
+            r2=R2Selection(R2Strategy.MODEL, R2Strategy.MODEL, "model-supplied R2"),
+            helicity_ids=tuple(f"h{i}" for i in range(len(rows))),
+            born_color_ids=ids,
+            virtual_color_ids=ids,
+            color_accuracy=observables.slice.request.accuracy,
+        )

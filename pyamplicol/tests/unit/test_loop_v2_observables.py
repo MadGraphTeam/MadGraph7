@@ -389,3 +389,388 @@ def test_member_admission_refuses_unproved_substitutions(generate):
         admit_member(representative.slice, "t t~ > g g")
     with pytest.raises(ValueError):
         admit_member(representative.slice, "d d~ > d d~")
+
+
+# ------------------------------------------------------------------ legacy (O1)
+
+LEGACY_OBSERVABLES = FIXTURES / "legacy" / "observables"
+LEGACY_TOLERANCE = {"double": 1e-12, "arbitrary-200": 1e-40}
+
+
+def _legacy(name: str) -> dict:
+    return json.loads((LEGACY_OBSERVABLES / f"{name}.json").read_text())
+
+
+def _pair(value) -> complex:
+    return complex(float(value[0]), float(value[1]))
+
+
+def _legacy_runners(generate, record):
+    """(process name, runner) of the representative and its members."""
+
+    from pyamplicol.correlators import _emission_from_json
+
+    histories = tuple(
+        ColorCorrelator(
+            item["id"],
+            tuple(map(_emission_from_json, item["bra"])),
+            tuple(map(_emission_from_json, item["ket"])),
+        )
+        for item in record["histories"]
+    )
+    (name, process), *members = record["processes"]
+    born = {"QCD": len(process.split()) - 3, "QED": 0}
+    observables = generate(
+        process,
+        born=born,
+        loop={"QCD": born["QCD"] + 2, "QED": 0},
+        correlators=CorrelatorConfig(
+            color_correlations=histories,
+            spin_correlations=tuple(map(tuple, record["spin_classes"])),
+        ),
+    )
+    runners = [(name, observables)]
+    for member_name, member_process in members:
+        member = admit_member(observables.slice, member_process)
+        runners.append((member_name, MemberObservables(observables, member)))
+    return observables, runners
+
+
+def _assert_correlated(result, expected, index, tolerance):
+    """One legacy correlated record (Born per order, virtual per sector)."""
+
+    borns = list(result.born.values())
+    sectors = list(result.components["virtual"].values())
+    assert len(borns) == len(expected["born"][index])
+    assert len(sectors) == len(expected["virtual"][index])
+    scale = max(abs(_pair(x)) for x in expected["born"][index])
+    for actual, value in zip(borns, expected["born"][index], strict=True):
+        assert abs(complex(actual) - _pair(value)) <= tolerance * scale
+    for laurent, values in zip(sectors, expected["virtual"][index], strict=True):
+        scale = max(abs(_pair(x)) for x in values)
+        for actual, value in zip(laurent.coefficients, values, strict=True):
+            assert abs(complex(actual) - _pair(value)) <= tolerance * scale
+
+
+@pytest.mark.parametrize("carrier", tuple(CARRIERS))
+@pytest.mark.parametrize("name", ("ddgg_ssgg", "gg_gg", "uux_ggg"))
+def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
+    """O1: every legacy directed history (dipoles, Casimirs, ordered two-
+    emission histories and their swaps, complex) and every joint complex spin
+    source, for the representative and its flavour members, against the
+    200-bit legacy values."""
+
+    record = _legacy(name)
+    _observables, runners = _legacy_runners(generate, record)
+    precision, tolerance = CARRIERS[carrier], LEGACY_TOLERANCE[carrier]
+    vectors = record["spin_vectors"]
+    for process, runner in runners:
+        expected = record["results"]["arbitrary-200"][process]
+        for index, (point, scale) in enumerate(
+            zip(record["points"], record["scales_squared"], strict=True)
+        ):
+            directed = expected.get("directed", {})
+            results = runner.evaluate(
+                point,
+                scale,
+                correlations=tuple(directed),
+                parameters=PARAMETERS,
+                precision=precision,
+            )
+            for history, values in directed.items():
+                _assert_correlated(results[history], values, index, tolerance)
+            for legs, values in expected.get("spin", {}).items():
+                spin = {int(leg): vectors[k] for k, leg in enumerate(legs.split(","))}
+                (result,) = runner.evaluate(
+                    point, scale, spin=spin, parameters=PARAMETERS, precision=precision
+                ).values()
+                _assert_correlated(result, values, index, tolerance)
+
+
+@pytest.mark.parametrize("name", ("gg_gg", "uux_ggg"))
+def test_helicity_resolved_outputs_equal_legacy(generate, name):
+    """O1: per Born helicity row, the Born and the virtual summed over colour
+    components equal the legacy resolved outputs (the legacy colour anchors
+    are diagram colour tensors, v2's are Born basis elements, so the colour
+    axis is compared through its sum, design §1.6 decision 3)."""
+
+    record = _legacy(name)
+    observables, _runners = _legacy_runners(generate, record)
+    expected = record["results"]["arbitrary-200"][record["processes"][0][0]]
+    resolved_record = expected["resolved"]
+    legacy_rows = [tuple(row) for row in resolved_record["helicities"]]
+    tolerance = LEGACY_TOLERANCE["double"]
+    for index, (point, scale) in enumerate(
+        zip(record["points"], record["scales_squared"], strict=True)
+    ):
+        resolved = observables.evaluate_resolved(
+            point, scale, resolution="helicity", parameters=PARAMETERS
+        )
+        mine = {
+            tuple(h for _leg, h in row): value
+            for (row, _b), value in resolved.entries.items()
+        }
+        born_scale = max(
+            abs(_pair(x)) for order in resolved_record["born"][index] for x in order
+        )
+        virtual_scale = max(
+            abs(_pair(x))
+            for sector in resolved_record["virtual"][index]
+            for row in sector
+            for x in row
+        )
+        for h, row in enumerate(legacy_rows):
+            value = mine.get(row)
+            expected_born = [
+                _pair(order[h]) for order in resolved_record["born"][index]
+            ]
+            expected_virtual = [
+                [_pair(x) for x in sector[h]]
+                for sector in resolved_record["virtual"][index]
+            ]
+            if value is None:
+                # A row v2 does not generate is a structural zero.
+                assert max(map(abs, expected_born)) <= tolerance * born_scale
+                continue
+            for actual, target in zip(value.born.values(), expected_born, strict=True):
+                assert abs(complex(actual) - target) <= tolerance * born_scale
+            sectors = list(value.components["virtual"].values())
+            for laurent, targets in zip(sectors, expected_virtual, strict=True):
+                for actual, target in zip(laurent.coefficients, targets, strict=True):
+                    assert abs(complex(actual) - target) <= tolerance * virtual_scale
+
+
+# ------------------------------------------------------------------ public surface
+
+
+def test_public_runtime_surface(generate, loop_reference):
+    """``runtime.virtual.V2VirtualRuntime`` answers the public calls with the
+    public result types: ordinary, correlated (colour and spin, grouped by
+    source assignment) and resolved evaluations."""
+
+    from pyamplicol.correlators import CorrelatedRequest
+    from pyamplicol.runtime.virtual import V2VirtualRuntime
+
+    declarations = CorrelatorConfig(
+        color_correlations=(ColorCorrelator.dipole("T12", 1, 2),),
+        spin_correlations=((3,),),
+    )
+    observables = generate("u u~ > g g", correlators=declarations)
+    runtime = V2VirtualRuntime(observables, model_parameters=PARAMETERS)
+    rows = loop_reference("spin-recola-control")["rows"]
+    points = [row["point"] for row in rows]
+    scales = [row["mu_r2"] for row in rows]
+    assert [item.id for item in runtime.available_color_correlations()] == [
+        "born",
+        "T12",
+    ]
+    ordinary = runtime.evaluate(points, mu_r2=scales)
+    assert ordinary.shape == (2, 1, 3) and not ordinary.correlated
+    grouped = runtime.evaluate_correlated_many(
+        points,
+        {
+            "spin": CorrelatedRequest("born", {3: [row["vector"] for row in rows]}),
+            "T12": CorrelatedRequest("T12", {}),
+            "born": CorrelatedRequest("born", {}),
+        },
+        mu_r2=scales,
+    )
+    assert list(grouped) == ["spin", "T12", "born"]
+    for index, row in enumerate(rows):
+        spin = grouped["spin"]
+        values = (spin.born_values[index][0], *spin.values[index][0])
+        for actual, expected in zip(values, row["cepsilon"], strict=True):
+            assert _close(actual, expected, 3e-11, 2e-13)
+        assert grouped["born"].values[index] == tuple(
+            tuple(complex(x) for x in sector) for sector in ordinary.values[index]
+        )
+    resolved = runtime.evaluate_resolved(points[:1], mu_r2=scales[:1])
+    assert resolved.shape == (1, 1, 16, len(observables.components), 3)
+    for a, b in zip(resolved.total().values[0][0], ordinary.values[0][0], strict=True):
+        assert _close(a, b, 1e-12, 1e-14)
+    precise = runtime.evaluate(
+        points[:1], mu_r2=scales[:1], arithmetic="arbitrary", precision=40
+    )
+    for a, b in zip(precise.values[0][0], ordinary.values[0][0], strict=True):
+        assert _close(float(a), b, 1e-13)
+
+
+# ------------------------------------------------------------------ O14
+
+
+def test_bdk_partial_amplitudes_reproduce_the_colour_sum_o14(generate):
+    """O14 with resolved-colour seed columns (design §7.6, §14): the
+    projections of v2's bare loop amplitude of qbar q g g g onto BDK's one-loop
+    colour structures (``ObservableSlice.project_loop``) determine partial
+    amplitudes A_{5;1}, A_{5;3}, A_{5;4} (least squares on the N_c = 3 Gram
+    matrix, which has one null direction; residual at rounding). With the tree
+    partial amplitudes of v2's Born, BDK's colour sum (N^2-1)/N sum_s
+    A_tree(s)^* bracket(s) (hep-ph/9409393 eq. NLOCrossSection) reproduces
+    v2's helicity-resolved bare virtual."""
+
+    import numpy as np
+
+    from pyamplicol.color.connections import (
+        contract_connected_tensor_nc_terms,
+        evaluate_color_nc_terms,
+    )
+    from pyamplicol.loops.v2.assemble import _single
+
+    from .test_loop_v2_colour import (
+        BDK_PREFACTOR,
+        _bdk_bracket,
+        _bdk_structures,
+        _laurent_times,
+    )
+
+    observables = generate(
+        "u~ u > g g g", born={"QCD": 3, "QED": 0}, loop={"QCD": 5, "QED": 0}
+    )
+    slice_ = observables.slice
+    tree, loop = _bdk_structures()
+    assert next(iter(tree.values())).legs == slice_.basis.legs
+    fixture = json.loads((FIXTURES / "legacy/uux_ggg.json").read_text())
+    point = list(fixture["points"][0])
+    point[0], point[1] = point[1], point[0]
+    scale = fixture["scales_squared"][0]
+
+    def at_three(cell) -> complex:
+        return complex(evaluate_color_nc_terms(cell))
+
+    trees, loops = list(tree), list(loop)
+    gram_tree = np.array(
+        [
+            [
+                at_three(contract_connected_tensor_nc_terms(tree[a], tree[b]))
+                for b in trees
+            ]
+            for a in trees
+        ]
+    )
+    gram_loop = np.array(
+        [
+            [
+                at_three(contract_connected_tensor_nc_terms(loop[a], loop[b]))
+                for b in loops
+            ]
+            for a in loops
+        ]
+    )
+    bdk = np.array(
+        [
+            [
+                sum(
+                    float(v) * 3.0**p
+                    for p, v in _laurent_times(
+                        _bdk_bracket(s).get(key, {}), BDK_PREFACTOR
+                    ).items()
+                )
+                for key in loops
+            ]
+            for s in trees
+        ]
+    )
+    evaluation = observables.point(point, scale, PARAMETERS)
+
+    def born(row) -> np.ndarray:
+        """Tree partial amplitudes: Born = sum_s a_s tree_s."""
+
+        projections = []
+        for s in trees:
+            total = 0j
+            for vector in evaluation.born_vectors[row].values():
+                for (tensor, power), value in vector.items():
+                    overlap = contract_connected_tensor_nc_terms(
+                        tree[s], _single(tensor, slice_.basis.legs)
+                    )
+                    total += complex(value) * 3**power * at_three(overlap)
+            projections.append(total)
+        return np.linalg.solve(gram_tree, np.array(projections))
+
+    amplitudes = {row: born(row) for row in observables.rows}
+    largest = max(np.abs(a).max() for a in amplitudes.values())
+    rows = [row for row, a in amplitudes.items() if np.abs(a).max() > 1e-3 * largest]
+    rows = rows[:2]
+    assert rows
+    projections = observables.project_loop(
+        point, scale, [loop[key] for key in loops], rows=rows, parameters=PARAMETERS
+    )
+    resolved = observables.evaluate_resolved(
+        point, scale, resolution="helicity", parameters=PARAMETERS
+    )
+    (order,) = {label[2] for label in projections}
+    for row in rows:
+        (bare,) = resolved.entries[row, None].components["bare"].values()
+        for k in range(3):
+            target = np.array(
+                [
+                    complex(projections[row, j, order].coefficients[k])
+                    for j in range(len(loops))
+                ]
+            )
+            partial, *_ = np.linalg.lstsq(gram_loop, target, rcond=None)
+            residual = np.abs(gram_loop @ partial - target).max()
+            assert residual <= 1e-11 * np.abs(target).max()
+            interference = np.conj(amplitudes[row]) @ (bdk @ partial)
+            expected = 2 * interference.real / slice_.normalisation.average
+            assert _close(bare.coefficients[k], expected, 1e-10)
+
+
+# ------------------------------------------------------------------ native
+
+
+@pytest.mark.parametrize("carrier", ("double", "double-double", "arbitrary-200"))
+def test_native_observables_equal_python(generate, carrier):
+    """The native executor runs the same observable columns (exported seed
+    weights; ``column_rows`` for helicity-resolved columns): directed
+    histories (ordered, complex), spin sources and helicity x colour entries
+    equal the Python reference executor; DoubleFloat dresses and reduces the
+    200-bit trees natively."""
+
+    from pyamplicol.loops.v2.observables import NativeObservables
+
+    declarations = CorrelatorConfig(
+        color_correlations=(ColorCorrelator.dipole("casimir", 1, 1), ORDERED),
+        spin_correlations=((3,),),
+    )
+    observables = generate("d d~ > g g", correlators=declarations)
+    points = _points("uudd_qcd")[:2]
+    scales = ["1000000"] * 2
+    precision = CARRIERS["double" if carrier == "double" else "arbitrary-200"]
+    options = {"double_double": carrier == "double-double"}
+    tolerance = {"double": 1e-12, "double-double": 1e-26, "arbitrary-200": 1e-50}[
+        carrier
+    ]
+    histories = (INCLUSIVE, "casimir", "ordered")
+    native = NativeObservables.correlated(observables, histories, lanes=4)
+    for spin in (None, {3: VECTORS[0]}):
+        results = native.evaluate(
+            points,
+            scales,
+            spin=spin,
+            parameters=PARAMETERS,
+            precision=precision,
+            **options,
+        )
+        for point, scale, result in zip(points, scales, results, strict=True):
+            reference = observables.evaluate(
+                point,
+                scale,
+                correlations=histories,
+                spin=spin,
+                parameters=PARAMETERS,
+                precision=precision,
+            )
+            for key, value in reference.items():
+                for a, b in zip(result[key].totals, value.totals, strict=True):
+                    assert _close(a, b, tolerance, tolerance * 1e-2), (key, spin)
+    resolved = NativeObservables.resolved(observables, lanes=4).evaluate(
+        points[:1], scales[:1], parameters=PARAMETERS, precision=precision, **options
+    )[0]
+    reference = observables.evaluate_resolved(
+        points[0], scales[0], parameters=PARAMETERS, precision=precision
+    )
+    largest = max(abs(complex(x)) for v in reference.entries.values() for x in v.totals)
+    for key, value in reference.entries.items():
+        for a, b in zip(resolved[key].totals, value.totals, strict=True):
+            assert abs(complex(a) - complex(b)) <= tolerance * largest, key
