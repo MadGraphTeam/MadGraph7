@@ -13,7 +13,10 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar
 
 if TYPE_CHECKING:
-    from pyamplicol.api.virtual_results import VirtualStabilityPolicy
+    from pyamplicol.api.virtual_results import (
+        VirtualStabilityChecks,
+        VirtualStabilityPolicy,
+    )
     from pyamplicol.models.loop_declaration import (
         LoopModelDeclaration,
         LoopSchemeDeclaration,
@@ -97,6 +100,14 @@ class R2Strategy(StrEnum):
     AUTO = "auto"
     MODEL = "model"
     DIRECT = "direct"
+
+
+class LoopEngine(StrEnum):
+    """One-loop engine: the per-diagram legacy engine (the oracle until gate
+    R3) or the shared-recursion engine v2 (plan v4 artifacts)."""
+
+    LEGACY = "legacy"
+    V2 = "v2"
 
 
 _PORTABLE_CPP_EXTRA_FLAGS = frozenset({"-fno-math-errno"})
@@ -1036,6 +1047,46 @@ class EvaluationStabilityConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class EvaluationStabilityChecksConfig:
+    """Stability checks of v2 virtual evaluations (requirements addendum C)."""
+
+    rotations: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
+    rotation_count: int = field(default=0, metadata=_setting("int"))
+    reduction_direction: bool = field(default=False, metadata=_setting("bool"))
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "rotations",
+            _tuple_of_strings(self.rotations, "evaluation.stability_checks.rotations"),
+        )
+        _integer(
+            self.rotation_count, "evaluation.stability_checks.rotation_count", minimum=0
+        )
+        if type(self.reduction_direction) is not bool:
+            raise ConfigurationError(
+                "evaluation.stability_checks.reduction_direction must be a boolean"
+            )
+        self.to_checks()
+
+    def to_checks(self) -> VirtualStabilityChecks | None:
+        """The requested checks, or None when none is requested."""
+        from pyamplicol.api.virtual_results import VirtualStabilityChecks
+
+        if self.rotations and self.rotation_count:
+            raise ConfigurationError(
+                "evaluation.stability_checks takes rotations or rotation_count"
+            )
+        try:
+            checks = VirtualStabilityChecks(
+                self.rotations or self.rotation_count, self.reduction_direction
+            )
+        except (TypeError, ValueError, ZeroDivisionError) as error:
+            raise ConfigurationError(f"evaluation.stability_checks: {error}") from error
+        return checks if checks.enabled else None
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationConfig:
     artifact: Path | None = field(
         default=None, metadata=_setting("path", nullable=True)
@@ -1062,6 +1113,10 @@ class EvaluationConfig:
     )
     stability: EvaluationStabilityConfig = field(
         default_factory=EvaluationStabilityConfig, metadata=_section()
+    )
+    poles: bool = field(default=True, metadata=_setting("bool"))
+    stability_checks: EvaluationStabilityChecksConfig = field(
+        default_factory=EvaluationStabilityChecksConfig, metadata=_section()
     )
     helicity_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
     color_flow_ids: tuple[str, ...] = field(default=(), metadata=_setting("list_str"))
@@ -1115,6 +1170,12 @@ class EvaluationConfig:
         if not isinstance(self.stability, EvaluationStabilityConfig):
             raise ConfigurationError(
                 "evaluation.stability must be an EvaluationStabilityConfig"
+            )
+        if not isinstance(self.poles, bool):
+            raise ConfigurationError("evaluation.poles must be a boolean")
+        if not isinstance(self.stability_checks, EvaluationStabilityChecksConfig):
+            raise ConfigurationError(
+                "evaluation.stability_checks must be an EvaluationStabilityChecksConfig"
             )
         object.__setattr__(
             self,
@@ -1396,6 +1457,9 @@ class LoopConfig:
     r2_strategy: R2Strategy = field(
         default=R2Strategy.AUTO, metadata=_setting("str", choices=tuple(R2Strategy))
     )
+    engine: LoopEngine = field(
+        default=LoopEngine.LEGACY, metadata=_setting("str", choices=tuple(LoopEngine))
+    )
     model: LoopModelConfig = field(default_factory=LoopModelConfig, metadata=_section())
     preparation: LoopPreparationConfig | None = field(default=None, metadata=_section())
 
@@ -1410,6 +1474,9 @@ class LoopConfig:
             )
         object.__setattr__(
             self, "r2_strategy", _enum(self.r2_strategy, R2Strategy, "loop.r2_strategy")
+        )
+        object.__setattr__(
+            self, "engine", _enum(self.engine, LoopEngine, "loop.engine")
         )
 
 
