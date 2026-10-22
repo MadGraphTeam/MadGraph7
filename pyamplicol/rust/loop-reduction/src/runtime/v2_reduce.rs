@@ -525,6 +525,13 @@ fn template(rank: usize) -> (String, Vec<String>) {
     (terms.join("+"), parameters)
 }
 
+/// Lanes per generic-engine call. The engine's workspace grows with the lanes
+/// of one call (about 18 MB per lane of a 7-point process at 256 bits: 17 GB
+/// for the 968 lanes of four uu~ -> e-e+dd~g points in one bucket stream), so
+/// buckets are reduced in chunks of this many lanes; lanes are independent,
+/// and chunking leaves every value unchanged.
+const GENERIC_CHUNK_LANES: usize = 16;
+
 impl<T: Carrier> BucketEngine<T> for GenericEngine<T>
 where
     Complex<T>: Real + EvaluationDomain,
@@ -547,24 +554,29 @@ where
             .chunks_exact(4)
             .map(|v| FourMomentum::from([v[0].clone(), v[1].clone(), v[2].clone(), v[3].clone()]))
             .collect();
-        Ok(reductions
-            .evaluate_native(
-                &input.ids,
-                &shifts,
-                &input.masses,
-                &input.scales,
-                &input.coefficients,
-                Some(&input.s_matrix),
-            )?
-            .into_iter()
-            .map(|lane| Outcome {
-                status: lane
-                    .status
-                    .strip_prefix("epsilon sector 0: ")
-                    .map_or(lane.status.clone(), str::to_owned),
-                value: lane.value.map(|v| [v.finite, v.single_pole, v.double_pole]),
-            })
-            .collect())
+        let (n, width, lanes) = (input.n, ncoeff(input.rank), input.ids.len());
+        let mut outcomes = Vec::with_capacity(lanes);
+        for start in (0..lanes).step_by(GENERIC_CHUNK_LANES) {
+            let end = (start + GENERIC_CHUNK_LANES).min(lanes);
+            let reduced = reductions.evaluate_native(
+                &input.ids[start..end],
+                &shifts[start * n..end * n],
+                &input.masses[start * n..end * n],
+                &input.scales[start..end],
+                &input.coefficients[start * width..end * width],
+                Some(&input.s_matrix[start * n * n..end * n * n]),
+            )?;
+            outcomes.extend(reduced.into_iter().map(|lane| {
+                Outcome {
+                    status: lane
+                        .status
+                        .strip_prefix("epsilon sector 0: ")
+                        .map_or(lane.status.clone(), str::to_owned),
+                    value: lane.value.map(|v| [v.finite, v.single_pole, v.double_pole]),
+                }
+            }));
+        }
+        Ok(outcomes)
     }
 }
 
@@ -778,6 +790,64 @@ mod tests {
         assert_eq!(true_rank(&lower, rank), 2);
         assert_eq!(tensor_rank(ncoeff(4)).unwrap(), 4);
         assert!(tensor_rank(7).is_err());
+    }
+
+    /// A 256-bit generic engine of tadpole lanes `∫ c / (q² - m²)`.
+    fn tadpoles(masses: &[Float], scale: &Float) -> (GenericEngine<Float>, BucketInput<Float>) {
+        let zero = Float::with_val(256, 0);
+        let complex = |x: &Float| Complex::new(x.clone(), zero.clone());
+        let lanes = masses.len();
+        let engine = GenericEngine {
+            reductions: HashMap::new(),
+            prototype: zero.clone(),
+        };
+        let input = BucketInput {
+            n: 1,
+            rank: 0,
+            ids: (0..lanes as u64).collect(),
+            shifts: vec![complex(&zero); 4 * lanes],
+            masses: masses.iter().map(complex).collect(),
+            scales: vec![complex(scale); lanes],
+            s_matrix: vec![complex(&zero); lanes],
+            coefficients: vec![complex(&Float::with_val(256, 1)); lanes],
+        };
+        (engine, input)
+    }
+
+    #[test]
+    fn imprecise_float_masters_fail_their_lane() {
+        // numerica tracks significant bits: a squared mass known to 53 bits
+        // gives an A0 below `required_tracked_bits(256)` = 64 tracked bits,
+        // which the master provider reports as `ImpreciseResult`; the lane
+        // fails instead of returning a finite but unestablished value.
+        let scale = Float::with_val(256, 1_000_000);
+        let masses = [Float::with_val(256, 29929), Float::with_val(53, 29929)];
+        let (mut engine, input) = tadpoles(&masses, &scale);
+        let outcomes = engine.reduce(&input).unwrap();
+        assert_eq!(outcomes[0].status, "success");
+        assert!(outcomes[0].value.is_some());
+        assert!(
+            outcomes[1].status.contains("ImpreciseResult"),
+            "{}",
+            outcomes[1].status
+        );
+        assert!(outcomes[1].value.is_none());
+    }
+
+    #[test]
+    fn generic_chunks_leave_values_unchanged() {
+        let scale = Float::with_val(256, 1_000_000);
+        let masses: Vec<_> = (0..GENERIC_CHUNK_LANES + 3)
+            .map(|k| Float::with_val(256, 29929 + 7 * k as i64))
+            .collect();
+        let (mut engine, input) = tadpoles(&masses, &scale);
+        let chunked = engine.reduce(&input).unwrap();
+        for (k, mass) in masses.iter().enumerate() {
+            let (mut single, one) = tadpoles(std::slice::from_ref(mass), &scale);
+            let alone = single.reduce(&one).unwrap();
+            assert_eq!(alone[0].status, "success");
+            assert_eq!(chunked[k].value, alone[0].value, "lane {k}");
+        }
     }
 
     #[test]
