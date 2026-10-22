@@ -6,9 +6,10 @@
 //! batch's Born components; and the leaf objects `w_s U0[k]` that schedule B
 //! dresses (a seed times `δ_ab`, one lane vector per object row).
 
-use super::dress::{Carrier, LaneData, cadd};
+use super::dress::{Carrier, LaneData};
 use super::kernels::lane_vector_len;
 use super::plan::LoopProgramV4;
+use rayon::prelude::*;
 
 /// Seeds of one chunk: per seed key, `rows × columns` lane vectors in object
 /// row order `h × columns + o`.
@@ -16,14 +17,13 @@ pub struct Seeds<T> {
     pub values: Vec<Vec<T>>,
 }
 
-/// `U0` of every seed key of the plan.
+/// `U0` of every seed key of the plan (seed keys on parallel threads).
 pub fn seeds<T: Carrier, const L: usize>(plan: &LoopProgramV4, data: &LaneData<T, L>) -> Seeds<T> {
     let v = lane_vector_len(L);
     let columns = plan.columns;
-    let mut term = vec![data.zero.clone(); v];
     let values = plan
         .seeds
-        .iter()
+        .par_iter()
         .map(|seed| {
             let weights: Vec<Vec<(usize, T, T)>> = seed
                 .columns
@@ -44,13 +44,13 @@ pub fn seeds<T: Carrier, const L: usize>(plan: &LoopProgramV4, data: &LaneData<T
                     let target = &mut out[(h * columns + o) * v..][..v];
                     for (component, re, im) in terms {
                         let born = &data.born[(h * plan.born_components + component) * v..][..v];
-                        // weight * conj(A0): (a + ib)(c - id).
+                        // weight * conj(A0): (a + ib)(c - id), added in place.
+                        let (target_re, target_im) = target.split_at_mut(L);
                         for l in 0..L {
                             let (c, d) = (&born[l], &born[L + l]);
-                            term[l] = re.clone() * c + im.clone() * d;
-                            term[L + l] = im.clone() * c - re.clone() * d;
+                            target_re[l] += re.clone() * c + im.clone() * d;
+                            target_im[l] += im.clone() * c - re.clone() * d;
                         }
-                        cadd::<T, L>(target, &term);
                     }
                 }
             }
