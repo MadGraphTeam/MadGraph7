@@ -552,6 +552,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             self.write_lh_order(filename, [matrix_element.born_me.get('processes')[0]], OLP)
         
         if matrix_element.virt_matrix_element:
+                    matrix_element.virt_matrix_element.evaluated_flavor_pdgs = \
+                        self.get_virtual_evaluated_flavor_pdgs(matrix_element)
                     calls += self.generate_virt_directory( \
                             matrix_element.virt_matrix_element, \
                             fortran_model, \
@@ -2704,6 +2706,22 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         return proc_def_to_label
             
                                 
+    @staticmethod
+    def get_virtual_evaluated_flavor_pdgs(matrix_element):
+        """Return the physical Born rows (signed PDGs) for which this P
+        directory evaluates its virtual.
+
+        MadLoop only keeps its filters, and so writes the HelFilter.dat that
+        BinothLHA reads for the MC over helicities, when these are a single
+        row of the virtual (see
+        LoopProcessExporterFortranSA.get_virtual_filter_flavor).  The rows
+        are read without resolving the virtual ones, since that can trim the
+        loop matrix element before it is exported.
+        """
+        return [info['flavor_class']['born_pdgs'] for info in
+                matrix_element.get_fks_info_list(resolve_virtual=False)
+                if 'flavor_class' in info]
+
     def generate_virt_directory(self, loop_matrix_element, fortran_model, dir_name):
         """writes the V**** directory inside the P**** directories specified in
         dir_name"""
@@ -3968,6 +3986,15 @@ Parameters              %(params)s\n\
                 [1] + virtual_flavor_indices)
             replace_dict['n_virtual_flavor_configs'] = len(set(
                 index for index in virtual_flavor_indices if index > 0))
+            # The virtual directory is already written: with several rows,
+            # MadLoop keeps one helicity filter per row (FILTER_FLAV_IDX=-1,
+            # see LoopProcessExporterFortranSA.get_virtual_filter_flavor),
+            # unless it could not resolve them. The drivers then sum the
+            # helicities explicitly, since BinothLHA has no filter to read.
+            replace_dict['helfilter_per_virtual_flavor'] = bool_dict[
+                replace_dict['n_virtual_flavor_configs'] > 1 and
+                getattr(fksborn.virt_matrix_element, 'virtual_filter_flavor',
+                        None) == -1]
             has_physical_fks_classes = all(
                 info.get('flavor_class') for info in fks_info_list)
             replace_dict['has_physical_fks_classes'] = (
@@ -4156,6 +4183,7 @@ Parameters              %(params)s\n\
             replace_dict['virtual_flavor_index_values'] = '0'
             replace_dict['max_virtual_flavor_index'] = 1
             replace_dict['n_virtual_flavor_configs'] = 0
+            replace_dict['helfilter_per_virtual_flavor'] = '.false.'
             replace_dict['has_physical_fks_classes'] = '.false.'
             replace_dict['fks_flavor_class_values'] = '0'
             replace_dict['fks_topology_values'] = '1'
