@@ -839,17 +839,17 @@ Trees, Born amplitudes and counterterm scalars are still evaluated per point in 
 
 | Process | Families | Finite only | + re-test | Dressing | Factors | Reduction | Seeds | Scatter | Python inputs |
 |---|---|---|---|---|---|---|---|---|---|
-| gg→gg | 24 | 1.11 | 1.24 | 0.67 | 0.13 | 0.14 | 0.02 | 0.08 | 810 |
-| uu~→dd~g | 42 | 1.24 | 1.45 | 0.44 | 0.20 | 0.21 | 0.02 | 0.28 | 129 |
-| uu~→uu~g | 68 | 1.87 | 2.24 | 0.84 | 0.24 | 0.34 | 0.04 | 0.29 | 222 |
-| uu~→e⁻e⁺gg (photon) | 69 | 3.34 | 3.91 | 1.85 | 0.36 | 0.58 | 0.02 | 0.37 | 204 |
-| uu~→ggg | 90 | 3.94 | 4.53 | 2.36 | 0.31 | 0.59 | 0.24 | 0.26 | 1,262 |
-| gg→ggg | 154 | 16.3 | 18.6 | 10.6 | 0.70 | 2.28 | 2.04 | 0.33 | 24,248 |
+| gg→gg | 24 | 1.22 | 1.34 | 0.72 | 0.16 | 0.15 | 0.01 | 0.09 | 818 |
+| uu~→dd~g | 42 | 1.29 | 1.48 | 0.45 | 0.21 | 0.22 | 0.02 | 0.28 | 129 |
+| uu~→uu~g | 68 | 1.96 | 2.33 | 0.86 | 0.26 | 0.36 | 0.03 | 0.30 | 225 |
+| uu~→e⁻e⁺gg (photon) | 69 | 3.35 | 3.92 | 1.86 | 0.36 | 0.59 | 0.01 | 0.38 | 215 |
+| uu~→ggg | 90 | 3.85 | 4.46 | 2.36 | 0.32 | 0.60 | 0.10 | 0.26 | 1,356 |
+| gg→ggg | 154 | 15.3 | 17.9 | 10.7 | 0.72 | 2.32 | 0.77 | 0.34 | 22,485 |
 
-- The G0 rule splits 38–51 % of the steps; against all-fused it saves 9–19 % of the dressing and needs 38–62 % of the chunk inputs (gg→ggg 16.3 against 19.4 ms/pt).
-- The re-test adds 0.88–0.96× the reduction (cached masters). Poles on or off cost the same within noise: the saving of finite-only lies in the counterterm and Catani work that is still in Python.
-- Eight threads take gg→ggg's dressing from 10.6 to 1.6 ms/pt; seeds and reduction are serial (7.0 ms/pt in all).
-- gg→ggg's seeds (12 % of the run) are the direct `K conj(A0)` contraction; the seed FFT and primitive tables (WP2.4) are the lever.
+- The G0 rule splits 38–51 % of the steps; against all-fused it saves 9–19 % of the dressing and needs 38–62 % of the chunk inputs (gg→ggg dressing 10.6 against 12.7 ms/pt).
+- The re-test adds 0.84–1.0× the reduction (cached masters). Poles on or off cost the same within noise: the saving of finite-only lies in the counterterm and Catani work that is still in Python.
+- Eight threads took gg→ggg's dressing from 10.6 to 1.6 ms/pt (7.0 ms/pt in all, measured before the seeds ran on the threads); the reduction is serial.
+- Seeds are the direct `K conj(A0)` contraction (gg→ggg 0.77 ms/pt, 5 %); the seed FFT and primitive tables (WP2.4) are the lever there.
 
 **Memory per lane** (binary64, reals × 8 bytes; Float carriers add their limbs): chunk inputs (factors, vertex tensors, currents) 0.07–1.26 MB (gg→ggg 157,320 reals; 411,720 all fused), live open-loop objects of one family walk 60–270 kB per thread (gg→ggg 18,480 reals; uu~→e⁻e⁺gg 33,280), family numerators of one bucket chunk 4.5–67 kB.
 
