@@ -15,9 +15,11 @@ two run identical programs:
 * **kernels**: every catalogue kernel as exact polynomial terms over its
   inputs (``reference_executor.ExactKernel``); the model factors of its
   coefficients are numbered kernel constants, valued per batch;
-* **seeds**: per seed key (class, loop orders) and observable column the exact
-  colour weights K[c, b] of each Born component (b, Born order), projected at
-  the request's colour accuracy, so U0 = sum K conj(A0) is formed natively;
+* **seeds**: per seed key (class combination, loop orders) and observable
+  column the exact colour weights sum_c x_c K[c, b] N_c^g of each Born
+  component (b, Born order, N_c grade g), projected at the request's colour
+  accuracy (``colour.SeedTable.seeds``), so U0 = sum K conj(A0) is formed
+  natively;
 * **families**: per family its trie frame reading, rank and loop orders, the
   leaves (seed key, leaf weight) and the schedule-B steps with their edges
   (child step or leaf, fused factor) and helicity row links;
@@ -41,6 +43,8 @@ from decimal import Decimal
 from fractions import Fraction
 from itertools import product
 from typing import Any, Literal
+
+from pyamplicol.color.connections import ExactColorCoefficient
 
 from . import reference_executor as rx
 from .colour import project
@@ -92,7 +96,7 @@ class ExportedPlan:
 
     program: dict[str, Any]
     rows: tuple[rx.Row, ...]
-    born_components: tuple[tuple[int, Orders], ...]
+    born_components: tuple[tuple[int, Orders, int], ...]
     block_rows: tuple[tuple[Any, Hashable, int, rx.Row, int], ...]
     constants: tuple[Hashable, ...]
     masses: tuple[Any, ...]
@@ -130,7 +134,7 @@ class _Exporter:
     factors: dict[tuple[int, int], int] = field(default_factory=dict)
     vertices: dict[Hashable, int] = field(default_factory=dict)
     seeds: dict[Hashable, int] = field(default_factory=dict)
-    born_components: dict[tuple[int, Orders], int] = field(default_factory=dict)
+    born_components: dict[tuple[int, Orders, int], int] = field(default_factory=dict)
     orders: dict[Orders, int] = field(default_factory=dict)
     masses: dict[Any, int] = field(default_factory=dict)
 
@@ -264,45 +268,63 @@ class _Exporter:
     def seed(self, skeleton, contents) -> int:
         slice_ = self.slice_
         reading = rx._reading(skeleton, contents)
-        c = slice_.class_of.get(reading)
-        if c is None:
+        combination = slice_.class_of.get(reading)
+        if combination is None:
             raise KeyError("reading without a seed class")
-        key = (c, skeleton.orders)
+        key = (combination, skeleton.orders)
         found = self.seeds.get(key)
         if found is None:
             found = self.seeds[key] = len(self.seeds)
         return found
 
     def seed_records(self) -> list[dict]:
+        """Per seed key and column the exact weights of the Born components,
+        the projection of ``assemble.SectorSeeds`` (``SeedTable.seeds``)."""
+
         slice_ = self.slice_
         table = slice_.table
         accuracy = slice_.request.accuracy
         degrees = slice_.degrees()["virtual"] if accuracy != "full" else {}
+        born_grades = slice_._born_grades()
+        sectors = []
+        for sector, pairs in slice_.sectors:
+            degree = degrees.get(sector)
+            if accuracy != "full" and degree is None:
+                degree = table.degree(pairs, born_grades)
+            sectors.append((pairs, degree))
+        admitted = {
+            (c, order)
+            for pairs, _degree in sectors
+            for c, order, _b, _a in table.admitted(pairs)
+        }
         records = []
-        for c, order in self.seeds:
+        for combination, order in self.seeds:
+            for c, _x in combination:
+                if (c, order) not in admitted:
+                    raise KeyError(f"no sector admits class {c} at {order}")
             columns = []
-            admitted = False
-            for sector, pairs in slice_.sectors:
-                degree = degrees.get(sector)
-                if accuracy != "full" and degree is None:
-                    degree = table.degree(pairs)
-                terms = []
-                for cc, oo, b, born_order in table.admitted(pairs):
-                    if (cc, oo) != (c, order):
-                        continue
-                    admitted = True
-                    weight = project(table.cells[c][b], degree, accuracy)
-                    if not weight:
-                        continue
-                    j = self.born_components.setdefault(
-                        (b, born_order), len(self.born_components)
-                    )
-                    terms.append(
-                        [j, _fraction_text(weight.real), _fraction_text(weight.imag)]
-                    )
-                columns.append(terms)
-            if not admitted:
-                raise KeyError(f"no sector admits class {c} at {order}")
+            for pairs, degree in sectors:
+                weights: dict[int, ExactColorCoefficient] = {}
+                for c, x in combination:
+                    for cc, oo, b, born_order in table.admitted(pairs):
+                        if (cc, oo) != (c, order):
+                            continue
+                        for grade in sorted(born_grades.get((b, born_order), ())):
+                            weight = project(table.cells[c][b], degree, accuracy, grade)
+                            if not weight:
+                                continue
+                            j = self.born_components.setdefault(
+                                (b, born_order, grade), len(self.born_components)
+                            )
+                            term = x * weight
+                            weights[j] = term + weights[j] if j in weights else term
+                columns.append(
+                    [
+                        [j, _fraction_text(w.real), _fraction_text(w.imag)]
+                        for j, w in weights.items()
+                        if w
+                    ]
+                )
             records.append({"columns": columns})
         return records
 
@@ -701,9 +723,9 @@ class NativeExecutor:
             batch["block_rows"].append(rows)
             batch["born"].append(
                 [
-                    value(evaluation.amplitudes[row].get(component, 0))
+                    value(evaluation.amplitudes[row].get((b, order), {}).get(grade, 0))
                     for row in exported.rows
-                    for component in exported.born_components
+                    for b, order, grade in exported.born_components
                 ]
             )
         batch["constants"], batch["masses"] = batch.pop("shared")

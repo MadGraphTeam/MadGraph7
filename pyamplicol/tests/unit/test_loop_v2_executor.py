@@ -380,6 +380,9 @@ def test_kernel_forms_follow_the_g0_rule(slices):
 class _ExactNumbers:
     """Exact rational stand-in of ``assemble._Numbers`` for the seeds."""
 
+    double = False
+    zero = rx.Complex(Fraction(0), Fraction(0))
+
     @staticmethod
     def real(value):
         return Fraction(value)
@@ -402,16 +405,22 @@ def _exact_reference(slice_: LoopSlice, point, scale):
     carrier = rx.Carrier.exact(precision.working_digits)
     constants = rx.KernelConstants(evaluation.constants.parameters, carrier)
     born = {
-        row: {key: rx.exact(value) for key, value in amplitudes.items()}
+        row: {
+            key: {grade: rx.exact(value) for grade, value in grades.items()}
+            for key, grades in amplitudes.items()
+        }
         for row, amplitudes in evaluation.amplitudes.items()
     }
+    accuracy = slice_.request.accuracy
+    degrees = slice_.degrees()["virtual"] if accuracy != "full" else {}
     seeds = SectorSeeds(
         slice_.table,
         slice_.class_of,
         born,
         [pairs for _sector, pairs in slice_.sectors],
         _ExactNumbers(),
-        slice_.request.accuracy,
+        accuracy,
+        [degrees.get(sector) for sector, _pairs in slice_.sectors],
     )
     kinematics = rx.CatalogueKinematics(
         slice_.catalogue,
