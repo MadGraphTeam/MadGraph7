@@ -35,10 +35,12 @@ from .dag_types import (
 )
 
 _LC_SECTOR_SUPPORT_PREFIX = "lc-sector-support:"
-# Auxiliary kinds of four-point contact vertices, which the model compiler
-# lowers to a partial merge into the auxiliary and a final merge out of it
-# (``models/compiler_entry.py``).
-_FOUR_POINT_CONTACT_AUXILIARY_PREFIX = "ufo-contact:"
+# Auxiliary kinds of contact vertices: ``ufo-contact:`` and
+# ``ufo-contact-tree:`` (``models/compiler_entry.py``,
+# ``models/compiler_contact_trees.py``). A four-point vertex is a partial
+# merge into one auxiliary and a final merge out of it; larger colour-singlet
+# contacts merge auxiliaries with each other.
+_CONTACT_AUXILIARY_PREFIX = "ufo-contact"
 # Basis key of a colour-singlet contact auxiliary built from two inputs that
 # carry complete quark lines: the line groups of its left input, so that the
 # final merge sees all four legs of the vertex.
@@ -184,7 +186,10 @@ class ColorEngine:
         self._fundamental_line_auxiliary_ids = (
             self._find_fundamental_line_auxiliary_ids()
         )
-        self._singlet_contact_auxiliary_ids = self._find_singlet_contact_auxiliary_ids()
+        (
+            self._singlet_contact_auxiliary_ids,
+            self._nested_singlet_contact_auxiliary_ids,
+        ) = self._find_singlet_contact_auxiliary_ids()
         self._distinguished_line_by_sector: dict[int, int | None] = {}
         self._fundamental_fermion_pair_count = (
             self._external_fundamental_fermion_pair_count()
@@ -461,8 +466,11 @@ class ColorEngine:
                     auxiliary_ids.add(particle_id)
         return frozenset(auxiliary_ids)
 
-    def _find_singlet_contact_auxiliary_ids(self) -> frozenset[int]:
-        """Colour-singlet auxiliaries of four-point contact vertices."""
+    def _find_singlet_contact_auxiliary_ids(
+        self,
+    ) -> tuple[frozenset[int], frozenset[int]]:
+        """Colour-singlet contact auxiliaries of four-point vertices, and those
+        of larger contacts, which share a model vertex with another one."""
 
         auxiliary_ids: set[int] = set()
         for vertex in self.model.vertices:
@@ -473,11 +481,18 @@ class ColorEngine:
                     continue
                 if (
                     auxiliary_kind is not None
-                    and auxiliary_kind.startswith(_FOUR_POINT_CONTACT_AUXILIARY_PREFIX)
+                    and auxiliary_kind.startswith(_CONTACT_AUXILIARY_PREFIX)
                     and _known_color_representation(self.model, particle_id) == 1
                 ):
                     auxiliary_ids.add(particle_id)
-        return frozenset(auxiliary_ids)
+        nested = {
+            particle_id
+            for vertex in self.model.vertices
+            if sum(particle in auxiliary_ids for particle in vertex.particles) > 1
+            for particle_id in vertex.particles
+            if particle_id in auxiliary_ids
+        }
+        return frozenset(auxiliary_ids - nested), frozenset(nested)
 
     def _external_fundamental_fermion_pair_count(self) -> int:
         fundamental_count = 0
@@ -602,6 +617,7 @@ class ColorEngine:
             )
         if left.sector_id != right.sector_id:
             return ()
+        self._require_four_point_singlet_contact(left, right, vertex)
         partial_key = self._singlet_contact_partial(left, right, vertex)
         final = partial_key is None and (
             _singlet_contact_partial_groups(left.basis_key) is not None
@@ -927,6 +943,41 @@ class ColorEngine:
         ):
             return None
         return _singlet_contact_partial_key(left.line_groups)
+
+    def _require_four_point_singlet_contact(
+        self,
+        left: ColorState,
+        right: ColorState,
+        vertex: Vertex,
+    ) -> None:
+        """Refuse a larger colour-singlet contact vertex joining quark lines.
+
+        Its merges would keep the three-leg orientation each, which depends
+        on the closure sink as it did for four-point vertices
+        (``_singlet_contact_orientation_allowed``); no such vertex has been
+        checked against a reference, so it fails closed instead of building
+        some diagrams twice or not at all.
+        """
+
+        if not self._nested_singlet_contact_auxiliary_ids.intersection(
+            vertex.particles
+        ):
+            return
+        left_groups = set(left.line_groups)
+        right_groups = set(right.line_groups)
+        sector = self._sector_by_id.get(left.sector_id)
+        if (
+            sector is not None
+            and left_groups
+            and right_groups
+            and left_groups.isdisjoint(right_groups)
+            and len(left_groups | right_groups) < len(sector.line_label_groups)
+        ):
+            raise ValueError(
+                "colour-singlet contact vertices with more than four legs that "
+                "join three or more quark lines are not supported at NLC or "
+                f"full colour (vertex {vertex.kind}, particles {vertex.particles})"
+            )
 
     def _distinguished_line(self, sector_id: int) -> int | None:
         """The line group that starts the sector's closure traversal."""
