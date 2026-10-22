@@ -1058,7 +1058,7 @@ class V2VirtualRuntime:
         self,
         observables: Any,
         *,
-        model_parameters: Mapping[str, object] | None = None,
+        model_parameters: ModelParameters | None = None,
         arithmetic: str | None = None,
         precision: int | None = None,
         executor: Literal["native", "python"] = "native",
@@ -1076,7 +1076,7 @@ class V2VirtualRuntime:
             for key, value in (("lanes", lanes), ("threads", threads))
             if value is not None
         }
-        self._native: dict[tuple, Any] = {}
+        self._native: dict[tuple[Any, ...], Any] = {}
         self._parameters = {
             name: real
             for name, (real, _imaginary) in (
@@ -1129,7 +1129,7 @@ class V2VirtualRuntime:
             return self._observables
         return MemberObservables(self._observables, self._member)
 
-    def _native_columns(self, key: tuple) -> Any:
+    def _native_columns(self, key: tuple[Any, ...]) -> Any:
         """The native executor of one output column set (built once):
         ``("correlated", histories)`` or ``("resolved", spin legs)``."""
 
@@ -1151,7 +1151,9 @@ class V2VirtualRuntime:
 
     # -- evaluation -----------------------------------------------------------
 
-    def _precision(self, arithmetic: str | None, precision: int | None):
+    def _precision(
+        self, arithmetic: str | None, precision: int | None
+    ) -> tuple[str, Any]:
         """(public arithmetic, v2 ``Precision`` carrier)."""
 
         from pyamplicol.loops.v2.assemble import Precision
@@ -1183,15 +1185,19 @@ class V2VirtualRuntime:
             return CorrelatedValue(Decimal(real), Decimal(imaginary))
         return Decimal(value)
 
-    def _laurent(self, laurent: Any, arithmetic: str, correlated: bool) -> tuple:
+    def _laurent(
+        self, laurent: Any, arithmetic: str, correlated: bool
+    ) -> LaurentCoefficients:
         if laurent.single_pole is None:
             raise CompatibilityError("public virtual results carry all three poles")
-        return tuple(
-            self._scalar(value, arithmetic, correlated)
-            for value in laurent.coefficients
+        return LaurentCoefficients(
+            *(
+                self._scalar(value, arithmetic, correlated)
+                for value in laurent.coefficients
+            )
         )
 
-    def _diagnostic(self, arithmetic: str, precision) -> VirtualLaneDiagnostic:
+    def _diagnostic(self, arithmetic: str, precision: Any) -> VirtualLaneDiagnostic:
         bits = {"double": 53, "double-double": 106}.get(arithmetic) or math.ceil(
             precision.digits * math.log2(10)
         )
@@ -1205,7 +1211,11 @@ class V2VirtualRuntime:
         )
 
     def _evaluation(
-        self, results: Sequence[Any], arithmetic: str, precision, correlated: bool
+        self,
+        results: Sequence[Any],
+        arithmetic: str,
+        precision: Any,
+        correlated: bool,
     ) -> VirtualEvaluation:
         from pyamplicol.loops.strategy import R2Selection
 
@@ -1291,8 +1301,8 @@ class V2VirtualRuntime:
             inherited = dict(self._spin_vectors)
         classes = observables.spin_classes
         allowed = tuple(sorted({leg for group in classes for leg in group}))
-        groups: dict[tuple, list[str]] = {}
-        sources: dict[tuple, tuple[dict[int, Any], ...]] = {}
+        groups: dict[tuple[Any, ...], list[str]] = {}
+        sources: dict[tuple[Any, ...], tuple[dict[int, Any], ...]] = {}
         for label, request in requests.items():
             if not isinstance(request, CorrelatedRequest):
                 raise TypeError("correlated requests require CorrelatedRequest records")
@@ -1389,12 +1399,12 @@ class V2VirtualRuntime:
             ]
         born_orders = self._default_born_orders()
 
-        def born_value(entry, order):
+        def born_value(entry: Any, order: Any) -> VirtualScalar:
             value = entry.born.get(order, 0) if entry is not None else 0
             return self._scalar(value, arithmetic, False)
 
-        born_values = []
-        values = []
+        born_values: list[Any] = []
+        values: list[Any] = []
         for result in entries:
             born_values.append(
                 tuple(
