@@ -894,6 +894,11 @@ Counterterm amplitudes then sit in the Born colour sectors (plus the few multi-t
   - ghost legs.
 - O6: recursion = sites of the lowered rules, and recursion + remaining sites = O1 UV_local and R2, at 1e-12 on all 8 controls in both lanes. The 200-bit carrier is checked on gg→gg, uu~→ggg and DY. uu~→dd~g at 200 bits is a strict xfail: the tree runtime's U(1)-subtraction colour weight is binary64, so its 200-bit Born is only good to about 1e-17.
 - 7-leg CT programs on the Rust recurrence lane: uu~→e⁻e⁺dd~g generates in 31 s and 0.54 GB, gg→ggggg in 38 s and 0.54 GB. The lowered model is prepared once, in 2.6 minutes. The lowered tree kernels are the full variant (§3.2), since CT = 1 currents are not conserved.
+- Two-point insertions, planned without a new node kind. Each (field, slot) gets a clone particle carrying the same quantum numbers, with copies of the ordinary vertices that put the clone on one leg. Each copy carries `PYAMPLICOL_CT_LINE` (so that a single insertion has `LINE = 2`), half of Π's orders and the slot order.
+  - Every internal line is a current of the recursion (closures pair the all-but-sink current with the sink source). Clone lines therefore cover each internal line exactly once, and the external-leg lines (LSZ) never close, since the clone's id differs from the sink's.
+  - Massless fermions: P Π P = (i A)·P for Π = A p̸. The clone keeps the standard (Weyl) propagator, and the factor i A sits only on the copies with the clone's antiparticle leg, which a fermion line meets exactly once.
+  - Vectors and massive fermions: these need the propagator P Π P with a (p² − m²)² denominator. The tree compiler's custom UFO propagators cannot express that yet: `normalize_lorentz_expression` handles only the momentum square `P(a)^2`, and refuses a product of two such squares raised to a negative power. This, or a genuine unary node, is the open item.
+- Each CT program also evaluates the CT × CT squared orders (`PYAMPLICOL_CT_INSERTION = 2`). They are unused; skipping them needs an amplitude-order selection in the tree runtime.
 
 ### 6.2 Admission: the witness table
 
