@@ -42,6 +42,7 @@ import madgraph.core.helas_objects as helas_objects
 import madgraph.iolibs.export_fks as export_fks
 import madgraph.iolibs.export_v4 as export_v4
 import madgraph.iolibs.file_writers as file_writers
+import madgraph.loop.loop_exporters as loop_exporters
 from madgraph import MadGraph5Error
 
 _file_path = os.path.dirname(os.path.realpath(__file__))
@@ -236,6 +237,70 @@ class TestGroupedFKSMetadata(unittest.TestCase):
             content = ' '.join(stream.read().upper().split())
         self.assertIn(
             'IF (N_VIRTUAL_FLAVOR_CONFIGS.GT.1) MC_HEL=0', content)
+
+    def test_single_row_grouped_virtual_keeps_madloop_filters(self):
+        """MadLoop keeps its filters when one row of a grouped virtual is used.
+
+        The virtuals of e+ e- > t t~ and mu+ mu- > t t~ group e and mu, but
+        each P directory evaluates a single row. With one virtual flavour
+        configuration the drivers do the MC over helicities, which reads the
+        HelFilter.dat that MadLoop only writes when its filters are kept.
+        The P directories of p p > e+ ve evaluate two rows each, so their
+        filters must stay off.
+        """
+
+        template_dir = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'madgraph', 'iolibs', 'template_files')
+        for loop_dir in ('loop', 'loop_optimized'):
+            with open(os.path.join(template_dir, loop_dir,
+                                   'loop_matrix_standalone.inc')) as stream:
+                content = ' '.join(stream.read().upper().split())
+            self.assertIn('IF (FILTER_FLAV_IDX.EQ.0) THEN C A SINGLE MADLOOP '
+                          'FILTER FILE', content)
+            self.assertIn('IF (FILTER_FLAV_IDX.NE.0.AND.FLAV_IDX.NE.'
+                          'FILTER_FLAV_IDX) THEN', content)
+            self.assertNotIn('NVIRTUAL_FLAVORS.GT.1', content)
+
+        get_rows = export_fks.ProcessExporterFortranFKS.\
+            get_virtual_evaluated_flavor_pdgs
+        get_filter = loop_exporters.LoopProcessExporterFortranSA.\
+            get_virtual_filter_flavor
+        expected = {'e+ e- > t t~ [QCD]': {'P0_epem_ttx': 1},
+                    'mu+ mu- > t t~ [QCD]': {'P0_mupmum_ttx': 2},
+                    'p p > e+ ve [QCD]': {'P0_QQx_veep': 0,
+                                          'P0_QxQ_veep': 0}}
+        for process, filters in expected.items():
+            interface = MGCmd.MasterCmd()
+            interface.no_notification()
+            interface.exec_cmd('import model loop_sm')
+            interface.exec_cmd('generate %s' % process)
+            helas = fks_helas_objects.FKSHelasMultiProcess(
+                interface._fks_multi_proc)
+            found = {}
+            for matrix_element in helas.get_matrix_elements():
+                virtual = matrix_element.virt_matrix_element
+                if not virtual._flavor_is_populated():
+                    virtual.populate_flavor_validity()
+                n_flavors = len(virtual.get('allowed_flavors'))
+                self.assertGreater(n_flavors, 1)
+                # Without the rows of its caller the filters stay off.
+                self.assertEqual(get_filter(virtual, n_flavors), 0)
+                # The rows are set before the virtual is exported, as in
+                # generate_directories_fks.
+                virtual.evaluated_flavor_pdgs = get_rows(matrix_element)
+                filter_flavor = get_filter(virtual, n_flavors)
+                found['P%s' % matrix_element.born_me.get(
+                    'processes')[0].shell_string()] = filter_flavor
+                # The rows the P directory evaluates at run time.
+                virtual_rows = set(
+                    info['flavor_class']['virtual_flavor_index']
+                    for info in matrix_element.get_fks_info_list())
+                if filter_flavor:
+                    self.assertEqual(virtual_rows, set([filter_flavor]))
+                else:
+                    self.assertGreater(len(virtual_rows), 1)
+            self.assertEqual(found, filters, process)
 
     def test_fixed_order_stratifies_physical_flavors_by_topology(self):
         """Grouped FO sampling sums flavours inside one sampled topology."""
