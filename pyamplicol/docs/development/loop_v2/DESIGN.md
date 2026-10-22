@@ -817,6 +817,40 @@ cargo bench -p rusticol-core --features loop-v2 --bench loop_v2_kernels -- \
 python tools/loop_v2_costmodel.py bench-baseline.json bench-x86-64-v3.json bench-native.json
 ```
 
+### 5.5 Native executor (WP2.1, first measurements 2026-10-22)
+
+**What runs natively.** `loops/v2/plan_export.py` writes plan v4 from the objects the Python reference executor walks (JSON for now; the artifact member is WP2.6). `rusticol_core::loop_v2::plan` loads and validates it; `loop_execution::v2` evaluates it:
+
+- carriers f64, DoubleFloat, Float (any precision) and exact Rational; 1–32 lanes, default 16 (G0);
+- per chunk of lanes: one exact invariant table (leg-subset momenta and squares, cast once per distinct point), seeds `U0 = Σ K conj(A0)`, then the (N, R) buckets streamed in chunks of families: the chunk's fused factors, split vertex tensors and split currents (freed after the last chunk that reads them), families on rayon threads (schedule B; F as the oracle), closures scattered into lane-major NinjaRS lanes with exact invariants, and the bucket reduced by the `V2Backend` (`runtime/v2_execution.rs` over the WP1.6 `V2Reducer`: true-rank buckets, per-chunk master cache, optional re-test frame);
+- each step in the kernel form of G0's rule (item 4 above; `FormPolicy::Fused` and `Split` are oracles);
+- failed lanes (reducer status, `MasterFailure::ImpreciseResult` included, or non-finite numerators) fail their point, which is compacted out of later reductions, never branched on in a kernel;
+- finite-only: the reducer returns the finite column only and the assembly skips pole counterterm scalars and the Catani check; nothing else is pole-only on this NinjaRS pin (`v2_reduce.rs` module notes).
+
+The evaluation path is `V2Executor::evaluate` with the reduction trait `V2Backend`; the inherited `LoopBackend`/`evaluate_inner` path stays for the legacy engine until its deletion (§13.3). The Python bridge is `plan_export.NativeExecutor` over the binding `V2Executor` (`rust/loop-reduction/python/src/v2_executor.rs`).
+
+Trees, Born amplitudes and counterterm scalars are still evaluated per point in Python (`LoopSlice._point`) and handed over as block rows, Born components and kernel constants. That is the dominant cost today (table below) and moves native with the loop-request mode of the Rust recurrence (WP3.1) and the artifact (WP2.6).
+
+**Equivalence** (`tests/unit/test_loop_v2_executor.py`): family numerators equal the Python reference executor's within 10⁻¹³ (√s^r-weighted, binary64; B in every form policy and F) on gg→gg, uu~→dd~g, uu~→uu~, uu~→uu~g, gg→ggg, uu~→ggg and uu~→e⁻e⁺gg, and within 10⁻⁷⁰ at 60 digits (gg→ggg: B, rule forms); the exact carrier reproduces the Python exact run bit for bit; DoubleFloat agrees to 10⁻²⁸; the native virtual equals the slice to 10⁻¹² (all three Laurent coefficients; uu~→e⁻e⁺gg finite only), finite-only runs equal the finite parts, and the native re-test and rotation estimates equal the slice's.
+
+**Development timings** (not benchmark rows): binary64, one thread, 16 lanes, 16 points, release build without LTO, shared host under load; ms per point, best of 3, inputs prepared beforehand.
+
+| Process | Families | Finite only | + re-test | Dressing | Factors | Reduction | Seeds | Scatter | Python inputs |
+|---|---|---|---|---|---|---|---|---|---|
+| gg→gg | 24 | 1.11 | 1.24 | 0.67 | 0.13 | 0.14 | 0.02 | 0.08 | 810 |
+| uu~→dd~g | 42 | 1.24 | 1.45 | 0.44 | 0.20 | 0.21 | 0.02 | 0.28 | 129 |
+| uu~→uu~g | 68 | 1.87 | 2.24 | 0.84 | 0.24 | 0.34 | 0.04 | 0.29 | 222 |
+| uu~→e⁻e⁺gg (photon) | 69 | 3.34 | 3.91 | 1.85 | 0.36 | 0.58 | 0.02 | 0.37 | 204 |
+| uu~→ggg | 90 | 3.94 | 4.53 | 2.36 | 0.31 | 0.59 | 0.24 | 0.26 | 1,262 |
+| gg→ggg | 154 | 16.3 | 18.6 | 10.6 | 0.70 | 2.28 | 2.04 | 0.33 | 24,248 |
+
+- The G0 rule splits 38–51 % of the steps; against all-fused it saves 9–19 % of the dressing and needs 38–62 % of the chunk inputs (gg→ggg 16.3 against 19.4 ms/pt).
+- The re-test adds 0.88–0.96× the reduction (cached masters). Poles on or off cost the same within noise: the saving of finite-only lies in the counterterm and Catani work that is still in Python.
+- Eight threads take gg→ggg's dressing from 10.6 to 1.6 ms/pt; seeds and reduction are serial (7.0 ms/pt in all).
+- gg→ggg's seeds (12 % of the run) are the direct `K conj(A0)` contraction; the seed FFT and primitive tables (WP2.4) are the lever.
+
+**Memory per lane** (binary64, reals × 8 bytes; Float carriers add their limbs): chunk inputs (factors, vertex tensors, currents) 0.07–1.26 MB (gg→ggg 157,320 reals; 411,720 all fused), live open-loop objects of one family walk 60–270 kB per thread (gg→ggg 18,480 reals; uu~→e⁻e⁺gg 33,280), family numerators of one bucket chunk 4.5–67 kB.
+
 ---
 
 ## 6. Counterterms, R2, UV and external fields

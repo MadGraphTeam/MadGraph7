@@ -2739,4 +2739,113 @@ pub mod v2 {
         report.count("points", points as u64);
         Ok((results, report))
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::loop_v2::dress::V2Batch;
+
+        /// Two scalar bubble families of a two-leg "process": one seeded
+        /// trace step each, the factor a constant, so each family numerator
+        /// is `2 conj(A0)` at rank 0.
+        const PLAN: &[u8] = br#"{"schema":4,"legs":2,"rows":1,"columns":1,"average":1,
+            "born_components":1,"constants":1,"masses":1,"block_rows":[],
+            "kernels":[{"inputs":[],"outputs":[[[0,[]]]]}],
+            "contents":[{"d_in":1,"d_out":1,"degree":0,"rows":1,"fused":[[0,0,0,0,0,0]],
+                "terms":[{"slots":[],"dimensions":[],"vertex":-1,"split":[],"rows":[[0,[]]],
+                    "bindings":[{"kernel":0,"inputs":[],"entries":[0]}]}]}],
+            "factors":[[0,0]],
+            "seeds":[{"columns":[[[0,"1","0"]]]}],
+            "families":[FAMILY,FAMILY],"forward":null}"#;
+        const FAMILY: &str = r#"{"sequence":[[1,0],[2,0]],"rank":0,"orders":[0],
+            "leaves":[{"seed":0,"weight":"1"}],
+            "steps":[{"seeded":true,"trace":0,"rows":1,"d_alpha":1,"d_out":1,"degree":0,
+                "rank_in":0,"edges":[{"leaf":0,"child":-1,"factor":0,"links":[0,0,0]}]}]}"#;
+
+        /// Fails every lane of point 0 in its first reduction and records the
+        /// points each call receives.
+        #[derive(Default)]
+        struct Failing {
+            calls: Vec<Vec<usize>>,
+        }
+
+        impl V2Backend<f64> for Failing {
+            fn begin(&mut self) {}
+
+            fn reduce(
+                &mut self,
+                groups: &[FamilyLanes<f64>],
+                poles: bool,
+                check: Option<ReductionCheck>,
+            ) -> RusticolResult<Reduced<f64>> {
+                assert!(poles && check.is_none());
+                let first = self.calls.is_empty();
+                self.calls
+                    .push(groups.iter().flat_map(|g| g.points.clone()).collect());
+                let direct = groups
+                    .iter()
+                    .map(|group| {
+                        group
+                            .points
+                            .iter()
+                            .zip(group.coefficients.iter())
+                            .map(|(&point, c)| {
+                                if first && point == 0 {
+                                    LaneOutcome {
+                                        status: "ImpreciseResult".into(),
+                                        value: None,
+                                    }
+                                } else {
+                                    let zero = Complex::new(0.0, 0.0);
+                                    LaneOutcome {
+                                        status: "success".into(),
+                                        value: Some(vec![*c, zero, zero]),
+                                    }
+                                }
+                            })
+                            .collect()
+                    })
+                    .collect();
+                Ok((direct, None))
+            }
+        }
+
+        #[test]
+        fn failed_points_are_compacted_out_of_later_buckets() {
+            let text = std::str::from_utf8(PLAN).unwrap().replace("FAMILY", FAMILY);
+            let plan = LoopProgramV4::load(text.as_bytes()).unwrap();
+            let executor = V2Executor::new(Arc::new(plan), DEFAULT_LANES, Some(1)).unwrap();
+            let momentum = |e: i64| -> Vec<Rational> {
+                [e, 0, 0, e, e, 0, 0, -e].map(Rational::from).to_vec()
+            };
+            let batch = V2Batch {
+                momenta: vec![momentum(1), momentum(2)],
+                scales: vec![Rational::from(1); 2],
+                masses: vec![Rational::from(0)],
+                constants: vec![Complex::new(2.0, 0.0)],
+                block_rows: vec![Vec::new(); 2],
+                born: vec![vec![Complex::new(1.0, 1.0)], vec![Complex::new(3.0, 0.0)]],
+            };
+            let options = V2Options {
+                chunk_families: 1,
+                ..V2Options::default()
+            };
+            let mut backend = Failing::default();
+            let (results, report) = executor
+                .evaluate(&batch, &0.0, &mut backend, options)
+                .unwrap();
+            // One bucket chunk per family; point 0 fails in the first and is
+            // not reduced again.
+            assert_eq!(backend.calls, [vec![0, 1], vec![1]]);
+            assert_eq!(results[0].failures.len(), 1);
+            assert!(results[0].failures[0].contains("ImpreciseResult"));
+            assert!(results[0].bare.is_empty());
+            let lanes = &results[1].families;
+            assert!(results[1].failures.is_empty() && lanes.len() == 2);
+            for (_key, value) in lanes {
+                assert_eq!(value[0], Complex::new(6.0, 0.0));
+            }
+            assert_eq!(report.counts["reduction lanes"], 3);
+        }
+    }
 }
