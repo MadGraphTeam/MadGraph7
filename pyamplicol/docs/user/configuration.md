@@ -514,6 +514,44 @@ inputs and unsupported features still raise errors. These settings apply only to
 virtual `evaluate`, including resolved output, and are not silently used by
 profiling or generation.
 
+### The v2 loop engine
+
+`[loop] engine = "v2"` generates virtual processes with the shared-recursion
+one-loop engine (no loop or counterterm diagram is listed) and publishes them as
+plan v4 processes (runtime capability `rusticol.loop-runtime.v4`). The default
+`engine = "legacy"` keeps the per-diagram engine, which remains available as an
+oracle. A v2 evaluation can skip the poles and return stability estimates:
+
+```toml
+[evaluation]
+artifact = "artifacts/virtual-v2"
+momenta = "data/points.json"
+mu_r2 = "1000000"
+poles = false                  # finite part only; poles are absent (null)
+
+[evaluation.stability_checks]
+rotations = ["z:3/5:4/5"]      # exact "<x|y|z>:<cos>:<sin>" or "<ax>,<ay>,<az>:<radians>"
+# rotation_count = 2           # alternative: that many default rotations
+reduction_direction = true     # re-reduce every loop numerator, reversed frame
+```
+
+Each check re-evaluates or re-reduces every point; the result then carries one
+`stability` estimate per point (relative accuracy of the whole virtual, of the
+finite part and, with poles, of each pole, plus each check's own budget).
+Without checks no estimate is returned. Escalating to `arithmetic = "arbitrary"`
+is left to the caller; `[evaluation.stability]` rescue policies belong to the
+legacy engine. The CLI spells these `--loop-engine v2`, `--no-poles`,
+`--stability-rotation SPEC` (repeatable), `--stability-rotations COUNT` and
+`--stability-reduction-direction`.
+
+Current v2 scope: one correction order (e.g. QCD), model-supplied R2, full,
+NLC or LC colour (LC/NLC with the model's source colour declaration), double and
+arbitrary arithmetic, inclusive results per squared coupling order. Colour/spin
+correlations, resolved output, flavour grouping, double-double arithmetic and
+the standalone SDK bundle still require `engine = "legacy"`. Loading a v2
+process rebuilds its per-point tree inputs from the artifact, which takes about
+the process's generation time, until those inputs run natively.
+
 To evaluate numerical colour/spin requests, set
 `evaluation.correlated_requests = "data/requests.json"`. The file maps output
 labels to the existing `color_correlation` and `spin_vectors` fields described
