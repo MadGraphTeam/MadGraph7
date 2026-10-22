@@ -2163,6 +2163,12 @@ class SeedFourier:
     born_orbits: tuple[tuple[int, ...], ...]
     loop_orbits: tuple[tuple[tuple[int, int], ...], ...]
     kernels: Mapping[tuple[int, int], tuple[Laurent, ...]]
+    # Projected kernels per (pair, P, accuracy, grade) and native plans per
+    # job: both are point-independent, so they are built once.
+    _projected: dict = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+    _plans: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
     @cached_property
     def _orbit_of(self) -> tuple[dict[int, int], dict[int, int]]:
@@ -2202,7 +2208,9 @@ class SeedFourier:
         """``SeedTable.seeds`` in binary64 for a batch of Born rows (one per
         helicity): the certified pairs through the native S_m FFT, the rest
         directly. Kernels are the exact cells projected like the direct
-        ones (per sector degree P and Born grade), rounded once.
+        ones (per sector degree P and Born grade), rounded once; projections
+        and native plans (whose constructor transforms the kernels) are kept
+        across calls.
         """
 
         pairs = frozenset(pairs)
@@ -2241,24 +2249,31 @@ class SeedFourier:
                     for grade in row.get((b, born_order), ())
                 }
                 for grade in sorted(present):
-                    values = [
-                        complex(project(cell, degree, accuracy, grade))
-                        for cell in kernel
-                    ]
+                    projection = (a, j, degree, accuracy, grade)
+                    values = self._projected.get(projection)
+                    if values is None:
+                        values = self._projected[projection] = [
+                            complex(project(cell, degree, accuracy, grade))
+                            for cell in kernel
+                        ]
                     if any(values):
                         jobs.setdefault((born_order, loop_order, grade), []).append(
                             (a, j, values)
                         )
         group = len(self.born_orbits[0]) if self.born_orbits else 0
         width = len(self.born_orbits) * group
-        for (born_order, loop_order, grade), items in sorted(jobs.items()):
-            fourier = native.V2SeedFourier(
-                self.degree,
-                [[(v.real, v.imag) for v in values] for _a, _l, values in items],
-                [(k, a, j) for k, (a, j, _v) in enumerate(items)],
-                len(self.born_orbits),
-                len(self.loop_orbits),
-            )
+        for job, items in sorted(jobs.items()):
+            born_order, loop_order, grade = job
+            plan = (job, degree, accuracy, tuple((a, j) for a, j, _v in items))
+            fourier = self._plans.get(plan)
+            if fourier is None:
+                fourier = self._plans[plan] = native.V2SeedFourier(
+                    self.degree,
+                    [[(v.real, v.imag) for v in values] for _a, _l, values in items],
+                    [(k, a, j) for k, (a, j, _v) in enumerate(items)],
+                    len(self.born_orbits),
+                    len(self.loop_orbits),
+                )
             values = [
                 [repr(x.real), repr(x.imag)]
                 for row in rows
