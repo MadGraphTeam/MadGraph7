@@ -746,6 +746,8 @@ def _color_metadata(
         members_by_group[group_id] = tuple(members)
     if dag.lc_topology_replay is not None:
         _add_replayed_lc_color_components(dag, records)
+    else:
+        _add_rootless_lc_color_components(dag, records)
     components = [records[key] for key in sorted(records)]
     for index, component in enumerate(components):
         component["index"] = index
@@ -801,6 +803,55 @@ def _add_replayed_lc_color_components(
                 "word": list(reflected),
                 "computed": False,
                 "representative_id": representative_id,
+                "coefficient": 1.0,
+            },
+        )
+
+
+def _add_rootless_lc_color_components(
+    dag: GenericDAG,
+    records: dict[str, dict[str, object]],
+) -> None:
+    """Add the flows of colour sectors without amplitude roots.
+
+    A sector can have no roots at the requested coupling orders (no W pairing
+    between two quark lines at pure electroweak order, say): its flow is
+    computed and vanishes. The eager runtime selects every sector of the
+    plan, so public physics lists them all.
+    """
+
+    for sector in dag.color_plan.sectors:
+        word = tuple(sector.word_labels or sector.color_words[0])
+        identifier = _color_id(word)
+        records.setdefault(
+            identifier,
+            {
+                "kind": "lc-flow",
+                "id": identifier,
+                "word": list(word),
+                "computed": True,
+                "representative_id": identifier,
+                "coefficient": 1.0,
+            },
+        )
+        if not (
+            dag.color_plan.trace_reflections_folded
+            and sector.kind == "single-trace"
+            and len(word) > 2
+        ):
+            continue
+        reflected = (word[0], *reversed(word[1:]))
+        reflected_id = _color_id(reflected)
+        if reflected_id == identifier:
+            continue
+        records.setdefault(
+            reflected_id,
+            {
+                "kind": "lc-flow",
+                "id": reflected_id,
+                "word": list(reflected),
+                "computed": False,
+                "representative_id": identifier,
                 "coefficient": 1.0,
             },
         )

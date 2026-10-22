@@ -1624,6 +1624,11 @@ def test_born_sectors_close_block_words_in_their_orientation(
     Every Born root contracts two tree currents; their block words closed with
     each other (U(N) part) give the root's sector tensor, pairing phase
     included. Gluons on one quark line (uu~ -> gg, ggg) fix the orientation.
+    The root's weight is its Wick ordering sign (the Born sign convention of
+    ``generation/fermion_ordering.py``), pinned here as a table: +1 on one
+    quark line; for u u~ -> d d~ g it is -1 exactly where the sector's colour
+    pairing (fundamental, antifundamental) is the fermion pairing (2,1)(3,4),
+    the sign the colour metric's pairing parity used to supply.
     """
 
     from pyamplicol.models.external import CompiledUFOModel
@@ -1643,6 +1648,7 @@ def test_born_sectors_close_block_words_in_their_orientation(
     sectors = dict(zip(basis.sector_ids, basis.tensors, strict=True))
     representations = {leg.label: leg.representation for leg in basis.legs}
     dag = blocks.born_dag
+    negative_pairings = {"u u~ > d d~ g": {((2, 1), (3, 4))}}.get(process, set())
     checked = 0
     for root in dag.amplitude_roots:
         ends = [dag.currents[root.left_id].index, dag.currents[root.right_id].index]
@@ -1669,7 +1675,11 @@ def test_born_sectors_close_block_words_in_their_orientation(
         (leading,) = [term for term in closed.terms if term.nc_power == 0]
         (expected,) = sectors[root.color_sector_id].terms
         sign = flows[0].sign * flows[1].sign
-        assert root.color_weight == (1.0, 0.0)
+        pairing = tuple(
+            (line.fundamental_label, line.antifundamental_label)
+            for line in dag.color_plan.sector(root.color_sector_id).open_color_lines
+        )
+        assert root.color_weight == (-1.0 if pairing in negative_pairings else 1.0, 0.0)
         assert (leading.tensor, leading.coefficient.scaled(sign)) == (
             expected.tensor,
             expected.coefficient,

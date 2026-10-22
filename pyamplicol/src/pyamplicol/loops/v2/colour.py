@@ -102,7 +102,7 @@ from pyamplicol.color.correlator_matrices import (
 )
 
 from .blocks import Block, BlockColourFlow, TreeBlocks, _NativeFields
-from .families import ExternalLeg, Orders, Position, _model_data, add_orders
+from .families import ExternalLeg, Orders, Position, add_orders, model_data
 from .skeletons import Content, Skeleton
 
 Label = Hashable
@@ -589,7 +589,7 @@ class SeedColour:
     def __init__(
         self, blocks: TreeBlocks, native_model: Any, vertex_terms: Iterable[Any]
     ):
-        data = _model_data(native_model)
+        data = model_data(native_model)
         self._fields = _NativeFields.of(data)
         self._rules = {rule["name"]: rule for rule in data["vertex_rules"]}
         self.legs = process_color_legs(blocks.process)

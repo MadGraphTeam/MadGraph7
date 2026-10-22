@@ -406,11 +406,11 @@ def build_prepared_kernel_catalog(model: Model) -> PreparedKernelCatalog:
             else kernel_ids[model_parameter_candidate.canonical_signature]
         ),
         unsupported_variants=(),
-        tree_kernel_variant=_tree_kernel_variant(model),
+        tree_kernel_variant=model_tree_kernel_variant(model),
     )
 
 
-def _tree_kernel_variant(model: Model) -> TreeKernelVariant:
+def model_tree_kernel_variant(model: Model) -> TreeKernelVariant:
     """Variant of the compiled IR; non-UFO models lower transverse kernels."""
 
     compiled = model.compiled if isinstance(model, CompiledUFOModel) else None

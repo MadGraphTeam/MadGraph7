@@ -56,9 +56,21 @@ def _lc_color_identity_closures_compatible(
     closures: Iterable[frozenset[int]],
     sector: LCColorSector,
 ) -> bool:
+    """Whether every colour-identity closure fits the colour lines of ``sector``.
+
+    A closure lies inside one colour line, or is a union of complete lines: an
+    electroweak boson emitted by a fermion line that exchanged a gluon with
+    other lines carries all of their colour lines.
+    """
+
     groups = tuple(frozenset(group) for group in sector.coloured_label_groups)
     return all(
-        bool(closure) and any(closure.issubset(group) for group in groups)
+        bool(closure)
+        and (
+            any(closure.issubset(group) for group in groups)
+            or closure
+            == frozenset().union(*(group for group in groups if group & closure))
+        )
         for closure in closures
     )
 

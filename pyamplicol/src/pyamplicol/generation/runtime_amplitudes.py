@@ -582,16 +582,14 @@ def _amplitude_groups(
             if sector is not None and sector.color_words
             else ()
         )
-        color_key = (
-            left.color_state.accuracy,
-            word or sector_id,
-            tuple(
-                sorted(
-                    set(left.color_state.basis_key) | set(right.color_state.basis_key)
-                )
-            ),
-            tuple(root.color_weight),
-        )
+        # One coherent group is one physical colour coefficient: the roots of
+        # a helicity and colour sector. Each root carries its own colour
+        # weight, and generation-time basis keys (identity closures, sector
+        # support) only record how a root reached its sector, so neither may
+        # split the group: the leading-colour reduction squares each group,
+        # and a split would drop the interference of, e.g., gluon and
+        # electroweak exchanges sharing a colour flow.
+        color_key = (left.color_state.accuracy, word or sector_id)
         key = (source_key or ancestry, color_key)
         group_id = ids.setdefault(key, len(ids))
         result[root.id] = group_id

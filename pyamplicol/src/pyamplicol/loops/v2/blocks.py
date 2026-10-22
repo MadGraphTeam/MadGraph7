@@ -39,10 +39,13 @@ Conventions a consumer relies on:
   starts, both ranked by label. The block's own open end ranks after every
   leg, and the two open ends of an adjoint block join through it into one
   string. ``sum_words colour_flow.sign * colour * row`` is the current in the
-  tree engine's convention, the one its Born uses. Against Feynman rules
-  that convention carries ``-1`` per colour-octet connection (a gluon,
-  contact or U(1)-subtraction current joining two coloured fermion lines)
-  and nothing for colour-singlet connections (photon, Z, W), so
+  colour-flow convention of loop-request blocks (the tree Born programs sign
+  coloured fermions by their Wick order instead,
+  ``generation/fermion_ordering.py``; the two agree on gluon-joined Born
+  roots). Against Feynman rules the colour-flow convention carries ``-1``
+  per colour-octet connection (a gluon, contact or U(1)-subtraction current
+  joining two coloured fermion lines) and nothing for colour-singlet
+  connections (photon, Z, W), so
   ``Block.wick_sign`` folds in ``Block.connection_sign`` and the parity of
   the identity pairing of the current's coloured fermion endpoints (each
   line listed (fundamental, antifundamental) against ascending labels, open
@@ -86,17 +89,16 @@ from pyamplicol.loops.v2.families import (
     BlockCurrent,
     ExternalLeg,
     MassId,
-    _mass_name,
-    _model_data,
     add_orders,
+    mass_name,
+    model_data,
 )
 from pyamplicol.models.base import CouplingOrders, Model, QuantumNumberFlow
-from pyamplicol.models.contracts import TreeKernelVariant
-from pyamplicol.models.prepared_catalog_builder import _tree_kernel_variant
+from pyamplicol.models.contracts import U1_SUBTRACTION_AUXILIARY_KIND, TreeKernelVariant
+from pyamplicol.models.prepared_catalog_builder import model_tree_kernel_variant
 from pyamplicol.processes.ir import CanonicalProcessIR
 
 BlockClass = Literal["plain", "ward", "spin-source", "counterterm"]
-_U1_SUBTRACTION = "u1-subtraction-color-flow-vector"
 
 # The transverse massless Yang-Mills kernel drops only terms proportional to
 # an input current's self-contraction p.J, so it is exact for blocks built
@@ -156,7 +158,7 @@ class _NativeFields:
 
     @classmethod
     def of(cls, model: Any) -> _NativeFields:
-        particles = _model_data(model)["particles"]
+        particles = model_data(model)["particles"]
         return cls(
             {entry["name"]: entry for entry in particles},
             {int(entry["pdg_code"]): entry for entry in particles},
@@ -461,7 +463,7 @@ class TreeBlockTable:
                 ExternalLeg(
                     index,
                     incoming["name"],
-                    MassId(_mass_name(incoming["mass"]), _mass_name(incoming["width"])),
+                    MassId(mass_name(incoming["mass"]), mass_name(incoming["width"])),
                     incoming["color"],
                 )
             )
@@ -526,7 +528,7 @@ def build_tree_blocks(
         loop_blocks=True,
         loop_block_reachability=reachability,
     ).compile(replace(process, color_accuracy="full"))
-    kernel_variant = _tree_kernel_variant(model)
+    kernel_variant = model_tree_kernel_variant(model)
     return TreeBlocks(
         process=process,
         blocks_dag=blocks_dag,
@@ -644,7 +646,7 @@ def _connection_parities(
     def octet(index: CurrentIndex) -> bool:
         return (
             model.color_rep(index.particle_id) == 8
-            or index.auxiliary_kind == _U1_SUBTRACTION
+            or index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND
         )
 
     def has_endpoints(index: CurrentIndex) -> bool:
@@ -695,7 +697,9 @@ def u1_grades(dag: GenericDAG) -> list[int | None]:
             mixed.add(result)
             continue
         value = (
-            left + right - (currents[result].index.auxiliary_kind == _U1_SUBTRACTION)
+            left
+            + right
+            - (currents[result].index.auxiliary_kind == U1_SUBTRACTION_AUXILIARY_KIND)
         )
         if grade[result] is None and result not in mixed:
             grade[result] = value
@@ -705,28 +709,36 @@ def u1_grades(dag: GenericDAG) -> list[int | None]:
     return grade
 
 
-def _born_root_orders(dag: GenericDAG, model: Model, root: AmplitudeRoot):
+def _born_root_orders(
+    dag: GenericDAG,
+    model: Model,
+    root: AmplitudeRoot,
+    vertices: Mapping[tuple[int, tuple[int, int, int]], Any],
+) -> CouplingOrders:
     left = dag.currents[root.left_id].index
     right = dag.currents[root.right_id].index
     if root.kind == "vertex-closure":
         if root.vertex_kind is None or root.vertex_particles is None:
             raise ValueError("vertex-closure root has no vertex")
-        vertex = next(
-            vertex
-            for vertex in model.vertices
-            if vertex.kind == root.vertex_kind
-            and vertex.particles == root.vertex_particles
-        )
+        vertex = vertices.get((root.vertex_kind, root.vertex_particles))
+        if vertex is None:
+            raise ValueError(
+                f"vertex-closure root {root.id} names no model vertex "
+                f"{root.vertex_kind} {root.vertex_particles}"
+            )
         return add_orders(model.combine_coupling_orders(left, right, vertex))
     return add_orders(left.coupling_orders, right.coupling_orders)
 
 
 def _born_roots(dag: GenericDAG, model: Model) -> tuple[BornRoot, ...]:
     decode = _helicity_decoder(dag)
+    vertices: dict[tuple[int, tuple[int, int, int]], Any] = {}
+    for vertex in model.vertices:
+        vertices.setdefault((vertex.kind, vertex.particles), vertex)
     return tuple(
         BornRoot(
             root_id=root.id,
-            coupling_orders=_born_root_orders(dag, model, root),
+            coupling_orders=_born_root_orders(dag, model, root, vertices),
             color_sector_id=root.color_sector_id,
             helicities=decode(
                 dag.currents[root.left_id].index.helicity_ancestry

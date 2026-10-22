@@ -785,13 +785,16 @@ def generate_families(
 # ------------------------------------------------------------------- model tables
 
 
-def _model_data(model: Any) -> Mapping[str, Any]:
+def model_data(model: Any) -> Mapping[str, Any]:
+    """The native model's JSON tables (particles, vertices, ...); a mapping
+    passes through unchanged."""
     if isinstance(model, Mapping):
         return model
     return json.loads(model.to_json())
 
 
-def _mass_name(name: str | None) -> str:
+def mass_name(name: str | None) -> str:
+    """A model mass or width parameter name, with every zero spelling as ZERO."""
     return ZERO if name in (None, "ZERO", "0") else name
 
 
@@ -859,7 +862,7 @@ class ModelLoopCatalogue:
         *,
         species_orders: Mapping[int, frozenset[str]] | None = None,
     ):
-        data = _model_data(model)
+        data = model_data(model)
         self._species: dict[str, LoopSpecies] = {}
         coupling_orders = {
             entry["name"]: tuple(
@@ -902,7 +905,7 @@ class ModelLoopCatalogue:
                 particle["antiname"],
                 particle["spin"],
                 particle["color"],
-                MassId(_mass_name(particle["mass"]), _mass_name(particle["width"])),
+                MassId(mass_name(particle["mass"]), mass_name(particle["width"])),
                 frozenset(species_orders.get(abs(particle["pdg_code"]), ())),
             )
         self._numerators = numerators
@@ -1006,7 +1009,7 @@ class ModelBlockTable:
         *,
         cap: Orders,
     ):
-        data = _model_data(model)
+        data = model_data(model)
         particles = {entry["name"]: entry for entry in data["particles"]}
         conjugate = {name: entry["antiname"] for name, entry in particles.items()}
         coupling_orders = {
@@ -1022,7 +1025,7 @@ class ModelBlockTable:
                 ExternalLeg(
                     index,
                     name,
-                    MassId(_mass_name(entry["mass"]), _mass_name(entry["width"])),
+                    MassId(mass_name(entry["mass"]), mass_name(entry["width"])),
                     entry["color"],
                 )
             )
