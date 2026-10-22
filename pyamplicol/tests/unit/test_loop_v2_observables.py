@@ -544,6 +544,40 @@ def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
                 _assert_correlated(result, values, index, tolerance)
 
 
+def test_inclusively_pruned_slice_refuses_directed_histories(
+    loop_sm_compiled_model, loop_native
+):
+    """An LC slice pruned for the inclusive virtual alone may lack skeletons
+    a directed history needs: ``ObservableSlice.of`` refuses it (the
+    generator prunes with the histories' family tables instead)."""
+
+    from pyamplicol.loops.v2.assemble import LoopSlice
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
+
+    declaration = LoopColorDeclaration.from_dict(
+        json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
+    )
+    slice_ = LoopSlice.generate(
+        load_compiled_model(loop_sm_compiled_model),
+        SliceRequest(
+            "g g > g g",
+            QCD2,
+            QCD4,
+            fixed_parameters=legacy_capture.FIXED_PARAMETERS,
+            accuracy="lc",
+            colour_declaration=declaration,
+        ),
+        loop_native,
+    )
+    assert slice_.colour_pruned
+    declarations = CorrelatorConfig(
+        color_correlations=(ColorCorrelator.dipole("T12", 1, 2),)
+    )
+    with pytest.raises(ValueError, match="pruned for the inclusive virtual"):
+        ObservableSlice.of(slice_, correlators=declarations)
+
+
 @pytest.mark.parametrize("name", ("gg_gg", "uux_ggg"))
 def test_helicity_resolved_outputs_equal_legacy(generate, name):
     """O1: per Born helicity row, the Born and the virtual summed over colour
