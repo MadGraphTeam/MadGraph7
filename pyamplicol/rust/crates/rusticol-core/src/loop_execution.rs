@@ -2955,8 +2955,7 @@ pub mod v2 {
             let without = executor(&text);
             let error = without
                 .numerators(&batch, &0.0, Schedule::M)
-                .err()
-                .expect("schedule M without a merged graph");
+                .expect_err("schedule M without a merged graph");
             assert!(error.message().contains("no schedule M"), "{error}");
             let options = V2Options {
                 schedule: Schedule::M,
