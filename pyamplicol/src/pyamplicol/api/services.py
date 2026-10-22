@@ -54,6 +54,7 @@ from .results import (
 from .virtual_results import (
     ResolvedVirtualEvaluation,
     VirtualEvaluation,
+    VirtualStabilityChecks,
     VirtualStabilityPolicy,
 )
 
@@ -591,6 +592,8 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
+        poles: bool | None = None,
+        stability_checks: VirtualStabilityChecks | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         """Return tree values or a typed Born-loop interference result.
 
@@ -610,6 +613,12 @@ class Runtime:
         ``on_failure="return"`` retains numerical failures as ``None`` at their
         original point positions, with typed diagnostics; the default raises.
         Invalid inputs and unsupported capabilities still raise.
+
+        Virtual runtimes of the v2 engine also accept ``poles=False``, which
+        computes the finite part only (the poles are then ``None``), and
+        ``stability_checks`` (rotations and/or the reduction-direction check),
+        which add a stability estimate per point; without checks no estimate
+        is returned.
         """
 
         helicity_ids = _selector_ids(
@@ -647,6 +656,7 @@ class Runtime:
         options = self._evaluation_options(
             arithmetic, mu_r2, r2_strategy, stability, on_failure
         )
+        options.update(self._v2_options(poles, stability_checks))
         self._require_evaluation_options(self._backend.evaluate, options)
         if point_helicity_ids is None and point_color_ids is None:
             values = self._backend.evaluate(
@@ -726,6 +736,23 @@ class Runtime:
             raise CompatibilityError(
                 "mu_r2, r2_strategy and stability require a virtual runtime"
             )
+        return options
+
+    def _v2_options(
+        self, poles: bool | None, checks: VirtualStabilityChecks | None
+    ) -> dict[str, object]:
+        """Finite-only and stability-check options, forwarded only when set."""
+        options: dict[str, object] = {}
+        if poles is not None:
+            if type(poles) is not bool:
+                raise TypeError("poles must be a boolean")
+            options["poles"] = poles
+        if checks is not None:
+            if not isinstance(checks, VirtualStabilityChecks):
+                raise TypeError("stability_checks requires VirtualStabilityChecks")
+            options["stability_checks"] = checks
+        if options and self.contribution_kind != "virtual":
+            raise CompatibilityError("poles and stability_checks are virtual options")
         return options
 
     @staticmethod
@@ -822,6 +849,8 @@ class Runtime:
         r2_strategy: R2Strategy | str | None = None,
         stability: VirtualStabilityPolicy | None = None,
         on_failure: Literal["raise", "return"] = "raise",
+        poles: bool | None = None,
+        stability_checks: VirtualStabilityChecks | None = None,
     ) -> tuple[complex | Decimal, ...] | VirtualEvaluation:
         return self.evaluate(
             momenta,
@@ -833,6 +862,8 @@ class Runtime:
             r2_strategy=r2_strategy,
             stability=stability,
             on_failure=on_failure,
+            poles=poles,
+            stability_checks=stability_checks,
         )
 
     def evaluate_resolved(
