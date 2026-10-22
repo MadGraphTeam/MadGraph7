@@ -2874,56 +2874,16 @@ def plugin_import(module, error_msg, fcts=[]):
     else:
         return [getattr(_temp,name) for name in fcts]
 
-def from_plugin_import(plugin_path, target_type, keyname=None, warning=False,
-                       info=None):
-    """return the class associated with keyname for a given plugin class
-    if keyname is None, return all the name associated"""
-    
-    validname = []
+def iter_plugins(plugin_path, warning=False, only=None):
+    """yield (name, module) for each plugin of the plugin directories that can
+    be imported (with a warning for the others if warning is set). If only is
+    set, consider only the plugin of that name.
+    The support of the plugin for this version is not checked here."""
+
     for plugpath in plugin_path:
         plugindirname = os.path.basename(plugpath)
         for plug in os.listdir(plugpath):
-            if os.path.exists(pjoin(plugpath, plug, '__init__.py')):
-                try:
-                    with stdchannel_redirected(sys.stdout, os.devnull):
-                        __import__('%s.%s' % (plugindirname,plug))
-                except Exception as error:
-                    if warning:
-                        logger.warning("error detected in plugin: %s.", plug)
-                        logger.warning("%s", error)
-                    continue
-                plugin = sys.modules['%s.%s' % (plugindirname,plug)] 
-                if hasattr(plugin, target_type):
-                    if not is_plugin_supported(plugin):
-                        continue
-                    if keyname is None:
-                        validname += list(getattr(plugin, target_type).keys())
-                    else:
-                        if keyname in getattr(plugin, target_type):
-                            if not info:
-                                logger.info('Using from plugin %s mode %s' % (plug, keyname), '$MG:BOLD')
-                            else:
-                                logger.info(info % {'plug': plug, 'key':keyname}, '$MG:BOLD')
-                            return getattr(plugin, target_type)[keyname]
-                        
-    if not keyname:
-        return validname
-    
-    
-    
-
-def plugin_diagram_filter(plugin_path, name):
-    """return the diagram filter function of the plugin called `name` (the
-    `new_diagram_filter` attribute of its __init__.py, a function
-    remove_diag(diag, model) returning True for the diagrams to remove).
-    If name is None, return the names of the plugins providing one.
-    Raise MadGraph5Error if the plugin does not provide a valid filter."""
-
-    names = []
-    for plugpath in plugin_path:
-        plugindirname = os.path.basename(plugpath)
-        for plug in os.listdir(plugpath):
-            if name and plug != name:
+            if only is not None and plug != only:
                 continue
             if not os.path.exists(pjoin(plugpath, plug, '__init__.py')):
                 continue
@@ -2931,26 +2891,68 @@ def plugin_diagram_filter(plugin_path, name):
                 with stdchannel_redirected(sys.stdout, os.devnull):
                     __import__('%s.%s' % (plugindirname, plug))
             except Exception as error:
-                if name:
-                    raise MadGraph5Error("error detected in plugin %s: %s" % (plug, error))
+                if warning:
+                    logger.warning("error detected in plugin: %s.", plug)
+                    logger.warning("%s", error)
                 continue
-            plugin = sys.modules['%s.%s' % (plugindirname, plug)]
-            if not hasattr(plugin, 'new_diagram_filter') or \
-                                                 not is_plugin_supported(plugin):
+            yield plug, sys.modules['%s.%s' % (plugindirname, plug)]
+
+def from_plugin_import(plugin_path, target_type, keyname=None, warning=False,
+                       info=None):
+    """return the class associated with keyname for a given plugin class
+    if keyname is None, return all the name associated"""
+    
+    validname = []
+    for plug, plugin in iter_plugins(plugin_path, warning):
+        if hasattr(plugin, target_type):
+            if not is_plugin_supported(plugin):
                 continue
-            if not name:
-                names.append(plug)
-                continue
-            filter_fct = plugin.new_diagram_filter
-            if not callable(filter_fct):
-                raise MadGraph5Error("new_diagram_filter of plugin %s must be a "
-                       "function remove_diag(diag, model), not %r" % (plug, filter_fct))
-            logger.info('Using diagram filter from plugin %s' % plug, '$MG:BOLD')
-            return filter_fct
-    if name:
-        raise MadGraph5Error("No plugin '%s' providing a diagram filter "
-                             "(new_diagram_filter in its __init__.py)." % name)
-    return names
+            if keyname is None:
+                validname += list(getattr(plugin, target_type).keys())
+            else:
+                if keyname in getattr(plugin, target_type):
+                    if not info:
+                        logger.info('Using from plugin %s mode %s' % (plug, keyname), '$MG:BOLD')
+                    else:
+                        logger.info(info % {'plug': plug, 'key':keyname}, '$MG:BOLD')
+                    return getattr(plugin, target_type)[keyname]
+                        
+    if not keyname:
+        return validname
+    
+    
+    
+def plugin_diagram_filter(plugin_path, name):
+    """return the diagram filter function of the plugin called `name` (the
+    `new_diagram_filter` attribute of its __init__.py, a function
+    remove_diag(diag, model) returning True for the diagrams to remove; one
+    filter per plugin, selected by the name of the plugin).
+    If name is None, return the names of the plugins providing one.
+    Raise MadGraph5Error if the plugin does not provide a valid filter."""
+
+    if name is None:
+        return [plug for plug, plugin in iter_plugins(plugin_path)
+                if callable(getattr(plugin, 'new_diagram_filter', None)) and
+                   is_plugin_supported(plugin)]
+
+    if not name:
+        raise MadGraph5Error("No plugin name given for the diagram filter "
+                             "(--diagram_filter=PLUGINNAME).")
+    for plug, plugin in iter_plugins(plugin_path, warning=True, only=name):
+        if not hasattr(plugin, 'new_diagram_filter'):
+            raise MadGraph5Error("Plugin %s does not provide a diagram filter "
+                                 "(new_diagram_filter in its __init__.py)." % name)
+        if not is_plugin_supported(plugin):
+            raise MadGraph5Error("Plugin %s is not supported by this version "
+                                 "of MadGraph7." % name)
+        filter_fct = plugin.new_diagram_filter
+        if not callable(filter_fct):
+            raise MadGraph5Error("new_diagram_filter of plugin %s must be a "
+                   "function remove_diag(diag, model), not %r" % (name, filter_fct))
+        logger.info('Using diagram filter from plugin %s' % name, '$MG:BOLD')
+        return filter_fct
+    raise MadGraph5Error("No plugin '%s' found (or it can not be imported) to "
+                         "provide the diagram filter." % name)
 
 #===============================================================================
 # LHAPDF locations

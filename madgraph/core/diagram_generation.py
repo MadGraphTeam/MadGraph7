@@ -969,12 +969,13 @@ class Amplitude(base_objects.PhysicsObject):
         # two incoming particles interchanged has been generated
         self['has_mirror_process'] = False
 
-    def __init__(self, argument=None):
-        """Allow initialization with Process"""
+    def __init__(self, argument=None, diagram_filter=False):
+        """Allow initialization with Process; the diagrams are then generated,
+        selected by diagram_filter (see apply_user_filter) if it is set"""
         if isinstance(argument, base_objects.Process):
             super(Amplitude, self).__init__()
             self.set('process', argument)
-            self.generate_diagrams()
+            self.generate_diagrams(diagram_filter=diagram_filter)
         elif argument != None:
             # call the mother routine
             super(Amplitude, self).__init__(argument)

@@ -28,9 +28,12 @@ sys.path.append(os.path.join(root_path, os.path.pardir, os.path.pardir))
 
 import tests.unit_tests as unittest
 
+import madgraph.core.diagram_generation as diagram_generation
 import madgraph.interface.master_interface as MGCmd
 import madgraph.various.misc as misc
 from madgraph import InvalidCmd, MadGraph5Error
+
+NoDiagram = diagram_generation.NoDiagramException
 
 HEADER = """
 minimal_mg5amcnlo_version = (2, 0, 0)
@@ -39,6 +42,15 @@ latest_validated_version = (99, 0, 0)
 """
 
 KEEP_ALL = "def remove_diag(diag, model=None):\n    return False\n"
+# keeps everything but writes the type of each diagram in the file RECORD
+# (written by setUp), also from the worker processes of a multicore generation
+RECORD_ALL = """import os
+def remove_diag(diag, model=None):
+    with open(os.path.join(os.path.dirname(__file__), 'record'), 'a') as fsock:
+        fsock.write('%s %s\\n' % (type(diag).__name__,
+                    ' '.join(str(l['id']) for l in model and [] or [])))
+    return False
+"""
 REMOVE_ALL = "def remove_diag(diag, model=None):\n    return True\n"
 
 
@@ -57,10 +69,12 @@ class PluginDiagramFilterTest(unittest.TestCase):
         os.mkdir(self.plugdir)
         open(os.path.join(self.plugdir, '__init__.py'), 'w').close()
         sys.path.insert(0, self.tmp)
-        self.modules = []
 
     def tearDown(self):
         sys.path.remove(self.tmp)
+        for name in list(misc.plugin_support):
+            if name.startswith(self.dirname):
+                del misc.plugin_support[name]
         for name in list(sys.modules):
             if name.startswith(self.dirname):
                 del sys.modules[name]
@@ -80,6 +94,13 @@ class PluginDiagramFilterTest(unittest.TestCase):
             fsock.write(HEADER + init_text)
         # the version check of the plugin is not what is tested here
         misc.plugin_support['%s.%s' % (self.dirname, name)] = True
+
+    def record(self, name):
+        """types of the diagrams seen by the RECORD_ALL plugin 'name'"""
+        path = os.path.join(self.plugdir, name, 'record')
+        if not os.path.exists(path):
+            return []
+        return [line.split()[0] for line in open(path)]
 
     def interface(self, model):
         interface = MGCmd.MasterCmd()
@@ -106,13 +127,26 @@ class PluginDiagramFilterTest(unittest.TestCase):
                          ['keepall'])
 
     def test_plugin_diagram_filter_errors(self):
-        """unknown plugin, plugin without filter and non-callable filter
-        raise"""
+        """unknown plugin, plugin without filter, unsupported plugin,
+        non-callable filter and empty name raise, with a message telling
+        which"""
         self.add_plugin('nofilter', init_text='x = 1\n')
         self.add_plugin('notfunction', init_text='new_diagram_filter = "x"\n')
-        for name in ['unknown', 'nofilter', 'notfunction']:
-            self.assertRaises(MadGraph5Error, misc.plugin_diagram_filter,
-                              [self.plugdir], name)
+        self.add_plugin('unsupported', KEEP_ALL)
+        misc.plugin_support['%s.unsupported' % self.dirname] = False
+        for name, msg in [('unknown', 'No plugin'),
+                          ('nofilter', 'does not provide'),
+                          ('unsupported', 'not supported'),
+                          ('notfunction', 'must be a function'),
+                          ('', 'No plugin name')]:
+            try:
+                misc.plugin_diagram_filter([self.plugdir], name)
+            except MadGraph5Error as error:
+                self.assertIn(msg, str(error))
+            else:
+                self.fail('no error for plugin %r' % name)
+        # none of them is listed
+        self.assertEqual(misc.plugin_diagram_filter([self.plugdir], None), [])
 
     def test_tree_level(self):
         """--diagram_filter=PLUGINNAME removes the diagrams selected by the
@@ -123,12 +157,12 @@ class PluginDiagramFilterTest(unittest.TestCase):
         self.assertTrue(len(interface._curr_amps[0].get("diagrams")) > 0)
         interface = self.generate('u u~ > d d~')
         self.assertTrue(len(interface._curr_amps[0].get('diagrams')) > 0)
-        self.assertRaises(Exception, self.generate,
+        self.assertRaises(NoDiagram, self.generate,
                           'u u~ > d d~ --diagram_filter=removeall')
 
     def test_tree_level_invalid_name(self):
         self.add_plugin('nofilter', init_text='x = 1\n')
-        for name in ['unknown', 'nofilter']:
+        for name in ['unknown', 'nofilter', '']:
             self.assertRaises(InvalidCmd, self.generate,
                               'u u~ > d d~ --diagram_filter=%s' % name)
 
@@ -160,15 +194,29 @@ class PluginDiagramFilterTest(unittest.TestCase):
         nloops = len(interface._curr_amps[0].get('loop_diagrams'))
         self.assertTrue(nloops > 0)
         # no loop diagram left: no amplitude
-        self.assertRaises(Exception, self.generate, 'g g > h [virt=QCD] '
+        self.assertRaises(NoDiagram, self.generate, 'g g > h [virt=QCD] '
                                   '--diagram_filter=removeall', 'loop_sm')
 
+    def test_loop_level_multiparticle(self):
+        """the filter is kept when a MadLoop multiprocess is split into its
+        processes"""
+        self.add_plugin('rec', RECORD_ALL)
+        interface = self.generate('p p > h [virt=QCD] --diagram_filter=rec',
+                                  'loop_sm')
+        self.assertTrue(interface._curr_amps)
+        self.assertIn('LoopDiagram', self.record('rec'))
+
     def test_loop_induced(self):
-        """... and of a loop-induced process"""
+        """... and of a loop-induced process, also when reached from the NLO
+        mode (no Born diagram), with --loop_diagram_filter"""
         self.add_plugin('removeall', REMOVE_ALL)
-        self.assertRaises(Exception, self.generate,
+        self.add_plugin('rec', RECORD_ALL)
+        self.assertRaises(NoDiagram, self.generate,
                           'g g > h [noborn=QCD] --diagram_filter=removeall',
                           'loop_sm')
+        self.generate('g g > h QED=1 [QCD] --loop_diagram_filter=rec',
+                      'loop_sm')
+        self.assertIn('LoopDiagram', self.record('rec'))
 
     def test_fks_tree_and_loop_filters(self):
         """--tree_diagram_filter acts on the Born (and real) diagrams and
@@ -201,8 +249,13 @@ class PluginDiagramFilterTest(unittest.TestCase):
         self.assertEqual(sum(len(amp.get('diagrams'))
                          for amp in fksmulti.get_real_amplitudes()), nreal)
 
-        # no Born diagram left
-        self.assertRaises(Exception, self.generate,
+        # no Born diagram left: the switch to the loop-induced mode refuses a
+        # tree-level filter (or, without coupling orders, their automatic
+        # determination fails)
+        self.assertRaises(InvalidCmd, self.generate,
+                          'u u~ > d d~ QCD=2 [QCD] --tree_diagram_filter=removeall',
+                          'loop_sm')
+        self.assertRaises(MadGraph5Error, self.generate,
                           proc % '--tree_diagram_filter=removeall', 'loop_sm')
 
         # the loop filter does not touch the loop diagrams of a tree-level
@@ -215,3 +268,20 @@ class PluginDiagramFilterTest(unittest.TestCase):
 
         self.assertRaises(InvalidCmd, self.generate,
                           proc % '--diagram_filter', 'loop_sm')
+
+    def test_fks_multicore_virtual(self):
+        """with low_mem_multicore_nlo_generation the virtual is generated in
+        the worker processes (at output), with the loop filter"""
+        self.add_plugin('rec', RECORD_ALL)
+        interface = self.interface('loop_sm')
+        interface.exec_cmd('set low_mem_multicore_nlo_generation True',
+                           printcmd=False, precmd=True)
+        interface.exec_cmd('set nb_core 2', printcmd=False, precmd=True)
+        interface.exec_cmd('generate u u~ > d d~ [QCD] '
+                           '--loop_diagram_filter=rec', printcmd=False,
+                           precmd=True, errorhandling=False)
+        # nothing seen at generation, the virtual is not generated yet
+        self.assertNotIn('LoopDiagram', self.record('rec'))
+        interface.exec_cmd('output %s' % os.path.join(self.tmp, 'OUT'),
+                           printcmd=False, precmd=True, errorhandling=False)
+        self.assertIn('LoopDiagram', self.record('rec'))
