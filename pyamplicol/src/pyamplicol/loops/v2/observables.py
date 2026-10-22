@@ -476,6 +476,12 @@ class ObservableSlice:
 
         from pyamplicol.color.correlator_matrices import process_color_legs
 
+        if slice_.request.colour_contraction == "fft":
+            raise ValueError(
+                "observable columns are contracted directly (design §7.3: no "
+                "correlated or resolved seed FFT); generate the slice with "
+                "colour contraction 'auto' or 'direct'"
+            )
         correlators = correlators or CorrelatorConfig()
         correlators = correlators._resolve_color(
             process_color_legs(slice_.blocks.process)

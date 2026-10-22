@@ -366,10 +366,13 @@ def test_seed_fft_equals_direct_on_the_slice(
     orbits of gg -> gg with the native symmetric-group FFT in binary64 and
     reports it; "direct" and the 200-bit carrier contract directly, and
     every component agrees with the direct contraction to binary64
-    rounding. LC seeds are always direct."""
+    rounding. LC seeds are always direct. An explicit "fft" is honoured in
+    binary64 and refused wherever seeds are contracted directly: LC, exact
+    dressing, arbitrary precision and the native executor."""
 
     import dataclasses
 
+    from pyamplicol.loops.v2.plan_export import NativeExecutor
     from pyamplicol.models.loading import load_compiled_model
 
     fft = slices("gg_gg")
@@ -399,6 +402,20 @@ def test_seed_fft_equals_direct_on_the_slice(
         precision=CARRIERS["arbitrary-200"],
     )
     assert precise.colour_contraction == "direct"
+    required = dataclasses.replace(
+        fft, request=dataclasses.replace(fft.request, colour_contraction="fft")
+    )
+    point, scale = fixture["points"][0], fixture["scales_squared"][0]
+    found = required.evaluate(point, scale, parameters=PARAMETERS)
+    assert found.colour_contraction == "symmetric-group-fft"
+    with pytest.raises(ValueError, match="binary64 sector seeds only"):
+        required.evaluate(
+            point, scale, parameters=PARAMETERS, precision=CARRIERS["arbitrary-200"]
+        )
+    with pytest.raises(ValueError, match="binary64 sector seeds only"):
+        required.family_numerators(point, scale, parameters=PARAMETERS, exact=True)
+    with pytest.raises(ValueError, match="contracts seeds directly"):
+        NativeExecutor(required)
     leading = declared("gg_gg", "lc")
     assert leading.fourier is None
     forced = dataclasses.replace(

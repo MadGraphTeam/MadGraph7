@@ -1381,3 +1381,21 @@ def test_a_failed_observable_point_fails_alone(generate, after):
     for name, value in failed.results[0].items():
         assert value.totals == clean[0][name].totals
         assert value.stability.relative == clean[0][name].stability.relative
+
+
+def test_observables_refuse_a_required_seed_fft(generate):
+    """Observable columns are contracted directly (design §7.3): a slice
+    whose request requires the seed FFT is refused, not silently served by
+    the direct contraction."""
+
+    import dataclasses
+
+    declarations = CorrelatorConfig(
+        color_correlations=(ColorCorrelator.dipole("T12", 1, 2),)
+    )
+    slice_ = generate("g g > g g", correlators=declarations).slice
+    required = dataclasses.replace(
+        slice_, request=dataclasses.replace(slice_.request, colour_contraction="fft")
+    )
+    with pytest.raises(ValueError, match="contracted directly"):
+        ObservableSlice.of(required, correlators=declarations)

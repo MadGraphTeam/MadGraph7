@@ -861,9 +861,10 @@ class SliceRequest:
     # fundamental loops seeded by primitives; False keeps every generic seed.
     compress_colour: bool = True
     # Seed contraction (design §7.3): "auto" uses the native symmetric-group
-    # FFT on certified orbits in binary64 at NLC and full colour, "fft" also
-    # refuses a request without such orbits, "direct" never uses it. Other
-    # carriers and LC always contract directly.
+    # FFT on certified orbits in binary64 at NLC and full colour (other
+    # carriers, exact dressing and LC contract directly), "direct" never uses
+    # it. "fft" requires it: it refuses LC and a table without such orbits at
+    # generation, and an evaluation in any other carrier when it dresses.
     colour_contraction: ContractionPolicy = "auto"
 
     @property
@@ -1898,6 +1899,18 @@ class _PointEvaluation:
                 native=slice_.native,
             )
         self.colour_contraction = getattr(seeds, "algorithm", "direct")
+        if (
+            slice_.request.colour_contraction == "fft"
+            and self.colour_contraction != SYMMETRIC_GROUP_FFT
+        ):
+            # An explicit "fft" requires the FFT: the exact dressing,
+            # DoubleFloat and arbitrary precision (and observable columns)
+            # contract directly, so they refuse instead of falling back.
+            raise ValueError(
+                "colour contraction 'fft' contracts binary64 sector seeds only; "
+                "exact, arbitrary-precision and observable seeds are contracted "
+                "directly (request 'auto' or 'direct')"
+            )
         kinematics = rx.CatalogueKinematics(
             slice_.catalogue,
             slice_.compiled.ir.vertex_terms,

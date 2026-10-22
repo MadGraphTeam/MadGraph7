@@ -679,6 +679,13 @@ class NativeExecutor:
         exported: ExportedPlan | None = None,
         forms: Literal["rule", "fused", "split"] = "rule",
     ):
+        if slice_.request.colour_contraction == "fft":
+            # The native seeds contract the exported exact weights directly
+            # (``seed_records``); an explicit "fft" is refused, not ignored.
+            raise ValueError(
+                "the native executor contracts seeds directly; request colour "
+                "contraction 'auto' or 'direct'"
+            )
         self.slice = slice_
         self.exported = exported or export_plan(slice_, forward=forward)
         self.lanes = lanes
