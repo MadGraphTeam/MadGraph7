@@ -8103,11 +8103,11 @@ class GenerationBackend:
             return None
         if process.fundamental_labels or process.antifundamental_labels:
             return None
-        from ..color.adjoint_kernel import MAX_ADJOINT_GLUONS
+        from ..color.adjoint_kernel import DENSE_ADJOINT_GLUONS
 
         labels = tuple(sorted(process.adjoint_labels))
-        if len(labels) > MAX_ADJOINT_GLUONS:
-            return "The adjoint metric size limit requires the original trace basis."
+        if len(labels) > DENSE_ADJOINT_GLUONS:
+            return "The dense adjoint metric size prefers the original trace basis."
         reference = self._process_selection.reference_color_order
         if labels and reference and set(reference) == set(labels):
             pivot = reference.index(labels[0])

@@ -647,8 +647,38 @@ def _cost_model_view(families, catalogue, entry):
     return colour, view, rows, policy, first_word_direction
 
 
+@pytest.fixture(scope="module")
+def born_flows(loop_sm_compiled_model):
+    """The leading Born colour flows of an Appendix B process (design §7.5)."""
+
+    from pyamplicol.generation.dag_compiler import compile_generic_dag
+    from pyamplicol.loops.v2.colour import leading_born_flows
+    from pyamplicol.models.external import CompiledUFOModel
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.processes.model import build_model_process_ir
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+
+    def flows(entry):
+        process = build_model_process_ir(
+            " ".join(entry["incoming"]) + " > " + " ".join(entry["outgoing"]),
+            compiled.ir,
+            color_accuracy="full",
+        )
+        born = compile_generic_dag(
+            process,
+            model=CompiledUFOModel(compiled),
+            max_coupling_orders=entry["born_orders"],
+        )
+        return leading_born_flows(born)
+
+    return flows
+
+
 @pytest.mark.parametrize(("config", "entry"), list(_appendix_b_cases()))
-def test_counts_equal_design_appendix_b(loop_sm_models, config, entry):
+def test_counts_equal_design_appendix_b(loop_sm_models, born_flows, config, entry):
+    from pyamplicol.loops.v2.colour import PlanarLeadingColour
+
     restriction = "no_b_mass" if config.endswith("no_b_mass") else "default"
     model, catalogue = loop_sm_models(restriction)
     families = _generate(
@@ -660,19 +690,18 @@ def test_counts_equal_design_appendix_b(loop_sm_models, config, entry):
     assert len(families.families) == entry["families"]
     assert dict(histogram) == entry["families_by_N_rank"]
     colour, view, rows, policy, choose = _cost_model_view(families, catalogue, entry)
-    views = {"FC": view}
-    if "leading_colour" in entry:
-        # All-gluon processes: every Born word is leading and the §7.5 face
-        # rule drops exactly the closed quark loops (degree P - 1).
-        def quark_loop(skeleton):
-            return any(abs(catalogue.species(n).colour) == 3 for n in skeleton.species)
-
-        views["LC"] = SkeletonView(
+    # Leading colour: the structural face rule of design §7.5 on the
+    # colour-ordered skeletons, against the Born's leading flows.
+    planar = PlanarLeadingColour(families.legs, catalogue, born_flows(entry))
+    views = {
+        "FC": view,
+        "LC": SkeletonView(
             catalogue,
             colour,
             classes=view.classes,
-            keep=lambda s: view.keep(s) and not quark_loop(s),
-        )
+            keep=lambda s: view.keep(s) and planar.keep(s),
+        ),
+    }
     counts = {name: collections.Counter() for name in views}
     for family in families.families.values():
         skeletons = family_skeletons(families, family, colour, catalogue)
@@ -694,11 +723,16 @@ def test_counts_equal_design_appendix_b(loop_sm_models, config, entry):
     assert {f: counts["FC"][f] for f in fields if f in entry} == {
         f: entry[f] for f in fields if f in entry
     }
-    if "LC" in counts:
-        expected = entry["leading_colour"]
-        lc = counts["LC"]
-        assert lc["families"] == expected["families"]
+    expected = entry["leading_colour"]
+    lc = counts["LC"]
+    assert lc["families"] == expected["families"]
+    if "families_by_N_rank" in expected:
         assert {
             bucket: lc[bucket] for bucket in expected["families_by_N_rank"]
         } == expected["families_by_N_rank"]
-        assert {f: lc[f] for f in fields} == {f: expected[f] for f in fields}
+    all_gluon = set(entry["incoming"]) | set(entry["outgoing"]) == {"G"}
+    # See the fixture's leading_colour note on largest-first ties.
+    lc_fields = [f for f in fields if all_gluon or f != "trie_nodes_largest"]
+    assert {f: lc[f] for f in lc_fields if f in expected} == {
+        f: expected[f] for f in lc_fields if f in expected
+    }

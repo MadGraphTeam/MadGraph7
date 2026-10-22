@@ -35,16 +35,18 @@ Runtime options (REQUIREMENTS_ADDENDUM B and C):
   calibrated safety factor and rounding floor, for the Laurent vector and per
   coefficient. With no check requested the result carries no estimate.
 
-Colour (design §7.4). Colour vectors keep every literal tensor's N_c power,
+Colour (design §7). Colour vectors keep every literal tensor's N_c power,
 and with a source-owned continuation (``SliceRequest.colour_declaration``)
 the counterterm and field couplings are split into exact N_c grades
 (``loops.source_color``); whole-rule continuations (the general-N_c
 four-gluon R2) replace their fixed-SU(3) rule by checked terms
-(``WholeRuleTerm``). Full colour evaluates every power at N_c = 3; leading
-colour keeps, per squared-order sector, only the leading degree P of the
-Born square and of the virtual (seed, counterterm and field cells, see
-``LoopSlice.degrees``) before substituting N_c = 3. Leading colour needs the
-continuation and N_c-exact Born tensors (no graded U(1) pieces yet, WP2.4).
+(``WholeRuleTerm``). Full colour evaluates every power at N_c = 3; leading and
+next-to-leading colour keep, per squared-order sector, the powers P (LC) or
+P, P-1 and P-2 (NLC) of the leading degree P of the Born square and of the
+virtual (seed, counterterm and field cells, see ``LoopSlice.degrees``) before
+substituting N_c = 3, and drop every skeleton whose seed cells lie below
+them before any numerics. LC and NLC need the continuation. Seeds use the
+certified colour compressions by default (``SliceRequest.compress_colour``).
 
 The IR-pole check (design §10.2 item 3, O9) predicts the 1/eps^2 and 1/eps
 coefficients of the renormalised virtual from Catani's operator, built from
@@ -83,7 +85,20 @@ from pyamplicol.color.contraction_types import NC
 from . import reference_executor as rx
 from .blocks import TreeBlocks, build_tree_blocks
 from .catalogue import build_loop_kernel_catalogue
-from .colour import BornBasis, ColourAccuracy, SeedColour, SeedTable, build_seed_table
+from .colour import (
+    SYMMETRIC_GROUP_FFT,
+    BornBasis,
+    ColourAccuracy,
+    ContractionPolicy,
+    SeedColour,
+    SeedCombination,
+    SeedFourier,
+    SeedTable,
+    build_seed_table,
+    extend_seed_table,
+    kept,
+    seed_fourier,
+)
 from .conventions import (
     FERMION_SPIN,
     LOOP_FACTOR_DENOMINATOR,
@@ -116,7 +131,7 @@ from .families import (
 )
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
 from .poly_affine import MonomialLayout, leg_momentum
-from .schedules import LoopSchedules, build_schedules, cheapest
+from .schedules import LoopSchedules, SkeletonView, build_schedules, cheapest
 from .stability import (
     REDUCTION,
     ROTATION,
@@ -480,27 +495,38 @@ def _exact_u1_subtraction_weights():
 
 # --------------------------------------------------------------------- seeds
 
+# Schedule-B frame policy of the slice: the cheapest frame by undressed rows.
+_FRAME_POLICY = cheapest(lambda mask: 2 ** mask.bit_count())
+
 
 class SectorSeeds:
     """Seeds with one column per squared-order sector (an ``rx.SeedSource``).
 
     Column s of U0[c](h) sums K[c, b] conj(A0_b(h)) over the (Born order,
     loop order) pairs of sector s, so each family numerator splits by
-    squared coupling order (REQUIREMENTS_ADDENDUM A).
+    squared coupling order (REQUIREMENTS_ADDENDUM A). A skeleton's seed is
+    its combination of table classes (``colour.build_seed_table``). With
+    ``fourier`` (binary64 only) the certified orbit pairs are contracted by
+    the native symmetric-group FFT (``colour.SeedFourier``, design §7.3);
+    ``algorithm`` reports the contraction used.
     """
 
     def __init__(
         self,
         table: SeedTable,
-        class_of: Mapping[Any, int],
-        born: Mapping[rx.Row, Mapping[tuple[int, Orders], Any]],
+        class_of: Mapping[Any, SeedCombination],
+        born: Mapping[rx.Row, Mapping[tuple[int, Orders], Mapping[int, Any]]],
         sectors: Sequence[frozenset[tuple[Orders, Orders]]],
         numbers: _Numbers,
         accuracy: ColourAccuracy,
         degrees: Sequence[int | None] | None = None,
+        *,
+        fourier: SeedFourier | None = None,
+        native: Any = None,
     ):
         self.columns = len(sectors)
         self.class_of = class_of
+        self._numbers = numbers
         self._admitted = {
             (c, order)
             for pairs in sectors
@@ -511,7 +537,26 @@ class SectorSeeds:
         def cast(cell: ExactColorCoefficient) -> Any:
             return numbers.pair(numbers.real(cell.real), numbers.real(cell.imag))
 
+        self._cast = cast
         degrees = degrees or [None] * len(sectors)
+        if fourier is not None and numbers.double:
+            self.algorithm = SYMMETRIC_GROUP_FFT
+            rows = list(born)
+            columns = [
+                fourier.seeds(
+                    table,
+                    pairs,
+                    [born[row] for row in rows],
+                    accuracy,
+                    native,
+                    degree=degree,
+                )
+                for pairs, degree in zip(sectors, degrees, strict=True)
+            ]
+            for r, row in enumerate(rows):
+                self._rows[row] = [column[r] for column in columns]
+            return
+        self.algorithm = "direct"
         for row, amplitudes in born.items():
             self._rows[row] = [
                 table.seeds(
@@ -527,14 +572,26 @@ class SectorSeeds:
 
     def seed(self, skeleton, contents):
         reading = rx._reading(skeleton, contents)
-        c = self.class_of.get(reading)
-        if c is None:
+        combination = self.class_of.get(reading)
+        if combination is None:
             raise KeyError("reading without a seed class")
-        key = (c, skeleton.orders)
-        if key not in self._admitted:
-            raise KeyError(f"no sector admits class {c} at {skeleton.orders}")
-        return key, {
-            row: tuple(seeds.get(key, 0) for seeds in columns)
+        order = skeleton.orders
+        for c, _x in combination:
+            if (c, order) not in self._admitted:
+                raise KeyError(f"no sector admits class {c} at {order}")
+        weights = [(c, self._cast(x)) for c, x in combination]
+        zero = self._numbers.zero
+
+        def total(seeds):
+            value = zero
+            for c, weight in weights:
+                found = seeds.get((c, order))
+                if found is not None:
+                    value = value + weight * found
+            return value
+
+        return (combination, order), {
+            row: tuple(total(seeds) for seeds in columns)
             for row, columns in self._rows.items()
         }
 
@@ -720,6 +777,8 @@ class PointResult:
     prediction of the virtual's (single, double) poles per sector, ``None``
     in finite-only mode, at leading colour and for non-QCD corrections;
     ``stability`` is ``None`` unless checks were asked.
+    ``colour_contraction`` is the seed contraction used ("direct" or
+    "symmetric-group-fft").
     """
 
     born: Mapping[Orders, Any]
@@ -728,6 +787,7 @@ class PointResult:
     families: Mapping[tuple[FamilyKey, Orders, Orders], Laurent]
     ir_poles: Mapping[Orders, tuple[Any, Any]] | None
     stability: StabilityEstimate | None = None
+    colour_contraction: str = "direct"
 
     def virtual(self, sector: Orders) -> Laurent:
         return self.components["virtual"][sector]
@@ -756,6 +816,14 @@ class SliceRequest:
     # and (SMINPUTS, 3), as in MG5_aMC loop models.
     scale_parameter: str | None = None
     alpha_s_parameter: str | None = None
+    # Certified colour compressions (design §7.2): adjoint rings and closed
+    # fundamental loops seeded by primitives; False keeps every generic seed.
+    compress_colour: bool = True
+    # Seed contraction (design §7.3): "auto" uses the native symmetric-group
+    # FFT on certified orbits in binary64 at NLC and full colour, "fft" also
+    # refuses a request without such orbits, "direct" never uses it. Other
+    # carriers and LC always contract directly.
+    colour_contraction: ContractionPolicy = "auto"
 
 
 @dataclass
@@ -780,7 +848,7 @@ class LoopSlice:
     continuation: Any
     basis: BornBasis
     table: SeedTable
-    class_of: Mapping[Any, int]
+    class_of: Mapping[Any, SeedCombination]
     sectors: tuple[tuple[Orders, frozenset[tuple[Orders, Orders]]], ...]
     normalisation: Normalisation
     tree_rows: TreeRows
@@ -790,6 +858,8 @@ class LoopSlice:
     weights: LeafWeights
     scale_parameter: str
     alpha_s_parameter: str | None
+    loop_catalogue: Any = None
+    fourier: SeedFourier | None = None
     _cache: dict = field(default_factory=dict, repr=False)
 
     # -- generation ------------------------------------------------------------
@@ -807,8 +877,8 @@ class LoopSlice:
         from pyamplicol.models.external import CompiledUFOModel
         from pyamplicol.processes.model import build_model_process_ir
 
-        if request.accuracy not in ("full", "lc"):
-            raise ValueError("the slice evaluates full or leading colour")
+        if request.accuracy not in ("full", "lc", "nlc"):
+            raise ValueError(f"unknown colour accuracy {request.accuracy!r}")
         declaration = request.colour_declaration
         fixed: dict[str, Any] = dict(request.fixed_parameters)
         if declaration is not None:
@@ -875,7 +945,7 @@ class LoopSlice:
             families,
             loop_catalogue,
             colour,
-            policy=cheapest(lambda mask: 2 ** mask.bit_count()),
+            policy=_FRAME_POLICY,
         )
         sites = generate_counterterm_sites(
             families,
@@ -907,7 +977,9 @@ class LoopSlice:
             weights.fermion_sign(skeleton)  # refuses fermion lines it does not cover
         born_terms = _born_terms(blocks, table, closure, ordinary)
         basis = _born_tensors(closure, born_terms)
-        seed_table, class_of = build_seed_table(colour, readings, basis)
+        seed_table, class_of = build_seed_table(
+            colour, readings, basis, compress=request.compress_colour
+        )
         born_orders = blocks.born_orders
         sectors: dict[Orders, set[tuple[Orders, Orders]]] = defaultdict(set)
         for a in born_orders:
@@ -921,7 +993,7 @@ class LoopSlice:
             identity: name
             for identity, (name, _source) in field_definitions(insertions).items()
         }
-        return cls(
+        slice_ = cls(
             request=request,
             compiled=compiled,
             prepared=prepared,
@@ -968,6 +1040,94 @@ class LoopSlice:
             weights=weights,
             scale_parameter=scale_parameter,
             alpha_s_parameter=alpha_s_parameter,
+            loop_catalogue=loop_catalogue,
+        )
+        if request.accuracy != "full":
+            slice_._prune_colour()
+        slice_._plan_contraction()
+        return slice_
+
+    def _plan_contraction(self) -> None:
+        """Certify the seed FFT's orbits per ``colour_contraction``."""
+
+        policy = self.request.colour_contraction
+        if policy not in ("auto", "direct", "fft"):
+            raise ValueError(f"unknown colour contraction {policy!r}")
+        if policy == "direct":
+            return
+        if self.request.accuracy == "lc":
+            if policy == "fft":
+                raise ValueError("leading-colour seeds are contracted directly")
+            return
+        self.fourier = seed_fourier(self.table)
+        if self.fourier is None and policy == "fft":
+            raise ValueError(
+                "the seed table has no certified symmetric-group orbit pair"
+            )
+
+    def _prune_colour(self) -> None:
+        """LC and NLC: drop, before any numerics, every skeleton whose seed
+        cells all lie below the N_c powers the projection keeps (design §7.5,
+        §7.6). Structural: exact seed cells, Born grades and the sector
+        degrees P; the projection itself is unchanged.
+        """
+
+        degrees = self.degrees()["virtual"]
+        accuracy = self.request.accuracy
+        grades = self._born_grades()
+        pairs = [
+            (degrees[sector], a, loop)
+            for sector, sector_pairs in self.sectors
+            for a, loop in sector_pairs
+        ]
+        live: dict[tuple[int, Orders], bool] = {}
+
+        def class_live(c: int, order: Orders) -> bool:
+            found = live.get((c, order))
+            if found is None:
+                found = live[c, order] = any(
+                    value and kept(power + grade, degree, accuracy)
+                    for degree, a, loop in pairs
+                    if loop == order
+                    for b, born_orders in enumerate(self.basis.orders)
+                    if a in born_orders
+                    for power, value in self.table.cells[c][b].items()
+                    for grade in grades.get((b, a), ())
+                )
+            return found
+
+        def keep(skeleton) -> bool:
+            return any(
+                class_live(c, skeleton.orders) for c, _x in self.class_of[skeleton]
+            )
+
+        # Each surviving family keeps its frame, so the pruned schedules dress
+        # the remaining skeletons exactly as before (dropped ones contributed
+        # exact zeros). A reading that is new nonetheless gets its own seed:
+        # it differs from its skeleton's by the orientation signs of the
+        # vertex colours. The degrees P stay those of every class.
+        frames = {
+            key: schedule.trie.frame for key, schedule in self.plan.schedules.items()
+        }
+
+        def same_frame(family, candidates):
+            return next(
+                trie for frame, trie in candidates if frame == frames[family.key]
+            )
+
+        self.plan = build_schedules(
+            self.families,
+            self.loop_catalogue,
+            self.colour,
+            policy=same_frame,
+            view=SkeletonView(self.loop_catalogue, self.colour, keep=keep),
+        )
+        self.table, self.class_of = extend_seed_table(
+            self.table,
+            self.class_of,
+            self.colour,
+            rx.reading_skeletons(self.plan),
+            compress=self.request.compress_colour,
         )
 
     # -- evaluation ------------------------------------------------------------
@@ -1185,6 +1345,27 @@ class LoopSlice:
             }
         return found
 
+    def _born_grades(self) -> dict[tuple[int, Orders], set[int]]:
+        """N_c grades of the Born amplitude per (basis element, Born order):
+        each literal tensor's N_c power plus its coupling grades."""
+
+        found = self._cache.get("born-grades")
+        if found is not None:
+            return found
+        _plan, layout = self._scalar_plan(LAURENT_POWERS)
+        index = {tensor: b for b, tensor in enumerate(self.basis.tensors)}
+        out: dict[tuple[int, Orders], set[int]] = defaultdict(set)
+        for order, terms in self.born_terms.items():
+            for term in terms:
+                couplings = {
+                    g for g, _c in layout.get((term.entry.coupling.name, 0), ())
+                }
+                for item in term.colour.terms:
+                    b = index[_single(item.tensor, self.basis.legs)]
+                    out[b, order].update(item.nc_power + g for g in couplings)
+        self._cache["born-grades"] = out
+        return out
+
     def degrees(self) -> dict[str, dict[Orders, int | None]]:
         """Leading N_c degrees P per squared-order sector (design §7.4).
 
@@ -1237,8 +1418,9 @@ class LoopSlice:
             squared = add_orders(a, b)
             value = degree(born[a], born[b])
             out["born"][squared] = _max(out["born"].get(squared), value)
+        born_grades = self._born_grades()
         for sector, pairs in self.sectors:
-            value = self.table.degree(pairs)
+            value = self.table.degree(pairs, born_grades)
             for a, b in pairs:
                 value = _max(value, degree(born[a], counterterms.get(b, set())))
             for insertion in self.fields:
@@ -1415,8 +1597,10 @@ class _PointEvaluation:
         degrees = slice_.degrees() if slice_.request.accuracy != "full" else None
         overlap = slice_.overlaps
 
-        def interfere(bra, ket, degree):
-            return _interfere(bra, ket, degree, overlap, numbers)
+        accuracy = slice_.request.accuracy
+
+        def interfere(bra, ket, degree, grade=0):
+            return _interfere(bra, ket, degree, accuracy, overlap, numbers, grade)
 
         def degree_of(kind, sector):
             return None if degrees is None else degrees[kind][sector]
@@ -1497,12 +1681,9 @@ class _PointEvaluation:
                     for power in powers:
                         for grade, coupling in scalars.get((name, power), {}).items():
                             degree = degree_of("virtual", sector)
-                            overlap_ = interfere(
-                                amplitude,
-                                ket,
-                                None if degree is None else degree - grade,
-                            )
-                            value = coupling * overlap_
+                            # The field coupling's N_c grade joins the
+                            # overlap's powers (projection and N_c = 3).
+                            value = coupling * interfere(amplitude, ket, degree, grade)
                             counterterms[FIELD_COMPONENT, sector, power] += (
                                 value + value.conjugate()
                             )
@@ -1512,23 +1693,20 @@ class _PointEvaluation:
             key: value.real / average for key, value in counterterms.items()
         }
 
-    def _amplitudes(self, vectors, index) -> dict[tuple[int, Orders], Any]:
-        """A0 per Born tensor at N_c = 3 (seeds); leading colour needs every
-        Born tensor at N_c power 0 (graded Fierz/U(1) Borns are WP2.4)."""
+    def _amplitudes(self, vectors, index) -> dict[tuple[int, Orders], dict[int, Any]]:
+        """A0 per (Born tensor, Born order) split into N_c grades (seeds).
 
-        numbers = self.numbers
-        lc = self.slice.request.accuracy != "full"
-        out: dict[tuple[int, Orders], Any] = {}
+        A Born term's literal tensor keeps the N_c power of its colour
+        reduction (e.g. the -1/N_c of a U(1) piece) and of its coupling, so
+        the seeds project K[c, b] N_c^g exactly (``SeedTable.seeds``).
+        """
+
+        out: dict[tuple[int, Orders], dict[int, Any]] = {}
         legs = self.slice.basis.legs
         for order, vector in vectors.items():
             for (tensor, power), value in vector.items():
-                if lc and power:
-                    raise NotImplementedError(
-                        "leading-colour seeds need N_c-exact Born tensors"
-                    )
-                key = (index[_single(tensor, legs)], order)
-                scaled = value * numbers.real(Fraction(NC) ** power)
-                out[key] = scaled if key not in out else out[key] + scaled
+                grades = out.setdefault((index[_single(tensor, legs)], order), {})
+                grades[power] = value + grades[power] if power in grades else value
         return out
 
     # -- loop numerators -----------------------------------------------------------
@@ -1568,7 +1746,10 @@ class _PointEvaluation:
             numbers,
             slice_.request.accuracy,
             [degrees.get(sector) for sector, _pairs in slice_.sectors],
+            fourier=None if exact else slice_.fourier,
+            native=slice_.native,
         )
+        self.colour_contraction = seeds.algorithm
         kinematics = rx.CatalogueKinematics(
             slice_.catalogue,
             slice_.compiled.ir.vertex_terms,
@@ -1715,11 +1896,21 @@ class _PointEvaluation:
                         zero,
                     )
                 )
-        # Catani's operator is the full-colour pole prediction of QCD corrections.
-        checked = slice_.request.accuracy == "full" and slice_.alpha_s_parameter
+        # Catani's operator is the full-colour pole prediction of QCD
+        # corrections with massless coloured legs.
+        checked = (
+            slice_.request.accuracy == "full"
+            and slice_.alpha_s_parameter
+            and self._massless_coloured_legs()
+        )
         ir_poles = self._ir_poles() if self.poles and checked else None
         self.result = PointResult(
-            dict(self.born), components, tuple(totals), dict(self.families), ir_poles
+            dict(self.born),
+            components,
+            tuple(totals),
+            dict(self.families),
+            ir_poles,
+            colour_contraction=self.colour_contraction,
         )
         self.absolute = self._lane_budget(
             {lane: value.coefficients for lane, value in self.families.items()},
@@ -1785,6 +1976,16 @@ class _PointEvaluation:
 
     # -- IR poles ----------------------------------------------------------------------
 
+    def _massless_coloured_legs(self) -> bool:
+        """Whether every coloured leg is massless (Catani's massless dipoles)."""
+
+        return not any(
+            any(self.incoming[leg.label - 1])
+            and _minkowski(self.incoming[leg.label - 1])
+            for leg in self.slice.basis.legs
+            if leg.representation != 1
+        )
+
     def _ir_poles(self) -> dict[Orders, tuple[Any, Any]]:
         """Catani's single and double poles of the renormalised virtual.
 
@@ -1798,11 +1999,6 @@ class _PointEvaluation:
         coloured = sorted(
             label for label, leg in legs.items() if leg.representation != 1
         )
-        for label in coloured:
-            if any(self.incoming[label - 1]) and _minkowski(self.incoming[label - 1]):
-                raise NotImplementedError(
-                    "massive coloured legs need the massive dipoles"
-                )
         dipoles = slice_.dipoles()
         three = Fraction(NC)
         physical = []
@@ -1879,17 +2075,26 @@ def _add_graded(vector: dict, tensor, value, grade: int, numbers: _Numbers) -> N
         vector[key] = vector.get(key, numbers.zero) + weight * value
 
 
-def _interfere(bra: dict, ket: dict, degree: int | None, overlaps, numbers) -> Any:
-    """sum conj(bra) ket <t|t'> at N_c = 3, keeping only N_c power ``degree``
-    (every power if None)."""
+def _interfere(
+    bra: dict,
+    ket: dict,
+    degree: int | None,
+    accuracy: ColourAccuracy,
+    overlaps,
+    numbers,
+    grade: int = 0,
+) -> Any:
+    """N_c^grade sum conj(bra) ket <t|t'> at N_c = 3, keeping the N_c powers
+    that ``accuracy`` keeps below the leading degree ``degree``
+    (``colour.kept``)."""
 
     total = numbers.zero
     for (left, p), a in bra.items():
         conjugate = a.conjugate()
         for (right, q), b in ket.items():
             for power, cell in overlaps(left, right).items():
-                exponent = power + p + q
-                if degree is not None and exponent != degree:
+                exponent = power + p + q + grade
+                if not kept(exponent, degree, accuracy):
                     continue
                 weight = numbers.colour(cell.scaled(Fraction(NC) ** exponent), 0)
                 total = total + conjugate * b * weight

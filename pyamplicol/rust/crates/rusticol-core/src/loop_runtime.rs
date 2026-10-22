@@ -1869,3 +1869,19 @@ impl LoopRuntimePlan {
         Ok(())
     }
 }
+
+/// PACBIN member of a v2 loop program (plan v4, DESIGN.md §3.8).
+pub const LOOP_PROGRAM_V4_MEMBER: &str = "schedule/loop-program-v4.json";
+
+/// Load the v2 program of an authenticated PACBIN reader. The member has the
+/// plan kind of the v3 runtime; its schema field selects version 4.
+#[cfg(feature = "loop-v2")]
+pub fn load_loop_program_v4(
+    reader: &PacbinReader,
+) -> RusticolResult<crate::loop_v2::plan::LoopProgramV4> {
+    require(
+        reader.member(LOOP_PROGRAM_V4_MEMBER)?.kind() == PacbinMemberKind::LoopRuntimePlan,
+        "wrong v4 program member kind",
+    )?;
+    crate::loop_v2::plan::LoopProgramV4::load(reader.member_bytes(LOOP_PROGRAM_V4_MEMBER)?)
+}

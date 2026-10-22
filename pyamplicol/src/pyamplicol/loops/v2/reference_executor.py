@@ -13,7 +13,8 @@ contents, kernels and seeds, so they are mutual oracles (O4):
   helicity-explicit rows of the attached legs and applies seeds at closure.
 * **M** walks the merged state graph (``schedules.merged_graph``) with seeds
   injected at the cut. It needs colour-ordered contents whose seed depends on
-  the cut word only (LC; certified FC classes later) and a state graph whose
+  the cut word only (LC, or certified classes at NLC/FC:
+  ``ColourSeeds.certified``) and a state graph whose
   every cut-to-closure path is one skeleton; both are checked, and
   ``ReferenceExecutor.run`` falls back to B otherwise (generic classes).
 
@@ -77,6 +78,7 @@ from .colour import (
     PositionColour,
     SectorPair,
     SeedColour,
+    SeedCombination,
     SeedTable,
     _exact_number,
     build_seed_table,
@@ -895,6 +897,7 @@ class CatalogueKinematics:
         self.constants = constants
         self.reading = reading
         self.carrier = constants.carrier
+        self._signed: dict[tuple, KernelConstants] = {}
         self._rules = {rule["name"]: rule for rule in data["vertex_rules"]}
         self._antiname = {p["name"]: p["antiname"] for p in data["particles"]}
         self._terms: dict[tuple[str, int], list[Any]] = defaultdict(list)
@@ -1070,6 +1073,22 @@ class CatalogueKinematics:
 
     # -- evaluation ------------------------------------------------------------
 
+    def _constants(self, content: Content) -> KernelConstants:
+        """Kernel constants of a content's segments: the reading may flip the
+        sign of the outgoing loop line's mass (``TreeReading.mass_signs``)."""
+
+        signs = getattr(self.reading, "mass_signs", None)
+        flips = tuple(sorted(signs(content.loop_out).items())) if signs else ()
+        if not flips:
+            return self.constants
+        found = self._signed.get(flips)
+        if found is None:
+            parameters = dict(self.constants.parameters)
+            for name, sign in flips:
+                parameters[name] = sign * parameters[name]
+            found = self._signed[flips] = KernelConstants(parameters, self.carrier)
+        return found
+
     def _block_vectors(self, slot: _Slot, row: Row, dimension: int) -> list[Any]:
         values = self.blocks.value(
             slot.block, slot.word, slot.chirality, row, dimension
@@ -1121,7 +1140,7 @@ class CatalogueKinematics:
                     kernel = self._kernel(binding)
                     values = kernel.evaluate(
                         self._inputs(binding, kernel, loop, term.slots, parts),
-                        self.constants,
+                        self._constants(content),
                     )
                     for entry, value in zip(binding.entries, values, strict=True):
                         slot = index[(entry.loop_in, entry.out, entry.exponents)]
@@ -1144,7 +1163,7 @@ class CatalogueKinematics:
                 kernel = self._kernel(binding)
                 values = kernel.evaluate(
                     self._inputs(binding, kernel, loop, term.slots, no_blocks),
-                    self.constants,
+                    self._constants(content),
                 )
                 for entry, value in zip(binding.entries, values, strict=True):
                     nu = _flat(entry.blocks, binding.block_dimensions)
@@ -1181,7 +1200,7 @@ class CatalogueKinematics:
                     kernel = self._kernel(binding)
                     values = kernel.evaluate(
                         self._inputs(binding, kernel, momentum, term.slots, parts),
-                        self.constants,
+                        self._constants(content),
                     )
                     for entry, value in zip(binding.entries, values, strict=True):
                         if entry.exponents == zero:
@@ -1334,7 +1353,7 @@ class ColourSeeds:
     def __init__(
         self,
         table: SeedTable,
-        class_of: Mapping[Skeleton, int],
+        class_of: Mapping[Skeleton, SeedCombination],
         born: Mapping[Row, Mapping[tuple[int, Orders], Any]],
         pairs: Iterable[SectorPair],
         accuracy: ColourAccuracy = "full",
@@ -1347,7 +1366,7 @@ class ColourSeeds:
         for row, amplitudes in born.items():
             seeds = table.seeds(
                 pairs,
-                {key: exact(value) for key, value in amplitudes.items()},
+                {key: {0: exact(value)} for key, value in amplitudes.items()},
                 accuracy,
                 cast=lambda cell: Complex(cell.real, cell.imag),
                 conjugate=lambda value: value.conjugate(),
@@ -1362,20 +1381,37 @@ class ColourSeeds:
         born: Mapping[Row, Mapping[tuple[int, Orders], Any]],
         pairs: Iterable[SectorPair],
         accuracy: ColourAccuracy = "full",
+        *,
+        compress: bool = False,
     ) -> ColourSeeds:
-        table, class_of = build_seed_table(colour, list(dict.fromkeys(readings)))
+        table, class_of = build_seed_table(
+            colour, list(dict.fromkeys(readings)), compress=compress
+        )
         return cls(table, class_of, born, pairs, accuracy)
+
+    def certified(self, skeleton: Skeleton) -> bool:
+        """The colour certificate predicate of ``ReferenceExecutor.run``:
+        the skeleton's seed uses certified primitive classes only
+        (``SeedTable.certified``)."""
+
+        combination = self.class_of.get(skeleton)
+        return combination is not None and self.table.certified(combination)
 
     def seed(self, skeleton, contents):
         reading = _reading(skeleton, contents)
-        c = self.class_of.get(reading)
-        if c is None:
+        combination = self.class_of.get(reading)
+        if combination is None:
             raise KeyError("reading without a seed class; build with every reading")
-        key = (c, skeleton.orders)
-        if key not in self._admitted:
-            raise KeyError(f"no sector pair admits class {c} at {skeleton.orders}")
+        order = skeleton.orders
+        for c, _x in combination:
+            if (c, order) not in self._admitted:
+                raise KeyError(f"no sector pair admits class {c} at {order}")
         # An admitted key absent from a row is a zero colour weight or Born.
-        return key, {row: (seeds.get(key, 0),) for row, seeds in self._rows.items()}
+        weights = [(c, Complex(x.real, x.imag)) for c, x in combination]
+        return (combination, order), {
+            row: (sum((w * seeds.get((c, order), 0) for c, w in weights), 0),)
+            for row, seeds in self._rows.items()
+        }
 
 
 def _reading(skeleton: Skeleton, contents: Sequence[Content]) -> Skeleton:
