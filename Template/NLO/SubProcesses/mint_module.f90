@@ -1729,16 +1729,29 @@ contains
   end subroutine gen
 
 
-  subroutine gen_vec(fun,gen_mode,vn)
+  subroutine gen_vec(fun,gen_mode,vn,nlanes,nevaluated)
+! Event generation with batches of at most driver_vector_size lanes.
+!  gen_mode=0: initialise.
+!  gen_mode=1: draw batches of lanes for events of type vn until at least
+!              one lane passes the hit-or-miss (driver_accepted). Every
+!              accepted lane is an event of type vn: driver_mintMC.f
+!              writes them all and serves the next requests of that type
+!              from them, before it draws a new batch. The first batch
+!              has nlanes lanes (default driver_vector_size); a batch
+!              without any accepted lane doubles the size of the next
+!              one. nevaluated returns the number of lanes evaluated.
+!  gen_mode=2: count one event of type vn written to the event file.
+!  gen_mode=3: print the counters.
    use driver_vec
     implicit none
     integer :: vn,gen_mode
+    integer, optional :: nlanes,nevaluated
     logical :: found_point
     double precision, external :: fun
     double precision, dimension(ndimmax) :: x
     double precision :: vol
     double precision, allocatable :: upper_bounds(:)
-    integer :: vector_size,ivec
+    integer :: vector_size,ivec,nbatch,ntot
     if (driver_vector_size.le.0) then
       write (*,*) "Error: driver_vector_size not set in gen_vec"
       stop 1
@@ -1750,13 +1763,15 @@ contains
     elseif(gen_mode.eq.3) then
        call print_gen_counters
     elseif(gen_mode.eq.1) then
-       driver_active_size=vector_size
+       nbatch=vector_size
+       if (present(nlanes)) nbatch=min(max(nlanes,1),vector_size)
+       ntot=0
        allocate(upper_bounds(vector_size))
        call allocate_cell_vec(vector_size)
-       call increase_gen_counters_before_vec(vn,1)
  10     continue
+       driver_active_size=nbatch
        new_point=.true.
-       do ivec=1,vector_size
+       do ivec=1,nbatch
          if (vn.eq.1) then
             call get_random_cell_flat(x,vol)
          else
@@ -1768,11 +1783,18 @@ contains
           call save_cells(ivec)
        enddo
        call compute_integrand_vec(fun)
-       call increase_gen_counters_middle_vec(vn,vector_size)
+       call increase_gen_counters_middle_vec(vn,nbatch)
+       ntot=ntot+nbatch
        call check_upper_bound_vec(vn,upper_bounds,found_point)
-       if (.not.found_point) goto 10
-       call increase_gen_counters_end_vec(vn,1)
+       if (.not.found_point) then
+          nbatch=min(2*nbatch,vector_size)
+          goto 10
+       endif
        deallocate(upper_bounds)
+       if (present(nevaluated)) nevaluated=ntot
+    elseif(gen_mode.eq.2) then
+       call increase_gen_counters_before_vec(vn,1)
+       call increase_gen_counters_end_vec(vn,1)
     else
        write (*,*) "Unknown gen_mode in gen (from mint_module)",gen_mode
        stop 1

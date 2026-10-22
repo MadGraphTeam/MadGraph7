@@ -78,6 +78,17 @@ module driver_vec
     ! independent MINT point, so it must choose its own group.
     integer, allocatable, public :: lane_group(:), lane_nbody(:)
     double precision, allocatable, public :: lane_vol1(:), lane_born_vol1(:)
+    ! Event-record state that the scalar driver kept in common blocks until
+    ! the event was written: the fold of the S-events (picked in
+    ! update_shower_scale_Sevents), the alpha_S coupling written as AQCDUP,
+    ! the colour partner and MC scale of the #aMCatNLO line, and the
+    ! factorization scale used in the UNLOPS event record. Every
+    ! accepted lane of a batch is written as an event, so each lane keeps
+    ! its own copy.
+    integer, allocatable, public :: lane_ifold_S(:)
+    double precision, allocatable, public :: lane_g(:), lane_muF12(:)
+    integer, allocatable, public :: lane_ipartner_lhe(:,:)
+    double precision, allocatable, public :: lane_scale1_lhe(:,:)
 
     ! Momenta
 
@@ -177,6 +188,15 @@ module driver_vec
     allocate(real_active(FKS_configs,vector_size))
     allocate(lane_group(vector_size), lane_nbody(vector_size))
     allocate(lane_vol1(vector_size), lane_born_vol1(vector_size))
+    allocate(lane_ifold_S(vector_size), lane_g(vector_size))
+    allocate(lane_muF12(vector_size))
+    allocate(lane_ipartner_lhe(FKS_configs,vector_size))
+    allocate(lane_scale1_lhe(FKS_configs,vector_size))
+    lane_ifold_S = 1
+    lane_g = 0d0
+    lane_muF12 = 0d0
+    lane_ipartner_lhe = 0
+    lane_scale1_lhe = 0d0
     ! Momenta
     allocate(spb(0:3,nexternal-1,0:FKS_configs,vector_size))
     allocate(spb_rot(0:3,nexternal-1,FKS_configs,vector_size))
@@ -192,69 +212,74 @@ subroutine reset_storage()
   implicit none
    include 'nFKSconfigs.inc'
    include 'born_nhel.inc'
+   integer :: n
+   ! Only the lanes of the current batch: the event generation draws batches
+   ! smaller than vector_size, and resetting all the lanes would make each
+   ! batch cost as much as a full one.
+   n = driver_active_size
    driver_accepted(:) = .false.
    ! Per-fold storage only. Weighted Born/virtual accumulators and the BSV
    ! cache persist until the MC driver's next ifl=0 batch-start reset.
-     average_virtual_vec(:,:) = 0d0
-     polyfit_vec(:,:) = 0d0
+     average_virtual_vec(:,1:n) = 0d0
+     polyfit_vec(:,1:n) = 0d0
    ! n-body kinematics Borns
-   snb_amp2(:,:,:) = 0d0
-   snb_jamp2(:,:,:) = 0d0
-   snb_ans_cnt(:,:,:,:) = (0d0,0d0)
-   snb_amp_split(:,:,:) = 0d0
-   snb_amp_split_cnt(:,:,:,:,:) = (0d0,0d0)
-   snb_saveamp(:,:,:,:) = (0d0,0d0)
-    snb_split_soft(:,:,:) = 0d0
-   swgt_nb(:,:) = 0d0
+   snb_amp2(:,:,1:n) = 0d0
+   snb_jamp2(:,:,1:n) = 0d0
+   snb_ans_cnt(:,:,:,1:n) = (0d0,0d0)
+   snb_amp_split(:,:,1:n) = 0d0
+   snb_amp_split_cnt(:,:,:,:,1:n) = (0d0,0d0)
+   snb_saveamp(:,:,:,1:n) = (0d0,0d0)
+    snb_split_soft(:,:,1:n) = 0d0
+   swgt_nb(:,1:n) = 0d0
    ! n+1-body kinematics Borns
-   sn1_amp2(:,:,:) = 0d0
-   sn1_jamp2(:,:,:) = 0d0
-   sn1_ans_cnt(:,:,:,:) = (0d0,0d0)
-   sn1_amp_split(:,:,:) = 0d0
-   sn1_amp_split_cnt(:,:,:,:,:) = (0d0,0d0)
-   sn1_saveamp(:,:,:,:) = (0d0,0d0)
-    sn1_split_soft(:,:,:) = 0d0
-   swgt_n1(:,:) = 0d0
+   sn1_amp2(:,:,1:n) = 0d0
+   sn1_jamp2(:,:,1:n) = 0d0
+   sn1_ans_cnt(:,:,:,1:n) = (0d0,0d0)
+   sn1_amp_split(:,:,1:n) = 0d0
+   sn1_amp_split_cnt(:,:,:,:,1:n) = (0d0,0d0)
+   sn1_saveamp(:,:,:,1:n) = (0d0,0d0)
+    sn1_split_soft(:,:,1:n) = 0d0
+   swgt_n1(:,1:n) = 0d0
    ! Store storage for born-like collinears
-    scb_ans_cnt(:,:,:,:) = (0d0,0d0)
-    scb_amp_split(:,:,:) = 0d0
-    scb_amp_split_cnt(:,:,:,:,:) = (0d0,0d0)
-    scb_saveamp(:,:,:,:) = (0d0,0d0)
+    scb_ans_cnt(:,:,:,1:n) = (0d0,0d0)
+    scb_amp_split(:,:,1:n) = 0d0
+    scb_amp_split_cnt(:,:,:,:,1:n) = (0d0,0d0)
+    scb_saveamp(:,:,:,1:n) = (0d0,0d0)
    ! Store storage for born-like collinears
-    sc1_ans_cnt(:,:,:,:) = (0d0,0d0)
-    sc1_amp_split(:,:,:) = 0d0
-    sc1_amp_split_cnt(:,:,:,:,:) = (0d0,0d0)
-    sc1_saveamp(:,:,:,:) = (0d0,0d0)
+    sc1_ans_cnt(:,:,:,1:n) = (0d0,0d0)
+    sc1_amp_split(:,:,1:n) = 0d0
+    sc1_amp_split_cnt(:,:,:,:,1:n) = (0d0,0d0)
+    sc1_saveamp(:,:,:,1:n) = (0d0,0d0)
    ! Store storage for rotated Borns
-    srot_jamp2(:,:,:) = 0d0
-    srot_ans_cnt(:,:,:,:) = (0d0,0d0)
+    srot_jamp2(:,:,1:n) = 0d0
+    srot_ans_cnt(:,:,:,1:n) = (0d0,0d0)
     ! srot_amp_split(:,:,:) = 0d0
-    srot_amp_split_cnt(:,:,:,:,:) = (0d0,0d0)
+    srot_amp_split_cnt(:,:,:,:,1:n) = (0d0,0d0)
     ! srot_saveamp(:,:,:,:) = (0d0,0d0)
   ! norad and ev amplitudes
-    snorad_amp2(:,:,:) = 0d0
-    sev_amp2(:,:,:) = 0d0
+    snorad_amp2(:,:,1:n) = 0d0
+    sev_amp2(:,:,1:n) = 0d0
    ! Born contributions storage
-    sborn_amp2(:,:) = 0d0
-    sborn_jamp2(:,:) = 0d0
-    sborn_ans_cnt(:,:,:) = (0d0,0d0)
-    sborn_amp_split(:,:) = 0d0
-    sborn_amp_split_cnt(:,:,:,:) = (0d0,0d0)
-    sborn_saveamp(:,:,:) = (0d0,0d0)
-    sborn_split_soft(:,:) = 0d0
-    swgt_born(:) = 0d0
+    sborn_amp2(:,1:n) = 0d0
+    sborn_jamp2(:,1:n) = 0d0
+    sborn_ans_cnt(:,:,1:n) = (0d0,0d0)
+    sborn_amp_split(:,1:n) = 0d0
+    sborn_amp_split_cnt(:,:,:,1:n) = (0d0,0d0)
+    sborn_saveamp(:,:,1:n) = (0d0,0d0)
+    sborn_split_soft(:,1:n) = 0d0
+    swgt_born(1:n) = 0d0
 ! Real amplitudes and weights
-    sreal_amp_split(:,:,:) = 0d0
-    sfx_ev(:,:) = 0d0
-    real_active(:,:) = .false.
+    sreal_amp_split(:,:,1:n) = 0d0
+    sfx_ev(:,1:n) = 0d0
+    real_active(:,1:n) = .false.
     ! Momenta
-    spb(:,:,:,:) = 0d0
-    spb_rot(:,:,:,:) = 0d0
-    spb_coll(:,:,:,:) = 0d0
-    spb_ev(:,:,:,:) = 0d0
-    spb_norad(:,:,:,:) = 0d0
-    sp1_cnt(:,:,:,:,:) = 0d0
-    sp1(:,:,:,:) = 0d0
+    spb(:,:,:,1:n) = 0d0
+    spb_rot(:,:,:,1:n) = 0d0
+    spb_coll(:,:,:,1:n) = 0d0
+    spb_ev(:,:,:,1:n) = 0d0
+    spb_norad(:,:,:,1:n) = 0d0
+    sp1_cnt(:,:,:,:,1:n) = 0d0
+    sp1(:,:,:,1:n) = 0d0
 end subroutine reset_storage
 
 subroutine deallocate_storage()
@@ -336,6 +361,11 @@ subroutine deallocate_storage()
     if (allocated(lane_nbody)) deallocate(lane_nbody)
     if (allocated(lane_vol1)) deallocate(lane_vol1)
     if (allocated(lane_born_vol1)) deallocate(lane_born_vol1)
+    if (allocated(lane_ifold_S)) deallocate(lane_ifold_S)
+    if (allocated(lane_g)) deallocate(lane_g)
+    if (allocated(lane_muF12)) deallocate(lane_muF12)
+    if (allocated(lane_ipartner_lhe)) deallocate(lane_ipartner_lhe)
+    if (allocated(lane_scale1_lhe)) deallocate(lane_scale1_lhe)
     ! Momenta
     if (allocated(spb)) deallocate(spb)
     if (allocated(spb_rot)) deallocate(spb_rot)
