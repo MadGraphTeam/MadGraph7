@@ -252,7 +252,7 @@ Revision 1's "20–50× below OpenLoops, 100–250× below MadLoop" compared aga
    - M is a planned production path (WP2.8). It is adopted per process class (LC; certified FC classes) when G1's measured operation counts × G0 throughput show at least a 15 % gain, and by default for n ≥ 8.
 6. **Single-level rescue policies.** Today they cannot rescue (`rust/loop-reduction/src/verification.rs:346-351` [V]). Either require at least two levels or define single-level verification explicitly.
 7. **Speed-gate baseline.** MASTER_PLAN §5.8 does not say in which mode the providers run. This design recommends accepting against the providers' production mode (OpenLoops `truepoles 0`; Recola `compute_ir_poles 0` with the Collier cache on) and also reporting the actual-pole protocol columns. Production mode is stricter by ≈3–6× (Table 1b).
-8. **Default accuracy re-test** of every family of every point (§10.2). It costs +0.75–1.0 NinjaRS pass, i.e. +12–25 % per point. It may be relaxed only after WP2.3 measures its false-negative rate.
+8. **Default accuracy re-test** of every family of every point (§10.2). It costs +0.75–1.0 NinjaRS pass, i.e. +12–25 % per point. It may be relaxed only after WP2.3 measures its false-negative rate. *Decided by REQUIREMENTS_ADDENDUM C:* checks are the caller's choice, none by default; WP2.3 measured the rates (§10.4).
 
 ### 1.7 Main risks
 
@@ -1166,13 +1166,24 @@ Hence C_α = 2 Re C_α^{half} [I, derived; the absorptive parts sit in the integ
 ### 10.1 Carriers
 
 - **One instruction stream for f64, DoubleFloat and Float.** Dressing and closure are generic Rust. Segment builders are SymJIT (f64) and exact evaluators (DD/AP). Seeds and colour tables are exact rationals cast per carrier. Ingress is exact decimal → rational, and the invariant table is exact until cast (contracts K4, K6).
-- **Trees.** The tree recurrence lane gains DoubleFloat and arbitrary-precision prepared kernels built from the retained `exact_expressions` (tree report §7.3).
+- **Trees.** The tree recurrence lane gains DoubleFloat and arbitrary-precision prepared kernels built from the retained `exact_expressions` (tree report §7.3). Until the loop-request mode of the Rust recurrence (WP3.1) the per-point trees, Born components and counterterm scalars of the v2 path are formed in Python (`LoopSlice._point`): in binary64, or in Decimal at the carrier's working digits for DD (32 + 20 guard digits) and AP, then cast once into the native carrier (WP2.3).
+- **Native carriers (WP2.3).** `NativeExecutor.evaluate` runs dressing, seeds and reduction in f64, DoubleFloat (`Precision.double_double()`, unit roundoff 2⁻¹⁰⁴) or Float (`Precision.arbitrary(digits)`); the Python reference path has no DoubleFloat arithmetic and refuses it. Native DD and AP equal the Python 60-digit reference (gg→gg, uu~→dd~g: DD within its own estimate < 10⁻²⁴, AP < 10⁻⁵⁵; `test_loop_v2_stability.py`). Outside f64 the lanes are scalar loops, so the executor uses the smallest lane count holding the batch.
 - **NinjaRS.** The fast engine for f64; the generic engine for DD/AP.
-  - Today the generic engine's numerator ingress is `PolynomialNumerator`, built from a Symbolica expression (`ninjars-symbolica/src/polynomial.rs:258` [V]). At rank 7 it has 330 parameters, and its compile cost is unmeasured (WP2.3 measures it).
+  - The generic engine's numerator ingress is `PolynomialNumerator`, built from a Symbolica expression (`ninjars-symbolica/src/polynomial.rs:258` [V]), one template per (N, R) and reducer, compiled on first use and cached. Measured compile cost (WP2.3; first minus second call of one lane, 7-point family; shared host): DoubleFloat 0.35–0.52 s at rank 6, 0.73 s at rank 7 (330 parameters), 2.6 s at rank 8, 10.8 s at rank 9; Float(256) 1.0–1.2 s at rank 6, 1.3–1.5 s at rank 7, 3.2 s at rank 8, 11.3 s at rank 9. It is paid once per executor, so a tensor ingress is not needed for it.
+  - The generic engine's workspace grows with the lanes of one call (about 18 MB per lane of a 7-point family at 256 bits), so buckets are reduced in chunks of 16 lanes (values unchanged).
+  - numerica tracks the significant bits of Float masters: a master below the provider's required bits fails its lane with `ImpreciseResult` instead of returning an unestablished value (`imprecise_float_masters_fail_their_lane`).
   - A generic-precision tensor numerator exists only in the CLI harness (`ninjars-cli/src/case_check/harness.rs:1290`, `TensorGenericNumerator<T>` [V]). Request 8 (§11.5) asks the owner to upstream it.
   - Float(128) needs Symbolica 9cdc2949 (NinjaRS guidance [V]), pinned since the coordinated re-pin (WP0.2).
 
 ### 10.2 Triggers, cheapest first
+
+**As implemented (WP2.3; REQUIREMENTS_ADDENDUM C overrides the defaults below).** An evaluation runs the checks its caller asks for, `StabilityChecks(rotations, reduction_direction, rescaled)` (`loops/v2/stability.py`), and none by default; with no check no estimate exists (`PointResult.stability is None`, in every carrier), and nothing is escalated automatically.
+
+- **Rotation checks:** any number of user rotations, each an exact rational orthogonal matrix (`Rotation.about(axis, cos, sin)`, `Rotation.from_axis_angle(axis, angle)` via a rational unit quaternion), so the rotated point is exactly on shell. Each re-evaluates the whole point (trees, dressing, reduction, counterterms).
+- **One reduction check:** the reduction-direction check re-reduces every lane in the reversed frame (q → −q from the second propagator) with the coefficients reused exactly and cached masters, +0.84–1.0 reduction (§5.5); or its **rescaled** variant (`rescaled=True`, `ReductionFrame::RESCALED`), the same frame with every dimensionful input scaled by x = 7/10 (shifts by x, squared masses, μ² and invariants by x², degree-d coefficients by x⁻ᵈ) and the integrals scaled back by x^{2N−4}, exact at every Laurent order. It re-evaluates the masters at differently rounded arguments, so it also measures their own rounding, which neither the cached frame nor a rotation (same invariants) can see. Cost on uu~→e⁻e⁺dd~g (7 legs, binary64, 16 points, one thread, shared host): finite only 13.4 ms/pt, + reversed check 16.1, + rescaled check 16.5 (reduction 3.2 → 5.8 / 6.3 ms/pt).
+- **Budget and estimate:** per check an absolute budget per squared-order sector and Laurent coefficient that lets no two lanes cancel (Σ_f 2|Ω_f − Ω′_f|/(16π²·avg) for a reduction check; for a rotation also the local components); E = 2 × (max over rotations + reduction budget) + 16 u S, with u the carrier's unit roundoff and S the absolute sum of the contributions. `StabilityEstimate` returns E (`absolute`), E against each sector's Laurent vector (`relative`) and per coefficient (`coefficients`, `finite`), each check's own budget and the per-lane deviations; `subset` recombines fewer checks. A relative estimate ≥ 1 says the value has no correct digit.
+- **Failed points:** a failed lane (status, `ImpreciseResult`, non-finite numerator), also in a rotation check's evaluation, fails its point alone: `NativeExecutor.evaluate` raises `FailedPoints` with every other point's complete result.
+- The calibrated false-negative rates of every configuration are in §10.4. The IR-pole check and κ below are not wired as estimates.
 
 1. **NinjaRS status.** Lane status ≠ Success, a master failure, or a non-finite value. This is free. The fast engine has no cancellation test (NinjaRS guidance [V]).
 2. **Reduction-side re-test of every family (default).** For each (family, point, sector), the stored family polynomial is reduced a second time in a relabelled frame.
@@ -1193,6 +1204,8 @@ Hence C_α = 2 Re C_α^{half} [I, derived; the absorptive parts sit in the integ
 **Relaxation.** The default (every family, every point) may be relaxed only after WP2.3 measures the false-negative rate of each trigger against Float(256) on ≥ 10⁴ points per required process. Possible relaxations are N ≥ 5 families, or sampled points with a reported rate.
 
 ### 10.3 Escalation
+
+By REQUIREMENTS_ADDENDUM C the v2 path does not escalate: the caller re-evaluates a point (or the failed points of `FailedPoints`) in `Precision.double_double()` or `Precision.arbitrary(digits)` from its original inputs when the returned estimate misses its target. No automatic rescue exists in v2 (`loop_v2/rescue.rs` is not built). The plan below stays the reference for an optional convenience tier, off by default; the legacy statuses and `verification.rs` (and its single-level defect) stay with the legacy engine until its deletion (§13.3).
 
 Escalation always starts from the original inputs and never promotes binary64 values (MASTER_PLAN §2.18):
 
@@ -1217,6 +1230,23 @@ WP2.3 measures on 10⁴ points per process:
 - the rescue rate;
 - the rescue cost;
 - the false-negative rate of each trigger (relabelling, rescaling, pole check, κ).
+
+**Measured (WP2.3, O15; `tools/loop_v2_stability_calibration.py`, report `tests/fixtures/loop/v2/stability_calibration.json`).** 2000 binary64 points per process and 400 DoubleFloat points (the first 400), native executor, against Float(256) (`Precision.arbitrary(57)`: 77 working digits); RAMBO points at √s = 1 TeV made exactly on shell and momentum conserving in rationals, p_T > 20 GeV, ΔR > 0.4, μ_R = 1 TeV; two fixed rotations (`rotations()` in the tool) and one reduction check per evaluation, every combination recombined from the recorded absolute budgets (`StabilityEstimate.subset`). A false negative is a point whose true error exceeds E, both measured against the truth's Laurent vector (E against the evaluated value would let a value with no correct digit, flagged by a relative estimate ≥ 1, count as missed). No point failed. The test bounds each rate (`test_loop_v2_stability.py`).
+
+| Checks (false-negative rate) | gg→ggg f64 | uu~→e⁻e⁺dd~g f64 | gg→ggg DD | uu~→e⁻e⁺dd~g DD |
+|---|---|---|---|---|
+| reduction direction (cached masters) | 2.30 % | 2.75 % | 0.75 % | 1.00 % |
+| reduction rescaled | 0 | 0.20 % | 0.25 % | 0 |
+| one rotation | 0–0.05 % | 0.50–0.60 % | 0.25 % | 1.50–1.75 % |
+| two rotations | 0 | 0.35 % | 0 | 1.50 % |
+| reduction direction + rotation(s) | 0 | 0.30 % | 0 | 0 |
+| reduction rescaled + rotation(s) | 0 | 0.05–0.10 % | 0 | 0 |
+
+- The cached reduction check alone misses the masters' own rounding: the same masters enter both reductions. Its estimate/error ratio has q01 = 0.4–0.5 in binary64. A rotation keeps every invariant and so misses it too; the rescaled check sees it. A rotation re-evaluates the trees, dressing and counterterms, which neither reduction check sees (injected-numerator test). Recommended configuration: the rescaled check with one rotation (estimate/error q01 ≈ 4.6–5.4 in binary64).
+- The one miss of the recommended configuration (uu~→e⁻e⁺dd~g index 1832: true error 9.6·10⁻⁹, estimate 4.8·10⁻⁹) is missed by every check alike, each seeing ≈ 10⁻⁹: an error common to all evaluations at that point (not a rounding of what any check re-computes).
+- True relative errors in binary64: gg→ggg median 1.1·10⁻¹³, q90 4.2·10⁻¹⁰, q99 3.2·10⁻⁶, 0.25 % above 10⁻³ (one point with no correct digit, flagged by every check with a relative estimate ≈ 10); uu~→e⁻e⁺dd~g median 8.4·10⁻¹⁴, q99 2.1·10⁻⁹, max 4.7·10⁻⁶. DoubleFloat: gg→ggg median 1.4·10⁻²⁹ (one point at 3.2·10⁻¹⁰, flagged), uu~→e⁻e⁺dd~g max 5.6·10⁻²³.
+- Re-evaluation load at a target accuracy, from the recommended configuration's flags (true fraction above the target in brackets): 10⁻⁶: gg→ggg 3.3 % (1.25 %), uu~→e⁻e⁺dd~g 0.2 % (0.1 %); 10⁻⁹: 15.7 % (8.3 %) and 3.4 % (1.25 %). In DoubleFloat every flagged point is above 10⁻¹².
+- Cost per point (native, binary64, 16 points, one thread, shared host): gg→ggg finite 15.1 ms, + reversed check 17.5 (+16 %), + rescaled check 18.3 (+21 %); uu~→e⁻e⁺dd~g 13.4, 16.1 (+20 %), 16.5 (+23 %). A rotation costs one more evaluation. The pole and κ triggers are not estimates of the v2 API (§10.2); 10⁴ points per required process and the other required processes remain open.
 
 ### 10.5 Optional labelled hybrid tier (needs sign-off)
 
@@ -1380,7 +1410,7 @@ These may be pushed to NinjaRS main under the 20 October authorisation (`MASTER_
 - **New expert options** (defaults resolve automatically):
   - `[loop] schedule = "auto" | "forward" | "backward" | "merged"`;
   - `[loop] reduction_grouping = "family" | "lattice"`;
-  - `[loop] accuracy_retest = "relabel" | "rescale" | "off"` (default `relabel`; `off` reports accuracy-not-established);
+  - stability checks per evaluation, REQUIREMENTS_ADDENDUM C (`loops/v2/stability.StabilityChecks`: any list of rotations, and the reduction-direction check, reversed or rescaled; default none and then no estimate; §10.2);
   - `[loop] colour = … | "integrated-full"` (opt-in, labelled, §7.6).
   
   The existing stability policy and `r2_strategy` are unchanged; direct R2 is limited to ≤ 4-point loops.
@@ -1638,6 +1668,11 @@ Total ≈ 270 agent-days [I].
   - *Depends:* WP2.1.
   - *Accept:* O11; injected-instability tests rescued; `test_loop_physical_states.py:227-250` and `test_loop_stability.py` semantics; rescue and re-test rates and the O15 calibration report.
   - *Size:* L (14).
+  - *Status (branch `work/v2-stability-api`; REQUIREMENTS_ADDENDUM C rewrote the goal):*
+    - API (`loops/v2/stability.py`): `StabilityChecks(rotations, reduction_direction, rescaled)`: any number of exact user rotations, one reduction check (the cached reversed frame or the rescaled frame, §10.2), combinable; no check, no estimate (`stability=None`) in every carrier; no automatic escalation; `StabilityEstimate` with absolute, relative and per-coefficient E. Failed lanes fail their point alone (`FailedPoints`).
+    - carriers: native DoubleFloat (`Precision.double_double()`) and Float through dressing, seeds and the generic NinjaRS engine, equal to the Python 60-digit reference; lanes fitted to the batch outside binary64; generic buckets reduced in chunks of 16 lanes; `PolynomialNumerator` compile cost measured (§10.1); `ImpreciseResult` of a Float master fails its lane.
+    - calibration O15: §10.4 (2000 binary64 and 400 DoubleFloat points of gg→ggg and uu~→e⁻e⁺dd~g against Float(256)); injected faults flagged (`test_loop_v2_stability.py`).
+    - open: DD/AP prepared kernels in the Rust tree recurrence (per-point trees, Born and counterterm scalars of DD/AP points are formed in Python Decimal until WP3.1); 10⁴ points of every required process (gg→gggg and the 2→5 set need the native trees of WP3.1 to be affordable: gg→ggg's Python inputs cost 6.6 s per point against 15 ms native); per-defect complex-mass master regression points (risk 13); `loop_v2/rescue.rs` (no automatic rescue by addendum C); the legacy `verification.rs` single-level defect stays with the legacy engine until its deletion (§13.3).
 - **WP2.4 Colour production.**
   - *Goal:* §7, in this order:
     - (1) DDM adjoint-ring and fundamental-trace certificates with loop-level proofs (the FC targets depend on them);

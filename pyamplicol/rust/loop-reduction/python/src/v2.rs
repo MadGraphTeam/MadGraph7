@@ -76,7 +76,7 @@ impl V2Reducer {
     /// default frame is `ReductionFrame::REVERSED`.
     /// Without `poles` the batches hold only the finite column. Cached
     /// masters are dropped first unless `keep_masters`.
-    #[pyo3(signature = (groups, *, poles=true, check=false, reverse=true, rotation=1, shift=false, keep_masters=false))]
+    #[pyo3(signature = (groups, *, poles=true, check=false, reverse=true, rotation=1, shift=false, rescale=false, keep_masters=false))]
     #[allow(clippy::too_many_arguments, clippy::type_complexity)]
     fn reduce(
         &mut self,
@@ -87,6 +87,7 @@ impl V2Reducer {
         reverse: bool,
         rotation: usize,
         shift: bool,
+        rescale: bool,
         keep_masters: bool,
     ) -> PyResult<(Vec<ReductionBatch>, Option<Vec<ReductionBatch>>)> {
         let batches: Vec<_> = groups
@@ -108,6 +109,7 @@ impl V2Reducer {
                 reverse,
                 rotation,
                 shift,
+                rescale,
             }),
         };
         let reducer = &mut self.0;

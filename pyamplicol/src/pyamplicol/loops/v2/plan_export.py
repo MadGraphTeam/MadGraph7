@@ -593,6 +593,25 @@ class NativeNumerator:
     columns: tuple[tuple[Any, ...], ...]
 
 
+class FailedPoints(ArithmeticError):
+    """Some points of a native batch failed (a reduction lane's status, an
+    ``ImpreciseResult`` master or a non-finite numerator, also in a rotation
+    check's evaluation); the others are complete.
+
+    ``results`` lists every point's ``PointResult`` in input order, ``None``
+    for a failed point; ``failures`` maps a failed point's index to its
+    reasons. The caller decides how to re-evaluate the failed points (e.g. in
+    a higher-precision carrier); nothing is escalated automatically.
+    """
+
+    def __init__(self, results: list[Any], failures: Mapping[int, list[str]]):
+        self.results = results
+        self.failures = dict(failures)
+        super().__init__(
+            f"{len(self.failures)} of {len(results)} points failed: {self.failures}"
+        )
+
+
 class NativeExecutor:
     """The native v2 executor of a generated slice (one plan, many batches).
 
@@ -620,23 +639,42 @@ class NativeExecutor:
         self.threads = threads
         self.forms = forms
         self._plan_json = self.exported.json()
-        self._native: dict[tuple[str, int | None], Any] = {}
+        self._native: dict[tuple[str, int | None, int], Any] = {}
 
-    def native(self, arithmetic: Arithmetic, digits: int | None = None) -> Any:
-        """The native executor of one carrier (``digits`` for ``arbitrary``)."""
+    def native(
+        self,
+        arithmetic: Arithmetic,
+        digits: int | None = None,
+        points: int | None = None,
+    ) -> Any:
+        """The native executor of one carrier (``digits`` for ``arbitrary``)
+        for batches of ``points`` points (``lanes_for``)."""
 
-        key = (arithmetic, digits)
+        lanes = self.lanes_for(arithmetic, points)
+        key = (arithmetic, digits, lanes)
         found = self._native.get(key)
         if found is None:
             found = self._native[key] = self.slice.native.V2Executor(
                 self._plan_json,
                 arithmetic,
                 digits,
-                lanes=self.lanes,
+                lanes=lanes,
                 threads=self.threads,
                 forms=self.forms,
             )
         return found
+
+    def lanes_for(self, arithmetic: Arithmetic, points: int | None) -> int:
+        """Lanes per chunk: the configured count in binary64 (SIMD lanes);
+        in the other carriers, whose lanes are scalar loops that cost as much
+        padded as filled, the smallest supported count holding the batch."""
+
+        if arithmetic == "double" or points is None:
+            return self.lanes
+        lanes = 1
+        while lanes < min(points, self.lanes):
+            lanes *= 2
+        return lanes
 
     # -- inputs ---------------------------------------------------------------
 
@@ -735,8 +773,8 @@ class NativeExecutor:
     def _arithmetic(precision, exact: bool) -> tuple[Arithmetic, int | None]:
         if exact:
             return "exact", None
-        if precision.arithmetic == "double":
-            return "double", None
+        if precision.arithmetic in ("double", "double-double"):
+            return precision.arithmetic, None
         return "arbitrary", precision.working_digits
 
     # -- runs -------------------------------------------------------------------
@@ -771,7 +809,7 @@ class NativeExecutor:
             if arithmetic != "arbitrary":
                 raise ValueError("double-double reads arbitrary-precision inputs")
             arithmetic, digits = "double-double", None
-        native = self.native(arithmetic, digits)
+        native = self.native(arithmetic, digits, len(evaluations))
         raw = native.numerators(inputs, schedule)
         return [self._numerators(point, arithmetic) for point in raw]
 
@@ -806,35 +844,44 @@ class NativeExecutor:
         dressing and reduction in the native executor.
 
         Rotation checks re-evaluate the rotated points natively; the
-        reduction-direction check is the native re-test pass.
+        reduction check is the native re-test pass. A failed point fails
+        alone: ``FailedPoints`` carries the complete results of the others.
         """
 
-        from .stability import REDUCTION, ROTATION, StabilityChecks, StabilityEstimate
+        from .assemble import _fraction
+        from .stability import ROTATION, StabilityChecks, StabilityEstimate
 
         stability = stability or StabilityChecks()
-        precision, evaluations = self._evaluated(
-            points, scales, parameters, precision, poles, stability.reduction_direction
+        precision, evaluations, failures = self._evaluated(
+            points, scales, parameters, precision, poles, stability.frame
         )
-        if not stability.enabled:
-            return [evaluation.result for evaluation in evaluations]
         rotated = []
-        for rotation in stability.rotations:
-            from .assemble import _fraction
-
+        for k, rotation in enumerate(stability.rotations):
             moved = [
                 rotation.apply(tuple(tuple(_fraction(x) for x in p) for p in point))
                 for point in points
             ]
-            rotated.append(
-                self._evaluated(moved, scales, parameters, precision, poles, False)[1]
+            _, runs, failed = self._evaluated(
+                moved, scales, parameters, precision, poles, None
             )
-        out = []
+            rotated.append(runs)
+            for index, reasons in failed.items():
+                failures.setdefault(index, []).extend(
+                    f"{ROTATION.format(k)}: {reason}" for reason in reasons
+                )
+        out: list[Any] = []
         for index, reference in enumerate(evaluations):
+            if index in failures:
+                out.append(None)
+                continue
+            if not stability.enabled:
+                out.append(reference.result)
+                continue
             budgets = {}
             for k, runs in enumerate(rotated):
                 budgets[ROTATION.format(k)] = reference.rotation_budget(runs[index])
-            if stability.reduction_direction:
-                budgets[REDUCTION] = reference.retest_budget
+            if stability.reduction:
+                budgets[stability.reduction] = reference.retest_budget
             estimate = StabilityEstimate.from_checks(
                 reference.result.components["virtual"],
                 budgets,
@@ -843,31 +890,44 @@ class NativeExecutor:
                 families=reference.family_deviations,
             )
             out.append(replace(reference.result, stability=estimate))
+        if failures:
+            raise FailedPoints(out, failures)
         return out
 
     def _evaluated(self, points, scales, parameters, precision, poles, retest):
+        """Evaluate a batch natively; returns the precision, the per-point
+        evaluations (failed points unassembled) and the failures per point
+        index."""
+
         from .assemble import Laurent, _Numbers
 
         precision, evaluations = self._points(
             points, scales, parameters, precision, poles
         )
         arithmetic, digits = self._arithmetic(precision, False)
-        native = self.native(arithmetic, digits)
+        native = self.native(arithmetic, digits, len(evaluations))
         output = native.evaluate(
-            self._inputs(evaluations, arithmetic), poles=poles, check=retest
+            self._inputs(evaluations, arithmetic),
+            poles=poles,
+            check=retest is not None,
+            rescale=retest == "rescaled",
         )
         exported = self.exported
         self.last_report = output["report"]
         self.last_bare = output["bare"]
-        for evaluation, lanes, checks, failures in zip(
-            evaluations,
-            output["families"],
-            output["check"] or [None] * len(evaluations),
-            output["failures"],
-            strict=True,
+        failed: dict[int, list[str]] = {}
+        for index, (evaluation, lanes, checks, failures) in enumerate(
+            zip(
+                evaluations,
+                output["families"],
+                output["check"] or [None] * len(evaluations),
+                output["failures"],
+                strict=True,
+            )
         ):
             if failures:
-                raise ArithmeticError(f"native reduction lanes failed: {failures}")
+                failed[index] = [str(failure) for failure in failures]
+                continue
             numbers = evaluation.numbers
 
             def laurent(values, numbers=numbers):
@@ -900,7 +960,7 @@ class NativeExecutor:
                 # with the Born components directly (``seed_records``).
                 evaluation.colour_contraction = "direct"
                 evaluation._assemble()
-        return precision, evaluations
+        return precision, evaluations, failed
 
 
 def _carrier_value(z, arithmetic: Arithmetic) -> Any:
