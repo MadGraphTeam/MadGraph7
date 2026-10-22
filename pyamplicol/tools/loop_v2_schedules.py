@@ -7,36 +7,55 @@
 colour continuation), builds schedule M's planar state graph
 (``loops.v2.merged.merged_graph``) and writes plan v4 with both schedules,
 ``<key>-<accuracy>.json``, plus ``<key>-<accuracy>.summary.json`` (graph
-counts, the families left on schedule B and why, generation seconds).
+counts, the families left on schedule B and why, the squared loop masses at
+the default parameters with MT = 173, generation seconds).
 Processes with a photon keep photon exchange only and use Furry's certified
 zeros for the C-odd closed quark loops, as the native executor tests do,
 until the electroweak signs (WP3.2) and the model certifier (WP3.5) land.
 
-``report`` reads the output of the native bench
+``measure`` runs the complete native evaluation of such plans with both
+schedules through the extension's ``V2Executor``: dressing, fused factors
+and split inputs, seeds, scatter and the NinjaRS reduction (binary64, poles
+off, no stability check: the speed-gate protocol), on a batch of
+phase-space points (RAMBO at sqrt(s) = 1 TeV with the calibration cuts,
+momenta rounded to 17 digits as binary64 inputs are, conservation exact;
+mu_R = 1 TeV; the summary's masses) with random block rows, Born
+components and kernel constants. The cost of the dressing and the reduction
+does not depend on these values; the trees, Born amplitudes and counterterm
+scalars that a real point needs are still Python (WP3.1) and are not timed.
+Per plan, thread count and schedule it records the best of ``--reps`` runs
+per point and stage, the reduction lanes, the failed points and the reals
+per lane of every live store.
+
+``report`` reads the output of ``measure`` and of the native bench
 
     cargo bench -p rusticol-core --features loop-v2 --bench loop_v2_schedules -- \\
         --plan DIR/gg_gggg-FC.json ... --json bench.json
 
-and prints, per plan, the dressing-side time per point (dressing, fused
-factors and split inputs, seeds, scatter; the reduction is the same for both
-schedules and is not run) and modelled kernel work of B and M, their ratios,
-the share of the seed injection in the work, the memory per lane of the
-live stores, and the design's adoption rule (§1.6 item 5): M is adopted for
-a class when it is at least 15 % faster.
+(dressing side only, with the modelled kernel work of the chosen forms and
+the share of the seed injection in it) and prints the adoption table: M/B
+time and, for ``measure`` rows, M/B with the reduction included, the memory
+per lane of the live stores, and the design's adoption rule (§1.6 item 5): M
+is adopted for a class when it is at least 15 % faster with the reduction
+included (``measure``), or on the dressing side (bench rows).
 
 Usage:
     python tools/loop_v2_schedules.py export --output DIR [--process KEY ...]
-        [--accuracy fc lc] [--chunk-depth 1] [--ufo PATH]
-    python tools/loop_v2_schedules.py report BENCH.json [...]
+        [--accuracy fc nlc lc] [--chunk-depth 1] [--ufo PATH]
+    python tools/loop_v2_schedules.py measure PLAN.json [...] --json OUT.json
+        [--threads 1 8] [--points 16] [--lanes 16] [--reps 3]
+    python tools/loop_v2_schedules.py report RESULTS.json [...]
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 import tempfile
 import time
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -48,14 +67,23 @@ from tools.loop_v2_operation_counts import UFO, compile_loop_sm  # noqa: E402
 
 # key: (process, Born orders, ignored particles)
 PROCESSES = {
+    "uux_ddxg": ("u u~ > d d~ g", {"QCD": 3, "QED": 0}, ()),
     "gg_ggg": ("g g > g g g", {"QCD": 3, "QED": 0}, ()),
     "uux_ggg": ("u u~ > g g g", {"QCD": 3, "QED": 0}, ()),
     "gg_gggg": ("g g > g g g g", {"QCD": 4, "QED": 0}, ()),
+    "uux_gggg": ("u u~ > g g g g", {"QCD": 4, "QED": 0}, ()),
     "uux_emepgg": ("u u~ > e- e+ g g", {"QCD": 2, "QED": 2}, (23,)),
     "uux_emepggg": ("u u~ > e- e+ g g g", {"QCD": 3, "QED": 2}, (23,)),
+    "uux_emepddxg": ("u u~ > e- e+ d d~ g", {"QCD": 3, "QED": 2}, (23,)),
 }
 ACCURACIES = {"fc": "full", "nlc": "nlc", "lc": "lc"}
+PARAMETERS = {"MT": "173"}
 ADOPTION_GAIN = 0.15
+SCALE_SQUARED = "1000000"
+# The dressing side of a native evaluation: everything but the reduction
+# (the same NinjaRS work for both schedules).
+DRESSING_SIDE = ("dressing", "factors", "seeds", "scatter")
+NATIVE_STAGES = (*DRESSING_SIDE, "reduction")
 
 
 def _furry_zeros(generate):
@@ -114,6 +142,7 @@ def generate(compiled: Any, native: Any, key: str, accuracy: str) -> Any:
 
 def export(options: argparse.Namespace) -> int:
     from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2.assemble import _mass_values
     from pyamplicol.loops.v2.merged import merged_graph
     from pyamplicol.loops.v2.plan_export import export_plan
 
@@ -134,6 +163,7 @@ def export(options: argparse.Namespace) -> int:
                 exported = export_plan(slice_, forward=False, merged=graph)
                 written = time.perf_counter() - start
                 (options.output / f"{name}.json").write_text(exported.json())
+                squared = _mass_values(slice_.compiled, PARAMETERS, exported.masses)
                 summary = {
                     "process": PROCESSES[key][0],
                     "accuracy": ACCURACIES[label],
@@ -145,6 +175,12 @@ def export(options: argparse.Namespace) -> int:
                     "merged": graph.counts(),
                     "fallback": sorted(set(graph.fallback.values())),
                     "fallback_families": len(graph.fallback),
+                    # Per plan mass index: (parameter, squared mass) at
+                    # PARAMETERS.
+                    "masses": [
+                        [None if mass.massless else mass.mass, str(squared[mass])]
+                        for mass in exported.masses
+                    ],
                     "seconds": {
                         "slice": generated,
                         "merged_graph": graphed,
@@ -158,6 +194,146 @@ def export(options: argparse.Namespace) -> int:
     return 0
 
 
+# --------------------------------------------------------------------- measure
+
+
+def _point(outgoing: int, rng: random.Random) -> list[list[Fraction]]:
+    """A 2 -> ``outgoing`` RAMBO point at sqrt(s) = 1 TeV (binary64) with its
+    final-state components rounded to 17 significant digits, as a user's
+    binary64 momenta are: the last leg's transverse momentum and the
+    incoming momenta along +-z make momentum conservation exact."""
+
+    from tools.loop_v2_stability_calibration import ENERGY, _passes_cuts, _rambo
+
+    while True:
+        floats = _rambo(outgoing, ENERGY, rng)
+        if _passes_cuts(floats):
+            break
+    final = [[Fraction(f"{x:.17g}") for x in p] for p in floats]
+    for mu in (1, 2):
+        final[-1][mu] = -sum(p[mu] for p in final[:-1])
+    energy = sum(p[0] for p in final)
+    z = sum(p[3] for p in final)
+    zero = Fraction(0)
+    first = [(energy + z) / 2, zero, zero, (energy + z) / 2]
+    second = [(energy - z) / 2, zero, zero, -(energy - z) / 2]
+    return [first, second, *final]
+
+
+def _inputs(program: dict, masses: list[str], points: int, seed: int) -> dict:
+    """Batch inputs of the extension's ``V2Executor`` (binary64): points in
+    the all-incoming convention (``_point``) and random carrier values
+    (module docstring)."""
+
+    rng = random.Random(seed)
+
+    def value() -> list[float]:
+        return [rng.uniform(-1, 1), rng.uniform(-1, 1)]
+
+    momenta = []
+    for _ in range(points):
+        point = _point(program["legs"] - 2, rng)
+        incoming = [*point[:2], *[[-x for x in p] for p in point[2:]]]
+        if any(sum(p[mu] for p in incoming) != 0 for mu in range(4)):
+            raise AssertionError("a point that does not conserve momentum")
+        momenta.append([_text(x) for p in incoming for x in p])
+    block = sum(program["block_rows"])
+    born = program["rows"] * program["born_components"]
+    return {
+        "momenta": momenta,
+        "scales": [SCALE_SQUARED] * points,
+        "masses": masses,
+        "constants": [value() for _ in range(program["constants"])],
+        "block_rows": [[value() for _ in range(block)] for _ in range(points)],
+        "born": [[value() for _ in range(born)] for _ in range(points)],
+    }
+
+
+def _text(x: Fraction) -> str:
+    return str(x.numerator) if x.denominator == 1 else f"{x.numerator}/{x.denominator}"
+
+
+def measure(options: argparse.Namespace) -> int:
+    from pyamplicol.loops.native import load_loop_native
+
+    native = load_loop_native()
+    records = []
+    for path in options.plans:
+        text = path.read_text()
+        program = json.loads(text)
+        summary_path = path.with_name(f"{path.stem}.summary.json")
+        summary = json.loads(summary_path.read_text())
+        masses = [squared for _name, squared in summary["masses"]]
+        if len(masses) != program["masses"]:
+            raise ValueError(f"{summary_path}: masses do not match the plan")
+        merged = program["merged"] or {"families": [], "states": [], "chunks": []}
+        inputs = _inputs(program, masses, options.points, options.seed)
+        for threads in options.threads:
+            executor = native.V2Executor(
+                text, "double", None, lanes=options.lanes, threads=threads
+            )
+            record = {
+                "kind": "measure",
+                "plan": str(path),
+                "process": summary["process"],
+                "accuracy": summary["accuracy"],
+                "families": len(program["families"]),
+                "merged_families": len(merged["families"]),
+                "m_states": len(merged["states"]),
+                "m_chunks": len(merged["chunks"]),
+                "points": options.points,
+                "lanes": options.lanes,
+                "threads": threads,
+            }
+            best: dict[str, tuple] = {}
+            # One untimed run per schedule, then the schedules alternate.
+            for rep in range(options.reps + 1):
+                for schedule in ("B", "M"):
+                    start = time.perf_counter()
+                    output = executor.evaluate(
+                        inputs, poles=False, check=False, schedule=schedule
+                    )
+                    seconds = (time.perf_counter() - start) / options.points
+                    report = output["report"]
+                    native_seconds = sum(
+                        report["seconds"].get(stage, 0.0) for stage in NATIVE_STAGES
+                    )
+                    if rep and (
+                        schedule not in best or native_seconds < best[schedule][0]
+                    ):
+                        best[schedule] = native_seconds, seconds, output
+            for schedule, (native_seconds, seconds, output) in best.items():
+                report = output["report"]
+                record[schedule] = {
+                    "seconds_per_point": native_seconds / options.points,
+                    "wall_seconds_per_point": seconds,
+                    "stages_per_point": {
+                        stage: value / options.points
+                        for stage, value in report["seconds"].items()
+                    },
+                    "counts": report["counts"],
+                    "reals_per_lane": report["reals_per_lane"],
+                    "real_bytes": report["real_bytes"],
+                    "failed_points": sum(1 for f in output["failures"] if f),
+                }
+                stages = record[schedule]["stages_per_point"]
+                print(
+                    f"{path.stem} t={threads} {schedule}: "
+                    f"{record[schedule]['seconds_per_point'] * 1e3:.2f} ms/pt native "
+                    f"(reduction {stages.get('reduction', 0) * 1e3:.2f}, dressing "
+                    f"{stages.get('dressing', 0) * 1e3:.2f}; wall {seconds * 1e3:.2f}),"
+                    f" failed points {record[schedule]['failed_points']}",
+                    flush=True,
+                )
+            records.append(record)
+            if options.json:
+                options.json.write_text(json.dumps(records, indent=1) + "\n")
+    return 0
+
+
+# --------------------------------------------------------------------- report
+
+
 def _kb(reals: int, real_bytes: int) -> str:
     return f"{reals * real_bytes / 1024:.0f}"
 
@@ -165,7 +341,8 @@ def _kb(reals: int, real_bytes: int) -> str:
 def _stores(run: dict) -> tuple[int, int, int]:
     """Reals per lane of a run's chunk inputs, live open-loop objects (one
     family walk or one M chunk, per thread) and family numerators (one
-    bucket chunk, or M's accumulators)."""
+    bucket chunk, or M's accumulators plus B's bucket chunk of the families M
+    leaves)."""
 
     reals = run["reals_per_lane"]
     inputs = reals.get("chunk inputs (factors, vertex tensors, currents)", 0)
@@ -179,35 +356,53 @@ def _stores(run: dict) -> tuple[int, int, int]:
     return inputs, objects, numerators
 
 
+def _dressing_side(run: dict) -> float:
+    stages = run["stages_per_point"]
+    return sum(stages.get(stage, 0.0) for stage in DRESSING_SIDE)
+
+
 def report(options: argparse.Namespace) -> int:
-    """The adoption table of bench runs (module docstring)."""
+    """The adoption table of ``measure`` and bench runs (module docstring)."""
 
     rows = []
-    for path in options.bench:
+    for path in options.results:
         rows.extend(json.loads(Path(path).read_text()))
     print(
-        "| plan | threads | families (M) | B ms/pt | M ms/pt | M/B time | M/B work "
-        "| seeded work B / M | kB per lane B (inputs, objects, numerators) "
-        "| kB per lane M | adopt M |"
+        "| plan | threads | families (M) | B ms/pt | M ms/pt | M/B | "
+        "dressing side B, M ms/pt (M/B) | reduction B, M ms/pt | M/B work "
+        "| kB per lane B (inputs, objects, numerators) | kB per lane M | adopt M |"
     )
-    print("|---" * 11 + "|")
+    print("|---" * 12 + "|")
     for row in rows:
         b, m = row["B"], row["M"]
-        time_ratio = m["seconds_per_point"] / b["seconds_per_point"]
-        work, seeded = row["work_per_lane"], row["seeded_work_per_lane"]
         real = b["real_bytes"]
         memory = {
             name: ", ".join(_kb(x, real) for x in _stores(run))
             for name, run in (("B", b), ("M", m))
         }
-        adopt = "yes" if time_ratio <= 1 - ADOPTION_GAIN else "no"
+        side = _dressing_side(b), _dressing_side(m)
+        if row.get("kind") == "measure":
+            total = b["seconds_per_point"], m["seconds_per_point"]
+            reduction = (
+                f"{b['stages_per_point'].get('reduction', 0) * 1e3:.2f}, "
+                f"{m['stages_per_point'].get('reduction', 0) * 1e3:.2f}"
+            )
+            work = "—"
+            failed = b["failed_points"] + m["failed_points"]
+            if failed:
+                reduction += f" ({failed} failed points)"
+        else:
+            total = side
+            reduction = "not run"
+            work = f"{row['work_per_lane']['M'] / row['work_per_lane']['B']:.3f}"
+        ratio = total[1] / total[0]
+        adopt = "yes" if ratio <= 1 - ADOPTION_GAIN else "no"
         print(
             f"| {Path(row['plan']).stem} | {row['threads']} "
             f"| {row['families']} ({row['merged_families']}) "
-            f"| {b['seconds_per_point'] * 1e3:.2f} "
-            f"| {m['seconds_per_point'] * 1e3:.2f} "
-            f"| {time_ratio:.3f} | {work['M'] / work['B']:.3f} "
-            f"| {seeded['B'] / work['B']:.2f} / {seeded['M'] / work['M']:.2f} "
+            f"| {total[0] * 1e3:.2f} | {total[1] * 1e3:.2f} | {ratio:.3f} "
+            f"| {side[0] * 1e3:.2f}, {side[1] * 1e3:.2f} ({side[1] / side[0]:.3f}) "
+            f"| {reduction} | {work} "
             f"| {memory['B']} | {memory['M']} | {adopt} |"
         )
     return 0
@@ -222,14 +417,26 @@ def main(argv: list[str] | None = None) -> int:
         "--process", nargs="+", default=list(PROCESSES), choices=list(PROCESSES)
     )
     writer.add_argument(
-        "--accuracy", nargs="+", default=["fc", "lc"], choices=list(ACCURACIES)
+        "--accuracy", nargs="+", default=list(ACCURACIES), choices=list(ACCURACIES)
     )
     writer.add_argument("--chunk-depth", type=int, default=1)
     writer.add_argument("--ufo", type=Path, default=UFO)
-    reader = commands.add_parser("report", help="the adoption table of bench runs")
-    reader.add_argument("bench", nargs="+", type=Path)
+    runner = commands.add_parser("measure", help="B and M with the reduction")
+    runner.add_argument("plans", nargs="+", type=Path)
+    runner.add_argument("--json", type=Path)
+    runner.add_argument("--threads", nargs="+", type=int, default=[1, 8])
+    runner.add_argument("--points", type=int, default=16)
+    runner.add_argument("--lanes", type=int, default=16)
+    runner.add_argument("--reps", type=int, default=3)
+    runner.add_argument("--seed", type=int, default=20261022)
+    reader = commands.add_parser("report", help="the adoption table")
+    reader.add_argument("results", nargs="+", type=Path)
     options = parser.parse_args(argv)
-    return export(options) if options.command == "export" else report(options)
+    if options.command == "export":
+        return export(options)
+    if options.command == "measure":
+        return measure(options)
+    return report(options)
 
 
 if __name__ == "__main__":
