@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import math
+from decimal import Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
 
@@ -75,9 +76,44 @@ def _complex(value) -> complex:
     return complex(value)
 
 
+# Decimal digits of the comparison arithmetic: deviations of 200-bit values
+# are measured without rounding them to binary64 first.
+COMPARISON_DIGITS = 120
+
+
+def _real(value) -> Decimal:
+    if isinstance(value, Fraction):
+        return Decimal(value.numerator) / Decimal(value.denominator)
+    if isinstance(value, str):
+        return Decimal(value)
+    return Decimal(value)
+
+
+def _parts(value) -> tuple[Decimal, Decimal]:
+    """The exact (real, imaginary) parts of a carrier value (Python number,
+    Decimal or ``rx.Complex``) or of a legacy [real, imaginary] string pair."""
+
+    if isinstance(value, (list, tuple)):
+        return _real(value[0]), _real(value[1])
+    return _real(getattr(value, "real", value)), _real(getattr(value, "imag", 0))
+
+
+def _magnitude(value) -> Decimal:
+    with localcontext(prec=COMPARISON_DIGITS):
+        real, imag = _parts(value)
+        return (real * real + imag * imag).sqrt()
+
+
+def _deviation(actual, expected) -> Decimal:
+    with localcontext(prec=COMPARISON_DIGITS):
+        (a, b), (c, d) = _parts(actual), _parts(expected)
+        return ((a - c) ** 2 + (b - d) ** 2).sqrt()
+
+
 def _close(actual, expected, rel, floor=0.0) -> bool:
-    actual, expected = complex(actual), complex(expected)
-    return abs(actual - expected) <= rel * abs(expected) + floor
+    with localcontext(prec=COMPARISON_DIGITS):
+        bound = Decimal(str(rel)) * _magnitude(expected) + Decimal(str(floor))
+        return _deviation(actual, expected) <= bound
 
 
 @pytest.fixture(scope="module")
@@ -447,10 +483,6 @@ def _legacy(name: str) -> dict:
     return json.loads((LEGACY_OBSERVABLES / f"{name}.json").read_text())
 
 
-def _pair(value) -> complex:
-    return complex(float(value[0]), float(value[1]))
-
-
 def _legacy_runners(generate, record):
     """(process name, runner) of the representative and its members."""
 
@@ -493,6 +525,17 @@ def _legacy_runners(generate, record):
     return observables, runners
 
 
+def _bound(result, tolerance: float) -> float:
+    """The comparison bound of a checked binary64 output: the larger of
+    ``tolerance`` and the output's own stability estimate (which must stay
+    meaningful); unchecked outputs use ``tolerance``."""
+
+    if result.stability is None:
+        return tolerance
+    assert result.stability.relative < 1e-9
+    return max(tolerance, result.stability.relative)
+
+
 def _assert_correlated(result, expected, index, tolerance):
     """One legacy correlated record (Born per order, virtual per sector)."""
 
@@ -500,13 +543,14 @@ def _assert_correlated(result, expected, index, tolerance):
     sectors = list(result.components["virtual"].values())
     assert len(borns) == len(expected["born"][index])
     assert len(sectors) == len(expected["virtual"][index])
-    scale = max(abs(_pair(x)) for x in expected["born"][index])
+    tolerance = Decimal(str(tolerance))
+    scale = max(_magnitude(x) for x in expected["born"][index])
     for actual, value in zip(borns, expected["born"][index], strict=True):
-        assert abs(complex(actual) - _pair(value)) <= tolerance * scale
+        assert _deviation(actual, value) <= tolerance * scale
     for laurent, values in zip(sectors, expected["virtual"][index], strict=True):
-        scale = max(abs(_pair(x)) for x in values)
+        scale = max(_magnitude(x) for x in values)
         for actual, value in zip(laurent.coefficients, values, strict=True):
-            assert abs(complex(actual) - _pair(value)) <= tolerance * scale
+            assert _deviation(actual, value) <= tolerance * scale
 
 
 @pytest.mark.parametrize("carrier", tuple(CARRIERS))
@@ -528,9 +572,11 @@ def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
     source, for the representative and its flavour members, against the
     200-bit legacy values; at LC and NLC the histories' complete-family
     degrees (design §7.7) and the projected values. In binary64 the
-    representative's directed histories also run natively, and a spin output
-    is compared within the larger of 1e-12 and its rotation and
-    reduction-direction stability estimate."""
+    representative's directed histories also run natively, and every output
+    is compared within the larger of 1e-12 and its own rotation and
+    reduction-direction stability estimate (five-leg directed histories and
+    non-transverse complex sources lose about 1e-12 in binary64; the
+    estimate must bracket that loss and stay below 1e-9)."""
 
     from pyamplicol.loops.v2.observables import NativeObservables
     from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
@@ -547,11 +593,17 @@ def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
     directed = record["results"]["arbitrary-200"][process].get("directed", {})
     if carrier == "double" and directed:
         native = NativeObservables.correlated(observables, tuple(directed)).evaluate(
-            record["points"], record["scales_squared"], parameters=PARAMETERS
+            record["points"],
+            record["scales_squared"],
+            parameters=PARAMETERS,
+            stability=checks,
         )
         for index, results in enumerate(native):
             for history, values in directed.items():
-                _assert_correlated(results[history], values, index, tolerance)
+                result = results[history]
+                _assert_correlated(
+                    result, values, index, _bound(result, tolerance)
+                )
     for process, runner in runners:
         expected = record["results"]["arbitrary-200"][process]
         for index, (point, scale) in enumerate(
@@ -565,9 +617,13 @@ def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
                     correlations=tuple(directed),
                     parameters=PARAMETERS,
                     precision=precision,
+                    stability=checks,
                 )
                 for history, values in directed.items():
-                    _assert_correlated(results[history], values, index, tolerance)
+                    result = results[history]
+                    _assert_correlated(
+                        result, values, index, _bound(result, tolerance)
+                    )
             for legs, values in expected.get("spin", {}).items():
                 spin = {int(leg): vectors[k] for k, leg in enumerate(legs.split(","))}
                 (result,) = runner.evaluate(
@@ -578,12 +634,7 @@ def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
                     precision=precision,
                     stability=checks,
                 ).values()
-                bound = tolerance
-                if result.stability is not None:
-                    # Non-transverse complex sources at five legs lose more
-                    # digits in binary64; the engine's own estimate bounds it.
-                    bound = max(bound, result.stability.relative)
-                _assert_correlated(result, values, index, bound)
+                _assert_correlated(result, values, index, _bound(result, tolerance))
 
 
 def test_inclusively_pruned_slice_refuses_directed_histories(
@@ -620,57 +671,60 @@ def test_inclusively_pruned_slice_refuses_directed_histories(
         ObservableSlice.of(slice_, correlators=declarations)
 
 
+@pytest.mark.parametrize("carrier", tuple(CARRIERS))
 @pytest.mark.parametrize("name", ("gg_gg", "uux_ggg"))
-def test_helicity_resolved_outputs_equal_legacy(generate, name):
+def test_helicity_resolved_outputs_equal_legacy(generate, name, carrier):
     """O1: per Born helicity row, the Born and the virtual summed over colour
-    components equal the legacy resolved outputs (the legacy colour anchors
-    are diagram colour tensors, v2's are Born basis elements, so the colour
-    axis is compared through its sum, design §1.6 decision 3)."""
+    components equal the 200-bit legacy resolved outputs, in binary64 and at
+    200 bits (the legacy colour anchors are diagram colour tensors, v2's are
+    Born basis elements, so the colour axis is compared through its sum,
+    design §1.6 decision 3)."""
 
     record = _legacy(name)
     observables, _runners = _legacy_runners(generate, record)
     expected = record["results"]["arbitrary-200"][record["processes"][0][0]]
     resolved_record = expected["resolved"]
     legacy_rows = [tuple(row) for row in resolved_record["helicities"]]
-    tolerance = LEGACY_TOLERANCE["double"]
+    tolerance = Decimal(str(LEGACY_TOLERANCE[carrier]))
     for index, (point, scale) in enumerate(
         zip(record["points"], record["scales_squared"], strict=True)
     ):
         resolved = observables.evaluate_resolved(
-            point, scale, resolution="helicity", parameters=PARAMETERS
+            point,
+            scale,
+            resolution="helicity",
+            parameters=PARAMETERS,
+            precision=CARRIERS[carrier],
         )
         mine = {
             tuple(h for _leg, h in row): value
             for (row, _b), value in resolved.entries.items()
         }
         born_scale = max(
-            abs(_pair(x)) for order in resolved_record["born"][index] for x in order
+            _magnitude(x) for order in resolved_record["born"][index] for x in order
         )
         virtual_scale = max(
-            abs(_pair(x))
+            _magnitude(x)
             for sector in resolved_record["virtual"][index]
             for row in sector
             for x in row
         )
         for h, row in enumerate(legacy_rows):
             value = mine.get(row)
-            expected_born = [
-                _pair(order[h]) for order in resolved_record["born"][index]
-            ]
+            expected_born = [order[h] for order in resolved_record["born"][index]]
             expected_virtual = [
-                [_pair(x) for x in sector[h]]
-                for sector in resolved_record["virtual"][index]
+                sector[h] for sector in resolved_record["virtual"][index]
             ]
             if value is None:
                 # A row v2 does not generate is a structural zero.
-                assert max(map(abs, expected_born)) <= tolerance * born_scale
+                assert max(map(_magnitude, expected_born)) <= tolerance * born_scale
                 continue
             for actual, target in zip(value.born.values(), expected_born, strict=True):
-                assert abs(complex(actual) - target) <= tolerance * born_scale
+                assert _deviation(actual, target) <= tolerance * born_scale
             sectors = list(value.components["virtual"].values())
             for laurent, targets in zip(sectors, expected_virtual, strict=True):
                 for actual, target in zip(laurent.coefficients, targets, strict=True):
-                    assert abs(complex(actual) - target) <= tolerance * virtual_scale
+                    assert _deviation(actual, target) <= tolerance * virtual_scale
 
 
 # ------------------------------------------------------------------ public surface
@@ -1105,10 +1159,10 @@ def test_native_observables_equal_python(generate, carrier):
     reference = observables.evaluate_resolved(
         points[0], scales[0], parameters=PARAMETERS, precision=reference_precision
     )
-    largest = max(abs(complex(x)) for v in reference.entries.values() for x in v.totals)
+    largest = max(_magnitude(x) for v in reference.entries.values() for x in v.totals)
     for key, value in reference.entries.items():
         for a, b in zip(resolved[key].totals, value.totals, strict=True):
-            assert abs(complex(a) - complex(b)) <= tolerance * largest, key
+            assert _deviation(a, b) <= Decimal(str(tolerance)) * largest, key
 
 
 def test_native_members_per_point_sources_and_stability(generate):
