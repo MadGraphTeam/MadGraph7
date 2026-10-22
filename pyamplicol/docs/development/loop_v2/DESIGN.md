@@ -825,7 +825,7 @@ python tools/loop_v2_costmodel.py bench-baseline.json bench-x86-64-v3.json bench
 
 - carriers f64, DoubleFloat, Float (any precision) and exact Rational; 1–32 lanes, default 16 (G0);
 - per chunk of lanes: one exact invariant table (leg-subset momenta and squares, cast once per distinct point), seeds `U0 = Σ K conj(A0)`, then the (N, R) buckets streamed in chunks of families: the chunk's fused factors, split vertex tensors and split currents (freed after the last chunk that reads them), families on rayon threads (schedule B; F as the oracle), closures scattered into lane-major NinjaRS lanes with exact invariants, and the bucket reduced by the `V2Backend` (`runtime/v2_execution.rs` over the WP1.6 `V2Reducer`: true-rank buckets, per-chunk master cache, optional re-test frame);
-- each step in the kernel form of G0's rule (item 4 above; `FormPolicy::Fused` and `Split` are oracles);
+- each step in the kernel form of G0's rule (item 4 above; `FormPolicy::Fused` and `Split` are oracles), restricted to fused-structured and split-structured: fused-blocked would win on 1,470 of 18,712 gg→gggg steps and save about 1–2 % on them, so it is not selectable (`plan.rs`, `FormModel`);
 - failed lanes (reducer status, `MasterFailure::ImpreciseResult` included, or non-finite numerators) fail their point, which is compacted out of later reductions, never branched on in a kernel;
 - finite-only: the reducer returns the finite column only and the assembly skips pole counterterm scalars and the Catani check; nothing else is pole-only on this NinjaRS pin (`v2_reduce.rs` module notes).
 

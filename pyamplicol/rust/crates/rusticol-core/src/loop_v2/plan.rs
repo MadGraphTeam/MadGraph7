@@ -435,6 +435,13 @@ pub enum FormPolicy {
 /// gg→gggg FC program at 16 lanes in the production code generation
 /// (`workspace/tmp/g0-real-tries/run2/costmodel.json`, `selection_rule`).
 /// Only the ratio of the two forms' times matters.
+///
+/// Deviation from §5.4 item 4: the rule chooses between fused-structured and
+/// split-structured only. G0's third form, fused-blocked
+/// (`kernels::fused_edge_blocked`), is not selectable: the fitted rule
+/// (11.67 ns per iteration, 1.429 G/s) picks it on 1,470 of 18,712 gg→gggg
+/// steps (rank_in ≥ 3) and saves about 1–2 % on them, far below the 15 %
+/// that a wave-4 kernel optimisation must measure to be kept.
 struct FormModel {
     per_iteration: f64,
     rate: f64,
