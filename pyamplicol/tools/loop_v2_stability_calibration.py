@@ -469,7 +469,13 @@ THRESHOLDS = (1e-12, 1e-9, 1e-6, 1e-3)
 
 def _point_report(record, carrier, truth):
     """Per configuration: (true relative error, estimate) for the Laurent
-    vector and for the finite part, and the safety factor it needed."""
+    vector and for the finite part, and the safety factor it needed.
+
+    The estimate's absolute error E is measured against the truth's scale,
+    as the true error is: a point whose value has no correct digit has a
+    relative estimate of order 1 or more against its own (wrong) value,
+    which does not compare with an error relative to the truth.
+    """
 
     from pyamplicol.loops.v2 import stability
 
@@ -519,7 +525,12 @@ def _point_report(record, carrier, truth):
             scale=scale,
             roundoff=data["roundoff"],
         )
-        out[names] = (vector, estimate.relative, finite, estimate.finite)
+        out[names] = (
+            vector,
+            stability.relative(exact_floats, estimate.absolute),
+            finite,
+            stability.per_coefficient(exact_floats, estimate.absolute)[0],
+        )
     raw = {name: stability.relative(exact_floats, b) for name, b in budgets.items()}
     return out, raw
 

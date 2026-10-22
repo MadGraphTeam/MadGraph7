@@ -290,16 +290,22 @@ class StabilityEstimate:
 
     ``relative`` is E against each sector's largest Laurent coefficient,
     ``coefficients`` E per Laurent coefficient against that coefficient
-    (finite, then the poles when computed). ``checks`` holds each check's own
-    budget against the Laurent vector, without safety factor and floor.
-    ``budgets`` (absolute, per check and sector) and ``scale`` (the absolute
-    sums S) let ``subset`` re-combine fewer checks; ``families`` holds
-    |Omega - Omega'| per reduction lane when the reduction check ran.
+    (finite, then the poles when computed), ``absolute`` E itself per sector
+    and Laurent coefficient. ``checks`` holds each check's own budget against
+    the Laurent vector, without safety factor and floor. ``budgets``
+    (absolute, per check and sector) and ``scale`` (the absolute sums S) let
+    ``subset`` re-combine fewer checks; ``families`` holds |Omega - Omega'|
+    per reduction lane when the reduction check ran.
+
+    A relative estimate of order 1 or more says that the value has no
+    correct digit: it is then measured against a value that is itself
+    wrong, and only ``absolute`` keeps its meaning.
     """
 
     relative: float
     coefficients: tuple[float, ...]
     checks: Mapping[str, float]
+    absolute: Mapping[Any, Budget] = field(repr=False)
     budgets: Mapping[str, Mapping[Any, Budget]] = field(repr=False)
     reference: Mapping[Any, Any] = field(repr=False)
     scale: Mapping[Any, Budget] = field(repr=False)
@@ -358,6 +364,7 @@ class StabilityEstimate:
             relative(reference, combined),
             per_coefficient(reference, combined),
             {name: relative(reference, item) for name, item in budgets.items()},
+            combined,
             dict(budgets),
             reference,
             scale,
