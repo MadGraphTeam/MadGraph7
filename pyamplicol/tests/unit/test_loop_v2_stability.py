@@ -343,6 +343,24 @@ def test_a_failed_point_fails_alone(slices, after):
     assert failed.results[0].stability.relative == clean[0].stability.relative
 
 
+@pytest.mark.loop_physics
+def test_multi_chunk_batches_equal_one_chunk(slices):
+    """Three points in chunks of two lanes (one padded lane, the master cache
+    cleared per chunk) give the one-chunk values bit for bit, estimates
+    included: lanes are independent."""
+
+    slice_, executor = slices("uux_ddxg")
+    points, scales = _points("uux_ddxg")
+    one = executor.evaluate(points, scales, parameters=PARAMETERS, stability=CHECKS)
+    chunked = NativeExecutor(slice_, lanes=2, exported=executor.exported).evaluate(
+        points, scales, parameters=PARAMETERS, stability=CHECKS
+    )
+    assert len(points) == 3
+    for a, b in zip(one, chunked, strict=True):
+        assert a.totals == b.totals
+        assert a.stability.absolute == b.stability.absolute
+
+
 # ----------------------------------------------------------------- calibration
 
 CALIBRATION = FIXTURES / "v2" / "stability_calibration.json"
