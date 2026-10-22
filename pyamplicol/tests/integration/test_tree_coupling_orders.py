@@ -182,6 +182,7 @@ _MADGRAPH_PROCESSES = (
     *_TRIPLE_GAUGE_PROCESSES,
     "u u~ > d d~ e+ e- g",
     "e+ e- > mu+ vm e- ve~",
+    "u u~ > d d~ s s~ c c~",
 )
 
 
@@ -214,6 +215,7 @@ _LEADING_COLOUR_PROCESSES = (
     "u u > u u",
     "u u~ > u u~ u u~",
     *_TRIPLE_GAUGE_PROCESSES,
+    "u u~ > d d~ s s~ c c~",
 )
 
 
@@ -284,12 +286,15 @@ def test_restricted_madgraph_exports_reproduce_their_all_order_column(
     path = REFERENCE if colour == "full" else LC_REFERENCE
     entries = json.loads(path.read_text(encoding="utf-8"))["processes"]
     processes = {entry["process"] for entry in entries}
+    # Pure-electroweak exports; a QCD=2 export also lacks the interference of
+    # its orders with those it excludes.
     restricted = [
         entry
         for entry in entries
         if entry["process"].split(" QCD=")[0] in processes - {entry["process"]}
+        and len(entry["squared_orders"]) == 1
     ]
-    assert len(restricted) == (5 if colour == "full" else 4)
+    assert len(restricted) == (7 if colour == "full" else 6)
     for entry in restricted:
         reference = _reference(entry["process"].split(" QCD=")[0], path)
         assert entry["points"] == reference["points"]
@@ -371,6 +376,9 @@ def test_leading_colour_lanes_agree_per_order_with_a_gluon_and_a_lepton_pair(
         ("e+ e- > u u~ d d~", "lc"),
         ("u u~ > e+ ve mu- vm~", "full"),
         ("u u~ > d d~ e+ e- g", "full"),
+        # Identical quarks paired by Ws; the recurrence lane refuses it.
+        ("u c~ > d s~ d d~", "full"),
+        ("u c~ > d s~ d d~", "lc"),
     ],
 )
 def test_eager_lane_matches_madgraph(
@@ -400,34 +408,52 @@ def _reordered(points: list[object], process: str, reference: str) -> list[objec
     return [[point[index] for index in order] for point in points]
 
 
-# The second order relabels every line, so that other traversal sectors and
-# other orientations of each colour-singlet vertex build the same diagrams.
-@pytest.mark.parametrize("process", [_FOUR_LINES, "u~ u > c c~ s s~ d d~"])
+# Four quark lines whose W pairings join the two generations, so that
+# four-point WWA/WWZ/WWAA/WWZZ contact vertices join all four lines.
+# Pure-electroweak, with at most two gluons (QCD=2) and at all orders; the
+# second method relabels every line (u~ u > c c~ s s~ d d~), so that other
+# traversal sectors and other orientations of every colour-singlet vertex
+# build the same diagrams.
+@pytest.mark.parametrize(
+    ("process", "reference", "limits"),
+    [
+        (_FOUR_LINES, f"{_FOUR_LINES} QCD=0", {"QCD": 0, "QED": 6}),
+        ("u~ u > c c~ s s~ d d~", f"{_FOUR_LINES} QCD=0", {"QCD": 0, "QED": 6}),
+        (_FOUR_LINES, f"{_FOUR_LINES} QCD=2", {"QCD": 2, "QED": 6}),
+        (_FOUR_LINES, _FOUR_LINES, ORDER_LIMITS),
+    ],
+)
 @pytest.mark.parametrize("accuracy", ["full", "lc"])
 def test_eager_lane_pairs_w_exchanges_among_four_quark_lines(
-    sm_model: ModelSource, tmp_path: Path, process: str, accuracy: str
+    sm_model: ModelSource,
+    tmp_path: Path,
+    process: str,
+    reference: str,
+    limits: dict[str, int],
+    accuracy: str,
 ) -> None:
-    """Pure-electroweak four quark lines, where four-point WWA/WWZ/WWAA/WWZZ
-    contact vertices join all four lines. The full-colour traversal sectors
-    close on different sinks and built some of these diagrams twice and
-    their mirror images not at all (1.48x MadGraph). The W pairings of the
-    two generations give four interfering colour flows. MadGraph's QCD=0
-    export assigns all its colour-flow amplitudes."""
+    """The full-colour traversal sectors close on different sinks; each
+    merge of a contact vertex keeping the three-leg orientation built some
+    of these diagrams twice and their mirror images not at all
+    (pure-electroweak 1.48x MadGraph at the first point, 2.5x at QCD=2, the
+    all-order total off by 6 %). The W pairings give four interfering colour
+    flows. MadGraph's QCD=0 export assigns all its colour-flow amplitudes,
+    and the recurrence lane, which builds the all-order process, matches the
+    all-order export in every squared order
+    (``test_partials_match_madgraph_and_keep_the_total``)."""
 
-    reference = _reference(
-        f"{_FOUR_LINES} QCD=0", REFERENCE if accuracy == "full" else LC_REFERENCE
-    )
+    expected = _reference(reference, REFERENCE if accuracy == "full" else LC_REFERENCE)
     runtime = _runtime(
         sm_model,
         process,
         tmp_path / "artifact",
         accuracy=accuracy,
         execution_mode="eager",
-        limits={"QCD": 0, "QED": 6},
+        limits=limits,
     )
-    points = _reordered(reference["points"], process, _FOUR_LINES)
+    points = _reordered(expected["points"], process, _FOUR_LINES)
 
-    _assert_total_matches_madgraph(runtime.evaluate(points), reference)
+    _assert_total_matches_madgraph(runtime.evaluate(points), expected)
 
 
 @pytest.mark.parametrize("accuracy", ["full", "lc"])
