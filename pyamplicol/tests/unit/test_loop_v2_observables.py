@@ -477,6 +477,22 @@ def test_member_admission_refuses_unproved_substitutions(generate):
 
 LEGACY_OBSERVABLES = FIXTURES / "legacy" / "observables"
 LEGACY_TOLERANCE = {"double": 1e-12, "arbitrary-200": 1e-40}
+# Binary64 O1 holds every output to 1e-12 of its 200-bit legacy value (gate
+# S1), except these five-leg outputs (fixture, output id; "spin:<legs>" for a
+# spin source) whose binary64 roundoff at the fixtures' first point exceeds
+# it in every engine. Measured deviation of the binary64 value relative to the
+# sector scale at that point (the second point stays below 3e-14):
+#   uux_ggg T12:     v2 native 1.3e-12, v2 Python 8.7e-12, legacy 3.4e-12;
+#   uux_ggg_nlc T13: v2 native 2.1e-12, v2 Python 8.0e-13, legacy 3.2e-13;
+#   uux_ggg_spin 3:  v2 native 1.4e-13, v2 Python 5.3e-12, legacy 3.0e-12.
+# Their binary64 values are held to their own stability estimate instead (it
+# must bracket the loss and stay below 1e-9), and the same outputs run
+# natively in DoubleFloat within DOUBLE_DOUBLE_TOLERANCE (measured 7.1e-27,
+# 9.3e-29 and 3.0e-27), which shows that the loss is binary64 rounding.
+BINARY64_LOSSES = frozenset(
+    {("uux_ggg", "T12"), ("uux_ggg_nlc", "T13"), ("uux_ggg_spin", "spin:3")}
+)
+DOUBLE_DOUBLE_TOLERANCE = 1e-24
 
 
 def _legacy(name: str) -> dict:
@@ -525,14 +541,15 @@ def _legacy_runners(generate, record):
     return observables, runners
 
 
-def _bound(result, tolerance: float) -> float:
-    """The comparison bound of a checked binary64 output: the larger of
-    ``tolerance`` and the output's own stability estimate (which must stay
-    meaningful); unchecked outputs use ``tolerance``."""
+def _bound(name: str, output: str, result, carrier: str) -> float:
+    """The comparison bound of an output: the carrier's legacy tolerance, or
+    for a named binary64 loss (``BINARY64_LOSSES``) the output's own
+    stability estimate, which must exist and stay below 1e-9."""
 
-    if result.stability is None:
+    tolerance = LEGACY_TOLERANCE[carrier]
+    if carrier != "double" or (name, output) not in BINARY64_LOSSES:
         return tolerance
-    assert result.stability.relative < 1e-9
+    assert result.stability is not None and result.stability.relative < 1e-9
     return max(tolerance, result.stability.relative)
 
 
@@ -573,22 +590,22 @@ def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
     source, for the representative and its flavour members, against the
     200-bit legacy values; at LC and NLC the histories' complete-family
     degrees (design §7.7) and the projected values. In binary64 the
-    representative's directed histories also run natively, and every output
-    is compared within the larger of 1e-12 and its own rotation and
-    reduction-direction stability estimate (five-leg directed histories and
-    non-transverse complex sources lose about 1e-12 in binary64; the
-    estimate must bracket that loss and stay below 1e-9)."""
+    representative's directed histories also run natively; every output is
+    held to 1e-12, except the named five-leg binary64 losses
+    (``BINARY64_LOSSES``), which are held to their own rotation and
+    reduction-direction estimate in binary64 and to 1e-24 natively in
+    DoubleFloat."""
 
     from pyamplicol.loops.v2.observables import NativeObservables
     from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
 
     checks = None
-    if carrier == "double":
+    if carrier == "double" and any(entry == name for entry, _ in BINARY64_LOSSES):
         checks = StabilityChecks((Rotation.about("z", "3/5", "4/5"),), True)
 
     record = _legacy(name)
     observables, runners = _legacy_runners(generate, record)
-    precision, tolerance = CARRIERS[carrier], LEGACY_TOLERANCE[carrier]
+    precision = CARRIERS[carrier]
     vectors = record["spin_vectors"]
     process = runners[0][0]
     directed = record["results"]["arbitrary-200"][process].get("directed", {})
@@ -602,7 +619,8 @@ def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
         for index, results in enumerate(native):
             for history, values in directed.items():
                 result = results[history]
-                _assert_correlated(result, values, index, _bound(result, tolerance))
+                bound = _bound(name, history, result, carrier)
+                _assert_correlated(result, values, index, bound)
     for process, runner in runners:
         expected = record["results"]["arbitrary-200"][process]
         for index, (point, scale) in enumerate(
@@ -620,7 +638,8 @@ def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
                 )
                 for history, values in directed.items():
                     result = results[history]
-                    _assert_correlated(result, values, index, _bound(result, tolerance))
+                    bound = _bound(name, history, result, carrier)
+                    _assert_correlated(result, values, index, bound)
             for legs, values in expected.get("spin", {}).items():
                 spin = {int(leg): vectors[k] for k, leg in enumerate(legs.split(","))}
                 (result,) = runner.evaluate(
@@ -631,7 +650,29 @@ def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
                     precision=precision,
                     stability=checks,
                 ).values()
-                _assert_correlated(result, values, index, _bound(result, tolerance))
+                bound = _bound(name, f"spin:{legs}", result, carrier)
+                _assert_correlated(result, values, index, bound)
+    if carrier != "double":
+        return
+    expected = record["results"]["arbitrary-200"][runners[0][0]]
+    for entry, output in sorted(BINARY64_LOSSES):
+        if entry != name:
+            continue
+        options = {"parameters": PARAMETERS, "precision": Precision.double_double()}
+        if output.startswith("spin:"):
+            legs = output.removeprefix("spin:")
+            values = expected["spin"][legs]
+            options["spin"] = {
+                int(leg): vectors[k] for k, leg in enumerate(legs.split(","))
+            }
+            history = INCLUSIVE
+        else:
+            values, history = expected["directed"][output], output
+        evaluated = NativeObservables.correlated(observables, (history,)).evaluate(
+            record["points"], record["scales_squared"], **options
+        )
+        for index, results in enumerate(evaluated):
+            _assert_correlated(results[history], values, index, DOUBLE_DOUBLE_TOLERANCE)
 
 
 def test_inclusively_pruned_slice_refuses_directed_histories(
