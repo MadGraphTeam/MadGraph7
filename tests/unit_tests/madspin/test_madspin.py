@@ -14883,3 +14883,56 @@ class TestGlobalFlagGate(unittest.TestCase):
         self.assertEqual(calls, ['tree%d' % n for n in
                                  range(madspin.MS_GLOBAL_FLAG_MIN_DECAYS,
                                        madspin.MS_GLOBAL_FLAG_MIN_DECAYS + 2)])
+
+
+class TestAllMomentaMergedAntiparticles(unittest.TestCase):
+    """_all_momenta's shortcut (no merged pdg repeated in the final state: one
+    assignment) has to see repeats the way get_all_momenta does, antiparticles
+    included: the merged map lists the members by their positive pdg only, so
+    u~ and s~ are both -81 only through the sign-aware lhe_parser.merged_pdg."""
+
+    MERGED = {1: 81, 2: 81, 3: 81, 4: 81}
+
+    # d~ g > w+ u~, w+ > c s~ : u~ (production) and s~ (W decay) are both -81
+    ANTI = """<event>
+ 6  1 +1.0e+00 1.0e+02 7.5e-03 1.2e-01
+ -1 -1 0 0 0 501 0.0 0.0 300.0 300.0 0.0 0. 1.
+ 21 -1 0 0 501 502 0.0 0.0 -200.0 200.0 0.0 0. 1.
+ 24 2 1 2 0 0 30.0 -20.0 60.0 240.0 80.4 0. 1.
+ -2 1 1 2 0 502 -30.0 20.0 40.0 260.0 0.0 0. 1.
+ 4 1 3 3 503 0 50.0 10.0 20.0 120.0 0.0 0. 1.
+ -3 1 3 3 0 503 -20.0 -30.0 40.0 120.0 0.0 0. 1.
+</event>"""
+
+    # the charge conjugate, d g > w- u, w- > c~ s : u and s are both 81
+    CONJ = """<event>
+ 6  1 +1.0e+00 1.0e+02 7.5e-03 1.2e-01
+ 1 -1 0 0 501 0 0.0 0.0 300.0 300.0 0.0 0. 1.
+ 21 -1 0 0 502 501 0.0 0.0 -200.0 200.0 0.0 0. 1.
+ -24 2 1 2 0 0 30.0 -20.0 60.0 240.0 80.4 0. 1.
+ 2 1 1 2 502 0 -30.0 20.0 40.0 260.0 0.0 0. 1.
+ -4 1 3 3 0 503 50.0 10.0 20.0 120.0 0.0 0. 1.
+ 3 1 3 3 503 0 -20.0 -30.0 40.0 120.0 0.0 0. 1.
+</event>"""
+
+    class _Stub(object):
+        _all_momenta = interface_madspin.MadSpinInterface._all_momenta
+
+        def __init__(self, merged):
+            self._revert_merged = merged
+
+    def test_merged_pdg(self):
+        self.assertEqual(lhe_parser.merged_pdg(2, self.MERGED), 81)
+        self.assertEqual(lhe_parser.merged_pdg(-3, self.MERGED), -81)
+        self.assertEqual(lhe_parser.merged_pdg(21, self.MERGED), 21)
+        self.assertEqual(lhe_parser.merged_pdg(-24, self.MERGED), -24)
+
+    def test_antiparticles_take_the_full_path(self):
+        stub = self._Stub(self.MERGED)
+        for text, order in ((self.ANTI, ((-81, 21), (-81, 81, -81))),
+                            (self.CONJ, ((81, 21), (81, -81, 81)))):
+            event = lhe_parser.Event(text)
+            full = event.get_all_momenta(order, merged_map=self.MERGED)
+            # u~ <-> s~ (or u <-> s) between the production and the W decay
+            self.assertEqual(len(full), 2)
+            self.assertEqual(len(stub._all_momenta(event, order)), len(full))

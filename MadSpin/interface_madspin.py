@@ -13013,7 +13013,8 @@ class MadSpinInterface(extended_cmd.Cmd):
         merged = self._revert_merged or None
         finals = [p.pid for p in event if p.status == 1]
         if merged:
-            finals = [merged.get(pid, pid) for pid in finals]
+            # sign-aware, as get_all_momenta maps them: u~ and s~ are both -81
+            finals = [lhe_parser.merged_pdg(pid, merged) for pid in finals]
         if len(set(finals)) == len(finals):
             return [event.get_momenta(orig_order, merged_map=merged)]
         return event.get_all_momenta(orig_order, merged_map=merged)
