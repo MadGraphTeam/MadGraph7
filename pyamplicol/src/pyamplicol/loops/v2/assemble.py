@@ -1566,7 +1566,7 @@ class LoopSlice:
                 _fraction(scale_squared),
                 dict(parameters or {}),
                 precision,
-                True,
+                PoleSelection.ALL,
             )
             execution = evaluation.dress(schedule, exact=exact)
         return execution, tuple(tuple(p) for p in evaluation.incoming)

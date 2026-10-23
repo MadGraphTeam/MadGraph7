@@ -2246,7 +2246,7 @@ class MemberObservables:
             scale_squared,
             options.get("parameters"),
             options.get("precision"),
-            options.get("poles", True),
+            options.get("poles", PoleSelection.ALL),
             member.spin(spin),
             _relabel_ward(member, ward),
             options.get("stability"),
