@@ -162,8 +162,14 @@ class _Exporter:
 
     # -- kernels ------------------------------------------------------------
 
-    def _kernel(self, binding) -> int:
-        found = self.kernels.get(binding.kernel_id)
+    def _kernel(self, binding, flips: tuple[tuple[str, int], ...] = ()) -> int:
+        """A kernel record with its constants under the mass ``flips`` of the
+        reading (``TreeReading.mass_signs``: a segment whose loop line leaves
+        as a massive fermion evaluates with the opposite mass sign). Constant
+        keys are (model-factor key, flips), so one kernel read with and
+        without flips has two records."""
+
+        found = self.kernels.get((binding.kernel_id, flips))
         if found is not None:
             return found
         kernel = self.kinematics._kernel(binding)
@@ -181,12 +187,15 @@ class _Exporter:
                 raise ValueError(f"segment kernel input of role {item.role!r}")
         outputs = [
             [
-                [self.constants.setdefault(key, len(self.constants)), list(monomial)]
+                [
+                    self.constants.setdefault((key, flips), len(self.constants)),
+                    list(monomial),
+                ]
                 for key, monomial in terms
             ]
             for terms in kernel.outputs
         ]
-        found = self.kernels[binding.kernel_id] = len(self.kernel_records)
+        found = self.kernels[(binding.kernel_id, flips)] = len(self.kernel_records)
         self.kernel_records.append({"inputs": inputs, "outputs": outputs})
         return found
 
@@ -196,12 +205,12 @@ class _Exporter:
 
     # -- contents -----------------------------------------------------------
 
-    def _binding(self, binding, index, split: bool) -> dict:
+    def _binding(self, binding, index, split: bool, flips=()) -> dict:
         """A kernel bound to a routing term's slots: resolved inputs and, per
         kernel output, its fused entry (and, for a split vertex binding, the
         flat block-component index nu it multiplies)."""
 
-        kernel = self._kernel(binding)
+        kernel = self._kernel(binding, flips)
         current_slots, momentum_slots = [], []
         for slot, dimension in enumerate(binding.block_dimensions):
             current_slots += [(slot, k) for k in range(dimension)]
@@ -236,9 +245,11 @@ class _Exporter:
         index = {entry: i for i, entry in enumerate(shape.fused)}
         row_index = {row: i for i, row in enumerate(shape.rows)}
         terms = []
+        signs = getattr(self.kinematics.reading, "mass_signs", None)
+        flips = tuple(sorted(signs(content.loop_out).items())) if signs else ()
         for term in self.kinematics.lowered(content):
-            bindings = [self._binding(b, index, False) for b in term.fused]
-            split = [self._binding(b, index, True) for b in term.split]
+            bindings = [self._binding(b, index, False, flips) for b in term.fused]
+            split = [self._binding(b, index, True, flips) for b in term.split]
             dimensions = {tuple(b.block_dimensions) for b in (*term.fused, *term.split)}
             if len(dimensions) != 1:
                 raise ValueError(f"content {content.label} mixes block dimensions")
@@ -1001,19 +1012,33 @@ class NativeExecutor:
             return [str(x.real), str(x.imag)]
 
         def shared(evaluation):
-            """Kernel constants and squared masses of a point's parameters."""
+            """Kernel constants and squared masses of a point's parameters;
+            each constant under its reading's mass flips (``_Exporter._kernel``)."""
 
             constants = evaluation.constants
+            carrier = constants.carrier
             if arithmetic == "exact":
-                constants = rx.KernelConstants(
-                    constants.parameters,
-                    rx.Carrier.exact(evaluation.numbers.precision.working_digits),
-                )
+                carrier = rx.Carrier.exact(evaluation.numbers.precision.working_digits)
+                constants = rx.KernelConstants(constants.parameters, carrier)
+            flipped = {(): constants}
+
+            def under(flips):
+                found = flipped.get(flips)
+                if found is None:
+                    parameters = dict(constants.parameters)
+                    for name, sign in flips:
+                        parameters[name] = sign * parameters[name]
+                    found = flipped[flips] = rx.KernelConstants(parameters, carrier)
+                return found
+
             masses = _mass_values(
                 slice_.compiled, evaluation.parameters, exported.masses
             )
             return (
-                [value(constants.constant(key)) for key in exported.constants],
+                [
+                    value(under(flips).constant(key))
+                    for key, flips in exported.constants
+                ],
                 [_fraction_text(masses[m]) for m in exported.masses],
             )
 

@@ -296,11 +296,9 @@ def _validate(args) -> dict[str, Any]:
         process,
         born,
         loop,
-        fixed_parameters={
-            k: v for k, v in reference["fixed_parameters"].items() if k == "MB"
-        },
+        fixed_parameters=dict(reference["fixed_parameters"]),
     )
-    parameters = {k: reference["parameters"][k] for k in ("aS", "MT")}
+    parameters = dict(reference["parameters"])
     record: dict[str, Any] = {"name": args.name, "process": process}
     start = time.perf_counter()
     slice_ = LoopSlice.generate(

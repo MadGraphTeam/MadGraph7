@@ -282,6 +282,9 @@ def test_loop_aware_reachability_changes_no_result(
     [
         pytest.param("uux_ddxg", [0], "python", marks=pytest.mark.loop_physics),
         pytest.param("uux_ddxg", [0], "native", marks=pytest.mark.loop_physics),
+        # Massive fermion loop lines: the tree reading's mass flips reach the
+        # native kernel constants (stable tops, all fixture parameters).
+        pytest.param("gg_ttx", [0, 1, 2], "python", marks=pytest.mark.loop_physics),
         pytest.param("gg_gggg", [0], "python", marks=pytest.mark.loop_nightly),
     ],
 )
