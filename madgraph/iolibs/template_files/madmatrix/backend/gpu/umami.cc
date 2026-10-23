@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <array>
@@ -397,7 +398,36 @@ extern "C"
       static_cast<InterfaceInstance*>( handle )->summed_helicity = parameter_real != 0;
       return UMAMI_SUCCESS;
     }
+    // Parameters are process-wide (Parameters::getInstance()), not per-handle,
+    // matching how umami_initialize itself never stores the CPPProcess it
+    // constructs: initProc() only ever populates the Parameters singleton.
+#ifdef MGONGPU_HARDCODE_PARAM
+    // Hardcoded parameters are compile-time constants: there is nothing to set.
     return UMAMI_ERROR_NOT_IMPLEMENTED;
+#else
+    if( !Parameters::getInstance()->setParameterByName( name, parameter_real, parameter_imag ) )
+      return UMAMI_ERROR_UNKNOWN_PARAMETER;
+    // sigmaKin() and friends read cached copies of the independent parameters/couplings
+    // (cIPD/cIPC/cIPF/bsmIndepParam), not the Parameters singleton itself, for
+    // performance; refresh those caches now so the override actually takes effect.
+    CPPProcess::refreshIndependentParams();
+    // Keep g_externalMasses in sync with the (possibly updated) singleton.
+    // Emit a one-time warning if a mass parameter was changed, since any phase-space
+    // generator that cached masses from a prior umami_get_meta(UMAMI_META_MASSES,...) call
+    // will need to re-query them.
+    {
+      std::vector<fptype> updatedMasses;
+      CPPProcess::refreshExternalMasses( updatedMasses );
+      bool changed = ( updatedMasses.size() != g_externalMasses.size() );
+      for( size_t i = 0; !changed && i < updatedMasses.size(); ++i )
+        changed = ( static_cast<double>( updatedMasses[i] ) != g_externalMasses[i] );
+      if( changed )
+      {
+        g_externalMasses.assign( updatedMasses.begin(), updatedMasses.end() );
+      }
+    }
+    return UMAMI_SUCCESS;
+#endif
   }
 
   UmamiStatus umami_get_parameter(
@@ -406,7 +436,13 @@ extern "C"
     [[maybe_unused]] double* parameter_real,
     [[maybe_unused]] double* parameter_imag )
   {
+#ifdef MGONGPU_HARDCODE_PARAM
     return UMAMI_ERROR_NOT_IMPLEMENTED;
+#else
+    if( !Parameters::getInstance()->getParameterByName( name, parameter_real, parameter_imag ) )
+      return UMAMI_ERROR_UNKNOWN_PARAMETER;
+    return UMAMI_SUCCESS;
+#endif
   }
 
   UmamiStatus umami_matrix_element(
