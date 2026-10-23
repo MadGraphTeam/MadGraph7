@@ -1208,6 +1208,9 @@ class CompressedColour:
         # A combination depends only on the kind and the positions' terms
         # (decomposition ids and descriptors), which many skeletons share.
         self._combinations: dict[tuple, Combination | None] = {}
+        # Ring combinations of keys equal up to a renaming of the external
+        # labels (``_renamed``), on the renamed key.
+        self._renamed: dict[tuple, Combination | None] = {}
 
     def _letters(self, block: Block) -> tuple[int, ...] | None:
         """M_w = tau^w_k ... tau^w_1 of a pure-gluon block, in matrix order."""
@@ -1359,9 +1362,58 @@ class CompressedColour:
         key = (kind, tuple(info[2] for info in infos))
         if key in self._combinations:
             return self._combinations[key]
-        found = self._combination(kind, infos)
+        if kind == "quark-ring":
+            found = self._combination(kind, infos)
+        else:
+            found = self._ring_combination(kind, key)
         self._combinations[key] = found
         return found
+
+    def _ring_combination(self, kind: PrimitiveKind, key: tuple) -> Combination | None:
+        """An adjoint ring's or closed fundamental loop's combination from the
+        one of its key with the external labels renamed 1, 2, ... in reading
+        order: the products of position terms do not depend on the labels, so
+        the renamed key's primitives, renamed back and made canonical again,
+        are this key's (a primitive's sign changes with its canonical form).
+        Rings of relabelled legs (identical gluons) share one renamed key."""
+
+        rename: dict[int, int] = {}
+        for terms in key[1]:
+            for _ids, descriptor in terms:
+                for label in descriptor[1]:
+                    if label not in rename:
+                        rename[label] = len(rename) + 1
+        renamed = (
+            kind,
+            tuple(
+                tuple(
+                    (
+                        ids,
+                        (
+                            descriptor[0],
+                            tuple(rename[a] for a in descriptor[1]),
+                            *descriptor[2:],
+                        ),
+                    )
+                    for ids, descriptor in terms
+                )
+                for terms in key[1]
+            ),
+        )
+        if renamed not in self._renamed:
+            infos = [(None, None, terms) for terms in renamed[1]]
+            self._renamed[renamed] = self._combination(kind, infos)
+        found = self._renamed[renamed]
+        if found is None:
+            return None
+        back = {new: old for old, new in rename.items()}
+        out = []
+        for primitive, coefficient in found:
+            original, sign = canonical_primitive(
+                kind, tuple(back[a] for a in primitive.word)
+            )
+            out.append((original, coefficient if sign == 1 else coefficient.scaled(-1)))
+        return tuple(sorted(out, key=repr))
 
     def _combination(self, kind: PrimitiveKind, infos) -> Combination | None:
         out: dict[Primitive, ExactColorCoefficient] = {}
