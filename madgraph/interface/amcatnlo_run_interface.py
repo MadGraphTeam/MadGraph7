@@ -2019,13 +2019,18 @@ class aMCatNLOCmd(CmdExtended, HelpToCmd, CompleteForCmd, common_run.CommonRunCm
         return value if 0.0 < value < 1.0 else -1.0
 
     def check_real_channels_mode(self,mode):
-        """Real-diagram channels are supported only for ordinary fixed-order NLO."""
+        """Real-diagram channels are supported only for ordinary fixed-order NLO.
+        The run_card of a process can enable them by default (chosen at output),
+        so they are switched off, not refused, for the other modes."""
         value = self.run_card['real_channels_x0'] if 'real_channels_x0' in self.run_card else -1.0
         x0 = self.effective_real_channels_x0(value)
         if x0 > 0 and (mode != 'NLO' or self.run_card['ickkw'] != 0):
-            raise self.InvalidCmd('real_channels_x0 between 0 and 1 requires fixed-order NLO '
-                                  'with ickkw=0; it is not supported for LO or MC@NLO '
-                                  '(including noshower).')
+            logger.info('real_channels_x0 = %s ignored: the real-emission integration '
+                        'channels are only used for fixed-order NLO with ickkw=0.' % value)
+            # before the run_card.inc is written: the executable and the
+            # channel lists of this run are built without them
+            self.run_card['real_channels_x0'] = -1.0
+            x0 = -1.0
         return x0
 
     def check_real_channels_restart(self,jobs,x0):

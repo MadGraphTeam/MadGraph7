@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 import glob
+import json
 import logging
 import os
 import re
@@ -35,6 +36,7 @@ import madgraph.core.base_objects as base_objects
 import madgraph.fks.fks_helas_objects as fks_helas_objects
 import madgraph.fks.fks_base as fks
 import madgraph.fks.fks_common as fks_common
+import madgraph.fks.fks_real_channels_auto as fks_real_channels_auto
 import fractions
 import math
 import madgraph.iolibs.drawing_eps as draw
@@ -927,7 +929,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         if 'QCD' in order[0]:
             perturbation_order.append('QCD')
         self.proc_characteristic['perturbation_order'] = perturbation_order 
-        
+        self.set_real_channels_default()
+
         self.create_proc_charac()
 
         filename = os.path.join(self.dir_path,'SubProcesses','orderstag_base.inc')
@@ -1969,6 +1972,8 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
         
         self.write_real_channels_file(writers.FortranWriter('real_channels.inc'),
                                      matrix_element)
+        self.write_real_channels_structure('real_channels_structure.json',
+                                           matrix_element)
         max_diagrams = max([1] + [real.matrix_element.get_number_of_amplitudes()
                                  for real in matrix_element.real_processes])
         weights_writer = writers.FortranWriter('real_matrix_weights.inc')
@@ -2028,6 +2033,51 @@ This typically happens when using the 'low_mem_multicore_nlo_generation' NLO gen
                 channels.append((ime, representative[ime - 1], iconfig,
                                  me.get('diagrams')[idiag].get('number')))
         return channels, sector_me, representative
+
+    def write_real_channels_structure(self, filename, matrix_element):
+        """Write what finalize needs to choose the default of
+        real_channels_x0. Written per directory, since directories can be
+        written by separate processes."""
+        try:
+            structure = fks_real_channels_auto.real_structures(matrix_element)
+        except Exception as error:
+            # the decision is an optimisation only: never fail the output
+            logger.debug('Cannot analyse the real-emission diagrams: %s' % error)
+            return
+        structure['n_hard_channels'] = len(self.get_real_channels(matrix_element)[0])
+        with open(filename, 'w') as stream:
+            json.dump(structure, stream)
+
+    def set_real_channels_default(self):
+        """Choose the default of real_channels_x0 in the run_card of the
+        process, from the real_channels_structure.json of all directories"""
+        directories = []
+        for path in glob.glob(pjoin(self.dir_path, 'SubProcesses', 'P*',
+                                    'real_channels_structure.json')):
+            with open(path) as stream:
+                directories.append(json.load(stream))
+        if not directories:
+            return
+        n_hard_channels = sum(d['n_hard_channels'] for d in directories)
+        try:
+            x0, summary = fks_real_channels_auto.decide(directories,
+                                                        n_hard_channels)
+        except Exception as error:
+            logger.debug('Cannot analyse the real-emission diagrams: %s' % error)
+            return
+        self.proc_characteristic['real_channels_x0'] = x0
+        if x0 > 0:
+            logger.info('%d of the %d real-emission diagrams have propagators '
+                        'that the Born integration channels do not follow: '
+                        'fixed-order runs will integrate the hard real emission '
+                        'with dedicated channels (real_channels_x0 = %s in the '
+                        'run_card; -1 to disable).'
+                        % (summary['n_uncovered'], summary['n_diagrams'], x0))
+        elif summary['n_uncovered']:
+            logger.info('Real-emission integration channels not enabled by '
+                        'default: %d hard channels (more than %d).'
+                        % (n_hard_channels,
+                           fks_real_channels_auto.MAX_HARD_CHANNELS))
 
     def write_real_channels_file(self, writer, matrix_element):
         """Write compact hard-channel IDs without a Born-channel factor."""
