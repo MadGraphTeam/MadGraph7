@@ -171,7 +171,7 @@ relocation with the same native build. A dedicated acceptance test covers this.
   slice generation at five legs and 15 % at six, plus export) is paid by
   every process; its evaluation cost only by `"uv"` and `"ir"`: +1 %
   (u u~ > e- e+ g g, six legs with a photon), +7 % (g g > g g g, five legs)
-  and +13 % (g g > g g g g, six legs) over `"all"` (design §12.4).
+  and +13–18 % (g g > g g g g, six legs; idle and loaded host) over `"all"` (design §12.4).
 - As built (WP2.10 after WP2.6, design §12.2 and §12.4): TOML
   `evaluation.poles`, CLI `--poles` and the API `poles=` take all four values
   (`PoleSelection.UV`, `.IR`); one artifact serves them all (it stores the

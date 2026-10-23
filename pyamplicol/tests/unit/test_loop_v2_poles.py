@@ -649,6 +649,28 @@ def test_split_estimates_in_the_extended_carriers(slices, carrier):
         estimate = result.stability
         assert len(estimate.coefficients) == 3
         assert estimate.finite < 1e-20 and estimate.coefficients[1] < 1e-20, mode
+    # The rotated point directly: the selected poles equal binary64's (the
+    # MPFR residue once kept 2-3 bits of exact low-precision inputs there).
+    rotated = [
+        [str(x) for x in momentum]
+        for momentum in checks.rotations[0].apply(
+            tuple(tuple(Fraction(x) for x in momentum) for momentum in point)
+        )
+    ]
+    for mode in ("uv", "ir"):
+        (wide,) = executor.evaluate(
+            [rotated], [scale], parameters=PARAMETERS, precision=precision, poles=mode
+        )
+        (narrow,) = executor.evaluate(
+            [rotated], [scale], parameters=PARAMETERS, poles=mode
+        )
+        for sector, laurent in narrow.components["virtual"].items():
+            other = wide.components["virtual"][sector]
+            for k in (1, 2):
+                difference = complex(other.coefficients[k]) - complex(
+                    laurent.coefficients[k]
+                )
+                assert abs(difference) <= 1e-12 * _scale(laurent), (mode, k)
 
 
 # ----------------------------------------------------------------- unit

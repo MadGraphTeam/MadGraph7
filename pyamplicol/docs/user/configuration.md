@@ -598,7 +598,7 @@ local_uv = result.pole_part("uv", "uv_local")     # the model's coupling and mas
 The selection is a runtime option: the same artifact serves all four (it stores
 the companion plan of its certified-scaleless loop families, which only `"uv"`
 and `"ir"` evaluate; they cost about 1 % (u u~ > e- e+ g g), 7 % (g g > g g g)
-and 13 % (g g > g g g g) more than `"all"`).
+and 13–18 % (g g > g g g g) more than `"all"`).
 An artifact written before the split is refused at load with a request to
 regenerate it. Correlated and resolved outputs
 take every selection too; their `pole_parts` follow their own axes (resolved:
