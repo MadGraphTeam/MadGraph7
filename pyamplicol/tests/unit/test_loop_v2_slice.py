@@ -29,7 +29,8 @@ uu~ -> ggg, uu~ -> dd~g, Drell-Yan and uu~ -> tt~. Oracles:
   currents are refused at generation;
 * finite-only evaluations and the stability estimates of the runtime API
   (REQUIREMENTS_ADDENDUM B, C), every check configuration bracketing the true
-  binary64 error.
+  binary64 error within the user's one-order-of-magnitude margin
+  (``ESTIMATE_MARGIN``).
 """
 
 from __future__ import annotations
@@ -975,10 +976,10 @@ def test_stability_checks_are_optional_and_combinable(slices, evaluated):
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", SLICE)
 def test_stability_estimates_bracket_the_true_error(evaluated, name):
-    """Every check configuration's binary64 estimate is at least the true
-    error against 200 bits, for the Laurent vector and for each coefficient
-    (the finite part's own relative error included), and stays a meaningful
-    bound on these well-conditioned points."""
+    """Every check configuration's binary64 estimate brackets the true error
+    against 200 bits within ``ESTIMATE_MARGIN``, for the Laurent vector and
+    for each coefficient (the finite part's own relative error included),
+    and stays a meaningful bound on these well-conditioned points."""
 
     for f64, ap in zip(
         evaluated(name, "double"), evaluated(name, "arbitrary-200"), strict=True
@@ -1031,50 +1032,30 @@ def fresh(slices):
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", SLICE)
 def test_stability_estimates_bracket_out_of_sample(fresh, name):
-    """Every check configuration with a rotation brackets the true binary64
-    error at a fresh point, as a whole and per Laurent coefficient (the
-    cached reduction-direction check alone: the next test)."""
+    """Every check configuration (the cached reduction-direction check alone
+    included) brackets the true binary64 error at a fresh point within
+    ``ESTIMATE_MARGIN``, as a whole and per Laurent coefficient."""
 
-    _assert_brackets(*fresh(name), CONFIGURATIONS[1:])
-
-
-# The cached reduction-direction check alone misses the masters' own rounding
-# (both reductions read the same masters): DESIGN §10.4 measures a binary64
-# false-negative rate of 2.3-2.75 % for it. At u u~ > u u~ g's fresh point it
-# is one of them, in every process history since the tree stages are
-# generated history-independently (WP2.5): true error 3.2054e-13 against an
-# estimate of 3.1082e-13. On the slice before (raw stages) the outcome moved
-# with the symbols created earlier in the interpreter (failed after 77, 141,
-# 300 and 3000 unrelated symbols, passed after 0 and 1000). The bracket stays
-# strict; how WP2.3 tests a check with a documented false-negative rate at one
-# point awaits the user's decision (slice-status DECISIONS, DESIGN §10.4).
-REDUCTION_ALONE_MISS = pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="documented false negative of the cached reduction-direction check "
-    "alone (DESIGN §10.4: 2.3-2.75 % in binary64): 3.2054e-13 > 3.1082e-13; "
-    "single-point test of that check awaits the user's decision (WP2.3)",
-)
+    _assert_brackets(*fresh(name))
 
 
-@pytest.mark.loop_physics
-@pytest.mark.parametrize(
-    "name",
-    [
-        pytest.param(name, marks=REDUCTION_ALONE_MISS) if name == "uux_uuxg" else name
-        for name in SLICE
-    ],
-)
-def test_reduction_check_alone_brackets_out_of_sample(fresh, name):
-    """The cached reduction-direction check alone brackets the true binary64
-    error at the fresh point, as a whole and per Laurent coefficient."""
-
-    _assert_brackets(*fresh(name), CONFIGURATIONS[:1])
+# USER DECISION (2026-10-23, ~13:12 UTC; DESIGN §10.4), in the user's words:
+# "You can even be looser than 0.4x, we don't want to spend time calibrating
+# or optimizing this here, you can easily afford a one-order-of-magnitude
+# safety margin in the relative stability thresholds." Rule: a single-point
+# test of a stability estimate E holds the true error to at most 10 E, as a
+# whole and per Laurent coefficient, for every check configuration alike.
+# It replaces the strict bracket, which the cached reduction-direction check
+# alone misses at u u~ > u u~ g's fresh point (error 3.2054e-13 against
+# E = 3.1082e-13, 1.03 E): one of its calibrated binary64 false negatives
+# (2.3-2.75 %, DESIGN §10.4), which stay as measured.
+ESTIMATE_MARGIN = 10
 
 
-def _assert_brackets(f64, ap, configurations=CONFIGURATIONS):
-    """Every given check configuration's estimate bounds the true binary64
-    error, as a whole and per Laurent coefficient."""
+def _assert_brackets(f64, ap):
+    """Every check configuration's estimate bounds the true binary64
+    error within ``ESTIMATE_MARGIN``, as a whole and per Laurent
+    coefficient, and stays below 1e-10."""
 
     truth = {
         sector: Laurent(*[float(x) for x in value.coefficients])
@@ -1083,13 +1064,14 @@ def _assert_brackets(f64, ap, configurations=CONFIGURATIONS):
     error = deviation(truth, f64.components["virtual"])
     errors = per_coefficient(truth, differences(truth, f64.components["virtual"]))
     assert error > 0
-    for names in configurations:
+    for names in CONFIGURATIONS:
         estimate = f64.stability.subset(names)
-        assert error <= estimate.relative < 1e-10, (names, error, estimate)
+        assert estimate.relative < 1e-10, (names, estimate)
+        assert error <= ESTIMATE_MARGIN * estimate.relative, (names, error, estimate)
         for k, (mine, bound) in enumerate(
             zip(errors, estimate.coefficients, strict=True)
         ):
-            assert mine <= bound, (names, LAURENT[k], mine, bound)
+            assert mine <= ESTIMATE_MARGIN * bound, (names, LAURENT[k], mine, bound)
 
 
 @pytest.mark.loop_fast
