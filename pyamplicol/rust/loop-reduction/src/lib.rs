@@ -34,6 +34,7 @@ use ninjars_symbolica::{
     OneLoopNativeMasters, PolynomialNumerator, SymbolicaAmplitudeKernels, SymbolicaCuts,
     SymbolicaHighCuts, SymbolicaMasters,
 };
+pub use ninjars_symbolica::PoleSelection;
 pub use oneloop::NativeFloat;
 use symbolica::{atom::Atom, evaluate::EvaluationDomain};
 
@@ -255,6 +256,10 @@ struct ProfiledMasters<'a> {
 }
 
 impl FastMasters for ProfiledMasters<'_> {
+    fn requires_scaleless_bubbles(&self) -> bool {
+        self.inner.requires_scaleless_bubbles()
+    }
+
     fn evaluate(
         &mut self,
         family: FastMaster,
@@ -330,6 +335,18 @@ where
             },
             masters: SymbolicaMasters::new(prototype).with_onshell_threshold(onshell_threshold),
         })
+    }
+
+    /// Select the masters' UV or IR pole residues (oneloopmaster's
+    /// `PoleSelection`, `BOTH` by default). This generic engine retains the
+    /// scaleless bubbles that carry separated residues; finite parts are
+    /// unchanged.
+    pub fn set_pole_selection(&mut self, selection: PoleSelection) {
+        self.masters.set_pole_selection(selection);
+    }
+
+    pub fn pole_selection(&self) -> PoleSelection {
+        self.masters.pole_selection()
     }
 
     /// Inputs and parameter rows are lane-major in the order of `ids`.

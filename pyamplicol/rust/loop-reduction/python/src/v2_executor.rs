@@ -263,6 +263,9 @@ enum Carriers {
 struct V2Executor {
     executor: Executor,
     carrier: Carriers,
+    /// The binary64 reduction engine: `fast` (production) or `generic`
+    /// (oracle and cost reference of selected master poles).
+    engine: String,
     backend: Option<V2ReductionBackend>,
 }
 
@@ -270,7 +273,7 @@ impl V2Executor {
     fn backend(&mut self) -> PyResult<&mut V2ReductionBackend> {
         if self.backend.is_none() {
             let reducer = match self.carrier {
-                Carriers::Double => runtime::V2Reducer::new("double", None, "fast", true),
+                Carriers::Double => runtime::V2Reducer::new("double", None, &self.engine, true),
                 Carriers::DoubleDouble => {
                     runtime::V2Reducer::new("double-double", None, "generic", true)
                 }
@@ -282,7 +285,10 @@ impl V2Executor {
                 }
             }
             .map_err(error)?;
-            self.backend = Some(V2ReductionBackend { reducer });
+            self.backend = Some(V2ReductionBackend {
+                reducer,
+                masters: v2::master_selection("both")?,
+            });
         }
         Ok(self.backend.as_mut().expect("backend"))
     }
@@ -333,7 +339,8 @@ fn numerators_with<T: Exchanged>(
 #[pymethods]
 impl V2Executor {
     #[new]
-    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule"))]
+    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", engine="fast"))]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         plan: &str,
         arithmetic: &str,
@@ -341,7 +348,11 @@ impl V2Executor {
         lanes: usize,
         threads: Option<usize>,
         forms: &str,
+        engine: &str,
     ) -> PyResult<Self> {
+        if !matches!(engine, "fast" | "generic") {
+            return Err(error("engine must be fast or generic"));
+        }
         let policy = match forms {
             "rule" => FormPolicy::Rule,
             "fused" => FormPolicy::Fused,
@@ -363,6 +374,7 @@ impl V2Executor {
         Ok(Self {
             executor: Executor::new(plan, lanes, threads).map_err(error)?,
             carrier,
+            engine: engine.to_owned(),
             backend: None,
         })
     }
@@ -450,14 +462,16 @@ impl V2Executor {
     /// (the re-test integrals or None), `bare` (per point and column),
     /// `budget` (re-test error budgets), `failures` and `report`. `schedule`
     /// `M` dresses the plan's schedule-M families by M (streamed in parts of
-    /// `part_chunks` chunks) and the others by B.
-    #[pyo3(signature = (inputs, *, poles=true, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None))]
+    /// `part_chunks` chunks) and the others by B. `poles` is a bool or
+    /// `"split"` (each lane's UV residue as a fourth column, DESIGN.md
+    /// §12.4); `master_poles` selects the masters' residues (generic engine).
+    #[pyo3(signature = (inputs, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None, master_poles="both"))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
         py: Python<'_>,
         inputs: &Bound<'_, PyDict>,
-        poles: bool,
+        poles: Option<Bound<'_, PyAny>>,
         check: bool,
         reverse: bool,
         rotation: usize,
@@ -466,7 +480,13 @@ impl V2Executor {
         chunk_families: Option<usize>,
         schedule: &str,
         part_chunks: Option<usize>,
+        master_poles: &str,
     ) -> PyResult<Evaluation> {
+        let poles = match poles {
+            Some(value) => v2::poles_option(&value)?,
+            None => V2Options::default().poles,
+        };
+        let masters = v2::master_selection(master_poles)?;
         let mut options = V2Options {
             poles,
             check: check.then_some(ReductionCheck {
@@ -497,6 +517,7 @@ impl V2Executor {
         };
         self.backend()?;
         let backend = self.backend.as_mut().expect("backend");
+        backend.masters = masters;
         let executor = &self.executor;
         match carrier {
             0 => evaluate_with(py, executor, backend, inputs, 0.0, bits, options),
