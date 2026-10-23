@@ -2426,9 +2426,9 @@ def test_six_gluon_plan_v4_artifact_is_below_twenty_megabytes(
     loop_sm_compiled_model, loop_native, tmp_path
 ):
     """gg -> gggg (1100 families, 45 MB of plan JSON without the forward
-    oracle, and the companion plan of 7 certified-scaleless families)
-    publishes < 20 MB (7.4 MB measured before the companion, 5.3 MB of it
-    the compiled model)."""
+    oracle, and the companion plan of 6 certified-scaleless families)
+    publishes < 20 MB (8.8 MB measured, 5.3 MB of it the compiled model and
+    3.5 MB the plan PACBIN with the companion)."""
 
     from pyamplicol.loops.v2.artifact import admit, plan_digest, read_plan
 
@@ -2448,5 +2448,5 @@ def test_six_gluon_plan_v4_artifact_is_below_twenty_megabytes(
     assert admitted["families"] == 1100
     assert admitted["plan_sha256"] == execution["plan_sha256"]
     # The companion plan of the certified-scaleless families (poles uv, ir).
-    assert admitted["scaleless_families"] == 7
+    assert admitted["scaleless_families"] == 6
     assert admitted["scaleless_plan_sha256"] == execution["scaleless_plan_sha256"]
