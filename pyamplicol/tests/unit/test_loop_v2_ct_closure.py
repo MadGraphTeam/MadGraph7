@@ -49,7 +49,8 @@ CT_COMPONENTS = ("uv_local", "r2")
 @pytest.fixture(scope="module")
 def closure_ct_model(loop_sm_compiled_model):
     """``forbidden |PDG| codes -> CountertermModel``: loop_sm lowered for the
-    closure's loop-request blocks (multi-trace colours included), per veto."""
+    closure's loop-request blocks (multi-trace colours included), per veto
+    (and per set ``dirac`` of Weyl fields propagated as Dirac fields)."""
 
     from pyamplicol.loops.compiler import prepare_loop_request_model
     from pyamplicol.loops.v2.ct_recursion import lower_model_counterterms
@@ -61,15 +62,16 @@ def closure_ct_model(loop_sm_compiled_model):
     )
     built = {}
 
-    def build(forbidden=()):
-        key = tuple(sorted(forbidden))
+    def build(forbidden=(), dirac=()):
+        key = (tuple(sorted(forbidden)), tuple(sorted(dirac)))
         if key not in built:
             built[key] = lower_model_counterterms(
                 compiled,
                 prepared.counterterms.rules,
                 fixed_parameters=prepared.structure.fixed_parameters,
-                forbidden=key,
+                forbidden=key[0],
                 multi_trace=True,
+                dirac_fields=key[1],
             )
         return built[key]
 
@@ -559,10 +561,10 @@ def _slice_point(masses) -> list[list[str]]:
     return [[exact_points.decimal_string(x) for x in p] for p in point]
 
 
-def _route_differences(slice_routes, name, carrier, parameters):
+def _route_differences(slice_routes, name, carrier, parameters, masses=None):
     """Largest |recursion - sites| per component over the slice's sectors and
     Laurent coefficients, relative to the sites value (the Born if it is
-    zero), at one exact point."""
+    zero), at one exact point (leg ``masses``, by default ``SLICE_O6``'s)."""
 
     from pyamplicol.loops.v2.assemble import COMPONENTS, Precision
 
@@ -572,7 +574,7 @@ def _route_differences(slice_routes, name, carrier, parameters):
         "double": Precision.double(),
         "arbitrary-200": Precision.arbitrary(60),
     }[carrier]
-    point = _slice_point(SLICE_O6[name][4])
+    point = _slice_point(SLICE_O6[name][4] if masses is None else masses)
     mine, reference = (
         route.evaluate(
             point, SLICE_SCALE_SQUARED, parameters=parameters, precision=precision
