@@ -1166,12 +1166,15 @@ class CountertermLoweredModel:
 
     ``couplings`` names the model coupling of every lowered CT vertex term
     (arity >= 3) and ``insertions`` the clone particle of every lowered
-    two-point term (``models.ct_line_insertions``); ``line_factors`` maps the
-    clone particle whose vertex copies carry a Weyl line's factor ``kappa``
-    to ``kappa`` (``LineInsertions.factors``); ``parameters`` are the
-    real external runtime parameters the coupling expressions introduced.
-    CT vertices carry the physical orders of their entry and
-    ``COUNTERTERM_INSERTION_ORDER`` and the order of their slot
+    two-point term (``models.ct_line_insertions``); ``line_fields`` maps
+    every clone particle to the field whose current it is read as and
+    ``line_factors`` the clone particle whose vertex copies carry a Weyl
+    line's factor ``kappa`` to ``kappa`` (``LineInsertions.factors``);
+    ``dirac_fields`` are the Weyl fields of the model that the lowered model
+    propagates as Dirac fields (``LineInsertions.dirac_fields``);
+    ``parameters`` are the real external runtime parameters the coupling
+    expressions introduced. CT vertices carry the physical orders of their
+    entry and ``COUNTERTERM_INSERTION_ORDER`` and the order of their slot
     ``COUNTERTERM_INSERTION_WEIGHT`` times. ``refused`` lists terms the tree
     compiler could not lower (``CountertermLoweringError``).
     """
@@ -1182,6 +1185,8 @@ class CountertermLoweredModel:
     insertions: Mapping[CountertermStructure, str] = field(default_factory=dict)
     refused: Mapping[CountertermStructure, str] = field(default_factory=dict)
     line_factors: Mapping[str, str] = field(default_factory=dict)
+    line_fields: Mapping[str, str] = field(default_factory=dict)
+    dirac_fields: frozenset[str] = frozenset()
 
     @property
     def slot_orders(self) -> tuple[str, ...]:
@@ -1255,6 +1260,7 @@ def lower_counterterm_vertices(
     excluded_particles: Iterable[str] = (),
     tree_kernel_variant: TreeKernelVariant = "full",
     multi_trace: bool = False,
+    dirac_fields: Iterable[str] = (),
 ) -> CountertermLoweredModel:
     """Lower CT vertex terms into the tree model of ``compiled`` (design §6.1).
 
@@ -1299,12 +1305,20 @@ def lower_counterterm_vertices(
     (``ct_color_flow``): only loop-request blocks carry those, so a model
     lowered with it serves the counterterm closure (``loops.v2.ct_closure``),
     not complete tree programs.
+
+    ``dirac_fields`` (UFO names) are Weyl fields to propagate as Dirac fields
+    in the lowered model, besides those its two-point terms require (a
+    chiral or chirality-flipping two-point term, or mixing with a Dirac
+    field; ``ct_line_insertions``): their standard propagators become
+    model-supplied, so that their sources, currents and clone lines are
+    Dirac spinors.
     """
 
     from .compiler_entry import compile_ufo_model_ir
     from .ct_color_flow import tree_colour_source
     from .ct_line_insertions import lower_line_insertions
 
+    dirac_fields = frozenset(dirac_fields)
     payload = json.loads(json.dumps(compiled.model))
     particles = {str(item["name"]): item for item in payload["particles"]}
     excluded = set(excluded_particles)
@@ -1360,9 +1374,15 @@ def lower_counterterm_vertices(
         insertion_order=COUNTERTERM_INSERTION_ORDER,
         slot_order=lambda structure: structure.slot_order,
         weyl_fields=_weyl_fields(compiled),
+        dirac_fields=dirac_fields,
     )
     if lines.refused:
         raise CountertermLoweringError(lines.refused)
+    # Weyl fields the clone lines need as Dirac fields: a model-supplied
+    # standard propagator makes every current of the field a Dirac spinor.
+    for propagator in payload["propagators"]:
+        if propagator.get("particle") in lines.dirac_fields:
+            propagator[PROPAGATOR_SOURCE_FIELD] = MODEL_SUPPLIED_PROPAGATOR_SOURCE
     classes: dict[tuple[object, ...], list[CountertermStructure]] = {}
     for structure in (s for s in structures if len(s.particles) > 2):
         classes.setdefault(
@@ -1457,6 +1477,7 @@ def lower_counterterm_vertices(
             excluded_particles=excluded,
             tree_kernel_variant=tree_kernel_variant,
             multi_trace=multi_trace,
+            dirac_fields=dirac_fields,
         )
     lowered_vertices = {
         rule["name"]
@@ -1497,6 +1518,7 @@ def lower_counterterm_vertices(
             [
                 sorted(excluded),
                 multi_trace,
+                sorted(lines.dirac_fields),
                 sorted(parameters.items()),
                 [
                     [
@@ -1538,6 +1560,8 @@ def lower_counterterm_vertices(
         tuple(sorted(parameters)),
         insertions=lines.clones,
         line_factors=lines.factors,
+        line_fields=lines.reads_as,
+        dirac_fields=lines.dirac_fields,
     )
 
 

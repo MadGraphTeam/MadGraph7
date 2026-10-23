@@ -450,15 +450,23 @@ def test_two_point_insertions_are_clone_lines(lowered_ct_model):
     carries kappa on the copies of its antiparticle leg only, and the
     structure-constant colour of a copy follows its orientation's parity."""
 
+    from pyamplicol.models.ct_line_insertions import _engine_denominator
+
     lowered = lowered_ct_model().model.lowered
     payload = lowered.compiled.model
     ir = lowered.compiled.ir
     clones = {s.particles[0].rstrip("~"): c for s, c in lowered.insertions.items()}
     propagators = {item["particle"]: item for item in payload["propagators"]}
+    particles = {item["name"]: item for item in payload["particles"]}
     for field in ("G", "t"):
         line = propagators[clones[field]]
         assert line["pyamplicol_source"] == "model-supplied"
-        assert line["denominator"].endswith(")^2")
+        # D^2 with the denominator the engine applies (the top's width).
+        engine = _engine_denominator(propagators[field], particles[field])
+        assert line["denominator"] == f"({engine})*({engine})"
+        assert lowered.line_fields[clones[field]] == field
+    assert "WT" in _engine_denominator(propagators["t"], particles["t"])
+    assert not lowered.dirac_fields
     auxiliary = f"__pyamplicol_u1_subtraction_{clones['G']}"
     custom = {record.particle for record in ir.propagators if record.custom}
     assert auxiliary in custom and clones["G"] in custom

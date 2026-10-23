@@ -450,6 +450,7 @@ def lower_model_counterterms(
     forbidden: Iterable[int] = (),
     multi_trace: bool = False,
     continuation: Any = None,
+    dirac_fields: Iterable[str] = (),
 ) -> CountertermModel:
     """The tree model of ``compiled`` with every lowerable rule's CT vertices.
 
@@ -472,8 +473,13 @@ def lower_model_counterterms(
     functions of a formal N_c, every vertex term is split into its N_c
     powers (``CountertermStructure.grade``, one slot each), and the U(1) term
     of a ``d*d`` split is ``2/N_c``.
+
+    ``dirac_fields`` (UFO names) are Weyl fields the lowered model propagates
+    as Dirac fields regardless of its two-point terms
+    (``lower_counterterm_vertices``).
     """
 
+    dirac_fields = frozenset(dirac_fields)
     vocabulary = TreeVocabulary(
         compiled, multi_trace=multi_trace, whole_rules=continuation is not None
     )
@@ -541,6 +547,7 @@ def lower_model_counterterms(
                 parameters=parameters,
                 excluded_particles=excluded,
                 multi_trace=multi_trace,
+                dirac_fields=dirac_fields,
             )
         except CountertermLoweringError as error:
             if not error.refused or set(error.refused) <= set(refused):

@@ -18,7 +18,7 @@ A one-CT tree rooted at leg 1 has its insertion
   (``models.ct_line_insertions``) whose consuming vertex copy is the root. The
   root reads the ordinary vertex on the clone current (insertion order 1);
   the copy's other half of the orders of ``Pi`` is added, and on a Weyl line
-  the copy of the clone's antiparticle leg carries ``kappa``
+  the copy on the leg of the clone ``C~`` carries ``kappa``
   (``CountertermLoweredModel.line_factors``);
 * **at the root** (``ROOT_COUNTERTERM``): a CT vertex holding leg 1 on CT = 0
   currents: the site closure of the rule with leg 1 as one block
@@ -26,9 +26,11 @@ A one-CT tree rooted at leg 1 has its insertion
 
 Every term is a ``ct_sites.SiteTerm`` on the blocks of the CT program, so
 colour (exact tensors at any N_c grade), signs and kinematics follow the
-site and Born closures. Clone currents are read with the field they clone:
-their block keys carry the field's particle id, and the insertion order of
-their orders marks them.
+site and Born closures. Clone currents are read as the field the vertex
+copies consuming them replace (``CountertermLoweredModel.line_fields``: the
+field itself on a diagonal line, the field the line leaves the two-point
+vertex into on a mixing line): their block keys carry that field's particle
+id, and the insertion order of their orders marks them.
 """
 
 from __future__ import annotations
@@ -84,12 +86,12 @@ class RootReachability:
 
 @dataclass(frozen=True, slots=True)
 class CloneLine:
-    """A clone particle of the CT program read as the field it clones.
+    """A clone particle of the CT program read as the field ``field_id``.
 
     ``half`` are the physical orders of the vertex copy at either end of the
-    line (half of those of ``Pi``), ``slot`` its (component, power) and
-    ``factor`` the Weyl factor ``kappa`` that the copies of this clone's leg
-    carry, or ``None``.
+    line (half of those of ``Pi``), ``slot`` its (component, power, grade)
+    and ``factor`` the Weyl factor ``kappa`` that the copies of this clone's
+    leg carry, or ``None``.
     """
 
     field_id: int
@@ -188,7 +190,7 @@ class CountertermBlocks:
 
 
 def _clone_lines(recursion: CountertermRecursion) -> dict[int, CloneLine]:
-    """Clone particle id -> ``CloneLine`` (both charge states)."""
+    """Clone particle id -> ``CloneLine`` (both clones of every line)."""
 
     lowered = recursion.model.lowered
     particles = {
@@ -198,18 +200,9 @@ def _clone_lines(recursion: CountertermRecursion) -> dict[int, CloneLine]:
     for structure, clone in lowered.insertions.items():
         half = tuple((name, power // 2) for name, power in structure.orders)
         slot = (structure.component, structure.power, structure.grade)
-        source = next(
-            name
-            for name in structure.particles
-            if int(particles[name]["pdg_code"]) > 0
-            or particles[name]["antiname"] == name
-        )
-        for name, clone_name in (
-            (source, clone),
-            (str(particles[source]["antiname"]), str(particles[clone]["antiname"])),
-        ):
+        for clone_name in {clone, str(particles[clone]["antiname"])}:
             out[int(particles[clone_name]["pdg_code"])] = CloneLine(
-                int(particles[name]["pdg_code"]),
+                int(particles[lowered.line_fields[clone_name]]["pdg_code"]),
                 add_orders(half),
                 slot,
                 lowered.line_factors.get(clone_name),
