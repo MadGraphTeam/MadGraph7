@@ -371,3 +371,39 @@ def test_native_trees_do_not_depend_on_the_process_history(loop_sm_compiled_mode
         outputs.append(json.loads(out.strip().splitlines()[-1]))
     for output in outputs[1:]:
         assert output == outputs[0]
+
+
+@pytest.mark.loop_physics
+def test_counterterm_roots_outside_the_request_orders_are_not_closed(
+    loop_sm_compiled_model, loop_native
+):
+    """u u~ > d d~ a at QCD 2, QED 1: the counterterm program holds W
+    currents, and a clone root on the u line with a W sits at QED 3, outside
+    the request. Its vertex's terms are not built (the closure refuses a W
+    vertex not closed under conjugation; generation failed before), and the
+    native counterterms equal the Python inputs."""
+
+    from pyamplicol.models.loading import load_compiled_model
+    from tools.loop_reference import exact_points
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    request = SliceRequest(
+        "u u~ > d d~ a",
+        {"QCD": 2, "QED": 1},
+        {"QCD": 4, "QED": 1},
+        fixed_parameters=FIXED,
+    )
+    slice_ = LoopSlice.generate(compiled, request, loop_native)
+    assert slice_.counterterm_program.closure.terms
+    native = NativeExecutor(slice_, forward=False, inputs="native")
+    python = NativeExecutor(slice_, forward=False, exported=native.exported)
+    points = [
+        [[exact_points.decimal_string(x) for x in p] for p in point]
+        for point in exact_points.generate([0] * 5, count=1)
+    ]
+    scales = ["1000000"]
+    _assert_same(
+        native.evaluate(points, scales, parameters=PARAMETERS),
+        python.evaluate(points, scales, parameters=PARAMETERS),
+        1e-12,
+    )
