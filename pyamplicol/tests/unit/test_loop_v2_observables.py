@@ -817,7 +817,9 @@ LEGACY_TOLERANCE = {"double": 1e-12, "arbitrary-200": 1e-40}
 # held to 1e-12 always (E estimates the virtual). The rule applies to every
 # value alike, so the outcome does not depend on which values are
 # ill-conditioned in a given build or on the process history (tree stages
-# are generated history-independently, ``assemble._canonical_stage``).
+# are generated history-independently, ``assemble._canonical_stage``, and
+# the loop kernels' terms are in a canonical order,
+# ``reference_executor._term_order``).
 ESTIMATE_CAP = 1e-9
 DOUBLE_DOUBLE_TOLERANCE = 1e-24
 
