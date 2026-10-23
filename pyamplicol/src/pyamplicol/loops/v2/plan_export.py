@@ -336,6 +336,18 @@ class _Exporter:
         admitted = {key for _degree, index in sectors for key in index}
         classes: dict[tuple[int, Orders], int] = {}
         class_records: list[dict] = []
+        # Projected cells by (class, basis element, degree, grade): sectors
+        # and loop orders of one class share them.
+        projected: dict[tuple[int, int, int | None, int], ExactColorCoefficient] = {}
+
+        def weight_of(c: int, b: int, degree: int | None, grade: int):
+            key = (c, b, degree, grade)
+            found = projected.get(key)
+            if found is None:
+                found = projected[key] = project(
+                    table.cells[c][b], degree, accuracy, grade
+                )
+            return found
 
         def class_record(c: int, order: Orders) -> int:
             found = classes.get((c, order))
@@ -346,7 +358,7 @@ class _Exporter:
                 weights: dict[int, ExactColorCoefficient] = {}
                 for b, born_order in index.get((c, order), ()):
                     for grade in sorted(born_grades.get((b, born_order), ())):
-                        weight = project(table.cells[c][b], degree, accuracy, grade)
+                        weight = weight_of(c, b, degree, grade)
                         if not weight:
                             continue
                         j = self.born_components.setdefault(

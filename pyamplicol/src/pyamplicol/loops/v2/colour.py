@@ -75,7 +75,7 @@ import re
 from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
-from functools import cached_property, lru_cache
+from functools import cache, cached_property, lru_cache
 from itertools import count, permutations, product
 from typing import Any, Literal
 
@@ -1725,11 +1725,18 @@ def project(
     leading degree P (``shift`` is the N_c grade of the Born amplitude the
     cell multiplies)."""
 
-    total = ExactColorCoefficient()
+    real = imag = Fraction(0)
     for power, value in cell.items():
         if kept(power + shift, degree, accuracy):
-            total = total + value.scaled(Fraction(NC) ** (power + shift))
-    return total
+            factor = _nc_power(power + shift)
+            real += value.real * factor
+            imag += value.imag * factor
+    return ExactColorCoefficient(real, imag)
+
+
+@cache
+def _nc_power(power: int) -> Fraction:
+    return Fraction(NC) ** power
 
 
 @dataclass(frozen=True)
