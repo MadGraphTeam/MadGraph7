@@ -80,8 +80,8 @@ LAURENT = ("finite", "single_pole", "double_pole")
 class Process:
     process: str
     born: Mapping[str, int]
-    # Photon exchange only: Z couplings on loop quark lines await the
-    # electroweak fermion-sign oracles (``conventions.FermionSignError``).
+    # Photon exchange only, as calibrated (the Z on loop quark lines was
+    # admitted later, WP3.1 I-AX).
     ignored: tuple[int, ...] = ()
 
     @property

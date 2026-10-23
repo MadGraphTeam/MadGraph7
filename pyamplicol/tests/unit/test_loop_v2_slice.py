@@ -25,8 +25,9 @@ uu~ -> ggg, uu~ -> dd~g, Drell-Yan and uu~ -> tt~. Oracles:
   colour correlations (1e-10), also with the model's default parameters;
 * the Born closed at leg 1's vertex is the tree runtime's Born (its amplitude
   roots, phase included) on the tree engine's colour basis;
-* the sign rule's scope: loop fermion vertices that are not pure vector
-  currents are refused at generation;
+* the sign rule's scope: loop fermion vertices coupling through the mass of
+  the loop line they emit are refused at generation (chiral currents are
+  admitted: ``test_loop_v2_axial``);
 * finite-only evaluations and the stability estimates of the runtime API
   (REQUIREMENTS_ADDENDUM B, C), every check configuration bracketing the true
   binary64 error.
@@ -52,7 +53,6 @@ from pyamplicol.loops.v2.assemble import (
     _decimal_string,
 )
 from pyamplicol.loops.v2.conventions import FermionSignError
-from pyamplicol.loops.v2.ct_sites import CountertermCompletenessError
 from pyamplicol.loops.v2.families import shifts
 from pyamplicol.loops.v2.poly_affine import size, substitute
 from pyamplicol.loops.v2.stability import (
@@ -277,18 +277,14 @@ def test_colour_projections_equal_legacy(declared, name, accuracy, carrier):
 
 
 @pytest.mark.loop_physics
-@pytest.mark.xfail(
-    strict=True,
-    raises=CountertermCompletenessError,
-    reason="closed-quark A g g triangles (Furry) need CertifiedZero witnesses "
-    "(WP3.5); then add the legacy control and include it in PROJECTED",
-)
 @pytest.mark.parametrize("accuracy", ("lc", "nlc"))
 def test_uux_emepgg_colour_projections_are_generable(
     loop_sm_compiled_model, loop_native, accuracy
 ):
     """WP2.4 acceptance control uu~ -> e-e+gg (photon and Z): its LC/NLC slice
-    must generate before its projections can be compared with legacy O1."""
+    generates (the generator certifies the closed-quark A g g triangles,
+    Furry, and admits the Z on loop quark lines). Comparing its projections
+    with a legacy O1 capture (then in PROJECTED) is open."""
 
     from pyamplicol.models.loading import load_compiled_model
     from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
@@ -610,26 +606,6 @@ def test_born_closure_is_the_tree_runtime_born(slices, name):
     assert largest > 0 and worst <= 1e-25 * largest, worst / largest
 
 
-@pytest.mark.loop_physics
-def test_loop_fermion_vertices_must_be_vector(loop_sm_compiled_model, loop_native):
-    """The -1 per loop fermion propagator holds for vector couplings: a quark
-    loop through a chiral Z vertex is refused at generation (O13 EW, WP3.2)."""
-
-    from pyamplicol.models.loading import load_compiled_model
-
-    with pytest.raises(FermionSignError, match="not a pure vector coupling"):
-        LoopSlice.generate(
-            load_compiled_model(loop_sm_compiled_model),
-            SliceRequest(
-                "u u~ > d d~",
-                {"QCD": 0, "QED": 2},
-                {"QCD": 2, "QED": 2},
-                fixed_parameters=legacy_capture.FIXED_PARAMETERS,
-            ),
-            loop_native,
-        )
-
-
 @pytest.mark.loop_fast
 def test_loop_fermion_vertices_must_not_couple_through_the_line_mass():
     """The tree reading flips the emitted loop line's mass in the whole
@@ -674,11 +650,11 @@ def test_loop_fermion_vertices_must_not_couple_through_the_line_mass():
     vertex = SimpleNamespace(vertex=SimpleNamespace(rule="V"))
     emits_top = SimpleNamespace(loop_in="g", loop_out="t", terms=(vertex,))
     emits_gluon = SimpleNamespace(loop_in="t", loop_out="g", terms=(vertex,))
-    LeafWeights(model("-G*I"), {})._require_vector_couplings([emits_top])
+    LeafWeights(model("-G*I"), {})._require_mass_free_couplings([emits_top])
     massive = LeafWeights(model("-G*MTv"), {})
-    massive._require_vector_couplings([emits_gluon])
+    massive._require_mass_free_couplings([emits_gluon])
     with pytest.raises(FermionSignError, match="couples through the mass MT"):
-        massive._require_vector_couplings([emits_top])
+        massive._require_mass_free_couplings([emits_top])
 
 
 # ----------------------------------------------------------------- O2 / O7
