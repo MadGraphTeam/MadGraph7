@@ -41,7 +41,7 @@ import madgraph.loop.loop_base_objects as loop_base_objects
 import madgraph.loop.loop_diagram_generation as loop_diagram_generation
 import madgraph.loop.loop_helas_objects as loop_helas_objects
 import madgraph.iolibs.save_load_object as save_load_object
-import models.import_ufo as models
+import madgraph.models.import_ufo as models
 from madgraph import MadGraph5Error
 
 

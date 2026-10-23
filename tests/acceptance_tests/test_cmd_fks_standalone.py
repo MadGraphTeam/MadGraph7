@@ -358,6 +358,95 @@ class TestFKSStandalone(unittest.TestCase):
         self.assertIn('P0_gg_ttx', names)
         self.assertTrue(any(n.startswith('P0_uux') for n in names), names)
 
+    def test_fks_born_gscale_mixed_orders(self):
+        """gscale (rescaling the cached Born amplitudes when only alpha_S
+        changed) agrees with a fresh evaluation for a mixed-order Born.
+
+        u u~ > t t~ with QCD^2<=4 QED^2<=4 has two amplitude split orders
+        (the gluon diagram of QCD order 2, the photon and Z ones of order
+        0) and three squared ones (QCD 4, 2, 0), each rescaled with its
+        own power. The driver (tests/input_files/fks_born_gscale_driver.f)
+        alternates g at fixed momenta for every FKS configuration and
+        compares every split-order piece, the Born tilde, AMP2/JAMP2 and
+        the colour links with a fresh evaluation, through the fast path
+        (result cache rescaled) and the two loop paths (colour sums
+        redone on the rescaled amplitudes). A QED coupling changed
+        together with g must make SBORN discard the cache. A counter put
+        at the born_gscale call makes sure the rescaling really ran."""
+        path = pjoin(self.tmpdir, 'uux_ttx_mixed')
+        # --limits: full run setup (built-in PDF, dummy analysis), the
+        # driver links the same objects as test_soft_col_limits
+        self._output_fks_sa('u u~ > t t~ QCD^2<=4 QED^2<=4 [real=QCD]',
+                            'loop_sm', path, limits=True)
+        born_dir = pjoin(path, 'SubProcesses', 'P0_uux_ttx')
+        born_f = pjoin(born_dir, 'born.f')
+        text = open(born_f).read()
+        # the Born really is mixed: two amplitude split orders
+        self.assertIn('PARAMETER (NAMPSO=2, NSQAMPSO=3)', text)
+        self.assertIn('DATA (SQSOQCD(I),I=1,3) /4,2,0/', text)
+        # the QED coupling changed in the refusal mode must be one the
+        # Born checks, otherwise the refusal would be vacuous
+        qed_coupling = 'GC_2'
+        self.assertIn('SAVED_COUP(1)=%s\n' % qed_coupling, text)
+        nlinks = int(re.search(r'PARAMETER \(NLINKS=(\d+)\)', text).group(1))
+
+        # count the rescalings (test-only instrumentation; the Fortran
+        # writer upper-cases and re-indents the template lines)
+        for old, new in (
+                (r'^( *)SAVE SAVED_G\n',
+                 r'\g<0>\1INTEGER NGSCALE_TEST\n'
+                 r'\1COMMON /C_GSCALE_TEST/ NGSCALE_TEST\n'),
+                (r'^( *)CALL BORN_GSCALE\(RPOW, *BORN_CACHE_ANS\)\n',
+                 r'\g<0>\1NGSCALE_TEST=NGSCALE_TEST+1\n')):
+            text, count = re.subn(old, new, text,
+                                  flags=re.IGNORECASE | re.MULTILINE)
+            self.assertEqual(count, 1, old)
+        open(born_f, 'w').write(text)
+
+        driver = open(pjoin(os.path.dirname(os.path.dirname(
+            os.path.realpath(__file__))), 'input_files',
+            'fks_born_gscale_driver.f')).read()
+        driver = driver.replace('QED_COUPLING', qed_coupling).replace(
+            'NLINKS_VALUE', str(nlinks))
+        open(pjoin(born_dir, 'test_born_gscale.f'), 'w').write(driver)
+        makefile = open(pjoin(born_dir, 'makefile')).read()
+        makefile += (
+            '\nGSCALETEST= $(RUN) test_born_gscale.o BinothLHADummy.o '
+            'pythia8_fortran_dummy.o write_event.o handling_lhe_events.o\n'
+            'test_born_gscale: $(GSCALETEST) mint_module.o\n'
+            '\t$(FC) $(LDFLAGS) -o test_born_gscale $(GSCALETEST) '
+            '$(APPLLIBS) $(LINKLIBS) $(FO_EXTRAPATHS) $(FO_EXTRALIBS) '
+            '$(FJLIBS)\n'
+            'test_born_gscale.o: mint_module.o\n')
+        open(pjoin(born_dir, 'makefile_gscale'), 'w').write(makefile)
+        misc.compile(['-f', 'makefile_gscale', 'test_born_gscale'],
+                     cwd=born_dir)
+        out = subprocess.check_output(
+            [pjoin(born_dir, 'test_born_gscale')], cwd=born_dir,
+            stderr=subprocess.STDOUT).decode(errors='replace')
+
+        npoints = int(re.search(r'GSCALE NPOINTS\s+(\d+)', out).group(1))
+        self.assertGreater(npoints, 1, out)
+        modes = {}
+        for mode, worst, count in re.findall(
+                r'GSCALE MODE\s+(\d)\s+(\S+)\s+(\d+)', out):
+            modes[int(mode)] = (float(worst), int(count))
+        self.assertEqual(sorted(modes), [0, 1, 2, 3], out)
+        for mode in (0, 1, 2):
+            worst, count = modes[mode]
+            # every point went through the rescaling ...
+            self.assertEqual(count, npoints, 'mode %d: %s' % (mode, out))
+            # ... and agrees with the fresh evaluation
+            self.assertLess(worst, 1e-12, 'mode %d: %s' % (mode, out))
+        worst, count = modes[3]
+        # refusal: never rescaled, identical to a fresh evaluation with
+        # the changed coupling, which does change the Born
+        self.assertEqual(count, 0, out)
+        self.assertEqual(worst, 0., out)
+        shift = float(re.search(r'GSCALE REFUSAL_SHIFT\s+(\S+)',
+                                out).group(1))
+        self.assertGreater(shift, 1e-6, out)
+
 
 if __name__ == '__main__':
     unittest.main()

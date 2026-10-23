@@ -726,16 +726,11 @@ class MG7CmdTest(unittest.TestCase):
         self.assertNotIn('run', obj.modified_card)
         self.generic_do_set.assert_not_called()
 
-    def test_set_madevent_beam_and_scale_names(self):
-        """ebeam, the integer scale/strategy codes, maxjetflavor and the
-        per-pdg cuts are translated. The generic editor rejected the first
-        and aborted a launch script on the integer codes."""
+    def test_set_madevent_scale_and_pdg_names(self):
+        """the integer scale/strategy codes, maxjetflavor and the per-pdg
+        cuts are translated. The generic editor aborted a launch script on
+        the integer codes."""
         obj = self.cut_selector()
-        obj.do_set('ebeam1 6800')
-        obj.do_set('run_card ebeam2 6800')
-        self.assertAlmostEqual(obj.run_card['beam']['e_cm'], 13600.)
-        obj.do_set('ebeam 7 TeV')
-        self.assertAlmostEqual(obj.run_card['beam']['e_cm'], 14000.)
         obj.do_set('dynamical_scale_choice 1')
         self.assertEqual(obj.run_card['beam']['dynamical_scale_choice'],
                          'transverse_energy')
@@ -758,16 +753,37 @@ class MG7CmdTest(unittest.TestCase):
         obj.do_set('dynamical_scale_choice HT/4')
         self.assertEqual(self.generic_do_set.call_count, 3)
 
-    def test_asymmetric_beams_are_reported_when_the_question_closes(self):
+    def test_per_beam_fixed_fac_scale_is_reported_when_the_question_closes(self):
         obj = self.cut_selector()
         parent = type(obj).__mro__[1]
         with mock.patch.object(parent, 'check_card_consistency'):
-            obj.do_set('ebeam1 7000')
-            obj.do_set('ebeam2 4000')
+            obj.do_set('fixed_fac_scale1 T')
+            obj.do_set('fixed_fac_scale2 F')
             with self.assertLogs('madgraph7', level='WARNING') as logs:
                 obj.check_card_consistency()
         self.assertEqual(len(logs.output), 1)
-        self.assertIn('ebeam1 = 7000 GeV and ebeam2 = 4000 GeV', logs.output[0])
+        self.assertIn('fixed_fac_scale1 = True and fixed_fac_scale2 = False',
+                      logs.output[0])
+
+    def test_set_madevent_beam_names(self):
+        """set ebeam1/ebeam/pdlabel2/lpp, as a madevent launch script writes
+        them, edit the per-beam [beam] entries"""
+        obj = self.histogram_selector()
+        obj.do_set('ebeam 6.8 TeV')
+        obj.do_set('ebeam1 7 TeV')
+        obj.do_set('pdlabel2 cteq6l1')
+        obj.do_set('lpp 1')
+        beam = obj.run_card['beam']
+        self.assertEqual((beam['ebeam1'], beam['ebeam2']), (7000.0, 6800.0))
+        self.assertEqual(beam['pdf2'], 'cteq6l1')
+        self.assertNotEqual(beam['pdf1'], 'cteq6l1')
+        self.assertFalse(beam['leptonic'])
+        self.assertIn('run', obj.modified_card)
+        # a value mg7 cannot represent leaves the card alone
+        obj.modified_card.clear()
+        obj.do_set('pdlabel1 none')
+        self.assertNotEqual(obj.run_card['beam']['pdf1'], 'none')
+        self.assertNotIn('run', obj.modified_card)
 
     def test_no_post_processing_keeps_the_npy_output(self):
         self.assertEqual(self.output_format({}), 'compact_npy')
@@ -820,7 +836,10 @@ class MG7CmdTest(unittest.TestCase):
         try:
             process = self.launch.MadgraphProcess.__new__(
                 self.launch.MadgraphProcess)
-            process.run_card = {"run": {"run_name": "run"}}
+            process.run_card = {
+                "run": {"run_name": "run"},
+                "gridpack": {"output_dir": "", "temp_output_dir": ""},
+            }
             process.init_event_dir()
         finally:
             os.chdir(cwd)
@@ -881,7 +900,7 @@ class MG7CmdTest(unittest.TestCase):
         """End to end: the dependent parameters of the param_card are the ones
         the model computes from the free ones (here M_W from G_F/M_Z/alpha)."""
         from madgraph.interface.common_run_interface import AskforEditCard
-        from models.check_param_card import ParamCard
+        from madgraph.models.check_param_card import ParamCard
 
         self.write_model_txt(os.path.join(_MG_ROOT, 'models', 'sm'))
         path = os.path.join(self.me_dir, 'Cards', 'param_card.dat')
@@ -907,7 +926,7 @@ class MG7CmdTest(unittest.TestCase):
 
         self.write_model_txt(os.path.join(_MG_ROOT, 'models', 'sm'))
         self.launch._model_cache.clear()
-        with mock.patch('models.import_ufo.import_model',
+        with mock.patch('madgraph.models.import_ufo.import_model',
                         side_effect=TimeOutError):
             self.assertRaises(TimeOutError, self.launch.load_process_model,
                               self.me_dir)
@@ -1067,6 +1086,59 @@ class TestPostProcessingIsSkippedWhenThereIsNothingToDo(unittest.TestCase):
         # _find_event_file would fail on the fake path, and MG7RunCmd would
         # fail harder: returning early means neither is reached
         launch.run_selected_tools(switch, _Process())
+
+
+class TestPostProcessingResultsStayInMemory(unittest.TestCase):
+    """The tool drivers book their runs in a madevent results database, which
+    madevent writes to HTML/results.pkl and renders as crossx.html. The mg7
+    output has no HTML/ directory: store_result, at the end of every
+    post-processing run, logged "ERROR: I/O error (2): No such file or
+    directory", and a stale crossx.html was left at the process root.
+    """
+
+    def setUp(self):
+        import io
+
+        self.path = tempfile.mkdtemp(prefix='mg7_results_')
+        os.mkdir(os.path.join(self.path, 'Events'))
+        self.captured = io.StringIO()
+        self.handler = logging.StreamHandler(self.captured)
+        self.logger = logging.getLogger('madgraph.files')
+        self.logger.addHandler(self.handler)
+
+    def tearDown(self):
+        self.logger.removeHandler(self.handler)
+        shutil.rmtree(self.path)
+
+    def test_store_result_bookkeeping_writes_nothing(self):
+        import madgraph.various.banner as banner_mod
+        from madgraph.iolibs.template_files.mg7.run_interface import MG7RunCmd
+
+        # load_results_db only needs me_dir, process and the model name
+        # (__del__ reads the other two); building a real MG7RunCmd needs a
+        # whole mg7 output
+        cmd = object.__new__(MG7RunCmd)
+        cmd.stop_for_runweb = False
+        cmd.force_run = True
+        cmd.me_dir = self.path
+        cmd.process = ['p p > t t~']
+        cmd.find_model_name = lambda: 'sm'
+        cmd.load_results_db()
+
+        run_card = banner_mod.RunCardMG7()
+        run_card['run_tag'] = 'tag_1'
+        # what set_run_name, do_decay_events and store_result do with it
+        cmd.results.add_run('run_01', run_card)
+        cmd.results.add_run('run_01_decayed_1', run_card)
+        cmd.results.add_detail('nb_event', 200)
+        cmd.results.update('MadSpin Done', 'parton', makehtml=True)
+        cmd.results.update('Done', 'pythia', makehtml=False, error=True)
+        cmd.results.save()
+
+        self.assertEqual(self.captured.getvalue(), '')
+        self.assertEqual(os.listdir(self.path), ['Events'])
+        self.assertEqual(cmd.results.current['run_name'], 'run_01_decayed_1')
+        self.assertEqual(cmd.results.current['nb_event'], 200)
 
 
 @unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
@@ -1234,12 +1306,12 @@ class TestForceLHEOutput(unittest.TestCase):
     def test_scan_card_survives(self):
         """A scan value is not a valid RunCardMG7 entry: the card is edited
         as text, and only on its output_format line."""
-        self.edit('e_cm = 13000.0', 'e_cm = "scan:[13000, 14000]"')
+        self.edit('ebeam1 = 6500.0', 'ebeam1 = "scan:[6500, 7000]"')
         self.launch.force_lhe_output_if_needed({})
         self.launch.force_lhe_output_if_needed({'madspin': 'ON'})
         self.assertEqual(self.output_format(), 'lhe')
         with open(self.card) as f:
-            self.assertIn('e_cm = "scan:[13000, 14000]"', f.read())
+            self.assertIn('ebeam1 = "scan:[6500, 7000]"', f.read())
 
     def test_missing_output_format_line(self):
         with open(self.card, 'w') as f:

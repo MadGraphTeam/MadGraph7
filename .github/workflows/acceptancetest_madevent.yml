@@ -542,6 +542,22 @@ jobs:
             export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.10/dist-packages
             ./tests/test_manager.py  test_nlo_reweighting -pA -t0 -l INFO
 
+      # one process per test: two rw_me libraries in one python collide
+      - name: NLO-mode reweighting with a new parameter (rw_mevirt)
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/runner/.cache/HEPtools/lhapdf6_py3/lib
+            export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.12/dist-packages
+            export PYTHONPATH=$PYTHONPATH:~/.cache/HEPtools/lhapdf6_py3/lib/python3.10/dist-packages
+            ./tests/test_manager.py  test_nlo_reweighting_new_parameter -pA -t0 -l INFO
+
+      - name: failing reweighting run out of process
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py  test_reweighting_failure_out_of_process -pA -t0 -l INFO
+
 
   acceptancetest_madevent_bundle_8:
     # former jobs, run one after the other: acceptancetest_103_polarization

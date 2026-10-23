@@ -32,7 +32,7 @@ import madgraph.various.misc as misc
 from madgraph import MadGraph5Error
 import vendor.ply.lex as lex
 import vendor.ply.yacc as yacc
-import models.check_param_card as check_param_card
+import madgraph.models.check_param_card as check_param_card
 
 logger = logging.getLogger('madgraph.ufo_parsers')
 if madgraph.ordering:

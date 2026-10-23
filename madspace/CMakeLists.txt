@@ -213,6 +213,7 @@ add_library(
     src/driver/status_file.cpp
     src/driver/thread_pool.cpp
     src/driver/io.cpp
+    src/driver/tar.cpp
     src/driver/vegas_optimizer.cpp
     src/driver/discrete_optimizer.cpp
     src/driver/backend.cpp
@@ -240,6 +241,7 @@ add_library(
     src/phasespace/madnis.cpp
     src/phasespace/rambo.cpp
     src/phasespace/cuts.cpp
+    src/phasespace/custom_function.cpp
     src/phasespace/observable.cpp
     src/phasespace/histograms.cpp
     src/phasespace/chili.cpp
@@ -267,6 +269,7 @@ add_library(
     include/madspace/driver/channel_generator.hpp
     include/madspace/driver/generator_data.hpp
     include/madspace/driver/io.hpp
+    include/madspace/driver/tar.hpp
     include/madspace/driver/vegas_optimizer.hpp
     include/madspace/driver/discrete_optimizer.hpp
     include/madspace/driver/backend.hpp
@@ -533,6 +536,8 @@ python_add_library(
     ${MADSPACE_GENERATED_DIR}/python/docstrings.hpp
     src/python/function_runtime.cpp
     src/python/function_runtime.hpp
+    src/python/python_function.cpp
+    src/python/python_function.hpp
     WITH_SOABI
 )
 target_include_directories(_madspace_py PRIVATE ${MADSPACE_GENERATED_DIR}/python)

@@ -305,7 +305,7 @@ class Systematics(object):
         # For e+/e- type of collision initialise the running of alps
         if self.b1 == 0 == self.b2 or isEVA:
             try:
-                from models.model_reader import Alphas_Runner
+                from madgraph.models.model_reader import Alphas_Runner
             except ImportError:
                 root_path = pjoin(root, os.pardir, os.pardir)
                 try:
@@ -316,7 +316,7 @@ class Systematics(object):
                     cmd = me_int.Cmd(root_path,force_run=True)                
                 if 'mg5_path' in cmd.options and cmd.options['mg5_path']:
                     sys.path.append(cmd.options['mg5_path'])
-                from models.model_reader import Alphas_Runner
+                from madgraph.models.model_reader import Alphas_Runner
                 
             if not hasattr(self.banner, 'param_card'):
                 param_card = self.banner.charge_card('param_card')

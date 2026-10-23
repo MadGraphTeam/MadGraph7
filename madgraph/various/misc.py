@@ -1475,6 +1475,8 @@ def configure_gzip(configuration=None):
     configuration = {'use_pigz': None, 'nb_core': None} | configuration
 
     global _gzip_tool, _gzip_tool_supports_multithreading, _gzip_tool_max_cores
+    _gzip_tool_supports_multithreading = False
+    _gzip_tool_max_cores = None
 
     use_pigz = configuration['use_pigz']
     if use_pigz is None:
@@ -1482,15 +1484,16 @@ def configure_gzip(configuration=None):
         _gzip_tool = open_file.find_valid(['pigz', 'gzip'], 'gzip') 
     elif use_pigz:
         _gzip_tool = open_file.find_valid(['pigz'], 'pigz')
-        if not which(_gzip_tool):
-            logger.warning('Could not find valid `pigz` executable.')
+        if not _gzip_tool:
+            logger.warning('Could not find valid `pigz` executable; using gzip.')
+            _gzip_tool = open_file.find_valid(['gzip'], 'gzip')
     else:
         _gzip_tool = open_file.find_valid(['gzip'], 'gzip')
-        if not which(_gzip_tool):
+        if not _gzip_tool:
             logger.warning('Could not find valid `gzip` executable.')
 
     # If we use the pigz binary, enable multithreading support
-    if 'pigz' in _gzip_tool:
+    if _gzip_tool and 'pigz' in _gzip_tool:
         _gzip_tool_supports_multithreading = True
         if configuration['nb_core'] is not None:
             _gzip_tool_max_cores = configuration['nb_core']
@@ -1504,16 +1507,30 @@ def configure_gzip(configuration=None):
 GZIP_COMPRESSLEVEL = 6
 
 
+def _remove_partial_gz(path):
+    """Delete the truncated archive left behind by a failed compression."""
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
 def gzip(path, stdout=None, error=True, forceexternal=False,
-         compresslevel=GZIP_COMPRESSLEVEL):
+         compresslevel=GZIP_COMPRESSLEVEL, keep=False):
     """ a standard replacement for os.system('gzip %s ' % path)"""
 
     # For large files (>256M), it is faster and safer to use a separate tool.
-    if os.path.getsize(path) > 256e6 or forceexternal:
+    if _gzip_tool and (os.path.getsize(path) > 256e6 or forceexternal):
+        command = [_gzip_tool]
         if _gzip_tool_supports_multithreading and _gzip_tool_max_cores is not None:
-            call([_gzip_tool, '-p', str(_gzip_tool_max_cores), '-f', path])
-        else:
-            call([_gzip_tool, '-f', path])
+            command += ['-p', str(_gzip_tool_max_cores)]
+        if keep:
+            command.append('-k')
+        if call(command + ['-f', path]) != 0:
+            _remove_partial_gz('%s.gz' % path)
+            if error:
+                raise RuntimeError('compressing %s with %s failed' % (path, _gzip_tool))
+            return
 
         if stdout:
             if not stdout.endswith(".gz"):
@@ -1532,14 +1549,19 @@ def gzip(path, stdout=None, error=True, forceexternal=False,
         with open(path, 'rb') as fsock, \
              ziplib.open(stdout, 'wb', compresslevel=compresslevel) as f:
             shutil.copyfileobj(fsock, f, 4 * 1024 * 1024)
-    except OverflowError:
-        gzip(path, stdout, error=error, forceexternal=True)
-    except Exception:
-        if error:
+    except BaseException as err:
+        # Only a complete archive may replace the source: a failed or
+        # interrupted copy leaves no truncated .gz and keeps the source.
+        _remove_partial_gz(stdout)
+        if isinstance(err, OverflowError):
+            if not _gzip_tool:
+                raise
+            return gzip(path, stdout, error=error, forceexternal=True,
+                        compresslevel=compresslevel, keep=keep)
+        if error or not isinstance(err, Exception):
             raise
-        else:
-            return
-    finally:
+        return
+    if not keep:
         os.remove(path)
     
 #
@@ -2752,26 +2774,49 @@ def is_plugin_supported(obj):
     if name in plugin_support:
         return plugin_support[name]
     
-    # get MG5 version
+    # get the MadGraph7 version
     if '__mg5amcnlo__' in plugin_support:
         mg5_ver = plugin_support['__mg5amcnlo__']
     else:
         info = get_pkg_info()
         mg5_ver = info['version'].split('.')
-    try:
-        min_ver = obj.minimal_mg5amcnlo_version
-        max_ver = obj.maximal_mg5amcnlo_version
-        val_ver = obj.latest_validated_version
-    except:
-        logger.error("Plugin %s misses some required info to be valid. It is therefore discarded" % name)
+
+    # A MadGraph7 plugin gives the range of MadGraph7 versions it supports
+    # with minimal_mg7_version and maximal_mg7_version (and optionally
+    # latest_validated_mg7_version). The MG5_aMC@NLO attributes
+    # (minimal_mg5amcnlo_version, ...) refer to the MG5_aMC@NLO numbering,
+    # which can not be compared to the MadGraph7 one.
+    if hasattr(obj, 'minimal_mg7_version') or hasattr(obj, 'maximal_mg7_version'):
+        try:
+            min_ver = obj.minimal_mg7_version
+            max_ver = obj.maximal_mg7_version
+        except AttributeError:
+            logger.error("Plugin %s defines only one of minimal_mg7_version and "
+                         "maximal_mg7_version. It is therefore discarded" % name)
+            plugin_support[name] = False
+            return False
+        val_ver = getattr(obj, 'latest_validated_mg7_version',
+                          getattr(obj, 'latest_validated_version', None))
+    elif hasattr(obj, 'minimal_mg5amcnlo_version') and \
+                                    hasattr(obj, 'maximal_mg5amcnlo_version'):
+        logger.warning("Plugin %s only gives the MG5_aMC@NLO versions it supports "
+                       "(minimal_mg5amcnlo_version, maximal_mg5amcnlo_version). It "
+                       "is used without version check. Define minimal_mg7_version "
+                       "and maximal_mg7_version for MadGraph7." % name)
+        plugin_support[name] = True
+        return True
+    else:
+        logger.error("Plugin %s misses some required info to be valid "
+                     "(minimal_mg7_version, maximal_mg7_version). It is therefore "
+                     "discarded" % name)
         plugin_support[name] = False
-        return
+        return False
     
     logger.debug("Validating plugin against this version: %s." % '.'.join(str(i) for i in mg5_ver) )
     if get_older_version(min_ver, mg5_ver) == min_ver and \
        get_older_version(mg5_ver, max_ver) == mg5_ver:
         plugin_support[name] = True
-        if get_older_version(mg5_ver, val_ver) == val_ver:
+        if val_ver and get_older_version(mg5_ver, val_ver) == val_ver:
             logger.warning("""Plugin %s has marked as NOT being validated with this version: %s. 
 It has been validated for the last time with version: %s""",
 			   name, '.'.join(str(i) for i in mg5_ver), '.'.join(str(i) for i in val_ver) )
@@ -2852,43 +2897,85 @@ def plugin_import(module, error_msg, fcts=[]):
     else:
         return [getattr(_temp,name) for name in fcts]
 
+def iter_plugins(plugin_path, warning=False, only=None):
+    """yield (name, module) for each plugin of the plugin directories that can
+    be imported (with a warning for the others if warning is set). If only is
+    set, consider only the plugin of that name.
+    The support of the plugin for this version is not checked here."""
+
+    for plugpath in plugin_path:
+        plugindirname = os.path.basename(plugpath)
+        for plug in os.listdir(plugpath):
+            if only is not None and plug != only:
+                continue
+            if not os.path.exists(pjoin(plugpath, plug, '__init__.py')):
+                continue
+            try:
+                with stdchannel_redirected(sys.stdout, os.devnull):
+                    __import__('%s.%s' % (plugindirname, plug))
+            except Exception as error:
+                if warning:
+                    logger.warning("error detected in plugin: %s.", plug)
+                    logger.warning("%s", error)
+                continue
+            yield plug, sys.modules['%s.%s' % (plugindirname, plug)]
+
 def from_plugin_import(plugin_path, target_type, keyname=None, warning=False,
                        info=None):
     """return the class associated with keyname for a given plugin class
     if keyname is None, return all the name associated"""
     
     validname = []
-    for plugpath in plugin_path:
-        plugindirname = os.path.basename(plugpath)
-        for plug in os.listdir(plugpath):
-            if os.path.exists(pjoin(plugpath, plug, '__init__.py')):
-                try:
-                    with stdchannel_redirected(sys.stdout, os.devnull):
-                        __import__('%s.%s' % (plugindirname,plug))
-                except Exception as error:
-                    if warning:
-                        logger.warning("error detected in plugin: %s.", plug)
-                        logger.warning("%s", error)
-                    continue
-                plugin = sys.modules['%s.%s' % (plugindirname,plug)] 
-                if hasattr(plugin, target_type):
-                    if not is_plugin_supported(plugin):
-                        continue
-                    if keyname is None:
-                        validname += list(getattr(plugin, target_type).keys())
+    for plug, plugin in iter_plugins(plugin_path, warning):
+        if hasattr(plugin, target_type):
+            if not is_plugin_supported(plugin):
+                continue
+            if keyname is None:
+                validname += list(getattr(plugin, target_type).keys())
+            else:
+                if keyname in getattr(plugin, target_type):
+                    if not info:
+                        logger.info('Using from plugin %s mode %s' % (plug, keyname), '$MG:BOLD')
                     else:
-                        if keyname in getattr(plugin, target_type):
-                            if not info:
-                                logger.info('Using from plugin %s mode %s' % (plug, keyname), '$MG:BOLD')
-                            else:
-                                logger.info(info % {'plug': plug, 'key':keyname}, '$MG:BOLD')
-                            return getattr(plugin, target_type)[keyname]
+                        logger.info(info % {'plug': plug, 'key':keyname}, '$MG:BOLD')
+                    return getattr(plugin, target_type)[keyname]
                         
     if not keyname:
         return validname
     
     
     
+def plugin_diagram_filter(plugin_path, name):
+    """return the diagram filter function of the plugin called `name` (the
+    `new_diagram_filter` attribute of its __init__.py, a function
+    remove_diag(diag, model) returning True for the diagrams to remove; one
+    filter per plugin, selected by the name of the plugin).
+    If name is None, return the names of the plugins providing one.
+    Raise MadGraph5Error if the plugin does not provide a valid filter."""
+
+    if name is None:
+        return [plug for plug, plugin in iter_plugins(plugin_path)
+                if callable(getattr(plugin, 'new_diagram_filter', None)) and
+                   is_plugin_supported(plugin)]
+
+    if not name:
+        raise MadGraph5Error("No plugin name given for the diagram filter "
+                             "(--diagram_filter=PLUGINNAME).")
+    for plug, plugin in iter_plugins(plugin_path, warning=True, only=name):
+        if not hasattr(plugin, 'new_diagram_filter'):
+            raise MadGraph5Error("Plugin %s does not provide a diagram filter "
+                                 "(new_diagram_filter in its __init__.py)." % name)
+        if not is_plugin_supported(plugin):
+            raise MadGraph5Error("Plugin %s is not supported by this version "
+                                 "of MadGraph7." % name)
+        filter_fct = plugin.new_diagram_filter
+        if not callable(filter_fct):
+            raise MadGraph5Error("new_diagram_filter of plugin %s must be a "
+                   "function remove_diag(diag, model), not %r" % (name, filter_fct))
+        logger.info('Using diagram filter from plugin %s' % name, '$MG:BOLD')
+        return filter_fct
+    raise MadGraph5Error("No plugin '%s' found (or it can not be imported) to "
+                         "provide the diagram filter." % name)
 
 #===============================================================================
 # LHAPDF locations
