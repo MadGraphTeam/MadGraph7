@@ -790,6 +790,10 @@ def test_symbolic_mass_bound_to_zero_at_rounded_momenta(
             {"QCD": 2, "QED": 0},
             {"QCD": 4, "QED": 0},
             fixed_parameters={"WT": "0"},
+            # The CT recursion's lowered couplings refuse a symbolic mass
+            # bound to 0 (ct_recursion: they assume it non-zero); the site
+            # closure binds it at runtime.
+            counterterms="sites",
         ),
         loop_native,
     )
