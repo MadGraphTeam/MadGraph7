@@ -847,8 +847,9 @@ def test_six_gluon_generation_completes_in_a_fresh_interpreter(
     new interpreter; O6 at the CT level at the first point of the
     three-provider reference, and the R2 component of both routes against
     MadLoop's (an independent oracle of the four-gluon R2 at six legs).
-    About two hours: the per-point Python closure of the CT program takes
-    over 80 minutes at six gluons, the sites 21 (2026-10-23)."""
+    About an hour (2026-10-23): generation 6 and 3 minutes, the first
+    CT-level point 26 (recursion, with the program's row build) and 21
+    minutes (sites)."""
 
     import ast
     import json
