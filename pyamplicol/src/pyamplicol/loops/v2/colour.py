@@ -1971,6 +1971,9 @@ def _extended(
     orders: list[set[Orders]] = [set(row) for row in table.orders]
     class_of = dict(class_of)
 
+    # x of a seed against its class's scale, by (scale, class scale).
+    ratios: dict[tuple[ExactColorCoefficient, ExactColorCoefficient], Any] = {}
+
     def row(seed: Hashable, order: Orders) -> tuple[int, ExactColorCoefficient]:
         """(class, x) with seed = x kappa_class."""
 
@@ -1982,7 +1985,11 @@ def _extended(
             scales.append(scale)
             orders.append(set())
         orders[c].add(order)
-        return c, _ratio(scale, scales[c])
+        pair = (scale, scales[c])
+        ratio = ratios.get(pair)
+        if ratio is None:
+            ratio = ratios[pair] = _ONE if pair[0] == pair[1] else _ratio(*pair)
+        return c, ratio
 
     # Rows of shared (memoised) combinations, by identity and loop order.
     rows: dict[tuple[int, Orders], tuple[SeedCombination, Combination]] = {}
@@ -2003,7 +2010,8 @@ def _extended(
         merged: dict[int, ExactColorCoefficient] = {}
         for seed, x in combination:
             c, factor = row(seed, skeleton.orders)
-            merged[c] = merged.get(c, ExactColorCoefficient()) + x * factor
+            term = x if factor is _ONE else x * factor
+            merged[c] = merged[c] + term if c in merged else term
         class_of[skeleton] = tuple(merged.items())
         rows[id(combination), skeleton.orders] = (class_of[skeleton], combination)
     classes = tuple(classes)

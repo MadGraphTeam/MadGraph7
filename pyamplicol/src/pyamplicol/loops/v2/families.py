@@ -135,6 +135,15 @@ class Position:
 
     vertex: LoopVertex
     blocks: tuple[BlockCurrent, ...]  # sorted by mask
+    _hash: int | None = field(default=None, init=False, repr=False, compare=False)
+
+    def __hash__(self) -> int:
+        if self._hash is None:
+            object.__setattr__(self, "_hash", hash((self.vertex, self.blocks)))
+        return self._hash  # type: ignore[return-value]
+
+    def __reduce__(self):
+        return Position, (self.vertex, self.blocks)
 
     @property
     def mask(self) -> int:
