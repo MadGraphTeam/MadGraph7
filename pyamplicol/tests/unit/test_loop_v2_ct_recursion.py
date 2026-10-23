@@ -422,6 +422,7 @@ def test_constant_factors_are_decided_not_assumed():
     runtime check decides every assumption, builtin constants included, and
     still refuses parameters that make one vanish or singular."""
 
+    import re
     from dataclasses import replace
     from types import SimpleNamespace
 
@@ -432,7 +433,6 @@ def test_constant_factors_are_decided_not_assumed():
         CoefficientLowering,
         CountertermCouplingError,
         CountertermModel,
-        decide_constant,
     )
 
     # The helper resolution alone (UFO function bindings value_0 = cond,
@@ -448,21 +448,14 @@ def test_constant_factors_are_decided_not_assumed():
     lowering._resolve(E(f"{helper}1(4*𝜋*UFO::{{}}::MU_R^2/UFO::{{}}::MW^2)"))
     assert lowering.assumptions == {"UFO::{}::MU_R^2*UFO::{}::MW^(-2)"}
     # cond(0, 1, reglog(MZ)): the untaken branch's argument is no assumption.
-    assert lowering._resolve(
-        E(f"{helper}0(0, 1, {helper}1(UFO::{{}}::MZ))")
-    ) == E("1")
+    assert lowering._resolve(E(f"{helper}0(0, 1, {helper}1(UFO::{{}}::MZ))")) == E("1")
     assert lowering.assumptions == {"UFO::{}::MU_R^2*UFO::{}::MW^(-2)"}
     assert lowering._resolve(E(f"{helper}1(0)")) == E("0")
     with pytest.raises(CountertermCouplingError, match="undecided"):
         lowering._resolve(E(f"{helper}1(sin(𝜋)*UFO::{{}}::MW)"))
 
-    assert [
-        decide_constant(E(value))
-        for value in ("2*𝜋", "1/(4*𝜋)", "0", "0.0", "𝜋-𝜋", "0^(-2)", "sin(𝜋)")
-    ] == ["non-zero"] * 2 + ["zero"] * 3 + ["singular", "undecided"]
-
-    # Records of an earlier lowering (or of another model) may still carry
-    # constant assumptions: the runtime check decides them as well.
+    # The runtime check decides assumptions with builtin constants too (with
+    # or without model parameters next to them).
     defaults = {"MT": (173.0, 0.0), "MU_R": (91.188, 0.0)}
     model = CountertermModel(
         lowered=SimpleNamespace(compiled=SimpleNamespace(parameter_defaults=defaults)),
@@ -478,15 +471,20 @@ def test_constant_factors_are_decided_not_assumed():
     )
     model.check_parameters({})
     model.check_parameters({"MT": 4.5, "MU_R": 1000.0})
-    with pytest.raises(ValueError, match="make UFO::{}::MT vanish"):
+    with pytest.raises(ValueError, match=re.escape("make UFO::{}::MT vanish")):
         model.check_parameters({"MT": 0.0})
     with pytest.raises(ValueError, match="singular"):
-        replace(model, assumptions=model.assumptions[2:3]).check_parameters(
-            {"MT": 0.0}
-        )
+        replace(model, assumptions=model.assumptions[2:3]).check_parameters({"MT": 0.0})
     undecided = replace(model, assumptions=("sin(𝜋)*UFO::{}::MT",))
     with pytest.raises(ValueError, match="cannot decide"):
         undecided.check_parameters({})
+
+    from pyamplicol.loops.v2.ct_recursion import decide_constant
+
+    assert [
+        decide_constant(E(value))
+        for value in ("2*𝜋", "1/(4*𝜋)", "0", "0.0", "𝜋-𝜋", "0^(-2)", "sin(𝜋)")
+    ] == ["non-zero"] * 2 + ["zero"] * 3 + ["singular", "undecided"]
 
 
 @pytest.mark.loop_fast

@@ -398,8 +398,9 @@ _DECISION_DIGITS = 40
 def decide_constant(value: Any) -> str:
     """Whether ``value``, an expression free of model parameters, vanishes.
 
-    ``value`` holds numbers, builtin constants (``𝜋``, ``𝑒``, ``𝑖``) and
-    builtin functions of them (``Expression.is_constant``). Returns
+    ``value`` holds numbers, builtin constants (``𝜋``, Euler's number, the
+    imaginary unit) and builtin functions of them
+    (``Expression.is_constant``). Returns
 
     * ``"zero"`` or ``"non-zero"``: decided. A number (rational or
       floating-point) is compared with 0 exactly. Any other expression is
