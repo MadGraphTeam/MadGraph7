@@ -10,8 +10,9 @@ the bucket-streamed NinjaRS reduction. Checks:
 * family numerators equal the Python reference executor's (schedule B, same
   trie frames): within 1e-13 of each column's largest coefficient in
   binary64 (every fixture point) and to the working precision in arbitrary
-  precision, on the slice processes and gg -> ggg, uu~ -> ggg, uu~ -> e-e+gg
-  and uu~ -> uu~g, with every step fused, split where it can, or as the rule
+  precision, on the slice processes and gg -> ggg, uu~ -> ggg, uu~ -> e-e+gg,
+  uu~ -> uu~g and uu~ -> tt~ (open top lines through the loop, read with the
+  flipped mass), with every step fused, split where it can, or as the rule
   chooses;
 * the native rational carrier reproduces the Python exact run bit for bit
   (identical kernels, seeds and leaf weights) in both kernel forms, and
@@ -109,6 +110,13 @@ PROCESSES = {
         {"QCD": 3, "QED": 0},
         lambda: _points("legacy/uux_uuxg.json"),
     ),
+    # Open massive quark lines through the loop: the tree reading flips the
+    # top mass in their segments (``reference_executor.mass_flips``).
+    "uux_ttx": (
+        "u u~ > t t~",
+        {"QCD": 2, "QED": 0},
+        lambda: _points("legacy/tt.json"),
+    ),
     # The massless five-point momenta of the u u~ -> ggg reference.
     "gg_ggg": (
         "g g > g g g",
@@ -130,7 +138,7 @@ PROCESSES = {
 # are exactly vanishing families (Furry, ``CERTIFIED_ZEROS``); the Z's axial
 # coupling would keep them (``test_loop_v2_axial``).
 IGNORED = {"uux_emepgg": (23,)}
-SLICE = ("gg_gg", "uux_ddxg", "uux_uux", "uux_uuxg")
+SLICE = ("gg_gg", "uux_ddxg", "uux_uux", "uux_uuxg", "uux_ttx")
 EXTRA = ("gg_ggg", "uux_ggg", "uux_emepgg")
 
 

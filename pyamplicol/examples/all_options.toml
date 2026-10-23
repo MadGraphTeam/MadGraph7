@@ -85,6 +85,10 @@ QED = 2
 # loop.r2_strategy: "auto", "model" (model-supplied UV/R2 rules), or "direct".
 # Default auto, which selects a complete eligible R2 branch of the artifact.
 r2_strategy = "auto"
+# loop.engine: One-loop engine of virtual generation: "legacy" (per-diagram
+# engine, the oracle until gate R3) or "v2" (shared-recursion engine, plan v4
+# artifacts with finite-only evaluation and stability checks). Default legacy.
+engine = "legacy"
 # loop.model: Optional whole override of the source model's NLO declaration.
 # Default absent (use the source declaration). A supplied declaration needs all
 # of loop_coupling_orders, uv_complete, model_r2_complete and the seven scheme
@@ -303,6 +307,10 @@ color_flow_ids = []
 model_parameters = "data/model_parameters.json"
 # evaluation.momenta: Optional JSON phase-space points path. Default null.
 momenta = "data/pp_zjj_momenta.json"
+# evaluation.poles: v2 virtuals: the pole selection. "all" also computes the
+# 1/eps and 1/eps^2 coefficients; "none" evaluates the finite part only (the
+# poles are absent). Default "all".
+poles = "all"
 
 [evaluation.stability]
 # evaluation.stability.higher: Optional virtual evaluate rescue carriers, in
@@ -318,6 +326,18 @@ higher = []
 # evaluation.stability.verify_successful: Also verify initially successful
 # points with the higher carriers. Default false.
 verify_successful = false
+
+[evaluation.stability_checks]
+# Stability checks of v2 virtual evaluations; with none, no estimate is returned.
+# evaluation.stability_checks.rotations: Exact rotations, "<x|y|z>:<cos>:<sin>"
+# (e.g. "z:3/5:4/5") or "<ax>,<ay>,<az>:<radians>". Default empty.
+rotations = []
+# evaluation.stability_checks.rotation_count: Number of default rotations
+# instead of an explicit list. Default 0.
+rotation_count = 0
+# evaluation.stability_checks.reduction_direction: Re-reduce every loop
+# numerator in a reversed frame (cached masters). Default false.
+reduction_direction = false
 
 [benchmark]
 # benchmark.target_runtime: Positive target duration in seconds. Default 10.0.

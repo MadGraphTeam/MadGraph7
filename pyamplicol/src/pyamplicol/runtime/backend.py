@@ -18,6 +18,7 @@ from pyamplicol._internal.versions import (
     COMPILED_RUNTIME_SELECTORS_CAPABILITY,
     EAGER_RUNTIME_LAYOUT_F64_CAPABILITY,
     LOOP_RUNTIME_CAPABILITY,
+    LOOP_V2_RUNTIME_CAPABILITY,
     ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
     ON_THE_FLY_RUNTIME_CAPABILITY,
@@ -1928,9 +1929,23 @@ def load_runtime_backend(
         if (manifest_root / MANIFEST_NAME).is_file()
         else None
     )
-    if manifest is not None and LOOP_RUNTIME_CAPABILITY in cast(
-        tuple[str, ...], manifest.runtime["required_runtime_capabilities"]
-    ):
+    capabilities = (
+        ()
+        if manifest is None
+        else cast(tuple[str, ...], manifest.runtime["required_runtime_capabilities"])
+    )
+    if LOOP_V2_RUNTIME_CAPABILITY in capabilities:
+        from pyamplicol.loops.v2.artifact import V2VirtualRuntime
+
+        # The v2 loader verifies every payload and the regenerated plan v4.
+        return cast(Callable[..., RuntimeBackend], V2VirtualRuntime)(
+            path,
+            process=process,
+            model_parameters=parameters,
+            mute_warnings=mute_warnings,
+            **options,
+        )
+    if LOOP_RUNTIME_CAPABILITY in capabilities:
         from .virtual import VirtualRuntimeBackend
 
         # This is only a dispatch hint. The virtual native loader authenticates

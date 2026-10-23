@@ -73,6 +73,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
+from copy import copy
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from functools import cache, cached_property, lru_cache
@@ -511,6 +512,33 @@ def _decode(
             word = rotated[start + 1 : stop]
             strings.append(OpenColorString(lower, tuple(reversed(word)), upper))
     return ColorTensor(tuple(strings), tuple(traces))
+
+
+def literal_network(
+    tensor: ConnectedColorTensor, rename: Callable[[int], Label] = lambda label: label
+) -> ColourNetwork:
+    """A literal colour tensor as a colour network, labels renamed by
+    ``rename`` (the inverse of ``reduce_network``'s decoding: a literal
+    trace is the reversed network trace, ``OpenColorString(q, w, qbar)`` the
+    network string with row ``qbar``, word reversed(w) and column ``q``).
+    Renaming two labels to one internal label contracts them in
+    ``reduce_network``. The tensor's 1/sqrt(2) normalisation is not carried."""
+
+    out = []
+    for term in tensor.terms:
+        strings = tuple(
+            ColourString(
+                rename(string.antifundamental_label),
+                tuple(rename(a) for a in reversed(string.adjoint_labels)),
+                rename(string.fundamental_label),
+            )
+            for string in term.tensor.open_strings
+        )
+        traces = tuple(
+            tuple(rename(a) for a in reversed(trace)) for trace in term.tensor.traces
+        )
+        out.append(ColourProduct(term.coefficient, strings, traces, term.nc_power))
+    return tuple(out)
 
 
 # ------------------------------------------------------------------ seed classes
@@ -2075,12 +2103,39 @@ def _extended(
         rows[id(combination), skeleton.orders] = (class_of[skeleton], combination)
     classes = tuple(classes)
     cells = list(table.cells)
-    # Term-factored (design §7.2): <b|t> once per distinct structure t.
+    cells.extend(seed_cells(basis, classes[len(cells) :]))
+    return (
+        replace(
+            table,
+            classes=classes,
+            orders=tuple(map(frozenset, orders)),
+            cells=tuple(cells),
+        ),
+        class_of,
+    )
+
+
+def seed_cells(
+    basis: BornBasis,
+    classes: Sequence[ConnectedColorTensor | Primitive],
+    primitive_cells: _PrimitiveCells | None = None,
+) -> tuple[tuple[Laurent, ...], ...]:
+    """The cells <b|kappa_c> of ``classes`` against every tensor b of
+    ``basis``: certified primitives by integer cycle counting
+    (``_PrimitiveCells``, or the given one, whose caches it extends), generic
+    classes term-factored (design §7.2: <b|t> once per distinct structure t).
+    The tensors of ``basis`` may be any literal tensors on the Born legs,
+    e.g. the operator images of a directed colour history (design §7.7)."""
+
+    if primitive_cells is None:
+        primitive_cells = _PrimitiveCells(basis)
+    elif primitive_cells.basis is not basis:
+        raise ValueError("primitive cells of another basis")
     overlaps: dict[ColorTensor, tuple[Laurent, ...]] = {}
-    primitive_cells = _PrimitiveCells(basis)
-    for seed in classes[len(cells) :]:
+    out = []
+    for seed in classes:
         if isinstance(seed, Primitive):
-            cells.append(primitive_cells(seed))
+            out.append(primitive_cells(seed))
             continue
         if seed.normalization_power:
             raise ValueError("a seed class carries an irrational sqrt(2) factor")
@@ -2097,21 +2152,13 @@ def _extended(
                     cell[key] = cell.get(key, ExactColorCoefficient()) + (
                         term.coefficient * value
                     )
-        cells.append(
+        out.append(
             tuple(
                 {power: value for power, value in cell.items() if value}
                 for cell in row_cells
             )
         )
-    return (
-        replace(
-            table,
-            classes=classes,
-            orders=tuple(map(frozenset, orders)),
-            cells=tuple(cells),
-        ),
-        class_of,
-    )
+    return tuple(out)
 
 
 class _ClassKeys:
@@ -2203,6 +2250,19 @@ class _PrimitiveCells:
         self._relabellings: dict[tuple, tuple[int, ...]] = {}
         self._rings: dict[Primitive, int] = {}
         self._ring_cells: dict[tuple[int, int], Laurent] = {}
+
+    def rebased(self, basis: BornBasis) -> _PrimitiveCells:
+        """The cells against another basis on the same legs, sharing this
+        one's caches: cached overlaps are keyed by the relabelled tensors
+        themselves, not by their position in a basis (only the relabelling
+        index of the basis is rebuilt)."""
+
+        if basis.legs != self.basis.legs:
+            raise ValueError("rebased primitive cells need the same colour legs")
+        other = copy(self)
+        other.basis = basis
+        other._relabellings = {}
+        return other
 
     def __call__(self, primitive: Primitive) -> tuple[Laurent, ...]:
         if primitive.kind == "quark-ring":
@@ -2982,10 +3042,12 @@ __all__ = [
     "face_count",
     "face_degree",
     "kept",
+    "literal_network",
     "multiply",
     "project",
     "reduce_network",
     "relabel",
+    "seed_cells",
     "seed_fourier",
     "spenso_colour_network",
 ]

@@ -344,6 +344,7 @@ fn export_evaluation<T: Exchanged + Real>(
     }
 }
 
+#[derive(Clone, Copy)]
 enum Carriers {
     Double,
     DoubleDouble,
@@ -364,27 +365,32 @@ struct V2Executor {
     trees: Option<Trees>,
 }
 
-impl V2Executor {
-    fn backend(&mut self) -> PyResult<&mut V2ReductionBackend> {
-        if self.backend.is_none() {
-            let reducer = match self.carrier {
-                Carriers::Double => runtime::V2Reducer::new("double", None, "fast", true),
-                Carriers::DoubleDouble => {
-                    runtime::V2Reducer::new("double-double", None, "generic", true)
-                }
-                Carriers::Arbitrary(digits) => {
-                    runtime::V2Reducer::new("arbitrary", Some(digits), "generic", true)
-                }
-                Carriers::Exact => {
-                    return Err(error("the exact carrier dresses numerators only"));
-                }
+/// The reduction backend of a carrier, built on first use. A free function
+/// of the backend slot, so an evaluation can borrow the executor alongside.
+fn backend_of(
+    slot: &mut Option<V2ReductionBackend>,
+    carrier: Carriers,
+) -> PyResult<&mut V2ReductionBackend> {
+    if slot.is_none() {
+        let reducer = match carrier {
+            Carriers::Double => runtime::V2Reducer::new("double", None, "fast", true),
+            Carriers::DoubleDouble => {
+                runtime::V2Reducer::new("double-double", None, "generic", true)
             }
-            .map_err(error)?;
-            self.backend = Some(V2ReductionBackend { reducer });
+            Carriers::Arbitrary(digits) => {
+                runtime::V2Reducer::new("arbitrary", Some(digits), "generic", true)
+            }
+            Carriers::Exact => {
+                return Err(error("the exact carrier dresses numerators only"));
+            }
         }
-        Ok(self.backend.as_mut().expect("backend"))
+        .map_err(error)?;
+        *slot = Some(V2ReductionBackend { reducer });
     }
+    Ok(slot.as_mut().expect("backend"))
+}
 
+impl V2Executor {
     fn bits(&self) -> PyResult<u32> {
         Ok(match self.carrier {
             Carriers::Double => 53,
@@ -675,19 +681,15 @@ impl V2Executor {
             options.part_chunks = chunks;
         }
         let bits = self.bits()?;
-        let carrier = match self.carrier {
-            Carriers::Double => 0,
-            Carriers::DoubleDouble => 1,
-            Carriers::Arbitrary(_) => 2,
-            Carriers::Exact => 3,
-        };
-        self.backend()?;
-        let backend = self.backend.as_mut().expect("backend");
+        let carrier = self.carrier;
+        let backend = backend_of(&mut self.backend, carrier)?;
         let executor = &self.executor;
         let trees = self.trees.as_mut();
         match carrier {
-            0 => evaluate_with(py, executor, trees, backend, inputs, 0.0, bits, options),
-            1 => evaluate_with(
+            Carriers::Double => {
+                evaluate_with(py, executor, trees, backend, inputs, 0.0, bits, options)
+            }
+            Carriers::DoubleDouble => evaluate_with(
                 py,
                 executor,
                 trees,
@@ -697,7 +699,7 @@ impl V2Executor {
                 bits,
                 options,
             ),
-            _ => evaluate_with(
+            Carriers::Arbitrary(_) => evaluate_with(
                 py,
                 executor,
                 trees,
@@ -707,10 +709,47 @@ impl V2Executor {
                 bits,
                 options,
             ),
+            Carriers::Exact => unreachable!("backend_of refuses the exact carrier"),
         }
     }
 }
 
+/// Admit one plan v4 process of an artifact through the native loader
+/// (`rusticol_core::loop_artifact::open_loop_v2_artifact`) and describe it as
+/// JSON: identity, plan digest, families, reduction buckets, program shape,
+/// the declared metadata and the generation request.
+#[pyfunction]
+#[pyo3(signature = (path, process=None))]
+fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyResult<String> {
+    use rusticol_core::loop_artifact::{LOOP_V2_RUNTIME_CAPABILITY, open_loop_v2_artifact};
+
+    let loaded = py
+        .detach(|| open_loop_v2_artifact(path, process))
+        .map_err(error)?;
+    let program = &loaded.program;
+    let buckets: Vec<[usize; 3]> = program
+        .buckets()
+        .into_iter()
+        .map(|((n, r), families)| [n, r, families.len()])
+        .collect();
+    serde_json::to_string(&serde_json::json!({
+        "artifact_id": loaded.artifact_id,
+        "process_id": loaded.selection.process.id,
+        "runtime_capability": LOOP_V2_RUNTIME_CAPABILITY,
+        "plan_sha256": loaded.plan_sha256,
+        "plan_bytes": loaded.plan_json.len(),
+        "families": program.families.len(),
+        "buckets": buckets,
+        "legs": program.legs,
+        "rows": program.rows,
+        "columns": program.columns,
+        "metadata": loaded.metadata,
+        "request": loaded.request,
+    }))
+    .map_err(error)
+}
+
 pub(super) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_class::<V2Executor>()
+    module.add_class::<V2Executor>()?;
+    module.add_function(wrap_pyfunction!(admit_v2_artifact, module)?)
 }

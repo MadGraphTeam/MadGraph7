@@ -5,6 +5,8 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from pyamplicol.config import PoleSelection
+
     from .errors import (
         ArtifactError,
         CompatibilityError,
@@ -81,6 +83,8 @@ if TYPE_CHECKING:
         VirtualEvaluation,
         VirtualFailureDiagnostic,
         VirtualLaneDiagnostic,
+        VirtualStabilityChecks,
+        VirtualStabilityEstimate,
         VirtualStabilityPolicy,
         VirtualVerificationAttempt,
         VirtualVerificationDiagnostic,
@@ -127,6 +131,7 @@ __all__ = [
     "ModelSourceKind",
     "Momenta",
     "PhysicsReduction",
+    "PoleSelection",
     "ProcessAlias",
     "ProcessPhysics",
     "ProcessRequest",
@@ -144,6 +149,8 @@ __all__ = [
     "VirtualEvaluation",
     "VirtualFailureDiagnostic",
     "VirtualLaneDiagnostic",
+    "VirtualStabilityChecks",
+    "VirtualStabilityEstimate",
     "VirtualStabilityPolicy",
     "VirtualVerificationAttempt",
     "VirtualVerificationDiagnostic",
@@ -230,6 +237,8 @@ _VIRTUAL_RESULT_EXPORTS = (
     "VirtualLaneDiagnostic",
     "VirtualColorContraction",
     "VirtualArithmeticSpec",
+    "VirtualStabilityChecks",
+    "VirtualStabilityEstimate",
     "VirtualStabilityPolicy",
     "VirtualVerificationAttempt",
     "VirtualVerificationDiagnostic",
@@ -243,6 +252,7 @@ _PUBLIC_EXPORTS = {
     **{name: (".results", name) for name in _RESULT_EXPORTS},
     **{name: (".services", name) for name in _SERVICE_EXPORTS},
     "group_processes": (".process_groups", "group_processes"),
+    "PoleSelection": ("pyamplicol.config", "PoleSelection"),
 }
 
 

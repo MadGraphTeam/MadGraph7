@@ -1870,18 +1870,28 @@ impl LoopRuntimePlan {
     }
 }
 
-/// PACBIN member of a v2 loop program (plan v4, DESIGN.md §3.8).
-pub const LOOP_PROGRAM_V4_MEMBER: &str = "schedule/loop-program-v4.json";
+/// PACBIN member of a v2 loop program (plan v4, DESIGN.md §3.8, §12.1): the
+/// zlib stream of the JSON that `loops/v2/plan_export.py` writes
+/// (`loops/v2/artifact.py` publishes it).
+pub const LOOP_PROGRAM_V4_MEMBER: &str = "schedule/loop-plan-v4.json.zlib";
 
-/// Load the v2 program of an authenticated PACBIN reader. The member has the
-/// plan kind of the v3 runtime; its schema field selects version 4.
+/// The plan v4 JSON of an authenticated PACBIN reader (its only caller is the
+/// v4 admission, `loop_artifact::load_loop_v2_artifact`, which validates it as
+/// a `loop_v2::plan::LoopProgramV4`). The member has the plan kind of the v3
+/// runtime; the JSON's schema field selects version 4.
 #[cfg(feature = "loop-v2")]
-pub fn load_loop_program_v4(
-    reader: &PacbinReader,
-) -> RusticolResult<crate::loop_v2::plan::LoopProgramV4> {
+pub fn read_loop_program_v4_json(reader: &PacbinReader) -> RusticolResult<Vec<u8>> {
+    use std::io::Read;
+
     require(
         reader.member(LOOP_PROGRAM_V4_MEMBER)?.kind() == PacbinMemberKind::LoopRuntimePlan,
         "wrong v4 program member kind",
     )?;
-    crate::loop_v2::plan::LoopProgramV4::load(reader.member_bytes(LOOP_PROGRAM_V4_MEMBER)?)
+    let mut json = Vec::new();
+    flate2::read::ZlibDecoder::new(reader.member_bytes(LOOP_PROGRAM_V4_MEMBER)?)
+        .read_to_end(&mut json)
+        .map_err(|error| {
+            RusticolError::integrity(format!("plan v4 member is not a zlib stream: {error}"))
+        })?;
+    Ok(json)
 }

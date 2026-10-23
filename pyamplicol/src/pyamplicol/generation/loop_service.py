@@ -3,24 +3,33 @@
 
 The service owns request/configuration transport. Existing source, graph,
 counterterm and reduction boundaries retain responsibility for physics support.
+
+``loop.engine`` selects the engine: the legacy per-diagram engine (the oracle
+until gate R3) or the shared-recursion engine v2, which publishes plan v4
+processes (``loops/v2/artifact.py``; design §12).
 """
 
 from __future__ import annotations
 
 import cmath
+import json
 import os
 import time
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
+from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
+from pyamplicol._internal.versions import LOOP_V2_RUNTIME_CAPABILITY
 from pyamplicol.api.errors import GenerationError, PyAmpliColError
 from pyamplicol.api.requests import ProcessSet
 from pyamplicol.api.results import GenerationPlan, GenerationResult
+from pyamplicol.config import ColorContraction, LoopEngine
 from pyamplicol.loops.compiler import prepare_loop_request_model
 from pyamplicol.loops.graphs import build_loop_process
+from pyamplicol.loops.orders import canonical_order
 from pyamplicol.loops.physical_orders import PhysicalOrderLayout
 from pyamplicol.loops.portable import write_loop_pacbin
 from pyamplicol.loops.request import prepare_loop_external_request
@@ -40,7 +49,12 @@ from pyamplicol.models.loop_preparation import (
 )
 
 from .dag_algorithms import infer_minimal_coupling_order_limits
-from .loop_artifact import LoopExecutionMetadata, LoopProcessArtifact
+from .loop_artifact import (
+    LoopExecutionMetadata,
+    LoopProcessArtifact,
+    LoopV2ExecutionMetadata,
+    LoopV2ProcessArtifact,
+)
 from .progress import GenerationPhaseReporter, PhaseHandle
 from .validation import build_process_validation_point
 
@@ -145,9 +159,19 @@ class _LoopContext:
     source_colors: tuple
     preparation: LoopPreparation
     color_declaration: Any = None
+    limits: tuple[dict[str, int], ...] = ()
 
 
-def _prepare(backend, processes, source, *, planning, phase, consider_fft=True):
+def _prepare(
+    backend,
+    processes,
+    source,
+    *,
+    planning,
+    phase,
+    consider_fft=True,
+    prepare_models=True,
+):
     license_state = backend._detect_symbolica_license()
     backend._apply_symbolica_resource_policy(license_state)
     resolved = (
@@ -199,7 +223,7 @@ def _prepare(backend, processes, source, *, planning, phase, consider_fft=True):
     resolved = replace(resolved, compiled=compiled, model=CompiledUFOModel(compiled))
     expanded = backend._expand_process_set(processes, resolved, phase)
     backend._apply_symbolica_resource_policy(license_state, process_count=len(expanded))
-    cache, prepared, source_colors = {}, [], []
+    cache, prepared, source_colors, entry_limits = {}, [], [], []
     for entry in expanded:
         limits = backend._coupling_order_limits
         if run.process.coupling_order_policy == "minimal":
@@ -211,6 +235,9 @@ def _prepare(backend, processes, source, *, planning, phase, consider_fft=True):
                 max_coupling_orders=limits or None,
             )
             limits = inferred or limits
+        entry_limits.append(dict(limits))
+        if not prepare_models:
+            continue
         key = tuple(sorted(limits.items()))
         if key not in cache:
             born, loop = _order_bounds(limits, corrections)
@@ -241,6 +268,7 @@ def _prepare(backend, processes, source, *, planning, phase, consider_fft=True):
         tuple(source_colors),
         preparation,
         color_data,
+        tuple(entry_limits),
     )
 
 
@@ -324,6 +352,8 @@ def _plan_result(backend, processes, blockers, *, context=None, coverage=()):
 def plan_loop_generation(backend, processes, *, model=None):
     """Inspect source/local capabilities and graph orders without numerator JIT."""
     blockers = _feature_blockers(backend, processes)
+    if backend._run_config.loop.engine is LoopEngine.V2:
+        return _plan_v2(backend, processes, blockers, model=model)
     if blockers:
         return _plan_result(backend, processes, blockers)
     context, coverage = None, []
@@ -401,12 +431,12 @@ def _group_exact_flavors(context, programs, projections=None):
     )
     from pyamplicol.loops.flavor_mappings import (
         RetainedFlavorPlan,
+        identity_species_candidate,
         prove_flavor_relabeling,
     )
     from pyamplicol.loops.flavor_transport import (
         AdmittedFlavorMember,
         IdentityFlavorTransport,
-        identity_species_candidate,
     )
 
     from .process_grouping import GroupingBasis, GroupMember, LegMapping
@@ -585,6 +615,10 @@ def generate_loop_artifact(
 ):
     """Compile source-owned complete model-R2 instructions and publish atomically."""
     _check_correlators(backend, correlators)
+    if backend._run_config.loop.engine is LoopEngine.V2:
+        return _generate_v2(
+            backend, processes, output, model=model, mode=mode, correlators=correlators
+        )
     blockers = _feature_blockers(backend, processes)
     if blockers:
         raise GenerationError("; ".join(blockers))
@@ -1028,3 +1062,604 @@ def _compare_validation_result(
                     f"{name!r}, {label} coefficient {index} "
                     f"(absolute difference {abs(complex(value) - target):.3e})"
                 )
+
+
+# --------------------------------------------------------------------- engine v2
+
+# The forced seed FFT is refused (``_v2_blockers``): the native executor
+# contracts the exported seed weights directly.
+_V2_CONTRACTION = {
+    ColorContraction.AUTO: "auto",
+    ColorContraction.DIRECT: "direct",
+}
+
+
+def _v2_blockers(backend) -> tuple[str, ...]:
+    """Configurations the v2 engine does not cover; loop.engine='legacy' does.
+
+    Requests are refused per process, before any loop generation, by
+    ``_v2_request`` (no Born amplitude, undeclared corrections, coloured
+    widths in the Born currents, an unidentified scale parameter) and
+    ``loops.v2.assemble.prepare_request_model`` (the model preparation);
+    the generator fails closed with its own reason on what it does not
+    admit (e.g. chiral loop-fermion vertices, WP3.2)."""
+    run = backend._run_config
+    reasons = []
+    if run.color.contraction is ColorContraction.SYMMETRIC_GROUP_FFT:
+        reasons.append(
+            "the native v2 executor contracts seed columns directly; "
+            "color.contraction='symmetric-group-fft' is unavailable with "
+            "loop.engine='v2' (use 'auto' or 'direct')"
+        )
+    preparation = run.loop.preparation
+    if preparation is not None and preparation.covariant_multiplets:
+        reasons.append("v2 virtuals take no loop.preparation covariant multiplets")
+    return tuple(reasons)
+
+
+def _blocked(backend, processes) -> tuple[str, ...]:
+    reasons = _feature_blockers(backend, processes) + _v2_blockers(backend)
+    if reasons:
+        reasons += ("loop.engine='legacy' remains available for these requests",)
+    return reasons
+
+
+def v2_loop_orders(
+    born_orders: Sequence[Sequence[tuple[str, int]]],
+    corrections: Sequence[str],
+    names: Iterable[str] = (),
+) -> dict[str, int] | tuple[dict[str, int], ...]:
+    """The exact loop orders of a v2 request: one per Born amplitude order
+    and correction, the Born order raised by two powers of that correction
+    (a mapping for one, else a sequence in Born-order, then correction
+    order: e.g. QCD corrections to QCD and photon Born currents, or QCD and
+    QED corrections to one Born order). Every mapping names ``names``, the
+    corrections and the Born orders' couplings (zero powers kept)."""
+
+    keys = sorted(
+        {*names, *corrections, *(name for order in born_orders for name, _ in order)}
+    )
+    orders: list[dict[str, int]] = []
+    for born in born_orders:
+        for correction in corrections:
+            loop = dict.fromkeys(keys, 0)
+            loop.update(dict(born))
+            loop[correction] += 2
+            if loop not in orders:
+                orders.append(loop)
+    if not orders:
+        raise GenerationError(
+            "a virtual needs at least one Born amplitude order and one correction"
+        )
+    return orders[0] if len(orders) == 1 else tuple(orders)
+
+
+def _require_declared_corrections(compiled, corrections) -> None:
+    """Every correction must be a perturbative coupling order of the source
+    model (``perturbative_expansion`` >= 1): the capability boundary the
+    legacy graph generator checks (``loops.graphs.build_loop_process``).
+    Without it the v2 generator would admit no loop species of that order
+    and silently return a vanishing correction."""
+
+    orders = {
+        record["name"]: record["fields"].get("perturbative_expansion", 0)
+        for record in compiled.raw_loop_model.collections["coupling_orders"]
+    }
+    undeclared = [name for name in corrections if orders.get(name, 0) < 1]
+    if undeclared:
+        raise GenerationError(
+            "requested corrections require declared NLO model support: the "
+            f"source model does not expand {undeclared} perturbatively"
+        )
+
+
+def _v2_scale_parameter(compiled, fixed: Mapping[str, str]) -> str:
+    """The model's renormalisation-scale parameter: the adjustable external
+    parameter at UFO/SLHA code (LOOP, 1), as in NLOCT models and MG5_aMC's
+    loop_sm, else the only adjustable external parameter of block LOOP
+    (MG5_aMC's loop_qcd_qed_sm keeps MU_R at LOOP 666)."""
+
+    externals = [
+        record
+        for record in compiled.ir.parameters
+        if record.nature == "external"
+        and (record.lhablock or "").upper() == "LOOP"
+        and record.name not in fixed
+    ]
+    found = [record.name for record in externals if tuple(record.lhacode) == (1,)]
+    if len(found) != 1:
+        found = [record.name for record in externals]
+    if len(found) != 1:
+        raise GenerationError(
+            "the model's renormalisation-scale parameter is not identified: v2 "
+            "takes the adjustable external parameter at UFO/SLHA code (LOOP, 1) "
+            "or the only one of block LOOP, and this model has "
+            f"{sorted(found) or 'none'} there"
+        )
+    return str(found[0])
+
+
+def _loop_orders_record(request) -> object:
+    orders = [dict(orders) for orders in request.exact_loop_orders]
+    return orders[0] if len(orders) == 1 else orders
+
+
+def _v2_request(backend, context, index):
+    """The slice request of one expanded process (``loops.v2.assemble``),
+    checked before any loop generation.
+
+    The Born bounds are the process's coupling-order limits. The loop orders
+    follow its Born amplitude orders (``v2_loop_orders``), read from the Born
+    DAG (``artifact.born_amplitude_orders``), which must exist and propagate
+    no coloured particle with a width (``artifact.require_zero_coloured_widths``;
+    the slice re-checks its loop-side tree currents after generation). The
+    renormalisation-scale parameter is resolved here
+    (``_v2_scale_parameter``)."""
+    from pyamplicol.loops.v2.artifact import (
+        born_amplitude_orders,
+        require_zero_coloured_widths,
+    )
+    from pyamplicol.loops.v2.assemble import SliceRequest
+
+    run = backend._run_config
+    compiled = context.resolved.compiled
+    limits = context.limits[index]
+    entry = context.expanded[index]
+    process = entry.process_ir.process
+    label = f"{entry.request.name!r} ({entry.request.expression})"
+    _require_declared_corrections(compiled, context.corrections)
+    fixed = {}
+    for name, (real, imaginary) in context.preparation.fixed_parameters.items():
+        if Decimal(imaginary) != 0:
+            raise GenerationError(
+                f"v2 virtuals take real fixed parameters; {name!r} is complex"
+            )
+        fixed[name] = str(real)
+    born, dag = born_amplitude_orders(compiled, process, limits)
+    if not born:
+        raise GenerationError(
+            f"{label} has no Born amplitude within the coupling-order limits "
+            f"{dict(sorted(limits.items()))}: v2 virtuals interfere one-loop and "
+            "Born amplitudes (loop-induced processes are not covered)"
+        )
+    require_zero_coloured_widths(label, (dag,), compiled, fixed)
+    accuracy = run.color.accuracy
+    return SliceRequest(
+        process,
+        dict(limits),
+        v2_loop_orders(born, context.corrections, limits),
+        corrections=context.corrections,
+        fixed_parameters=fixed,
+        accuracy=accuracy,
+        colour_declaration=context.color_declaration if accuracy != "full" else None,
+        scale_parameter=_v2_scale_parameter(compiled, fixed),
+        colour_contraction=_V2_CONTRACTION[run.color.contraction],
+        compatibility=context.preparation.compatibility,
+    )
+
+
+def _plan_v2(backend, processes, blockers, *, model=None):
+    """The v2 dry run: per process the slice request (``_v2_request``) and
+    the model preparation of the slice (``prepare_request_model``), whose
+    refusals are reported. Loop admission (counterterm sites, fermion signs
+    of loop vertices, the loop-side tree currents) is checked only by the
+    generation (``loop_admission_checked`` is False)."""
+    from pyamplicol.loops.v2.artifact import request_record
+    from pyamplicol.loops.v2.assemble import prepare_request_model
+
+    blockers = blockers + _v2_blockers(backend)
+    context, coverage = None, []
+    if not blockers:
+        try:
+            context = _prepare(
+                backend,
+                processes,
+                model or backend._configured_model_source(),
+                planning=True,
+                phase=PhaseHandle(
+                    "loop-generation-plan", backend._progress, len(processes.requests)
+                ),
+                prepare_models=False,
+            )
+            prepared = set()
+            for index, entry in enumerate(context.expanded):
+                request = _v2_request(backend, context, index)
+                recipe = request_record(request)
+                del recipe["process"]
+                key = json.dumps(recipe, sort_keys=True)
+                if key not in prepared:
+                    prepare_request_model(context.resolved.compiled, request)
+                    prepared.add(key)
+                coverage.append(
+                    {
+                        "key": entry.request.name,
+                        "process": entry.request.expression,
+                        "engine": "v2",
+                        "born_orders": dict(request.born_orders),
+                        "loop_orders": _loop_orders_record(request),
+                        "corrections": list(request.corrections),
+                        "color_accuracy": request.accuracy,
+                        "scale_parameter": request.scale_parameter,
+                        "numerator_compilation_deferred": True,
+                        "loop_admission_checked": False,
+                    }
+                )
+        except (ValueError, TypeError, RuntimeError, ImportError, PyAmpliColError) as e:
+            blockers = (str(e),)
+    result = _plan_result(
+        backend, processes, blockers, context=context, coverage=coverage
+    )
+    estimated = dict(result.estimated_coverage)
+    estimated.update(
+        engine="v2",
+        arithmetic=("double", "double-double", "arbitrary"),
+        resolved=True,
+        correlations=True,
+        exact_flavor_grouping=backend._run_config.process.flavor_blind,
+        api_bundle=False,
+        runtime_capability=LOOP_V2_RUNTIME_CAPABILITY,
+    )
+    return replace(result, estimated_coverage=estimated)
+
+
+def _v2_member(generated, request, expression):
+    """An identity-port flavour member of an already generated process
+    (``observables.admit_member``: the exact species-substitution proof on
+    the representative's retained source plan), or None. The member's request
+    must equal the representative's but for the process."""
+    from pyamplicol.loops.v2.artifact import request_record
+    from pyamplicol.loops.v2.observables import admit_member
+
+    def recipe(record):
+        return {
+            key: value
+            for key, value in record.items()
+            if key not in ("process", "correlators")
+        }
+
+    wanted = recipe(request_record(request))
+    for name, process in generated.items():
+        if recipe(process.request) != wanted:
+            continue
+        try:
+            member = admit_member(process.slice, expression)
+        except (ValueError, NotImplementedError):
+            continue
+        if member.alias or not member.species:
+            # Permutation aliases and identical requests stay independent.
+            continue
+        return name, member
+    return None
+
+
+def _generate_v2(backend, processes, output, *, model, mode, correlators):
+    """Generate every process through v2 and publish plan v4 atomically.
+
+    With ``process.flavor_blind`` an identity-port flavour member of an
+    earlier process (equal request but for its flavours, an exactly proved
+    species substitution) is served by that representative and listed in
+    ``process-groups.json``; every other process is generated on its own.
+    """
+    from pyamplicol.artifacts.process_groups import (
+        grouping_process,
+        initial_process_groups,
+    )
+    from pyamplicol.loops.native import load_loop_native
+    from pyamplicol.loops.v2.artifact import generate_process, retained, write_plan
+
+    from .process_grouping import GroupingBasis, GroupMember, LegMapping
+
+    blockers = _blocked(backend, processes)
+    if blockers:
+        raise GenerationError("; ".join(blockers))
+    reporter = GenerationPhaseReporter(backend._progress)
+    reporter.start_generation(
+        total=3, details={"execution_mode": "loop_recurrence", "engine": "v2"}
+    )
+    started = time.perf_counter()
+    grouping = backend._run_config.process.flavor_blind
+    try:
+        with reporter.phase(
+            "loop-model",
+            "Preparing source loop model and processes",
+            total=len(processes.requests),
+        ) as phase:
+            context = _prepare(
+                backend,
+                processes,
+                model or backend._configured_model_source(),
+                planning=False,
+                phase=phase,
+                prepare_models=False,
+            )
+        native = load_loop_native()
+        compiled = context.resolved.compiled
+        validation = backend._generation_config.validation
+        with (
+            retained(len(context.expanded)),
+            TemporaryDirectory(prefix="pyamplicol-loop-v2-") as temporary,
+        ):
+            artifacts, generated, members = [], {}, {}
+            with reporter.phase(
+                "loop-compile",
+                "Generating v2 loop families and plan v4",
+                total=len(context.expanded),
+            ) as phase:
+                for index, entry in enumerate(context.expanded):
+                    request = _v2_request(backend, context, index)
+                    name = entry.request.name
+                    found = (
+                        _v2_member(generated, request, entry.request.expression)
+                        if grouping
+                        else None
+                    )
+                    if found is not None:
+                        members.setdefault(found[0], []).append((index, found[1]))
+                        phase.update(index + 1, message=f"{name} (flavour member)")
+                        continue
+                    process = generate_process(compiled, request, native, correlators)
+                    generated[name] = process
+                    path = Path(temporary) / f"{name}.pacbin"
+                    write_plan(process.plan_json, path)
+                    legs = process.state_legs()
+                    artifacts.append(
+                        LoopV2ProcessArtifact(
+                            process_id=name,
+                            expression=entry.request.expression,
+                            external_pdgs=tuple(int(leg["pdg"]) for leg in legs),
+                            loop_runtime_path=path,
+                            metadata=LoopV2ExecutionMetadata(
+                                scheme=context.declaration.scheme,
+                                born_orders=process.born_orders(),
+                                sectors=process.sectors(),
+                                families=len(process.exported.families),
+                                buckets=tuple(map(tuple, process.buckets())),
+                                color_accuracy=request.accuracy,
+                                color_degrees=process.colour_degrees(),
+                                color_contraction=request.colour_contraction,
+                                color_correlations=process.color_correlations(),
+                                spin_correlations=process.spin_correlations(),
+                            ),
+                            validation_point=build_process_validation_point(
+                                entry.process_ir,
+                                context.resolved.model,
+                                process_id=name,
+                                seed=validation.seed + index,
+                            ),
+                            generation_filters={
+                                "loop_engine": "v2",
+                                "loop_coupling_orders": context.corrections,
+                                "born_orders": dict(request.born_orders),
+                                "loop_orders": _loop_orders_record(request),
+                                "model_declaration": context.declaration.to_dict(),
+                                **(
+                                    {"correlators": correlators.to_json_dict()}
+                                    if correlators is not None
+                                    else {}
+                                ),
+                            },
+                            color_accuracy=request.accuracy,
+                            request=dict(process.request),
+                            plan_sha256=process.plan_sha256,
+                            state_legs=tuple(legs),
+                            helicities=tuple(map(tuple, process.helicities())),
+                        )
+                    )
+                    phase.update(index + 1, message=name)
+            process_groups = None
+            if grouping:
+                artifacts = [
+                    replace(
+                        artifact,
+                        generation_filters={
+                            **artifact.generation_filters,
+                            "flavor_grouping": _flavor_grouping_outcome(
+                                backend,
+                                correlators,
+                                reused=bool(members.get(artifact.process_id)),
+                            ),
+                        },
+                    )
+                    for artifact in artifacts
+                ]
+                process_groups = initial_process_groups(
+                    (
+                        (
+                            artifact.process_id,
+                            artifact.expression,
+                            artifact.external_pdgs,
+                        )
+                        for artifact in artifacts
+                    ),
+                    {
+                        representative: [
+                            GroupMember.identity(
+                                replace(
+                                    grouping_process(
+                                        context.expanded[index].request.name,
+                                        context.expanded[index].request.expression,
+                                        (
+                                            *context.expanded[
+                                                index
+                                            ].process_ir.initial_pdgs,
+                                            *context.expanded[
+                                                index
+                                            ].process_ir.final_pdgs,
+                                        ),
+                                    ),
+                                    generated=False,
+                                )
+                            ).related(
+                                LegMapping(
+                                    tuple(range(len(member.legs))),
+                                    False,
+                                    "exact-loop-species",
+                                ),
+                                factor=1,
+                                basis=GroupingBasis.EXACT_LOOP_FLAVOR,
+                            )
+                            for index, member in admitted
+                        ]
+                        for representative, admitted in members.items()
+                    },
+                )
+            validate = validation.post_build_validation
+            with reporter.phase(
+                "artifact-writing",
+                "Writing and validating virtual artifact"
+                if validate
+                else "Writing virtual artifact",
+                total=1,
+            ) as phase:
+                result = backend._write_artifact(
+                    Path(output),
+                    mode=mode,
+                    source=context.resolved.source,
+                    compiled_model=compiled,
+                    configuration=backend._configuration,
+                    processes=artifacts,
+                    process_groups=process_groups,
+                    timings=reporter.timings,
+                    api_bundle_hook=None,
+                    staged_validation=(
+                        lambda staged: _validate_v2_artifact(
+                            backend, staged, context, generated, members
+                        )
+                    )
+                    if validate
+                    else None,
+                )
+                phase.update(1, message=str(result.output))
+        reporter.timings["total"] = time.perf_counter() - started
+    except BaseException as error:
+        reporter.finish_generation(success=False, message=str(error))
+        if isinstance(error, (KeyboardInterrupt, SystemExit, PyAmpliColError)):
+            raise
+        raise GenerationError(str(error)) from error
+    reporter.finish_generation()
+    return GenerationResult(
+        output=result.output,
+        processes=ProcessSet(tuple(e.request for e in context.expanded)),
+        mode=mode,
+        files=result.files,
+    )
+
+
+def _validate_v2_artifact(backend, output, context, generated, members):
+    """Load every staged process (and flavour member) through the public
+    runtime and compare its native evaluation, inclusive and for every
+    declared colour history, with the Python reference executor of the
+    generated slice on the validation points."""
+    from pyamplicol.api import Runtime
+    from pyamplicol.artifacts import load_manifest
+    from pyamplicol.correlators import CorrelatedRequest
+    from pyamplicol.loops.v2.observables import MemberObservables
+
+    manifest = load_manifest(output)
+    validation = backend._generation_config.validation
+    indices = {entry.request.name: i for i, entry in enumerate(context.expanded)}
+    served = [(name, name, None) for name in generated]
+    served += [
+        (context.expanded[index].request.name, representative, member)
+        for representative, admitted in members.items()
+        for index, member in admitted
+    ]
+    for name, representative, member in served:
+        index = indices[name]
+        entry = context.expanded[index]
+        runtime = Runtime.load(output, process=name)
+        if (
+            runtime.execution_mode != "loop_recurrence"
+            or runtime.artifact_id != manifest.artifact_id
+            or runtime.physics.process_id != name
+            or runtime.representative_process_key != representative
+        ):
+            raise GenerationError("v2 validation loaded incompatible artifact metadata")
+        if not validation.enabled:
+            continue
+        points, scales = _v2_validation_points(context, entry, validation, index)
+        observables = generated[representative].observables
+        histories = tuple(history.id for history in observables.histories)
+        result = runtime.evaluate(points, mu_r2=scales)
+        correlated = (
+            runtime.evaluate_correlated_many(
+                points,
+                {history: CorrelatedRequest(history, {}) for history in histories},
+                mu_r2=scales,
+            )
+            if histories
+            else {}
+        )
+        tolerance = validation.relative_tolerance
+        runner = (
+            observables if member is None else MemberObservables(observables, member)
+        )
+        for point_index, (point, scale) in enumerate(zip(points, scales, strict=True)):
+            references = runner.evaluate(
+                point, scale, correlations=("born", *histories)
+            )
+            for label, values in (("born", result), *correlated.items()):
+                _compare_v2(
+                    name,
+                    label,
+                    values,
+                    point_index,
+                    references[label],
+                    tolerance,
+                )
+
+
+def _compare_v2(name, label, result, point_index, reference, tolerance):
+    born = {canonical_order(k): v for k, v in reference.born.items()}
+    for order, value in zip(
+        result.born_orders, result.born_values[point_index], strict=True
+    ):
+        target = born.get(order, 0.0)
+        if not cmath.isclose(
+            complex(value), complex(target), rel_tol=tolerance, abs_tol=0.0
+        ):
+            raise GenerationError(
+                f"saved v2 Born of {name!r} ({label}) differs from the reference "
+                f"executor at order {order} ({value!r} != {target!r})"
+            )
+    virtual = {
+        canonical_order(k): v for k, v in reference.components["virtual"].items()
+    }
+    for sector, laurent in zip(result.sectors, result.values[point_index], strict=True):
+        target = virtual[sector.order].coefficients
+        size = max(abs(complex(x)) for x in target)
+        for k, (value, expected) in enumerate(zip(laurent, target, strict=True)):
+            if abs(complex(value) - complex(expected)) > tolerance * size:
+                raise GenerationError(
+                    f"saved v2 virtual of {name!r} ({label}) differs from the "
+                    f"reference executor (sector {sector.order}, coefficient {k}: "
+                    f"{value!r} != {expected!r})"
+                )
+
+
+def _v2_validation_points(context, entry, validation, index):
+    from fractions import Fraction
+
+    points, scales = [], []
+    for sample in range(validation.samples):
+        record = build_process_validation_point(
+            entry.process_ir,
+            context.resolved.model,
+            process_id=entry.request.name,
+            seed=validation.seed + index + sample,
+        )
+        if not record.available:
+            raise GenerationError(
+                f"virtual validation momenta unavailable: {record.error}"
+            )
+        point = [[repr(float(x)) for x in vector] for vector in record.four_vectors]
+        initial = len(entry.process_ir.initial_pdgs)
+        total = [
+            sum(Fraction(vector[mu]) for vector in point[:initial]) for mu in range(4)
+        ]
+        scale = total[0] ** 2 - sum(component**2 for component in total[1:])
+        if scale <= 0:
+            raise GenerationError("virtual validation requires a positive invariant")
+        points.append(point)
+        scales.append(str(Decimal(scale.numerator) / Decimal(scale.denominator)))
+    return points, scales

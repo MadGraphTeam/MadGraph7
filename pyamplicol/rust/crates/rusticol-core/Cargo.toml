@@ -23,10 +23,11 @@ symbolica-runtime = ["dep:symbolica"]
 # Native core of the loop engine v2: plan v4 and its executor (open-loop
 # polynomials in the NinjaRS tensor layout). Enabled by the loop consumer
 # (rusticol-loop-reduction), so the native extension ships it.
-loop-v2 = ["dep:ninjars", "symbolica-runtime"]
+loop-v2 = ["dep:flate2", "dep:ninjars", "symbolica-runtime"]
 
 [dependencies]
 bincode.workspace = true
+flate2 = { workspace = true, optional = true }
 libloading = { version = "0.9", optional = true }
 libc.workspace = true
 ninjars = { git = "https://github.com/alphal00p/ninjars.git", rev = "aa6a6307dd081dc3714f9accebc0df9e5561ae73", optional = true }
