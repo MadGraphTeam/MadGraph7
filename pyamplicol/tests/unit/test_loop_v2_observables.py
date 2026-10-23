@@ -667,7 +667,7 @@ def assert_ward_identity(generate, name: str, carrier: str) -> None:
     average = observables.slice.normalisation.average
     r2 = 0.0  # the largest |R2| over legs and factors, in physical units
 
-    def bound(run, relative: float | None) -> list[float]:
+    def ward_bound(run, relative: float | None) -> list[float]:
         """Per Laurent coefficient: ``relative`` (None: binary64, 1e-11) of
         the cancellation's scale, the physical scale or the R2 part where
         it cancels a larger bare part (c = i on u u~ > g g g); in binary64
@@ -713,7 +713,7 @@ def assert_ward_identity(generate, name: str, carrier: str) -> None:
                 precision=native_precision,
             )
             out.append((result[INCLUSIVE], relative))
-        return [(run, bound(run, relative)) for run, relative in out]
+        return [(run, ward_bound(run, relative)) for run, relative in out]
 
     # The Python reference executor on the first leg; natively every leg (the
     # executors share the Python-side Ward trees, and native = Python is
