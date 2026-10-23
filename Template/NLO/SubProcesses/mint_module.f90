@@ -94,13 +94,14 @@ module virt_surrogate
 !   - event generation: the smallest score
 !       sum |c| max(0,A-V) + vs_costweight * sum |c| |A-V|,
 !     i.e. the weight of the negative residual (the negative separate-virtual
-!     events) plus a smaller weight on the total residual (their number);
+!     events) plus the total residual (their number, hence the loop calls),
+!     so that a negative residual counts twice as much as a positive one;
 !   - fixed order: the smallest residual variance.
   use mint_dims, only: maxchannels
   use FKSParams, only: use_poly_virtual, VirtTrickSurrogate
   implicit none
   integer, parameter :: vs_maxlinks=400, vs_maxfeat=94, vs_maxchan=maxchannels, vs_minpts=50
-  double precision, parameter :: vs_costweight=0.25d0
+  double precision, parameter :: vs_costweight=1d0
 ! colour-linked Borns of the current point (I_reg terms); the partons (m,n)
 ! are numbered in the real-emission process whose i_fks is vs_lifks
   integer :: vs_nlinks=0, vs_lifks=0

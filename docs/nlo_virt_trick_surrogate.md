@@ -47,10 +47,11 @@ the first point. The fit enters the comparison from the iteration after its
 first fit.
 
 - **Event generation:** the smallest score
-  Σ |c| max(0, A − V) + 0.25 Σ |c| |A − V|.
+  Σ |c| max(0, A − V) + Σ |c| |A − V|.
   The first term is the weight of the negative residual, which produces the
-  negative virt events. The second, with a smaller weight, is the total
-  residual, which sets the number of virt events and hence of loop calls.
+  negative virt events. The second is the total residual, which sets the
+  number of virt events and hence of loop calls. A negative residual thus
+  counts twice as much as a positive one.
 - **Fixed order:** the smallest residual variance.
 
 A comparison of variances does not see the sign of the residual. In event
@@ -70,16 +71,16 @@ compares the previous default (grid) with the new one.
 
 | process | E grid → new [%] | MadLoop calls per event (÷ grid) |
 |---|---|---|
-| p p > t t~ | 0.37 → 0.09 | 0.198 → 0.077 (÷2.6) |
-| p p > e+ e- j | 0.28 → 0.18 | 0.276 → 0.187 (÷1.5) |
-| p p > t t~ j | 0.35 → 0.06 | 2.12 → 0.348 (÷6.1) |
-| e+ e- > b b~ b b~ | 0.88 → 0.35 | 1.43 → 0.400 (÷3.6) |
-| p p > w+ z (4FS) | 1.87 → 0.58 | 1.65 → 0.284 (÷5.8) |
-| p p > z j j (4FS) | 0.24 → 0.28 (±0.15) | 0.906 → 0.612 (÷1.5) |
-| p p > b b~ (4FS) | 0.30 → 0.13 | 0.675 → 0.659 (÷1.0) |
+| p p > t t~ | 0.37 → 0.12 | 0.198 → 0.0665 (÷3.0) |
+| p p > e+ e- j | 0.28 → 0.20 | 0.276 → 0.198 (÷1.4) |
+| p p > t t~ j | 0.35 → 0.06 | 2.12 → 0.33 (÷6.4) |
+| e+ e- > b b~ b b~ | 0.88 → 0.31 | 1.43 → 0.375 (÷3.8) |
+| p p > w+ z (4FS) | 1.87 → 0.58 | 1.66 → 0.305 (÷5.4) |
+| p p > z j j (4FS) | 0.24 → 0.22 | 0.906 → 0.532 (÷1.7) |
+| p p > b b~ (4FS) | 0.30 → 0.14 | 0.675 → 0.366 (÷1.8) |
 | p p > e+ ve (4FS) | 0.93 → 0.00 | 0.432 → 0.0004 (÷1200) |
-| p p > e+ ve j (4FS) | 0.24 → 0.17 | 0.318 → 0.258 (÷1.2) |
-| p p > e+ ve j j (4FS) | 0.00 → 0.08 | 1.25 → 0.498 (÷2.5) |
+| p p > e+ ve j (4FS) | 0.24 → 0.18 | 0.318 → 0.242 (÷1.3) |
+| p p > e+ ve j j (4FS) | 0.00 → 0.07 | 1.25 → 0.564 (÷2.2) |
 
 - **p p > e+ ve:** the fit is exact. The finite virtual is B times a quadratic
   polynomial in log(ŝ/Q_ES²), so the virt events disappear.

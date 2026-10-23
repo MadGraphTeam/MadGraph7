@@ -171,7 +171,7 @@
 ! For 1 and 2 the grid and the polynomial fit are both kept as fallbacks,
 ! and each channel uses the best of the three surrogates: in event
 ! generation the one whose residual gives the fewest negative virtual events
-! (with a smaller weight on the total residual, which sets their number), in
+! (plus the total residual, which sets their number and the loop calls), in
 ! fixed order the one with the smallest residual variance. Exact for any
 ! choice.
 #VirtTrickSurrogate
