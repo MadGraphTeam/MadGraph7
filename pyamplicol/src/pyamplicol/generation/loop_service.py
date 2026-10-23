@@ -1189,6 +1189,21 @@ def _plan_v2(backend, processes, blockers, *, model=None):
     return replace(result, estimated_coverage=estimated)
 
 
+def _require_one_born_order(name, process):
+    """Refuse mixed Born coupling orders: ``_v2_request`` maps the process's
+    limits to one exact loop order, which is the loop amplitude of a single
+    Born amplitude order only."""
+    orders = tuple(process.slice.blocks.born_orders)
+    if len(orders) != 1:
+        raise GenerationError(
+            f"{name!r} has several Born amplitude orders {orders}: v2 virtuals "
+            "currently take one (the slice request admits one exact loop order "
+            "per Born order, which the service does not derive yet; in the SM "
+            "the QCD x electroweak pieces also need the v2 electroweak loop "
+            "admission of WP3.2); loop.engine='legacy' remains available"
+        )
+
+
 def _v2_member(generated, request, expression):
     """An identity-port flavour member of an already generated process
     (``observables.admit_member``: the exact species-substitution proof on
@@ -1282,6 +1297,7 @@ def _generate_v2(backend, processes, output, *, model, mode, correlators):
                         phase.update(index + 1, message=f"{name} (flavour member)")
                         continue
                     process = generate_process(compiled, request, native, correlators)
+                    _require_one_born_order(name, process)
                     generated[name] = process
                     path = Path(temporary) / f"{name}.pacbin"
                     write_plan(process.plan_json, path)

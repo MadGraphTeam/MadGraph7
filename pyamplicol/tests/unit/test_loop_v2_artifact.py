@@ -751,6 +751,32 @@ def test_cli_generates_and_evaluates_through_v2(
     assert code == 0, stderr.getvalue()
     payload = json.loads(stdout.getvalue())
     assert payload["poles"] is True and payload["stability"] is None
+    stdout = io.StringIO()
+    code = run_cli(
+        (
+            "evaluate",
+            str(output),
+            "--process",
+            "gg",
+            "--momenta",
+            str(momenta),
+            "--mu-r2",
+            "1000000",
+            "--resolved",
+            "--no-poles",
+            "--stability-reduction-direction",
+            "--color",
+            "never",
+            "--progress",
+            "off",
+        ),
+        stdout=stdout,
+        stderr=stderr,
+    )
+    assert code == 0, stderr.getvalue()
+    text = stdout.getvalue()
+    assert "Finite-only evaluation" in text and "Stability estimates" in text
+    assert "reduction-direction" in text and "absent" in text
 
 
 @pytest.mark.loop_physics

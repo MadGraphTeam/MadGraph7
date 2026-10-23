@@ -494,10 +494,6 @@ class DefaultCliServices:
             )
 
         runtime = _load_process_output(artifact, progress, load_runtime)
-        if v2_options and (requests is not None or evaluation.resolved):
-            raise ConfigurationError(
-                "poles and stability checks apply to ordinary virtual evaluation"
-            )
         if requests is not None:
             if virtual:
                 return runtime.evaluate_correlated_many(
@@ -507,6 +503,7 @@ class DefaultCliServices:
                     helicities=evaluation.helicity_ids or None,
                     mu_r2=scales,
                     on_failure=evaluation.on_failure,
+                    **v2_options,
                 )
             return runtime.evaluate_correlated_many(
                 cast("Momenta", momenta),

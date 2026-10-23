@@ -1875,8 +1875,10 @@ impl LoopRuntimePlan {
 /// (`loops/v2/artifact.py` publishes it).
 pub const LOOP_PROGRAM_V4_MEMBER: &str = "schedule/loop-plan-v4.json.zlib";
 
-/// The plan v4 JSON of an authenticated PACBIN reader. The member has the
-/// plan kind of the v3 runtime; the JSON's schema field selects version 4.
+/// The plan v4 JSON of an authenticated PACBIN reader (its only caller is the
+/// v4 admission, `loop_artifact::load_loop_v2_artifact`, which validates it as
+/// a `loop_v2::plan::LoopProgramV4`). The member has the plan kind of the v3
+/// runtime; the JSON's schema field selects version 4.
 pub fn read_loop_program_v4_json(reader: &PacbinReader) -> RusticolResult<Vec<u8>> {
     use std::io::Read;
 
@@ -1891,12 +1893,4 @@ pub fn read_loop_program_v4_json(reader: &PacbinReader) -> RusticolResult<Vec<u8
             RusticolError::integrity(format!("plan v4 member is not a zlib stream: {error}"))
         })?;
     Ok(json)
-}
-
-/// Load and validate the v2 program of an authenticated PACBIN reader.
-#[cfg(feature = "loop-v2")]
-pub fn load_loop_program_v4(
-    reader: &PacbinReader,
-) -> RusticolResult<crate::loop_v2::plan::LoopProgramV4> {
-    crate::loop_v2::plan::LoopProgramV4::load(&read_loop_program_v4_json(reader)?)
 }

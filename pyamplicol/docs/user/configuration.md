@@ -544,13 +544,23 @@ legacy engine. The CLI spells these `--loop-engine v2`, `--no-poles`,
 `--stability-rotation SPEC` (repeatable), `--stability-rotations COUNT` and
 `--stability-reduction-direction`.
 
-Current v2 scope: one correction order (e.g. QCD), model-supplied R2, full,
-NLC or LC colour (LC/NLC with the model's source colour declaration), double and
-arbitrary arithmetic, inclusive results per squared coupling order. Colour/spin
-correlations, resolved output, flavour grouping, double-double arithmetic and
-the standalone SDK bundle still require `engine = "legacy"`. Loading a v2
+Current v2 scope: one correction order (e.g. QCD) and one Born coupling order
+per process, model-supplied R2, full, NLC or LC colour (LC/NLC with the model's
+source colour declaration), double, double-double and arbitrary arithmetic,
+inclusive results per squared coupling order, colour and spin correlations
+declared at generation (`correlators`), helicity-resolved output (also per Born
+colour component at LC; one contracted component at NLC and full colour), and
+exact flavour grouping (`process.flavor_blind`: an identity-port member such as
+`s s~ > g g` of `d d~ > g g` is served by its representative). `poles` and
+`[evaluation.stability_checks]` apply to correlated and resolved evaluations
+too (resolved estimates are per helicity row and colour component). QED or
+electroweak corrections, mixed Born orders, `color.contraction =
+"symmetric-group-fft"` and the standalone SDK bundle still require
+`engine = "legacy"`; such v2 requests are refused with the reason. Loading a v2
 process rebuilds its per-point tree inputs from the artifact, which takes about
-the process's generation time, until those inputs run natively.
+the process's generation time, until those inputs run natively. A v2 artifact
+holds no absolute path of the generating host and can be copied to another
+location or machine.
 
 To evaluate numerical colour/spin requests, set
 `evaluation.correlated_requests = "data/requests.json"`. The file maps output
