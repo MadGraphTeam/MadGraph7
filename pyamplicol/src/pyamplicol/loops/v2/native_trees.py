@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any
@@ -50,6 +50,12 @@ TREE_SCHEMA = 1
 # and saved one at a time: the peak memory is one chunk's expressions, not
 # the program's (g g > g g g g g: 475,440 outputs in four stages).
 CHUNK_OUTPUTS = 1 << 15
+
+# The native tree lane: "interactions" evaluates the blocks DAG interaction
+# by interaction with one compiled kernel per vertex and propagator shape
+# (``_interaction_program``); "stages" replays the runtime schema's stage
+# program, one saved evaluator per chunk of currents (``_stream_stages``).
+TREE_LANE = "interactions"
 
 
 @dataclass(frozen=True)
@@ -144,7 +150,11 @@ def export_trees(
         for label in record["external_labels"]:
             mask |= 1 << (int(label) - 1)
         momentum_slots.append([value_count + int(record["component_start"]), mask])
-    stages, saved = _stream_stages(trees)
+    if TREE_LANE == "interactions":
+        stages, (interactions, saved) = [], _interaction_program(trees)
+    else:
+        interactions = None
+        stages, saved = _stream_stages(trees)
     index = _BlockRows(slice_, None)._index
     block_rows = []
     for current, word, chirality, row, dimension in exporter.block_rows:
@@ -290,6 +300,7 @@ def export_trees(
         "momentum_slots": momentum_slots,
         "source_fill": schema["source_fill"],
         "stages": stages,
+        "interactions": interactions,
         "block_rows": block_rows,
         "born": {
             "rows": len(rows),
@@ -372,6 +383,229 @@ def _stream_stages(trees: Any) -> tuple[list[dict[str, Any]], tuple[bytes, ...]]
     if count and not records:
         raise ValueError("the tree program has no stage")
     return records, tuple(saved)
+
+
+def _interaction_program(trees: Any) -> tuple[dict[str, Any], tuple[bytes, ...]]:
+    """The blocks DAG of ``trees`` (a ``TreeRows``) as an interaction program.
+
+    Per runtime-schema stage, every interaction adds its exact colour weight
+    times its vertex kernel, evaluated on its two input rows and momenta, to
+    its result current; each output slot then copies the sum or applies the
+    current's propagator kernel. Kernels are the model's own component
+    expressions (``vertex_component_expression``,
+    ``propagator_component_expression``, as the stage program sums them per
+    current) on formal inputs ``[left, right, p_left, p_right, model]`` and
+    ``[value, p, model]``, one per distinct shape, saved as exact Symbolica
+    evaluators. The program's size is that of the DAG; the saved evaluators
+    come first for the kernels, then for the propagators."""
+
+    from symbolica import Expression, FunctionDefinition, S
+
+    from pyamplicol.generation.stage_parameters import (
+        _logical_model_parameter_symbols,
+        _model_symbolica_functions,
+        _specialize_stage_symbolica_functions,
+    )
+    from pyamplicol.models._physics_ir import PropagatorIR
+
+    dag, schema = trees.dag, trees.schema
+    records = trees._records
+    model_symbols = [S(f"pyamplicol_v2_trees::m{i}") for i in range(len(records))]
+    model = trees.model.with_runtime_parameters(
+        _logical_model_parameter_symbols(
+            records,
+            {
+                str(r["name"]): sym
+                for r, sym in zip(records, model_symbols, strict=True)
+            },
+        )
+    )
+    value_count = trees._value_count
+    value_slots = {
+        int(slot["value_slot_id"]): slot
+        for slot in schema["value_storage"]["value_slots"]
+    }
+    current_slots = {
+        int(slot["current_id"]): slot
+        for slot in schema["current_storage"]["current_slots"]
+    }
+    momentum_start = {
+        int(slot["momentum_mask"]): value_count + int(slot["component_start"])
+        for slot in schema["momentum_slots"]
+    }
+    saved: dict[str, list[bytes]] = {"kernels": [], "propagators": []}
+    shapes: dict[str, list[list[int]]] = {"kernels": [], "propagators": []}
+    ids: dict[tuple, int] = {}
+
+    def symbols(name: str, count: int) -> list[Any]:
+        return [S(f"pyamplicol_v2_trees::{name}{i}") for i in range(count)]
+
+    def compile_kernel(kind: str, key: tuple, build) -> int:
+        found = ids.get((kind, key))
+        if found is not None:
+            return found
+        inputs, components = build()
+        # The model's kernel functions materialise with their first use.
+        outputs, retained = _specialize_stage_symbolica_functions(
+            list(components), _model_symbolica_functions(model)
+        )
+        evaluator = Expression.evaluator_multiple(
+            list(outputs),
+            [*inputs, *model_symbols],
+            functions=[
+                FunctionDefinition(function, arguments, body, inlining="always")
+                for function, arguments, body in retained
+            ],
+            jit_compile=False,
+        )
+        found = ids[(kind, key)] = len(saved[kind])
+        saved[kind].append(bytes(evaluator.save()))
+        shapes[kind].append([len(inputs) + len(model_symbols), len(outputs)])
+        return found
+
+    def vertex(interaction: Any) -> int:
+        left = dag.currents[interaction.left_id]
+        right = dag.currents[interaction.right_id]
+        result = dag.currents[interaction.result_id]
+        key = (
+            int(interaction.vertex_kind),
+            int(result.index.particle_id),
+            int(result.index.chirality),
+            int(left.index.chirality),
+            int(right.index.chirality),
+            int(left.dimension),
+            int(right.dimension),
+        )
+
+        def build():
+            lhs, rhs = symbols("l", left.dimension), symbols("r", right.dimension)
+            pl, pr = symbols("pl", 4), symbols("pr", 4)
+            return [*lhs, *rhs, *pl, *pr], model.vertex_component_expression(
+                key[0],
+                lhs,
+                rhs,
+                result_particle_id=key[1],
+                result_chirality=key[2],
+                left_chirality=key[3],
+                right_chirality=key[4],
+                coupling=interaction.coupling,
+                left_momentum=pl,
+                right_momentum=pr,
+            )
+
+        return compile_kernel("kernels", key, build)
+
+    def propagator(current_id: int, slot: Mapping[str, Any]) -> int:
+        current = current_slots[current_id]
+        dimension = int(current["dimension"])
+        key = (
+            int(current["particle_id"]),
+            int(current["chirality"]),
+            dimension,
+            json.dumps(slot["propagator"], sort_keys=True),
+        )
+
+        def build():
+            value, momentum = symbols("v", dimension), symbols("p", 4)
+            return [*value, *momentum], model.propagator_component_expression(
+                key[0],
+                value,
+                momentum,
+                chirality=key[1],
+                propagator=PropagatorIR.from_json_dict(dict(slot["propagator"])),
+            )
+
+        return compile_kernel("propagators", key, build)
+
+    steps = []
+    for stage in schema["stages"]:
+        if not stage.get("interactions_compacted"):
+            raise ValueError("native trees read compacted runtime stages only")
+        inputs = {
+            int(value_slots[int(slot)]["current_id"]): value_slots[int(slot)]
+            for slot in stage["input_value_slot_ids"]
+        }
+        accumulators: dict[int, int] = {}
+        dimensions: list[int] = []
+        for current in sorted(
+            {
+                int(value_slots[int(slot)]["current_id"])
+                for slot in stage["output_value_slot_ids"]
+            }
+        ):
+            accumulators[current] = len(dimensions)
+            dimensions.append(int(current_slots[current]["dimension"]))
+        rows = []
+        for item in stage["interaction_ids"]:
+            interaction = dag.interactions[int(item)]
+            if complex(*interaction.evaluation_factor) == 0j:
+                continue  # a certified zero attachment (as the stage program)
+            left, right = inputs[interaction.left_id], inputs[interaction.right_id]
+            weight = _exact_weight(complex(*interaction.color_weight))
+            rows.append(
+                [
+                    vertex(interaction),
+                    int(left["component_start"]),
+                    int(left["dimension"]),
+                    int(right["component_start"]),
+                    int(right["dimension"]),
+                    momentum_start[
+                        dag.currents[interaction.left_id].index.momentum_mask
+                    ],
+                    momentum_start[
+                        dag.currents[interaction.right_id].index.momentum_mask
+                    ],
+                    accumulators[int(interaction.result_id)],
+                    _fraction_text(weight.real),
+                    _fraction_text(weight.imag),
+                ]
+            )
+        outputs = []
+        for slot_id in stage["output_value_slot_ids"]:
+            slot = value_slots[int(slot_id)]
+            current = int(slot["current_id"])
+            variant = str(slot["variant"])
+            if variant not in ("propagated", "unpropagated"):
+                raise ValueError(f"a stage output of variant {variant!r}")
+            outputs.append(
+                [
+                    accumulators[current],
+                    propagator(current, slot) if variant == "propagated" else -1,
+                    momentum_start[int(current_slots[current]["momentum_mask"])],
+                    int(slot["component_start"]),
+                    int(slot["dimension"]),
+                ]
+            )
+        steps.append(
+            {"interactions": rows, "accumulators": dimensions, "outputs": outputs}
+        )
+    program = {
+        "kernels": shapes["kernels"],
+        "propagators": shapes["propagators"],
+        "steps": steps,
+    }
+    return program, (*saved["kernels"], *saved["propagators"])
+
+
+@dataclass(frozen=True)
+class _ExactComplex:
+    real: Fraction
+    imag: Fraction
+
+
+def _exact_weight(value: complex) -> _ExactComplex:
+    """A stored binary64 colour weight, exactly: the U(1)-subtraction weight
+    +-1/N_c as the rational (``assemble._exact_u1_subtraction_weights``),
+    every other weight as its binary64 value (``models.expressions.
+    _exact_complex_expression``)."""
+
+    for sign in (1, -1):
+        if value == complex(sign / NC):
+            return _ExactComplex(Fraction(sign, NC), Fraction(0))
+    return _ExactComplex(
+        Fraction(*value.real.as_integer_ratio()),
+        Fraction(*value.imag.as_integer_ratio()),
+    )
 
 
 def _chunked_stages(dag: Any, schema: Any, limit: int) -> list[dict[str, Any]]:
