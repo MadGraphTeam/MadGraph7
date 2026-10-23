@@ -398,8 +398,19 @@ impl V2Executor {
         out
     }
 
+    /// Whether the plan has schedule M, and the families it dresses.
+    #[getter]
+    fn merged_families(&self) -> Option<Vec<usize>> {
+        self.executor
+            .plan()
+            .merged
+            .as_ref()
+            .map(|merged| merged.families.clone())
+    }
+
     /// Family numerators per point: `(family, order, rank, columns)` with
-    /// one coefficient vector per observable column, schedule `B` or `F`.
+    /// one coefficient vector per observable column, schedule `B`, `F` or
+    /// `M` (schedule M for its families, B for the others).
     #[pyo3(signature = (inputs, schedule="B"))]
     fn numerators(
         &self,
@@ -410,7 +421,8 @@ impl V2Executor {
         let schedule = match schedule {
             "B" => Schedule::B,
             "F" => Schedule::F,
-            _ => return Err(error("schedule must be B or F")),
+            "M" => Schedule::M,
+            _ => return Err(error("schedule must be B, F or M")),
         };
         let bits = self.bits()?;
         let executor = &self.executor;
@@ -436,8 +448,10 @@ impl V2Executor {
     /// Dress, reduce and assemble the bare virtual of every point. Returns
     /// `families` (per point `((family, order, column), Laurent)`), `check`
     /// (the re-test integrals or None), `bare` (per point and column),
-    /// `budget` (re-test error budgets), `failures` and `report`.
-    #[pyo3(signature = (inputs, *, poles=true, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None))]
+    /// `budget` (re-test error budgets), `failures` and `report`. `schedule`
+    /// `M` dresses the plan's schedule-M families by M (streamed in parts of
+    /// `part_chunks` chunks) and the others by B.
+    #[pyo3(signature = (inputs, *, poles=true, check=false, reverse=true, rotation=1, shift=false, rescale=false, chunk_families=None, schedule="B", part_chunks=None))]
     #[allow(clippy::too_many_arguments)]
     fn evaluate(
         &mut self,
@@ -450,6 +464,8 @@ impl V2Executor {
         shift: bool,
         rescale: bool,
         chunk_families: Option<usize>,
+        schedule: &str,
+        part_chunks: Option<usize>,
     ) -> PyResult<Evaluation> {
         let mut options = V2Options {
             poles,
@@ -459,10 +475,18 @@ impl V2Executor {
                 shift,
                 rescale,
             }),
+            schedule: match schedule {
+                "B" => Schedule::B,
+                "M" => Schedule::M,
+                _ => return Err(error("an evaluation runs schedule B or M")),
+            },
             ..V2Options::default()
         };
         if let Some(chunk) = chunk_families {
             options.chunk_families = chunk;
+        }
+        if let Some(chunks) = part_chunks {
+            options.part_chunks = chunks;
         }
         let bits = self.bits()?;
         let carrier = match self.carrier {
