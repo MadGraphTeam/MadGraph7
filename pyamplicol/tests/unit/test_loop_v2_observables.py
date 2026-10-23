@@ -266,14 +266,29 @@ RESOLVED_CONTROLS = {
 }
 
 
-@pytest.mark.parametrize("carrier", tuple(CARRIERS))
-@pytest.mark.parametrize("control", tuple(RESOLVED_CONTROLS))
+@pytest.mark.parametrize(
+    ("control", "carrier"),
+    [
+        (control, carrier)
+        for control in RESOLVED_CONTROLS
+        for carrier in CARRIERS
+        # Nightly (5.5 min): test_loop_v2_observables_nightly.py.
+        if (control, carrier) != ("uux_ggg", "double")
+    ],
+)
 def test_resolved_entries_sum_to_the_inclusive_result(generate, control, carrier):
     """Helicity x Born-basis entries (binary64; Born-basis entries at 200
     bits) sum exactly (to rounding) to the inclusive Born, components and
     totals, at full colour on g g > g g and u u~ > g g g and at LC and NLC on
     g g > g g; in binary64 the native resolved columns equal the Python
-    entries."""
+    entries. The five-leg binary64 case is nightly."""
+
+    assert_resolved_entries_sum(generate, control, carrier)
+
+
+def assert_resolved_entries_sum(generate, control: str, carrier: str) -> None:
+    """The resolved-sum identity of one control (and native = Python in
+    binary64)."""
 
     from pyamplicol.loops.v2.observables import NativeObservables
 
@@ -608,17 +623,20 @@ def test_asymmetric_ward_identity(generate, process, name, legs, carrier):
     """O10: with epsilon_j -> p_j on the loop side only (blocks, counterterm
     currents, field insertions; full kernels) the renormalised interference
     with the physical Born vanishes per Laurent coefficient and sector,
-    relative to the largest physical component. In binary64 the Ward vector
-    also runs through the native executor (batch inputs only).
+    relative to the largest physical component, in the Python reference
+    executor and natively (the Ward vector changes only the batch inputs):
+    natively in binary64 within 1e-11, in DoubleFloat within 1e-25 and in
+    MPFR at 200 bits within 1e-45, like the Python executor at 200 bits.
 
     What this shows: the R2 and UV counterterm components vanish on their own
     (at 200 bits below 1e-77 of the physical scale), so O10 checks the gauge
     invariance of the bare loop amplitude and of each counterterm part, not
     that UV and R2 are complete (a missing gauge-invariant part would pass).
     On g g > g g every family lane vanishes on its own; on u u~ > g g g the
-    lanes cancel across families (their absolute sum is about 3e3 times the
-    physical scale), so in binary64 the scale is at least that sum, against
-    which the rounding of the cancellation is measured."""
+    lanes cancel across families (their absolute sum is about 2.7e3 times the
+    physical scale). The Python executor's binary64 reduction rounds that
+    cancellation to 1.5e-10 of the physical scale on leg 5 (5.7e-14 of the
+    lanes' sum), so its binary64 bound adds 1e-12 of the lanes' sum."""
 
     from pyamplicol.loops.v2.observables import NativeObservables
 
@@ -628,33 +646,40 @@ def test_asymmetric_ward_identity(generate, process, name, legs, carrier):
     fixture = json.loads((FIXTURES / "legacy" / f"{name}.json").read_text())
     point, scale = fixture["points"][0], fixture["scales_squared"][0]
     precision = CARRIERS[carrier]
-    physical = observables.slice.evaluate(
-        point, scale, parameters=PARAMETERS, precision=precision
+    physical = _ward_scale(
+        observables.slice.evaluate(
+            point, scale, parameters=PARAMETERS, precision=precision
+        )
     )
-    tolerance = 1e-11 if carrier == "double" else 1e-45
     native = NativeObservables.correlated(observables, (INCLUSIVE,), lanes=4)
+    average = observables.slice.normalisation.average
     for leg in legs:
         (ward,) = observables.evaluate(
             point, scale, ward=leg, parameters=PARAMETERS, precision=precision
         ).values()
-        runs = [ward]
         if carrier == "double":
+            lanes = _lane_scale(ward, average)
+            bound = [
+                1e-11 * a + 1e-12 * b for a, b in zip(physical, lanes, strict=True)
+            ]
+            runs = [(ward, bound)]
+            natives = [(Precision.double(), 1e-11)]
+        else:
+            runs = [(ward, [1e-45 * a for a in physical])]
+            natives = [(Precision.double_double(), 1e-25), (precision, 1e-45)]
+        for carrier_precision, tolerance in natives:
             (result,) = native.evaluate(
-                [point], [scale], ward=leg, parameters=PARAMETERS
+                [point],
+                [scale],
+                ward=leg,
+                parameters=PARAMETERS,
+                precision=carrier_precision,
             )
-            runs.append(result[INCLUSIVE])
-        for run in runs:
-            reference = _ward_scale(physical)
-            if carrier == "double":
-                lanes = _lane_scale(run, observables.slice.normalisation.average)
-                reference = [max(a, b) for a, b in zip(reference, lanes, strict=True)]
+            runs.append((result[INCLUSIVE], [tolerance * a for a in physical]))
+        for run, bound in runs:
             for sector, laurent in run.components["virtual"].items():
                 for k, value in enumerate(laurent.coefficients):
-                    assert abs(complex(value)) <= tolerance * reference[k], (
-                        leg,
-                        sector,
-                        k,
-                    )
+                    assert abs(complex(value)) <= bound[k], (leg, sector, k)
             # The test is not empty: the physical Born is not.
             assert abs(float(run.totals[0])) > 0
 
@@ -700,6 +725,67 @@ def test_member_admission_refuses_unproved_substitutions(generate):
         admit_member(representative.slice, "t t~ > g g")
     with pytest.raises(ValueError):
         admit_member(representative.slice, "d d~ > d d~")
+
+
+def test_member_orders_match_the_permutation_search(loop_sm_compiled_model):
+    """Species-wise leg matching (``_member_orders``) yields, per species
+    map, the first leg order of the factorial permutation search (the test
+    oracle), in the same candidate order, for identity ports, aliases,
+    conjugations and refused pairs."""
+
+    from itertools import permutations
+
+    from pyamplicol.loops.flavor_mappings import identity_species_candidate
+    from pyamplicol.loops.v2.observables import _member_orders
+    from pyamplicol.models.loading import load_compiled_model
+    from pyamplicol.processes.model import build_model_process_ir
+
+    ir = load_compiled_model(loop_sm_compiled_model).ir
+
+    def candidates(rep, mem, orders):
+        found = {}
+        for order in orders:
+            species = identity_species_candidate(
+                tuple(rep[k].pdg for k in order), tuple(leg.pdg for leg in mem)
+            )
+            if species is not None:
+                key = tuple(sorted(species.items()))
+                if key not in found or order < found[key][1]:
+                    found[key] = (len(species), order)
+        return sorted(found.values())
+
+    pairs = [
+        ("d d~ > g g", ("s s~ > g g", "d~ d > g g", "d d~ > d d~")),
+        ("u u~ > d d~", ("u~ u > d d~", "d d~ > u u~", "s s~ > d d~")),
+        ("u d > u d", ("d u > d u", "u d > d u", "s c > s c")),
+        ("u u~ > d d~ g", ("d~ d > u~ u g", "s s~ > c c~ g")),
+        ("u g > u g", ("g u > g u", "c g > c g")),
+    ]
+    for representative, members in pairs:
+        rep = build_model_process_ir(representative, ir, color_accuracy="full").legs
+        initial = [k for k, leg in enumerate(rep) if leg.side == "initial"]
+        final = [k for k, leg in enumerate(rep) if leg.side == "final"]
+        search = [(*a, *b) for a in permutations(initial) for b in permutations(final)]
+        for process in members:
+            mem = build_model_process_ir(process, ir, color_accuracy="full").legs
+            expected = candidates(rep, mem, search)
+            assert candidates(rep, mem, _member_orders(rep, mem)) == expected, process
+
+
+def test_born_rows_missing_from_a_point_are_refused():
+    """A native batch takes a missing Born helicity row as zero only when
+    the point's spin sources drop it (a fixed leg with another helicity)."""
+
+    from types import SimpleNamespace
+
+    from pyamplicol.loops.v2.plan_export import _born_row
+
+    row, other = ((0, 1), (1, -1)), ((0, -1), (1, -1))
+    evaluation = SimpleNamespace(amplitudes={row: {"born": 1}}, fixed={1: 1})
+    assert _born_row(evaluation, row) == {"born": 1}
+    assert _born_row(evaluation, other) == {}
+    with pytest.raises(KeyError, match="missing from the point evaluation"):
+        _born_row(SimpleNamespace(amplitudes={row: {}}, fixed={}), other)
 
 
 # ------------------------------------------------------------------ legacy (O1)
@@ -770,7 +856,20 @@ def _legacy_runners(generate, record):
     return observables, runners
 
 
-def _bound(name: str, output: str, result, carrier: str) -> float:
+def _checks(name: str):
+    """The stability checks of a fixture's binary64 O1 runs (one rotation and
+    the reduction-direction check where a named loss needs its estimate)."""
+
+    from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
+
+    if any(entry == name for entry, _ in BINARY64_LOSSES):
+        return StabilityChecks((Rotation.about("z", "3/5", "4/5"),), True)
+    return None
+
+
+def _bound(
+    name: str, output: str, result, carrier: str, executor: str = "python"
+) -> float:
     """The comparison bound of an output: the carrier's legacy tolerance, or
     for a named binary64 loss (``BINARY64_LOSSES``) the output's own
     stability estimate, which must exist and stay below 1e-9."""
@@ -811,6 +910,8 @@ def _assert_correlated(result, expected, index, tolerance):
         "gg_gg_nlc",
         "uux_ggg_lc",
         "uux_ggg_nlc",
+        "ddgg_ssgg_lc",
+        "ddgg_ssgg_nlc",
     ),
 )
 def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
@@ -826,30 +927,18 @@ def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
     DoubleFloat."""
 
     from pyamplicol.loops.v2.observables import NativeObservables
-    from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
 
-    checks = None
-    if carrier == "double" and any(entry == name for entry, _ in BINARY64_LOSSES):
-        checks = StabilityChecks((Rotation.about("z", "3/5", "4/5"),), True)
+    checks = _checks(name) if carrier == "double" else None
 
     record = _legacy(name)
     observables, runners = _legacy_runners(generate, record)
     precision = CARRIERS[carrier]
     vectors = record["spin_vectors"]
-    process = runners[0][0]
-    directed = record["results"]["arbitrary-200"][process].get("directed", {})
-    if carrier == "double" and directed:
-        native = NativeObservables.correlated(observables, tuple(directed)).evaluate(
-            record["points"],
-            record["scales_squared"],
-            parameters=PARAMETERS,
-            stability=checks,
-        )
-        for index, results in enumerate(native):
-            for history, values in directed.items():
-                result = results[history]
-                bound = _bound(name, history, result, carrier)
-                _assert_correlated(result, values, index, bound)
+    if carrier == "double":
+        for process, runner in runners:
+            _assert_native_legacy(
+                observables, record, name, process, getattr(runner, "member", None)
+            )
     for process, runner in runners:
         expected = record["results"]["arbitrary-200"][process]
         for index, (point, scale) in enumerate(
@@ -904,6 +993,40 @@ def test_directed_and_spin_outputs_equal_legacy(generate, name, carrier):
             _assert_correlated(results[history], values, index, DOUBLE_DOUBLE_TOLERANCE)
 
 
+def _assert_native_legacy(observables, record, name, process, member) -> None:
+    """Binary64 O1 of one runner in the native executor: its directed
+    histories in one batch and each spin class with literal source vectors
+    (a member through its representative)."""
+
+    from pyamplicol.loops.v2.observables import NativeObservables
+
+    expected = record["results"]["arbitrary-200"][process]
+    points, scales = record["points"], record["scales_squared"]
+    checks = _checks(name)
+    directed = expected.get("directed", {})
+    if directed:
+        evaluated = NativeObservables.correlated(
+            observables, tuple(directed), member=member
+        ).evaluate(points, scales, parameters=PARAMETERS, stability=checks)
+        for index, results in enumerate(evaluated):
+            for history, values in directed.items():
+                result = results[history]
+                bound = _bound(name, history, result, "double", "native")
+                _assert_correlated(result, values, index, bound)
+    plan = NativeObservables.correlated(observables, (INCLUSIVE,), member=member)
+    for legs, values in expected.get("spin", {}).items():
+        spin = {
+            int(leg): record["spin_vectors"][k] for k, leg in enumerate(legs.split(","))
+        }
+        evaluated = plan.evaluate(
+            points, scales, spin=spin, parameters=PARAMETERS, stability=checks
+        )
+        for index, results in enumerate(evaluated):
+            result = results[INCLUSIVE]
+            bound = _bound(name, f"spin:{legs}", result, "double", "native")
+            _assert_correlated(result, values, index, bound)
+
+
 def test_inclusively_pruned_slice_refuses_directed_histories(
     loop_sm_compiled_model, loop_native
 ):
@@ -938,74 +1061,105 @@ def test_inclusively_pruned_slice_refuses_directed_histories(
         ObservableSlice.of(slice_, correlators=declarations)
 
 
-@pytest.mark.parametrize(
-    ("name", "carrier"),
-    (("gg_gg", "double"), ("gg_gg", "arbitrary-200"), ("uux_ggg", "double")),
+RESOLVED_LEGACY = (
+    *(
+        (name, carrier)
+        for name in ("gg_gg", "gg_gg_lc", "gg_gg_nlc", "ddgg_ssgg_lc", "ddgg_ssgg_nlc")
+        for carrier in CARRIERS
+    ),
+    ("uux_ggg", "double"),
 )
+
+
+@pytest.mark.parametrize(("name", "carrier"), RESOLVED_LEGACY)
 def test_helicity_resolved_outputs_equal_legacy(generate, name, carrier):
     """O1: per Born helicity row, the Born and the virtual summed over colour
     components equal the 200-bit legacy resolved outputs, in binary64 and at
-    200 bits (the legacy colour anchors are diagram colour tensors, v2's are
-    Born basis elements, so the colour axis is compared through its sum,
-    design §1.6 decision 3, open). The five-leg 200-bit case is nightly
+    200 bits, at full colour, LC and NLC, for the representative and a
+    flavour member (s s~ > g g through d d~ > g g); in binary64 also from the
+    native executor. The legacy colour anchors are diagram colour tensors,
+    v2's are Born basis elements, so the colour axis is compared through its
+    sum (design §1.6 decision 3, open). The five-leg 200-bit case is nightly
     (``test_loop_v2_observables_nightly.py``)."""
 
     assert_helicity_resolved_legacy(generate, name, carrier)
 
 
+def _by_helicity(entries) -> dict:
+    """Resolved entries {(row, component): result} keyed by the helicity
+    tuple of their row (``helicity`` resolution: one component)."""
+
+    return {tuple(h for _leg, h in row): value for (row, _b), value in entries.items()}
+
+
 def assert_helicity_resolved_legacy(generate, name: str, carrier: str) -> None:
-    """The helicity-resolved O1 comparison of one legacy record."""
+    """The helicity-resolved O1 comparison of one legacy record, for the
+    representative and its members (natively too in binary64)."""
+
+    from pyamplicol.loops.v2.observables import NativeObservables
 
     record = _legacy(name)
-    observables, _runners = _legacy_runners(generate, record)
-    expected = record["results"]["arbitrary-200"][record["processes"][0][0]]
-    resolved_record = expected["resolved"]
-    legacy_rows = [tuple(row) for row in resolved_record["helicities"]]
+    observables, runners = _legacy_runners(generate, record)
     tolerance = Decimal(str(LEGACY_TOLERANCE[carrier]))
-    for index, (point, scale) in enumerate(
-        zip(record["points"], record["scales_squared"], strict=True)
-    ):
-        resolved = observables.evaluate_resolved(
-            point,
-            scale,
-            resolution="helicity",
-            parameters=PARAMETERS,
-            precision=CARRIERS[carrier],
-        )
-        mine = {
-            tuple(h for _leg, h in row): value
-            for (row, _b), value in resolved.entries.items()
-        }
-        # Every row v2 generates is a legacy row.
-        assert set(mine) <= set(legacy_rows)
-        born_scale = max(
-            _magnitude(x) for order in resolved_record["born"][index] for x in order
-        )
-        virtual_scale = max(
-            _magnitude(x)
-            for sector in resolved_record["virtual"][index]
-            for row in sector
-            for x in row
-        )
-        for h, row in enumerate(legacy_rows):
-            value = mine.get(row)
-            expected_born = [order[h] for order in resolved_record["born"][index]]
-            expected_virtual = [
-                sector[h] for sector in resolved_record["virtual"][index]
+    points, scales = record["points"], record["scales_squared"]
+    for process, runner in runners:
+        resolved_record = record["results"]["arbitrary-200"][process]["resolved"]
+        legacy_rows = [tuple(row) for row in resolved_record["helicities"]]
+        runs = [
+            [
+                _by_helicity(
+                    runner.evaluate_resolved(
+                        point,
+                        scale,
+                        resolution="helicity",
+                        parameters=PARAMETERS,
+                        precision=CARRIERS[carrier],
+                    ).entries
+                )
+                for point, scale in zip(points, scales, strict=True)
             ]
-            if value is None:
-                # A row v2 does not generate is a structural zero, in the Born
-                # and in the virtual.
-                assert max(map(_magnitude, expected_born)) <= tolerance * born_scale
-                for targets in expected_virtual:
-                    assert max(map(_magnitude, targets)) <= tolerance * virtual_scale
-                continue
-            for actual, target in zip(value.born.values(), expected_born, strict=True):
-                assert _deviation(actual, target) <= tolerance * born_scale
-            sectors = list(value.components["virtual"].values())
-            for laurent, targets in zip(sectors, expected_virtual, strict=True):
-                for actual, target in zip(laurent.coefficients, targets, strict=True):
-                    assert _deviation(actual, target) <= tolerance * virtual_scale
+        ]
+        if carrier == "double":
+            native = NativeObservables.resolved(
+                observables, "helicity", member=getattr(runner, "member", None)
+            ).evaluate(points, scales, parameters=PARAMETERS)
+            runs.append([_by_helicity(entries) for entries in native])
+        for run in runs:
+            for index, mine in enumerate(run):
+                _assert_resolved_point(
+                    mine, resolved_record, legacy_rows, index, tolerance
+                )
+
+
+def _assert_resolved_point(mine, resolved_record, legacy_rows, index, tolerance):
+    # Every row v2 generates is a legacy row.
+    assert set(mine) <= set(legacy_rows)
+    born_scale = max(
+        _magnitude(x) for order in resolved_record["born"][index] for x in order
+    )
+    virtual_scale = max(
+        _magnitude(x)
+        for sector in resolved_record["virtual"][index]
+        for row in sector
+        for x in row
+    )
+    for h, row in enumerate(legacy_rows):
+        value = mine.get(row)
+        expected_born = [order[h] for order in resolved_record["born"][index]]
+        expected_virtual = [sector[h] for sector in resolved_record["virtual"][index]]
+        if value is None:
+            # A row v2 does not generate is a structural zero, in the Born
+            # and in the virtual.
+            assert max(map(_magnitude, expected_born)) <= tolerance * born_scale
+            for targets in expected_virtual:
+                assert max(map(_magnitude, targets)) <= tolerance * virtual_scale
+            continue
+        for actual, target in zip(value.born.values(), expected_born, strict=True):
+            assert _deviation(actual, target) <= tolerance * born_scale
+        sectors = list(value.components["virtual"].values())
+        for laurent, targets in zip(sectors, expected_virtual, strict=True):
+            for actual, target in zip(laurent.coefficients, targets, strict=True):
+                assert _deviation(actual, target) <= tolerance * virtual_scale
 
 
 # ------------------------------------------------------------------ public surface

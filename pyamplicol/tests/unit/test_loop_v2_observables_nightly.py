@@ -3,6 +3,8 @@
 
 * O1: the helicity-resolved outputs of u u~ > g g g at 200 bits against the
   frozen legacy record (``test_loop_v2_observables.py`` runs the others);
+* the helicity x Born-basis entries of u u~ > g g g in binary64 sum to the
+  inclusive result, and the native resolved columns equal the Python ones;
 * O14 with resolved-colour seed columns: BDK's partial amplitudes of
   qbar q g g g reproduce v2's helicity-resolved bare virtual at 200 bits.
 """
@@ -20,6 +22,7 @@ from .test_loop_v2_observables import (
     FIXTURES,
     PARAMETERS,
     assert_helicity_resolved_legacy,
+    assert_resolved_entries_sum,
     observable_builder,
 )
 
@@ -36,6 +39,14 @@ def test_five_leg_helicity_resolved_outputs_equal_legacy_at_200_bits(generate):
     minutes in the Python reference executor)."""
 
     assert_helicity_resolved_legacy(generate, "uux_ggg", "arbitrary-200")
+
+
+def test_five_leg_resolved_entries_sum_to_the_inclusive_result(generate):
+    """Helicity x Born-basis entries of u u~ > g g g in binary64 (about 5.5
+    minutes, mostly the Python executor's one-hot helicity x colour
+    columns)."""
+
+    assert_resolved_entries_sum(generate, "uux_ggg", "double")
 
 
 def _rank(vectors: list[list[Fraction]]) -> int:

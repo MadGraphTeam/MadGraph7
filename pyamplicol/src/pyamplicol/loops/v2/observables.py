@@ -72,7 +72,7 @@ from dataclasses import dataclass, field, replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
 from functools import cached_property
-from itertools import permutations, product
+from itertools import product
 from typing import Any, Literal
 
 from pyamplicol.color.connections import (
@@ -1879,22 +1879,15 @@ def admit_member(slice_: LoopSlice, process: str) -> FlavourMember:
     rep_legs, mem_legs = representative.legs, member.legs
     if [leg.side for leg in rep_legs] != [leg.side for leg in mem_legs]:
         raise ValueError("a flavour member keeps the initial and final leg counts")
-    sides = {
-        side: [i for i, leg in enumerate(rep_legs) if leg.side == side]
-        for side in ("initial", "final")
-    }
     prepared = slice_.prepared
     plan = None
     candidates = []
-    for initial in permutations(sides["initial"]):
-        for final in permutations(sides["final"]):
-            order = (*initial, *final)
-            species = identity_species_candidate(
-                tuple(rep_legs[k].pdg for k in order),
-                tuple(leg.pdg for leg in mem_legs),
-            )
-            if species is None:
-                continue
+    for order in _member_orders(rep_legs, mem_legs):
+        species = identity_species_candidate(
+            tuple(rep_legs[k].pdg for k in order),
+            tuple(leg.pdg for leg in mem_legs),
+        )
+        if species is not None:
             candidates.append((len(species), order, species))
     # Prefer pure permutations, then the identity port.
     candidates.sort(key=lambda item: (item[0], item[1]))
@@ -1926,6 +1919,69 @@ def admit_member(slice_: LoopSlice, process: str) -> FlavourMember:
         f"{process!r} is neither a proved flavour member nor an alias of "
         f"{representative.process!r}" + (f": {errors[0]}" if errors else "")
     )
+
+
+def _member_orders(rep_legs, mem_legs) -> list[tuple[int, ...]]:
+    """Candidate leg orders of a member: ``order[i]`` is the representative
+    leg of member leg i, within the initial and within the final state.
+
+    Legs are matched species by species: every representative species (a
+    particle with its antiparticle) maps to a distinct member species with
+    the same particle and antiparticle counts on each side, possibly
+    conjugated, and each such species map yields its lexicographically first
+    leg order (the proof of a substitution depends on the species map
+    alone). The species maps are enumerated, not the leg permutations, so
+    the work is polynomial in the multiplicity.
+    """
+
+    def signature(legs, species: int) -> tuple[int, ...]:
+        return tuple(
+            sum(1 for leg in legs if leg.side == side and leg.pdg == sign * species)
+            for side in ("initial", "final")
+            for sign in (1, -1)
+        )
+
+    rep = sorted({abs(leg.pdg) for leg in rep_legs})
+    mem = sorted({abs(leg.pdg) for leg in mem_legs})
+    if len(rep) != len(mem):
+        return []
+    rep_signature = {s: signature(rep_legs, s) for s in rep}
+    targets = {}
+    for t in mem:
+        count = signature(mem_legs, t)
+        targets[t] = {1: count, -1: (count[1], count[0], count[3], count[2])}
+    maps: list[dict[int, int]] = []
+
+    def extend(mapping: dict[int, int]) -> None:
+        if len(mapping) == len(rep):
+            maps.append(dict(mapping))
+            return
+        s = rep[len(mapping)]
+        used = {abs(value) for value in mapping.values()}
+        for t in mem:
+            for sign in (1, -1):
+                if t not in used and targets[t][sign] == rep_signature[s]:
+                    mapping[s] = sign * t
+                    extend(mapping)
+                    del mapping[s]
+
+    extend({})
+    orders = set()
+    for mapping in maps:
+        free = list(range(len(rep_legs)))
+        order = []
+        for leg in mem_legs:
+            k = next(
+                k
+                for k in free
+                if rep_legs[k].side == leg.side
+                and mapping[abs(rep_legs[k].pdg)] * (1 if rep_legs[k].pdg > 0 else -1)
+                == leg.pdg
+            )
+            free.remove(k)
+            order.append(k)
+        orders.add(tuple(order))
+    return sorted(orders)
 
 
 class MemberObservables:

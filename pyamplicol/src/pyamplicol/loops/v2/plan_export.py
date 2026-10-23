@@ -982,14 +982,11 @@ class NativeExecutor:
                     "the points of one batch need equal kernel constants and masses"
                 )
             batch["block_rows"].append(rows)
+            amplitudes = [_born_row(evaluation, row) for row in exported.rows]
             batch["born"].append(
                 [
-                    value(
-                        evaluation.amplitudes.get(row, {})
-                        .get((b, order), {})
-                        .get(grade, 0)
-                    )
-                    for row in exported.rows
+                    value(row.get((b, order), {}).get(grade, 0))
+                    for row in amplitudes
                     for b, order, grade in exported.born_components
                 ]
             )
@@ -1220,6 +1217,21 @@ class NativeExecutor:
                     else {label(lane): laurent(values) for lane, values in checks}
                 )
         return failed
+
+
+def _born_row(evaluation, row) -> Mapping:
+    """The Born amplitudes of one exported helicity row at a point: empty
+    for a row the point's spin sources drop (a fixed leg with another
+    helicity, ``assemble._PointEvaluation(fixed=...)``); any other missing
+    row is an error, never a silent zero."""
+
+    found = evaluation.amplitudes.get(row)
+    if found is not None:
+        return found
+    fixed = evaluation.fixed
+    if any(fixed.get(index + 1, helicity) != helicity for index, helicity in row):
+        return {}
+    raise KeyError(f"helicity row {row} is missing from the point evaluation")
 
 
 def _carrier_value(z, arithmetic: Arithmetic) -> Any:
