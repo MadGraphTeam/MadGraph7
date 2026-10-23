@@ -1005,13 +1005,14 @@ class NativeExecutor:
         *,
         parameters: Mapping[str, str] | None = None,
         precision: Any = None,
-        poles: bool = True,
+        poles: bool | str = True,
         stability: Any = None,
         schedule: Literal["B", "M"] = "B",
     ) -> list[Any]:
         """The complete virtual of every point (``LoopSlice.evaluate``), with
         dressing and reduction in the native executor (``schedule`` B, or M
-        for the plan's schedule-M families).
+        for the plan's schedule-M families). ``poles`` is the pole mode
+        (``"all"``/True, ``"none"``/False, ``"uv"``, ``"ir"``; ``poles``).
 
         Rotation checks re-evaluate the rotated points natively; the
         reduction check is the native re-test pass. A failed point fails
@@ -1071,7 +1072,8 @@ class NativeExecutor:
         evaluations (failed points unassembled) and the failures per point
         index."""
 
-        from .assemble import Laurent, _Numbers
+        from .assemble import _Numbers
+        from .poles import pole_mode, reducer_poles
 
         precision, evaluations = self._points(
             points, scales, parameters, precision, poles
@@ -1080,7 +1082,7 @@ class NativeExecutor:
         native = self.native(arithmetic, digits, len(evaluations))
         output = native.evaluate(
             self._inputs(evaluations, arithmetic),
-            poles=poles,
+            poles=reducer_poles(pole_mode(poles)),
             check=retest is not None,
             rescale=retest == "rescaled",
             schedule=schedule,
@@ -1103,14 +1105,10 @@ class NativeExecutor:
                 continue
             numbers = evaluation.numbers
 
-            def laurent(values, numbers=numbers):
+            def carrier(values, numbers=numbers):
                 if numbers.double:
-                    return Laurent(
-                        *[complex(float(re), float(im)) for re, im in values]
-                    )
-                return Laurent(
-                    *[numbers.pair(Decimal(re), Decimal(im)) for re, im in values]
-                )
+                    return [complex(float(re), float(im)) for re, im in values]
+                return [numbers.pair(Decimal(re), Decimal(im)) for re, im in values]
 
             def label(lane):
                 family, order, column = lane
@@ -1121,13 +1119,11 @@ class NativeExecutor:
                 )
 
             with _Numbers(precision).scope():
-                evaluation.families = {
-                    label(lane): laurent(values) for lane, values in lanes
-                }
-                evaluation.retest_families = (
+                evaluation.set_lanes(
+                    {label(lane): carrier(values) for lane, values in lanes},
                     None
                     if checks is None
-                    else {label(lane): laurent(values) for lane, values in checks}
+                    else {label(lane): carrier(values) for lane, values in checks},
                 )
                 # The native seeds contract the exported exact weights K[c, b]
                 # with the Born components directly (``seed_records``).

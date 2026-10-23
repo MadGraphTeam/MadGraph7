@@ -23,10 +23,13 @@ space point and in binary64 or arbitrary precision (design §5.1):
 
 Runtime options (REQUIREMENTS_ADDENDUM B and C):
 
-* ``poles=False`` evaluates the same generated slice in finite-only mode: the
-  reducer returns no pole columns, counterterm and field couplings are bound
-  only at eps^0, and the IR-pole check is skipped. Pole coefficients are then
-  absent (``None``), not zero.
+* ``poles=False`` (``"none"``) evaluates the same generated slice in
+  finite-only mode: the reducer returns no pole columns, counterterm and field
+  couplings are bound only at eps^0, and the IR-pole check is skipped. Pole
+  coefficients are then absent (``None``), not zero. ``poles="uv"`` and
+  ``poles="ir"`` return only the ultraviolet or infrared pole parts of every
+  component (``poles``, design §12.4); the finite part is the same in all
+  four modes.
 * ``stability`` requests estimates (``stability.StabilityChecks``): rotation
   checks re-evaluate the point with rotated momenta, the reduction-direction
   check re-reduces every lane in the reversed frame; each check's error budget
@@ -130,6 +133,15 @@ from .families import (
     shifts,
 )
 from .fields import FIELD_COMPONENT, FieldInsertion, external_field_insertions
+from .poles import (
+    PoleMode,
+    catani_poles,
+    has_poles,
+    pole_mode,
+    reducer_poles,
+    select_lane,
+    split_sector,
+)
 from .poly_affine import MonomialLayout, leg_momentum
 from .schedules import LoopSchedules, SkeletonView, build_schedules, cheapest
 from .stability import (
@@ -801,11 +813,16 @@ class PointResult:
     sectors (Born, then each component's Laurent coefficients; 7 entries in
     finite-only mode). ``families`` keeps each reduction lane's raw integrals
     ``(family, loop order, sector) -> Laurent``. ``ir_poles`` is Catani's
-    prediction of the virtual's (single, double) poles per sector, ``None``
-    in finite-only mode, at leading colour and for non-QCD corrections;
-    ``stability`` is ``None`` unless checks were asked.
-    ``colour_contraction`` is the seed contraction used ("direct" or
-    "symmetric-group-fft").
+    prediction of the virtual's (single, double) poles per sector (massless
+    and massive coloured legs), ``None`` in finite-only and ``"uv"`` mode, at
+    leading colour and for non-QCD corrections; ``stability`` is ``None``
+    unless checks were asked. ``colour_contraction`` is the seed contraction
+    used ("direct" or "symmetric-group-fft").
+
+    ``poles`` is the evaluation's pole mode (``poles.MODES``): in ``"uv"``
+    and ``"ir"`` the components, totals and families carry the selected
+    pole parts, and ``pole_origins[origin][component][sector]`` gives both
+    parts (``Laurent`` with the combined finite part), ``None`` otherwise.
     """
 
     born: Mapping[Orders, Any]
@@ -815,6 +832,8 @@ class PointResult:
     ir_poles: Mapping[Orders, tuple[Any, Any]] | None
     stability: StabilityEstimate | None = None
     colour_contraction: str = "direct"
+    poles: PoleMode = "all"
+    pole_origins: Mapping[str, Mapping[str, Mapping[Orders, Laurent]]] | None = None
 
     def virtual(self, sector: Orders) -> Laurent:
         return self.components["virtual"][sector]
@@ -1166,7 +1185,7 @@ class LoopSlice:
         *,
         parameters: Mapping[str, str] | None = None,
         precision: Precision | None = None,
-        poles: bool = True,
+        poles: bool | PoleMode = True,
         stability: StabilityChecks | None = None,
     ) -> PointResult:
         """The complete virtual at one exact point (decimal strings or rationals).
@@ -1174,6 +1193,8 @@ class LoopSlice:
         ``point`` lists the physical momenta (E, px, py, pz) of the legs in
         process order, incoming momenta as given; ``scale_squared`` is mu_R^2.
         ``parameters`` overrides external model parameters (decimal strings).
+        ``poles`` is ``"all"`` (``True``, default), ``"none"`` (``False``,
+        finite only), ``"uv"`` or ``"ir"`` (``poles``, design §12.4).
         """
 
         precision = precision or Precision.double()
@@ -1535,7 +1556,12 @@ class _PointEvaluation:
     def __init__(self, slice_, point, scale, parameters, numbers, poles):
         self.slice = slice_
         self.numbers = numbers
-        self.poles = poles
+        # ``mode`` selects the pole parts (``poles``); ``poles`` says whether
+        # any pole column is computed (every mode but finite-only).
+        self.mode = pole_mode(poles)
+        self.poles = has_poles(self.mode)
+        # The reducer's split columns per lane in "uv" and "ir" mode.
+        self.split_lanes: dict | None = None
         process = slice_.blocks.process
         labels = sorted(leg.label for leg in process.legs)
         initial = {leg.label for leg in process.legs if leg.is_initial}
@@ -1550,7 +1576,7 @@ class _PointEvaluation:
                 tuple(_to_decimal(x) for x in momentum) for momentum in point
             ]
         rows = slice_.tree_rows.evaluate(decimal_point, parameters, numbers)
-        scalars = slice_.scalars(parameters, numbers, poles)
+        scalars = slice_.scalars(parameters, numbers, self.poles)
         self.parameters = parameters
         self.scale = scale
         self._born_and_counterterms(rows, scalars, labels)
@@ -1863,27 +1889,53 @@ class _PointEvaluation:
         )
         direct, check = reducer.reduce(
             groups,
-            poles=self.poles,
+            poles=reducer_poles(self.mode),
             check=retest is not None,
             rescale=retest == "rescaled",
         )
-        self.families = {}
-        self.retest_families = {} if check is not None else None
-        for lane, batch in zip(lanes, direct, strict=True):
-            self.families[lane] = self._laurent(batch, lane)
-        if check is not None:
-            for lane, batch in zip(lanes, check, strict=True):
-                self.retest_families[lane] = self._laurent(batch, lane)
+        self.set_lanes(
+            {
+                lane: self._values(batch, lane)
+                for lane, batch in zip(lanes, direct, strict=True)
+            },
+            None
+            if check is None
+            else {
+                lane: self._values(batch, lane)
+                for lane, batch in zip(lanes, check, strict=True)
+            },
+        )
 
-    def _laurent(self, batch, lane) -> Laurent:
+    def _values(self, batch, lane) -> list[Any]:
         ((_row, status),) = batch.statuses
         if status != "success":
             raise ArithmeticError(f"reduction lane {lane} failed: {status}")
-        values = [
+        return [
             self.numbers.pair(Decimal(re), Decimal(im))
             for re, im in batch.values.to_decimal()
         ]
-        return Laurent(*values)
+
+    def set_lanes(self, direct: Mapping, check: Mapping | None) -> None:
+        """Each lane's raw integrals in the evaluation's pole mode.
+
+        In ``"uv"`` and ``"ir"`` mode the reducer returns ``[finite, 1/eps,
+        1/eps^2, 1/eps_UV]`` per lane; ``families`` (and the re-test's) keep
+        the selected parts and ``split_lanes`` the reducer's columns, from
+        which ``_assemble`` takes the combined and UV parts of ``bare``.
+        """
+
+        def laurent(values) -> Laurent:
+            if self.mode in ("uv", "ir"):
+                return Laurent(*select_lane(values, self.mode, self.numbers.zero))
+            return Laurent(*values)
+
+        self.split_lanes = dict(direct) if self.mode in ("uv", "ir") else None
+        self.families = {lane: laurent(values) for lane, values in direct.items()}
+        self.retest_families = (
+            None
+            if check is None
+            else {lane: laurent(values) for lane, values in check.items()}
+        )
 
     # -- assembly --------------------------------------------------------------------
 
@@ -1907,7 +1959,19 @@ class _PointEvaluation:
         slice_, numbers = self.slice, self.numbers
         width = 3 if self.poles else 1
         zero = numbers.real(0)
-        bare = self._bare(self.families)
+        split = self.split_lanes
+        if split is None:
+            bare = self._bare(self.families)
+            origins = None
+        else:
+            # The combined Laurent of every lane, and its UV part (``poles``).
+            bare = self._bare({lane: Laurent(*v[:3]) for lane, v in split.items()})
+            bare_uv = self._bare(
+                {lane: Laurent(v[0], v[3], numbers.zero) for lane, v in split.items()}
+            )
+            origins = {
+                origin: {name: {} for name in COMPONENTS} for origin in ("uv", "ir")
+            }
         components: dict[str, dict[Orders, Laurent]] = {name: {} for name in COMPONENTS}
         for sector, _pairs in slice_.sectors:
             values = {
@@ -1920,8 +1984,22 @@ class _PointEvaluation:
                         for power in LAURENT_POWERS[:width]
                     ]
                 )
-            values["uv"] = values["uv_local"] + values[FIELD_COMPONENT]
-            values["virtual"] = values["bare"] + values["uv"] + values["r2"]
+            if origins is not None:
+                parts = split_sector(
+                    values,
+                    bare_uv.get(sector, Laurent(zero, zero, zero)),
+                    FIELD_COMPONENT,
+                    Laurent,
+                )
+                for origin, part in parts.items():
+                    part["uv"] = part["uv_local"] + part[FIELD_COMPONENT]
+                    part["virtual"] = part["bare"] + part["uv"] + part["r2"]
+                    for name in COMPONENTS:
+                        origins[origin][name][sector] = part[name]
+                values = parts[self.mode]
+            else:
+                values["uv"] = values["uv_local"] + values[FIELD_COMPONENT]
+                values["virtual"] = values["bare"] + values["uv"] + values["r2"]
             for name in COMPONENTS:
                 components[name][sector] = values[name]
         totals = [sum(self.born.values(), zero)]
@@ -1937,13 +2015,12 @@ class _PointEvaluation:
                     )
                 )
         # Catani's operator is the full-colour pole prediction of QCD
-        # corrections with massless coloured legs.
-        checked = (
-            slice_.request.accuracy == "full"
-            and slice_.alpha_s_parameter
-            and self._massless_coloured_legs()
+        # corrections (massless and massive coloured legs); in "uv" mode the
+        # renormalised virtual has no IR pole to predict.
+        checked = slice_.request.accuracy == "full" and slice_.alpha_s_parameter
+        ir_poles = (
+            self._ir_poles() if self.poles and self.mode != "uv" and checked else None
         )
-        ir_poles = self._ir_poles() if self.poles and checked else None
         self.result = PointResult(
             dict(self.born),
             components,
@@ -1951,6 +2028,8 @@ class _PointEvaluation:
             dict(self.families),
             ir_poles,
             colour_contraction=self.colour_contraction,
+            poles=self.mode,
+            pole_origins=origins,
         )
         self.absolute = self._lane_budget(
             {lane: value.coefficients for lane, value in self.families.items()},
@@ -2016,22 +2095,13 @@ class _PointEvaluation:
 
     # -- IR poles ----------------------------------------------------------------------
 
-    def _massless_coloured_legs(self) -> bool:
-        """Whether every coloured leg is massless (Catani's massless dipoles)."""
-
-        return not any(
-            any(self.incoming[leg.label - 1])
-            and _minkowski(self.incoming[leg.label - 1])
-            for leg in self.slice.basis.legs
-            if leg.representation != 1
-        )
-
     def _ir_poles(self) -> dict[Orders, tuple[Any, Any]]:
         """Catani's single and double poles of the renormalised virtual.
 
         V_poles = (alpha_s / 2 pi) sum_i sum_{j != i} (1/C_i) (C_i/eps^2 +
-        gamma_i/eps) (1 + eps log(mu^2 / |2 p_i.p_j|)) <T_i.T_j>, massless
-        coloured legs, QCD corrections, n_f light flavours in gamma_g.
+        gamma_i/eps) (1 + eps log(mu^2 / |2 p_i.p_j|)) <T_i.T_j> for massless
+        coloured legs, QCD corrections, n_f light flavours in gamma_g; massive
+        emitters take the massive form (``poles.catani_poles``).
         """
 
         slice_, numbers = self.slice, self.numbers
@@ -2057,32 +2127,29 @@ class _PointEvaluation:
         correction = add_orders(tuple((name, 2) for name in slice_.request.corrections))
         out = {}
         for sector, _pairs in slice_.sectors:
-            single = double = numbers.real(0)
-            for i in coloured:
-                representation = legs[i].representation
-                casimir = _casimir(representation)
-                gamma = _gamma(representation, light)
-                for j in coloured:
-                    if j == i:
-                        continue
-                    correlated = numbers.real(0)
-                    for vectors in physical:
-                        for a, left in vectors.items():
-                            for b, right in vectors.items():
-                                if add_orders(a, b, correction) != sector:
-                                    continue
-                                correlated += self._sandwich(
-                                    left, right, dipoles[(i, j)]
-                                )
-                    correlated = correlated / slice_.normalisation.average
-                    invariant = 2 * _minkowski_dot(
-                        self.incoming[i - 1], self.incoming[j - 1]
-                    )
-                    log = _log(mu2 / numbers.real(abs(invariant)), numbers)
-                    double += correlated
-                    single += (
-                        numbers.real(gamma) / numbers.real(casimir) + log
-                    ) * correlated
+
+            def correlated(i: int, j: int, sector=sector) -> Any:
+                total = numbers.real(0)
+                for vectors in physical:
+                    for a, left in vectors.items():
+                        for b, right in vectors.items():
+                            if add_orders(a, b, correction) != sector:
+                                continue
+                            total += self._sandwich(left, right, dipoles[(i, j)])
+                return total / slice_.normalisation.average
+
+            single, double = catani_poles(
+                coloured,
+                {label: legs[label].representation for label in coloured},
+                {label: self.incoming[label - 1] for label in coloured},
+                correlated,
+                casimir=_casimir,
+                gamma=lambda j: _gamma(legs[j].representation, light),
+                mu2=mu2,
+                log=lambda x: _log(x, numbers),
+                real=numbers.real,
+                sqrt=lambda x: math.sqrt(x) if numbers.double else x.sqrt(),
+            )
             out[sector] = (prefactor * single, prefactor * double)
         return out
 
