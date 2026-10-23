@@ -583,9 +583,10 @@ does not admit yet fails at generation with the reason, for example:
   Born orders in the SM: "not a pure vector coupling; its sign needs the
   electroweak oracles"), and electroweak bosons in the final state with QCD
   corrections (`u u~ > e- e+ g g`);
-- counterterm vertices the tree recursion cannot lower, for example a
-  Levi-Civita R2 cell that does not cancel between the loop flavours ("counterterm
-  rules the tree recursion cannot lower").
+- QED corrections to quark processes with MG5_aMC's `loop_qcd_qed_sm`
+  (`u u~ > d d~` with QCD and QED corrections): its electroweak counterterms use
+  the complex-mass scheme's UFO helpers (`recms`, `regsqrt`) and a Goldstone-photon
+  mixing between spins ("counterterm rules the tree recursion cannot lower").
 
 The model's UV and R2 counterterms are taken as declared (`uv_complete`,
 `model_r2_complete`): the engine does not check them against the loops.

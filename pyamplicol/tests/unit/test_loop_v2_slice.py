@@ -53,7 +53,6 @@ from pyamplicol.loops.v2.assemble import (
     _decimal_string,
 )
 from pyamplicol.loops.v2.conventions import FermionSignError
-from pyamplicol.loops.v2.ct_sites import CountertermCompletenessError
 from pyamplicol.loops.v2.families import shifts
 from pyamplicol.loops.v2.poly_affine import size, substitute
 from pyamplicol.loops.v2.stability import (
@@ -280,9 +279,10 @@ def test_colour_projections_equal_legacy(declared, name, accuracy, carrier):
 @pytest.mark.loop_physics
 @pytest.mark.xfail(
     strict=True,
-    raises=CountertermCompletenessError,
-    reason="closed-quark A g g triangles (Furry) need CertifiedZero witnesses "
-    "(WP3.5); then add the legacy control and include it in PROJECTED",
+    raises=FermionSignError,
+    reason="the Z couples to the quark line inside the QCD loop: its sign needs "
+    "the electroweak oracles (WP3.2); then add the legacy control and include "
+    "it in PROJECTED",
 )
 @pytest.mark.parametrize("accuracy", ("lc", "nlc"))
 def test_uux_emepgg_colour_projections_are_generable(
