@@ -19,7 +19,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 pub const LOOP_RUNTIME_CAPABILITY: &str = "rusticol.loop-runtime.v3";
-pub const LOOP_V2_RUNTIME_CAPABILITY: &str = "rusticol.loop-runtime.v4";
+pub use crate::engine::LOOP_V2_RUNTIME_CAPABILITY;
 pub const LOOP_RUNTIME_KIND: &str = "pyamplicol-runtime-loop-execution";
 pub const EPSILON_CONVENTION: &str = "Cepsilon=(4*pi)^epsilon/Gamma(1-epsilon)";
 pub const ORDINARY_INTERFERENCE: &str = "2*Re(conj(Born)*loop)";
