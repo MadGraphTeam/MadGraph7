@@ -293,17 +293,7 @@ def assert_resolved_entries_sum(generate, control: str, carrier: str) -> None:
     from pyamplicol.loops.v2.observables import NativeObservables
 
     process, born, loop, accuracy, points = RESOLVED_CONTROLS[control]
-    options = {}
-    if accuracy != "full":
-        from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
-
-        options = {
-            "accuracy": accuracy,
-            "colour_declaration": LoopColorDeclaration.from_dict(
-                json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
-            ),
-        }
-    observables = generate(process, born=born, loop=loop, **options)
+    observables = generate(process, born=born, loop=loop, **_colour_options(accuracy))
     fixture = json.loads((FIXTURES / points).read_text())
     point, scale = fixture["points"][0], fixture["scales_squared"][0]
     precision = CARRIERS[carrier]
@@ -430,6 +420,8 @@ def _colour_options(accuracy: str) -> dict:
         ),
     }
 
+
+def test_directed_history_and_its_swap_are_conjugate(generate):
     """V(bra, ket) = conj V(ket, bra) for an ordered non-Hermitian history."""
 
     observables = generate(
@@ -478,23 +470,13 @@ def test_spin_sources_are_bilinear(generate, accuracy):
     sources and joint colour x spin outputs at every accuracy, where no
     provider or legacy record exists)."""
 
-    options = {}
-    if accuracy != "full":
-        from pyamplicol.models.loop_color_declaration import LoopColorDeclaration
-
-        options = {
-            "accuracy": accuracy,
-            "colour_declaration": LoopColorDeclaration.from_dict(
-                json.loads(legacy_capture.COLOUR_DECLARATION.read_text())
-            ),
-        }
     observables = generate(
         "g g > g g",
         correlators=CorrelatorConfig(
             color_correlations=(ColorCorrelator.dipole("T12", 1, 2),),
             spin_correlations=((3,),),
         ),
-        **options,
+        **_colour_options(accuracy),
     )
     fixture = json.loads((FIXTURES / "legacy/gg_gg.json").read_text())
     point, scale = fixture["points"][0], fixture["scales_squared"][0]

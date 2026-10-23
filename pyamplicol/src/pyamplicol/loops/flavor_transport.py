@@ -19,10 +19,7 @@ from pyamplicol.generation.process_grouping import (
     invert_permutation,
 )
 
-from .flavor_mappings import (
-    FlavorSymmetry,
-    identity_species_candidate,  # noqa: F401 (re-export)
-)
+from .flavor_mappings import FlavorSymmetry
 from .physical_source import NativeSourceModelProgram
 from .request import LoopExternalRequest, prepare_loop_external_request
 
