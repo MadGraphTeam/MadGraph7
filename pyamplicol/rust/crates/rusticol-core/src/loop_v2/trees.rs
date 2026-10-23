@@ -32,7 +32,6 @@ use super::plan::LoopProgramV4;
 use crate::engine::SchemaSources;
 use crate::{RusticolError, RusticolResult};
 use serde::Deserialize;
-use std::any::TypeId;
 use std::collections::BTreeMap;
 use symbolica::domains::float::{Complex, DoubleFloat, Float, Real};
 use symbolica::domains::rational::Rational;
@@ -175,10 +174,11 @@ pub struct TreeProgram {
 
 /// The parameter-only inputs of one batch.
 pub struct TreeBatch<T> {
-    /// Model parameter values in the schema's order (real).
-    pub model: Vec<Rational>,
-    /// Masses of massive external particles by PDG code.
-    pub masses: BTreeMap<i32, f64>,
+    /// Per point the model parameter values in the schema's order (real;
+    /// the renormalisation scale may change per point).
+    pub model: Vec<Vec<Rational>>,
+    /// Exact masses of massive external particles by PDG code.
+    pub masses: BTreeMap<i32, Rational>,
     /// Couplings per (name, N_c grade) slot.
     pub couplings: Vec<Complex<T>>,
 }
@@ -209,7 +209,10 @@ impl TreeProgram {
     /// `stages` holds each stage's saved exact evaluator.
     pub fn load(json: &[u8], stages: &[Vec<u8>], plan: &LoopProgramV4) -> RusticolResult<Self> {
         let file: TreeFile = serde_json::from_slice(json).map_err(|e| invalid(e.to_string()))?;
-        require(file.schema == TREE_SCHEMA, "unsupported tree-program schema")?;
+        require(
+            file.schema == TREE_SCHEMA,
+            "unsupported tree-program schema",
+        )?;
         require(
             file.legs == plan.legs && file.legs > 0 && file.legs < 64,
             "leg count",
@@ -221,7 +224,10 @@ impl TreeProgram {
         )?;
         require(stages.len() == file.stages.len(), "stage evaluator count")?;
         for &(start, _mask) in &file.momentum_slots {
-            require(start + 4 <= file.state_size, "momentum slot outside the state")?;
+            require(
+                start + 4 <= file.state_size,
+                "momentum slot outside the state",
+            )?;
         }
         let mut loaded = Vec::with_capacity(stages.len());
         for (bytes, stage) in stages.iter().zip(file.stages) {
@@ -247,8 +253,7 @@ impl TreeProgram {
             file.block_rows.len() == plan.block_rows.len(),
             "block rows differ from the plan's",
         )?;
-        for (&(start, dimension, sign), &expected) in file.block_rows.iter().zip(&plan.block_rows)
-        {
+        for (&(start, dimension, sign), &expected) in file.block_rows.iter().zip(&plan.block_rows) {
             require(
                 start + dimension <= file.state_size && dimension == expected && sign.abs() == 1,
                 "block row",
@@ -458,7 +463,7 @@ impl TreeProgram {
     /// The native inputs of a batch: `momenta` are the plan's all-incoming
     /// momenta per point (initial legs as given, final legs negated) and
     /// `constants` the plan's kernel constants.
-    pub fn inputs<T: Carrier>(
+    pub fn inputs<T: TreeCarrier>(
         &self,
         runtime: &mut TreeRuntime<T>,
         plan: &LoopProgramV4,
@@ -470,10 +475,17 @@ impl TreeProgram {
     where
         Complex<T>: Real + EvaluationDomain,
     {
-        require(batch.model.len() == self.model_count, "model parameter count")?;
+        let points = momenta.len();
+        require(
+            batch.model.len() == points
+                && batch
+                    .model
+                    .iter()
+                    .all(|model| model.len() == self.model_count),
+            "model parameter count",
+        )?;
         require(batch.couplings.len() == self.couplings, "coupling count")?;
         require(constants.len() == plan.constants, "kernel constant count")?;
-        let points = momenta.len();
         let czero = Complex::new(zero.clone(), zero.clone());
         // Incoming momenta per point and leg, in the carrier.
         let mut incoming = Vec::with_capacity(points);
@@ -486,11 +498,17 @@ impl TreeProgram {
                     .collect::<Vec<[T; 4]>>(),
             );
         }
+        let masses: BTreeMap<i32, T> = batch
+            .masses
+            .iter()
+            .map(|(&pdg, mass)| (pdg, cast(zero, mass)))
+            .collect();
         // The tree state of every point.
         let mut states = vec![czero.clone(); points * self.state_size];
-        for (point, state) in incoming
+        for ((point, state), model) in incoming
             .iter()
             .zip(states.chunks_exact_mut(self.state_size))
+            .zip(&batch.model)
         {
             let physical: Vec<[T; 4]> = point
                 .iter()
@@ -503,7 +521,7 @@ impl TreeProgram {
                     }
                 })
                 .collect();
-            fill_sources(&self.sources, &batch.masses, physical, state)?;
+            T::fill_sources(&self.sources, &masses, &physical, state)?;
             for &(start, mask) in &self.momentum_slots {
                 // All-outgoing momentum: minus the incoming sum.
                 for mu in 0..4 {
@@ -516,7 +534,7 @@ impl TreeProgram {
                     state[start + mu] = Complex::new(total, zero.clone());
                 }
             }
-            for (index, value) in batch.model.iter().enumerate() {
+            for (index, value) in model.iter().enumerate() {
                 state[self.model_offset + index] = Complex::new(cast(zero, value), zero.clone());
             }
         }
@@ -555,7 +573,11 @@ impl TreeProgram {
             let mut rows = Vec::new();
             for &(start, dimension, sign) in &self.block_rows {
                 for value in &state[start..start + dimension] {
-                    rows.push(if sign < 0 { -value.clone() } else { value.clone() });
+                    rows.push(if sign < 0 {
+                        -value.clone()
+                    } else {
+                        value.clone()
+                    });
                 }
             }
             out.block_rows.push(rows);
@@ -643,8 +665,7 @@ impl TreeProgram {
                     value = -value;
                 }
                 let target = &mut out[row * self.components..][..self.components];
-                for ((coupling, component, _, _), weight) in
-                    term.contributions.iter().zip(weights)
+                for ((coupling, component, _, _), weight) in term.contributions.iter().zip(weights)
                 {
                     target[*component] +=
                         batch.couplings[*coupling].clone() * weight.clone() * value.clone();
@@ -701,34 +722,48 @@ impl TreeProgram {
     }
 }
 
-/// The tree runtime's source wavefunctions in the carrier `T` (binary64,
-/// DoubleFloat or MPFR; the exact carrier has no wavefunctions).
-fn fill_sources<T: Carrier>(
-    sources: &SchemaSources,
-    masses: &BTreeMap<i32, f64>,
-    physical: Vec<[T; 4]>,
-    state: &mut [Complex<T>],
-) -> RusticolResult<()> {
-    let carrier = TypeId::of::<T>();
-    // SAFETY: each branch reinterprets `T` as the type its `TypeId` equals.
-    if carrier == TypeId::of::<f64>() {
-        let point = unsafe { &*(physical.as_slice() as *const [[T; 4]] as *const [[f64; 4]]) };
-        let state = unsafe { &mut *(state as *mut [Complex<T>] as *mut [Complex<f64>]) };
-        return sources.fill_f64(masses, point, state);
+/// A carrier with source wavefunctions: binary64, DoubleFloat or MPFR (the
+/// exact carrier has none, wavefunctions being irrational). The external
+/// masses are carrier values (binary64 ones in binary64, as the tree
+/// runtime's own source records).
+pub trait TreeCarrier: Carrier {
+    fn fill_sources(
+        sources: &SchemaSources,
+        masses: &BTreeMap<i32, Self>,
+        point: &[[Self; 4]],
+        state: &mut [Complex<Self>],
+    ) -> RusticolResult<()>;
+}
+
+impl TreeCarrier for f64 {
+    fn fill_sources(
+        sources: &SchemaSources,
+        masses: &BTreeMap<i32, Self>,
+        point: &[[Self; 4]],
+        state: &mut [Complex<Self>],
+    ) -> RusticolResult<()> {
+        sources.fill_f64(masses, point, state)
     }
-    if carrier == TypeId::of::<DoubleFloat>() {
-        let point =
-            unsafe { &*(physical.as_slice() as *const [[T; 4]] as *const [[DoubleFloat; 4]]) };
-        let state = unsafe { &mut *(state as *mut [Complex<T>] as *mut [Complex<DoubleFloat>]) };
-        return sources.fill_double_float(masses, point, state);
+}
+
+impl TreeCarrier for DoubleFloat {
+    fn fill_sources(
+        sources: &SchemaSources,
+        masses: &BTreeMap<i32, Self>,
+        point: &[[Self; 4]],
+        state: &mut [Complex<Self>],
+    ) -> RusticolResult<()> {
+        sources.fill_double_float(masses, point, state)
     }
-    if carrier == TypeId::of::<Float>() {
-        let point = unsafe { &*(physical.as_slice() as *const [[T; 4]] as *const [[Float; 4]]) };
-        let state = unsafe { &mut *(state as *mut [Complex<T>] as *mut [Complex<Float>]) };
-        return sources.fill_float(masses, point, state);
+}
+
+impl TreeCarrier for Float {
+    fn fill_sources(
+        sources: &SchemaSources,
+        masses: &BTreeMap<i32, Self>,
+        point: &[[Self; 4]],
+        state: &mut [Complex<Self>],
+    ) -> RusticolResult<()> {
+        sources.fill_float(masses, point, state)
     }
-    Err(invalid(format!(
-        "no source wavefunctions in carrier {}",
-        std::any::type_name::<T>()
-    )))
 }

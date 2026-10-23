@@ -20,12 +20,11 @@ use rusticol_core::loop_execution::v2::{
 use rusticol_core::loop_v2::dress::{Carrier as V2Carrier, V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
 use rusticol_core::loop_v2::retest::ReductionCheck;
-use rusticol_core::loop_v2::trees::{TreeBatch, TreeInputs, TreeProgram, TreeRuntime};
-use std::any::Any;
-use std::sync::Mutex;
+use rusticol_core::loop_v2::trees::{TreeBatch, TreeCarrier, TreeInputs, TreeProgram, TreeRuntime};
 use rusticol_loop_reduction::runtime::{TypedBatch, V2ReductionBackend};
+use std::any::Any;
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use symbolica::domains::float::Real;
 
 /// Complex values handed back to Python.
@@ -154,11 +153,16 @@ fn tree_batch<T: Exchanged>(inputs: &Bound<'_, PyDict>, zero: &T) -> PyResult<Tr
     let trees = item(inputs, "trees")?;
     let trees = trees.cast::<PyDict>()?;
     Ok(TreeBatch {
-        model: rationals(item(trees, "model")?.extract()?)?,
-        masses: item(trees, "masses")?
-            .extract::<Vec<(i32, f64)>>()?
+        model: item(trees, "model")?
+            .extract::<Vec<Vec<String>>>()?
             .into_iter()
-            .collect(),
+            .map(rationals)
+            .collect::<PyResult<_>>()?,
+        masses: item(trees, "masses")?
+            .extract::<Vec<(i32, String)>>()?
+            .into_iter()
+            .map(|(pdg, mass)| Ok((pdg, parse_rational(&mass).map_err(error)?)))
+            .collect::<PyResult<_>>()?,
         couplings: T::import(&item(trees, "couplings")?, zero)?,
     })
 }
@@ -174,7 +178,7 @@ struct Trees {
 impl Trees {
     /// Native block rows and Born components of a batch (filled into
     /// `batch`); returns every input for inspection.
-    fn fill<T: Exchanged + Real>(
+    fn fill<T: Exchanged + Real + TreeCarrier>(
         &mut self,
         plan: &LoopProgramV4,
         inputs: &Bound<'_, PyDict>,
@@ -186,7 +190,10 @@ impl Trees {
         TreeRuntime<T>: Send,
     {
         let values = tree_batch(inputs, zero)?;
-        let mut guard = self.runtime.lock().map_err(|_| error("a poisoned tree runtime"))?;
+        let mut guard = self
+            .runtime
+            .lock()
+            .map_err(|_| error("a poisoned tree runtime"))?;
         let fresh = !guard
             .as_ref()
             .is_some_and(|runtime| runtime.is::<TreeRuntime<T>>());
@@ -199,7 +206,14 @@ impl Trees {
             .expect("a runtime of this carrier");
         let out = self
             .program
-            .inputs(runtime, plan, &values, &batch.momenta, &batch.constants, zero)
+            .inputs(
+                runtime,
+                plan,
+                &values,
+                &batch.momenta,
+                &batch.constants,
+                zero,
+            )
             .map_err(error)?;
         batch.block_rows = out.block_rows.clone();
         batch.born = out.born.clone();
@@ -384,7 +398,7 @@ impl V2Executor {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn evaluate_with<T: Exchanged + Real + TypedBatch>(
+fn evaluate_with<T: Exchanged + Real + TypedBatch + TreeCarrier>(
     py: Python<'_>,
     executor: &Executor,
     trees: Option<&mut Trees>,
@@ -418,14 +432,9 @@ where
 
 /// Native tree inputs of a batch: (block rows, plan Born components, every
 /// Born component, |A0|² or None) per point.
-type ExportedTreeInputs = (
-    Vec<Values>,
-    Vec<Values>,
-    Vec<Values>,
-    Option<Vec<Values>>,
-);
+type ExportedTreeInputs = (Vec<Values>, Vec<Values>, Vec<Values>, Option<Vec<Values>>);
 
-fn tree_inputs_with<T: Exchanged + Real>(
+fn tree_inputs_with<T: Exchanged + Real + TreeCarrier>(
     executor: &Executor,
     trees: &mut Trees,
     inputs: &Bound<'_, PyDict>,
@@ -439,7 +448,10 @@ where
     let mut batch = batch(inputs, &zero)?;
     let out = trees.fill(executor.plan(), inputs, &mut batch, &zero)?;
     let export = |points: &[Vec<Complex<T>>]| -> Vec<Values> {
-        points.iter().map(|values| T::export(values, bits)).collect()
+        points
+            .iter()
+            .map(|values| T::export(values, bits))
+            .collect()
     };
     Ok((
         export(&out.block_rows),
@@ -522,10 +534,7 @@ impl V2Executor {
 
     /// The native tree inputs of a batch (needs a tree program): per point
     /// `(block_rows, born, amplitudes, born_squared)`, see `TreeInputs`.
-    fn tree_inputs(
-        &mut self,
-        inputs: &Bound<'_, PyDict>,
-    ) -> PyResult<ExportedTreeInputs> {
+    fn tree_inputs(&mut self, inputs: &Bound<'_, PyDict>) -> PyResult<ExportedTreeInputs> {
         let bits = self.bits()?;
         let executor = &self.executor;
         let trees = self

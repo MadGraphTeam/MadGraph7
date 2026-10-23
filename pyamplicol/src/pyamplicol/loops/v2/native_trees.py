@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import Any
@@ -344,21 +344,41 @@ def _external_masses(slice_: Any) -> tuple[tuple[int, str], ...]:
 def batch_inputs(
     slice_: Any,
     trees: NativeTrees,
-    parameters: Mapping[str, str],
-    numbers: Any,
+    evaluations: Sequence[Any],
     value: Any,
 ) -> dict[str, Any]:
-    """The parameter-only tree inputs of a batch (``inputs["trees"]``):
-    model parameters at the carrier's digits, external masses and the Born
-    couplings (``value`` converts a carrier complex for the executor)."""
+    """The parameter-only tree inputs of a batch (``inputs["trees"]``): per
+    point the model parameters at the carrier's digits (the scale may change
+    per point), and the batch's exact external masses and Born couplings,
+    which may not (``value`` converts a carrier complex for the executor).
+    The executor rounds the masses to its carrier, so the wavefunctions carry
+    its precision."""
 
     from .assemble import _kernel_parameters
 
-    digits = numbers.precision.working_digits
-    with numbers.scope():
-        model = [str(x) for x in slice_.tree_rows._model_values(parameters, digits)]
-        scalars = slice_.scalars(parameters, numbers, True)
-    couplings = [value(scalars[name, 0][grade]) for name, grade in trees.couplings]
-    values = _kernel_parameters(slice_.compiled, parameters) if trees.masses else {}
-    masses = [[pdg, float(values[name])] for pdg, name in trees.masses]
+    model = []
+    shared = None
+    for evaluation in evaluations:
+        numbers, parameters = evaluation.numbers, evaluation.parameters
+        digits = numbers.precision.working_digits
+        with numbers.scope():
+            model.append(
+                [str(x) for x in slice_.tree_rows._model_values(parameters, digits)]
+            )
+            scalars = slice_.scalars(parameters, numbers, True)
+            couplings = [
+                value(scalars[name, 0][grade]) for name, grade in trees.couplings
+            ]
+        values = _kernel_parameters(slice_.compiled, parameters)
+        masses = [(pdg, _fraction_text(values[name])) for pdg, name in trees.masses]
+        common = (couplings, masses)
+        if shared is None:
+            shared = common
+        elif common != shared:
+            raise ValueError(
+                "the points of one batch need equal Born couplings and external masses"
+            )
+    if shared is None:
+        raise ValueError("a batch needs points")
+    couplings, masses = shared
     return {"model": model, "masses": masses, "couplings": couplings}

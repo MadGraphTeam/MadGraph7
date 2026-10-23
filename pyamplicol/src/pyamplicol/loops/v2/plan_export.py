@@ -812,10 +812,12 @@ class NativeExecutor:
         forms: Literal["rule", "fused", "split"] = "rule",
         merged: MergedGraph | bool = False,
         inputs: Literal["python", "native"] = "python",
-        born_squared: bool = False,
+        born_squared: bool | None = None,
     ):
         if inputs not in ("python", "native"):
             raise ValueError(f"unknown input path {inputs!r}")
+        if born_squared is None:
+            born_squared = slice_.request.accuracy == "full"
         self.slice = slice_
         self.inputs = inputs
         if merged is True:
@@ -983,14 +985,15 @@ class NativeExecutor:
         if self.inputs == "native":
             from .native_trees import batch_inputs
 
-            first, *rest = evaluations
-            if any(e.parameters != first.parameters for e in rest):
-                raise ValueError("the points of one batch need equal parameters")
-            with first.numbers.scope():
-                batch["constants"], batch["masses"] = shared(first)
-                batch["trees"] = batch_inputs(
-                    slice_, exported.trees, first.parameters, first.numbers, value
-                )
+            for evaluation in evaluations:
+                with evaluation.numbers.scope():
+                    common = shared(evaluation)
+                if batch.setdefault("shared", common) != common:
+                    raise ValueError(
+                        "the points of one batch need equal kernel constants and masses"
+                    )
+            batch["constants"], batch["masses"] = batch.pop("shared")
+            batch["trees"] = batch_inputs(slice_, exported.trees, evaluations, value)
             del batch["block_rows"], batch["born"]
             return batch
         for evaluation in evaluations:
@@ -1163,16 +1166,21 @@ class NativeExecutor:
     def _native_points(self, points, scales, parameters, precision):
         from .assemble import _fraction, _NativePoint, _Numbers
 
-        return [
-            _NativePoint(
-                self.slice,
-                tuple(tuple(_fraction(x) for x in p) for p in point),
-                _fraction(scale),
-                dict(parameters or {}),
-                _Numbers(precision),
+        slice_ = self.slice
+        out = []
+        for point, scale in zip(points, scales, strict=True):
+            scale = _fraction(scale)
+            values = slice_._point_parameters(dict(parameters or {}), scale, precision)
+            out.append(
+                _NativePoint(
+                    slice_,
+                    tuple(tuple(_fraction(x) for x in p) for p in point),
+                    scale,
+                    values,
+                    _Numbers(precision),
+                )
             )
-            for point, scale in zip(points, scales, strict=True)
-        ]
+        return out
 
     def _evaluated(
         self, points, scales, parameters, precision, poles, retest, schedule="B"

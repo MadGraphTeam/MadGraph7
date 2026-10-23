@@ -357,7 +357,9 @@ class TreeRows:
             int(root["output_index"]): int(root["root_id"])
             for root in self.schema["amplitude_stage"]["roots"]
         }
-        self._evaluators = tuple(_stage_evaluator(stage) for stage in self.stages)
+        # Built on the first replay: native per-point trees (``native_trees``)
+        # read the stage expressions only.
+        self._evaluators: tuple[Any, ...] | None = None
         self._amplitude_evaluator = None
         layout = self.schema["parameter_layout"]
         self._value_count = int(layout["value_component_count"])
@@ -450,6 +452,8 @@ class TreeRows:
                     rows[(int(slot["current_id"]), "source")] = tuple(
                         convert(*z) for z in state[start:stop]
                     )
+        if self._evaluators is None:
+            self._evaluators = tuple(_stage_evaluator(stage) for stage in self.stages)
         for stage, evaluator in zip(self.stages, self._evaluators, strict=True):
             outputs, converted = self._replay(stage, evaluator, state, numbers)
             for slot in stage.output_slots:
@@ -1329,14 +1333,22 @@ class LoopSlice:
             )
 
     def _point(self, point, scale, parameters, precision, poles) -> _PointEvaluation:
-        numbers = _Numbers(precision)
+        values = self._point_parameters(parameters, scale, precision)
+        return _PointEvaluation(self, point, scale, values, _Numbers(precision), poles)
+
+    def _point_parameters(
+        self, parameters: Mapping[str, str], scale: Fraction, precision: Precision
+    ) -> dict[str, str]:
+        """A point's parameter values: the caller's, the request's fixed
+        parameters and the renormalisation scale (the root of ``scale``)."""
+
         values = dict(parameters)
         values.update(self.request.fixed_parameters)
         digits = precision.working_digits
         values[self.scale_parameter] = _decimal_string(
             _sqrt_fraction(scale, digits), digits
         )
-        return _PointEvaluation(self, point, scale, values, numbers, poles)
+        return values
 
     def family_numerators(
         self,
@@ -2246,6 +2258,9 @@ class _NativePoint(_PointEvaluation):
     """
 
     def __init__(self, slice_, point, scale, parameters, numbers):
+        """``parameters`` are the point's complete values
+        (``LoopSlice._point_parameters``)."""
+
         self.slice = slice_
         self.numbers = numbers
         self.poles = True
