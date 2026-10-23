@@ -60,6 +60,7 @@ import madgraph.core.diagram_generation as diagram_generation
 import contextlib
 import madgraph.various.rambo as rambo
 import madgraph.various.misc as misc
+import madgraph.various.ninjars_install as ninjars_install
 import madgraph.various.progressbar as pbar
 import madgraph.various.banner as bannermod
 import madgraph.various.progressbar as pbar
@@ -1338,6 +1339,170 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             return None
         dir_name=res_timings['dir_path']
 
+        # Preserve exact timing inputs/results before profile's stability pass
+        # rewrites the driver, filters and result.dat. All capture is outside
+        # make_and_run's existing timers and does not change its calls/settings.
+        import hashlib
+        import json
+
+        timing_metadata = {
+            'schema': 'madloop-profile-timing-metadata-v1',
+            'process': proc_name,
+            'export_dir': os.path.abspath(export_dir),
+            'subprocess_dir': os.path.abspath(dir_name),
+            'requested_split_orders': split_orders,
+            'stages': [],
+            'selected_timing_helicity': None,
+            'per_evaluation_statuses_available': False,
+            'limitations': [
+                'Stock CLI timing retains result.dat rather than a complete point/status stream.',
+                'Its Fortran point generator has its own state; a Python seed alone does not identify that stream.',
+                'Stage point counts can differ between backends because stock timing estimates its run length.',
+                'Raw output file freshness is not guaranteed, especially for boot-and-stop; identities are observations only.'
+            ]}
+        metadata_dir = pjoin(export_dir, 'SavedRunInfos')
+        metadata_path = pjoin(metadata_dir, 'profile_timing_metadata.json')
+
+        def timing_file(path, include_text=False):
+            record = {'path': os.path.abspath(path)}
+            if os.path.isfile(path):
+                with open(path, 'rb') as stream:
+                    contents = stream.read()
+                record.update(sha256=hashlib.sha256(contents).hexdigest(),
+                              bytes=len(contents), realpath=os.path.realpath(path),
+                              mtime_ns=os.stat(path).st_mtime_ns)
+                if include_text:
+                    record['text'] = contents.decode('utf-8')
+            else:
+                record['available'] = False
+            return record
+
+        def timing_runtime():
+            records = {}
+            seen = set()
+            library_dir = pjoin(export_dir, 'lib')
+            for directory, directories, names in os.walk(library_dir, followlinks=True):
+                real = os.path.realpath(directory)
+                if real in seen:
+                    directories[:] = []
+                    continue
+                seen.add(real)
+                for name in sorted(names):
+                    if (name.endswith(('.a', '.dylib', '.mod')) or
+                            re.search(r'\.so(?:\.[0-9]+)*$', name) or
+                            name in ('ninjars-config.json', 'ninjars-native-libs.txt',
+                                     'ninjars-link-before.txt')):
+                        path = pjoin(directory, name)
+                        records[os.path.relpath(path, export_dir)] = timing_file(path)
+            for name in ('Source/make_opts', 'SubProcesses/MadLoop_makefile_definitions'):
+                records[name] = timing_file(pjoin(export_dir, name))
+            return records
+
+        def verify_timing_runtime():
+            # Runtime archives are static during the stock timing stages.
+            # Reuse their once-hashed context; do not stream large archives
+            # through the cache after every timed invocation.
+            for record in timing_metadata['runtime_files'].values():
+                path = record['path']
+                if record.get('available') is False:
+                    unchanged = not os.path.isfile(path)
+                elif os.path.isfile(path):
+                    current = os.stat(path)
+                    unchanged = (current.st_size == record['bytes'] and
+                                 current.st_mtime_ns == record['mtime_ns'] and
+                                 os.path.realpath(path) == record['realpath'])
+                else:
+                    unchanged = False
+                if not unchanged:
+                    raise MadGraph5Error('Timing runtime changed during measurement: %s'%path)
+
+        def save_timing_metadata():
+            if not os.path.isdir(metadata_dir):
+                os.makedirs(metadata_dir)
+            with open(metadata_path, 'w') as stream:
+                json.dump(timing_metadata, stream, indent=2, allow_nan=False)
+                stream.write('\n')
+
+        def capture_timing_stage(name, compile_seconds, wall_seconds, ram_usage):
+            verify_timing_runtime()
+            driver_path = pjoin(dir_name, 'check_sa.f')
+            loop_path = pjoin(dir_name, 'loop_matrix.f')
+            with open(driver_path) as stream:
+                driver = stream.read()
+            with open(loop_path) as stream:
+                loop = stream.read()
+            # Fixed-form continuation markers are irrelevant to these literals.
+            flat = re.sub(r'\n     [^ 0] ?', '', driver)
+            npoints = re.search(r'NPSPOINTS\s*=\s*([0-9]+)', flat, re.I)
+            readps = re.search(r'READPS\s*=\s*(\.TRUE\.|\.FALSE\.)', flat, re.I)
+            helicity = re.search(r'SLOOPMATRIXHEL_THRES\s*\(\s*P\s*,\s*([+-]?[0-9]+)', flat, re.I)
+            target = re.search(r'SET_COUPLINGORDERS_TARGET\s*\(\s*([+-]?[0-9]+)', flat, re.I)
+            flags = {}
+            for flag in ('SKIPLOOPEVAL', 'BOOTANDSTOP'):
+                values = re.findall(flag+r'\s*=\s*(\.TRUE\.|\.FALSE\.)', loop, re.I)
+                flags[flag] = (values[0].upper() == '.TRUE.' if values and
+                               len(set(value.upper() for value in values)) == 1 else None)
+            effective = dict(self.get_MadLoop_Params(pjoin(export_dir, 'Cards', 'MadLoopParams.dat')))
+            source_dir = pjoin(metadata_dir, '%02d_%s'%(len(timing_metadata['stages']), name))
+            if not os.path.isdir(source_dir):
+                os.makedirs(source_dir)
+            source_snapshots = {}
+            for filename, source_path in (('check_sa.f', driver_path), ('loop_matrix.f', loop_path)):
+                target_path = pjoin(source_dir, filename)
+                shutil.copyfile(source_path, target_path)
+                source_snapshots[filename] = timing_file(target_path)
+            # Match LHA_loadcard: direct file, then Cards in cwd and 5 parents.
+            physical_card_paths = [pjoin(dir_name,'param_card.dat')]
+            physical_card_paths.extend(pjoin(dir_name,*([os.pardir]*depth),
+                'Cards','param_card.dat') for depth in range(6))
+            physical_card_path = next((path for path in physical_card_paths
+                if os.path.isfile(path)),physical_card_paths[0])
+            stage = {
+                'name': name,
+                'actual_npoints': int(npoints.group(1)) if npoints else None,
+                'read_ps': readps.group(1).upper() == '.TRUE.' if readps else None,
+                'helicity_one_based_index': int(helicity.group(1)) if helicity else -1,
+                'split_orders_target': int(target.group(1)) if target else None,
+                'energy_assignment_lines': [line.strip() for line in driver.splitlines()
+                                            if re.search(r'\bSQRTS\s*=', line, re.I)],
+                'flags': flags,
+                'check_sa': timing_file(driver_path),
+                'loop_matrix': timing_file(loop_path),
+                'executable': timing_file(pjoin(dir_name, 'check')),
+                'source_snapshots': source_snapshots,
+                'parameter_card': timing_file(pjoin(export_dir, 'Cards', 'param_card.dat'), True),
+                'subprocess_parameter_card': timing_file(physical_card_path, True),
+                'effective_madloop_card': timing_file(pjoin(export_dir, 'Cards', 'MadLoopParams.dat'), True),
+                'madloop_card_aliases': [timing_file(path, True) for path in sorted(glob.glob(
+                    pjoin(export_dir, 'SubProcesses', '**', 'MadLoopParams.dat'), recursive=True))],
+                'effective_madloop_parameters': effective,
+                'runtime_files_reference': 'runtime_files',
+                'runtime_stat_unchanged': True,
+                'raw_outputs': {'result.dat': timing_file(pjoin(dir_name, 'result.dat'), True)},
+                'raw_output_freshness_verified': False,
+                'compile_seconds': compile_seconds,
+                'wall_seconds': wall_seconds,
+                'ram_usage': ram_usage,
+                'boot_wall_seconds': (wall_seconds if name == 'boot' else res_timings.get('Booting_time')),
+                'derived_seconds_per_point': None,
+                'per_evaluation_statuses_available': False}
+            if name in ('polarized_full', 'unpolarized_full', 'unpolarized_skip', 'polarized_skip'):
+                denominator = stage['actual_npoints']
+                if denominator and stage['boot_wall_seconds'] is not None and wall_seconds is not None:
+                    stage['derived_seconds_per_point'] = (wall_seconds-stage['boot_wall_seconds'])/denominator
+            timing_metadata['stages'].append(stage)
+            save_timing_metadata()
+
+        def finish_timing_metadata():
+            verify_timing_runtime()
+            # Copy before adding the metadata reference to the return dictionary.
+            timing_metadata['timing_result'] = copy.deepcopy(res_timings)
+            save_timing_metadata()
+            res_timings['timing_metadata'] = {'schema': timing_metadata['schema'],
+                                             'path': os.path.abspath(metadata_path)}
+
+        timing_metadata['runtime_files'] = timing_runtime()
+
         def check_disk_usage(path):
             return subprocess.check_output(
                 [f"du -shc {path}"], shell=True, encoding="utf8"
@@ -1361,10 +1526,12 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
                                   read_ps = False, npoints = 3, hel_config = -1, 
                                                       split_orders=split_orders)
             compile_time, run_time, ram_usage = MadLoopInitializer.make_and_run(dir_name)
+            capture_timing_stage('estimate', compile_time, run_time, ram_usage)
             time_per_ps_estimate = run_time/3.0
         
         self.boot_time_setup(dir_name,bootandstop=True)
         compile_time, run_time, ram_usage = MadLoopInitializer.make_and_run(dir_name)
+        capture_timing_stage('boot', compile_time, run_time, ram_usage)
         res_timings['Booting_time'] = run_time
         self.boot_time_setup(dir_name,bootandstop=False)
 
@@ -1389,6 +1556,28 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
         
         res_timings['n_contrib_hel']=n_contrib_hel
         res_timings['n_tot_hel']=len(helicities)
+        helicity_path = pjoin(dir_name, 'MadLoop5_resources', '%sHelConfigs.dat'%proc_prefix)
+        physical_tuple = None
+        if os.path.isfile(helicity_path):
+            with open(helicity_path) as stream:
+                configurations = [line.split() for line in stream if line.strip()]
+            if 0 < contributing_hel <= len(configurations):
+                physical_tuple = [int(value) for value in configurations[contributing_hel-1]]
+        timing_metadata['selected_timing_helicity'] = {
+            'one_based_index': contributing_hel,
+            'physical_tuple': physical_tuple,
+            'helicity_configurations': timing_file(helicity_path, True),
+            'filter': timing_file(pjoin(dir_name, 'MadLoop5_resources', '%sHelFilter.dat'%proc_prefix), True),
+            'filter_tokens': list(helicities),
+            'contributing_count': n_contrib_hel,
+            'total_count': len(helicities)}
+        raw_backends = self.get_MadLoop_Params(
+            pjoin(export_dir, 'Cards', 'MadLoopParams.dat'))['MLReductionLib']
+        timing_metadata['reduction_backends'] = ([int(tool.strip()) for tool in raw_backends.split('|')
+            if tool.strip()] if isinstance(raw_backends, str) else [int(tool) for tool in raw_backends])
+        timing_metadata['backend_labels'] = [bannermod.MadLoopParam._ID_reduction_tool_map.get(
+            tool, str(tool)) for tool in timing_metadata['reduction_backends']]
+        save_timing_metadata()
         
         # We aim at a 30 sec run
         if not make_it_quick:
@@ -1403,6 +1592,7 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
                           read_ps = False, npoints = target_pspoints_number*2, \
                        hel_config = contributing_hel, split_orders=split_orders)
         compile_time, run_time, ram_usage = MadLoopInitializer.make_and_run(dir_name)
+        capture_timing_stage('polarized_full', compile_time, run_time, ram_usage)
         
         if compile_time == None: return None
         
@@ -1418,6 +1608,7 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
                                                           split_orders=split_orders)
             compile_time, run_time, ram_usage = MadLoopInitializer.make_and_run(dir_name, 
                                                                       checkRam=True)
+            capture_timing_stage('unpolarized_full', compile_time, run_time, ram_usage)
 
             if compile_time == None: return None
             res_timings['run_unpolarized_total']=\
@@ -1425,6 +1616,7 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             res_timings['ram_usage'] = ram_usage       
         
         if not self.loop_optimized_output:
+            finish_timing_metadata()
             return res_timings
         
         # For the loop optimized output, we also check the time spent in
@@ -1440,6 +1632,7 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
                  read_ps = False, npoints = target_pspoints_number, hel_config = -1,
                                                           split_orders=split_orders)
             compile_time, run_time, ram_usage = MadLoopInitializer.make_and_run(dir_name)
+            capture_timing_stage('unpolarized_skip', compile_time, run_time, ram_usage)
             if compile_time == None: return None
             res_timings['run_unpolarized_coefs']=\
                        (run_time-res_timings['Booting_time'])/target_pspoints_number
@@ -1448,6 +1641,7 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
                           read_ps = False, npoints = target_pspoints_number*2, \
                        hel_config = contributing_hel, split_orders=split_orders)
         compile_time, run_time, ram_usage = MadLoopInitializer.make_and_run(dir_name)
+        capture_timing_stage('polarized_skip', compile_time, run_time, ram_usage)
         if compile_time == None: return None
         res_timings['run_polarized_coefs']=\
                (run_time-res_timings['Booting_time'])/(target_pspoints_number*2)    
@@ -1455,6 +1649,7 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
         # Restitute the original file.
         self.skip_loop_evaluation_setup(dir_name,skip=False)
         
+        finish_timing_metadata()
         return res_timings
 
 #===============================================================================
@@ -1484,6 +1679,28 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
                               isinstance(matrix_element, base_objects.Process)))            
 
         # Helper functions
+        def relative_spread(values):
+            """Keep exact zeros and zero-mean disagreements distinguishable."""
+            spread = max(values) - min(values)
+            average = abs(sum(values) / len(values))
+            if not (math.isfinite(spread) and math.isfinite(average)):
+                # Preserve the original arithmetic unless finite inputs overflow.
+                scale = max(abs(value) for value in values)
+                normalized = [value / scale for value in values]
+                spread = max(normalized) - min(normalized)
+                average = abs(sum(normalized) / len(normalized))
+            if average == 0.0:
+                return 0.0 if spread == 0.0 else float('inf')
+            return spread / average
+
+        def stop_stability_checker(checker):
+            # Invalid results abort this run; do not leave its checker alive.
+            try:
+                checker.kill()
+            except OSError:
+                pass
+            checker.wait()
+
         def format_PS_point(ps, rotation=0):
             """ Write out the specified PS point to the file dir_path/PS.input
             while rotating it if rotation!=0. We consider only rotations of 90
@@ -1550,16 +1767,22 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             tools=misc.make_unique(tools) # remove the duplication ones
             
         # not self-contained tir libraries
-        tool_var={'pjfry':2,'golem':4,'samurai':5,'ninja':6,'collier':7}
-        for tool in ['pjfry','golem','samurai','ninja','collier']:
+        tool_var={'pjfry':2,'golem':4,'samurai':5,'ninja':6,'collier':7,'ninjars':8}
+        for tool in ['pjfry','golem','samurai','ninja','collier','ninjars']:
             tool_dir='%s_dir'%tool
             if not tool_dir in self.tir_dir:
+                if tool == 'ninjars' and tool_var[tool] in tools:
+                    raise MadGraph5Error("Requested NinjaRS library is unavailable. "
+                                         "Run 'install ninjars'.")
                 continue
             tool_libpath=self.tir_dir[tool_dir]
             tool_libname="lib%s.a"%tool
             if (not isinstance(tool_libpath,str)) or (not os.path.exists(tool_libpath)) \
                 or (not os.path.isfile(pjoin(tool_libpath,tool_libname))):
                 if tool_var[tool] in tools:
+                    if tool == 'ninjars':
+                        raise MadGraph5Error("Requested NinjaRS library is unavailable. "
+                                             "Run 'install ninjars'.")
                     tools.remove(tool_var[tool])
         if not tools:
             return None
@@ -1570,7 +1793,7 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
         else:
             process = matrix_element
         proc_name = process.shell_string()[2:]
-        export_dir=pjoin(self.mg_root,("SAVED" if keep_folder else "")+\
+        export_dir=pjoin(self.output_path,("SAVED" if keep_folder else "")+\
                                                 temp_dir_prefix+"_%s"%proc_name)
         
         tools_name=bannermod.MadLoopParam._ID_reduction_tool_map
@@ -1745,7 +1968,7 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
             # identical PS points with vec(p_1)=-vec(p_2), it is best not to remove
             # the helicityFilter double check
             if len(process['legs'])==3:
-                self.fix_MadLoopParamCard(dir_path, mp=False,
+                self.fix_MadLoopParamCard(pjoin(export_dir,'Cards'), mp=False,
                               loop_filter=False, DoubleCheckHelicityFilter=True)
 
             StabChecker = subprocess.Popen([pjoin(dir_path,'StabilityCheckDriver')], 
@@ -1795,14 +2018,14 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
                                                      split_orders=split_orders))
                         dp_dict['Rotation%i'%rotation]=dp_res[-1]
                         # Make sure all results make sense
-                    if any([not res for res in dp_res]):
+                    if any(res is None or not math.isfinite(res) for res in dp_res):
+                        stop_stability_checker(StabChecker)
                         return None
-                    dp_accuracy =((max(dp_res)-min(dp_res))/
-                                                   abs(sum(dp_res)/len(dp_res)))
+                    dp_accuracy = relative_spread(dp_res)
                     dp_dict['Accuracy'] = dp_accuracy
                     if dp_accuracy>accuracy_threshold:
-                        if tool in [1,6]:
-                            # Only CutTools or Ninja can use QP
+                        if tool in [1,6,8]:
+                            # CutTools, Ninja and NinjaRS can use QP
                             UPS = [i,p]
                             qp_res=[]
                             PSPoint = format_PS_point(p,0)
@@ -1818,17 +2041,17 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
                                                          split_orders=split_orders))
                                 qp_dict['Rotation%i'%rotation]=qp_res[-1]
                             # Make sure all results make sense
-                            if any([not res for res in qp_res]):
+                            if any(res is None or not math.isfinite(res) for res in qp_res):
+                                stop_stability_checker(StabChecker)
                                 return None
                         
-                            qp_accuracy = ((max(qp_res)-min(qp_res))/
-                                                   abs(sum(qp_res)/len(qp_res)))
+                            qp_accuracy = relative_spread(qp_res)
                             qp_dict['Accuracy']=qp_accuracy
                             if qp_accuracy>accuracy_threshold:
                                 EPS = [i,p]
                         else:
-                            # Simply consider the point as a UPS when not using
-                            # CutTools
+                            # Keep a UPS without an external QP evaluation for
+                            # reduction libraries that do not support this path.
                             UPS = [i,p]
 
                 except KeyboardInterrupt:
@@ -1955,6 +2178,18 @@ class LoopMatrixElementTimer(LoopMatrixElementEvaluator):
                     raise MadGraph5Error("The MadLoop stability checker crashed with return code = %d, and last output:\n\nstdout: %s\nstderr: %s\n"%\
                                                (ret_code, last_non_empty, error))
 
+            # A missing finite record must not inherit the general parser's
+            # zero default: an explicitly printed FIN 0 is a valid result.
+            finite_rows = [line.split() for line in res.splitlines()
+                           if line.split()[:1] == ['FIN']]
+            if len(finite_rows) != 1 or len(finite_rows[0]) != 2:
+                return None
+            try:
+                finite_value = float(finite_rows[0][1])
+            except ValueError:
+                return None
+            if not math.isfinite(finite_value):
+                return None
             return cls.parse_check_output(res,format='tuple')[0][0]
         except IOError as e:
             logging.warning("Error while running MadLoop. Exception = %s"%str(e))
@@ -2200,6 +2435,14 @@ def check_profile(process_definition, param_card = None,cuttools="",tir={},
         MLoptions={}
     else:
         MLoptions=MLOptions
+        # Prefer an installed NinjaRS backend for Born-process profiles unless
+        # the caller explicitly selected a reduction list.
+        has_born = (matrix_element.get('has_born') if reusing else
+                        matrix_element.get('processes')[0].get('has_born'))
+        if has_born and ('MLReductionLib' not in MLoptions or
+                                      len(MLoptions['MLReductionLib']) == 0):
+            MLoptions['MLReductionLib'] = [8] if ninjars_install.is_available(
+                                              tir.get('ninjars_dir')) else [6]
 
     timing2 = myProfiler.time_matrix_element(matrix_element, reusing, 
                             param_card, keep_folder=keep_folder,options=options,
@@ -2212,6 +2455,15 @@ def check_profile(process_definition, param_card = None,cuttools="",tir={},
 
     # The timing info is made of the merged two dictionaries
     timing = dict(list(timing1.items())+list(timing2.items()))
+    if 'timing_metadata' in timing:
+        import json
+        metadata_path = timing['timing_metadata']['path']
+        with open(metadata_path) as stream:
+            metadata = json.load(stream)
+        metadata['profile_timing_result'] = copy.deepcopy(timing)
+        with open(metadata_path, 'w') as stream:
+            json.dump(metadata, stream, indent=2, allow_nan=False)
+            stream.write('\n')
     stability = myProfiler.check_matrix_element_stability(matrix_element,                                            
                             options=options, infos_IN=timing,param_card=param_card,
                                                       keep_folder = keep_folder,
@@ -2284,6 +2536,8 @@ def check_stability(process_definition, param_card = None,cuttools="",tir={},
                 MLoptions["MLReductionLib"].extend([6])
             if "collier_dir" in tir:
                 MLoptions["MLReductionLib"].extend([7])
+            if "ninjars_dir" in tir:
+                MLoptions["MLReductionLib"].extend([8])
 
     stability = myStabilityChecker.check_matrix_element_stability(matrix_element, 
                         options=options,param_card=param_card, 
@@ -2329,10 +2583,13 @@ def check_timing(process_definition, param_card= None, cuttools="",tir={},
         # And the COLLIER global cache is active, if not specified
         if 'COLLIERGlobalCache' not in MLoptions:
             MLoptions['COLLIERGlobalCache']=-1
-        # And time NINJA by default if not specified:
+        # Prefer installed NinjaRS for Born processes when not specified.
         if 'MLReductionLib' not in MLoptions or \
                                             len(MLoptions['MLReductionLib'])==0:
-            MLoptions['MLReductionLib'] = [6]
+            has_born = (matrix_element.get('has_born') if reusing else
+                        matrix_element.get('processes')[0].get('has_born'))
+            MLoptions['MLReductionLib'] = [8] if (has_born and
+                ninjars_install.is_available(tir.get('ninjars_dir'))) else [6]
             
     timing2 = myTimer.time_matrix_element(matrix_element, reusing, param_card,
                                      keep_folder = keep_folder, options=options,
@@ -2637,12 +2894,27 @@ def output_stability(stability, output_path, reusing=False):
     
     def accuracy(eval_list):
         """ Compute the accuracy from different evaluations."""
-        return (2.0*(max(eval_list)-min(eval_list))/
-                                             abs(max(eval_list)+min(eval_list)))
+        largest, smallest = max(eval_list), min(eval_list)
+        spread = largest-smallest
+        denominator = abs(largest+smallest)
+        if not (math.isfinite(2.0*spread) and math.isfinite(denominator)):
+            scale = max(abs(largest),abs(smallest))
+            largest, smallest = largest/scale, smallest/scale
+            spread = largest-smallest
+            denominator = abs(largest+smallest)
+        if denominator == 0.0:
+            return 0.0 if spread == 0.0 else float('inf')
+        return 2.0*spread/denominator
     
     def best_estimate(eval_list):
         """ Returns the best estimate from different evaluations."""
-        return (max(eval_list)+min(eval_list))/2.0
+        largest, smallest = max(eval_list), min(eval_list)
+        total = largest+smallest
+        return total/2.0 if math.isfinite(total) else largest/2.0+smallest/2.0
+
+    def log_accuracy(value):
+        # A zero diagnostic ratio has logarithm -inf; do not alter raw samples.
+        return float('-inf') if value == 0.0 else math.log(value)/math.log(10)
     
     def loop_direction_test_power(eval_list):
         """ Computes the loop direction test power P is computed as follow:
@@ -2660,18 +2932,20 @@ def output_stability(stability, output_path, reusing=False):
             other_evals = [eval[key] for key in eval.keys() if key not in \
                                                          ['CTModeB','Accuracy']]
             if accuracy(other_evals)!=0.0 and accuracy(loop_dir_evals)!=0.0:
-                powers.append(accuracy(loop_dir_evals)/accuracy(other_evals))
+                power=accuracy(loop_dir_evals)/accuracy(other_evals)
+                if not math.isnan(power):
+                    powers.append(power)
         
         n_fail=0
         for p in powers:
-            if (math.log(p)/math.log(10))<-3:
+            if log_accuracy(p)<-3:
                 n_fail+=1
                 
         if len(powers)==0:
             return (None,None,None)
 
-        return (math.log(median(powers))/math.log(10),
-                math.log(min(powers))/math.log(10),
+        return (log_accuracy(median(powers)),
+                log_accuracy(min(powers)),
                 n_fail/len(powers))
         
     def test_consistency(dp_eval_list, qp_eval_list):
@@ -2687,15 +2961,17 @@ def output_stability(stability, output_path, reusing=False):
                                                              if key!='Accuracy']
             if (abs(best_estimate(qp_evals)-best_estimate(dp_evals)))!=0.0 and \
                accuracy(dp_evals)!=0.0:
-                consistencies.append(accuracy(dp_evals)/(abs(\
-                              best_estimate(qp_evals)-best_estimate(dp_evals))))
+                consistency=accuracy(dp_evals)/(abs(\
+                              best_estimate(qp_evals)-best_estimate(dp_evals)))
+                if not math.isnan(consistency):
+                    consistencies.append(consistency)
 
         if len(consistencies)==0:
             return (None,None,None)
 
-        return (math.log(median(consistencies))/math.log(10),
-                math.log(min(consistencies))/math.log(10),
-                math.log(max(consistencies))/math.log(10))
+        return (log_accuracy(median(consistencies)),
+                log_accuracy(min(consistencies)),
+                log_accuracy(max(consistencies)))
     
     def median(orig_list):
         """ Find the median of a sorted float list. """
@@ -2709,6 +2985,22 @@ def output_stability(stability, output_path, reusing=False):
     # Define shortcut
     f = format_output   
     opt = stability['loop_optimized_output']
+    for toolname, tool_data in stability['Stability'].items():
+        for precision in ['DP_stability','QP_stability']:
+            for evaluation in tool_data[precision]:
+                if precision == 'QP_stability' and evaluation == {}:
+                    continue
+                try:
+                    invalid = (math.isnan(evaluation['Accuracy']) or
+                               evaluation['Accuracy'] < 0.0 or
+                               any(not math.isfinite(value) for key,value in
+                                   evaluation.items() if key != 'Accuracy'))
+                except (KeyError,TypeError,ValueError):
+                    invalid = True
+                if invalid:
+                    raise MadGraph5Error('Invalid stability data for %s (%s). '
+                        'Remove stale saved stability data and rerun without -reuse.'
+                        % (toolname,precision))
 
     mode = 'optimized' if opt else 'default'
     process = stability['Process']
@@ -2790,12 +3082,12 @@ The loop direction test power P is computed as follow:
         # Use nicer name for the XML tag in the log file
         xml_toolname = {'GOLEM95':'GOLEM','IREGI':'IREGI',
                         'CUTTOOLS':'CUTTOOLS','PJFRY++':'PJFRY',
-                        'NINJA':'NINJA','SAMURAI':'SAMURAI',
+                        'NINJA':'NINJA','NINJARS':'NINJARS','SAMURAI':'SAMURAI',
                         'COLLIER':'COLLIER'}[toolname.upper()]
         if len(UPS)>0:
             res_str_i = "\nDetails of the %d/%d UPS encountered by %s\n"\
                                                         %(len(UPS),nPS,toolname)
-            prefix = 'DP' if toolname=='CutTools' else '' 
+            prefix = 'DP' if toolname in ['CutTools','Ninja','NinjaRS'] else ''
             res_str_i += "|= %s Median inaccuracy.......... %s\n"\
                                     %(prefix,f(median(UPS_stability_DP),'%.2e'))
             res_str_i += "|= %s Max accuracy............... %s\n"\
@@ -2804,7 +3096,7 @@ The loop direction test power P is computed as follow:
                                        %(prefix,f(max(UPS_stability_DP),'%.2e'))
             (pmed,pmin,pfrac)=loop_direction_test_power(\
                                  [stab['DP_stability'][U[0]] for U in UPS])
-            if toolname=='CutTools':
+            if toolname in ['CutTools','Ninja','NinjaRS']:
                 res_str_i += "|= UPS DP loop_dir test power.... %s,%s\n"\
                                                 %(f(pmed,'%.1f'),f(pmin,'%.1f'))
                 res_str_i += "|= UPS DP fraction with power<-3. %s\n"\
@@ -2885,19 +3177,16 @@ The loop direction test power P is computed as follow:
         logFile.write('<plot_data reduction=%s>\n'%xml_toolname.upper())
     # Set the x-range so that it spans [10**-17,10**(min_digit_accuracy)]
         if max(DP_stability)>0.0:
-            min_digit_acc=int(math.log(max(DP_stability))/math.log(10))
+            largest_accuracy=max(DP_stability)
+            min_digit_acc=(int(math.log(largest_accuracy)/math.log(10))
+                           if math.isfinite(largest_accuracy) else 0)
             if min_digit_acc>=0:
                 min_digit_acc = min_digit_acc+1
+            min_digit_acc=max(-16,min(308,min_digit_acc))
             accuracies=[10**(-17+(i/5.0)) for i in range(5*(17+min_digit_acc)+1)]
         else:
-            logFile.writelines('%.4e  %.4e\n'%(accuracies[i], 0.0) for i in \
-                                                         range(len(accuracies)))      
-            logFile.write('</plot_data>\n')
-            res_str_i += '\nPerfect accuracy over all the trial PS points. No plot'+\
-                                                              ' is output then.'
-            logFile.write('Perfect accuracy over all the trial PS points.')
-            res_str +=res_str_i
-            continue
+            accuracies=[10**(-17+(i/5.0)) for i in range(5*17+1)]
+            res_str_i += '\nPerfect accuracy over all the trial PS points.'
 
         accuracy_dict[toolname]=accuracies
         if max(accuracies) > max_acc: max_acc=max(accuracies)

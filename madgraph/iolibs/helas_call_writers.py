@@ -1773,8 +1773,64 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
         else:
             return '%s%s)'%(prefix, number)
 
+    @staticmethod
+    def get_terminal_wavefunctions(matrix_element):
+        """Prove private diagonal-only roots in the complete optimized graph.
+
+        Unknown graph members or aliases disable the optimization. The emitted
+        calls and their generated COMMON consumers are checked separately.
+        """
+        try:
+            producers, consumed, roots = {}, set(), set()
+            for diagram in matrix_element.get_loop_diagrams():
+                for wf in diagram.get('loop_wavefunctions'):
+                    number = wf.get('number')
+                    mother = wf.get_loop_mother()
+                    if (number <= 0 or number != wf.get('me_id') or
+                            number in producers or not wf.get('is_loop') or
+                            mother is None):
+                        return {}
+                    origin = mother.get('number')
+                    if (origin != mother.get('me_id') or origin == number or
+                            (origin not in producers and origin not in (-1, 0))):
+                        return {}
+                    info = wf.get_helas_call_dict(OptimizedOutput=True)
+                    required = ('loop_mother_number', 'loop_mother_rank',
+                                'vertex_rank', 'lcut_size', 'in_size', 'out_size', 'out')
+                    if any(key not in info for key in required):
+                        return {}
+                    if info['out'] != number or info['loop_mother_number'] != origin:
+                        return {}
+                    producers[number] = {key: info[key] for key in required}
+                    consumed.add(origin)
+                for amplitude in diagram.get_loop_amplitudes():
+                    root = amplitude.get_final_loop_wavefunction()
+                    if (root.get('number') != root.get('me_id') or
+                            root.get('number') not in producers):
+                        return {}
+                    roots.add(root.get('number'))
+            for wf in matrix_element.get_all_wavefunctions():
+                if not wf.get('is_loop') and any(m.get('is_loop') for m in wf.get('mothers')):
+                    return {}
+            result = {}
+            for number in roots - consumed:
+                info = producers[number]
+                left, right = info['loop_mother_rank'], info['vertex_rank']
+                # The measured compact path is vertex-first. Other effective
+                # theory kernels retain the full updater.
+                if (min(left, right) < 0 or
+                        (left < right and left != 0 and right != 0) or
+                        not 0 < info['lcut_size'] <= info['out_size'] <= 16 or
+                        not 0 < info['in_size'] <= 16):
+                    continue
+                result[number] = info
+            return result
+        except (KeyError, ValueError, TypeError, AttributeError, MadGraph5Error):
+            return {}
+
     def get_coef_construction_calls(self, matrix_element, group_loops=True,
-                                            squared_orders=[], split_orders=[]):
+                                            squared_orders=[], split_orders=[],
+                                            terminal_wavefunctions=None):
         """ Return the calls to the helas routines to construct the coefficients
         of the polynomial representation of the loop numerator (i.e. Pozzorini
         method). Group the coefficients of the loop with same denominator 
@@ -1788,12 +1844,40 @@ class FortranUFOHelasCallWriterOptimized(FortranUFOHelasCallWriter):
         res = []
         sqso_max_lamp = [sqso[1][2] for sqso in squared_orders]     
 
+        # Validate all generated updater statements before redirecting any.
+        # This leaves the generic cached wavefunction call functions untouched.
+        terminal_calls = {}
+        if terminal_wavefunctions:
+            for diagram in matrix_element.get_loop_diagrams():
+                for wf in diagram.get('loop_wavefunctions'):
+                    number = wf.get('number')
+                    if number not in terminal_wavefunctions:
+                        continue
+                    info = terminal_wavefunctions[number]
+                    expected = ('CALL %(proc_prefix)sUPDATE_WL_{loop_mother_rank}_{vertex_rank}'
+                        '(WL(1,0,1,{loop_mother_number}),{lcut_size},COEFS,'
+                        '{in_size},{out_size},WL(1,0,1,{out}))').format(**info)
+                    call = self.get_wavefunction_call(wf)
+                    if call.splitlines().count(expected) != 1:
+                        terminal_calls = {}
+                        break
+                    terminal_calls[number] = (expected, expected.replace(
+                        'UPDATE_WL_', 'TERMINAL_WL_', 1)[:-1]+',WL_ENTRY_INEXACT)')
+                else:
+                    continue
+                break
+            if set(terminal_calls) != set(terminal_wavefunctions):
+                terminal_calls = {}
         i=0
         for ldiag in matrix_element.get_loop_diagrams():
             res.append("# Coefficient construction for loop diagram with ID %d"\
                        %ldiag.get('number'))
             for lwf in ldiag.get('loop_wavefunctions'):
-                    res.append(self.get_wavefunction_call(lwf))
+                    call = self.get_wavefunction_call(lwf)
+                    if lwf.get('number') in terminal_calls:
+                        before, after = terminal_calls[lwf.get('number')]
+                        call = call.replace(before, after, 1)
+                    res.append(call)
             for lamp in ldiag.get_loop_amplitudes():
                 # If the loop grouping is not desired, then make sure it is 
                 # turned off here. It is of course not to be included for 

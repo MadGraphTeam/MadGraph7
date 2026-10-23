@@ -13033,7 +13033,7 @@ c         segments from -DABS(tiny*Ga) to Ga
               if(condition)then
                  mp_recms=expr
               else
-                 mp_recms=cmplx(real(expr),kind=16)
+                 mp_recms=cmplx(real(expr,kind=16),kind=16)
               endif
               end
 
@@ -13041,15 +13041,15 @@ c         segments from -DABS(tiny*Ga) to Ga
               %(complex_mp_format)s function mp_reglog(arg_in)
               implicit none
               %(complex_mp_format)s TWOPII
-              parameter (TWOPII=2.0e0_16*3.14169258478796109557151794433593750e0_16*(0.0e0_16,1.0e0_16))
+              parameter (TWOPII=2.0e0_16*3.141592653589793238462643383279502884197e0_16*(0.0e0_16,1.0e0_16))
               %(complex_mp_format)s arg_in
               %(complex_mp_format)s arg
               arg=arg_in
               if(abs(imagpart(arg)).eq.0.0e0_16)then
-                 arg=cmplx(real(arg,kind=16),0.0e0_16)
+                 arg=cmplx(real(arg,kind=16),0.0e0_16,kind=16)
               endif
               if(abs(real(arg,kind=16)).eq.0.0e0_16)then
-                 arg=cmplx(0.0e0_16,imagpart(arg))
+                 arg=cmplx(0.0e0_16,imagpart(arg),kind=16)
               endif
               if(arg.eq.(0.0e0_16,0.0e0_16)) then
                  mp_reglog=(0.0e0_16,0.0e0_16)
@@ -13061,15 +13061,15 @@ c         segments from -DABS(tiny*Ga) to Ga
               %(complex_mp_format)s function mp_reglogp(arg_in)
               implicit none
               %(complex_mp_format)s TWOPII
-              parameter (TWOPII=2.0e0_16*3.14169258478796109557151794433593750e0_16*(0.0e0_16,1.0e0_16))
+              parameter (TWOPII=2.0e0_16*3.141592653589793238462643383279502884197e0_16*(0.0e0_16,1.0e0_16))
               %(complex_mp_format)s arg_in
               %(complex_mp_format)s arg
               arg=arg_in
               if(abs(imagpart(arg)).eq.0.0e0_16)then
-                 arg=cmplx(real(arg,kind=16),0.0e0_16)
+                 arg=cmplx(real(arg,kind=16),0.0e0_16,kind=16)
               endif
               if(abs(real(arg,kind=16)).eq.0.0e0_16)then
-                 arg=cmplx(0.0e0_16,imagpart(arg))
+                 arg=cmplx(0.0e0_16,imagpart(arg),kind=16)
               endif
               if(arg.eq.(0.0e0_16,0.0e0_16))then
                  mp_reglogp=(0.0e0_16,0.0e0_16)
@@ -13085,15 +13085,15 @@ c         segments from -DABS(tiny*Ga) to Ga
               %(complex_mp_format)s function mp_reglogm(arg_in)
               implicit none
               %(complex_mp_format)s TWOPII
-              parameter (TWOPII=2.0e0_16*3.14169258478796109557151794433593750e0_16*(0.0e0_16,1.0e0_16))
+              parameter (TWOPII=2.0e0_16*3.141592653589793238462643383279502884197e0_16*(0.0e0_16,1.0e0_16))
               %(complex_mp_format)s arg_in
               %(complex_mp_format)s arg
               arg=arg_in
               if(abs(imagpart(arg)).eq.0.0e0_16)then
-                 arg=cmplx(real(arg,kind=16),0.0e0_16)
+                 arg=cmplx(real(arg,kind=16),0.0e0_16,kind=16)
               endif
               if(abs(real(arg,kind=16)).eq.0.0e0_16)then
-                 arg=cmplx(0.0e0_16,imagpart(arg))
+                 arg=cmplx(0.0e0_16,imagpart(arg),kind=16)
               endif
               if(arg.eq.(0.0e0_16,0.0e0_16))then
                  mp_reglogm=(0.0e0_16,0.0e0_16)
@@ -13112,10 +13112,10 @@ c         segments from -DABS(tiny*Ga) to Ga
               %(complex_mp_format)s arg
               arg=arg_in
               if(abs(imagpart(arg)).eq.0.0e0_16)then
-                 arg=cmplx(real(arg,kind=16),0.0e0_16)
+                 arg=cmplx(real(arg,kind=16),0.0e0_16,kind=16)
               endif
               if(abs(real(arg,kind=16)).eq.0.0e0_16)then
-                 arg=cmplx(0.0e0_16,imagpart(arg))
+                 arg=cmplx(0.0e0_16,imagpart(arg),kind=16)
               endif
               mp_regsqrt=sqrt(arg)
               end
@@ -13123,7 +13123,7 @@ c         segments from -DABS(tiny*Ga) to Ga
               %(complex_mp_format)s function mp_grreglog(logsw,expr1_in,expr2_in)
               implicit none
               %(complex_mp_format)s TWOPII
-              parameter (TWOPII=2.0e0_16*3.14169258478796109557151794433593750e0_16*(0.0e0_16,1.0e0_16))
+              parameter (TWOPII=2.0e0_16*3.141592653589793238462643383279502884197e0_16*(0.0e0_16,1.0e0_16))
               %(complex_mp_format)s expr1_in,expr2_in
               %(complex_mp_format)s expr1,expr2
               %(real_mp_format)s logsw
@@ -13132,16 +13132,16 @@ c         segments from -DABS(tiny*Ga) to Ga
               expr1=expr1_in
               expr2=expr2_in
               if(abs(imagpart(expr1)).eq.0.0e0_16)then
-                 expr1=cmplx(real(expr1,kind=16),0.0e0_16)
+                 expr1=cmplx(real(expr1,kind=16),0.0e0_16,kind=16)
               endif
               if(abs(real(expr1,kind=16)).eq.0.0e0_16)then
-                 expr1=cmplx(0.0e0_16,imagpart(expr1))
+                 expr1=cmplx(0.0e0_16,imagpart(expr1),kind=16)
               endif
               if(abs(imagpart(expr2)).eq.0.0e0_16)then
-                 expr2=cmplx(real(expr2,kind=16),0.0e0_16)
+                 expr2=cmplx(real(expr2,kind=16),0.0e0_16,kind=16)
               endif
               if(abs(real(expr2,kind=16)).eq.0.0e0_16)then
-                 expr2=cmplx(0.0e0_16,imagpart(expr2))
+                 expr2=cmplx(0.0e0_16,imagpart(expr2),kind=16)
               endif
               if(expr1.eq.(0.0e0_16,0.0e0_16))then
                  mp_grreglog=(0.0e0_16,0.0e0_16)
@@ -13270,7 +13270,7 @@ c         segments from -DABS(tiny*Ga) to Ga
               %(complex_mp_format)s p2,m12,m22
               %(complex_mp_format)s zero,TWOPII
               parameter (zero=(0.0e0_16,0.0e0_16))
-              parameter (TWOPII=2.0e0_16*3.14169258478796109557151794433593750e0_16*(0.0e0_16,1.0e0_16))
+              parameter (TWOPII=2.0e0_16*3.141592653589793238462643383279502884197e0_16*(0.0e0_16,1.0e0_16))
               %(real_mp_format)s M,M2,Ga,Ga2
               %(real_mp_format)s tiny
               parameter (tiny=-1.0e-14_16)
@@ -13369,7 +13369,7 @@ c         segments from -DABS(tiny*Ga) to Ga
                  Ga=-imagpart(p2)/M
               ENDIF
               gamma0=one+m12/p2-m22/p2
-              gamma1=m12/p2-cmplx(0.0e0_16,1.0e0_16)*abs(tiny)/p2
+              gamma1=m12/p2-cmplx(0.0e0_16,1.0e0_16,kind=16)*abs(tiny)/p2
               IF(abs(Ga).EQ.0.0e0_16)THEN
                 mp_sqrt_trajectory=sqrt(gamma0**2-4.0e0_16*gamma1)
                 RETURN
@@ -13378,15 +13378,15 @@ c         segments from -DABS(tiny*Ga) to Ga
               dGa=(Ga-Ga_start)/n_seg
               prefactor=1.0e0_16
               Gai=Ga_start
-              p2i=cmplx(M**2,-Gai*M)
+              p2i=cmplx(M**2,-Gai*M,kind=16)
               gamma0i=one+m12/p2i-m22/p2i
-              gamma1i=m12/p2i-cmplx(0.0e0_16,1.0e0_16)*abs(tiny)/p2i
+              gamma1i=m12/p2i-cmplx(0.0e0_16,1.0e0_16,kind=16)*abs(tiny)/p2i
               argim1=gamma0i**2-4.0e0_16*gamma1i
               DO i=1,n_seg
                  Gai=dGa*i+Ga_start
-                 p2i=cmplx(M**2,-Gai*M)
+                 p2i=cmplx(M**2,-Gai*M,kind=16)
                  gamma0i=one+m12/p2i-m22/p2i
-                 gamma1i=m12/p2i-cmplx(0.0e0_16,1.0e0_16)*abs(tiny)/p2i
+                 gamma1i=m12/p2i-cmplx(0.0e0_16,1.0e0_16,kind=16)*abs(tiny)/p2i
                  argi=gamma0i**2-4.0e0_16*gamma1i
                  IF(imagpart(argi)*imagpart(argim1).LT.0.0e0_16)THEN
                    intersection=imagpart(argim1)*(real(argi,kind=16)-real(argim1,kind=16))
@@ -13409,7 +13409,7 @@ c         segments from -DABS(tiny*Ga) to Ga
               %(complex_mp_format)s zero,one,half,TWOPII
               parameter (zero=(0.0e0_16,0.0e0_16),one=(1.0e0_16,0.0e0_16))
               parameter (half=(0.5e0_16,0.0e0_16))
-              parameter (TWOPII=2.0e0_16*3.14169258478796109557151794433593750e0_16*(0.0e0_16,1.0e0_16))
+              parameter (TWOPII=2.0e0_16*3.141592653589793238462643383279502884197e0_16*(0.0e0_16,1.0e0_16))
               %(complex_mp_format)s gamma0,gammap,gammam,sqrtterm
               %(real_mp_format)s M,Ga,dGa,Ga_start
               %(real_mp_format)s Gai,intersection
@@ -13443,7 +13443,7 @@ c         segments from -DABS(tiny*Ga) to Ga
               dGa=(Ga-Ga_start)/n_seg
               addfactor(1:4)=zero
               Gai=Ga_start
-              p2i=cmplx(M**2,-Gai*M)
+              p2i=cmplx(M**2,-Gai*M,kind=16)
               sqrttermi=mp_sqrt_trajectory(n_seg,p2i,m12,m22)
               gamma0i=one+m12/p2i-m22/p2i
               gammapi=half*(gamma0i+sqrttermi)
@@ -13454,7 +13454,7 @@ c         segments from -DABS(tiny*Ga) to Ga
               argim1(4)=(gammami-one)/gammami
               DO i=1,n_seg
                  Gai=dGa*i+Ga_start
-                 p2i=cmplx(M**2,-Gai*M)
+                 p2i=cmplx(M**2,-Gai*M,kind=16)
                  sqrttermi=mp_sqrt_trajectory(n_seg,p2i,m12,m22)
                  gamma0i=one+m12/p2i-m22/p2i
                  gammapi=half*(gamma0i+sqrttermi)
@@ -14006,6 +14006,7 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
       'golem_dir':cmd.options['golem'],
       'samurai_dir':cmd.options['samurai'],
       'ninja_dir':cmd.options['ninja'],
+      'ninjars_dir':cmd.options.get('ninjars'),
       'collier_dir':cmd.options['collier'],
       'fortran_compiler':cmd.options['fortran_compiler'],
       'f2py_compiler':cmd.options['f2py_compiler'],

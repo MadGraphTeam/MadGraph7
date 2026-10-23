@@ -2,7 +2,37 @@ C --=========================================--
 C   Main subroutine
 C --=========================================--
 
-	  SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+## if(ninjars_available) {
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+      IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      %(real_dp_format)s P_USER(0:3,NEXTERNAL),ANS(0:3,*)
+      LOGICAL NRS_RETRY_MODE,NRS_RETRY_USED
+      INTEGER NRS_RETRY_COUNT,NRS_RETRY_PASS,NRS_RETRY_FAIL
+      INTEGER NRS_RETRY_HARD_SKIP
+      REAL*8 NRS_NATIVE_ACC,NRS_COMP_ACC
+      COMMON/%(proc_prefix)sNRS_RETRY_FLAGS/NRS_RETRY_MODE,NRS_RETRY_USED
+      COMMON/%(proc_prefix)sNRS_RETRY_STATS/NRS_RETRY_COUNT,NRS_RETRY_PASS,
+     $ NRS_RETRY_FAIL,NRS_RETRY_HARD_SKIP
+      COMMON/%(proc_prefix)sNRS_RETRY_ACC/NRS_NATIVE_ACC,NRS_COMP_ACC
+      NRS_RETRY_MODE=.FALSE.
+      NRS_RETRY_USED=.FALSE.
+      NRS_RETRY_COUNT=0
+      NRS_RETRY_PASS=0
+      NRS_RETRY_FAIL=0
+      NRS_RETRY_HARD_SKIP=0
+      NRS_NATIVE_ACC=-1D0
+      NRS_COMP_ACC=-1D0
+      CALL %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,ANS)
+C     Guaranteed reset after every ordinary return from the implementation.
+      NRS_RETRY_MODE=.FALSE.
+      END
+
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,ANS)
+## } else {
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+## }
 C  
 %(info_lines)s
 C
@@ -17,7 +47,20 @@ C
       use %(proc_prefix)sPOLYNOMIAL_CONSTANTS
       USE ALOHA_OBJECT
 C
+## if(ninjars_available) {
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+## }
       IMPLICIT NONE
+## if(ninjars_available) {
+      LOGICAL NRS_RETRY_MODE,NRS_RETRY_USED
+      INTEGER NRS_RETRY_COUNT,NRS_RETRY_PASS,NRS_RETRY_FAIL
+      INTEGER NRS_RETRY_HARD_SKIP
+      REAL*8 NRS_NATIVE_ACC,NRS_COMP_ACC
+      COMMON/%(proc_prefix)sNRS_RETRY_FLAGS/NRS_RETRY_MODE,NRS_RETRY_USED
+      COMMON/%(proc_prefix)sNRS_RETRY_STATS/NRS_RETRY_COUNT,NRS_RETRY_PASS,
+     $ NRS_RETRY_FAIL,NRS_RETRY_HARD_SKIP
+      COMMON/%(proc_prefix)sNRS_RETRY_ACC/NRS_NATIVE_ACC,NRS_COMP_ACC
+## }
 C
 C USER CUSTOMIZABLE OPTIONS
 C 
@@ -100,16 +143,25 @@ C     These are constants related to the split orders
 	  INTEGER NSQUAREDSOP1
 	  PARAMETER (NSQUAREDSOP1=NSQUAREDSO+1)
 C     The total number of loop reduction libraries
-C     At present, there are only CutTools,PJFry++,IREGI,Golem95,Samurai, Ninja and COLLIER
+C     At present, there are only CutTools,PJFry++,IREGI,Golem95,Samurai, Ninja, COLLIER and NinjaRS
       INTEGER NLOOPLIB
-      PARAMETER (NLOOPLIB=7)
-C     Only CutTools or possibly Ninja (if installed with qp support) provide QP
+      PARAMETER (NLOOPLIB=8)
+C     CutTools, Ninja and NinjaRS can provide QP when installed with support
       INTEGER QP_NLOOPLIB
 ## if(ninja_supports_quad_prec) {
+## if(ninjars_supports_quad_prec) {
+      PARAMETER (QP_NLOOPLIB=3)
+## } else {
+      PARAMETER (QP_NLOOPLIB=2)
+## }
+## } else {
+## if(ninjars_supports_quad_prec) {
       PARAMETER (QP_NLOOPLIB=2)
 ## } else {
       PARAMETER (QP_NLOOPLIB=1)
 ## }
+## }
+
 	  INTEGER MAXSTABILITYLENGTH
 	  DATA MAXSTABILITYLENGTH/20/
 	  common/%(proc_prefix)sstability_tests/maxstabilitylength
@@ -219,7 +271,7 @@ C     For a 1>N process, them BEAMTWO_HELAVGFACTOR would be set to 1.
 	  INTEGER NEPS
 	  DATA NEPS/0/
 C     Below are variables to bypass the checkphase and insure stability check to take place
-      LOGICAL OLD_CHECKPHASE, OLD_HELDOUBLECHECKED
+      LOGICAL OLD_CHECKPHASE, OLD_HELDOUBLECHECKED,BYPASS_FILTERS
 	  INTEGER OLD_GOODHEL(NCOMB)
 	  LOGICAL OLD_GOODAMP(NSQUAREDSO,NLOOPGROUPS)
 	  LOGICAL BYPASS_CHECK, ALWAYS_TEST_STABILITY
@@ -281,15 +333,22 @@ C     A FLAG TO DENOTE WHETHER THE CORRESPONDING LOOPLIBS ARE AVAILABLE OR NOT
 	  common/%(proc_prefix)sLOOPLIBS_AV/ LOOPLIBS_AVAILABLE
 C     A FLAG TO DENOTE WHETHER THE CORRESPONDING DIRECTION TESTS AVAILABLE OR NOT IN THE LOOPLIBS
       LOGICAL LOOPLIBS_DIRECTEST(NLOOPLIB)
-	  DATA LOOPLIBS_DIRECTEST /.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE./
+	  DATA LOOPLIBS_DIRECTEST /8*.TRUE./
 C     Specifying for which reduction tool quadruple precision is available.
 C     The index 0 is dummy and simply means that the corresponding loop_library is not available
 C     in which case neither is its quadruple precision version.
-      LOGICAL LOOPLIBS_QPAVAILABLE(0:7)
+      LOGICAL LOOPLIBS_QPAVAILABLE(0:NLOOPLIB)
+      DATA LOOPLIBS_QPAVAILABLE(0:5)/.FALSE.,.TRUE.,4*.FALSE./
 ## if(ninja_supports_quad_prec) {
-	  DATA LOOPLIBS_QPAVAILABLE /.FALSE.,.TRUE.,.FALSE.,.FALSE.,.FALSE.,.FALSE.,.TRUE.,.FALSE./
+      DATA LOOPLIBS_QPAVAILABLE(6)/.TRUE./
 ## } else {
-	  DATA LOOPLIBS_QPAVAILABLE /.FALSE.,.TRUE.,.FALSE.,.FALSE.,.FALSE.,.FALSE.,.FALSE.,.FALSE./
+      DATA LOOPLIBS_QPAVAILABLE(6)/.FALSE./
+## }
+      DATA LOOPLIBS_QPAVAILABLE(7)/.FALSE./
+## if(ninjars_supports_quad_prec) {
+      DATA LOOPLIBS_QPAVAILABLE(8)/.TRUE./
+## } else {
+      DATA LOOPLIBS_QPAVAILABLE(8)/.FALSE./
 ## }
 C     PS CAN POSSIBILY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED FOR THE PURPOSE OF THE STABILITY TEST
 C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT USED ANYWHERE ELSE
@@ -480,6 +539,7 @@ IF(ML_INIT) THEN
   CALL setMadLoopPath(TMP)
   CALL JOINPATH(MLPATH,PARAMFNAME,PARAMFN)
   CALL MADLOOPPARAMREADER(PARAMFN,.TRUE.)
+  CALL ML_APPLY_LOOP_POLE_MODE()
   IF (FORCED_CHOICE_OF_COLLIER_UV_POLE_COMPUTATION) THEN
     COLLIERComputeUVpoles = COLLIER_UV_POLE_COMPUTATION_CHOICE
   ENDIF
@@ -524,10 +584,22 @@ C Make sure that NROTATIONS_QP and NROTATIONS_DP are set to zero if AUTOMATIC_CA
 
 ENDIF
 
+C Check every evaluation because callers may change the mode at runtime.
+CALL ML_CHECK_LOOP_POLE_MODE()
+C Learned zero and equivalent-helicity filters belong to the pole convention
+C that produced them.  Diagnostic modes must include cancelling UV/IR loops.
+BYPASS_FILTERS=BYPASS_CHECK.OR.LoopPoleMode.GE.0
+
 IF (LOCAL_ML_INIT) THEN
   LOCAL_ML_INIT = .FALSE.
   QP_TOOLS_AVAILABLE=.FALSE.
   INDEX_QP_TOOLS(1:QP_NLOOPLIB+1)=0
+C Explain an explicit NinjaRS-only request before dropping unavailable tools.
+  IF(MLReductionLib(1).EQ.8.AND.MLReductionLib(2).EQ.0.AND..NOT.LOOPLIBS_AVAILABLE(8))THEN
+     WRITE(*,*) 'NinjaRS (MLReductionLib=8) is unavailable in this generated process.'
+     WRITE(*,*) 'Run install ninjars in MadGraph, then regenerate and rebuild this process.'
+     STOP 'Requested NinjaRS backend is unavailable.'
+  ENDIF
 C SKIP THE ONES THAT NOT AVAILABLE
   J=1
   DO I=1,NLOOPLIB
@@ -766,9 +838,9 @@ ENDDO
 ## if(LoopInduced) {
 C For loop-induced processes, we should make sure not to use the first points
 C to set the filters because it doesn't have a reasonable REF scale yet.
-IF(.NOT.BYPASS_CHECK.AND.NPSPOINTS.GE.1) THEN
+IF(.NOT.BYPASS_FILTERS.AND.NPSPOINTS.GE.1) THEN
 ## } else {
-IF(.NOT.BYPASS_CHECK) THEN
+IF(.NOT.BYPASS_FILTERS) THEN
 ## }
   NTRY=NTRY+1
 ENDIF
@@ -791,7 +863,7 @@ ENDIF
 
 CHECKPHASE=(NTRY.LE.CHECKCYCLE).AND.(((.NOT.FOUNDLOOPFILTER).AND.USELOOPFILTER).OR.(.NOT.FOUNDHELFILTER))
 
-IF (WriteOutFilters) THEN
+IF (WriteOutFilters.AND.LoopPoleMode.LT.0) THEN
 IF ((HelicityFilterLevel.ne.0).AND.(.NOT. CHECKPHASE).AND.(.NOT.FOUNDHELFILTER)) THEN
 OPEN(1, FILE=HelFilterFN, err=110, status='NEW',action='WRITE')
   DO I=1,NCOMB
@@ -813,7 +885,7 @@ FOUNDLOOPFILTER=.TRUE.
 ENDIF
 ENDIF
 
-IF (BYPASS_CHECK) THEN
+IF (BYPASS_FILTERS) THEN
   OLD_CHECKPHASE = CHECKPHASE
   OLD_HELDOUBLECHECKED = HELDOUBLECHECKED
   CHECKPHASE = .FALSE.
@@ -1769,7 +1841,45 @@ C   the result cannot be trusted at all and we hardset all accuracies to 1.0
         ACC(I)=1.0d0
       ENDDO
     ENDIF
+## if(ninjars_available) {
+C         One explicit compensated DP retry with the same stability checks.
+          IF(NRS_RETRY_MODE) THEN
+            NRS_COMP_ACC=MAXVAL(ACC)
+            NRS_RETRY_MODE=.FALSE.
+            IF(MAXVAL(ACC).LT.MLSTABTHRES.AND..NOT.FPE_IN_DP_REDUCTION) THEN
+              NRS_RETRY_PASS=NRS_RETRY_PASS+1
+            ELSE
+              NRS_RETRY_FAIL=NRS_RETRY_FAIL+1
+            ENDIF
+          ENDIF
+          IF(MAXVAL(ACC).GE.MLSTABTHRES) THEN
+            IF(MLREDUCTIONLIB(I_LIB).EQ.8.AND..NOT.NRS_RETRY_USED) THEN
+              NRS_NATIVE_ACC=MAXVAL(ACC)
+              IF(.NOT.FPE_IN_DP_REDUCTION.AND.ALL(IEEE_IS_FINITE(ACC)).AND.ALL(IEEE_IS_FINITE(DP_RES(:,:,1:N_DP_EVAL)))) THEN
+                NRS_RETRY_USED=.TRUE.
+                NRS_RETRY_MODE=.TRUE.
+                NRS_RETRY_COUNT=NRS_RETRY_COUNT+1
+                EVAL_DONE(1)=.TRUE.
+                DO I=2,MAXSTABILITYLENGTH
+                  EVAL_DONE(I)=.FALSE.
+                ENDDO
+                STAB_INDEX=0
+                CTMODE=1
+                DP_RES=0D0
+                IF(NROTATIONS_DP.GE.1) THEN
+                  GOTO 200
+                ELSE
+                  GOTO 300
+                ENDIF
+              ELSE
+                NRS_RETRY_HARD_SKIP=NRS_RETRY_HARD_SKIP+1
+              ENDIF
+            ENDIF
+C           Mode is off before advancing a backend or entering genuine QP.
+            NRS_RETRY_MODE=.FALSE.
+## } else {
 	IF(MAXVAL(ACC).GE.MLSTABTHRES) THEN
+## }
 	  I_LIB=I_LIB+1
 	  IF((I_LIB.GT.NLOOPLIB.OR.MLReductionLib(I_LIB).EQ.0).AND.QP_TOOLS_AVAILABLE)THEN
 	        I_LIB=INDEX_QP_TOOLS(1)
@@ -1899,7 +2009,7 @@ NROTATIONS_DP = NROTATIONS_DP_BU
 NROTATIONS_QP = NROTATIONS_QP_BU
 
 C Reinitialize the check phase logicals and the filters if check bypassed
-IF (BYPASS_CHECK) THEN
+IF (BYPASS_FILTERS) THEN
   CHECKPHASE = OLD_CHECKPHASE
   HELDOUBLECHECKED = OLD_HELDOUBLECHECKED
   DO I=1,NCOMB
@@ -2574,6 +2684,15 @@ C --=========================================--
 C   Definition of additional access routines
 C --=========================================--
 
+      SUBROUTINE %(proc_prefix)sSET_LOOP_POLE_MODE(MODE)
+C     Select bare loop poles: -1 legacy, 0 both, 1 UV, 2 IR, 3 none.
+C     Counterterms and rational R2 contributions are not changed.
+      IMPLICIT NONE
+      INTEGER MODE
+C     All subprocesses share MadLoop's card and initialization state.
+      CALL ML_SET_LOOP_POLE_MODE(MODE)
+      END SUBROUTINE
+
 	  SUBROUTINE %(proc_prefix)sCOLLIER_COMPUTE_UV_POLES(ONOFF)
 C
 C This function can be called by the MadLoop user so as to chose to have COLLIER
@@ -2925,7 +3044,7 @@ C         Not stable.
 C     U == 1
 C         Stable with CutTools in double precision.
 C     U == 2
-C         Stable with PJFry++.
+C         Stable with PJFry++ (H=2), or NinjaRS in quadruple precision (H=3).
 C     U == 3
 C         Stable with IREGI.
 C     U == 4
@@ -2935,7 +3054,7 @@ C         Stable with Samurai
 C     U == 6
 C         Stable with Ninja in double precision
 C     U == 8
-C         Stable with Ninja in quadruple precision
+C         Stable with Ninja in quadruple precision (H=3), or NinjaRS in double precision (H=2).
 C     U == 9
 C         Stable with CutTools in quadruple precision.         
 C
@@ -3000,8 +3119,14 @@ C Reset it to default value not to affect next runs
 C The subroutine below perform clean-up duties for MadLoop like de-allocating
 c arrays
 	  SUBROUTINE %(proc_prefix)sEXIT_MADLOOP()
+## if(ninjars_available) {
+        USE MNINJARS, ONLY: NINJARS_FINALIZE
+## }
 ## if(ComputeColorFlows) {
 	    CALL %(proc_prefix)sDEALLOCATE_COLOR_FLOWS()
+## }
+## if(ninjars_available) {
+        CALL NINJARS_FINALIZE()
 ## }
         CONTINUE
 	  END

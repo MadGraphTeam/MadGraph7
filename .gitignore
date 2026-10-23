@@ -1,4 +1,10 @@
 *~
+.benchmark-work/
+.ninjars-build/
+vendor/ninjars/target/
+vendor/ninjars/smoke
+vendor/ninjars/ninjars-native-libs.txt
+vendor/ninjars/ninjars-link-before.txt
 __pycache__
 *.o
 *.pyc
@@ -80,6 +86,10 @@ tests/input_files/IOTestsComparison/**/*.BackUp
 
 # output of ./tests/test_manager.py
 UNITTEST_proc/
+
+# Local development references and report plotting caches.
+/references/
+/doc/benchmarkfolder/final-report-v1/.mpl-cache/
 
 # models/ only holds UFO models: downloaded ones are ignored, shipped ones kept
 models/*

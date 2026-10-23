@@ -72,6 +72,8 @@ c Vegas stuff
       character*10 dum
       integer iFKS_picked
 c statistics for MadLoop      
+      INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
       integer ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1(0:9)
       common/ups_stats/ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1
 
@@ -133,6 +135,8 @@ c
       do i=0,9
         n1(i)=0
       enddo
+      NINJARS_DP_USAGE=0
+      NINJARS_QP_USAGE=0
 
       call setrun                !Sets up run parameters
       call setpara('param_card.dat')   !Sets up couplings and masses
@@ -340,6 +344,8 @@ c Randomly pick the contribution that will be written in the event file
               write(*,*) "#Unit ",j," = ",n1(j)
            endif
          enddo
+         write(*,*) '#NinjaRS DP = ',NINJARS_DP_USAGE
+         write(*,*) '#NinjaRS QP = ',NINJARS_QP_USAGE
       endif
 
       write (*,*) 'counters for the granny resonances'

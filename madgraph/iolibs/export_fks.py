@@ -83,7 +83,7 @@ def make_jpeg_async(args):
     devnull = os.open(os.devnull, os.O_RDWR)
   
     os.chdir(Pdir)
-    subprocess.call([os.path.join(old_pos, dir_path, 'bin', 'internal', 'gen_jpeg-pl')],
+    subprocess.call(['perl', '-w', os.path.join(old_pos, dir_path, 'bin', 'internal', 'gen_jpeg-pl')],
                     stdout = devnull)
     os.chdir(os.path.pardir)  
 
@@ -206,6 +206,9 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         if os.path.exists(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat')):          
                 self.MadLoopparam = banner_mod.MadLoopParam(pjoin(self.dir_path, 
                                                   'Cards', 'MadLoopParams.dat'))
+                if self.set_default_reduction_library(self.MadLoopparam):
+                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
+                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'))
                 # write the output file
                 self.MadLoopparam.write(pjoin(self.dir_path,"SubProcesses",
                                                            "MadLoopParams.dat"))
@@ -965,14 +968,14 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             logger.info("Generate jpeg diagrams")
             for Pdir in P_dir_list:
                 os.chdir(Pdir)
-                subprocess.call([os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_jpeg-pl')],
+                subprocess.call(['perl', '-w', os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_jpeg-pl')],
                                 stdout = devnull)
                 os.chdir(os.path.pardir)
 #
         logger.info("Generate web pages")
         # Create the WebPage using perl script
 
-        subprocess.call([os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_cardhtml-pl')], \
+        subprocess.call(['perl', '-w', os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_cardhtml-pl')], \
                                                                 stdout = devnull)
 
         os.chdir(os.path.pardir)
@@ -1001,7 +1004,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                 logger.warning("Failed to copy " + card + ".dat to default")
 
 
-        subprocess.call([os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_cardhtml-pl')],
+        subprocess.call(['perl', '-w', os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_cardhtml-pl')],
                         stdout = devnull)
 
         # Run "make" to generate madevent.tar.gz file
@@ -1011,7 +1014,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             subprocess.call([os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'make_amcatnlo_tar')],
                         stdout = devnull)
 #
-        subprocess.call([os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_cardhtml-pl')],
+        subprocess.call(['perl', '-w', os.path.join(old_pos, self.dir_path, 'bin', 'internal', 'gen_cardhtml-pl')],
                         stdout = devnull)
 
         #return to the initial dir
@@ -5070,11 +5073,23 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                                               libpath,"lib%s.a"%tir,tir_name=tir)
             setattr(self,tir_dir,libpath)
             if libpath != "":
-                if tir in ['pjfry','ninja','golem', 'samurai','collier']:
+                if tir in ['pjfry','ninja','golem', 'samurai','collier','ninjars']:
                     # We should link dynamically when possible, so we use the original
                     # location of these libraries.
-                    link_tir_libs.append('-L%s/ -l%s'%(libpath,tir))
-                    tir_libs.append('%s/lib%s.$(libext)'%(libpath,tir))
+                    copied_ninjars = tir == 'ninjars' and self.dependencies == 'internal'
+                    if tir == 'ninjars':
+                        from madgraph.various import ninjars_install
+                        link_tir_libs.extend(ninjars_install.pre_link_flags(libpath))
+                    if copied_ninjars:
+                        link_tir_libs.append('-L$(LIBDIR) -lninjars')
+                        tir_libs.append('$(LIBDIR)libninjars.a')
+                    else:
+                        link_tir_libs.append('-L%s/ -l%s'%(libpath,tir))
+                        tir_libs.append('%s/lib%s.%s' % (
+                            libpath, tir, 'a' if tir == 'ninjars' else '$(libext)'))
+                    if tir == 'ninjars':
+                        from madgraph.various import ninjars_install
+                        link_tir_libs.extend(ninjars_install.native_link_flags(libpath))
                     # For Ninja, we must also link against OneLoop.
                     if tir in ['ninja']:
                         if not any(os.path.isfile(pjoin(libpath,'libavh_olo.%s'%ext)) 
@@ -5084,7 +5099,7 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                         link_tir_libs.append('-L%s/ -l%s'%(libpath,'avh_olo'))
                         tir_libs.append('%s/lib%s.$(libext)'%(libpath,'avh_olo'))
                     # We must add the corresponding includes for these TIR
-                    if tir in ['golem','samurai','ninja','collier']:
+                    if tir in ['golem','samurai','ninja','collier','ninjars']:
                         trg_path = pjoin(os.path.dirname(libpath),'include')
                         trg_path2 = pjoin(trg_path,tir)
                         to_include = None
@@ -5094,6 +5109,9 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
                         if to_include is None and os.path.isdir(trg_path2):
                             to_include = misc.find_includes_path(trg_path2,
                                                         self.include_names[tir])
+                        if to_include is None and tir == 'ninjars':
+                            to_include = misc.find_includes_path(
+                                libpath, self.include_names[tir])
                         # Special possible location for collier
                         if to_include is None and tir=='collier':
                             to_include = misc.find_includes_path(
@@ -5103,7 +5121,8 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
 'Could not find the include directory for %s, looking in %s and %s.\n' % (tir ,str(trg_path), str(trg_path2))+
 'Generation carries on but you will need to edit the include path by hand in the makefiles.')
                             to_include = '<Not_found_define_it_yourself>'
-                        tir_include.append('-I %s'%to_include)
+                        tir_include.append('-I %s' % (
+                            '$(LIBDIR)' if copied_ninjars else to_include))
                 else:
                     link_tir_libs.append('-l%s'%tir)
                     tir_libs.append('$(LIBDIR)lib%s.$(libext)'%tir)
@@ -5161,6 +5180,9 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
         if os.path.exists(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat')):          
                 self.MadLoopparam = banner_mod.MadLoopParam(pjoin(self.dir_path, 
                                                   'Cards', 'MadLoopParams.dat'))
+                if self.set_default_reduction_library(self.MadLoopparam):
+                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
+                    self.MadLoopparam.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'))
                 # write the output file
                 self.MadLoopparam.write(pjoin(self.dir_path,"SubProcesses",
                                                            "MadLoopParams.dat"))

@@ -57,6 +57,8 @@ class RunStatistics(dict):
           'Samurai_usage'      : 0,
           'Ninja_usage'        : 0,
           'Ninja_QP_usage'     : 0,
+          'NinjaRS_DP_usage'   : 0,
+          'NinjaRS_QP_usage'   : 0,
           'COLLIER_usage'      : 0,
           'max_precision'      : 1.0e99,
           'min_precision'      : 0.0,
@@ -123,6 +125,15 @@ class RunStatistics(dict):
         self['COLLIER_usage']     = u_codes[7]        
         self['Ninja_QP_usage']    = u_codes[8]
         self['CutTools_QP_usage'] = u_codes[9]
+        # The units digit alone cannot distinguish NinjaRS from legacy tools.
+        # Old output has neither tag and retains its original interpretation.
+        for precision in ('DP', 'QP'):
+            nodes = xml_node.getElementsByTagName(
+                'ninjars_%s_usage' % precision.lower())
+            self['NinjaRS_%s_usage' % precision] = (
+                int(getData(nodes[0])) if nodes else 0)
+        self['Ninja_QP_usage'] -= self['NinjaRS_DP_usage']
+        self['PJFry_usage'] -= self['NinjaRS_QP_usage']
         t_return_code = xml_node.getElementsByTagName('t_return_code')
         t_codes = [int(_) for _ in getData(t_return_code[0]).split(',')]
         self['DP_usage']          = t_codes[1]
@@ -181,7 +192,9 @@ class RunStatistics(dict):
           ('Samurai',float(self['Samurai_usage'])/self['n_madloop_calls']),
           ('COLLIER',float(self['COLLIER_usage'])/self['n_madloop_calls']),          
           ('Ninja_DP',float(self['Ninja_usage'])/self['n_madloop_calls']),
-          ('Ninja_QP',float(self['Ninja_QP_usage'])/self['n_madloop_calls'])]
+          ('Ninja_QP',float(self['Ninja_QP_usage'])/self['n_madloop_calls']),
+          ('NinjaRS_DP',float(self['NinjaRS_DP_usage'])/self['n_madloop_calls']),
+          ('NinjaRS_QP',float(self['NinjaRS_QP_usage'])/self['n_madloop_calls'])]
 
         tools_used = [(_[0],'%.3g'%(100.0*_[1])) for _ in tools_used if _[1] > 0.0 ]
 

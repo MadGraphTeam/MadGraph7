@@ -1,0 +1,480 @@
+{
+  "schema": "private-report-presentation-independent-facts-v1",
+  "reviewer": "/root/allocation_final",
+  "created_utc": "2026-10-21T03:01:45.099325+00:00",
+  "scope": "Read retained records/source only. No physics, engines, compilers, tests, new samples, bootstrap recomputation, production edits, or final acceptance claims.",
+  "head_during_read": "9d33d4650a2e6079d007c365f1c12bb74a2def3f",
+  "studies": [
+    {
+      "id": "allocation-qcd-3",
+      "kind": "full-warmed-MadLoop",
+      "process": {
+        "id": "qcd-3",
+        "model": "loop_sm",
+        "nfinal": 3,
+        "process": "u u~ > z g g [virt=QCD]"
+      },
+      "backend": 8,
+      "precision": "DP with genuine Float256 own rescue from binary128 Fortran inputs",
+      "cpu": 234,
+      "pairs": 21,
+      "points_per_traversal": 100,
+      "timing_unit": "seconds/point",
+      "baseline_median": 0.12641518774,
+      "candidate_median": 0.12243543447,
+      "ratio_candidate_over_baseline": 0.968518392915057,
+      "paired_bootstrap_95_CI": [
+        0.9568779827192503,
+        0.993639704088713
+      ],
+      "bootstrap": {
+        "kind": "ratio of medians, paired percentile, linear interpolation",
+        "resamples": 100000,
+        "seed": 20261020
+      },
+      "status_counts_every_arm_traversal": {
+        "218": 98,
+        "322": 2
+      },
+      "exact_component_comparisons": 33600,
+      "all_raw_values_rows_accuracy_status_exact": true,
+      "selection": "gain-demonstrated",
+      "identities": {
+        "allocation": {
+          "generated_sources_sha256": "a52d4842c4b93e50b42727b943a9f6845361147ade681aa7eb76f0f6a4ea92e1",
+          "executable_sha256": "407a2fe6a31e425f14e9fd2636d012f0e42c2e61981af9bbb09ec3689fe53348",
+          "driver_sha256": "3e56a4efdfe5d8350a80955b60b842f15cac2c1d47c039421e96b675ae5cef76",
+          "parameter_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+          "madloop_card_sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+          "points_sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41",
+          "generation_revision": "f4bffc61ed67e5d083b80ff9901768d4d5779989",
+          "generation_tree_state_sha256": "077ad72d1f0888924a37efaf59ce90007bf4221bf096b7faf5b83769307e1b72"
+        },
+        "original": {
+          "generated_sources_sha256": "a52d4842c4b93e50b42727b943a9f6845361147ade681aa7eb76f0f6a4ea92e1",
+          "executable_sha256": "00117f28635ba30b366c9a0367afd2763aa51ca083ba345a3351ec70bef57ed3",
+          "driver_sha256": "3e56a4efdfe5d8350a80955b60b842f15cac2c1d47c039421e96b675ae5cef76",
+          "parameter_card_sha256": "8fb107ff7269fd876f0f3aa741eeb830ec6f94a3f8a7bc96b852afcdde698060",
+          "madloop_card_sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+          "points_sha256": "b6121328eaded263e1ed62d04cea99126119b4ca3d7732f1abb3374f6cce1f41",
+          "generation_revision": "f4bffc61ed67e5d083b80ff9901768d4d5779989",
+          "generation_tree_state_sha256": "077ad72d1f0888924a37efaf59ce90007bf4221bf096b7faf5b83769307e1b72"
+        }
+      }
+    },
+    {
+      "id": "allocation-ew-2",
+      "kind": "full-warmed-MadLoop",
+      "process": {
+        "id": "ew-2",
+        "model": "loop_qcd_qed_sm_Gmu",
+        "nfinal": 2,
+        "process": "e+ e- > mu+ mu- [virt=QED]"
+      },
+      "backend": 8,
+      "precision": "DP; no rescue observed",
+      "cpu": 234,
+      "pairs": 7,
+      "points_per_traversal": 100,
+      "timing_unit": "seconds/point",
+      "baseline_median": 0.0008399354700000001,
+      "candidate_median": 0.00083795285,
+      "ratio_candidate_over_baseline": 0.9976395567626164,
+      "paired_bootstrap_95_CI": [
+        0.9947156585798971,
+        0.9993386991979275
+      ],
+      "bootstrap": {
+        "kind": "ratio of medians, paired percentile, linear interpolation",
+        "resamples": 100000,
+        "seed": 20261020
+      },
+      "status_counts_every_arm_traversal": {
+        "218": 100
+      },
+      "exact_component_comparisons": 11200,
+      "all_raw_values_rows_accuracy_status_exact": true,
+      "selection": "regression-gate-passed",
+      "identities": {
+        "allocation": {
+          "generated_sources_sha256": "089ff160ec2c531e2b80f164ca31340253dea65e8977d518faa031653861b803",
+          "executable_sha256": "54fd2fb9a5e59fb03f4771cab00ddf59da5b4656419ce8dc9e356ddc406eb559",
+          "driver_sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+          "parameter_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+          "madloop_card_sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+          "points_sha256": "ed6f3f83033372061ed6de45c05a366aeeb68a63ddd006998682f406174e7b53",
+          "generation_revision": "f4bffc61ed67e5d083b80ff9901768d4d5779989",
+          "generation_tree_state_sha256": "077ad72d1f0888924a37efaf59ce90007bf4221bf096b7faf5b83769307e1b72"
+        },
+        "original": {
+          "generated_sources_sha256": "089ff160ec2c531e2b80f164ca31340253dea65e8977d518faa031653861b803",
+          "executable_sha256": "3659432ccb57f76018d4c9c63206a7603e97ecc3e6fd8d96fbbff1eea7b383a3",
+          "driver_sha256": "6142db3a8c1bd3faeac1b15d05f4dccf73f85cef24923e7556029bec98a8fbf9",
+          "parameter_card_sha256": "ed72c21a3b814a5d92d53f72ab3662d0b9f1743f60f755e825ecee1c18a0c715",
+          "madloop_card_sha256": "7da30726e90d04d6e48d3fafcb75fe40db8f440a93c70a279f288b35f665ec49",
+          "points_sha256": "ed6f3f83033372061ed6de45c05a366aeeb68a63ddd006998682f406174e7b53",
+          "generation_revision": "f4bffc61ed67e5d083b80ff9901768d4d5779989",
+          "generation_tree_state_sha256": "077ad72d1f0888924a37efaf59ce90007bf4221bf096b7faf5b83769307e1b72"
+        }
+      }
+    },
+    {
+      "id": "native-NativeDenominators",
+      "kind": "private-complete-MpState-evaluate-request-screen",
+      "process": "1392 retained actual MadLoop MP bridge requests covering nine topology/rank shapes; not a generated full-process timing",
+      "backend": "private policy, same compiled executable for all three arms",
+      "precision": "113-bit input recovery then exact widening to Float256; same interpreted generic tensor in all arms",
+      "cpu": 190,
+      "triplets": 7,
+      "timing_unit": "seconds/complete 1392-request stream",
+      "baseline": "Interpreted",
+      "candidate": "NativeDenominators",
+      "baseline_median": 19.853261741,
+      "candidate_median": 20.284039222,
+      "ratio_candidate_over_baseline": 1.0216980709074308,
+      "paired_bootstrap_95_CI": [
+        0.973591667127239,
+        1.0456657740821684
+      ],
+      "bootstrap": {
+        "resamples": 100000,
+        "seed": 20261021,
+        "unit": "triplet indices",
+        "percentiles": "linear2.5%97.5%"
+      },
+      "all_statuses_successful": true,
+      "selection": "No demonstrated gain; not promoted. CI crosses one; does not establish a slowdown.",
+      "executable_sha256": "26d8648fe69fe4fe38fade56352d950aebd0d7f3e7bce23d94a3387f06e20578",
+      "input_sha256": "1fafb19d4b534c3e222e5b265dfd8b139f262d3353f847a5c39955c468fa9f4d",
+      "build_completed_sha256": "689f86c5f4cf106e818ac0618f3fe2ec6916b15f7c332259c53f7d9897ca01d5"
+    },
+    {
+      "id": "native-FullNative",
+      "kind": "private-complete-MpState-evaluate-request-screen",
+      "process": "1392 retained actual MadLoop MP bridge requests covering nine topology/rank shapes; not a generated full-process timing",
+      "backend": "private policy, same compiled executable for all three arms",
+      "precision": "113-bit input recovery then exact widening to Float256; same interpreted generic tensor in all arms",
+      "cpu": 190,
+      "triplets": 7,
+      "timing_unit": "seconds/complete 1392-request stream",
+      "baseline": "Interpreted",
+      "candidate": "FullNative",
+      "baseline_median": 19.853261741,
+      "candidate_median": 19.993630338,
+      "ratio_candidate_over_baseline": 1.0070703040553843,
+      "paired_bootstrap_95_CI": [
+        0.9810598340340952,
+        1.0401095393062334
+      ],
+      "bootstrap": {
+        "resamples": 100000,
+        "seed": 20261021,
+        "unit": "triplet indices",
+        "percentiles": "linear2.5%97.5%"
+      },
+      "all_statuses_successful": true,
+      "selection": "No demonstrated gain; not promoted. CI crosses one; does not establish a slowdown.",
+      "executable_sha256": "26d8648fe69fe4fe38fade56352d950aebd0d7f3e7bce23d94a3387f06e20578",
+      "input_sha256": "1fafb19d4b534c3e222e5b265dfd8b139f262d3353f847a5c39955c468fa9f4d",
+      "build_completed_sha256": "689f86c5f4cf106e818ac0618f3fe2ec6916b15f7c332259c53f7d9897ca01d5"
+    },
+    {
+      "id": "older-tensor-callback-allocation",
+      "kind": "pure-generic-tensor-callback-dispatch",
+      "process": "same1392-record captured input trace, nine topology/rank shapes",
+      "precision": "Float256 tensor callbacks; preserved exact per-value precision/sign",
+      "cpu": 234,
+      "pairs": 21,
+      "timing_unit": "seconds/sum of1392 per-record callback timer intervals",
+      "baseline_median": 7.240937685,
+      "candidate_median": 6.571593567,
+      "ratio_candidate_over_baseline": 0.9075611271470292,
+      "paired_bootstrap_95_CI": [
+        0.8982879334364353,
+        0.9127498167466004
+      ],
+      "bootstrap": {
+        "percentile": "linear interpolation at (n-1)*p",
+        "resampling": "complete adjacent pair indices",
+        "rng": "Python random.Random",
+        "samples": 100000,
+        "seed": 20261020
+      },
+      "exact_complex_outputs_per_block": 86436,
+      "all42blocks_exact": true,
+      "trace_sha256": "7a8cea5904b2bb665be87f5079cbf094713607e4ad25ca7c6fecef6e3c0977a5",
+      "source_hashes": {
+        "Cargo.lock": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25",
+        "Cargo.toml": "8748a4d8820c1580c9c520eb249abe4bf61d1305f90b802814bfdc5dbf87f427",
+        "src/allocation.rs": "525d5083904cd0257938c128e0e44f2d202de0e31f82b411f45e2a004ff8e5e1",
+        "src/capture.rs": "57a79744a889b806713d9a0fb05aaf0a0fbce6c3f576afcb525e7c2ec62c7406",
+        "src/common.rs": "f2729527b649b98b6272d38a9eeeab7dffaa5f1d507b1667f0cf9ac4a1568d9f",
+        "src/kernel.rs": "d01da637a77fb79de4616ae5a9f278c1217176540c7e04e56290fc9d9c2b679c",
+        "src/original.rs": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55"
+      },
+      "full_process_claim": false
+    },
+    {
+      "id": "older-Fortran-QP-sharing",
+      "kind": "full-warmed-MadLoop-prototype-comparison",
+      "process": "u u~ > z g g [virt=QCD], loop_sm",
+      "backend": 6,
+      "precision": "Ninja6 DP with two own QP rescues; prototype changes QP FFV rank2-4 accumulation only",
+      "cpu": 208,
+      "pairs": 21,
+      "points_per_traversal": 100,
+      "timing_unit": "seconds/point",
+      "baseline_median": 0.06857657389999999,
+      "candidate_median": 0.06638863190000001,
+      "ratio_candidate_over_baseline": 0.9680949065319231,
+      "paired_bootstrap_95_CI": [
+        0.9584911267952578,
+        0.9821376255819932
+      ],
+      "bootstrap": {
+        "method": "paired percentile",
+        "resamples": 10000,
+        "seed": 410083
+      },
+      "status_counts_every_arm_traversal": {
+        "216": 98,
+        "328": 2
+      },
+      "printed_binary64_identical_coefficients": 16800,
+      "identities": {
+        "generation_revision": "b44d20e725f1ec68589df20284e4ce9116e9e2ab",
+        "generation_tree_state_sha256": "5778e8f909acaab782c0a35217fc60af3bbe1211fef765dfd1abf6a925e5d58a",
+        "builds": {
+          "original": {
+            "seconds": 4.498756770975888,
+            "executable_sha256": "ca676400ee141fb863c3e296238810e9473b66135807475e44525c522a75f22d",
+            "compiled_sources_sha256": "c5b9e82f8e88867ae9e3c90167f3a54864231689ea6d8e8ba7d7fe09b953b210"
+          },
+          "factor": {
+            "seconds": 17.64875009492971,
+            "executable_sha256": "94fb71b9c8c9eccf5335003992724af70797e9ce4a6e24803ecb68611b5a044c",
+            "compiled_sources_sha256": "fda7b253d9f3d4785a966f1d46f6ff75c675545906208dbbd9e43fd64520a8a0"
+          }
+        },
+        "used_ninja_archive_sha256": "42866021f93004c143e0a49de8c420a6bebbcd4eb26242eef556ad71296e57c0",
+        "used_scalar_olo_archive_sha256": "8469cc93665ba24c2ca0b848d61fead56a517f78c4a1672a110d64177568aa8d"
+      },
+      "historical_package_acceptance_eligible": false
+    }
+  ],
+  "allocation_identity": {
+    "baseline_archive_sha256": "832fc0d1198814b9cc80a65e47bc7aa5dc204f7d25701f206c910cd188fbe80b",
+    "allocation_archive_sha256": "366ae91da891e9d7e5c19cbf4cbcca20a622d32b452305df58146a96c4189357",
+    "minimal_release_tensor_sha256": "240bbc1f9c8937393227c16a6ce4887ee68524a3f021a8a93656151159445d70",
+    "original_tensor_sha256": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55",
+    "same_wrapper_sha256": "4831e01d07d83d376c6e9fd1f13543094496ce168308e041eac126bbdc888245",
+    "same_bridge_lib_rs_sha256": "a4f7215e5812ce337a3fdc083c99ee731f1b6cc3a83e4ff4780ed0e1a4a26128",
+    "package_record": {
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v1/package-exact.json",
+      "sha256": "4dd11b5760ac187f32a4b8a395ca25d016ee68ecab7e00fa96d15b61a3950dc4",
+      "bytes": 8861
+    },
+    "build_parity": "Retained exact installer cargo rustc invocation and complete effective Cargo fingerprint parity; no effective-LTO inference from manifest alone.",
+    "promotion_gates_passed": true,
+    "not_current_final_archive": "Timed allocation366ae\u2026 differs from final installed800a941f\u2026; retain exact historical identity.",
+    "v1_paused_samples": "Historical12 completed pairs plus one arm and interrupted worker excluded; fresh v2fixed21+7 only."
+  },
+  "native_identity": {
+    "prepared_source_delta_sha256": "11bf858bcf64fb80fa01f31068974c310f5252cadde88477fa4137e8edbfb4a8",
+    "original_tensor_sha256": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55",
+    "prepared_study_lib_rs_sha256": "11a57c8b2f4a901d326908e50c2bab1b2f6c4abfdf5699cb2413a013f69363d6",
+    "supplement_source_hashes": {
+      ".gitignore": "75b7dbb02a9764029bd6e213d34359fa93b3241ba7e74ebf4b9b13dc3fbc27aa",
+      "Cargo.lock": "c7b5be891dcdb75654adaa36dac5f3940c701c18d7d105215c598d7d42a81a25",
+      "Cargo.toml": "12d41805a3fd441239cdc91112c7330664b857bc630178a561790f7a1215d919",
+      "Makefile": "3373a4dea5f02c76b13a86b2d323b0f39d2d080e2acb3e682d692d528836838f",
+      "UPSTREAM.md": "fed6015ef5ebae4f35cd8c8d83855c9b87a381f60013e62d927e280790b92c54",
+      "build.rs": "fa389383328261938398f067a18ad860ef21e0bb4bc15c95b24be3e0a6704342",
+      "examples/replay.rs": "6381e93e652fec4547949a7a2a4c05e7b6955fe817862e97f42e83f2d0182200",
+      "mninjars.f90": "ebcd440b64a7983d2789670556905531a24a860308687f5f8b2f789ac569ae05",
+      "ninjars.h": "62e8237316e80b63264de3fc031f118e242e62651f1cec9c6d1c40cca0aace8c",
+      "smoke.f90": "913e96e53e2ba15a71679559d0a2b79b3a12cc7640286ab1a86d1db260e2919a",
+      "src/guarded.rs": "0c7ac81fe597083e13b069e74a978161d56a101ca8b58bad4b8adaa04ad0d94c",
+      "src/guarded_fenv.c": "79e47e68003e6660cfc0d67318b1069e0f2f8958a7a6d642020543670ffbb427",
+      "src/guarded_tests.rs": "9566681f2b67e82f5fed8f3186c362820b7991624296d04c905491b230f3769d",
+      "src/lib.rs": "11a57c8b2f4a901d326908e50c2bab1b2f6c4abfdf5699cb2413a013f69363d6",
+      "src/native_study_tests.rs": "1a10fa9c69fe0517c79f03a7d2fa86c7b39c6efb4df8c9464a14fbe70a7d36a2",
+      "src/native_supplement_tests.rs": "4b2ba0697cb58374bbc93525afa9de6f94aeab17e9716861afa7635267775a95",
+      "src/retry_tests.rs": "2492364fb5877d3ea34088b2f33e3a55c27ba77bafe7871c4d91f78aa41fb10e",
+      "src/tensor.rs": "f5b153e179ac56e4a833f8d83b011a667e61cff1bcb567c2f1508a1d94013e55",
+      "src/transport_contract_tests.rs": "884307cd6500059cfb28a24748f8219d0d9f3a87ab84dd97bfd9af34a97ac6fb",
+      "src/transport_replay_tests.rs": "d0a0e3129a9eb43765087d182a204db012cd8bb90ade093c25449e94c6a9a6cf",
+      "tests/data/cases/madloop-four-photon-top-box-0.json": "9aea91e4e6c70b0f5984b2070e7aef8a77699260dacac1a9b3c9d65f23189796",
+      "tests/data/cases/madloop-gg-hh-top-box-2.json": "c9271b79b2a4df2155ee8855fda3ffc6090f37261711468efd3126cf6665d5a3",
+      "tests/data/cases/madloop-gg-hh-top-triangle-0.json": "5178de553b5dcfa0fcca616748943a63f2933399203f7d7040ba9c98aa3b4ea2",
+      "tests/data/cases/madloop-gg-hhh-top-box-8.json": "3f14438d72237acbd9c74f8ba813fa6fd04c2aa1af2cdde143134146a650a489",
+      "tests/data/cases/madloop-gg-hhh-top-pentagon-26.json": "af571c4df618dafad08dc0acdb345f39d0446a2ec814f03b7cc2ee5a25d727ca",
+      "tests/data/cases/madloop-gg-hhh-top-triangle-0.json": "98483fd5759713618d7dfa784d604b83a7f03b241a5402d9a808af3655920353",
+      "tests/data/cases/madloop-hgg-top-triangle-0.json": "8a70a0fc3569676b2601dbeb36b16cb70817b40df8eb3e762e4ed1899246d590",
+      "tests/data/compensated/corrected-results.json": "f868eb5d279ef0ef68aefcf34704a094cb4452447aff857c7650358b623dfa94",
+      "tests/data/compensated/expansion-results.json": "8bdf9a439db23f793ca38f774997d866d6a0fa279e00a086d81cee21a3d67b76",
+      "tests/data/compensated/inputs.json": "1fb7ea9413efd25053dfdab357baf9ee973d8df3b6452fbaa280b684aea177b9",
+      "tests/data/convergence.json": "b34d6ef194a5297914050ceb6ffd25f5402c0150898921d2dcaf65471e55ec93",
+      "tests/data/ninja/madloop-four-photon-top-box-0.json": "dc34ad2683fbe535140c63bba564b8f6e8e74ce3c64eb17ef3cfa96baa5a6dde",
+      "tests/data/ninja/madloop-gg-hh-top-box-2.json": "d893de26b4e2e4edbeb4d6ba3122a6cd231bd5842719b3b8b2c4a84ee5e67dcc",
+      "tests/data/ninja/madloop-gg-hh-top-triangle-0.json": "669b92538382201f26487865cd44a1d8eea03b13ed7b99dcdae21bd7662cca95",
+      "tests/data/ninja/madloop-gg-hhh-top-box-8.json": "c49f6d9db0c09602c6e663e60499a9b5126b9ca66d1738f6b5bac5846afda572",
+      "tests/data/ninja/madloop-gg-hhh-top-pentagon-26.json": "e4b1522302bab1592924b251a7ee153c94623726d68b2d552e6211a4b0b3ded3",
+      "tests/data/ninja/madloop-gg-hhh-top-triangle-0.json": "7905a646d4bb23daf1b0506b662913f60796c87dfcbbd556c5bd957f7eba3bd2",
+      "tests/data/ninja/madloop-hgg-top-triangle-0.json": "a50906866f8e8812c02365cff98cb56a20639537f1804d290edbd8020ed9d30b",
+      "tests/data/provenance.json": "f77b7cee3079a95f001a3cc7d6a9f0aa1f8a1b51f3668b0d709552c67016d18b",
+      "tests/fenv_helpers.c": "cdb2df81ddcfc898f00dae4d74a78f0d6436aaa6c9ea3e5991bf11616b8bbd8d",
+      "tests/replay.py": "9c475d4fa7c17c200eafda7a1e0e6e0bb0f4392de2c89a9e26a302f69089a2b9"
+    },
+    "shared_libraries": {
+      "/nix/store/m07syxhld8hpprrdmzq565ziia6vlw9l-xgcc-15.3.0-libgcc/lib/libgcc_s.so.1": {
+        "resolved": "/nix/store/m07syxhld8hpprrdmzq565ziia6vlw9l-xgcc-15.3.0-libgcc/lib/libgcc_s.so.1",
+        "sha256": "ae2bd6022e9a79c88e58327b50f3f2f78bf70ad26ceedd238b9f3e218379740c"
+      },
+      "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libm.so.6": {
+        "resolved": "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libm.so.6",
+        "sha256": "864704dfd98b7025f21dd1dcc8f8f1f6388ecb44aa984b075f0188c253d4ab53"
+      },
+      "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6": {
+        "resolved": "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/libc.so.6",
+        "sha256": "b8cb091b34bdd88f6902eebff8761f9ea306e6789b4ac4d06d4470c0d568c80c"
+      },
+      "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/ld-linux-x86-64.so.2": {
+        "resolved": "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/ld-linux-x86-64.so.2",
+        "sha256": "05657061620b22dbeb881cd13630ef66d39916d3b9c2a8efeb9ec6244367051f"
+      },
+      "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib64/ld-linux-x86-64.so.2": {
+        "resolved": "/nix/store/lm3pknxi0ipypy3lxh1wmm8wvvavdwrn-glibc-2.42-84/lib/ld-linux-x86-64.so.2",
+        "sha256": "05657061620b22dbeb881cd13630ef66d39916d3b9c2a8efeb9ec6244367051f"
+      }
+    },
+    "thread_environment": {
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "RAYON_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1"
+    },
+    "public_default_retained": "Interpreted",
+    "private_feature": "ninjars-symbolica native-kernels; never promoted",
+    "three_git_revisions": {
+      "ninjars": "0d0d7e7a8033431b60a8580731084742e0655cda",
+      "oneloopmaster": "09b2c7497743db875ed446da95123175dd00b1c8",
+      "symbolica": "e679e8c129ce15ec50c46ffb4ff4b59aeb7813b8"
+    }
+  },
+  "timing_boundaries": {
+    "allocation_full_process": "Fresh worker for each arm. Initialization and complete100-point warm traversal outside timer. SYSTEM_CLOCK surrounds one100-point RUN, including point copy, scale/coupling update, Fortran numerator and kinematics, reduction, scalar masters, stability/actual rescue, status counting and final timed answer/accuracy/status copies. Formatting/serialization and process start/stop outside. One worker exits0 before next.",
+    "native_request_screen": "One complete private MpState::evaluate for each1392 ordered requests: recover113bit ASCII, widen256bit, reset/bind tensor, rebuild reduction inputs, reduction/scalar masters, format8ASCII fields. Reused independent state/cache perpolicy. Request objects/result-vector capacity prepared outside; returned output-buffer allocation/push inside. Serialization and returned-buffer release outside. Excludes MadLoop Fortran numerator/kinematics, stability controller, and public manager IPC. No cost subtraction.",
+    "older_callback": "Sum1392 per-record intervals around shared dispatch plus ordered tensor evaluate/expansion methods writing preallocated outputs. Coefficient binding, parsing, cloning, views/output allocation, comparisons, formatting/serialization outside. No amplitude/cut/geometry/master construction or calls. No-op timing retained, not subtracted.",
+    "older_Fortran": "Fresh uninstrumented standalone check perarm/repetition; initialization/warm traversal outside timer, separate full-output evidence pass before timing. SYSTEM_CLOCK includes all100 scale/coupling updates and full SLOOPMATRIX_THRES amplitude calls with real rescues and status histogram, excludes serialization. Consequently exact row evidence is from the untimed pass, unlike allocation worker final timed traversal."
+  },
+  "interpretation_limits": [
+    "3.15% whole-process allocation,9.24% pure tensor callback and3.19% Ninja6 Fortran prototype are separate comparisons and cannot be added or treated as the same workload.",
+    "Allocation measured existing NinjaRS original tensor vs allocation tensor, not original MadLoop with Ninja.",
+    "Native screen rejects promotion under the declared upperCI<1 rule; confidence intervals cross1, so no statistically demonstrated improvement or slowdown.",
+    "None of these studies closes the final eight-process original-Ninja5% acceptance gate.",
+    "Older Fortran package honestly remained isolated/not acceptance eligible at capture; later source promotion must use its separate production proof."
+  ],
+  "retained_record_bindings": [
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/manifest.json",
+      "sha256": "3b75bddaa8423b3edc5d7d941e7fc664938adeb0e44df36fc5ecc8c18a0440d8",
+      "bytes": 149230
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/frozen-bindings.json",
+      "sha256": "64766a546d751705993e4b074f830d9ff32260c89e4ecfd6f6e4aa9114e2871e",
+      "bytes": 883638
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/PLAN.md",
+      "sha256": "f474fd463f4becc896bfa5d728fa718e28b2a728aaa2c8f38446aff8138341a5",
+      "bytes": 4056
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/result.json",
+      "sha256": "3102c1a33dce5d26113dc9c098e1100920933d1507fd11aaed0ee91606411191",
+      "bytes": 29251
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/timings/attempt-1/analysis.json",
+      "sha256": "79e661e62a4ce253181bdff22fa1dd530269ccbe570b61e2e2b9c9712e3f1a4d",
+      "bytes": 4315
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-process-v2/independent-measurement-audit.json",
+      "sha256": "c1305a7cca29d9a7fe4c843d95e4dd30f82a61b6bda5bea0ef82d60acefbfe7c",
+      "bytes": 2183
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/manifest.json",
+      "sha256": "38887d55ab8276fa2ee4cd64905012dcd946e9d18d668d7087cd7e5c15b1b9d5",
+      "bytes": 30019
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/SCREENING-PLAN.md",
+      "sha256": "f2616a490480d4b6a6e3d7c0f5a39865ad32855d29c8f9104c084baba882eb60",
+      "bytes": 4021
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/screening-analysis.json.gz",
+      "sha256": "53eb16383f507d7e3c768c0cbab2935bf6c0148aa20f8878872cd77bc2422fd8",
+      "bytes": 1327
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/selection-analysis.json",
+      "sha256": "0581c1fe7ac1371197610c894a360a8ccd82798a3970a167b9d6fc3002d5044c",
+      "bytes": 2045
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/prepared.json",
+      "sha256": "c61f2a58b944e2bd7f17bd1c9b66e0104316f2c565d00b4d5aa03f4a991c9e42",
+      "bytes": 9339
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/supplement/run-screening/result.json",
+      "sha256": "51845fe45a941320a2bb5157789c7ff9e28f4cb0cfe3626b82fd7b75a2121c23",
+      "bytes": 3678
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-native-float256-v1/supplement/build-completed.json",
+      "sha256": "689f86c5f4cf106e818ac0618f3fe2ec6916b15f7c332259c53f7d9897ca01d5",
+      "bytes": 6932
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/manifest.json",
+      "sha256": "20b091be21e04ae7c7220067337a9dd6ccf61e5915ce511cfc2bdac67ac2be7d",
+      "bytes": 11319
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/PLAN.md",
+      "sha256": "e4145bd2b345621488a03249fa2ad29e81b32fa7f11f140602c0d65ad030b006",
+      "bytes": 6393
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/timings/attempt-1/summary.json",
+      "sha256": "fe396620f4beae6f8e8f370413fdd933e9894dc489f099e1fbcedf57a76df341",
+      "bytes": 8402
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/ninjars-mp-tensor-allocation-performance-v1/build-inputs.json",
+      "sha256": "83be219a494d4709cb9334d890a6212700bfb008d662ec792345c08f04dbc657",
+      "bytes": 1551
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/confirmatory21/qcd3-factor-confirmatory21-v1/analysis.json",
+      "sha256": "d2e78e55be1690f79e03c6d5ac26eeb1e4a96b8f03fd17b3a8ebde6c541efb6e",
+      "bytes": 7869
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/confirmatory21/qcd3-factor-confirmatory21-v1/result.json",
+      "sha256": "5b094ab736c31c557040c2628467f7596af84f23bdabfefc588d14a5dcb42dbb",
+      "bytes": 3151077
+    },
+    {
+      "path": "docs/benchmarkfolder/experiments/symmetric-factorization/confirmatory21/qcd3-factor-confirmatory21-v1/predeclared-policy.json",
+      "sha256": "41dc662f45fe3dbb85a7fa8388aaf388e2b4a6e4a755a3c0c82265ea22f1216c",
+      "bytes": 1053
+    }
+  ]
+}
