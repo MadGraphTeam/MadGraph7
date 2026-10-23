@@ -592,8 +592,8 @@ counterterms_uv = result.pole_part("uv", "uv")    # the opposite, to rounding
 The selection is a runtime option: the same artifact serves all four (it stores
 the companion plan of its certified-scaleless loop families, which only `"uv"`
 and `"ir"` evaluate; at g g > g g g g they cost about 20 % more than `"all"`).
-Artifacts written before the split serve `"all"` and `"none"` and refuse
-`"uv"`/`"ir"` with a request to regenerate. Correlated and resolved outputs
+An artifact written before the split is refused at load with a request to
+regenerate it. Correlated and resolved outputs
 take every selection too; their `pole_parts` follow their own axes (resolved:
 per sector, helicity and colour component).
 

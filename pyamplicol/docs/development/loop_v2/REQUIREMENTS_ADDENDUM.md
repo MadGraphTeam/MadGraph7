@@ -153,8 +153,8 @@ relocation with the same native build. A dedicated acceptance test covers this.
   `evaluation.poles`, CLI `--poles` and the API `poles=` take all four values
   (`PoleSelection.UV`, `.IR`); one artifact serves them all (it stores the
   companion plan of the certified-scaleless families that `"uv"`/`"ir"` run;
-  artifacts written before the split serve `"all"`/`"none"` and refuse
-  `"uv"`/`"ir"` with a regeneration message). `VirtualEvaluation.values` holds
+  artifacts written before the split are refused at load with a regeneration
+  message, no backward compatibility). `VirtualEvaluation.values` holds
   the selected origin's parts of the renormalised virtual and
   `VirtualEvaluation.pole_parts` both origins by component (virtual, bare, uv,
   r2, uv_local, uv_external_fields), also for correlated and resolved

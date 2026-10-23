@@ -1877,8 +1877,7 @@ pub const LOOP_PROGRAM_V4_MEMBER: &str = "schedule/loop-plan-v4.json.zlib";
 
 /// PACBIN member of the companion plan v4 of a process's certified-scaleless
 /// families (`LoopSlice.scaleless`, DESIGN.md §12.4): only the "uv" and "ir"
-/// pole selections run it. Absent when the process has no such family, and
-/// in artifacts written before the UV/IR pole split.
+/// pole selections run it. Absent when the process has no such family.
 pub const LOOP_PROGRAM_V4_SCALELESS_MEMBER: &str = "schedule/loop-plan-v4-scaleless.json.zlib";
 
 /// The plan v4 JSON of an authenticated PACBIN reader (its only caller is the

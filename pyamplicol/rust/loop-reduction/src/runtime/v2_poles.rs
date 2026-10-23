@@ -31,6 +31,13 @@
 //! scaleless bubbles and refuses separated poles; its generic engine with
 //! selected masters is the oracle of this residue
 //! (`tests/runtime_v2_reduce.rs`).
+//!
+//! Interim local copy (DESIGN.md §12.4): this is master-integral algebra that
+//! belongs upstream. The same functional is proposed to NinjaRS as
+//! `ninjars::fast::tensor_uv` (`TensorUvResidues`, `tensor_uv_residue`;
+//! branch `pyamplicol/fast-tensor-uv-residue` on main 41a4c00, with the
+//! generic engine's `PoleSelection::UV` as its oracle). When it lands on
+//! NinjaRS main, the re-pin replaces this module by that function.
 
 use super::Carrier;
 use crate::Complex;

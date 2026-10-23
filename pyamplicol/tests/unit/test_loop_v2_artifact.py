@@ -1009,10 +1009,8 @@ def test_fresh_interpreter_rebuilds_inputs_and_refuses_a_different_plan(
         Runtime.load(full_colour, process="gg")
 
 
-def _rewrite_payloads(source: Path, destination: Path, edits, files=None) -> Path:
-    """Copy an artifact and replace JSON payloads (``edits``: path -> edit of
-    the parsed JSON) and binary payloads (``files``: path -> bytes) under a
-    re-signed manifest."""
+def _rewrite_payloads(source: Path, destination: Path, edits) -> Path:
+    """Copy an artifact and replace JSON payloads under a re-signed manifest."""
 
     import shutil
 
@@ -1032,18 +1030,6 @@ def _rewrite_payloads(source: Path, destination: Path, edits, files=None) -> Pat
                 role=record.role,
                 process_id=record.process_id,
                 compact=True,
-            )
-        for path, content in (files or {}).items():
-            record = records[path]
-            builder.discard_payloads(path)
-            builder.add_bytes(
-                path,
-                content,
-                role=record.role,
-                media_type=record.media_type,
-                executable=record.executable,
-                target=record.target,
-                process_id=record.process_id,
             )
         builder.finalize(
             kind=manifest.kind,
@@ -1157,8 +1143,8 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
         (
             "poles",
             {"processes/gg/physics.json": unserved_poles},
-            "unsupported contribution, convention or feature declaration",
-            "unsupported contribution, convention or feature declaration",
+            "unsupported pole selections",
+            "unsupported pole selections",
         ),
         (
             "resolved",
@@ -1179,10 +1165,12 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
             "companion plan v4 differs from its declared digest",
         ),
         (
-            "companion-before-split",
+            # The declaration before the UV/IR split: refused (no backward
+            # compatibility of internal artifact formats, AGENTS.md).
+            "before-split",
             {"processes/gg/physics.json": before_split},
-            "stored exactly when declared",
-            "stored exactly when declared",
+            "unsupported pole selections .*regenerate",
+            "unsupported pole selections .*regenerate",
         ),
         (
             "spin",
@@ -1196,41 +1184,6 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
             admit(loop_native, tampered, "gg")
         with pytest.raises(ArtifactError, match=loaded):
             Runtime.load(tampered, process="gg")
-
-    # An artifact written before the UV/IR pole split declares poles
-    # ["all", "none"] and stores no companion plan: it is admitted and serves
-    # those two selections (bitwise as before); "uv" and "ir" are refused
-    # with a request to regenerate it.
-    from pyamplicol.loops.v2.artifact import read_plan, write_plan
-
-    def drop_companion(execution):
-        del execution["scaleless_plan_sha256"]
-        return execution
-
-    staged = tmp_path / "pre-split.pacbin"
-    write_plan(read_plan(full_colour / "processes/gg/loop-runtime.pacbin"), staged)
-    old = _rewrite_payloads(
-        full_colour,
-        tmp_path / "pre-split",
-        {
-            "processes/gg/physics.json": before_split,
-            "processes/gg/execution.json": drop_companion,
-        },
-        {"processes/gg/loop-runtime.pacbin": staged.read_bytes()},
-    )
-    admitted = admit(loop_native, old, "gg")
-    assert admitted["scaleless_plan_sha256"] is None
-    assert admitted["metadata"]["poles"] == ["all", "none"]
-    runtime = Runtime.load(old, process="gg", model_parameters=GG_PARAMETERS)
-    reference = Runtime.load(full_colour, process="gg", model_parameters=GG_PARAMETERS)
-    for selection in ("all", "none"):
-        a = runtime.evaluate([POINT], mu_r2="1000000", poles=selection)
-        b = reference.evaluate([POINT], mu_r2="1000000", poles=selection)
-        assert a.values == b.values
-    for selection in ("uv", "ir"):
-        for call in (runtime.evaluate, runtime.evaluate_resolved):
-            with pytest.raises(CompatibilityError, match="before the UV/IR pole split"):
-                call([POINT], mu_r2="1000000", poles=selection)
 
 
 @pytest.mark.loop_physics

@@ -344,9 +344,8 @@ pub struct LoopV2Sector {
 /// `color_contraction` is "auto" or "direct" since generation refuses the
 /// forced seed FFT). `poles` lists the pole selections an evaluation may
 /// request (`PoleSelection`, DESIGN.md §12.4): every pole ("all"), the finite
-/// part only ("none"), and the ultraviolet ("uv") or infrared ("ir") parts.
-/// Artifacts written before the UV/IR split declare `["all", "none"]` and
-/// are admitted for those two selections ([`LOOP_V2_POLE_SELECTIONS`]).
+/// part only ("none"), and the ultraviolet ("uv") or infrared ("ir") parts:
+/// always all four ([`LOOP_V2_POLE_SELECTIONS`]).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoopV2ExecutionMetadata {
@@ -386,12 +385,10 @@ pub struct LoopV2StateLeg {
     pub incoming: bool,
 }
 
-/// The pole selections a plan v4 process declares: every selection, or the
-/// subset of artifacts written before the UV/IR pole split (they carry no
-/// companion plan of certified-scaleless families and serve "all" and
-/// "none" only).
+/// The pole selections a plan v4 process declares (one artifact serves every
+/// selection). No older declaration is admitted (AGENTS.md: no backward
+/// compatibility of internal artifact formats).
 pub const LOOP_V2_POLE_SELECTIONS: [&str; 4] = ["all", "none", "uv", "ir"];
-pub const LOOP_V2_POLE_SELECTIONS_BEFORE_SPLIT: [&str; 2] = ["all", "none"];
 
 #[cfg(feature = "loop-v2")]
 #[derive(Deserialize)]
@@ -407,8 +404,7 @@ struct ExecutionV4 {
     runtime_path: String,
     plan_sha256: String,
     /// SHA-256 of the companion plan of the certified-scaleless families
-    /// (`LOOP_PROGRAM_V4_SCALELESS_MEMBER`); None without such families and
-    /// absent in artifacts written before the UV/IR pole split.
+    /// (`LOOP_PROGRAM_V4_SCALELESS_MEMBER`); None without such families.
     #[serde(default)]
     scaleless_plan_sha256: Option<String>,
     point_inputs: String,
@@ -589,14 +585,12 @@ pub fn load_loop_v2_artifact(
         Arc::new(program)
     };
     // The companion plan of the certified-scaleless families: declared by
-    // digest exactly when stored, and only with the UV/IR selections.
+    // digest exactly when stored.
     let scaleless_plan_json = crate::loop_runtime::read_loop_program_v4_scaleless_json(&reader)?;
-    let split = metadata.poles == LOOP_V2_POLE_SELECTIONS;
     require(
-        scaleless_plan_json.is_some() == execution.scaleless_plan_sha256.is_some()
-            && (split || scaleless_plan_json.is_none()),
+        scaleless_plan_json.is_some() == execution.scaleless_plan_sha256.is_some(),
         "the companion plan of certified-scaleless families is stored exactly \
-         when declared, and only with the uv and ir pole selections",
+         when declared",
     )?;
     let scaleless_program = match (&scaleless_plan_json, &execution.scaleless_plan_sha256) {
         (Some(json), Some(digest)) => {
@@ -645,13 +639,16 @@ fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()
             && metadata.interference == ORDINARY_INTERFERENCE
             && metadata.scheme_status == "declared-not-certified"
             && metadata.schedule == "backward"
-            && (metadata.poles == LOOP_V2_POLE_SELECTIONS
-                || metadata.poles == LOOP_V2_POLE_SELECTIONS_BEFORE_SPLIT)
             && metadata.accuracy_retest == "reduction-direction"
             && metadata.rescue_policy == "caller"
             && metadata.stability_checks == ["rotation", "reduction-direction"]
             && matches!(metadata.color_contraction.as_str(), "auto" | "direct"),
         "unsupported contribution, convention or feature declaration",
+    )?;
+    require(
+        metadata.poles == LOOP_V2_POLE_SELECTIONS,
+        "unsupported pole selections (plan v4 serves all, none, uv and ir): \
+         regenerate the artifact",
     )?;
     require(
         metadata.arithmetic == ["double", "double-double", "arbitrary"],

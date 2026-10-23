@@ -122,8 +122,6 @@ PLAN_MEMBER = "schedule/loop-plan-v4.json.zlib"
 # The companion plan of the certified-scaleless families (rusticol-core
 # ``loop_runtime::LOOP_PROGRAM_V4_SCALELESS_MEMBER``).
 SCALELESS_PLAN_MEMBER = "schedule/loop-plan-v4-scaleless.json.zlib"
-# The pole selections of artifacts written before the UV/IR split.
-POLES_BEFORE_SPLIT = ("all", "none")
 ENGINE = "v2"
 # Generation objects of recently generated or loaded processes, keyed by the
 # compiled-model payload digest, the request record and the plan digest. A
@@ -784,11 +782,7 @@ class V2VirtualRuntime:
                     "stored one: it was written by a different pyAmpliCol build; "
                     "regenerate the artifact"
                 )
-        physics_poles = tuple(physics["metadata"]["poles"])
-        if (
-            physics_poles != POLES_BEFORE_SPLIT
-            and generated.scaleless_plan_sha256 != admission["scaleless_plan_sha256"]
-        ):
+        if generated.scaleless_plan_sha256 != admission["scaleless_plan_sha256"]:
             raise ArtifactError(
                 "the companion plan of certified-scaleless families regenerated "
                 "from this artifact differs from the stored one: it was written "
@@ -812,9 +806,6 @@ class V2VirtualRuntime:
         self._generated = generated
         self._member = member
         self._group_member = group_member
-        # The pole selections the artifact serves (``"all"`` and ``"none"``
-        # only when it was written before the UV/IR split).
-        self._poles = tuple(PoleSelection(item) for item in physics_poles)
         self._executor = generated.executor()
         self._parameters = self._checked_parameters(model_parameters)
         self._observables = V2ObservablesRuntime(
@@ -1004,7 +995,6 @@ class V2VirtualRuntime:
             stability_checks=stability_checks,
             on_failure=on_failure,
         )
-        self._served(selection)
         # v2_options refused direct R2.
         r2 = self._default_r2 if r2_strategy is None else R2Strategy(r2_strategy)
         carrier, setting = self._carrier(arithmetic, precision)
@@ -1182,28 +1172,12 @@ class V2VirtualRuntime:
 
     # -- observables (``runtime.virtual.V2ObservablesRuntime``) -----------------
 
-    def _served(self, selection: PoleSelection) -> None:
-        """Refuse a pole selection the artifact does not declare (``"uv"`` and
-        ``"ir"`` of an artifact written before the UV/IR split)."""
-
-        if selection not in self._poles:
-            raise CompatibilityError(
-                f"this artifact serves the pole selections "
-                f"{[item.value for item in self._poles]}: it was written before "
-                "the UV/IR pole split; regenerate it to select 'uv' or 'ir'"
-            )
-
     def _observable_options(
         self, precision: int | None, arithmetic: str | None, options: dict[str, Any]
     ) -> dict[str, Any]:
         """The arithmetic of one observable call (``_carrier``'s rule) and the
-        options ``V2ObservablesRuntime`` validates itself (the pole selection
-        must be one the artifact serves)."""
+        options ``V2ObservablesRuntime`` validates itself."""
 
-        from pyamplicol.api.virtual_results import pole_selection
-
-        if options.get("poles") is not None:
-            self._served(pole_selection(options["poles"]))
         carrier, setting = self._carrier(arithmetic, precision)
         digits = None if carrier != "arbitrary" else setting.digits
         return {
