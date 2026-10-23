@@ -9,10 +9,11 @@ from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Literal, NamedTuple, TypeAlias, cast
 
-from pyamplicol.config import R2Strategy
+from pyamplicol.config import PoleSelection, R2Strategy
 from pyamplicol.correlators import CorrelatedValue
 from pyamplicol.loops.orders import VirtualOrderSector, canonical_order
 from pyamplicol.loops.strategy import R2Selection
+from pyamplicol.loops.v2.stability import Rotation, StabilityChecks
 from pyamplicol.models.base import CouplingOrders
 
 from .results import _exact_decimal_sum
@@ -22,7 +23,11 @@ EPSILON_POWERS = (0, -1, -2)
 
 
 class LaurentCoefficients(NamedTuple):
-    """Physical coefficients in the declared C_epsilon convention."""
+    """Physical coefficients in the declared C_epsilon convention.
+
+    The poles are ``None`` in a finite-only evaluation (``poles="none"``),
+    which never computed them.
+    """
 
     finite: VirtualScalar
     single_pole: VirtualScalar
@@ -127,6 +132,130 @@ class VirtualStabilityPolicy:
             raise ValueError("agreement tolerances cannot both be zero")
         if type(self.verify_successful) is not bool:
             raise TypeError("verify_successful must be a boolean")
+
+
+def _default_rotation(index: int) -> Rotation:
+    """The ``index``-th default rotation check: exact, deterministic, generic.
+
+    Axes follow a spherical Fibonacci sequence and angles golden-ratio steps
+    of a turn, so no two checks share an axis or a rotation angle and none is
+    a symmetry of a typical point. ``Rotation.from_axis_angle`` rounds the
+    quaternion to rationals, which keeps every rotated point exactly on shell.
+    """
+
+    golden = (1 + math.sqrt(5)) / 2
+    z = 1 - (2 * index + 1) / (2 * (index + 2))
+    phi = 2 * math.pi * index / golden
+    radius = math.sqrt(1 - z * z)
+    angle = 2 * math.pi * (((index + 1) / golden) % 1)
+    return Rotation.from_axis_angle(
+        (radius * math.cos(phi), radius * math.sin(phi), z), max(angle, 0.5)
+    )
+
+
+def parse_rotation(specification: str) -> Rotation:
+    """One rotation check from text.
+
+    ``"<x|y|z>:<cos>:<sin>"`` is exact (rational cos and sin with
+    cos^2 + sin^2 = 1, e.g. ``"z:3/5:4/5"``); ``"<ax>,<ay>,<az>:<radians>"``
+    rotates about an axis by an angle, rounded to an exact rotation
+    (``Rotation.from_axis_angle``).
+    """
+
+    if not isinstance(specification, str):
+        raise TypeError("a rotation specification is text")
+    parts = specification.split(":")
+    if len(parts) == 3 and parts[0] in ("x", "y", "z"):
+        return Rotation.about(parts[0], parts[1], parts[2])
+    if len(parts) == 2:
+        axis = tuple(float(value) for value in parts[0].split(","))
+        return Rotation.from_axis_angle(axis, float(parts[1]))
+    raise ValueError(
+        f"rotation {specification!r} is neither '<x|y|z>:<cos>:<sin>' "
+        "nor '<ax>,<ay>,<az>:<radians>'"
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualStabilityChecks:
+    """Stability checks of one evaluation (requirements addendum C).
+
+    ``rotations`` re-evaluates every point with its momenta rotated by each
+    rotation (exact ``Rotation`` records, specification text for
+    :func:`parse_rotation`, or a count of default rotations); the
+    reduction-direction check reduces every loop numerator a second time in a
+    reversed frame, reusing its coefficients and the cached master integrals.
+    Both combine. Without a check no estimate is returned. Escalating the
+    arithmetic is the caller's decision.
+    """
+
+    # Normalised to exact ``Rotation`` records by ``__post_init__``.
+    rotations: tuple[Rotation | str, ...] | int = ()
+    reduction_direction: bool = False
+
+    def __post_init__(self) -> None:
+        given = self.rotations
+        if isinstance(given, bool):
+            raise TypeError("rotations take a count or rotation records")
+        rotations: tuple[Rotation, ...]
+        if isinstance(given, int):
+            if given < 0:
+                raise ValueError("the rotation count is nonnegative")
+            rotations = tuple(_default_rotation(k) for k in range(given))
+        else:
+            rotations = tuple(
+                parse_rotation(item) if isinstance(item, str) else item
+                for item in given
+            )
+        if type(self.reduction_direction) is not bool:
+            raise TypeError("reduction_direction must be a boolean")
+        object.__setattr__(
+            self,
+            "rotations",
+            StabilityChecks(rotations, self.reduction_direction).rotations,
+        )
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.rotations) or self.reduction_direction
+
+    def to_checks(self) -> StabilityChecks:
+        return StabilityChecks(
+            cast(tuple[Rotation, ...], self.rotations), self.reduction_direction
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualStabilityEstimate:
+    """Estimated relative accuracy of one point's virtual.
+
+    ``relative`` bounds each sector's error relative to that sector's largest
+    Laurent coefficient; ``finite``, ``single_pole`` and ``double_pole``
+    bound each coefficient's error relative to the coefficient itself (the
+    poles are ``None`` in finite-only evaluations; ``inf`` marks an error
+    estimate on an exact zero). ``checks`` names every check that ran with
+    its own relative budget (``rotation-<k>``, ``reduction-direction``).
+    """
+
+    relative: float
+    finite: float
+    single_pole: float | None
+    double_pole: float | None
+    checks: tuple[tuple[str, float], ...]
+
+    def __post_init__(self) -> None:
+        for name in ("relative", "finite", "single_pole", "double_pole"):
+            value = getattr(self, name)
+            if value is None and name in ("single_pole", "double_pole"):
+                continue
+            if not isinstance(value, float) or math.isnan(value) or value < 0:
+                raise ValueError(f"{name} must be a nonnegative float")
+        if (self.single_pole is None) != (self.double_pole is None):
+            raise ValueError("both pole estimates are present or absent")
+        checks = tuple((str(name), float(value)) for name, value in self.checks)
+        if not checks or len({name for name, _ in checks}) != len(checks):
+            raise ValueError("an estimate names its distinct checks")
+        object.__setattr__(self, "checks", checks)
 
 
 @dataclass(frozen=True, slots=True)
@@ -263,19 +392,50 @@ def _scalar(value: object, correlated: bool, arithmetic: str) -> VirtualScalar:
     return value
 
 
+def pole_selection(value: object) -> PoleSelection:
+    """The :class:`PoleSelection` of a public ``poles`` argument (the enum or
+    its value text: ``"all"`` or ``"none"``)."""
+
+    if isinstance(value, PoleSelection):
+        return value
+    choices = ", ".join(repr(item.value) for item in PoleSelection)
+    if not isinstance(value, str):
+        raise TypeError(f"poles takes a PoleSelection ({choices}); got {value!r}")
+    try:
+        return PoleSelection(value)
+    except ValueError:
+        message = f"unknown pole selection {value!r}; one of {choices}"
+        raise ValueError(message) from None
+
+
+def computes_poles(selection: PoleSelection) -> bool:
+    """Whether an evaluation under ``selection`` returns pole coefficients."""
+
+    return selection is not PoleSelection.NONE
+
+
 def _freeze_axes(
     values: object,
     dimensions: tuple[int, ...],
     correlated: bool,
     arithmetic: str,
     laurent: bool = False,
+    with_poles: bool = True,
 ) -> _FrozenAxis:
     if not dimensions:
         return _scalar(values, correlated, arithmetic)
     if not isinstance(values, (tuple, list)) or len(values) != dimensions[0]:
         raise ValueError("virtual values do not match their declared dimensions")
+    if laurent and dimensions == (3,) and not with_poles:
+        # Finite-only evaluations never computed the poles: explicitly absent.
+        if values[1] is not None or values[2] is not None:
+            raise ValueError("finite-only results carry no pole coefficients")
+        absent = cast(VirtualScalar, None)
+        return LaurentCoefficients(
+            _scalar(values[0], correlated, arithmetic), absent, absent
+        )
     frozen = tuple(
-        _freeze_axes(value, dimensions[1:], correlated, arithmetic, laurent)
+        _freeze_axes(value, dimensions[1:], correlated, arithmetic, laurent, with_poles)
         for value in values
     )
     # The terminal dimension was checked above and every child has passed the
@@ -338,7 +498,7 @@ def _orders(
 
 def _scalar_kinds(value: object) -> set[type[object]]:
     if isinstance(value, tuple):
-        return set().union(*(_scalar_kinds(item) for item in value))
+        return set().union(*(_scalar_kinds(item) for item in value if item is not None))
     return {type(value)}
 
 
@@ -351,6 +511,7 @@ def _common(
         raise ValueError("unknown colour accuracy")
     if not isinstance(result.correlated, bool):
         raise TypeError("correlated must be a boolean")
+    object.__setattr__(result, "poles", pole_selection(result.poles))
     born_orders, sectors = _orders(result.born_orders, result.sectors)
     diagnostics = tuple(result.diagnostics)
     if not all(isinstance(item, VirtualLaneDiagnostic) for item in diagnostics):
@@ -389,6 +550,7 @@ def _common(
                 result.correlated,
                 diagnostic.arithmetic,
                 True,
+                computes_poles(result.poles),
             )
         )
         if any(
@@ -406,6 +568,31 @@ def _common(
         object.__setattr__(result, name, value)
 
 
+def _stability(
+    estimates: object,
+    diagnostics: tuple[VirtualLaneDiagnostic, ...],
+    with_poles: bool,
+) -> tuple[VirtualStabilityEstimate | None, ...] | None:
+    """Per-lane estimates, or None when the evaluation ran no check."""
+    if estimates is None:
+        return None
+    estimates = tuple(cast(Sequence[object], estimates))
+    if len(estimates) != len(diagnostics):
+        raise ValueError("stability estimates and diagnostics differ in lane count")
+    for estimate, diagnostic in zip(estimates, diagnostics, strict=True):
+        if estimate is None:
+            if diagnostic.valid:
+                raise ValueError("a checked successful lane has an estimate")
+            continue
+        if not isinstance(estimate, VirtualStabilityEstimate):
+            raise TypeError("stability estimates are VirtualStabilityEstimate records")
+        if not diagnostic.valid:
+            raise ValueError("failed lanes carry no stability estimate")
+        if (estimate.single_pole is not None) != with_poles:
+            raise ValueError("pole estimates exist exactly when poles were computed")
+    return cast(tuple[VirtualStabilityEstimate | None, ...], estimates)
+
+
 @dataclass(frozen=True, slots=True)
 class VirtualEvaluation:
     """Born [point, order] and interference [point, order, epsilon].
@@ -414,6 +601,12 @@ class VirtualEvaluation:
     Failed lanes have ``None`` values, available only under the runtime's explicit
     diagnostic-return policy. Each returned coefficient includes physical
     couplings and normalization, without division by the Born amplitude.
+
+    ``poles`` is the :class:`PoleSelection` of the evaluation; under
+    ``"none"`` (finite only) the pole coefficients were never computed and
+    are ``None``. ``stability`` holds one
+    :class:`VirtualStabilityEstimate` per lane (``None`` for failed lanes)
+    when stability checks ran, and is ``None`` when none were requested.
     """
 
     born_values: OrderCoefficients
@@ -424,9 +617,16 @@ class VirtualEvaluation:
     r2: R2Selection
     correlated: bool = False
     color_accuracy: Literal["lc", "nlc", "full"] = "full"
+    poles: PoleSelection = PoleSelection.ALL
+    stability: tuple[VirtualStabilityEstimate | None, ...] | None = None
 
     def __post_init__(self) -> None:
         _common(self, (len(self.born_orders),), (len(self.sectors), 3))
+        object.__setattr__(
+            self,
+            "stability",
+            _stability(self.stability, self.diagnostics, computes_poles(self.poles)),
+        )
 
     @property
     def epsilon_powers(self) -> tuple[int, int, int]:
@@ -451,6 +651,8 @@ class VirtualEvaluation:
             or epsilon_power not in EPSILON_POWERS
         ):
             raise ValueError("epsilon power must be 0, -1, or -2")
+        if epsilon_power and not computes_poles(self.poles):
+            raise ValueError("this finite-only evaluation computed no poles")
         index = EPSILON_POWERS.index(epsilon_power)
         return tuple(
             None if point is None else tuple(sector[index] for sector in point)
@@ -493,6 +695,8 @@ class VirtualEvaluation:
             else LaurentCoefficients(
                 *(
                     _sum(tuple(sector[epsilon] for sector in point))
+                    if epsilon == 0 or computes_poles(self.poles)
+                    else cast(VirtualScalar, None)
                     for epsilon in range(3)
                 )
             )
@@ -506,6 +710,15 @@ class ResolvedVirtualEvaluation:
 
     Born colour components have their own independent axis. LC components are
     signed interference contributions, never sampling probabilities.
+
+    ``poles`` follows :class:`VirtualEvaluation` (a finite-only evaluation
+    has explicitly absent poles). When stability checks ran, ``stability``
+    holds per lane one :class:`VirtualStabilityEstimate` per resolved entry,
+    indexed ``[helicity][virtual colour component]``, each relative to its own
+    entry (``None`` for failed lanes); it is ``None`` when no check was
+    requested. An entry that vanishes structurally (a helicity row whose Born
+    amplitude is zero) holds rounding noise, so its relative estimate is
+    large (e.g. 1e4): compare such entries on the point's scale.
     """
 
     born_values: ResolvedCoefficients
@@ -519,6 +732,10 @@ class ResolvedVirtualEvaluation:
     virtual_color_ids: tuple[str, ...]
     color_accuracy: Literal["lc", "nlc", "full"]
     correlated: bool = False
+    poles: PoleSelection = PoleSelection.ALL
+    stability: (
+        tuple[tuple[tuple[VirtualStabilityEstimate, ...], ...] | None, ...] | None
+    ) = None
 
     def __post_init__(self) -> None:
         if self.color_accuracy not in {"lc", "nlc", "full"}:
@@ -537,6 +754,36 @@ class ResolvedVirtualEvaluation:
             (len(self.born_orders), len(self.helicity_ids), len(self.born_color_ids)),
             (len(self.sectors), len(self.helicity_ids), len(self.virtual_color_ids), 3),
         )
+        object.__setattr__(self, "stability", self._resolved_stability())
+
+    def _resolved_stability(
+        self,
+    ) -> tuple[tuple[tuple[VirtualStabilityEstimate, ...], ...] | None, ...] | None:
+        """Per-lane [helicity][colour] estimates, or None without checks."""
+        if self.stability is None:
+            return None
+        lanes = tuple(cast(Sequence[object], self.stability))
+        if len(lanes) != len(self.diagnostics):
+            raise ValueError("stability estimates and diagnostics differ in lane count")
+        out: list[tuple[tuple[VirtualStabilityEstimate, ...], ...] | None] = []
+        for lane, diagnostic in zip(lanes, self.diagnostics, strict=True):
+            if lane is None:
+                if diagnostic.valid:
+                    raise ValueError("a checked successful lane has estimates")
+                out.append(None)
+                continue
+            if not diagnostic.valid:
+                raise ValueError("failed lanes carry no stability estimate")
+            rows = tuple(tuple(row) for row in cast(Sequence[Sequence[object]], lane))
+            if len(rows) != len(self.helicity_ids) or any(
+                len(row) != len(self.virtual_color_ids) for row in rows
+            ):
+                raise ValueError("resolved estimates follow the helicity/colour axes")
+            for row in rows:
+                for estimate in row:
+                    _stability((estimate,), (diagnostic,), computes_poles(self.poles))
+            out.append(cast(tuple[tuple[VirtualStabilityEstimate, ...], ...], rows))
+        return tuple(out)
 
     @property
     def epsilon_powers(self) -> tuple[int, int, int]:
@@ -572,6 +819,8 @@ class ResolvedVirtualEvaluation:
             or epsilon_power not in EPSILON_POWERS
         ):
             raise ValueError("epsilon power must be 0, -1, or -2")
+        if epsilon_power and not computes_poles(self.poles):
+            raise ValueError("this finite-only evaluation computed no poles")
         index = EPSILON_POWERS.index(epsilon_power)
         return tuple(
             None
@@ -614,7 +863,12 @@ class ResolvedVirtualEvaluation:
         )
 
     def total(self) -> VirtualEvaluation:
-        """Sum helicities and colour components, preserving orders and epsilon."""
+        """Sum helicities and colour components, preserving orders and epsilon.
+
+        The sum carries no stability estimate: per-entry estimates do not
+        bound a sum whose entries cancel (the inclusive evaluation returns
+        its own estimate).
+        """
         born = tuple(
             None
             if point is None
@@ -637,6 +891,8 @@ class ResolvedVirtualEvaluation:
                                 for colour in helicity
                             )
                         )
+                        if epsilon == 0 or computes_poles(self.poles)
+                        else cast(VirtualScalar, None)
                         for epsilon in range(3)
                     )
                 )
@@ -653,4 +909,5 @@ class ResolvedVirtualEvaluation:
             self.r2,
             self.correlated,
             color_accuracy=self.color_accuracy,
+            poles=self.poles,
         )

@@ -160,6 +160,10 @@ fn uniform_lc_replay_total_scale(
     Some(scale)
 }
 
+/// Runtime capability of plan-v4 (engine v2) loop processes. Defined here, outside the
+/// `symbolica-runtime`-gated `loop_artifact` module that re-exports it, so that the
+/// capability catalogue compiles in every feature configuration.
+pub const LOOP_V2_RUNTIME_CAPABILITY: &str = "rusticol.loop-runtime.v4";
 pub const SYMJIT_APPLICATION_RUNTIME_CAPABILITY: &str = "symjit.application.complex-f64.v1";
 pub const SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY: &str =
     "symbolica.legacy-jit-container.complex-f64.v1";
@@ -262,6 +266,7 @@ pub enum RuntimeCapability {
     OnTheFlyContractedColorV1,
     OnTheFlyLcColorV1,
     LoopRuntimeV3,
+    LoopRuntimeV4,
     SymjitApplicationComplexF64V1,
     SymbolicaLegacyJitContainerComplexF64V1,
     SymbolicaCompiledCppComplexF64V1,
@@ -300,6 +305,7 @@ impl RuntimeCapability {
             Self::OnTheFlyContractedColorV1 => ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
             Self::OnTheFlyLcColorV1 => ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
             Self::LoopRuntimeV3 => "rusticol.loop-runtime.v3",
+            Self::LoopRuntimeV4 => LOOP_V2_RUNTIME_CAPABILITY,
             Self::SymjitApplicationComplexF64V1 => SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
             Self::SymbolicaLegacyJitContainerComplexF64V1 => {
                 SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY

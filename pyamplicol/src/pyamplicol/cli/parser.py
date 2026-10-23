@@ -19,6 +19,8 @@ from pyamplicol.config import (
     ConfigResolution,
     ConfigurationError,
     EvaluatorExecutionMode,
+    LoopEngine,
+    PoleSelection,
     ProcessGroupAnalysis,
     resolve_config,
 )
@@ -456,6 +458,13 @@ def _add_evaluator_options(
             default=argparse.SUPPRESS,
         )
         parser.add_argument(
+            "--loop-engine",
+            dest="loop.engine",
+            choices=tuple(engine.value for engine in LoopEngine),
+            default=argparse.SUPPRESS,
+            help="one-loop engine of virtual generation (default legacy)",
+        )
+        parser.add_argument(
             "--execution-mode",
             dest="evaluator.execution_mode",
             choices=tuple(mode.value for mode in EvaluatorExecutionMode),
@@ -597,6 +606,39 @@ def _add_evaluation_options(
         dest="evaluation.stability.absolute_tolerance",
         default=argparse.SUPPRESS,
         metavar="EXACT_VALUE",
+    )
+    parser.add_argument(
+        "--poles",
+        dest="evaluation.poles",
+        choices=tuple(selection.value for selection in PoleSelection),
+        default=argparse.SUPPRESS,
+        help="v2 virtuals: the poles computed; 'none' evaluates the finite part only",
+    )
+    parser.add_argument(
+        "--stability-rotation",
+        dest="evaluation.stability_checks.rotations",
+        action="append",
+        default=argparse.SUPPRESS,
+        metavar="ROTATION",
+        help=(
+            "v2 virtual rotation check, '<x|y|z>:<cos>:<sin>' or "
+            "'<ax>,<ay>,<az>:<radians>'; repeat for each rotation"
+        ),
+    )
+    parser.add_argument(
+        "--stability-rotations",
+        dest="evaluation.stability_checks.rotation_count",
+        type=int,
+        default=argparse.SUPPRESS,
+        metavar="COUNT",
+        help="v2 virtual rotation checks with COUNT default rotations",
+    )
+    parser.add_argument(
+        "--stability-reduction-direction",
+        dest="evaluation.stability_checks.reduction_direction",
+        action=argparse.BooleanOptionalAction,
+        default=argparse.SUPPRESS,
+        help="v2 virtual check: reduce every loop numerator again, reversed",
     )
     parser.add_argument(
         "--verify-successful",

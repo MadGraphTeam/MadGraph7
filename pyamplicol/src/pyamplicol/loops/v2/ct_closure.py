@@ -784,13 +784,21 @@ class CountertermProgram:
         return self
 
     def point(
-        self, point: Any, parameters: Mapping[str, str], numbers: Any, poles: bool
+        self,
+        point: Any,
+        parameters: Mapping[str, str],
+        numbers: Any,
+        poles: bool,
+        *,
+        sources: Mapping[int, Any] | None = None,
     ) -> tuple[Any, dict[str, Any]]:
         """Rows of the program and Weyl factors at one point.
 
         ``parameters`` are the model parameters of the point (decimal
         strings); the CT multiplicities and slot switches (pole slots off
-        without ``poles``) are added.
+        without ``poles``) are added. ``sources`` replaces the wavefunctions
+        of vector legs as in ``TreeRows.evaluate``: the spin and Ward sources
+        of the loop side (CT amplitudes are loop side).
         """
 
         values = dict(parameters)
@@ -807,7 +815,7 @@ class CountertermProgram:
                 {name: complex(float(v)) for name, v in parameters.items()}
             )
             self._parameter_work = (key, {})
-        rows = self.rows.evaluate(point, values, numbers)
+        rows = self.rows.evaluate(point, values, numbers, sources=sources)
         digits = numbers.precision.working_digits
         factors = self._parameter_work[1].setdefault(digits, {})
         scales = {}

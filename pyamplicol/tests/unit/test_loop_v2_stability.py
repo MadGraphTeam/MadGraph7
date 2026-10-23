@@ -4,7 +4,8 @@
 * Carriers: the native double-double and arbitrary-precision evaluations
   equal the Python reference at 60 digits (the Python path has no
   double-double arithmetic and refuses it); each carrier's own estimate
-  brackets its true error and stays meaningful.
+  brackets its true error (within the user's one-order-of-magnitude margin,
+  ``ESTIMATE_MARGIN``) and stays meaningful.
 * Injected instabilities: a reduction lane perturbed in the reference
   evaluation is flagged by the reduction-direction check and by a rotation
   check; a perturbed numerator input (a tree row) is flagged by a rotation
@@ -46,6 +47,11 @@ CHECKS = StabilityChecks((Rotation.from_axis_angle((1, 1, 0), 0.9),), True)
 ONLY_REDUCTION = (REDUCTION,)
 ONLY_ROTATION = (ROTATION.format(0),)
 RESCALED_CHECK = StabilityChecks(reduction_direction=True, rescaled=True)
+# USER DECISION (2026-10-23; DESIGN §10.4, ``test_loop_v2_slice.py``): a
+# single-point test of a stability estimate E holds the true error to at most
+# 10 E, for every check configuration ("you can easily afford a
+# one-order-of-magnitude safety margin in the relative stability thresholds").
+ESTIMATE_MARGIN = 10
 
 
 def _points(name: str) -> tuple[list, list[str]]:
@@ -120,8 +126,8 @@ def test_double_double_is_a_native_carrier():
 def test_native_carriers_equal_the_reference(slices, name):
     """Native double-double and 60-digit evaluations against the Python
     60-digit reference: the double-double error is bracketed by its own
-    estimate, which is below 1e-24; the arbitrary-precision run agrees to
-    the reference's digits."""
+    estimate (within ``ESTIMATE_MARGIN``), which is below 1e-24; the
+    arbitrary-precision run agrees to the reference's digits."""
 
     slice_, executor = slices(name)
     points, scales = _points(name)
@@ -142,9 +148,10 @@ def test_native_carriers_equal_the_reference(slices, name):
     )
     error = deviation(_virtual(reference), _virtual(double_double))
     estimate = double_double.stability
-    assert 0 < error <= estimate.relative < 1e-24, (error, estimate)
+    assert 0 < error <= ESTIMATE_MARGIN * estimate.relative, (error, estimate)
+    assert estimate.relative < 1e-24, estimate
     for names in (ONLY_REDUCTION, ONLY_ROTATION):
-        assert error <= estimate.subset(names).relative, names
+        assert error <= ESTIMATE_MARGIN * estimate.subset(names).relative, names
     (rescaled,) = executor.evaluate(
         [point],
         [scale],
@@ -152,7 +159,8 @@ def test_native_carriers_equal_the_reference(slices, name):
         precision=Precision.double_double(),
         stability=RESCALED_CHECK,
     )
-    assert error <= rescaled.stability.relative < 1e-24
+    assert error <= ESTIMATE_MARGIN * rescaled.stability.relative
+    assert rescaled.stability.relative < 1e-24
     (arbitrary,) = executor.evaluate(
         [point], [scale], parameters=PARAMETERS, precision=REFERENCE
     )
@@ -168,7 +176,7 @@ def test_native_carriers_equal_the_reference(slices, name):
 def test_rescaled_check_in_the_slice_and_natively(slices):
     """The rescaled reduction check (masters recomputed at scaled inputs)
     gives the same estimate in the Python slice and natively, and brackets
-    the binary64 error."""
+    the binary64 error (within ``ESTIMATE_MARGIN``)."""
 
     from pyamplicol.loops.v2.assemble import Laurent
 
@@ -190,7 +198,8 @@ def test_rescaled_check_in_the_slice_and_natively(slices):
         for sector, value in _virtual(truth).items()
     }
     error = deviation(floats, _virtual(native))
-    assert 0 < error <= native.stability.relative < 1e-10
+    assert 0 < error <= ESTIMATE_MARGIN * native.stability.relative
+    assert native.stability.relative < 1e-10
 
 
 # ----------------------------------------------------------- injected faults
@@ -252,7 +261,8 @@ def _evaluate_injected(executor, point, scale, checks, **fault):
 @pytest.mark.loop_physics
 def test_an_unstable_reduction_lane_is_flagged(slices):
     """A lane whose direct reduction is off by 1e-6 (as an ill-conditioned
-    reduction is) makes either check's estimate bracket the error it causes."""
+    reduction is) makes either check's estimate bracket the error it causes
+    (within ``ESTIMATE_MARGIN``)."""
 
     _slice, executor = slices("uux_ddxg")
     points, scales = _points("uux_ddxg")
@@ -263,20 +273,20 @@ def test_an_unstable_reduction_lane_is_flagged(slices):
     error = deviation(_virtual(clean), _virtual(faulty))
     assert error > 1e3 * clean.stability.relative
     for names in (ONLY_REDUCTION, ONLY_ROTATION, (*ONLY_ROTATION, REDUCTION)):
-        assert error <= faulty.stability.subset(names).relative, names
+        assert error <= ESTIMATE_MARGIN * faulty.stability.subset(names).relative, names
     rescaled = _evaluate_injected(
         executor, points[0], scales[0], RESCALED_CHECK, lane=True
     ).stability
     assert set(rescaled.checks) == {RESCALED}
-    assert error <= rescaled.relative
+    assert error <= ESTIMATE_MARGIN * rescaled.relative
 
 
 @pytest.mark.loop_physics
 def test_an_unstable_numerator_is_flagged_by_rotations(slices):
     """A numerator input off by 1e-6 at the reference point: the rotation
-    check brackets the error; the reduction-direction check re-reduces the
-    same coefficients and so cannot see it (it measures the reduction
-    alone, as documented)."""
+    check brackets the error (within ``ESTIMATE_MARGIN``); the
+    reduction-direction check re-reduces the same coefficients and so cannot
+    see it (it measures the reduction alone, as documented)."""
 
     _slice, executor = slices("uux_ddxg")
     points, scales = _points("uux_ddxg")
@@ -286,7 +296,7 @@ def test_an_unstable_numerator_is_flagged_by_rotations(slices):
     faulty = _evaluate_injected(executor, points[0], scales[0], CHECKS, row=True)
     error = deviation(_virtual(clean), _virtual(faulty))
     assert error > 1e3 * clean.stability.relative
-    assert error <= faulty.stability.subset(ONLY_ROTATION).relative
+    assert error <= ESTIMATE_MARGIN * faulty.stability.subset(ONLY_ROTATION).relative
     assert faulty.stability.subset(ONLY_REDUCTION).relative < 1e-3 * error
 
 

@@ -3643,6 +3643,7 @@ fn validate_runtime_capabilities(
         RuntimeCapability::OnTheFlyContractedColorV1,
         RuntimeCapability::OnTheFlyLcColorV1,
         RuntimeCapability::LoopRuntimeV3,
+        RuntimeCapability::LoopRuntimeV4,
         RuntimeCapability::SymjitApplicationComplexF64V1,
         RuntimeCapability::SymbolicaLegacyJitContainerComplexF64V1,
         RuntimeCapability::SymbolicaCompiledCppComplexF64V1,
