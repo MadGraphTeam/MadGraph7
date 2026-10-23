@@ -1741,11 +1741,31 @@ class _PointEvaluation:
         accuracy = slice_.request.accuracy
 
         weights: dict = {}
+        # Per helicity: each bra's projection onto the ket keys, z[r] =
+        # sum_l conj(bra_l) <l|r>; every interference with that bra is then
+        # sum_r z[r] ket_r (one B x K product per bra instead of one per
+        # interference).
+        projections: dict = {}
+        one = numbers.pair(1)
 
         def interfere(bra, ket, degree, grade=0):
-            return _interfere(
-                bra, ket, degree, accuracy, overlap, numbers, grade, weights
-            )
+            projection = projections.setdefault((id(bra), degree, grade), {})
+            total = numbers.zero
+            for key, b in ket.items():
+                z = projection.get(key)
+                if z is None:
+                    z = projection[key] = _interfere(
+                        bra,
+                        {key: one},
+                        degree,
+                        accuracy,
+                        overlap,
+                        numbers,
+                        grade,
+                        weights,
+                    )
+                total = total + z * b
+            return total
 
         def degree_of(kind, sector):
             return None if degrees is None else degrees[kind][sector]
@@ -1768,6 +1788,7 @@ class _PointEvaluation:
         for choice in product(*(sorted(helicities[label]) for label in labels)):
             helicity = dict(zip(labels, choice, strict=True))
             vectors: dict[Orders, dict] = {}
+            projections.clear()
             for order, terms in slice_.born_terms.items():
                 vector: dict = {}
                 for term in terms:
