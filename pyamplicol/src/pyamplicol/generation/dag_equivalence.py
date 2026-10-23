@@ -5415,6 +5415,9 @@ def _exact_representable_complex_ratio(
     return factor
 
 
+_EXACT_UNITS = frozenset({(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)})
+
+
 def _exact_representable_complex_product(
     left: _ComplexWeight,
     right: _ComplexWeight,
@@ -5423,6 +5426,10 @@ def _exact_representable_complex_product(
 
     if not _complex_weight_is_finite(left) or not _complex_weight_is_finite(right):
         return None
+    if left in _EXACT_UNITS or right in _EXACT_UNITS:
+        # A factor +-1 or +-i only swaps and negates the other's finite
+        # components, so the binary64 product is exact.
+        return _canonical_complex_weight(_complex_weight_mul(left, right))
     left_real = Fraction.from_float(left[0])
     left_imaginary = Fraction.from_float(left[1])
     right_real = Fraction.from_float(right[0])

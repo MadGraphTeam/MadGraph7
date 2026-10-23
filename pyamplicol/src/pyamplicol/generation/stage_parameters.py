@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
@@ -466,12 +467,24 @@ def _specialize_stage_symbolica_functions(
 
     from symbolica import Replacement
 
-    replacements: list[Any] = []
+    function_names = {function for function, _arguments, _body in function_definitions}
+    # Replacements per inlined function, and the functions its body calls: an
+    # expression is rewritten with the replacements of the functions it can
+    # reach only, which gives the same result as all of them (a pattern
+    # matches calls of its own function) at a cost independent of the size of
+    # the model's kernel catalogue.
+    replacements: dict[Any, list[Any]] = defaultdict(list)
+    calls: dict[Any, set[Any]] = defaultdict(set)
     for definition_index, (function, arguments, body) in enumerate(
         function_definitions
     ):
         if int(body.get_byte_size()) > _MODEL_FUNCTION_INLINE_MAX_BYTES:
             continue
+        calls[function] |= {
+            symbol
+            for symbol in _expression_symbols(body, enter_functions=True)
+            if symbol in function_names
+        }
         wildcards = tuple(
             symbols.inline_function_wildcard(
                 definition_index,
@@ -487,7 +500,7 @@ def _specialize_stage_symbolica_functions(
                 wildcard,
                 allow_new_wildcards_on_rhs=True,
             )
-        replacements.append(
+        replacements[function].append(
             Replacement(
                 pattern,
                 replacement,
@@ -495,12 +508,34 @@ def _specialize_stage_symbolica_functions(
             )
         )
 
-    rewritten = tuple(
-        expression.replace_multiple(replacements, repeat=True)
-        for expression in output_expressions
-    )
+    selected: dict[frozenset[Any], list[Any]] = {}
 
-    function_names = {function for function, _arguments, _body in function_definitions}
+    def specialize(expression: Any) -> Any:
+        reached = {
+            symbol
+            for symbol in _expression_symbols(expression, enter_functions=True)
+            if symbol in replacements
+        }
+        pending = list(reached)
+        while pending:
+            for callee in calls[pending.pop()]:
+                if callee in replacements and callee not in reached:
+                    reached.add(callee)
+                    pending.append(callee)
+        if not reached:
+            return expression
+        key = frozenset(reached)
+        if key not in selected:
+            selected[key] = [
+                item
+                for function in replacements
+                if function in reached
+                for item in replacements[function]
+            ]
+        return expression.replace_multiple(selected[key], repeat=True)
+
+    rewritten = tuple(specialize(expression) for expression in output_expressions)
+
     required = {
         symbol
         for expression in rewritten
