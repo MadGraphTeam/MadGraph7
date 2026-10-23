@@ -522,8 +522,8 @@ impl V2Executor {
         };
         let plan = Arc::new(LoopProgramV4::load_with(plan.as_bytes(), policy).map_err(error)?);
         let trees = trees
-            .map(|(json, stages)| {
-                TreeProgram::load(json.as_bytes(), &stages, &plan).map(|program| Trees {
+            .map(|(json, kernels)| {
+                TreeProgram::load(json.as_bytes(), &kernels, &plan).map(|program| Trees {
                     program,
                     runtime: Mutex::new(None),
                 })

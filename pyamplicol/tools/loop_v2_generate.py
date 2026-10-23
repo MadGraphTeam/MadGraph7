@@ -429,7 +429,7 @@ def poles(args) -> dict[str, Any]:
     record["tree_program_mb"] = round(
         (
             len(executor.exported.trees.json())
-            + sum(len(saved) for saved in executor.exported.trees.stages)
+            + sum(len(saved) for saved in executor.exported.trees.kernels)
         )
         / 1e6,
         2,

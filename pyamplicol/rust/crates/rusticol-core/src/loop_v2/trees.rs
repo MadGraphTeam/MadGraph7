@@ -9,16 +9,14 @@
 //! blocks DAG and its runtime schema) runs on one complex state per point:
 //! the external wavefunctions (the tree runtime's own source records and
 //! formulas, `engine::SchemaSources`), the all-outgoing momenta of every
-//! momentum slot and the model parameters fill the state. Then either
-//! every runtime stage gathers its inputs, runs its saved exact Symbolica
-//! evaluator in the carrier and scatters its outputs, or (the interaction
-//! program, `native_trees._interaction_program`) every interaction of a
-//! stage adds its exact colour weight times its vertex kernel on its two
-//! input rows to its result current, and each output slot copies the sum
-//! or applies the current's propagator kernel; kernels are a few saved
-//! evaluators, one per vertex and propagator shape, run batched over the
-//! interactions sharing them. A block row is a signed state slice (its Wick
-//! sign, `loops/v2/blocks.Block.wick_sign`).
+//! momentum slot and the model parameters fill the state. Then, per runtime
+//! stage of the interaction program (`native_trees._interaction_program`),
+//! every interaction adds its exact colour weight times its vertex kernel on
+//! its two input rows to its result current, and each output slot copies the
+//! sum or applies the current's propagator kernel; kernels are a few saved
+//! exact Symbolica evaluators, one per vertex and propagator shape, run
+//! batched over the interactions sharing them in the carrier. A block row is
+//! a signed state slice (its Wick sign, `loops/v2/blocks.Block.wick_sign`).
 //!
 //! **Born.** The Born is the recursion's last step: every root-closure term
 //! (`assemble._born_terms`) closes an ordinary vertex holding leg 1 on the
@@ -44,7 +42,7 @@ use symbolica::domains::rational::Rational;
 use symbolica::evaluate::{BatchExpressionEvaluator, EvaluationDomain};
 
 /// The tree-program schema this executor runs.
-pub const TREE_SCHEMA: u32 = 1;
+pub const TREE_SCHEMA: u32 = 2;
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::compatibility(format!("loop v2 trees: {}", message.into()))
@@ -76,11 +74,9 @@ struct TreeFile {
     /// (absolute component start, leg mask; bit i = label i + 1).
     momentum_slots: Vec<(usize, u64)>,
     source_fill: serde_json::Value,
-    stages: Vec<StageFile>,
-    /// The interaction program (no `stages`): its kernels' saved evaluators
-    /// follow in order, vertex kernels then propagator kernels.
-    #[serde(default)]
-    interactions: Option<InteractionFile>,
+    /// The interaction program: its kernels' saved evaluators follow in
+    /// order, vertex kernels then propagator kernels.
+    interactions: InteractionFile,
     /// (state component start, dimension, Wick sign) per plan block row.
     block_rows: Vec<(usize, usize, i32)>,
     born: BornFile,
@@ -121,16 +117,6 @@ struct StepFile {
     /// (accumulator, propagator or -1 to copy, momentum start, state start,
     /// dimension).
     outputs: Vec<(usize, i64, usize, usize, usize)>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct StageFile {
-    parameters: usize,
-    /// (parameter index, state component).
-    inputs: Vec<(usize, usize)>,
-    /// (output start, length, state component start).
-    outputs: Vec<(usize, usize, usize)>,
 }
 
 #[derive(Deserialize)]
@@ -214,15 +200,6 @@ struct Interactions {
     steps: Vec<Step>,
 }
 
-struct Stage {
-    /// The saved exact evaluator, decoded per carrier runtime (a decoded
-    /// program holds many times its saved size).
-    saved: Vec<u8>,
-    parameters: usize,
-    inputs: Vec<(usize, usize)>,
-    outputs: Vec<(usize, usize, usize)>,
-}
-
 struct Term {
     kernel: usize,
     inputs: Vec<TermInput>,
@@ -241,8 +218,7 @@ pub struct TreeProgram {
     model_count: usize,
     momentum_slots: Vec<(usize, u64)>,
     sources: SchemaSources,
-    stages: Vec<Stage>,
-    interactions: Option<Interactions>,
+    interactions: Interactions,
     block_rows: Vec<(usize, usize, i32)>,
     rows: usize,
     components: usize,
@@ -281,9 +257,8 @@ pub struct TreeInputs<T> {
     pub born_squared: Option<Vec<Vec<T>>>,
 }
 
-/// The carrier form of a program: its stage evaluators and exact weights.
+/// The carrier form of a program: its kernel evaluators and exact weights.
 pub struct TreeRuntime<T> {
-    evaluators: Vec<BatchExpressionEvaluator<Complex<T>>>,
     /// The interaction program's kernels and, per step and kernel group,
     /// its interactions' weights.
     kernels: Vec<BatchExpressionEvaluator<Complex<T>>>,
@@ -389,8 +364,8 @@ fn load_interactions(
 
 impl TreeProgram {
     /// Load a program exported by `loops/v2/native_trees.py` for `plan`.
-    /// `stages` holds each stage's saved exact evaluator.
-    pub fn load(json: &[u8], stages: &[Vec<u8>], plan: &LoopProgramV4) -> RusticolResult<Self> {
+    /// `kernels` holds the interaction program's saved exact evaluators.
+    pub fn load(json: &[u8], kernels: &[Vec<u8>], plan: &LoopProgramV4) -> RusticolResult<Self> {
         let file: TreeFile = serde_json::from_slice(json).map_err(|e| invalid(e.to_string()))?;
         require(
             file.schema == TREE_SCHEMA,
@@ -405,44 +380,18 @@ impl TreeProgram {
             file.model_offset + file.model_count <= file.state_size,
             "model parameters outside the state",
         )?;
-        if file.interactions.is_none() {
-            require(stages.len() == file.stages.len(), "stage evaluator count")?;
-        } else {
-            require(file.stages.is_empty(), "an interaction program has no stages")?;
-        }
         for &(start, _mask) in &file.momentum_slots {
             require(
                 start + 4 <= file.state_size,
                 "momentum slot outside the state",
             )?;
         }
-        let interactions = file
-            .interactions
-            .map(|program| {
-                load_interactions(program, stages, file.state_size, file.model_count)
-            })
-            .transpose()?;
-        let mut loaded = Vec::with_capacity(file.stages.len());
-        for (bytes, stage) in stages.iter().zip(file.stages) {
-            // Decoded once to validate the payload, then kept saved.
-            drop(crate::engine::decode_exact_evaluator_state(bytes)?);
-            for &(parameter, component) in &stage.inputs {
-                require(
-                    parameter < stage.parameters && component < file.state_size,
-                    "stage input",
-                )?;
-            }
-            for &(start, length, component) in &stage.outputs {
-                require(component + length <= file.state_size, "stage output")?;
-                let _ = start;
-            }
-            loaded.push(Stage {
-                saved: bytes.clone(),
-                parameters: stage.parameters,
-                inputs: stage.inputs,
-                outputs: stage.outputs,
-            });
-        }
+        let interactions = load_interactions(
+            file.interactions,
+            kernels,
+            file.state_size,
+            file.model_count,
+        )?;
         require(
             file.block_rows.len() == plan.block_rows.len(),
             "block rows differ from the plan's",
@@ -589,7 +538,6 @@ impl TreeProgram {
             model_count: file.model_count,
             momentum_slots: file.momentum_slots,
             sources: SchemaSources::from_value(&file.source_fill)?,
-            stages: loaded,
             interactions,
             block_rows: file.block_rows,
             rows: born.rows,
@@ -617,8 +565,8 @@ impl TreeProgram {
         self.model_count
     }
 
-    /// The program in carrier `T` (stage evaluators and exact weights cast);
-    /// each stage is decoded, cast and dropped in turn.
+    /// The program in carrier `T` (kernel evaluators and exact weights
+    /// cast).
     pub fn runtime<T: Carrier + Real>(&self, zero: &T) -> RusticolResult<TreeRuntime<T>>
     where
         Complex<T>: Real + EvaluationDomain,
@@ -626,44 +574,31 @@ impl TreeProgram {
         let complex = |re: &Rational, im: &Rational| Complex::new(cast(zero, re), cast(zero, im));
         let two = cast(zero, &Rational::from(2));
         let root = two.sqrt();
-        let evaluators = self
-            .stages
+        let program = &self.interactions;
+        let kernels = program
+            .saved
             .iter()
-            .map(|stage| {
-                Ok(crate::engine::decode_exact_evaluator_state(&stage.saved)?
+            .map(|saved| {
+                Ok(crate::engine::decode_exact_evaluator_state(saved)?
                     .map_coeff_with_prec(&|r| complex(&r.re, &r.im), zero.get_precision())
                     .into_batch_evaluator())
             })
             .collect::<RusticolResult<Vec<_>>>()?;
-        let (kernels, edge_weights) = match &self.interactions {
-            None => (Vec::new(), Vec::new()),
-            Some(program) => (
-                program
-                    .saved
+        let edge_weights = program
+            .steps
+            .iter()
+            .map(|step| {
+                step.groups
                     .iter()
-                    .map(|saved| {
-                        Ok(crate::engine::decode_exact_evaluator_state(saved)?
-                            .map_coeff_with_prec(&|r| complex(&r.re, &r.im), zero.get_precision())
-                            .into_batch_evaluator())
-                    })
-                    .collect::<RusticolResult<Vec<_>>>()?,
-                program
-                    .steps
-                    .iter()
-                    .map(|step| {
-                        step.groups
+                    .map(|(_kernel, edges)| {
+                        edges
                             .iter()
-                            .map(|(_kernel, edges)| {
-                                edges
-                                    .iter()
-                                    .map(|edge| complex(&edge.weight[0], &edge.weight[1]))
-                                    .collect()
-                            })
+                            .map(|edge| complex(&edge.weight[0], &edge.weight[1]))
                             .collect()
                     })
-                    .collect(),
-            ),
-        };
+                    .collect()
+            })
+            .collect();
         let weights = self
             .terms
             .iter()
@@ -703,7 +638,6 @@ impl TreeProgram {
                 .collect()
         });
         Ok(TreeRuntime {
-            evaluators,
             kernels,
             edge_weights,
             weights,
@@ -794,34 +728,7 @@ impl TreeProgram {
                 state[self.model_offset + index] = Complex::new(cast(zero, value), zero.clone());
             }
         }
-        for (stage, evaluator) in self.stages.iter().zip(&mut runtime.evaluators) {
-            let mut parameters = vec![czero.clone(); points * stage.parameters];
-            for (state, row) in states
-                .chunks_exact(self.state_size)
-                .zip(parameters.chunks_exact_mut(stage.parameters))
-            {
-                for &(parameter, component) in &stage.inputs {
-                    row[parameter] = state[component].clone();
-                }
-            }
-            let width = evaluator.get_output_len();
-            let mut outputs = vec![czero.clone(); points * width];
-            evaluator
-                .evaluate_batch(&parameters, &mut outputs, points)
-                .map_err(|e| invalid(format!("stage evaluation: {e}")))?;
-            for (state, row) in states
-                .chunks_exact_mut(self.state_size)
-                .zip(outputs.chunks_exact(width))
-            {
-                for &(start, length, component) in &stage.outputs {
-                    state[component..component + length]
-                        .clone_from_slice(&row[start..start + length]);
-                }
-            }
-        }
-        if let Some(program) = &self.interactions {
-            self.run_interactions(program, runtime, &mut states, points, &czero)?;
-        }
+        self.run_interactions(&self.interactions, runtime, &mut states, points, &czero)?;
         let mut out = TreeInputs {
             block_rows: Vec::with_capacity(points),
             born: Vec::with_capacity(points),

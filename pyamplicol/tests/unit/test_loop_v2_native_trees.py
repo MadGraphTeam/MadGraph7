@@ -2,18 +2,16 @@
 """Native per-point trees and Born of the v2 executor (WP3.1 I3/I4 part).
 
 ``NativeExecutor(inputs="native")`` exports the slice's tree program (the
-interaction program by default, the stage lane on request) and its Born root
-closure (``loops/v2/native_trees.py``) and forms every point's block rows and
-Born components in ``rusticol-core`` (``loop_v2::trees``), without Python per
-point. Checks against the slice's Python inputs (``inputs="python"``, the
-same exported plan):
+interaction program) and its Born root closure (``loops/v2/native_trees.py``)
+and forms every point's block rows and Born components in ``rusticol-core``
+(``loop_v2::trees``), without Python per point. Checks against the slice's
+Python inputs (``inputs="python"``, the same exported plan):
 
 * block rows and Born components per point in binary64;
 * the bare virtual per sector and |A0|^2 per squared Born order, in binary64
   and in double-double, on processes with fixed parameters, massive external
   tops, and leading and next-to-leading colour (the Born metric per Born
   component);
-* the stage lane in small chunks;
 * per-point renormalisation scales in one batch, and massive external
   spinors in double-double with a mass that is no binary64 number (the
   executor takes exact masses and rounds them to its carrier).
@@ -125,42 +123,6 @@ def test_native_rows_and_born_components_equal_the_python_inputs(executors, name
         assert len(rows[k]) == len(reference["block_rows"][k])
         assert _deviation(rows[k], reference["block_rows"][k]) <= 1e-14
         assert _deviation(born[k], reference["born"][k]) <= 1e-13
-
-
-@pytest.mark.loop_physics
-def test_native_stage_lane_in_small_chunks_equals_the_python_inputs(
-    executors, monkeypatch
-):
-    """The stage lane (``TREE_LANE = "stages"``), its stages compiled in
-    chunks of whole currents (``CHUNK_OUTPUTS``; every stage of u u~ > d d~ g
-    in several chunks), gives the same rows as the Python inputs (and so as
-    the interaction lane of the other tests), in binary64 and DoubleFloat."""
-
-    from pyamplicol.loops.v2 import native_trees
-
-    _native, python = executors("uux_ddxg")
-    points, scales = _points(PROCESSES["uux_ddxg"][3])
-    points, scales = points[:1], scales[:1]
-    monkeypatch.setattr(native_trees, "TREE_LANE", "stages")
-    whole = NativeExecutor(python.slice, forward=False, inputs="native")
-    monkeypatch.setattr(native_trees, "CHUNK_OUTPUTS", 48)
-    chunked = NativeExecutor(python.slice, forward=False, inputs="native")
-    assert chunked.exported.trees.program["interactions"] is None
-    assert len(chunked.exported.trees.stages) > 2 * len(whole.exported.trees.stages)
-    rows, born, _amplitudes, _squared = chunked.native_inputs(
-        points, scales, PARAMETERS
-    )
-    _precision, evaluations = python._points(points, scales, PARAMETERS, None, True)
-    reference = python._inputs(evaluations, "double")
-    assert _deviation(rows[0], reference["block_rows"][0]) <= 1e-14
-    assert _deviation(born[0], reference["born"][0]) <= 1e-13
-    mine = chunked.evaluate(
-        points, scales, parameters=PARAMETERS, precision=DOUBLE_DOUBLE
-    )
-    theirs = python.evaluate(
-        points, scales, parameters=PARAMETERS, precision=DOUBLE_DOUBLE
-    )
-    _assert_same(mine, theirs, 1e-26)
 
 
 def _assert_same(native, python, tolerance) -> None:
