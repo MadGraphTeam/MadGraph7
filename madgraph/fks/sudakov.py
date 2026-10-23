@@ -123,7 +123,7 @@ def is_charge_conserved(proc):
     return  abs(totcharge) < 1e-10
 
 
-def get_sudakov_amps(born_amp):
+def get_sudakov_amps(born_amp, diagram_filter=False):
     """returns all the amplitudes needed to compute EW 
     corrections to born_amp in the sudakov approximation
     """
@@ -163,7 +163,8 @@ def get_sudakov_amps(born_amp):
             pdgs[0].append(leg['id'])
             pdgs[1].append(newleg['id'])
         # now generate the amplitude
-        amp = diagram_generation.Amplitude(born_proc)
+        amp = diagram_generation.Amplitude(born_proc,
+                                        diagram_filter=diagram_filter)
         # skip amplitudes without diagrams
         if not amp['diagrams'] : continue
 
@@ -194,7 +195,8 @@ def get_sudakov_amps(born_amp):
                 newleg['id'] = part
                 born_proc['legs'][ileg] = newleg
                 pdgs = [[leg['id']],[newleg['id']]] # old and new pdgs
-                amp = diagram_generation.Amplitude(born_proc)
+                amp = diagram_generation.Amplitude(born_proc,
+                                        diagram_filter=diagram_filter)
                 # skip amplitudes without diagrams
                 if not amp['diagrams'] : continue
 
@@ -223,7 +225,8 @@ def get_sudakov_amps(born_amp):
                 newleg['id'] = part
                 born_proc['legs'][ileg] = newleg
                 pdgs = [[leg['id']],[newleg['id']]] # old and new pdgs
-                amp = diagram_generation.Amplitude(born_proc)
+                amp = diagram_generation.Amplitude(born_proc,
+                                        diagram_filter=diagram_filter)
                 # skip amplitudes without diagrams
                 if not amp['diagrams'] : continue
 
@@ -268,7 +271,8 @@ def get_sudakov_amps(born_amp):
                         born_proc['legs'][ileg2] = newleg2
                         pdgs = [[leg1['id'],leg2['id']], [newleg1['id'],newleg2['id']]] # old and new pdgs
 
-                        amp = diagram_generation.Amplitude(born_proc)
+                        amp = diagram_generation.Amplitude(born_proc,
+                                        diagram_filter=diagram_filter)
                         # skip amplitudes without diagrams
                         if not amp['diagrams'] : continue
 
@@ -315,7 +319,8 @@ def get_sudakov_amps(born_amp):
                         # check charge conservation
                         if not is_charge_conserved(born_proc): continue
 
-                        amp = diagram_generation.Amplitude(born_proc)
+                        amp = diagram_generation.Amplitude(born_proc,
+                                        diagram_filter=diagram_filter)
                         # skip amplitudes without diagrams
                         if not amp['diagrams'] : continue
 
