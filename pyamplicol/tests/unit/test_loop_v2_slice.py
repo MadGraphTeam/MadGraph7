@@ -1002,16 +1002,6 @@ FRESH_CHECKS = StabilityChecks(
 @pytest.mark.loop_physics
 @pytest.mark.parametrize("name", SLICE)
 def test_stability_estimates_bracket_out_of_sample(slices, name):
-    """Every configuration with a rotation brackets the true error at a fresh
-    point. The cached reduction-direction check alone misses the masters' own
-    rounding (both reductions read the same masters): its calibrated
-    false-negative rate is 2.3-2.75 % in binary64 with estimate/error q01 =
-    0.4-0.5 (DESIGN §10.4), so at one fresh point it is held to that
-    quantile, not to a bracket it is documented to miss. (u u~ > u u~ g
-    here: 3.21e-13 against an estimate of 3.11e-13 since the tree stages are
-    generated history-independently; before, the outcome moved with the
-    test process's earlier generations.)"""
-
     fixture = _fixture(name)
     point = FRESH_FRAME.apply(
         [[Fraction(x) for x in momentum] for momentum in fixture["points"][-1]]
@@ -1027,14 +1017,11 @@ def test_stability_estimates_bracket_out_of_sample(slices, name):
         )
         for carrier in ("double", "arbitrary-200")
     )
-    _assert_brackets(f64, ap, quantile={(REDUCTION,): 0.4})
+    _assert_brackets(f64, ap)
 
 
-def _assert_brackets(f64, ap, quantile=None):
-    """Every check configuration's estimate bounds the true binary64 error,
-    as a whole and per Laurent coefficient; a configuration in ``quantile``
-    is held to estimate/error at least its calibrated q01 instead (DESIGN
-    §10.4), as a whole and per coefficient alike."""
+def _assert_brackets(f64, ap):
+    """Every check configuration's estimate bounds the true binary64 error."""
 
     truth = {
         sector: Laurent(*[float(x) for x in value.coefficients])
@@ -1045,12 +1032,11 @@ def _assert_brackets(f64, ap, quantile=None):
     assert error > 0
     for names in CONFIGURATIONS:
         estimate = f64.stability.subset(names)
-        factor = (quantile or {}).get(names, 1.0)
-        assert factor * error <= estimate.relative < 1e-10, (names, error, estimate)
+        assert error <= estimate.relative < 1e-10, (names, error, estimate)
         for k, (mine, bound) in enumerate(
             zip(errors, estimate.coefficients, strict=True)
         ):
-            assert factor * mine <= bound, (names, LAURENT[k], mine, bound)
+            assert mine <= bound, (names, LAURENT[k], mine, bound)
 
 
 @pytest.mark.loop_fast
