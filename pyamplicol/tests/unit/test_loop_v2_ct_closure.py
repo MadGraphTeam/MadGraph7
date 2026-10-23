@@ -464,6 +464,8 @@ def test_closure_equals_site_closure_at_200_bits(
 # take a quark pair's gluon inside a block (uu~ -> dd~gg, gg -> uu~ag) or
 # feed their gluon into the quark line of the block (uu~ -> aggg,
 # uu~ -> aagg): the U(1) projection of their gluon legs (design §6.1).
+# uu~ -> dd~ss~ joins three quark lines by gluon exchanges, each with its
+# U(1)-subtraction auxiliary.
 # ``name -> (process, Born QCD, QED, PDG codes of the rule the request is
 # about, leg masses)``.
 SLICE_O6 = {
@@ -478,6 +480,7 @@ SLICE_O6 = {
     "uux_aagg": ("u u~ > a a g g", 2, 2, (21, 21, 22, 22), (0,) * 6),
     "gg_ttxgg": ("g g > t t~ g g", 4, 0, (21, 21, 21, 21), (0, 0, 173, 173, 0, 0)),
     "uux_ttxgg": ("u u~ > t t~ g g", 4, 0, (2, 2, 21), (0, 0, 173, 173, 0, 0)),
+    "uux_ddxssx": ("u u~ > d d~ s s~", 4, 0, (1, 1, 21), (0,) * 6),
 }
 SLICE_PARAMETERS = {"aS": "0.118", "MT": "173"}
 # Requests whose trees propagate a top: its width (a runtime input) breaks the
