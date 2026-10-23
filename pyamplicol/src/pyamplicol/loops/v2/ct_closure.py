@@ -810,6 +810,7 @@ __all__ = [
     "ROOT_COUNTERTERM",
     "ROOT_LINE",
     "ROOT_VERTEX",
+    "U1_DEMOTION",
     "CloneLine",
     "ClosureTerm",
     "CountertermBlocks",
@@ -819,4 +820,5 @@ __all__ = [
     "counterterm_closure_entries",
     "lowered_counterterm_model",
     "model_value",
+    "u1_leaking_structures",
 ]
