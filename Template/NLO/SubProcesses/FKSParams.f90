@@ -20,7 +20,8 @@ module FKSParams
   !   0 = the grid (or the polynomial fit) in the Born phase space,
   !   1 = colour-dipole surrogate fitted per channel,
   !   2 = 1 plus the kinematic logarithms of all Born pairs (default).
-  !   For 1 and 2, a channel falls back to the grid when the fit does worse.
+  !   For 1 and 2, a channel falls back to the grid or the polynomial fit
+  !   when the fit does worse.
   integer :: VirtTrickSurrogate
 
 contains

@@ -38,15 +38,20 @@ refitted after every iteration, frozen within it, and written to `mint_grids`
 for the later steps. The fit costs no extra matrix elements: it uses the points
 where V is computed anyway, and the colour-linked Borns of the I_reg terms.
 
-## Fallback to the grid
+## Fallbacks: the grid and the polynomial fit
 
-The grid stays as a fallback. Once the fit and the grid have been evaluated on
-the same points (out of sample for both), a channel uses the fit only if it
-does better there:
+The grid and the polynomial fit (`UsePolyVirtual`) are both kept, next to the
+fit. Each channel uses the best of the three on out-of-sample points. The grid
+and the polynomial fit are frozen within an iteration, so they are compared from
+the first point. The fit enters the comparison from the iteration after its
+first fit.
 
-- **Event generation:** the fit must have a smaller weight of negative residual,
-  Σ |c| max(0, A − V). This is what produces the negative virt events.
-- **Fixed order:** the fit must have a smaller residual variance.
+- **Event generation:** the smallest score
+  Σ |c| max(0, A − V) + 0.25 Σ |c| |A − V|.
+  The first term is the weight of the negative residual, which produces the
+  negative virt events. The second, with a smaller weight, is the total
+  residual, which sets the number of virt events and hence of loop calls.
+- **Fixed order:** the smallest residual variance.
 
 A comparison of variances does not see the sign of the residual. In event
 generation it was seen to keep the grid where the grid gave more negative
@@ -55,28 +60,39 @@ events.
 ## Effect
 
 The table gives the negative events that the trick itself adds,
-E = V_ev (r_V − r_n), as a percentage of all events, at folding 1,1,1. The cost
-column gives the MadLoop calls per unweighted event (grid setup, envelope and
-events). It compares the previous default (grid) with the new default (mode 2).
+E = r − r_SH = V_ev (r_V − r_SH), as a percentage of all events, at folding
+1,1,1. Here r_SH is the negative fraction of the S and H events, and V_ev and
+r_V are the share and the negative fraction of the separate virt events. The
+cost column gives the MadLoop calls per unweighted event in the
+event-generation step. The fixed costs of the grid setup and the envelope
+are excluded, since they do not grow with the number of events. The table
+compares the previous default (grid) with the new one.
 
-| process | E grid → mode 2 [%] | MadLoop calls per event |
+| process | E grid → new [%] | MadLoop calls per event (÷ grid) |
 |---|---|---|
-| p p > t t~ | 0.36 → 0.10 | 0.32 → 0.23 |
-| p p > e+ e- j | 0.27 → 0.28 | 11.2 → 10.9 |
-| p p > t t~ j | 0.36 → 0.04 | 25.8 → 18.0 |
-| e+ e- > b b~ b b~ | 0.88 → 0.16 | 10.0 → 7.9 |
-| p p > w+ z (4FS) | 1.87 → 0.49 | 1.96 → 0.42 |
-| p p > z j j (4FS) | 0.40 → 0.09 (±0.15) | 423 → 477 |
-| p p > b b~ (4FS) | 0.30 → 0.09 | 0.89 → 0.74 |
+| p p > t t~ | 0.37 → 0.09 | 0.198 → 0.077 (÷2.6) |
+| p p > e+ e- j | 0.28 → 0.18 | 0.276 → 0.187 (÷1.5) |
+| p p > t t~ j | 0.35 → 0.06 | 2.12 → 0.348 (÷6.1) |
+| e+ e- > b b~ b b~ | 0.88 → 0.35 | 1.43 → 0.400 (÷3.6) |
+| p p > w+ z (4FS) | 1.87 → 0.58 | 1.65 → 0.284 (÷5.8) |
+| p p > z j j (4FS) | 0.24 → 0.28 (±0.15) | 0.906 → 0.612 (÷1.5) |
+| p p > b b~ (4FS) | 0.30 → 0.13 | 0.675 → 0.659 (÷1.0) |
+| p p > e+ ve (4FS) | 0.93 → 0.00 | 0.432 → 0.0004 (÷1200) |
+| p p > e+ ve j (4FS) | 0.24 → 0.17 | 0.318 → 0.258 (÷1.2) |
+| p p > e+ ve j j (4FS) | 0.00 → 0.08 | 1.25 → 0.498 (÷2.5) |
 
+- **p p > e+ ve:** the fit is exact. The finite virtual is B times a quadratic
+  polynomial in log(ŝ/Q_ES²), so the virt events disappear.
 - **p p > w+ z:** the trick's negatives dominate. The total negative fraction
-  drops from 0.053 to 0.041, and the CPU time per effective event improves by
-  9–12%.
+  drops from 0.053 to about 0.041, and N_eff gains ×1.06 at equal N.
 - **Other processes:** the trick's negatives are a small part of the total.
-  The total negative fraction and the CPU per effective event change within
-  errors.
+  The total negative fraction and N_eff change by at most a few percent.
 - **Fixed order:** the figure of merit does not change within errors.
+- **Training cost:** no measurable overhead in the grid setup.
 - **Cross sections:** they agree in every case, since the method is exact.
+- **E errors:** E varies from seed to seed more than its counting error;
+  differences of a few 0.01% are not significant.
 
-Samples: 3 × 50k events (t t~, W+Z, b b~), 2 × 10k (e+ e- j, t t~ j,
-b b~ b b~), and 1 × 2k for Z j j.
+Samples: 3 × 50k events (t t~, W+Z, b b~, e+ ve, e+ ve j), 2 × 10k (e+ e- j,
+t t~ j, b b~ b b~), 2 × 20k (e+ ve j j), and 1 × 2k for Z j j. Jets: anti-kT
+R = 0.4, pT > 30 GeV for Z j j and the e+ ve processes.

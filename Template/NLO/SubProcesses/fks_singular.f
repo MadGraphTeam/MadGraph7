@@ -7178,7 +7178,7 @@ c other folds of the same point.
       do iamp=0,amp_split_size
          if (vs_ratio_set) then
             ave_ratio(iamp)=vs_ratio
-         elseif (use_poly_virtual) then
+         elseif (vs_use_poly(ichan)) then
             ave_ratio(iamp)=polyfit(iamp)
          else
             ave_ratio(iamp)=average_virtual(iamp,ichan)
@@ -8694,7 +8694,7 @@ c virtual fraction.
       use virt_surrogate
       implicit none
       integer i
-      double precision s14,s15,c,agrid
+      double precision s14,s15,c,agrid,apoly
       if (VirtTrickSurrogate.lt.1 .or. imode.ne.0) return
       if (.not.vs_vcomp .or. .not.vs_featok) return
       if (vs_virt.eq.0d0) return
@@ -8706,11 +8706,14 @@ c virtual fraction.
       enddo
       if (s14.eq.0d0 .and. s15.eq.0d0) return
       c=(s14*vs_fvirt+s15)/vs_virt
-      if (use_poly_virtual) then
-         agrid=polyfit(0)*vs_born
-      else
+c the fallback surrogates: the grid and the polynomial fit
+      if (vs_grid_kept()) then
          agrid=average_virtual(0,ichan)*vs_born
+      else
+         agrid=polyfit(0)*vs_born
       endif
-      call vs_accumulate(ichan,vs_virt,agrid,c**2)
+      apoly=agrid
+      if (vs_both()) apoly=polyfit(0)*vs_born
+      call vs_accumulate(ichan,vs_virt,agrid,apoly,c**2)
       return
       end

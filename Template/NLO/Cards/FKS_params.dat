@@ -168,10 +168,12 @@
 !     L_kl = log(|2 p_k.p_l|/Q_ES^2).
 ! 2 = 1 plus B L_kl and B L_kl^2 for every pair of Born particles,
 !     coloured or not.
-! For 1 and 2 a channel keeps the grid when the fit does worse: in event
-! generation the fit is kept if its residual makes fewer negative virtual
-! events, in fixed order if its residual variance is smaller. Exact for
-! any choice.
+! For 1 and 2 the grid and the polynomial fit are both kept as fallbacks,
+! and each channel uses the best of the three surrogates: in event
+! generation the one whose residual gives the fewest negative virtual events
+! (with a smaller weight on the total residual, which sets their number), in
+! fixed order the one with the smallest residual variance. Exact for any
+! choice.
 #VirtTrickSurrogate
 2
 ! Default :: 2
