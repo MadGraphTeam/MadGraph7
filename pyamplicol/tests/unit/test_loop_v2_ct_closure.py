@@ -808,13 +808,21 @@ def test_six_leg_four_gluon_counterterms_from_recursion_equal_sites(
     _assert_counterterm_routes_agree(values)
 
 
-# A fresh interpreter whose only Symbolica calls happen inside pyAmpliCol:
-# Spenso's Rayon workers then met the package-scoped Symbolica key without a
-# thread-wide license and waited for the GIL (design §6.1 "Spenso's
-# threads"); in a test process an earlier Symbolica call outside the package
-# hides that.
+# A fresh interpreter without a personal key whose only Symbolica calls happen
+# inside pyAmpliCol: Spenso's Rayon workers then met the package-scoped
+# Symbolica key without a thread-wide license and waited for the GIL (design
+# §6.1 "Spenso's threads"); a personal key in the environment, or an earlier
+# Symbolica call outside the package, hides that. The script records the
+# Spenso policies the package sets.
 _SIX_GLUON_SCRIPT = """
 import json, sys
+import symbolica.community.tensor as tensor
+policies = []
+_set_policy = tensor.set_symbolica_rayon_enabled
+def _record(policy):
+    policies.append(str(policy))
+    _set_policy(policy)
+tensor.set_symbolica_rayon_enabled = _record
 from pyamplicol.loops.native import load_loop_native
 from pyamplicol.loops.v2.assemble import (
     LoopSlice, Precision, SliceRequest, _fraction, _Numbers,
@@ -835,21 +843,21 @@ for route in ("recursion", "sites"):
             json.loads(parameters), Precision.double(), True)
     out[route] = [[[repr(k), float(v)] for k, v in part.items()]
                   for part in (evaluation.born, evaluation.counterterms)]
+out["policies"] = policies
 print(json.dumps(out))
 """
 
 
 @pytest.mark.loop_nightly
-def test_six_gluon_generation_completes_in_a_fresh_interpreter(
+def test_six_gluon_generation_completes_without_a_personal_key(
     loop_sm_compiled_model, loop_reference
 ):
     """g g > g g g g through ``LoopSlice.generate`` (recursion and sites) in a
-    new interpreter; O6 at the CT level at the first point of the
-    three-provider reference, and the R2 component of both routes against
-    MadLoop's (an independent oracle of the four-gluon R2 at six legs).
-    About an hour (2026-10-23): generation 6 and 3 minutes, the first
-    CT-level point 26 (recursion, with the program's row build) and 21
-    minutes (sites)."""
+    new interpreter without a personal Symbolica key (the package's library
+    key alone, as users without a license run it: Spenso is set serial);
+    O6 at the CT level at the first point of the three-provider reference,
+    and the R2 component of both routes against MadLoop's (an independent
+    oracle of the four-gluon R2 at six legs). About an hour."""
 
     import ast
     import json
@@ -874,11 +882,21 @@ def test_six_gluon_generation_completes_in_a_fresh_interpreter(
         capture_output=True,
         text=True,
         timeout=4 * 3600,
-        env={**os.environ, "RAYON_NUM_THREADS": "4"},
+        env={
+            **{
+                key: value
+                for key, value in os.environ.items()
+                if key not in ("SYMBOLICA_LICENSE", "SYMBOLICA_MASTER_LICENSE")
+            },
+            "RAYON_NUM_THREADS": "4",
+            "SYMBOLICA_HIDE_BANNER": "1",
+        },
         check=False,
     )
     assert result.returncode == 0, result.stderr[-4000:]
     routes = json.loads(result.stdout.strip().splitlines()[-1])
+    # The package kept Spenso serial (no thread-wide key), once.
+    assert routes.pop("policies") == ["SymbolicParallelism.Serial"]
     values = {
         route: tuple(
             {ast.literal_eval(key): value for key, value in part} for part in pair
@@ -929,3 +947,74 @@ def test_colour_projected_counterterms_from_recursion_equal_sites(
         colour_declaration=declaration,
     )
     _assert_counterterm_routes_agree(values)
+
+
+# Spin and Ward modes (observables, design §8.4) with the counterterms of
+# either route: (process, Born orders, loop orders, spin legs, sources).
+_OBSERVABLE_ROUTES = {
+    "gg_gg-spin": ("g g > g g", 2, 4, ((3, 4),), {"spin": (3, 4)}),
+    "uux_ggg-spin": ("u u~ > g g g", 3, 5, ((4,),), {"spin": (4,)}),
+    "uux_ggg-ward": ("u u~ > g g g", 3, 5, (), {"ward": (3, (0, 1))}),
+}
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", tuple(_OBSERVABLE_ROUTES))
+def test_spin_and_ward_counterterms_from_recursion_equal_sites(
+    loop_sm_compiled_model, loop_native, name
+):
+    """Observables x ct-recursion (slice DECISIONS 10:00 UTC): the CT program
+    takes the spin sources on both sides and the Ward vector on the loop side
+    (``CountertermProgram.point(sources=...)``), so with complex
+    non-transverse spin sources, or the gauge vector i p_3 on the loop side
+    only, the Born x CT interference of every component, sector and Laurent
+    coefficient equals the site closure's within 1e-45 of the largest one,
+    at 200 bits (the slice point, CT level: no reduction). In Ward mode the
+    R2 part is nonzero (it cancels the bare loop's violation)."""
+
+    import json
+
+    from pyamplicol.loops.v2.assemble import Precision
+    from pyamplicol.loops.v2.observables import CorrelatorConfig
+
+    from .test_loop_v2_observables import FIXTURES, VECTORS, observable_builder
+
+    process, born, loop, classes, sources = _OBSERVABLE_ROUTES[name]
+    generate = observable_builder(loop_sm_compiled_model, loop_native)
+    record = name.split("-")[0]
+    fixture = json.loads((FIXTURES / "legacy" / f"{record}.json").read_text())
+    point, scale = fixture["points"][0], fixture["scales_squared"][0]
+    options = {}
+    if "spin" in sources:
+        options["spin"] = {
+            leg: VECTORS[k] for k, leg in enumerate(sources["spin"])
+        }
+    else:
+        options["ward"] = sources["ward"]
+    values = {}
+    for route in ("recursion", "sites"):
+        observables = generate(
+            process,
+            born={"QCD": born, "QED": 0},
+            loop={"QCD": loop, "QED": 0},
+            correlators=CorrelatorConfig(spin_correlations=classes),
+            ward="ward" in sources,
+            counterterms=route,
+        )
+        evaluation = observables.point(
+            point,
+            scale,
+            parameters=SLICE_PARAMETERS,
+            precision=Precision.arbitrary(60),
+            **options,
+        )
+        values[route] = {
+            key: complex(value) for key, value in evaluation.counterterms.items()
+        }
+    mine, theirs = values["recursion"], values["sites"]
+    scale_ = max(abs(value) for value in theirs.values())
+    assert scale_ > 0
+    for key in mine.keys() | theirs.keys():
+        difference = abs(mine.get(key, 0) - theirs.get(key, 0))
+        assert difference <= 1e-45 * scale_, (key, mine.get(key), theirs.get(key))
+    assert any(abs(v) > 1e-6 * scale_ for (c, _s, _p), v in theirs.items() if c == "r2")

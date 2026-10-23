@@ -507,25 +507,12 @@ def test_two_point_insertions_are_clone_lines(lowered_ct_model):
     }
 
 
-# The tree route is the test of the lowering (the closure is the production
-# form, design §6.1): one lane on two controls in the physics tier, the rest
-# (5-7 minutes each) nightly.
-FORM1_PHYSICS = frozenset({("gg_gg", "recurrence"), ("uux_ddxg", "recurrence")})
-
-
-@pytest.mark.loop_physics
-@pytest.mark.parametrize(
-    ("name", "lane"),
-    [
-        pytest.param(
-            name,
-            lane,
-            marks=() if (name, lane) in FORM1_PHYSICS else pytest.mark.loop_nightly,
-        )
-        for name in CONTROLS
-        for lane in LANES
-    ],
-)
+# The tree route (form 1) is a test of the lowering; the closure, the
+# production form (design §6.1), runs on the same lowered couplings in the
+# default and physics tiers (test_loop_v2_ct_closure, test_loop_v2_slice).
+# Each form-1 id takes 5-7 minutes: all are nightly (HANDOFF §0.3 item 6).
+@pytest.mark.loop_nightly
+@pytest.mark.parametrize(("name", "lane"), [(n, lane) for n in CONTROLS for lane in LANES])
 def test_recursion_equals_site_closure(
     ct_slice, lowered_ct_model, loop_native, tmp_path, name, lane
 ):
@@ -549,6 +536,7 @@ def test_recursion_equals_site_closure(
 # wave01-open-minors), so their 200-bit Born is exact to ~1e-17 only.
 _BINARY64_U1_WEIGHT = pytest.mark.xfail(
     strict=True,
+    raises=AssertionError,
     reason="tree runtime U(1)-subtraction colour weight is binary64 "
     "(several quark lines): the 200-bit Born is exact to ~1e-17",
 )
@@ -578,10 +566,11 @@ def test_recursion_equals_site_closure_at_200_bits(
     _assert_equal_sites_and_legacy(ct, recursion, runtime, "arbitrary-200")
 
 
-@pytest.mark.loop_physics
+@pytest.mark.loop_nightly
 def test_finite_only_binds_no_pole_slot(ct_slice, lowered_ct_model, tmp_path):
-    """Finite-only evaluation of the same program: pole slots are exactly zero
-    and the finite slots are unchanged."""
+    """Finite-only evaluation of the same form-1 program: pole slots are
+    exactly zero and the finite slots are unchanged (the production closure:
+    test_loop_v2_slice.py::test_finite_only_equals_the_finite_part)."""
 
     lowered = lowered_ct_model()
     ct = ct_slice("uux_ddxg")
