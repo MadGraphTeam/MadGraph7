@@ -29,6 +29,7 @@ use super::observables::ColumnRows;
 use super::poly::{MonomialProductTable, SegmentEntry, SegmentLayout};
 use crate::{RusticolError, RusticolResult};
 
+pub mod binary;
 mod links;
 use ninjars::fast::tensor_layout::ncoeff;
 use serde::Deserialize;
