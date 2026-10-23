@@ -106,7 +106,9 @@ class ExportedPlan:
     masses: tuple[Any, ...]
     orders: tuple[Orders, ...]
     families: tuple[FamilyKey, ...]
-    sectors: tuple[Orders, ...]
+    # Lane label of each observable column: its sector for the sector
+    # columns, its index for other observable columns.
+    columns: tuple[Hashable, ...]
 
     def json(self) -> str:
         return json.dumps(self.program, separators=(",", ":"))
@@ -281,55 +283,60 @@ class _Exporter:
             found = self.seeds[key] = len(self.seeds)
         return found
 
-    def seed_records(self) -> list[dict]:
+    def seed_records(self, columns: Sequence[Any]) -> list[dict]:
         """Per seed key and column the exact weights of the Born components,
-        the projection of ``assemble.SectorSeeds`` (``SeedTable.seeds``)."""
+        the projection of ``assemble.SectorSeeds`` (``SeedTable.seeds``).
+
+        A column (``SeedColumn``) has its own seed table (directed colour
+        histories), sector pairs, degree P and Born basis elements; its
+        helicity rows are the plan's ``column_rows``."""
 
         slice_ = self.slice_
-        table = slice_.table
         accuracy = slice_.request.accuracy
-        degrees = slice_.degrees()["virtual"] if accuracy != "full" else {}
         born_grades = slice_._born_grades()
-        sectors = []
-        for sector, pairs in slice_.sectors:
-            degree = degrees.get(sector)
+        admitted: set[tuple[int, Orders]] = set()
+        # Per column, once: its degree and, per (class, loop order), the
+        # nonzero projected weights of its admitted Born entries (table
+        # order, so the Born components are numbered as by a direct scan).
+        indexed = []
+        for column in columns:
+            table, degree = column.table, column.degree
             if accuracy != "full" and degree is None:
-                degree = table.degree(pairs, born_grades)
-            sectors.append((pairs, degree))
-        admitted = {
-            (c, order)
-            for pairs, _degree in sectors
-            for c, order, _b, _a in table.admitted(pairs)
-        }
+                degree = table.degree(column.pairs, born_grades)
+            entries: dict[tuple[int, Orders], list] = {}
+            for c, order, b, born_order in table.admitted(column.pairs):
+                admitted.add((c, order))
+                if column.basis is not None and b not in column.basis:
+                    continue
+                found = entries.setdefault((c, order), [])
+                for grade in sorted(born_grades.get((b, born_order), ())):
+                    weight = project(table.cells[c][b], degree, accuracy, grade)
+                    if weight:
+                        found.append(((b, born_order, grade), weight))
+            indexed.append(entries)
         records = []
         for combination, order in self.seeds:
             for c, _x in combination:
                 if (c, order) not in admitted:
                     raise KeyError(f"no sector admits class {c} at {order}")
-            columns = []
-            for pairs, degree in sectors:
+            weights_of = []
+            for entries in indexed:
                 weights: dict[int, ExactColorCoefficient] = {}
                 for c, x in combination:
-                    for cc, oo, b, born_order in table.admitted(pairs):
-                        if (cc, oo) != (c, order):
-                            continue
-                        for grade in sorted(born_grades.get((b, born_order), ())):
-                            weight = project(table.cells[c][b], degree, accuracy, grade)
-                            if not weight:
-                                continue
-                            j = self.born_components.setdefault(
-                                (b, born_order, grade), len(self.born_components)
-                            )
-                            term = x * weight
-                            weights[j] = term + weights[j] if j in weights else term
-                columns.append(
+                    for component, weight in entries.get((c, order), ()):
+                        j = self.born_components.setdefault(
+                            component, len(self.born_components)
+                        )
+                        term = x * weight
+                        weights[j] = term + weights[j] if j in weights else term
+                weights_of.append(
                     [
                         [j, _fraction_text(w.real), _fraction_text(w.imag)]
                         for j, w in weights.items()
                         if w
                     ]
                 )
-            records.append({"columns": columns})
+            records.append({"columns": weights_of})
         return records
 
     # -- schedule B -----------------------------------------------------------
@@ -629,13 +636,46 @@ class _Exporter:
         }
 
 
+@dataclass(frozen=True)
+class SeedColumn:
+    """One observable column of a plan: its seed table, sector pairs and
+    degree P, and the Born helicity rows and basis elements its seeds keep
+    (``None``: all). The sector columns of the inclusive virtual are
+    ``sector_columns``; ``observables.ColumnPlan`` builds the others."""
+
+    table: Any
+    pairs: frozenset
+    degree: int | None
+    rows: frozenset | None = None
+    basis: frozenset | None = None
+
+
+def sector_columns(slice_: Any) -> tuple[SeedColumn, ...]:
+    """One column per squared-order sector (the inclusive virtual)."""
+
+    degrees = slice_.degrees()["virtual"] if slice_.request.accuracy != "full" else {}
+    return tuple(
+        SeedColumn(slice_.table, pairs, degrees.get(sector))
+        for sector, pairs in slice_.sectors
+    )
+
+
 def export_plan(
-    slice_: Any, *, forward: bool = True, merged: MergedGraph | None = None
+    slice_: Any,
+    *,
+    forward: bool = True,
+    columns: Sequence[Any] | None = None,
+    merged: MergedGraph | None = None,
 ) -> ExportedPlan:
     """The plan v4 program of a generated slice (structure only, no numerics).
 
+    ``columns`` are the observable columns (``SeedColumn``); by default one
+    per squared-order sector. Columns that keep only some helicity rows
+    (helicity-resolved outputs) are listed in the plan's ``column_rows``.
     ``merged`` adds schedule M's planar state graph (``merged.merged_graph``)
-    for its certified families; schedule B keeps every family.
+    for its certified families; schedule B keeps every family. Its entries
+    are primitive seed keys, so they carry one weight list per column like
+    every other seed.
     """
 
     from .assemble import _BlockRows
@@ -664,18 +704,23 @@ def export_plan(
         if forward
         else None
     )
+    # ``merged`` registers its entries' primitive seed keys, so it runs
+    # before the seed records are formed.
     merged_program = (
         exporter.merged(merged, {key: i for i, key in enumerate(keys)}, accumulator_of)
         if merged is not None
         else None
     )
-    seeds = exporter.seed_records()
+    columns_given = columns
+    columns = tuple(sector_columns(slice_) if columns is None else columns)
+    seeds = exporter.seed_records(columns)
     legs = len(slice_.blocks.process.legs)
+    row_index = {row: i for i, row in enumerate(rows)}
     program = {
         "schema": PLAN_SCHEMA,
         "legs": legs,
         "rows": len(rows),
-        "columns": len(slice_.sectors),
+        "columns": len(columns),
         "average": slice_.normalisation.average,
         "born_components": len(exporter.born_components),
         "constants": len(exporter.constants),
@@ -689,6 +734,13 @@ def export_plan(
         "forward": forward_program,
         "merged": merged_program,
     }
+    if any(column.rows is not None for column in columns):
+        program["column_rows"] = [
+            None
+            if column.rows is None
+            else sorted(row_index[row] for row in column.rows)
+            for column in columns
+        ]
     return ExportedPlan(
         program=program,
         rows=rows,
@@ -698,7 +750,9 @@ def export_plan(
         masses=tuple(exporter.masses),
         orders=orders,
         families=tuple(keys),
-        sectors=tuple(sector for sector, _pairs in slice_.sectors),
+        columns=tuple(sector for sector, _pairs in slice_.sectors)
+        if columns_given is None
+        else tuple(range(len(columns))),
     )
 
 
@@ -759,6 +813,13 @@ class NativeExecutor:
         forms: Literal["rule", "fused", "split"] = "rule",
         merged: MergedGraph | bool = False,
     ):
+        if slice_.request.colour_contraction == "fft":
+            # The native seeds contract the exported exact weights directly
+            # (``seed_records``); an explicit "fft" is refused, not ignored.
+            raise ValueError(
+                "the native executor contracts seeds directly; request colour "
+                "contraction 'auto' or 'direct'"
+            )
         self.slice = slice_
         if merged is True:
             merged = merged_graph(slice_)
@@ -942,10 +1003,11 @@ class NativeExecutor:
                     "the points of one batch need equal kernel constants and masses"
                 )
             batch["block_rows"].append(rows)
+            amplitudes = [_born_row(evaluation, row) for row in exported.rows]
             batch["born"].append(
                 [
-                    value(evaluation.amplitudes[row].get((b, order), {}).get(grade, 0))
-                    for row in exported.rows
+                    value(row.get((b, order), {}).get(grade, 0))
+                    for row in amplitudes
                     for b, order, grade in exported.born_components
                 ]
             )
@@ -1090,12 +1152,49 @@ class NativeExecutor:
         index."""
 
         from .assemble import _Numbers
-        from .poles import pole_mode, reducer_poles
 
         precision, evaluations = self._points(
             points, scales, parameters, precision, poles
         )
+        failed = self.reduce(evaluations, precision, poles, retest, schedule)
+        for index, evaluation in enumerate(evaluations):
+            if index in failed:
+                continue
+            with _Numbers(precision).scope():
+                # The native seeds contract the exported exact weights K[c, b]
+                # with the Born components directly (``seed_records``).
+                evaluation.colour_contraction = "direct"
+                evaluation._assemble()
+        return precision, evaluations, failed
+
+    def reduce(
+        self,
+        evaluations,
+        precision,
+        poles: bool | str,
+        retest: str | None,
+        schedule: Literal["B", "M"] = "B",
+    ) -> dict[int, list[str]]:
+        """Dress and reduce prepared point evaluations (``assemble``'s
+        ``_PointEvaluation``) natively in ``precision``'s carrier and
+        ``schedule`` (B, or M for the plan's schedule-M families): sets each
+        evaluation's ``families`` (and ``retest_families`` in the re-test
+        frame ``retest``, ``stability.FRAMES``), lanes labelled (family, loop
+        orders, column label). Returns the failures per point index; a failed
+        point's evaluation is left without families. ``poles`` is the pole
+        mode (``poles``): "uv" and "ir" also run the scaleless companion
+        (``scaleless``) for the inclusive virtual's sector columns."""
+
+        from .assemble import _Numbers
+        from .poles import pole_mode, reducer_poles
+
         mode = pole_mode(poles)
+        sectors = tuple(sector for sector, _pairs in self.slice.sectors)
+        if mode in ("uv", "ir") and tuple(self.exported.columns) != sectors:
+            raise NotImplementedError(
+                "the uv and ir pole selections serve the inclusive virtual; "
+                "observable columns take poles all or none"
+            )
         arithmetic, digits = self._arithmetic(precision, False)
         native = self.native(arithmetic, digits, len(evaluations))
         options = {
@@ -1144,7 +1243,7 @@ class NativeExecutor:
                 return (
                     exported.families[family],
                     exported.orders[order],
-                    exported.sectors[column],
+                    exported.columns[column],
                 )
 
             def read(runs, exported=exported):
@@ -1161,11 +1260,22 @@ class NativeExecutor:
                 evaluation.set_lanes(
                     read(lanes), read(checks), scaleless, scaleless_check
                 )
-                # The native seeds contract the exported exact weights K[c, b]
-                # with the Born components directly (``seed_records``).
-                evaluation.colour_contraction = "direct"
-                evaluation._assemble()
-        return precision, evaluations, failed
+        return failed
+
+
+def _born_row(evaluation, row) -> Mapping:
+    """The Born amplitudes of one exported helicity row at a point: empty
+    for a row the point's spin sources drop (a fixed leg with another
+    helicity, ``assemble._PointEvaluation(fixed=...)``); any other missing
+    row is an error, never a silent zero."""
+
+    found = evaluation.amplitudes.get(row)
+    if found is not None:
+        return found
+    fixed = evaluation.fixed
+    if any(fixed.get(index + 1, helicity) != helicity for index, helicity in row):
+        return {}
+    raise KeyError(f"helicity row {row} is missing from the point evaluation")
 
 
 def _carrier_value(z, arithmetic: Arithmetic) -> Any:

@@ -512,6 +512,13 @@ class ExactKernel:
 
     Each output is a list of terms (constant key, ((input position, power),
     ...)). Model parameters are not inputs: they are part of the constants.
+
+    The terms are in a canonical order (``_term_order``), which both
+    executors sum in: Symbolica orders the terms of a sum by its symbols'
+    ids, which depend on every symbol created earlier in the interpreter, so
+    the expansion's own order (and with it the binary64 rounding of every
+    kernel output and the plan's constant numbering) moved with the process
+    history (WP2.5).
     """
 
     def __init__(self, spec: Any):
@@ -530,7 +537,12 @@ class ExactKernel:
             if item.role == "model-parameter"
         }
         self.outputs = tuple(
-            tuple(_kernel_terms(E(expression), positions, parameters))
+            tuple(
+                sorted(
+                    _kernel_terms(E(expression), positions, parameters),
+                    key=_term_order,
+                )
+            )
             for expression in spec.exact_expressions
         )
         self._bound: KernelConstants | None = None
@@ -558,8 +570,20 @@ class ExactKernel:
         return out
 
 
+def _term_order(term: tuple[Hashable, tuple[tuple[int, int], ...]]) -> tuple:
+    """The canonical order of a kernel output's terms: by monomial (input
+    positions and powers), then by constant key. Both are built from exact
+    numbers, parameter names and canonical strings only (``_kernel_terms``),
+    so the order does not depend on Symbolica's symbol ids; the kind tag
+    leading every factor makes any two keys comparable."""
+
+    key, monomial = term
+    return (monomial, key)
+
+
 def _kernel_terms(expression: Any, positions, parameters):
-    """(constant key, monomial) per term of a kernel output.
+    """(constant key, monomial) per term of a kernel output, in Symbolica's
+    term order (``ExactKernel`` puts them in ``_term_order``).
 
     A key is (complex rational, exact factors, irrational factors, positive
     bases): integer powers of parameters and primes stay exact; pi, the

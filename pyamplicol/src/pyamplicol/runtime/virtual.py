@@ -8,6 +8,7 @@ one complete batch, including source parameters, counterterms and reduction.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import asdict
@@ -1029,3 +1030,422 @@ class VirtualRuntimeBackend:
 
     def unmute_warnings(self) -> None:
         self._muted = False
+
+
+class V2ObservablesRuntime:
+    """The public virtual-runtime calls over a generated v2 slice's
+    observables (the observable surface that the artifact runtime of WP2.6,
+    ``loops.v2.artifact.V2VirtualRuntime``, is to delegate its correlated,
+    resolved and member calls to).
+
+    It answers ``evaluate``, ``evaluate_resolved``, ``evaluate_correlated`` and
+    ``evaluate_correlated_many`` with the public result types from an
+    ``loops.v2.observables.ObservableSlice``: the colour histories and spin
+    classes declared at its generation, optionally for an admitted flavour
+    ``member`` (``loops.v2.observables.admit_member``) evaluated by the
+    representative. ``executor="native"`` (the default) dresses and reduces
+    every batch in the native v2 executor (binary64, ``double-double`` or
+    MPFR arbitrary precision; one native plan per output column set, built
+    once); ``"python"`` runs the Python reference executor (binary64 or
+    arbitrary precision). Resolved colour components are the Born basis
+    elements (``born-basis-anchored-interference``, design §1.6 decision 3),
+    with IDs ``basis-<index>``; a member's are its representative's elements
+    on the member's labels. Accuracy is not established by this surface (no
+    stability policy); values are the v2 engine's.
+    """
+
+    contribution_kind = "virtual"
+    execution_mode = "loop_v2"
+
+    def __init__(
+        self,
+        observables: Any,
+        *,
+        model_parameters: ModelParameters | None = None,
+        arithmetic: str | None = None,
+        precision: int | None = None,
+        executor: Literal["native", "python"] = "native",
+        member: Any = None,
+        lanes: int | None = None,
+        threads: int | None = None,
+    ) -> None:
+        if executor not in ("native", "python"):
+            raise ValueError(f"unknown v2 executor {executor!r}")
+        self._observables = observables
+        self._member = member
+        self._executor = executor
+        self._native_options = {
+            key: value
+            for key, value in (("lanes", lanes), ("threads", threads))
+            if value is not None
+        }
+        self._native: dict[tuple[Any, ...], Any] = {}
+        self._parameters = {
+            name: real
+            for name, (real, _imaginary) in (
+                _parameters(model_parameters) or {}
+            ).items()
+        }
+        self.default_arithmetic = arithmetic or (
+            "double" if precision in (None, 16) else "arbitrary"
+        )
+        self.default_precision = precision if precision is not None else 16
+        self._spin_vectors: dict[int, object] = {}
+        self._lock = RLock()
+        slice_ = observables.slice
+        self._sectors = tuple(
+            VirtualOrderSector(
+                canonical_order(sector),
+                tuple(BornLoopPair(born, loop) for born, loop in sorted(pairs)),
+            )
+            for sector, pairs in slice_.sectors
+        )
+
+    # -- declarations ---------------------------------------------------------
+
+    @property
+    def external_count(self) -> int:
+        return len(self._observables.slice.blocks.process.legs)
+
+    def available_color_correlations(self) -> tuple[ColorCorrelator, ...]:
+        return (ColorCorrelator("born"), *self._observables.histories)
+
+    def set_spin_correlation_vectors(
+        self, vectors: Mapping[int, object] | None
+    ) -> None:
+        copied = _copy_spin_vectors(vectors, self._observables.spin_classes)
+        with self._lock:
+            self._spin_vectors = copied
+
+    def clear(self) -> None:
+        with self._lock:
+            self._spin_vectors = {}
+
+    # -- executors --------------------------------------------------------------
+
+    def _runner(self) -> Any:
+        """The Python reference evaluation of the slice or of the member."""
+
+        from pyamplicol.loops.v2.observables import MemberObservables
+
+        if self._member is None:
+            return self._observables
+        return MemberObservables(self._observables, self._member)
+
+    def _native_columns(self, key: tuple[Any, ...]) -> Any:
+        """The native executor of one output column set (built once):
+        ``("correlated", histories)`` or ``("resolved", spin legs)``."""
+
+        from pyamplicol.loops.v2.observables import NativeObservables
+
+        with self._lock:
+            found = self._native.get(key)
+            if found is None:
+                kind, value = key
+                options = {"member": self._member, **self._native_options}
+                found = self._native[key] = (
+                    NativeObservables.correlated(self._observables, value, **options)
+                    if kind == "correlated"
+                    else NativeObservables.resolved(
+                        self._observables, spin_legs=value, **options
+                    )
+                )
+            return found
+
+    # -- evaluation -----------------------------------------------------------
+
+    def _precision(
+        self, arithmetic: str | None, precision: int | None
+    ) -> tuple[str, Any]:
+        """(public arithmetic, v2 ``Precision`` carrier)."""
+
+        from pyamplicol.loops.v2.assemble import Precision
+
+        precision = self.default_precision if precision is None else precision
+        arithmetic = arithmetic or (
+            self.default_arithmetic if precision == self.default_precision else None
+        )
+        arithmetic = arithmetic or ("double" if precision == 16 else "arbitrary")
+        if arithmetic == "double":
+            return arithmetic, Precision.double()
+        if arithmetic == "arbitrary":
+            return arithmetic, Precision.arbitrary(precision)
+        if arithmetic == "double-double" and self._executor == "native":
+            return arithmetic, Precision.double_double()
+        raise CompatibilityError(
+            f"the v2 {self._executor} executor does not evaluate in {arithmetic!r}"
+        )
+
+    def _scalar(self, value: Any, arithmetic: str, correlated: bool) -> VirtualScalar:
+        if arithmetic == "double":
+            return complex(value) if correlated else float(value)
+        if correlated:
+            real, imaginary = (
+                (value.real, value.imag)
+                if not isinstance(value, Decimal)
+                else (value, Decimal(0))
+            )
+            return CorrelatedValue(Decimal(real), Decimal(imaginary))
+        return Decimal(value)
+
+    def _laurent(
+        self, laurent: Any, arithmetic: str, correlated: bool
+    ) -> LaurentCoefficients:
+        if laurent.single_pole is None:
+            raise CompatibilityError("public virtual results carry all three poles")
+        return LaurentCoefficients(
+            *(
+                self._scalar(value, arithmetic, correlated)
+                for value in laurent.coefficients
+            )
+        )
+
+    def _diagnostic(self, arithmetic: str, precision: Any) -> VirtualLaneDiagnostic:
+        bits = {"double": 53, "double-double": 106}.get(arithmetic) or math.ceil(
+            precision.digits * math.log2(10)
+        )
+        executor = "native" if self._executor == "native" else "Python reference"
+        return VirtualLaneDiagnostic(
+            "success",
+            arithmetic,  # type: ignore[arg-type]
+            bits,
+            False,
+            f"v2 {executor} executor; no stability policy requested",
+        )
+
+    def _evaluation(
+        self,
+        results: Sequence[Any],
+        arithmetic: str,
+        precision: Any,
+        correlated: bool,
+    ) -> VirtualEvaluation:
+        from pyamplicol.loops.strategy import R2Selection
+
+        born_orders = self._default_born_orders()
+        return VirtualEvaluation(
+            born_values=tuple(
+                tuple(
+                    self._scalar(result.born.get(order, 0), arithmetic, correlated)
+                    for order in born_orders
+                )
+                for result in results
+            ),
+            values=tuple(
+                tuple(
+                    self._laurent(
+                        result.components["virtual"][sector.order],
+                        arithmetic,
+                        correlated,
+                    )
+                    for sector in self._sectors
+                )
+                for result in results
+            ),
+            born_orders=born_orders,
+            sectors=self._sectors,
+            diagnostics=tuple(self._diagnostic(arithmetic, precision) for _ in results),
+            r2=R2Selection(R2Strategy.MODEL, R2Strategy.MODEL, "model-supplied R2"),
+            correlated=correlated,
+            color_accuracy=self._observables.slice.request.accuracy,
+        )
+
+    def _default_born_orders(self) -> tuple[tuple[tuple[str, int], ...], ...]:
+        """The squared Born orders (the keys of ``PointResult.born``)."""
+
+        from pyamplicol.loops.v2.families import add_orders
+
+        orders = self._observables.slice.blocks.born_orders
+        return tuple(sorted({add_orders(a, b) for a in orders for b in orders}))
+
+    def evaluate(
+        self,
+        momenta: Momenta,
+        *,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        precision: int | None = None,
+        arithmetic: str | None = None,
+    ) -> VirtualEvaluation:
+        return self.evaluate_correlated_many(
+            momenta,
+            {"born": CorrelatedRequest("born", {})},
+            mu_r2=mu_r2,
+            precision=precision,
+            arithmetic=arithmetic,
+            _correlated=False,
+        )["born"]
+
+    def evaluate_correlated(
+        self, momenta: Momenta, *, color_correlation: str = "born", **kwargs: Any
+    ) -> VirtualEvaluation:
+        return self.evaluate_correlated_many(
+            momenta, {"selected": CorrelatedRequest(color_correlation)}, **kwargs
+        )["selected"]
+
+    def evaluate_correlated_many(
+        self,
+        momenta: Momenta,
+        requests: Mapping[str, CorrelatedRequest],
+        *,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        precision: int | None = None,
+        arithmetic: str | None = None,
+        _correlated: bool = True,
+    ) -> dict[str, VirtualEvaluation]:
+        """Every request on one batch; requests with equal spin sources share
+        their seed columns (one dressing per point and source assignment; one
+        native batch per source assignment)."""
+
+        observables = self._observables
+        arithmetic, carrier = self._precision(arithmetic, precision)
+        points, scales = _inputs(momenta, mu_r2, self.external_count)
+        known = {item.id for item in self.available_color_correlations()}
+        with self._lock:
+            inherited = dict(self._spin_vectors)
+        classes = observables.spin_classes
+        allowed = tuple(sorted({leg for group in classes for leg in group}))
+        groups: dict[tuple[Any, ...], list[str]] = {}
+        sources: dict[tuple[Any, ...], tuple[dict[int, Any], ...]] = {}
+        for label, request in requests.items():
+            if not isinstance(request, CorrelatedRequest):
+                raise TypeError("correlated requests require CorrelatedRequest records")
+            if request.color_correlation not in known:
+                raise CompatibilityError(
+                    "undeclared virtual colour correlation "
+                    f"{request.color_correlation!r}"
+                )
+            vectors = _copy_spin_vectors(
+                inherited if request.spin_vectors is None else request.spin_vectors,
+                classes,
+                point_count=len(points),
+            )
+            prepared = _prepare_spin_vectors(
+                vectors, allowed_legs=allowed, point_count=len(points)
+            )
+            key = tuple(
+                tuple(sorted((leg, wave) for leg, wave in point.items()))
+                for point in prepared
+            )
+            groups.setdefault(key, []).append(label)
+            sources[key] = prepared
+        out: dict[str, VirtualEvaluation] = {}
+        for key, labels in groups.items():
+            histories = tuple(
+                dict.fromkeys(requests[label].color_correlation for label in labels)
+            )
+            spins = [spin or None for spin in sources[key]]
+            if self._executor == "native":
+                per_point = self._native_columns(("correlated", histories)).evaluate(
+                    points,
+                    scales,
+                    spin=spins,
+                    parameters=self._parameters,
+                    precision=carrier,
+                )
+            else:
+                runner = self._runner()
+                per_point = [
+                    runner.evaluate(
+                        point,
+                        scale,
+                        correlations=histories,
+                        spin=spin,
+                        parameters=self._parameters,
+                        precision=carrier,
+                    )
+                    for point, scale, spin in zip(points, scales, spins, strict=True)
+                ]
+            for label in labels:
+                history = requests[label].color_correlation
+                out[label] = self._evaluation(
+                    [results[history] for results in per_point],
+                    arithmetic,
+                    carrier,
+                    _correlated,
+                )
+        return {label: out[label] for label in requests}
+
+    def evaluate_resolved(
+        self,
+        momenta: Momenta,
+        *,
+        mu_r2: ScalarInput | Sequence[ScalarInput] | None = None,
+        precision: int | None = None,
+        arithmetic: str | None = None,
+    ) -> ResolvedVirtualEvaluation:
+        """Per Born helicity row and Born basis element (design §8.5)."""
+
+        from pyamplicol.loops.strategy import R2Selection
+
+        observables = self._observables
+        arithmetic, carrier = self._precision(arithmetic, precision)
+        points, scales = _inputs(momenta, mu_r2, self.external_count)
+        rows = observables.rows
+        if self._member is not None:
+            # The member's rows in its own catalogue order.
+            rows = tuple(sorted(self._member.row(row) for row in rows))
+        components = observables.components
+        if self._executor == "native":
+            entries = self._native_columns(("resolved", ())).evaluate(
+                points,
+                scales,
+                parameters=self._parameters,
+                precision=carrier,
+            )
+        else:
+            runner = self._runner()
+            entries = [
+                runner.evaluate_resolved(
+                    point, scale, parameters=self._parameters, precision=carrier
+                ).entries
+                for point, scale in zip(points, scales, strict=True)
+            ]
+        born_orders = self._default_born_orders()
+
+        def born_value(entry: Any, order: Any) -> VirtualScalar:
+            value = entry.born.get(order, 0) if entry is not None else 0
+            return self._scalar(value, arithmetic, False)
+
+        born_values: list[Any] = []
+        values: list[Any] = []
+        for result in entries:
+            born_values.append(
+                tuple(
+                    tuple(
+                        tuple(
+                            born_value(result.get((row, b)), order) for b in components
+                        )
+                        for row in rows
+                    )
+                    for order in born_orders
+                )
+            )
+            values.append(
+                tuple(
+                    tuple(
+                        tuple(
+                            self._laurent(
+                                result[(row, b)].components["virtual"][sector.order],
+                                arithmetic,
+                                False,
+                            )
+                            for b in components
+                        )
+                        for row in rows
+                    )
+                    for sector in self._sectors
+                )
+            )
+        ids = tuple(f"basis-{b}" for b in components)
+        return ResolvedVirtualEvaluation(
+            born_values=tuple(born_values),
+            values=tuple(values),
+            born_orders=born_orders,
+            sectors=self._sectors,
+            diagnostics=tuple(self._diagnostic(arithmetic, carrier) for _ in entries),
+            r2=R2Selection(R2Strategy.MODEL, R2Strategy.MODEL, "model-supplied R2"),
+            helicity_ids=tuple(f"h{i}" for i in range(len(rows))),
+            born_color_ids=ids,
+            virtual_color_ids=ids,
+            color_accuracy=observables.slice.request.accuracy,
+        )
