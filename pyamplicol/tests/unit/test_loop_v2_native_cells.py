@@ -186,6 +186,53 @@ def test_contractions_and_faces_equal_python():
                     ) == colour.face_count(left.tensor, right.tensor)
 
 
+@pytest.mark.loop_fast
+def test_primitive_cells_against_quark_bras_equal_python():
+    """Primitives against bras the relabelling cache cannot key (a quark
+    leg): the direct path of ``_PrimitiveCells._cell``, equal values, and
+    the same refusal where a bra's string holds the ring's labels."""
+
+    legs = (ColorLeg(1, 3), ColorLeg(2, -3), ColorLeg(3, 8), ColorLeg(4, 8))
+
+    def basis(*structures):
+        tensors = tuple(
+            ConnectedColorTensor(
+                legs,
+                (TensorTerm(ExactColorCoefficient(1), ColorTensor(strings, traces)),),
+            )
+            for strings, traces in structures
+        )
+        return colour.BornBasis(
+            legs, tuple(range(len(tensors))), tensors, (frozenset(),) * len(tensors)
+        )
+
+    ring = colour.Primitive("adjoint-ring", (3, 4))
+    split = basis(((OpenColorString(1, (), 2),), ((3, 4),)))
+    assert native_cells.seed_cells(split, [ring]) == colour.seed_cells(split, [ring])
+    assert native_cells.NativeCells(split)(ring) == colour._PrimitiveCells(split)(ring)
+    joined = basis(((OpenColorString(1, (3, 4), 2),), ()))
+    for engine in (native_cells.seed_cells, colour.seed_cells):
+        with pytest.raises(ValueError, match="not contracted exactly twice"):
+            engine(joined, [ring])
+
+
+@pytest.mark.loop_fast
+def test_stored_dipole_orbits_are_validated(slices):
+    slice_, _kept = slices("gg_gg")
+    stored = json.loads(native_cells.dipole_orbits(slice_).to_json())
+    reloaded = type(native_cells.dipole_orbits(slice_)).from_json
+    duplicated = dict(stored, representatives=stored["representatives"] * 2)
+    with pytest.raises(ValueError, match="overlapping"):
+        reloaded(json.dumps(duplicated)).expand()
+    missing = dict(stored, representatives=stored["representatives"][1:])
+    with pytest.raises(ValueError, match="do not cover"):
+        reloaded(json.dumps(missing)).check_conservation()
+    generator = dict(stored["generators"][0], legs=[0] * len(stored["coloured"]))
+    broken = dict(stored, generators=[generator])
+    with pytest.raises(ValueError, match="not a permutation"):
+        reloaded(json.dumps(broken))
+
+
 def _seed_cells_equal(slice_) -> None:
     table = slice_.table
     basis = table.basis
