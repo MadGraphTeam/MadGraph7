@@ -533,7 +533,10 @@ def _composed(entering: str, leaving: str, insertion: Any) -> str:
     second = _with_index(
         _momenta_as_placeholder(E(entering)), 1, inner[0], _DUMMY_OFFSET[1]
     )
-    return _momenta_restored(first * insertion * second).to_canonical_string()
+    # Expanded, one spinor chain or tensor per term: Spenso's network
+    # execution of a product of sums of chains with chiral projectors does
+    # not finish (``custom_propagator_components``).
+    return _momenta_restored((first * insertion * second).expand()).to_canonical_string()
 
 
 def _engine_denominator(propagator: Mapping[str, Any], particle: Mapping[str, Any]) -> str:
