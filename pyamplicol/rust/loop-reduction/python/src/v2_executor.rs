@@ -550,7 +550,8 @@ impl V2Executor {
 /// Admit one plan v4 process of an artifact through the native loader
 /// (`rusticol_core::loop_artifact::open_loop_v2_artifact`) and describe it as
 /// JSON: identity, plan digest, families, reduction buckets, program shape,
-/// the declared metadata and the generation request.
+/// the declared metadata, the generation request and the companion plan of
+/// certified-scaleless families (digest and families, or null).
 #[pyfunction]
 #[pyo3(signature = (path, process=None))]
 fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyResult<String> {
@@ -578,6 +579,8 @@ fn admit_v2_artifact(py: Python<'_>, path: &str, process: Option<&str>) -> PyRes
         "columns": program.columns,
         "metadata": loaded.metadata,
         "request": loaded.request,
+        "scaleless_plan_sha256": loaded.scaleless_plan_sha256,
+        "scaleless_families": loaded.scaleless_program.as_ref().map(|p| p.families.len()),
     }))
     .map_err(error)
 }
