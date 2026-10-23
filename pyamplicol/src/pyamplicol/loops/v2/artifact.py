@@ -1004,12 +1004,7 @@ class V2VirtualRuntime:
             stability_checks=stability_checks,
             on_failure=on_failure,
         )
-        if selection not in self._poles:
-            raise CompatibilityError(
-                f"this artifact serves the pole selections "
-                f"{[item.value for item in self._poles]}: it was written before "
-                "the UV/IR pole split; regenerate it to select 'uv' or 'ir'"
-            )
+        self._served(selection)
         # v2_options refused direct R2.
         r2 = self._default_r2 if r2_strategy is None else R2Strategy(r2_strategy)
         carrier, setting = self._carrier(arithmetic, precision)
@@ -1187,12 +1182,28 @@ class V2VirtualRuntime:
 
     # -- observables (``runtime.virtual.V2ObservablesRuntime``) -----------------
 
+    def _served(self, selection: PoleSelection) -> None:
+        """Refuse a pole selection the artifact does not declare (``"uv"`` and
+        ``"ir"`` of an artifact written before the UV/IR split)."""
+
+        if selection not in self._poles:
+            raise CompatibilityError(
+                f"this artifact serves the pole selections "
+                f"{[item.value for item in self._poles]}: it was written before "
+                "the UV/IR pole split; regenerate it to select 'uv' or 'ir'"
+            )
+
     def _observable_options(
         self, precision: int | None, arithmetic: str | None, options: dict[str, Any]
     ) -> dict[str, Any]:
         """The arithmetic of one observable call (``_carrier``'s rule) and the
-        options ``V2ObservablesRuntime`` validates itself."""
+        options ``V2ObservablesRuntime`` validates itself (the pole selection
+        must be one the artifact serves)."""
 
+        from pyamplicol.api.virtual_results import pole_selection
+
+        if options.get("poles") is not None:
+            self._served(pole_selection(options["poles"]))
         carrier, setting = self._carrier(arithmetic, precision)
         digits = None if carrier != "arbitrary" else setting.digits
         return {

@@ -274,6 +274,7 @@ def test_finite_only_results_have_absent_poles_and_estimates_are_typed():
     from pyamplicol.api.virtual_results import (
         VirtualEvaluation,
         VirtualLaneDiagnostic,
+        VirtualPoleParts,
     )
     from pyamplicol.config import R2Strategy
     from pyamplicol.loops.orders import BornLoopPair, VirtualOrderSector
@@ -314,9 +315,8 @@ def test_finite_only_results_have_absent_poles_and_estimates_are_typed():
             r2,
             poles=PoleSelection.NONE,
         )
-    # The selection is a PoleSelection (poles-uvir adds "uv" and "ir"), never
-    # a boolean.
-    for bad, error in ((False, TypeError), ("uv", ValueError)):
+    # The selection is a PoleSelection, never a boolean.
+    for bad, error in ((False, TypeError), ("both", ValueError)):
         with pytest.raises(error, match=r"pole selection|PoleSelection"):
             VirtualEvaluation(
                 ((1.0,),),
@@ -327,6 +327,51 @@ def test_finite_only_results_have_absent_poles_and_estimates_are_typed():
                 r2,
                 poles=bad,
             )
+    # Pole parts exist exactly under "uv" and "ir", with every component.
+    parts = VirtualPoleParts(
+        *({name: ((-2.0, 0.5, 0.0),) for name in POLE_COMPONENTS} for _ in "ui")
+    )
+    split = VirtualEvaluation(
+        ((1.0,),),
+        (((-2.0, 0.5, 0.0),),),
+        ((("QCD", 4),),),
+        (sector,),
+        (lane,),
+        r2,
+        poles="uv",
+        pole_parts=(parts,),
+    )
+    assert split.poles is PoleSelection.UV
+    assert split.pole_part("ir", "bare") == ((LaurentCoefficients(-2.0, 0.5, 0.0),),)
+    assert split.for_order((("QCD", 6),)).pole_parts == split.pole_parts
+    with pytest.raises(ValueError, match="pole component"):
+        split.pole_part("uv", "counterterms")
+    for selection, given, message in (
+        ("ir", None, "carries its pole parts"),
+        ("all", (parts,), "exist exactly under"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            VirtualEvaluation(
+                ((1.0,),),
+                (((-2.0, 1.0, 3.0),),),
+                ((("QCD", 4),),),
+                (sector,),
+                (lane,),
+                r2,
+                poles=selection,
+                pole_parts=given,
+            )
+    with pytest.raises(ValueError, match="pole parts name the components"):
+        VirtualEvaluation(
+            ((1.0,),),
+            (((-2.0, 0.5, 0.0),),),
+            ((("QCD", 4),),),
+            (sector,),
+            (lane,),
+            r2,
+            poles="uv",
+            pole_parts=(VirtualPoleParts({"virtual": ((0.0, 0.0, 0.0),)}, {}),),
+        )
     with pytest.raises(ValueError, match="pole estimates"):
         VirtualEvaluation(
             ((1.0,),),
@@ -373,10 +418,13 @@ def test_configuration_selects_the_engine_and_the_runtime_options(tmp_path):
     assert default.loop.engine is LoopEngine.LEGACY
     assert default.evaluation.poles is PoleSelection.ALL
     assert default.evaluation.stability_checks.to_checks() is None
-    for value in ("false", '"uv"'):
+    for value in ("false", '"both"'):
         card.write_text(f'action = "generate"\n[evaluation]\npoles = {value}\n')
         with pytest.raises(ConfigurationError, match=r"evaluation\.poles"):
             resolve_config(card)
+    for value in ("uv", "ir"):
+        card.write_text(f'action = "generate"\n[evaluation]\npoles = "{value}"\n')
+        assert resolve_config(card).effective.evaluation.poles is PoleSelection(value)
     card.write_text(
         'action = "generate"\n[evaluation.stability_checks]\n'
         'rotations = ["z:3/5:4/5"]\nrotation_count = 2\n'
@@ -1128,8 +1176,9 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
         b = reference.evaluate([POINT], mu_r2="1000000", poles=selection)
         assert a.values == b.values
     for selection in ("uv", "ir"):
-        with pytest.raises(CompatibilityError, match="before the UV/IR pole split"):
-            runtime.evaluate([POINT], mu_r2="1000000", poles=selection)
+        for call in (runtime.evaluate, runtime.evaluate_resolved):
+            with pytest.raises(CompatibilityError, match="before the UV/IR pole split"):
+                call([POINT], mu_r2="1000000", poles=selection)
 
 
 @pytest.mark.loop_physics
