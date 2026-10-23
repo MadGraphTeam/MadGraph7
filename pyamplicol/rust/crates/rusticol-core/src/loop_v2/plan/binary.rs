@@ -233,9 +233,13 @@ fn num<S: Stream, T>(stream: &mut S, col: Col, value: &mut T) -> RusticolResult<
 where
     T: Copy + TryInto<i64> + TryFrom<i64>,
 {
-    let mut wide: i64 = (*value)
-        .try_into()
-        .map_err(|_| invalid(format!("{col:?} out of the binary member's range")))?;
+    let mut wide: i64 = if S::READ {
+        0
+    } else {
+        (*value)
+            .try_into()
+            .map_err(|_| invalid(format!("{col:?} out of the binary member's range")))?
+    };
     stream.int(col, &mut wide)?;
     *value =
         T::try_from(wide).map_err(|_| invalid(format!("binary plan: {col:?} out of range")))?;
@@ -294,7 +298,9 @@ where
         let known: &mut Vec<Vec<T>> = table(stream, refs);
         match usize::try_from(id) {
             Ok(k) if k < known.len() => {
-                items.clone_from(&known[k]);
+                // `clone`, not `clone_from`: `items` is a fresh record's
+                // empty list, so one exact allocation suffices.
+                *items = known[k].clone();
                 Ok(())
             }
             Ok(k) if k == known.len() => {
@@ -844,37 +850,43 @@ struct Cursor<'a> {
     previous: i64,
 }
 
+/// Why a column yields no value.
+enum Short {
+    Exhausted,
+    Overflow,
+}
+
 impl Cursor<'_> {
-    fn next(&mut self, col: usize) -> RusticolResult<i64> {
-        if self.position >= self.count {
-            return Err(invalid(format!(
-                "binary plan: column {} is exhausted",
-                COLUMN_NAMES[col]
-            )));
+    /// The next value: base plus the stored offset, plus the previous value
+    /// for a column of differences, in checked `i64` arithmetic (a value of
+    /// a valid member is an `i64`, and so is each stored difference).
+    #[inline]
+    fn next(&mut self) -> Result<i64, Short> {
+        let at = self.position;
+        if at >= self.count {
+            return Err(Short::Exhausted);
         }
-        let at = self.position * self.width;
+        self.position = at + 1;
+        let bytes = self.payload;
         let offset = match self.width {
             0 => 0,
-            1 => u64::from(self.payload[at]),
-            2 => u64::from(u16::from_le_bytes([self.payload[at], self.payload[at + 1]])),
-            4 => u64::from(u32::from_le_bytes(
-                self.payload[at..at + 4].try_into().expect("four bytes"),
-            )),
-            _ => u64::from_le_bytes(self.payload[at..at + 8].try_into().expect("eight bytes")),
+            1 => u64::from(bytes[at]),
+            2 => u64::from(u16::from_le_bytes([bytes[2 * at], bytes[2 * at + 1]])),
+            4 => {
+                let word: [u8; 4] = bytes[4 * at..4 * at + 4].try_into().expect("four bytes");
+                u64::from(u32::from_le_bytes(word))
+            }
+            _ => u64::from_le_bytes(bytes[8 * at..8 * at + 8].try_into().expect("eight bytes")),
         };
-        self.position += 1;
-        let stored = i128::from(self.base) + i128::from(offset);
+        let stored = self
+            .base
+            .checked_add_unsigned(offset)
+            .ok_or(Short::Overflow)?;
         let value = if self.delta {
-            i128::from(self.previous) + stored
+            self.previous.checked_add(stored).ok_or(Short::Overflow)?
         } else {
             stored
         };
-        let value = i64::try_from(value).map_err(|_| {
-            invalid(format!(
-                "binary plan: column {} overflows",
-                COLUMN_NAMES[col]
-            ))
-        })?;
         self.previous = value;
         Ok(value)
     }
@@ -985,8 +997,15 @@ impl<'a> Reader<'a> {
         Ok(reader)
     }
 
+    #[inline]
     fn next(&mut self, col: Col) -> RusticolResult<i64> {
-        self.cursors[col as usize].next(col as usize)
+        self.cursors[col as usize].next().map_err(|short| {
+            let name = COLUMN_NAMES[col as usize];
+            invalid(match short {
+                Short::Exhausted => format!("binary plan: column {name} is exhausted"),
+                Short::Overflow => format!("binary plan: column {name} overflows"),
+            })
+        })
     }
 
     /// Every column must be read to its end.
@@ -1017,7 +1036,8 @@ impl Stream for Reader<'_> {
             .ok()
             .and_then(|id| self.strings.get(id))
             .ok_or_else(|| invalid(format!("binary plan: {col:?} string id")))?;
-        value.clone_from(text);
+        // A fresh record's empty string: one exact allocation (`clone`).
+        *value = text.clone();
         Ok(())
     }
 
