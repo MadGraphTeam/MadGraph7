@@ -470,7 +470,10 @@ endif
 
 # Dependency on src directory
 # The common library name carries the full BACKEND suffix so each vectorisation/GPU variant is distinct.
-MADMATRIX_COMMONLIB = madmatrix_common_$(BACKEND)
+# LIBTAG (empty by default) goes into the name of every library of this output: the
+# dynamic loader identifies a library by its name, so two outputs loaded into one
+# process (MadSpin's production and decay matrix elements) need different ones.
+MADMATRIX_COMMONLIB = madmatrix_common$(LIBTAG)_$(BACKEND)
 LIBFLAGS = -L$(LIBDIR) -l$(MADMATRIX_COMMONLIB)
 INCFLAGS += -I$(SRC) -I$(SRC)/rambo
 
@@ -811,11 +814,18 @@ override RUNTIME =
 processid_short=$(shell basename $(CURDIR))
 ###$(info processid_short=$(processid_short))
 
-MADMATRIX_LIB = madmatrix_$(processid_short)_$(BACKEND)
+MADMATRIX_LIB = madmatrix$(LIBTAG)_$(processid_short)_$(BACKEND)
 objects_lib=$(BUILDDIR)/CPPProcess.o $(BUILDDIR)/color_sum.o $(BUILDDIR)/MatrixElementKernels.o $(BUILDDIR)/CrossSectionKernels.o $(BUILDDIR)/umami.o $(BUILDDIR)/SigmaKin.o
+# The spin-density matrices for MadSpin (backend/common/Density.h): C++ backends,
+# and only in the builds madmatrix/density.py asks for (DENSITY=1, the scalar
+# libraries MadSpin loads), not in every library of every output
+ifeq ($(DENSITY)$(GPUCC),1)
+  objects_lib += $(BUILDDIR)/Density.o
+endif
 
-# Backend-owned sources
+# Backend-owned sources (the backend variant first, then what all of them share)
 vpath %%.cc ../../backend/$(BACKENDDIR)
+vpath %%.cc ../../backend/common
 
 # Rambo/random-number sources
 vpath %%.cc ../../src/rambo
@@ -825,6 +835,11 @@ vpath %%.cc ../../src/rambo
 
 # First target (default goal): build the process library (which also builds the common library as a dependency)
 all.$(TAG): $(BUILDDIR)/.build.$(TAG) $(LIBDIR)/lib$(MADMATRIX_LIB).so
+
+# Target: the process library alone, whatever the default goal of the makefile
+# including this one (the standalone one adds check_sa.exe to it)
+.PHONY: lib
+lib: all.$(TAG)
 
 # Target (and build options): address sanitizer #207
 ###CXXLIBFLAGSASAN =

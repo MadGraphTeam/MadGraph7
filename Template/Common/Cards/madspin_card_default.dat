@@ -16,6 +16,10 @@
 # set seed 1
 # set Nevents_for_max_weight 75 # number of events for the estimate of the max. weight
 # set BW_cut 15                 # cut on how far the particle can be off-shell
+# set offshell_min_recoil 0.5   # madspin/full, opt-in (default 0 = off): smallest momentum
+#                               # fraction a massless recoil (a jet, a photon) may keep when
+#                               # the production is reshuffled onto the drawn virtualities.
+#                               # A cut on the off-shell tail: it biases the result.
 # set spinmode XXXXX      # Use one of the madspin special modes
 #         allowed spinmode:
 #         - PA : Pole approximation -- onshell matrix-element + reshuffling.

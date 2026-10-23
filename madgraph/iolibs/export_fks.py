@@ -3025,23 +3025,119 @@ Parameters              %(params)s\n\
         before reusing cached amplitudes (see set_ren_scale). If a coupling
         is not a plain Fortran name the check is switched off
         (born_checks_amps false) and the cached amplitudes are discarded
-        as before."""
+        as before.
+
+        When only the strong coupling changed (set_alphaS, e.g. the Born
+        of the MC counterterm at the coupling of the real emission), the
+        Born rescales its cached amplitudes instead of recomputing them
+        ('gscale', BORN_GSCALE): each amplitude by (G'/G)**n, n its QCD
+        order, so that every split order gets its own power. It does so
+        only if every coupling it uses changed by (G'/G)**n, n the QCD
+        order of its interaction, which SBORN checks at run time with
+        the coup_gscale_lines."""
+        out = ProcessExporterFortranFKS.get_born_gscale_data(born_me)
         names = []
         for c in born_me.get_used_couplings(output="set"):
             names.extend(c if isinstance(c, (list, tuple)) else [c])
         names = sorted(set(names), key=lambda c: str(c))
         if not names or not all(isinstance(c, str) and
                 re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', c) for c in names):
-            return {'ncoup_check': 1, 'coup_check_lines': '',
-                    'coup_record_lines': '', 'born_checks_amps': '.FALSE.'}
-        check = ['         if (saved_coup(%d).ne.%s) calculatedBorn=.false.'
+            out.update({'ncoup_check': 1, 'coup_check_lines': '',
+                        'coup_record_lines': '', 'coup_gscale_lines': '',
+                        'born_checks_amps': '.FALSE.',
+                        'born_gscale': '.FALSE.'})
+            return out
+        check = ['         if (saved_coup(%d).ne.%s) coup_changed=.true.'
                  % (i + 1, c) for i, c in enumerate(names)]
         record = ['         saved_coup(%d)=%s' % (i + 1, c)
                   for i, c in enumerate(names)]
-        return {'ncoup_check': len(names),
-                'coup_check_lines': '\n'.join(check),
-                'coup_record_lines': '\n'.join(record),
-                'born_checks_amps': '.TRUE.'}
+
+        # the QCD order of each coupling, from the interactions using it
+        coup_qcd = {}
+        gscale = True
+        for wa in born_me.get_all_wavefunctions() + \
+                  born_me.get_all_amplitudes():
+            if wa.get('interaction_id') in [0, -1]:
+                continue
+            nqcd = wa.get('orders').get('QCD', 0)
+            for c in wa.get('coupling'):
+                if not isinstance(c, str):
+                    gscale = False
+                    continue
+                c = c[1:] if c.startswith('-') else c
+                if coup_qcd.setdefault(c, nqcd) != nqcd:
+                    gscale = False
+        if any(c not in coup_qcd for c in names):
+            gscale = False
+        gscale_lines = ['            if (abs(%s-saved_coup(%d)*rpow(%d)).gt.'
+                        'gscale_tol*abs(%s)) gscaled=.false.'
+                        % (c, i + 1, coup_qcd.get(c, 0), c)
+                        for i, c in enumerate(names)]
+        out['maxqcdpow'] = max([out['maxqcdpow']] + list(coup_qcd.values()))
+        out.update({'ncoup_check': len(names),
+                    'coup_check_lines': '\n'.join(check),
+                    'coup_record_lines': '\n'.join(record),
+                    'coup_gscale_lines': '\n'.join(gscale_lines),
+                    'born_checks_amps': '.TRUE.',
+                    'born_gscale': '.TRUE.' if gscale and out['amp_qcd_ok']
+                                   else '.FALSE.'})
+        return out
+
+    @staticmethod
+    def get_born_gscale_data(born_me):
+        """The powers of the strong coupling with which BORN_GSCALE
+        rescales what the Born keeps from its last evaluation: AMPQCD for
+        each amplitude (its QCD order), AMPSOQCD for each amplitude split
+        order (the JAMPs and JAMP2) and SQSOQCD for each squared split
+        order (the result and the colour density RHO). With several split
+        orders these powers differ (e.g. QCD^2=4, QCD^2=2 QED^2=2 and
+        QED^2=4 for u u~ > t t~). The result, RHO and JAMP2 are rescaled
+        directly only if each split order has a single QCD power
+        (gscale_fast); otherwise only the amplitudes are, and SBORN redoes
+        the colour sums from them."""
+        ngraphs = born_me.get_number_of_amplitudes()
+        amp_qcd = {}
+        for diag in born_me.get('diagrams'):
+            nqcd = diag.calculate_orders().get('QCD', 0)
+            for amp in diag.get('amplitudes'):
+                amp_qcd[amp.get('number')] = nqcd
+        amp_qcd_ok = sorted(amp_qcd) == list(range(1, ngraphs + 1))
+
+        squared_orders, amp_orders = born_me.get_split_orders_mapping()
+        ampso_qcd = []
+        for orders, numbers in amp_orders:
+            powers = set(amp_qcd.get(n) for n in numbers)
+            ampso_qcd.append(powers.pop() if len(powers) == 1 else None)
+        sqso_qcd = [set() for _ in squared_orders]
+        for (orders1, _), q1 in zip(amp_orders, ampso_qcd):
+            for (orders2, _), q2 in zip(amp_orders, ampso_qcd):
+                k = squared_orders.index(
+                    tuple(o1 + o2 for o1, o2 in zip(orders1, orders2)))
+                sqso_qcd[k].add(None if None in (q1, q2) else q1 + q2)
+        fast = amp_qcd_ok and None not in ampso_qcd and \
+               all(len(s) == 1 and None not in s for s in sqso_qcd)
+        ampso_qcd = [q if q is not None else 0 for q in ampso_qcd]
+        sqso_qcd = [max(s) if fast else 0 for s in sqso_qcd]
+        amps = [amp_qcd.get(n, 0) for n in range(1, ngraphs + 1)]
+
+        def data_lines(name, values, n=64):
+            lines = []
+            for start in range(0, len(values), n):
+                chunk = values[start:start + n]
+                lines.append('      DATA (%s(I),I=%d,%d) /%s/' % (
+                    name, start + 1, start + len(chunk),
+                    ','.join('%d' % v for v in chunk)))
+            return lines
+
+        lines = data_lines('AMPQCD', amps) + \
+                data_lines('AMPSOQCD', ampso_qcd) + \
+                data_lines('SQSOQCD', sqso_qcd) + \
+                ['      DATA GSCALE_FAST /%s/' % ('.TRUE.' if fast
+                                                 else '.FALSE.')]
+        return {'gscale_data_lines': '\n'.join(lines),
+                'maxqcdpow': max([1, max(sqso_qcd or [0])] +
+                                 [2 * q for q in amps + ampso_qcd]),
+                'amp_qcd_ok': amp_qcd_ok}
 
     @staticmethod
     def get_color_link_data_lines(matrices, ncolor, n=64):
