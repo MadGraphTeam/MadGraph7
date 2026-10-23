@@ -2705,12 +2705,13 @@ class _NativePoint(_PointEvaluation):
     """A point whose block rows and Born components the native executor
     forms (``plan_export.NativeExecutor(inputs="native")``, WP3.1).
 
-    Only parameter-dependent values are prepared here (kernel constants); the
-    result holds the Born (when the executor forms |A0|^2) and the ``bare``
-    component per sector, and, when the executor forms the counterterm and
-    external-field components (``native_counterterms``), every component as
-    ``_PointEvaluation`` assembles it, without Catani's pole prediction
-    (WP3.1 I5c).
+    Nothing numeric is prepared here: the executor binds every
+    parameter-dependent value natively. The result holds the Born (when the
+    executor forms |A0|^2) and the ``bare`` component per sector, and, when
+    the executor forms the counterterm and external-field components
+    (``native_counterterms``), every component as ``_PointEvaluation``
+    assembles it, without Catani's pole prediction (WP3.1 I5c). ``slice_``
+    may be a native process's structural view (``native_process``).
     """
 
     def __init__(self, slice_, point, scale, parameters, numbers):
@@ -2729,14 +2730,15 @@ class _NativePoint(_PointEvaluation):
         ]
         self.scale = scale
         self.parameters = parameters
-        self.constants = rx.KernelConstants(
-            _kernel_parameters(slice_.compiled, parameters), numbers.carrier
-        )
         self.born: dict[Orders, Any] = {}
         self.counterterms: dict = {}
         self.native_counterterms = False
         self.colour_contraction = "direct"
         self.retest_families = None
+
+    def _massless_coloured_legs(self) -> bool:
+        # Catani's prediction is not formed natively (WP3.1 I5c).
+        return False
 
     def _ir_poles(self) -> None:
         return None
@@ -2794,18 +2796,23 @@ class _NativePoint(_PointEvaluation):
             self.retest_budget = self._lane_budget(self.family_deviations)
 
     def rotation_budget(self, rotated: _PointEvaluation) -> dict[Orders, Budget]:
+        if self.native_counterterms:
+            # Every component: the local ones are rotation invariant too.
+            return super().rotation_budget(rotated)
         zero = Laurent(*[self.numbers.zero] * (3 if self.poles else 1))
-        lanes = {
-            lane: tuple(
-                a - b
-                for a, b in zip(
-                    rotated.families.get(lane, zero).coefficients,
-                    self.families.get(lane, zero).coefficients,
-                    strict=True,
+        with self.numbers.scope():
+            lanes = {
+                lane: tuple(
+                    a - b
+                    for a, b in zip(
+                        rotated.families.get(lane, zero).coefficients,
+                        self.families.get(lane, zero).coefficients,
+                        strict=True,
+                    )
                 )
-            )
-            for lane in self.families.keys() | rotated.families.keys()
-        }
+                # Insertion order (the budget's summation order), not a set.
+                for lane in dict.fromkeys([*self.families, *rotated.families])
+            }
         return self._lane_budget(lanes)
 
 

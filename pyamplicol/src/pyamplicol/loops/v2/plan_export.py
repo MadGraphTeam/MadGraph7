@@ -1285,7 +1285,8 @@ class NativeExecutor:
 
     def native_inputs(self, points, scales, parameters=None, precision=None):
         """The executor's native tree inputs of a batch (``inputs="native"``):
-        per point ``(block_rows, born, amplitudes, born_squared)``."""
+        per point ``(block_rows, born, amplitudes, born_squared, counterterms)``
+        (the counterterm and field outputs with poles, or None)."""
 
         from .assemble import Precision
 
