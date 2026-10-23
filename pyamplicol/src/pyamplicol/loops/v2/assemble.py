@@ -1105,6 +1105,21 @@ class SliceRequest:
                 bounds[name] = max(bounds.get(name, 0), power)
         return bounds
 
+    @property
+    def excluded_particle_ids(self) -> tuple[int, ...]:
+        """``ignored_particle_ids`` in both orientations, as the tree compiler
+        reads them (it drops the currents of the signed ids it is given)."""
+
+        return tuple(
+            sorted(
+                {
+                    sign * int(pdg)
+                    for pdg in self.ignored_particle_ids
+                    for sign in (1, -1)
+                }
+            )
+        )
+
 
 class RequestModel(NamedTuple):
     """The model preparation of one request (``prepare_request_model``)."""
@@ -1170,21 +1185,6 @@ def prepare_request_model(compiled: Any, request: SliceRequest) -> RequestModel:
     return RequestModel(
         prepared, continuation, fixed, scale_parameter, alpha_s_parameter
     )
-
-    @property
-    def excluded_particle_ids(self) -> tuple[int, ...]:
-        """``ignored_particle_ids`` in both orientations, as the tree compiler
-        reads them (it drops the currents of the signed ids it is given)."""
-
-        return tuple(
-            sorted(
-                {
-                    sign * int(pdg)
-                    for pdg in self.ignored_particle_ids
-                    for sign in (1, -1)
-                }
-            )
-        )
 
 
 @dataclass
