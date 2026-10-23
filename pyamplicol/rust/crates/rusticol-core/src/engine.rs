@@ -262,6 +262,7 @@ pub enum RuntimeCapability {
     OnTheFlyContractedColorV1,
     OnTheFlyLcColorV1,
     LoopRuntimeV3,
+    LoopRuntimeV4,
     SymjitApplicationComplexF64V1,
     SymbolicaLegacyJitContainerComplexF64V1,
     SymbolicaCompiledCppComplexF64V1,
@@ -300,6 +301,7 @@ impl RuntimeCapability {
             Self::OnTheFlyContractedColorV1 => ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY,
             Self::OnTheFlyLcColorV1 => ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
             Self::LoopRuntimeV3 => "rusticol.loop-runtime.v3",
+            Self::LoopRuntimeV4 => crate::loop_artifact::LOOP_V2_RUNTIME_CAPABILITY,
             Self::SymjitApplicationComplexF64V1 => SYMJIT_APPLICATION_RUNTIME_CAPABILITY,
             Self::SymbolicaLegacyJitContainerComplexF64V1 => {
                 SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY
