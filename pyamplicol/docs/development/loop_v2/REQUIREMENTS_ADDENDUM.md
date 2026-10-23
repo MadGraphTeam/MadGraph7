@@ -126,3 +126,26 @@ relocation with the same native build. A dedicated acceptance test covers this.
   is reported only, without a gate. It must come with sanity checks:
   rotational invariance, and Ward identities probed by replacing one external
   gluon's polarisation vector by its momentum.
+
+## I. UV and IR pole selection (user, 2026-10-23)
+
+- The user's words: "you can now pin/rebase the latest main of ninjars and
+  oneloopmasters as those extend now to the possibility of specifying to compute
+  just the IR or UV poles of the reduction, which is an option that should be
+  broadcasted to the user-provided settings in pyAmpliCol for the one-loop matrix
+  elements so that the user can also choose to compute / access only the IR or UV
+  poles (not just no poles) if they so desire".
+- Requirement (extends B): the one-loop matrix elements take a runtime pole
+  option `poles = "all" | "none" | "uv" | "ir"` for the same generated artifact.
+  `"all"` stays the default and its results are unchanged; `"none"` is the
+  finite-only mode of B with all its savings; `"uv"` and `"ir"` return only the
+  ultraviolet or only the infrared pole parts. The finite part is identical in
+  all four modes. The option reaches TOML, CLI, the Python API and the result
+  accessors (and the SDKs where they evaluate loop virtuals).
+- Semantics of the renormalised virtual (design §12.4, for the coordinator's
+  confirmation): every component's poles are split by origin (bare loop by its
+  integrals, counterterms ultraviolet, external-field factors by the UV
+  finiteness of the renormalised virtual), so `"uv"` leaves the renormalised
+  virtual pole free and lists the bare-loop and counterterm UV poles separately,
+  and `"ir"` gives Catani's poles of the renormalised virtual with the bare
+  loop's IR part; both parts are accessible together.

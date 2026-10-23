@@ -26,7 +26,7 @@ This is the implementation design of the shared-recursion one-loop engine ("v2")
 **Paths.**
 
 - Python: `src/pyamplicol/…`; Rust: `rust/…`; both relative to `pyamplicol/`.
-- `ninjars:` is the checkout `workspace/cache/cargo/git/checkouts/ninjars-3842d69907c1a3a3/0d0d7e7/crates/ninjars/src/`, where the [V] line references were verified. The pinned revision is now aa6a6307 (`…/aa6a630/`, a fast-forward); line numbers there may differ.
+- `ninjars:` is the checkout `workspace/cache/cargo/git/checkouts/ninjars-3842d69907c1a3a3/0d0d7e7/crates/ninjars/src/`, where the [V] line references were verified. The pinned revision is now 41a4c00 (`…/41a4c00/`, a fast-forward of aa6a6307 adding the UV/IR pole selection, §12.4); line numbers there may differ.
 - `revision/` is `workspace/tmp/engine-v2/revision/`.
 - "This host" is the AMD EPYC 9754 used for all local measurements, one pinned idle core.
 
@@ -845,7 +845,7 @@ python tools/loop_v2_costmodel.py bench-baseline.json bench-x86-64-v3.json bench
 - per chunk of lanes: one exact invariant table (leg-subset momenta and squares, cast once per distinct point), seeds `U0 = Σ K conj(A0)`, then the (N, R) buckets streamed in chunks of families: the chunk's fused factors, split vertex tensors and split currents (freed after the last chunk that reads them), families on rayon threads (schedule B; F as the oracle), closures scattered into lane-major NinjaRS lanes with exact invariants, and the bucket reduced by the `V2Backend` (`runtime/v2_execution.rs` over the WP1.6 `V2Reducer`: true-rank buckets, per-chunk master cache, optional re-test frame);
 - each step in the kernel form of G0's rule (item 4 above; `FormPolicy::Fused` and `Split` are oracles), restricted to fused-structured and split-structured: fused-blocked would win on 1,470 of 18,712 gg→gggg steps and save about 1–2 % on them, so it is not selectable (`plan.rs`, `FormModel`);
 - failed lanes (reducer status, `MasterFailure::ImpreciseResult` included, or non-finite numerators) fail their point, which is compacted out of later reductions, never branched on in a kernel;
-- finite-only: the reducer returns the finite column only and the assembly skips pole counterterm scalars and the Catani check; nothing else is pole-only on this NinjaRS pin (`v2_reduce.rs` module notes).
+- finite-only: the reducer returns the finite column only and the assembly skips pole counterterm scalars and the Catani check; nothing else is pole-only on this NinjaRS pin (`v2_reduce.rs` module notes). The `uv` and `ir` pole selections add a fourth column per lane, the lane's UV residue (§12.4).
 
 The evaluation path is `V2Executor::evaluate` with the reduction trait `V2Backend`; the inherited `LoopBackend`/`evaluate_inner` path stays for the legacy engine until its deletion (§13.3). The Python bridge is `plan_export.NativeExecutor` over the binding `V2Executor` (`rust/loop-reduction/python/src/v2_executor.rs`).
 
@@ -1256,7 +1256,7 @@ Hence C_α = 2 Re C_α^{half} [I, derived; the absorptive parts sit in the integ
    - **Rescaling variant** (measured in WP2.3). Replace c_α by x^{d_f − |α|}c_α, scale all invariants, masses and μ by a non-dyadic x so that rounding differs, and compare after undoing x^{4−2N+d_f}. Here d_f is the family numerator's mass dimension. This is NJet's scaling test applied per family [L 1209.0100 §Accuracy]. It recomputes the masters and so also tests them.
    - **Cost.** +0.75 R (relabelling, cached masters) or +1.0 R (rescaling), included in Table 1a: +12–25 % per point at 7 legs.
 3. **IR-pole check** per point and sector, kept as an additional signal.
-   - The 1/ε² and 1/ε coefficients of the renormalised result are compared with Catani's operator, built from the Born and the colour-correlated Borns (tree correlators) plus UV CT poles. Massive emitters use the massive dipole form; electroweak sectors use the QED analogue.
+   - The 1/ε² and 1/ε coefficients of the renormalised result are compared with Catani's operator, built from the Born and the colour-correlated Borns (tree correlators) plus UV CT poles. Massive emitters use the massive dipole form (implemented, `poles.catani_poles`, §12.4); electroweak sectors use the QED analogue (open, WP3.2).
    - It is free and catches missing counterterms.
    - It is not sufficient: pole residues involve only divergent integrals, so finite boxes, the R1 rational part and Gram-determinant failures in N ≤ 5 families pass it [I].
 4. **Optionally,** the generic engine's κ cancellation test (guidance (a)).
@@ -1335,7 +1335,7 @@ Re-reduce flagged families in DoubleFloat from their binary64 coefficients (the 
 - **Buckets.** One `FastAmplitude::new(N, R, FastOptions::default())` per bucket; rank ≤ N + 2 is enforced (`ninjars:fast/engine.rs:620-632` [V]).
   - Lanes are (family, point, sector, column), and every lane carries its own shifts, masses and S-matrix (`FastInput`, `ninjars:fast/mod.rs:60-79` [V]).
   - So unrelated families share calls: 5–11 physical calls per batch instead of one per family (§11.4). The re-test reuses the same buckets.
-- **Per-lane rank.** Pinned NinjaRS aa6a6307 reduces a lane declared at rank n+2 at its own rank (`FastNumerator::lane_rank`), bitwise as declaring that rank, so buckets may merge by N. `runtime/v2_reduce.rs` still buckets by (N, true rank), with the same results; merging by N is open.
+- **Per-lane rank.** Pinned NinjaRS 41a4c00 (since aa6a6307) reduces a lane declared at rank n+2 at its own rank (`FastNumerator::lane_rank`), bitwise as declaring that rank, so buckets may merge by N. `runtime/v2_reduce.rs` still buckets by (N, true rank), with the same results; merging by N is open.
 - **Master cache.** A pyAmpliCol-side `CachingMasters` wrapper implements `FastMasters` (`ninjars:fast/masters.rs:56-64` [V]) and is cleared per batch.
   - Keys are the exact bit patterns of the request arguments. This works because all S-matrices come from one invariant table per event.
   - **Canonicalisation only where the outputs are invariant:** C0 under the triangle's symmetry group acting consistently on its external invariants and masses, and D0 under the dihedral relabelling of the box acting consistently on (p_i², s12, s23, m_i²). A0 needs none.
@@ -1485,6 +1485,54 @@ These may be pushed to NinjaRS main under the 20 October authorisation (`MASTER_
 - The report quotes providers in both production and protocol modes, labelled.
 - The report is updated at every gate.
 
+### 12.4 Pole selection: `poles = "all" | "none" | "uv" | "ir"` (user request 2026-10-23)
+
+The user asked that the UV/IR pole selection of NinjaRS 41a4c00 and oneloopmaster 5b710437 reach the user settings of the one-loop matrix elements, so that a user can compute or access only the IR or only the UV poles, not just no poles. The mode is a runtime option of an evaluation; one generated artifact serves all four modes, as it does finite-only (REQUIREMENTS_ADDENDUM B, I). Code: `loops/v2/poles.py`, `runtime/v2_poles.rs`, `runtime/v2_reduce.rs` (`Poles::Split`).
+
+**Regulators.** Every pole of the Born-virtual interference is split by origin with two regulators: P/ε = P_UV/ε_UV + P_IR/ε_IR, and D/ε² = D/ε_IR². At one loop the double pole is always infrared.
+
+| Mode | Poles returned | Notes |
+|---|---|---|
+| `"all"` (default) | P_UV + P_IR and D (ε_UV = ε_IR) | The existing result, unchanged bit for bit (re-pin checked bitwise, §12.4 validation) |
+| `"none"` | none (absent, not zero) | Finite-only mode (`poles=False`) with all its savings: one Laurent column per lane, no pole CT slots, no Catani check |
+| `"uv"` | P_UV; the double pole is 0 | |
+| `"ir"` | P_IR and D | |
+
+**Invariant.** The finite part is identical, bit for bit, in all four modes and every carrier. The selection never touches a finite term: the reduction runs exactly as in `"all"` (its combined columns are those of `"all"` bit for bit), and the R2, counterterm and field finite parts are those of `"all"`.
+
+**Origin of each component** (§6.4; per squared-order sector and pole coefficient):
+
+| Component | UV part | IR part |
+|---|---|---|
+| bare | The UV residue of every reduction lane, summed like the lanes | combined − UV; the double pole |
+| r2 | its poles (zero for loop_sm: R2 is finite) | 0 |
+| uv_local (model UV vertex and internal two-point CTs: couplings, masses) | its poles | 0 |
+| uv_external_fields | Z_UV = −(bare_UV + uv_local + r2 poles) | model factor − Z_UV |
+| uv, virtual | uv_local + fields; bare + uv + r2 = 0 (UV finite, to rounding) | = the combined poles of `"all"` |
+
+- **Bare loop.** The UV residue of a lane, the 1/ε_UV coefficient of μ^{2ε}/(iπ^{d/2} r_Γ) ∫ N(q)/Π_i((q+V_i)² − m_i²), depends only on the integrand's large-q behaviour. `runtime/v2_poles.rs` expands 1/D_i = Σ_k (−1)^k (2q·V_i + c_i)^k/(q²)^{k+1} (c_i = V_i² − m_i²) to total degree −4 and integrates the angles exactly: ⟨q^β⟩ = Π_μ (β_μ − 1)!! g_μμ^{β_μ/2}/(2^k (k+1)!) for |β| = 2k. A degree-r block contributes only if r ≥ 2N − 4. It costs O(C(R+4,4)) per lane from the coefficients already in the lane, in any carrier, and in the re-test frame too. It equals the sum of the reduction coefficients times oneloopmaster's UV master residues: A0 and the tadpole tensors (UV only), B0 and the longitudinal bubble moments ((−1)^r/(r+1)), scaleless bubbles included (B0(0;0,0) = 1/ε_UV − 1/ε_IR); C0, D0 and dB0 have none. `tests/runtime_v2_reduce.rs` checks this lane by lane against NinjaRS's generic engine with `PoleSelection::UV` and `::IR`, at binary64 (10⁻¹⁰) and DoubleFloat (10⁻²⁶), massive and massless families, including a scaleless bubble whose combined integral vanishes.
+- **Local counterterms** (`r2`, `uv_local`): UV by origin. They renormalise couplings and masses: loop_sm has δg_s (MS-bar, top decoupled) and the on-shell δm and δy. These are IR finite; δm^OS has no IR pole, only its derivative does.
+- **External fields.** The model's external-field factors (UFO `particle.counterterm`, δZ/2 per leg) are on-shell field renormalisation constants written with one ε. A massless leg's δZ = Z_UV(1/ε_UV − 1/ε_IR) vanishes, and loop_sm omits it. A massive leg's δZ_Q = −(α_s C_F/4π)(1/ε_UV + 2/ε_IR + …) appears as 3/ε. A UFO model does not state the origin. The renormalised virtual is UV finite (bare_UV + uv_local + Σ_legs Z_i^UV·Born = 0), so the UV part of the field factors of a sector is fixed as above and the IR part is the rest. This does not hide a missing counterterm: an incomplete UV renormalisation makes the `"ir"` poles miss Catani's operator, exactly as `"all"` does. It is also not a mere definition: for loop_sm in Feynman gauge (§6.8) the field UV part equals the textbook constants of every external leg, Z_g^UV = (α_s/4π)(5/3 C_A − 4/3 T_F n_f) with the six loop flavours and Z_q^UV = −(α_s/4π) C_F for massless and massive quarks. `test_loop_v2_poles.py` checks this per sector against the Born, independently of the residue, on g g > g g, u u~ > g g g and g g > t t~. The bare loop's UV/IR split of massless legs depends on the gauge (Z_i^UV does); its sum does not.
+- **Consequences.** In `"uv"` the renormalised virtual has no pole (zero to rounding). Its components report the bare-loop UV poles, the UV_local poles and the field UV parts separately, so the cancellation is visible term by term. `ir_poles` is `None`; the relative stability estimate of a vanishing coefficient is not meaningful, while `absolute` is. In `"ir"` the virtual's poles are those of `"all"`, i.e. Catani's operator of the renormalised virtual. The components carry the IR parts: bare_IR, the field IR parts, and zero UV_local and R2 poles.
+- **Richer access.** In `"uv"` and `"ir"` both parts cost the same, so `PointResult.pole_origins[origin][component][sector]` returns both origins' Laurent values (with the combined finite part) besides the selected components.
+
+**Catani's operator** (`poles.catani_poles`; design §10.2 item 3, oracle O9) is the IR-pole prediction in `"all"` and `"ir"`. It now covers massive emitters (Catani, Dittmaier, Trócsányi 2001). Per ordered pair (j, k) of coloured legs it adds (1/C_j)[C_j (μ²/s_jk)^ε V^(S)_jk + Γ_j]⟨T_j·T_k⟩, with:
+
+- V^(S) = 1/ε² for two massless legs; 1/(2ε²) + ln(m²/s_jk)/(2ε) for one massive leg of mass m; ln ρ_jk/(v_jk ε) for two massive legs, where v_jk = (1 − m_j²m_k²/(p_j·p_k)²)^{1/2} and ρ = ((1−v)/(1+v))^{1/2};
+- Γ_j = γ_j/ε for a massless leg (γ_g with the n_f light flavours) and C_j/ε for a massive one.
+
+The massless arithmetic is unchanged. The massive form reproduces the provider poles of g g > t t~ (MadLoop, Recola, OpenLoops) and the virtual's poles of u u~ > t t~ and g g > t t~.
+
+**Counterterm slots** (S_slot of the CT recursion, §6.1). `"all"`, `"uv"` and `"ir"` evaluate every slot. `"none"` switches the pole slots off and, in the native CT program, skips the currents that feed only them (WP3.1 item 1). `"ir"` cannot drop the UV_local pole slots, because they fix the IR part of the field factors (`poles.slot_switches`). The site closure of the slice binds the counterterm couplings at every ε power except in `"none"`.
+
+**Masters and caches.** In every mode the fast engine's per-batch cache holds the combined masters of its never-switched provider. NinjaRS refuses a UV- or IR-selecting provider in the fast engine, and `MasterCache` and `ProfiledMasters` forward that capability (`requires_scaleless_bubbles`). The adapter itself refuses a master selection with the fast engine. The generic engine's selection (`ReduceOptions::masters`, binding `master_poles`) applies to its uncached `SymbolicaMasters` and is the oracle and cost reference below.
+
+**Carriers and estimates.** The residue is computed in the lane's carrier (binary64, DoubleFloat, MPFR), and in the reduction check's frame (rescaled frames scale it back like the integral). Stability estimates are formed on the selected coefficients: the reduction check compares the selected lane values of both frames, and rotations re-evaluate the mode.
+
+**Cost** (`tools/loop_v2_poles_cost.py`; binary64, schedule B, one thread, 16 lanes, 16 RAMBO points, best of 3, random block rows and Born components, release cu1 thin-LTO build, shared host). COST_TABLE
+
+**Public settings** (TOML `[loop] poles`, CLI `--poles`, Python `evaluate(..., poles=...)` and the result accessors) belong to the artifact/API package (WP2.6) and are wired after its integration; until then the option is `LoopSlice.evaluate(poles=...)` and `NativeExecutor.evaluate(poles=...)` (`True`/`False` stay accepted). The SDKs evaluate the legacy plan v3 runtime; v4 SDK evaluation waits for WP3.1 and takes the same option then.
+
 ---
 
 ## 13. Reuse and deletion
@@ -1564,7 +1612,7 @@ Also deleted: the 18 `RETAINED_*` injection tests and the per-process timing fac
 | 7 | Many-observable cost (directed ×2·N_hist; resolved ×H) | High / medium | Seed-column sharing of trees; schedule 3 with transposed reduction (request 2) after a measured prototype; cost-model policy |
 | 8 | Electroweak prerequisites (Feynman gauge in the tree engine, complex-mass scheme, R6) | Certain / high for EW members | Wave 3 work package with its own gates; QCD members unaffected |
 | 9 | Python generation time at 7 legs (tree DAG) | Medium / low | Rust builder (WP3.1) |
-| 10 | Dependency coordination (re-pin, Symbolica pin for Float, upstreaming the generic tensor numerator) | Medium / medium | WP0.2 with the NinjaRS owner; re-pinned together to the announced mains (NinjaRS aa6a6307, oneloopmaster 8ec256fc, Symbolica 9cdc2949); later bumps only on owner announcements, again in one coordinated rebuild |
+| 10 | Dependency coordination (re-pin, Symbolica pin for Float, upstreaming the generic tensor numerator) | Medium / medium | WP0.2 with the NinjaRS owner; re-pinned together to the announced mains (NinjaRS aa6a6307, oneloopmaster 8ec256fc, Symbolica 9cdc2949); later bumps only on owner announcements, again in one coordinated rebuild: NinjaRS 41a4c00 and oneloopmaster 5b710437 (UV/IR pole selection, 2026-10-23; default results bitwise unchanged) |
 | 11 | Three executors (F, B, M) diverge | Low / low | F kept small; O4 in CI |
 | 12 | Asymptotics: B's Θ((n−1)!·4ⁿ) seed term grows at n ≥ 8 | Low (required set n ≤ 7) | M (WP2.8) is the planned path and the default for n ≥ 8 |
 | 13 | Complex-mass master defects (NinjaRS guidance [V]): one-/two-mass boxes with wide widths wrong, also in OneLOop (fixed in oneloopmaster 8ec256fc, pinned); still open: C0(0,0,0; m_complex,0,m_real) wrong on all routes, generic-engine small-\|p²\| unequal-mass bubbles fail, opposite-mass two-mass boxes near collinear limits ≈10⁻⁸, real negative m² not the −i0 limit | Medium / high for CMS processes | Re-pin done; the CMS controls pass on it in double, DoubleFloat and AP80, zero width included; per-defect regression points in WP2.3; affected master signatures refused or forced to the re-test plus rescue; no silent use |
@@ -1798,6 +1846,11 @@ Total ≈ 270 agent-days [I].
   - *Depends:* none (MadGraph references and the JAMP-zeroing tool exist).
   - *Accept:* the former strict xfails of `tests/integration/test_tree_coupling_orders.py` pass (done); for the open recurrence item, every listed refusal builds on the recurrence lane and matches the MadGraph exports of the test file in every squared order at FC and LC (the pure-EW exports assign all colour-flow amplitudes; the eager lane is the second method); for the recurrence's fail-closed check, every silently wrong process listed raises a generation error in the recurrence lane (the strict xfails turn into refusal tests); for the Dirac–Weyl closure, ν_τν̄_τ→W⁺W⁻(Z/γ) and, with a massless b, bb~→W⁺W⁻(Z/γ/g), tt~→bb~, e⁺e⁻→bb~W⁺W⁻, tW in all four orderings and t-channel single top in all four orderings (bu→td, bu→dt, ub→dt, ub→td) match MadGraph `sm` and `sm-no_b_mass` in both lanes, the refusals of `test_eager_lane_refuses_dirac_weyl_closures_with_a_massless_b` become MadGraph checks, and five W-paired lines with a massless b are labelling-invariant; for the larger contacts, a test model with a colour-singlet contact of five or more legs joining three quark lines, and one with a four-point `ufo-contact-tree`, matches a reference at NLC and full colour.
   - *Size:* M (6).
+- **WP2.10 UV/IR pole selection (new; user request 2026-10-23, `work/v2-poles-uvir`).**
+  - *Goal:* §12.4: the user selects `poles = "all" | "none" | "uv" | "ir"` for the one-loop matrix elements; re-pin NinjaRS 41a4c00 and oneloopmaster 5b710437.
+  - *Owns:* dependency pins, `runtime/v2_poles.rs`, the pole plumbing of `runtime/v2_reduce.rs` and the bindings, `loops/v2/poles.py` and the mode logic of `loops/v2/assemble.py`; the public settings after WP2.6.
+  - *Accept:* default mode bitwise unchanged after the re-pin; the four modes per §12.4 with the finite part invariant (binary64, DoubleFloat); UV + IR parts = combined poles; `"ir"` = Catani (massless and massive); bare UV + UV_local = −Σ_legs Z^UV·Born (Feynman gauge); cost measured; public settings after WP2.6.
+  - *Status:* §12.4 delivered on the slice API (`LoopSlice.evaluate`, `NativeExecutor.evaluate`); open: TOML/CLI/Python public settings and result accessors (after WP2.6), the CT recursion's slot switches (`poles.slot_switches`, after WP2.2), the v4 SDK (WP3.1).
 
 **Wave 3: required set**
 
