@@ -73,6 +73,7 @@ from __future__ import annotations
 
 import io
 import json
+import math
 import subprocess
 import sys
 from decimal import Decimal
@@ -625,6 +626,50 @@ def test_public_generation_publishes_plan_v4(full_colour):
         assert slice_.counterterm_program.closure.terms
     physics = runtime.physics
     assert [p.pdg_id for p in physics.external_particles] == [2, -2, 1, -1, 21]
+
+
+@pytest.mark.loop_physics
+def test_public_particle_veto_equals_njet_five_flavours(
+    loop_sm_compiled_model, loop_native, tmp_path
+):
+    """``[generation] particle_veto = ["t"]`` through the public path: stored
+    in the request record (|PDG| codes) and the generation filters (names),
+    and g g > g g is massless five-flavour QCD, equal to NJet's Nf=5 virtual
+    at two of its points (binary64, 1e-12)."""
+
+    from pyamplicol import Runtime
+    from pyamplicol.artifacts import load_manifest
+
+    entries = (("gg", "g g > g g"),)
+    card = _card(loop_sm_compiled_model, tmp_path / "artifact", entries).replace(
+        "emit_api_bundle = false", 'emit_api_bundle = false\nparticle_veto = ["t"]'
+    )
+    output = _generate(card, tmp_path, entries)
+    manifest = load_manifest(output, verify_payloads=True)
+    (record,) = manifest.extensions["generation"]["concrete_processes"]
+    assert record["filters"]["particle_veto"] == ["t"]
+    _forget_generation()
+    runtime = Runtime.load(output, process="gg", model_parameters={"aS": "0.118"})
+    assert runtime.inspect()["request"]["particle_veto"] == [6]
+    controls = json.loads(
+        (ROOT / "tests/fixtures/loop/required/njet_nf5_controls.json").read_text()
+    )["processes"]["gg_gg"]
+    points = controls["points"][:2]
+    scales = [str(int(mu) ** 2) for mu in controls["mu_r"][:2]]
+    result = runtime.evaluate(points, mu_r2=scales)
+    for index, row in enumerate(controls["rows"][:2]):
+        ((born,),) = (result.born_values[index],)
+        assert abs(float(born) - float(row["born"])) <= 1e-12 * abs(float(born))
+        ((laurent,),) = (result.values[index],)
+        floor = abs(float(born)) * 0.118 / (2 * math.pi)
+        for mine, key in zip(
+            laurent, ("finite", "single_pole", "double_pole"), strict=True
+        ):
+            reference = float(row[key])
+            assert abs(float(mine) - reference) <= 1e-12 * max(abs(reference), floor), (
+                index,
+                key,
+            )
 
 
 @pytest.mark.loop_physics
