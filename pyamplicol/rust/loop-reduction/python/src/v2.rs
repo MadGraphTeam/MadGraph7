@@ -4,7 +4,7 @@
 use super::*;
 use batch::{NativeBatch, ReductionBatch};
 use rusticol_loop_reduction::runtime::{
-    FamilyGroup, MasterStatistics, ReduceOptions, ReductionFrame,
+    FamilyGroup, MasterStatistics, PoleSelection, Poles, ReduceOptions, ReductionFrame,
 };
 use std::collections::BTreeMap;
 
@@ -16,6 +16,36 @@ type Group<'py> = (
     PyRef<'py, NativeBatch>,
     PyRef<'py, NativeBatch>,
 );
+
+/// The Laurent columns of a `poles` option: `"all"` (combined poles),
+/// `"none"` (the finite part) or `"split"` (combined poles and each lane's UV
+/// residue, DESIGN.md §12.4). One spelling: no bool.
+pub(super) fn poles_option(value: &Bound<'_, PyAny>) -> PyResult<Poles> {
+    let Ok(value) = value.extract::<String>() else {
+        return Err(error("poles must be all, none or split".to_string()));
+    };
+    match value.as_str() {
+        "all" => Ok(Poles::All),
+        "none" => Ok(Poles::None),
+        "split" => Ok(Poles::Split),
+        other => Err(error(format!(
+            "poles must be all, none or split, not {other}"
+        ))),
+    }
+}
+
+/// oneloopmaster's master pole selection: `both`, `uv`, `ir` or `none`.
+pub(super) fn master_selection(value: &str) -> PyResult<PoleSelection> {
+    match value {
+        "both" => Ok(PoleSelection::BOTH),
+        "uv" => Ok(PoleSelection::UV),
+        "ir" => Ok(PoleSelection::IR),
+        "none" => Ok(PoleSelection::NONE),
+        other => Err(error(format!(
+            "master poles must be both, uv, ir or none, not {other}"
+        ))),
+    }
+}
 
 /// Family reductions with true-rank buckets, cached masters and the
 /// reduction-direction check. Groups are tuples
@@ -74,22 +104,28 @@ impl V2Reducer {
     /// Returns `(direct, check)`: one `ReductionBatch` per group, and the
     /// same for the relabelled frame when `check` is set (else None). The
     /// default frame is `ReductionFrame::REVERSED`.
-    /// Without `poles` the batches hold only the finite column. Cached
-    /// masters are dropped first unless `keep_masters`.
-    #[pyo3(signature = (groups, *, poles=true, check=false, reverse=true, rotation=1, shift=false, rescale=false, keep_masters=false))]
+    /// `poles` (`poles_option`): without poles the batches hold only the
+    /// finite column, with `"split"` a fourth column, the lane's UV residue.
+    /// `master_poles` selects the masters' residues (`master_selection`;
+    /// generic engine only). Cached masters are dropped first unless
+    /// `keep_masters`.
+    #[pyo3(signature = (groups, *, poles=None, check=false, reverse=true, rotation=1, shift=false, rescale=false, keep_masters=false, master_poles="both"))]
     #[allow(clippy::too_many_arguments, clippy::type_complexity)]
     fn reduce(
         &mut self,
         py: Python<'_>,
         groups: Vec<Group<'_>>,
-        poles: bool,
+        poles: Option<Bound<'_, PyAny>>,
         check: bool,
         reverse: bool,
         rotation: usize,
         shift: bool,
         rescale: bool,
         keep_masters: bool,
+        master_poles: &str,
     ) -> PyResult<(Vec<ReductionBatch>, Option<Vec<ReductionBatch>>)> {
+        let poles = poles.map_or(Ok(Poles::All), |value| poles_option(&value))?;
+        let masters = master_selection(master_poles)?;
         let batches: Vec<_> = groups
             .iter()
             .map(|(n, shifts, masses, scales, matrix, coefficients)| {
@@ -111,6 +147,7 @@ impl V2Reducer {
                 shift,
                 rescale,
             }),
+            masters,
         };
         let reducer = &mut self.0;
         let output = py

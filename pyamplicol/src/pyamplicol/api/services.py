@@ -617,8 +617,10 @@ class Runtime:
         Invalid inputs and unsupported capabilities still raise.
 
         Virtual runtimes of the v2 engine also accept ``poles`` (a
-        :class:`PoleSelection`: ``"all"``, the default, or ``"none"``, which
-        computes the finite part only; the poles are then ``None``), and
+        :class:`PoleSelection`: ``"all"``, the default; ``"none"``, which
+        computes the finite part only, the poles are then ``None``; ``"uv"``
+        or ``"ir"``, the ultraviolet or infrared parts of the poles, with both
+        origins' parts by component in ``VirtualEvaluation.pole_parts``), and
         ``stability_checks`` (rotations and/or the reduction-direction check),
         which add a stability estimate per point; without checks no estimate
         is returned.
@@ -896,7 +898,7 @@ class Runtime:
         Omitted precision uses the runtime's load-time default, or 16 when the
         backend has no precision default, as in :meth:`evaluate`.
         ``poles`` and ``stability_checks`` follow :meth:`evaluate` (v2 virtual
-        runtimes; the estimates are per resolved entry).
+        runtimes; the estimates and the pole parts are per resolved entry).
         """
 
         precision = _validate_precision(

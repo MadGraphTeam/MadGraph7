@@ -36,7 +36,7 @@ evaluator state is identical at both revisions, so the earlier split was
 compatible but not coherent.
 
 The Community gammaloop stays at the overlay's 0cfb7dbb9. The native's FeynKit
-d1904bf2 (recorded by NinjaRS aa6a6307) lacks PR155 (dual endpoints) and three
+d1904bf2 (recorded by NinjaRS aa6a6307 and 41a4c00) lacks PR155 (dual endpoints) and three
 other overlay fixes. No gammaloop data crosses the native boundary, so the two
 sides can differ there.
 
