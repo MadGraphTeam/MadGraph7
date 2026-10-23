@@ -71,6 +71,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
+from functools import cached_property
 from decimal import Decimal
 from pathlib import Path
 from threading import RLock
@@ -334,8 +335,9 @@ def plan_digest(plan_json: str) -> str:
     return hashlib.sha256(plan_json.encode()).hexdigest()
 
 
-def write_plan(plan_json: str, destination: Path) -> str:
-    """Write the plan v4 PACBIN; returns the SHA-256 of the plan JSON."""
+def write_plan(plan_json: str, destination: Path) -> None:
+    """Write the plan v4 PACBIN (its digest is ``GeneratedProcess.plan_sha256``,
+    computed once from the same JSON)."""
 
     payload = zlib.compress(plan_json.encode(), 6)
     staged = destination.with_name(destination.name + ".member")
@@ -351,7 +353,6 @@ def write_plan(plan_json: str, destination: Path) -> str:
         )
     finally:
         staged.unlink()
-    return plan_digest(plan_json)
 
 
 def read_plan(path: Path) -> str:
@@ -382,7 +383,7 @@ class GeneratedProcess:
     def slice(self) -> Any:
         return self.observables.slice
 
-    @property
+    @cached_property
     def plan_sha256(self) -> str:
         return plan_digest(self.plan_json)
 
