@@ -535,9 +535,10 @@ def _composed(entering: str, leaving: str, insertion: Any) -> str:
     second = _with_index(
         _momenta_as_placeholder(E(entering)), 1, inner[0], _DUMMY_OFFSET[1]
     )
-    # Expanded, one spinor chain or tensor per term: Spenso's network
-    # execution of a product of sums of chains with chiral projectors does
-    # not finish (``custom_propagator_components``).
+    # Expanded, one spinor chain or tensor per term. (The unexpanded product
+    # once seemed not to finish in ``custom_propagator_components``: that was
+    # Spenso's Rayon workers waiting for the GIL under the package-scoped
+    # Symbolica key, which ``pyamplicol/__init__`` now prevents.)
     composed = (first * insertion * second).expand()
     return _momenta_restored(composed).to_canonical_string()
 

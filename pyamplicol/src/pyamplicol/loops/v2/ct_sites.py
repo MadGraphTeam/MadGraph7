@@ -984,20 +984,35 @@ def vanishes_identically(compiled: Any, expression: Any) -> bool:
         return True
     model_symbols = symbols.model(compiled.name)
     value = model_symbols.expression(value.to_canonical_string())
-    definitions = [
-        (model_symbols.symbol(record.name), E(f"({record.resolved_expression})"))
+    return resolved_internal_parameters(compiled, value).expand() == zero
+
+
+def resolved_internal_parameters(compiled: Any, expression: Any) -> Any:
+    """``expression`` (in the model's symbols) with every internal parameter
+    replaced by its resolved definition, which the model compiler writes in
+    the external parameters alone; fails if one is left."""
+
+    from symbolica import E, Replacement
+
+    from pyamplicol._internal.physics.symbols import symbols
+
+    model_symbols = symbols.model(compiled.name)
+    definitions = {
+        model_symbols.symbol(record.name): record.resolved_expression
         for record in compiled.ir.parameters
         if record.nature == "internal"
+    }
+    present = [
+        Replacement(symbol, E(f"({definition})"))
+        for symbol, definition in definitions.items()
+        if expression.contains(symbol)
     ]
-    for _ in range(len(definitions) + 1):
-        found = False
-        for symbol, definition in definitions:
-            if value.contains(symbol):
-                value = value.replace(symbol, definition)
-                found = True
-        if not found:
-            break
-    return value.expand() == zero
+    if present:
+        expression = expression.replace_multiple(present)
+    left = sorted(str(s) for s in definitions if expression.contains(s))
+    if left:
+        raise ValueError(f"internal parameters {left} are not resolved")
+    return expression
 
 
 # ----------------------------------------------------------------- reference values

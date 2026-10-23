@@ -35,15 +35,18 @@ Born x CT interference directly; no CT tree and no site is listed:
   enter only through LSZ, which clone lines exclude structurally: a clone is
   never external); a rule whose admission differs between witness
   signatures fails closed.
-* **Not lowered yet** (``residual`` with the reason; these rules stay site
+* **Not lowered** (``residual`` with the reason; these rules stay site
   closures, ``loops.v2.ct_sites``, restricted with ``closed_rules``):
-  colours outside the tree colour flow (d-symbol and δδ products of the
-  four-gluon R2: the multi-trace colour state, ``models.ct_color_flow``),
-  Lorentz structures the tree compiler does not normalise (Levi-Civita),
-  contact vertices without a colour-flow decomposition, the two-point terms
-  ``models.ct_line_insertions`` refuses (mixing between spins), whole-rule
-  colour continuations, ghost legs and coefficients with UFO helpers other
-  than ``cond`` and ``reglog``.
+  Lorentz structures the tree compiler does not normalise (Levi-Civita
+  cells that do not cancel), contact vertices without a colour-flow
+  decomposition, the two-point terms ``models.ct_line_insertions`` refuses
+  (mixing between spins), ghost legs and coefficients with UFO helpers other
+  than ``cond`` and ``reglog``; no loop_sm rule is among them. With
+  ``multi_trace`` (the production closure, ``ct_closure``) the d-symbol, d·d,
+  d·f and δδ colours of the four-gluon and gggV R2 (``models.ct_color_flow``)
+  and the whole-rule colour continuations (``whole_rule_rows``) are lowered;
+  without it (the tree-route form kept as a test of the lowering) they stay
+  residual, as the tree runtime has no multi-trace colour sectors.
 * **Cancelling cells.** A colour or Lorentz cell of a UFO vertex the tree
   compiler cannot lower does not make its rule residual when it cancels
   exactly between the rules of that cell (the loop groups of one vertex):
@@ -452,22 +455,25 @@ class CountertermModel:
         Parameters absent from ``values`` take the compiled defaults.
         """
 
-        from symbolica import AtomType, E, Expression
+        from symbolica import AtomType, E, Expression, Replacement
 
+        if not self.assumptions:
+            return
         defaults = {
             name: complex(*pair)
             for name, pair in self.lowered.compiled.parameter_defaults.items()
         }
         defaults.update(values)
+        replacements = [
+            Replacement(
+                E(f"UFO::{{}}::{name}"),
+                E(repr(complex(value).real))
+                + E(repr(complex(value).imag)) * Expression.I,
+            )
+            for name, value in defaults.items()
+        ]
         for assumption in self.assumptions:
-            expression = E(assumption)
-            for name, value in defaults.items():
-                value = complex(value)
-                expression = expression.replace(
-                    E(f"UFO::{{}}::{name}"),
-                    E(repr(value.real)) + E(repr(value.imag)) * Expression.I,
-                )
-            expression = expression.expand()
+            expression = E(assumption).replace_multiple(replacements).expand()
             if expression.get_type() != AtomType.Num:
                 raise ValueError(f"cannot decide counterterm assumption {assumption}")
             if expression == E("0"):

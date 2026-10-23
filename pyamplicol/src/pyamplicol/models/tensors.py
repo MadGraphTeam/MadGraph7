@@ -473,6 +473,12 @@ class _ColorContext:
                     f"UFO color index {label} has type {actual}, expected {expected}"
                 )
             return slot
+        if abs(label) >= _D_SYMBOL_DUMMY_OFFSET:
+            # The d-symbol expansion names its summed indices from the offset.
+            raise ValueError(
+                f"UFO color dummy {label} reaches the d-symbol dummies "
+                f"(from -{_D_SYMBOL_DUMMY_OFFSET})"
+            )
         name = f"ufo_c_dummy_{abs(label)}_{expected}"
         if expected == "adjoint":
             return self.adjoint(name)

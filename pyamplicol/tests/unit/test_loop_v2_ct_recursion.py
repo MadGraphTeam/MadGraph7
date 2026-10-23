@@ -507,9 +507,25 @@ def test_two_point_insertions_are_clone_lines(lowered_ct_model):
     }
 
 
+# The tree route is the test of the lowering (the closure is the production
+# form, design §6.1): one lane on two controls in the physics tier, the rest
+# (5-7 minutes each) nightly.
+FORM1_PHYSICS = frozenset({("gg_gg", "recurrence"), ("uux_ddxg", "recurrence")})
+
+
 @pytest.mark.loop_physics
-@pytest.mark.parametrize("lane", LANES)
-@pytest.mark.parametrize("name", CONTROLS)
+@pytest.mark.parametrize(
+    ("name", "lane"),
+    [
+        pytest.param(
+            name,
+            lane,
+            marks=() if (name, lane) in FORM1_PHYSICS else pytest.mark.loop_nightly,
+        )
+        for name in CONTROLS
+        for lane in LANES
+    ],
+)
 def test_recursion_equals_site_closure(
     ct_slice, lowered_ct_model, loop_native, tmp_path, name, lane
 ):

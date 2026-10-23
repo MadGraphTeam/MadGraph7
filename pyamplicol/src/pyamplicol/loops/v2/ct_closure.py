@@ -35,7 +35,7 @@ id, and the insertion order of their orders marks them.
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import product
@@ -53,6 +53,7 @@ from .ct_sites import (
     CountertermSite,
     SiteClosure,
     generate_counterterm_sites,
+    resolved_internal_parameters,
 )
 from .families import (
     FamilySet,
@@ -298,9 +299,9 @@ class CountertermClosure:
         for entries in ordinary:
             fields = entries[0].particle_names
             order = add_orders(tuple(entries[0].order))
-            for parts in _set_partitions(full, len(fields), len(fields)):
-                if 1 not in parts:
-                    continue
+            # Leg 1 alone is one block, the rest is partitioned directly.
+            for rest in _set_partitions(full & ~1, len(fields) - 1, len(fields) - 1):
+                parts = (1, *rest)
                 for choice in product(*(table.currents(part) for part in parts)):
                     if sorted(b.field for b in choice) != sorted(fields):
                         continue
@@ -570,15 +571,7 @@ def model_value(compiled: Any, expression: str, parameters: Mapping[str, Any], d
             value = value.replace(
                 payload, E(model_symbols.symbol(name).to_canonical_string())
             )
-    for _ in range(64):
-        found = False
-        for name, definition in internal.items():
-            symbol = E(model_symbols.symbol(name).to_canonical_string())
-            if value.contains(symbol):
-                value = value.replace(symbol, E(f"({definition})"))
-                found = True
-        if not found:
-            break
+    value = resolved_internal_parameters(compiled, value)
     external = {
         name: parameters.get(name, pair[0])
         for name, pair in compiled.parameter_defaults.items()
@@ -606,7 +599,10 @@ def model_value(compiled: Any, expression: str, parameters: Mapping[str, Any], d
 
 # ------------------------------------------------------------------ production
 
-_LOWERED: dict[tuple[object, ...], tuple[Any, Any]] = {}
+# The lowered models of the most recent (model, fixed parameters, veto,
+# declaration) keys; a request of another key evicts the oldest.
+_LOWERED: OrderedDict[tuple[object, ...], tuple[Any, Any]] = OrderedDict()
+_LOWERED_KEPT = 4
 
 
 def lowered_counterterm_model(
@@ -659,6 +655,9 @@ def lowered_counterterm_model(
             continuation=continuation,
         )
         found = _LOWERED[key] = (compiled, lowered)
+        while len(_LOWERED) > _LOWERED_KEPT:
+            _LOWERED.popitem(last=False)
+    _LOWERED.move_to_end(key)
     return found[1]
 
 
@@ -677,6 +676,11 @@ class CountertermProgram:
     root_sites: tuple[CountertermSite, ...]
     closure: CountertermClosure | None = None
     _rows: Any = field(default=None, repr=False, compare=False)
+    # The parameter-only work of the last point (checked assumptions and the
+    # Weyl factors per carrier precision), reused while the parameters stay.
+    _parameter_work: tuple[Any, dict] = field(
+        default_factory=lambda: (None, {}), repr=False, compare=False
+    )
 
     @property
     def recursion(self) -> CountertermRecursion:
@@ -793,18 +797,23 @@ class CountertermProgram:
                 for name, v in recursion.parameter_values(poles=poles).items()
             }
         )
-        recursion.model.check_parameters(
-            {name: complex(float(v)) for name, v in parameters.items()}
-        )
+        key = tuple(sorted(values.items()))
+        if self._parameter_work[0] != key:
+            recursion.model.check_parameters(
+                {name: complex(float(v)) for name, v in parameters.items()}
+            )
+            self._parameter_work = (key, {})
         rows = self.rows.evaluate(point, values, numbers)
         digits = numbers.precision.working_digits
+        factors = self._parameter_work[1].setdefault(digits, {})
         scales = {}
         for term in self.closure.terms:
             if term.scale is not None and term.scale not in scales:
-                real, imag = model_value(
-                    recursion.model.lowered.compiled, term.scale, values, digits
-                )
-                scales[term.scale] = numbers.pair(real, imag)
+                if term.scale not in factors:
+                    factors[term.scale] = model_value(
+                        recursion.model.lowered.compiled, term.scale, values, digits
+                    )
+                scales[term.scale] = numbers.pair(*factors[term.scale])
         return rows, scales
 
 
