@@ -84,7 +84,7 @@ from pyamplicol.color.contraction_types import NC
 
 from . import generator_input
 from . import reference_executor as rx
-from .blocks import TreeBlocks, build_tree_blocks
+from .blocks import TreeBlocks, build_tree_blocks, requested_loop_blocks
 from .catalogue import build_loop_kernel_catalogue
 from .colour import (
     SYMMETRIC_GROUP_FFT,
@@ -122,6 +122,7 @@ from .families import (
     FamilyKey,
     FamilySet,
     LoopOrderSelection,
+    ModelBlockTable,
     ModelLoopCatalogue,
     Orders,
     _set_partitions,
@@ -321,7 +322,7 @@ class TreeRows:
     parameters of overridden inputs at the carrier's precision.
     """
 
-    def __init__(self, dag: Any, compiled: Any):
+    def __init__(self, dag: Any, compiled: Any, *, blocks: bool = True):
         from pyamplicol.generation.contracts import StageCompilationInput
         from pyamplicol.generation.runtime_schema import (
             build_runtime_expression_schema,
@@ -334,8 +335,13 @@ class TreeRows:
         self.compiled = compiled
         model = CompiledUFOModel(compiled)
         with _exact_u1_subtraction_weights():
+            # Every block enters a loop vertex with its own propagator, also
+            # where no tree interaction consumes it (reachability-pruned DAGs).
             runtime_schema = build_runtime_expression_schema(
-                dag, model, process_id="loop-v2-blocks"
+                dag,
+                model,
+                process_id="loop-v2-blocks",
+                propagated_currents=(current.id for current in dag.currents if blocks),
             )
             blueprint = build_generic_stage_compiler_blueprint(
                 StageCompilationInput(dag, model, runtime_schema)
@@ -529,6 +535,33 @@ def _exact_u1_subtraction_weights():
 
 
 # --------------------------------------------------------------------- seeds
+
+# Loop-aware reachability of the tree blocks (WP3.1 I1a); False builds every
+# block current the tree model allows (the families and every result are
+# unchanged, ``tests/unit/test_loop_v2_generate.py``).
+LOOP_BLOCK_REACHABILITY = True
+
+
+def _field_level_families(
+    data, process, catalogue, selection, request, native: Any
+) -> FamilySet:
+    """The families of the field-level block table (design §3.2 item 1);
+    ``native`` is the loop core, or None for the Python recursion."""
+
+    names = {int(entry["pdg_code"]): entry["name"] for entry in data["particles"]}
+    incoming = [names[leg.pdg] for leg in process.legs if leg.is_initial]
+    outgoing = [names[leg.pdg] for leg in process.legs if leg.is_final]
+    table = ModelBlockTable(
+        data,
+        incoming,
+        outgoing,
+        cap=selection.cap,
+        ignored_particle_ids=request.ignored_particle_ids,
+    )
+    if native is not None:
+        return NativeGeneration(table, catalogue, selection, native).families()
+    return generate_families(table, catalogue, selection)
+
 
 # Schedule-B frame policy of the slice: the cheapest frame by undressed rows
 # (``NativeGeneration.schedules`` runs the same policy natively).
@@ -888,7 +921,6 @@ class LoopSlice:
     class_of: Mapping[Any, SeedCombination]
     sectors: tuple[tuple[Orders, frozenset[tuple[Orders, Orders]]], ...]
     normalisation: Normalisation
-    tree_rows: TreeRows
     layout: MonomialLayout
     native: Any
     reading: TreeReading
@@ -900,6 +932,17 @@ class LoopSlice:
     # The native generator stages of this process (WP3.1), if they ran.
     generation: NativeGeneration | None = None
     _cache: dict = field(default_factory=dict, repr=False)
+
+    @property
+    def tree_rows(self) -> TreeRows:
+        """The blocks DAG's tree runtime, built on first use."""
+
+        found = self._cache.get("tree-rows")
+        if found is None:
+            found = self._cache["tree-rows"] = TreeRows(
+                self.blocks.blocks_dag, self.compiled
+            )
+        return found
 
     # -- generation ------------------------------------------------------------
 
@@ -967,24 +1010,51 @@ class LoopSlice:
         process = build_model_process_ir(
             request.process, compiled.ir, color_accuracy="full"
         )
+        loop_catalogue = ModelLoopCatalogue(
+            data, species_orders=structure.perturbative_species_orders
+        )
+        native_families = "families" in generator_input.NATIVE_STAGES
+        reachable = None
+        if LOOP_BLOCK_REACHABILITY:
+            # Loop-aware reachability (design §3.2 item 1): the tree program
+            # builds only the block currents the admitted positions of the
+            # field-level families consume.
+            reachable = _field_level_families(
+                data,
+                process,
+                loop_catalogue,
+                selection,
+                request,
+                native if native_families else None,
+            )
         blocks = build_tree_blocks(
             process,
             CompiledUFOModel(compiled),
             born_coupling_orders=dict(request.born_orders),
             block_coupling_orders=dict(request.loop_orders),
             ignored_particle_ids=request.ignored_particle_ids,
+            reachability=(
+                None
+                if reachable is None
+                else requested_loop_blocks(reachable.block_requests(), data)
+            ),
         )
         table = blocks.block_table(data)
-        loop_catalogue = ModelLoopCatalogue(
-            data, species_orders=structure.perturbative_species_orders
-        )
         colour = SeedColour(blocks, data, compiled.ir.vertex_terms)
         generation = None
-        if "families" in generator_input.NATIVE_STAGES:
+        if native_families:
             generation = NativeGeneration(table, loop_catalogue, selection, native)
             families = generation.families()
         else:
             families = generate_families(table, loop_catalogue, selection)
+        if reachable is not None and (
+            families.families != reachable.families
+            or families.scaleless != reachable.scaleless
+        ):
+            raise ValueError(
+                "the families of the reachable tree blocks differ from the "
+                "field-level families"
+            )
         if generation is not None and "schedules" in generator_input.NATIVE_STAGES:
             plan = generation.schedules(colour, model=_FRAME_MODEL)
         else:
@@ -1071,7 +1141,6 @@ class LoopSlice:
                 (sector, frozenset(pairs)) for sector, pairs in sorted(sectors.items())
             ),
             normalisation=Normalisation.of(structure.native, incoming, outgoing),
-            tree_rows=TreeRows(blocks.blocks_dag, compiled),
             layout=MonomialLayout.native(
                 native,
                 # The executor bounds a node's rank by its inputs' rank plus

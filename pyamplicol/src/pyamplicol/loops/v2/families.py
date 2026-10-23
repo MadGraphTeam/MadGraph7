@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from collections.abc import Hashable, Iterator, Mapping, Sequence
+from collections.abc import Hashable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cache
 from itertools import combinations, product
@@ -1017,9 +1017,13 @@ class ModelBlockTable:
         outgoing: Sequence[str],
         *,
         cap: Orders,
+        ignored_particle_ids: Iterable[int] = (),
     ):
         data = model_data(model)
         particles = {entry["name"]: entry for entry in data["particles"]}
+        # As the tree compiler: no current of an ignored (all-outgoing)
+        # particle id is produced.
+        ignored = frozenset(int(pdg) for pdg in ignored_particle_ids)
         conjugate = {name: entry["antiname"] for name, entry in particles.items()}
         coupling_orders = {
             entry["name"]: tuple(
@@ -1051,6 +1055,8 @@ class ModelBlockTable:
                 if name is not None
             }
             for result in range(len(names)):
+                if int(particles[names[result]]["pdg_code"]) in ignored:
+                    continue
                 attached = tuple(sorted(n for i, n in enumerate(names) if i != result))
                 for order in orders:
                     self._merges[attached].add((conjugate[names[result]], order))

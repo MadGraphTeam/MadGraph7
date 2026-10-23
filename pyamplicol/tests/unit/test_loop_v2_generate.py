@@ -232,3 +232,43 @@ def test_native_stages_equal_python_in_the_slice(slices, name, accuracy):
 
 def test_native_stage_switch_names_the_stages():
     assert frozenset({"families", "schedules"}) == generator_input.NATIVE_STAGES
+
+
+# ---------------------------------------------------------- reachability (I1a)
+
+
+REACHABILITY_CASES = ["gg_gg", "uux_ddxg", "uux_ggg", "dy", "tt", "uux_uuxg"]
+
+
+@pytest.mark.loop_physics
+@pytest.mark.parametrize("name", REACHABILITY_CASES)
+def test_loop_aware_reachability_changes_no_result(
+    loop_sm_compiled_model, loop_native, monkeypatch, name
+):
+    """Building only the block currents the field-level families consume
+    leaves the families, schedules, seeds, the plan and the complete virtual
+    (counterterm sites and external fields included) unchanged."""
+
+    from pyamplicol.loops.v2 import assemble, snapshot
+    from pyamplicol.loops.v2.assemble import LoopSlice
+    from pyamplicol.models.loading import load_compiled_model
+    from tests.unit.test_loop_v2_slice import _fixture, _parameters, _request
+
+    compiled = load_compiled_model(loop_sm_compiled_model)
+    fixture = _fixture(name)
+    points, scales = fixture["points"][:1], fixture["scales_squared"][:1]
+    found = {}
+    for reachability in (True, False):
+        monkeypatch.setattr(assemble, "LOOP_BLOCK_REACHABILITY", reachability)
+        slice_ = LoopSlice.generate(compiled, _request(name), loop_native)
+        digests = snapshot.stage_digests(slice_)
+        found[reachability] = (
+            slice_.families.families,
+            slice_.families.scaleless,
+            {k: v for k, v in digests.items() if k != "S1"},
+            snapshot.virtual_digest(slice_, points, scales, _parameters(name)),
+            len(slice_.blocks.blocks),
+        )
+    pruned, full = found[True], found[False]
+    assert pruned[:4] == full[:4]
+    assert pruned[4] <= full[4]
