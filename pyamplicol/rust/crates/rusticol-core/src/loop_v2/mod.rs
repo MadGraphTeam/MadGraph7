@@ -4,9 +4,9 @@
 //! (`docs/development/loop_v2/DESIGN.md`).
 //!
 //! [`plan`] loads plan v4 and its [`observables`] columns; [`dress`],
-//! [`seeds`], [`trie`] (schedule B),
-//! [`forward`] (schedule F) and [`closure`] execute it on SIMD lanes in any
-//! carrier; [`retest`] holds the reduction-direction check. The evaluation
+//! [`seeds`], [`trie`] (schedule B), [`forward`] (schedule F), [`merged`]
+//! (schedule M) and [`closure`] execute it on SIMD lanes in any carrier;
+//! [`retest`] holds the reduction-direction check. The evaluation
 //! driver with bucket streaming into the NinjaRS adapter is
 //! `crate::loop_execution::v2`.
 //!
@@ -20,6 +20,7 @@ pub mod closure;
 pub mod dress;
 pub mod forward;
 pub mod kernels;
+pub mod merged;
 pub mod observables;
 pub mod plan;
 pub mod poly;

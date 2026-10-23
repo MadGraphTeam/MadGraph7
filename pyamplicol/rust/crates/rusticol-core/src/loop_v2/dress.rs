@@ -210,6 +210,7 @@ pub struct LaneData<T, const L: usize> {
     /// Exact `mu_R²` per lane.
     pub scales: Vec<Rational>,
     momentum: std::sync::Mutex<HashMap<u64, std::sync::Arc<Vec<T>>>>,
+    square: std::sync::Mutex<HashMap<u64, std::sync::Arc<Vec<T>>>>,
     constants: Vec<Complex<T>>,
     /// Per block row, its components as lane vectors.
     block_rows: Vec<Vec<T>>,
@@ -277,6 +278,7 @@ impl<T: Carrier, const L: usize> LaneData<T, L> {
             exact: std::sync::Mutex::new(exact),
             scales: lanes.iter().map(|&p| batch.scales[p].clone()).collect(),
             momentum: std::sync::Mutex::new(HashMap::new()),
+            square: std::sync::Mutex::new(HashMap::new()),
             constants: batch.constants.clone(),
             block_rows,
             born,
@@ -329,6 +331,29 @@ impl<T: Carrier, const L: usize> LaneData<T, L> {
         self.momentum
             .lock()
             .expect("momentum cache")
+            .insert(mask, out.clone());
+        out
+    }
+
+    /// `p(mask)²` as a real lane vector (exact squares cast once per
+    /// distinct point).
+    pub fn square(&self, mask: u64) -> std::sync::Arc<Vec<T>> {
+        if let Some(found) = self.square.lock().expect("square cache").get(&mask) {
+            return found.clone();
+        }
+        let mut out = vec![self.zero.clone(); L];
+        for l in 0..L {
+            let source = self.distinct[l];
+            out[l] = if source == l {
+                self.cast(&self.exact_square(l, mask))
+            } else {
+                out[source].clone()
+            };
+        }
+        let out = std::sync::Arc::new(out);
+        self.square
+            .lock()
+            .expect("square cache")
             .insert(mask, out.clone());
         out
     }

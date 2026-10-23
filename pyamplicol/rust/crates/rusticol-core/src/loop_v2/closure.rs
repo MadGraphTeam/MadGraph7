@@ -17,7 +17,6 @@
 use super::dress::{Carrier, LaneData, cadd, cmul_into};
 use super::kernels::lane_vector_len;
 use super::plan::{Family, Step};
-use crate::{RusticolError, RusticolResult};
 use ninjars::fast::tensor_layout::{monomial_index, monomials, ncoeff};
 use symbolica::domains::float::Complex;
 
@@ -80,8 +79,9 @@ impl<T: Carrier> FamilyNumerator<T> {
 }
 
 /// Close a trace step's output (one helicity row per column) into an
-/// accumulator: `acc[o][m] += Σ_α out[o][α][α][m]`. Coefficients above the
-/// family rank must vanish (structural rank).
+/// accumulator: `acc[o][m] += Σ_α out[o][α][α][m]`. The step's rank is at
+/// most the family rank (checked when the plan loads), so no coefficient is
+/// truncated.
 pub fn trace_into<T: Carrier, const L: usize>(
     step: &Step,
     output: &[T],
@@ -89,10 +89,11 @@ pub fn trace_into<T: Carrier, const L: usize>(
     columns: usize,
     rank: usize,
     zero: &T,
-) -> RusticolResult<()> {
+) {
     let v = lane_vector_len(L);
     let n_out = ncoeff(step.rank_out);
     let n_family = ncoeff(rank);
+    debug_assert!(n_out <= n_family, "a trace step above the family rank");
     let row = step.out_row() * v;
     let mut column = vec![zero.clone(); n_out * v];
     for o in 0..columns {
@@ -104,24 +105,11 @@ pub fn trace_into<T: Carrier, const L: usize>(
                 *c += x;
             }
         }
-        if column[n_family.min(n_out) * v..]
-            .iter()
-            .any(|x| !x.is_fully_zero())
-        {
-            return Err(RusticolError::evaluation(
-                "family rank truncates a nonzero coefficient",
-            ));
-        }
         let target = &mut accumulator[o * n_family * v..][..n_family * v];
-        for (t, c) in target
-            .chunks_exact_mut(v)
-            .zip(column.chunks_exact(v))
-            .take(n_out)
-        {
+        for (t, c) in target.chunks_exact_mut(v).zip(column.chunks_exact(v)) {
             cadd::<T, L>(t, c);
         }
     }
-    Ok(())
 }
 
 /// Lane vectors of `-V(mask)`, the shift of a frame map `q = σ q' − V`.
