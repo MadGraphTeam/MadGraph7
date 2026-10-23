@@ -339,9 +339,10 @@ pub struct LoopV2Sector {
 /// `color_degrees` the leading N_c degree kept per sector at LC/NLC.
 /// `color_correlations` are the declared directed colour histories (by id,
 /// besides the Born metric "born"), `spin_correlations` the declared spin
-/// classes (one-based legs) and `resolved` whether helicity/colour resolved
-/// output is served (observable columns are contracted directly, so a
-/// process generated with the forced seed FFT serves neither).
+/// classes (one-based legs) and `resolved` that helicity/colour resolved
+/// output is served (always: observable columns are contracted directly, and
+/// `color_contraction` is "auto" or "direct" since generation refuses the
+/// forced seed FFT).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoopV2ExecutionMetadata {
@@ -590,23 +591,16 @@ fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()
             && metadata.accuracy_retest == "reduction-direction"
             && metadata.rescue_policy == "caller"
             && metadata.stability_checks == ["rotation", "reduction-direction"]
-            && matches!(
-                metadata.color_contraction.as_str(),
-                "auto" | "direct" | "fft"
-            ),
+            && matches!(metadata.color_contraction.as_str(), "auto" | "direct"),
         "unsupported contribution, convention or feature declaration",
     )?;
     require(
         metadata.arithmetic == ["double", "double-double", "arbitrary"],
         "unsupported arithmetic declaration",
     )?;
-    let observables_contracted = metadata.color_contraction != "fft";
     require(
-        metadata.resolved == observables_contracted
-            && (metadata.color_correlations.is_empty()
-                && metadata.spin_correlations.is_empty()
-                || observables_contracted),
-        "resolved and correlated outputs exist exactly without the forced seed FFT",
+        metadata.resolved,
+        "v2 processes contract seed columns directly and serve resolved output",
     )?;
     let mut histories: Vec<&String> = metadata.color_correlations.iter().collect();
     histories.sort();

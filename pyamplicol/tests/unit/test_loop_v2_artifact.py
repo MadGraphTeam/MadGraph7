@@ -804,8 +804,8 @@ def test_native_loader_admits_plan_v4_and_refuses_tampering(
         (
             "resolved",
             {"processes/gg/physics.json": unresolved},
-            "without the forced seed FFT",
-            "without the forced seed FFT",
+            "serve resolved output",
+            "serve resolved output",
         ),
         (
             "spin",

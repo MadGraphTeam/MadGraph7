@@ -190,12 +190,12 @@ class LoopV2ExecutionMetadata:
     ``color_correlations`` are the declared directed colour histories (ids;
     the Born metric ``"born"`` is always available) and ``spin_correlations``
     the declared spin classes (one-based legs); ``resolved`` is whether
-    helicity/colour-resolved output is served. Observable columns are
-    contracted directly, so a process generated with the forced seed FFT
-    (``color_contraction="fft"``) serves neither resolved nor correlated
-    output. Poles are computed unless an evaluation asks for the finite part
-    only; stability estimates come from the requested checks, and escalating
-    the arithmetic is the caller's decision (``rescue_policy``).
+    helicity/colour-resolved output is served: always, since observable
+    columns are contracted directly (``color_contraction`` is "auto" or
+    "direct"; generation refuses the forced seed FFT). Poles are computed
+    unless an evaluation asks for the finite part only; stability estimates
+    come from the requested checks, and escalating the arithmetic is the
+    caller's decision (``rescue_policy``).
     """
 
     scheme: LoopSchemeDeclaration
@@ -205,7 +205,7 @@ class LoopV2ExecutionMetadata:
     buckets: tuple[tuple[int, int, int], ...]
     color_accuracy: Literal["lc", "nlc", "full"]
     color_degrees: dict[str, int | None] | None
-    color_contraction: Literal["auto", "direct", "fft"]
+    color_contraction: Literal["auto", "direct"]
     engine: Literal["v2"] = "v2"
     schedule: Literal["backward"] = "backward"
     r2_strategy: Literal["model"] = "model"
@@ -236,13 +236,12 @@ class LoopV2ExecutionMetadata:
             raise ValueError("colour degrees exist exactly at LC and NLC")
         if sum(count for _n, _r, count in self.buckets) != self.families:
             raise ValueError("reduction buckets must cover every family once")
-        contracted = self.color_contraction != "fft"
-        if self.resolved is not contracted or (
-            not contracted and (self.color_correlations or self.spin_correlations)
+        if (
+            self.color_contraction not in ("auto", "direct")
+            or self.resolved is not True
         ):
             raise ValueError(
-                "resolved and correlated outputs exist exactly without the "
-                "forced seed FFT"
+                "v2 processes contract seed columns directly and serve resolved output"
             )
         if len(set(self.color_correlations)) != len(self.color_correlations) or (
             "born" in self.color_correlations

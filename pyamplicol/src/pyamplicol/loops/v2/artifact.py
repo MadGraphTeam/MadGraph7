@@ -114,8 +114,6 @@ _SLICE_CACHE_SIZE = 4
 _slices: OrderedDict[tuple[str, str, str], tuple[Any, Any]] = OrderedDict()
 _slices_lock = RLock()
 
-ContractionPolicy = Literal["auto", "direct", "fft"]
-
 
 # --------------------------------------------------------------------- request
 
@@ -853,7 +851,10 @@ class V2VirtualRuntime:
         bits = _precision_bits(carrier, setting.digits)
         arithmetic = cast(Literal["double", "double-double", "arbitrary"], carrier)
         contraction = VirtualColorContraction(
-            _requested_contraction(self._execution["request"]["colour_contraction"]),
+            cast(
+                Literal["auto", "direct"],
+                self._execution["request"]["colour_contraction"],
+            ),
             "direct",
             "native seeds contract the exact colour weights K[c, b] directly",
         )
@@ -936,11 +937,6 @@ class V2VirtualRuntime:
         """The arithmetic of one observable call (``_carrier``'s rule) and the
         options ``V2ObservablesRuntime`` validates itself."""
 
-        if not self._metadata.get("resolved", False):
-            raise CompatibilityError(
-                "this v2 process serves no correlated or resolved output (it was "
-                "generated with the forced seed FFT)"
-            )
         carrier, setting = self._carrier(arithmetic, precision)
         digits = None if carrier != "arbitrary" else setting.digits
         return {
@@ -1045,16 +1041,5 @@ def _arithmetic(value: str | None) -> str | None:
     return value
 
 
-_CONTRACTIONS: dict[str, Literal["auto", "direct", "symmetric-group-fft"]] = {
-    "auto": "auto",
-    "direct": "direct",
-    "fft": "symmetric-group-fft",
-}
 # Finite-only Laurent coefficients carry explicitly absent poles.
 _ABSENT_POLES = cast(tuple[Any, Any], (None, None))
-
-
-def _requested_contraction(
-    policy: str,
-) -> Literal["auto", "direct", "symmetric-group-fft"]:
-    return _CONTRACTIONS[policy]
