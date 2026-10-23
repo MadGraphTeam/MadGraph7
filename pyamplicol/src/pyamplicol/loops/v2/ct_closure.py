@@ -363,7 +363,9 @@ class CountertermClosure:
                     for term in _whole_rule_terms(closure, site)
                 )
                 continue
-            for term in closure.terms(site):
+            # Cells the lowered model leaves out cancel here too.
+            cancelled = recursion.cancelled.get(site.rule_name, ())
+            for term in closure.terms(site, cancelled):
                 for power in _powers(recursion, site):
                     terms.append(
                         ClosureTerm(

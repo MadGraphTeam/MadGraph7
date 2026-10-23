@@ -112,6 +112,7 @@ from .ct_sites import (
     SiteClosure,
     SiteTerm,
     generate_counterterm_sites,
+    vanishes_identically,
 )
 from .ct_sites import (
     Carrier as SiteCarrier,
@@ -689,6 +690,31 @@ def _number_expression(value: Any) -> Any:
     return E(str(Decimal(value.real))) + E(str(Decimal(value.imag))) * Expression.I
 
 
+def _site_coefficient(compiled: Any, fixed: Mapping[str, Any], continuation: Any):
+    """``(rule, entry, power) -> exact Laurent coefficient`` of a CT entry in
+    the payload's symbols (``ct_recursion.CoefficientLowering``, built on
+    first use)."""
+
+    lowering: list[Any] = []
+
+    def coefficient(_rule: Any, entry: Any, power: int) -> Any:
+        if not lowering:
+            from .ct_recursion import CoefficientLowering, _payload_identities
+
+            lowering.append(
+                CoefficientLowering(
+                    compiled,
+                    fixed,
+                    None
+                    if continuation is None
+                    else _payload_identities(continuation),
+                )
+            )
+        return lowering[0](entry, power)
+
+    return coefficient
+
+
 def _whole_rule_terms(closure: SiteClosure, site) -> tuple[WholeRuleTerm, ...]:
     """The replacement terms of a whole-rule site, closed on every block choice."""
 
@@ -1038,6 +1064,14 @@ class LoopSlice:
             compiled, counterterm_entries=list({id(e): e for e in entries}.values())
         )
         closure = SiteClosure(blocks, data, catalogue)
+        # Cells without a site kernel that cancel between the rules closed on
+        # the same blocks (the Levi-Civita R2 of a Z with gluons over complete
+        # quark doublets) are left out; any other such cell fails below.
+        cancelled = closure.cancelled_cells(
+            sites.sites,
+            _site_coefficient(compiled, structure.fixed_parameters, continuation),
+            lambda expression: vanishes_identically(compiled, expression),
+        )
         readings = rx.reading_skeletons(plan)
         weights = LeafWeights(data, closure.fermion_ends)
         for skeleton in readings:
@@ -1079,7 +1113,7 @@ class LoopSlice:
             born_terms=born_terms,
             site_terms={
                 site: (
-                    closure.terms(site)
+                    closure.terms(site, cancelled.get(site, ()))
                     if site.rule.whole_rule_continuation is None
                     else _whole_rule_terms(closure, site)
                 )

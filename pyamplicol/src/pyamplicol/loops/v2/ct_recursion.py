@@ -44,6 +44,18 @@ Born x CT interference directly; no CT tree and no site is listed:
   ``models.ct_line_insertions`` refuses (mixing between spins), whole-rule
   colour continuations, ghost legs and coefficients with UFO helpers other
   than ``cond`` and ``reglog``.
+* **Cancelling cells.** A colour or Lorentz cell of a UFO vertex the tree
+  compiler cannot lower does not make its rule residual when it cancels
+  exactly between the rules of that cell (the loop groups of one vertex):
+  the sum over those rules of their admitted alternatives times their
+  Laurent coefficients vanishes identically (``ct_sites.vanishes_identically``),
+  e.g. the Levi-Civita R2 of a Z with gluons, whose axial couplings cancel
+  between the up- and down-type quark loops of complete doublets. The
+  lowered model leaves the cell out (``CountertermModel.unlowered`` keeps its
+  coefficients; candidates are the cells that cancel with every alternative
+  admitted), and each request checks the cancellation again with its own
+  admission (``CountertermRecursion.cancelled``); where it fails, every rule
+  of the cell is residual for that request.
 
 The site closure stays the oracle (O6): per component, squared order and
 Laurent coefficient, the recursion's partials equal the sites of the lowered
@@ -80,10 +92,13 @@ from pyamplicol.models.loading import (
 from .ct_sites import (
     COMPONENT_BY_KIND,
     COUNTERTERM_KINDS,
+    Cell,
     Signature,
     Species,
     admitted_alternatives,
     divergent_witnesses,
+    entry_cell,
+    vanishes_identically,
 )
 from .families import FamilySet, LoopOrderSelection, Orders, add_orders, model_data
 
@@ -179,33 +194,49 @@ class TreeVocabulary:
     def residual_reason(self, rule: Any) -> str | None:
         """Why ``rule`` cannot enter the tree recursion yet, or ``None``."""
 
+        reason = self.rule_reason(rule)
+        if reason is not None or rule.whole_rule_continuation is not None:
+            return reason
+        for entry in rule.entries:
+            reason = self.entry_reason(entry)
+            if reason is not None:
+                return reason
+        return None
+
+    def rule_reason(self, rule: Any) -> str | None:
+        """Why no entry of ``rule`` can enter the tree recursion, or ``None``."""
+
         if rule.kind not in COUNTERTERM_KINDS:
             return f"unknown counterterm kind {rule.kind!r}"
         if len(rule.particle_pdgs) < 2:
             return "one-point counterterm"
-        if rule.whole_rule_continuation is not None and not (
-            self.whole_rules and self.multi_trace
-        ):
-            return "whole-rule colour continuation"
+        if rule.whole_rule_continuation is not None:
+            if not (self.whole_rules and self.multi_trace):
+                return "whole-rule colour continuation"
+            return None  # the replacement terms are lowered, not the entries
         for entry in rule.entries:
-            if rule.whole_rule_continuation is not None:
-                break  # the replacement terms are lowered, not the entries
             records = [self.particles[name] for name in entry.particle_names]
             if any(int(record.get("ghost_number", 0)) for record in records):
                 return "ghost leg"
-            try:
-                tree_colour_source(
-                    entry.color,
-                    [int(r["color"]) for r in records],
-                    multi_trace=self.multi_trace,
-                )
-            except UnloweredCountertermColour as error:
-                return str(error)
-            name = entry.lorentz_name
-            if name not in self._lorentz:
-                self._lorentz[name] = counterterm_lorentz_error(self.compiled, name)
-            if self._lorentz[name] is not None:
-                return f"Lorentz structure {name}: {self._lorentz[name]}"
+        return None
+
+    def entry_reason(self, entry: Any) -> str | None:
+        """Why the colour or Lorentz cell of ``entry`` cannot be lowered."""
+
+        records = [self.particles[name] for name in entry.particle_names]
+        try:
+            tree_colour_source(
+                entry.color,
+                [int(r["color"]) for r in records],
+                multi_trace=self.multi_trace,
+            )
+        except UnloweredCountertermColour as error:
+            return str(error)
+        name = entry.lorentz_name
+        if name not in self._lorentz:
+            self._lorentz[name] = counterterm_lorentz_error(self.compiled, name)
+        if self._lorentz[name] is not None:
+            return f"Lorentz structure {name}: {self._lorentz[name]}"
         return None
 
 
@@ -399,7 +430,10 @@ class CountertermModel:
     ``assumptions`` are model-parameter expressions the lowered couplings
     assume non-zero (``CoefficientLowering``); ``residual`` maps every rule
     left to site closure to the reason; ``structures`` are the lowered vertex
-    terms of every lowered rule (graded with a continuation).
+    terms of every lowered rule (graded with a continuation); ``unlowered``
+    holds, per lowered rule, the cells the lowered model leaves out because
+    they cancel between rules (module docstring): cell -> (why it is not
+    lowered, {Laurent power: exact coefficient}).
     """
 
     lowered: CountertermLoweredModel
@@ -408,6 +442,9 @@ class CountertermModel:
     assumptions: tuple[str, ...]
     residual: Mapping[RuleKey, str]
     structures: Mapping[RuleKey, tuple[CountertermStructure, ...]] = field(
+        default_factory=dict
+    )
+    unlowered: Mapping[RuleKey, Mapping[Cell, tuple[str, Mapping[int, Any]]]] = field(
         default_factory=dict
     )
 
@@ -492,19 +529,38 @@ def lower_model_counterterms(
     residual: dict[RuleKey, str] = {}
     # Exact coefficient of every rule on each of its lowered vertex terms.
     values: dict[RuleKey, dict[CountertermStructure, Any]] = {}
+    # Cells the tree compiler cannot lower, per rule: (reason, coefficients).
+    unlowered: dict[RuleKey, dict[Cell, tuple[str, dict[int, Any]]]] = {}
+    weights: dict[RuleKey, int] = {}
     for rule in rules.values():
         key = rule_key(rule)
-        reason = vocabulary.residual_reason(rule)
+        reason = vocabulary.rule_reason(rule)
         if reason is not None:
             residual[key] = reason
             continue
         rows: dict[CountertermStructure, Any] = {}
+        cells: dict[Cell, tuple[str, dict[int, Any]]] = {}
         try:
             if rule.whole_rule_continuation is not None:
                 rows = whole_rule_rows(rule, coefficients)
+            else:
+                for entry in rule.entries:
+                    reason = vocabulary.entry_reason(entry)
+                    if reason is None:
+                        continue
+                    powers = cells.setdefault(entry_cell(entry), (reason, {}))[1]
+                    for power in COUNTERTERM_POWERS:
+                        if _coefficient_is_zero(entry, power):
+                            continue
+                        value = coefficients(entry, power)
+                        powers[power] = (
+                            powers[power] + value if power in powers else value
+                        )
             for entry, structure in (
                 rule_terms(rule) if rule.whole_rule_continuation is None else ()
             ):
+                if entry_cell(entry) in cells:
+                    continue
                 value = coefficients(entry, structure.power)
                 rows[structure] = (
                     rows[structure] + value if structure in rows else value
@@ -512,6 +568,9 @@ def lower_model_counterterms(
         except (CountertermCouplingError, NotImplementedError) as error:
             residual[key] = str(error)
             continue
+        if cells:
+            unlowered[key] = cells
+            weights[key] = len(rule.alternatives)
         if multi_trace:
             rows = _without_u1_terms(rows, nc)
         if nc is not None:
@@ -522,6 +581,18 @@ def lower_model_counterterms(
                 continue
         # A coefficient the fixed parameters make vanish has no vertex term.
         values[key] = {s: value for s, value in rows.items() if not _is_zero(value)}
+
+    def vanishes(expression: Any) -> bool:
+        return vanishes_identically(compiled, expression)
+
+    # Candidate cells cancel with every alternative of their rules admitted;
+    # the other rules with an unlowered cell stay residual (all of a cell's
+    # rules together, so that no share of a cell is left to sites alone).
+    for key in uncancelled_rules(unlowered, weights, vanishes, frozenset(residual)):
+        if key in values:
+            del values[key]
+            residual[key] = _uncancelled_reason(unlowered[key])
+    unlowered = {key: cells for key, cells in unlowered.items() if key in values}
     multiplicities = {
         key: f"{_PREFIX}M{index}" for index, key in enumerate(sorted(values, key=repr))
     }
@@ -560,6 +631,15 @@ def lower_model_counterterms(
                 structure = next(s for s in values.pop(key) if s in refused)
                 residual[key] = refused[structure]
                 del multiplicities[key]
+            # The other rules of a refused rule's cancelling cells follow it.
+            for key in uncancelled_rules(
+                unlowered, weights, vanishes, frozenset(residual)
+            ):
+                if key in values:
+                    del values[key]
+                    residual[key] = _uncancelled_reason(unlowered[key])
+                    del multiplicities[key]
+            unlowered = {k: cells for k, cells in unlowered.items() if k in values}
             continue
         return CountertermModel(
             lowered=replace(lowered, refused=refused),
@@ -568,7 +648,66 @@ def lower_model_counterterms(
             assumptions=tuple(sorted(coefficients.assumptions)),
             residual=residual,
             structures={key: tuple(sorted(rows)) for key, rows in values.items()},
+            unlowered=unlowered,
         )
+
+
+def uncancelled_rules(
+    unlowered: Mapping[Any, Mapping[Cell, tuple[str, Mapping[int, Any]]]],
+    weights: Mapping[Any, int],
+    vanishes: Any,
+    residual: frozenset = frozenset(),
+) -> frozenset:
+    """Rules (keys of ``unlowered``) whose unlowered cells do not cancel.
+
+    A cell cancels when the sum over its rules of ``weights`` (admitted
+    alternatives) times their coefficients ``vanishes`` at every Laurent
+    power, and none of its rules is ``residual`` (a residual rule's share of
+    the cell is closed at sites). Every rule of a cell that does not cancel is
+    returned, to a fixed point.
+    """
+
+    members: dict[Cell, list[Any]] = defaultdict(list)
+    for key, cells in unlowered.items():
+        for cell in cells:
+            members[cell].append(key)
+    cancels: dict[Cell, bool] = {}
+
+    def cancelled(cell: Cell) -> bool:
+        if cell not in cancels:
+            keys = members[cell]
+            cancels[cell] = all(
+                vanishes(
+                    reduce(
+                        add,
+                        (
+                            weights[key] * unlowered[key][cell][1][power]
+                            for key in keys
+                            if power in unlowered[key][cell][1]
+                        ),
+                    )
+                )
+                for power in COUNTERTERM_POWERS
+                if any(power in unlowered[key][cell][1] for key in keys)
+            )
+        return cancels[cell]
+
+    out = {key for key in unlowered if key in residual}
+    changed = True
+    while changed:
+        changed = False
+        for cell, keys in members.items():
+            if all(key in out for key in keys):
+                continue
+            if any(key in out for key in keys) or not cancelled(cell):
+                out.update(keys)
+                changed = True
+    return frozenset(out)
+
+
+def _uncancelled_reason(cells: Mapping[Cell, tuple[str, Any]]) -> str:
+    reason = next(iter(cells.values()))[0]
+    return f"{reason} (it does not cancel between the rules of its vertex)"
 
 
 def _without_u1_terms(
@@ -853,7 +992,10 @@ class CountertermRecursion:
 
     ``rules`` are the request's rules in the recursion with their admitted
     alternatives (``admission``) and lowered ``terms``; ``residual`` maps
-    every other rule of the request to the reason it stays a site closure.
+    every other rule of the request to the reason it stays a site closure;
+    ``cancelled`` names the cells of the recursion's rules that the lowered
+    model leaves out and that cancel with this request's admission (module
+    docstring), which the CT-root sites leave out too.
     """
 
     model: CountertermModel
@@ -863,6 +1005,7 @@ class CountertermRecursion:
     residual: Mapping[str, str]
     born_orders: tuple[Orders, ...]
     loop_orders: tuple[Orders, ...]
+    cancelled: Mapping[str, frozenset[Cell]] = field(default_factory=dict)
 
     @classmethod
     def build(
@@ -890,9 +1033,14 @@ class CountertermRecursion:
             key = rule_key(rule)
             if key in model.multiplicities:
                 lowered[name] = rule
+                cells = model.unlowered.get(key, {})
                 terms[name] = tuple(
                     (None, structure) for structure in model.structures[key]
-                ) or rule_terms(rule)
+                ) or tuple(
+                    (entry, structure)
+                    for entry, structure in rule_terms(rule)
+                    if entry_cell(entry) not in cells
+                )
             else:
                 residual[name] = model.residual.get(
                     key, "the rule is not in the lowered model"
@@ -904,6 +1052,24 @@ class CountertermRecursion:
             selection,
             forbidden=forbidden,
         )
+        # The cells the lowered model leaves out must cancel with this
+        # request's admission; otherwise their rules are closed at sites.
+        unlowered = {
+            name: model.unlowered[rule_key(rule)]
+            for name, rule in lowered.items()
+            if rule_key(rule) in model.unlowered
+        }
+        compiled = model.lowered.compiled
+        failed = uncancelled_rules(
+            unlowered,
+            {name: len(admission[name]) for name in unlowered},
+            lambda expression: vanishes_identically(compiled, expression),
+        )
+        for name in failed:
+            residual[name] = _uncancelled_reason(unlowered[name]).replace(
+                "its vertex)", "its vertex in this request)"
+            )
+            del lowered[name], terms[name], admission[name]
         return cls(
             model=model,
             rules=lowered,
@@ -912,6 +1078,11 @@ class CountertermRecursion:
             residual=residual,
             born_orders=tuple(sorted({add_orders(o) for o in born_orders})),
             loop_orders=tuple(sorted(selection.loop_orders)),
+            cancelled={
+                name: frozenset(cells)
+                for name, cells in unlowered.items()
+                if name not in failed
+            },
         )
 
     # -- program -----------------------------------------------------------------
@@ -1048,4 +1219,5 @@ __all__ = [
     "lower_model_counterterms",
     "rule_key",
     "rule_terms",
+    "uncancelled_rules",
 ]

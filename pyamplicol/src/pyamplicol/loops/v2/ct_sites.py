@@ -59,6 +59,15 @@ Colour, kinematics and signs of a site term (design §6.4, §6.6):
   fermion line listing over the product of the blocks' listings
   (``loops.v2.blocks``). One coloured fermion line may close at the root.
 
+Entries whose Lorentz structure the catalogue cannot normalise (a
+Levi-Civita tensor) have no ``ct-site`` kernel. Where the same UFO colour and
+Lorentz cell of several rules (the loop groups of one vertex) is closed on the
+same blocks and the coefficients, weighted by the admitted alternatives,
+cancel identically (``vanishes_identically``: the anomaly-free sum of a Z's
+axial couplings over the quark doublets), the cell is dropped
+(``SiteClosure.cancelled_cells``); otherwise the site fails for want of a
+kernel.
+
 Laurent couplings stay symbolic (``CountertermSites.coupling_outputs``) and are
 bound by the source scalar program (``loops.v2.fields.counterterm_scalar_plan``),
 like the legacy counterterm scale view. Components split by kind: R2 is
@@ -77,7 +86,9 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
+from functools import reduce
 from itertools import product
+from operator import add
 from types import MappingProxyType
 from typing import Any
 
@@ -131,6 +142,9 @@ COMPONENT_BY_KIND: Mapping[str, str] = {
 LAURENT_POWERS = (0, -1, -2)
 
 Species = tuple[int, ...]
+# (UFO collection, vertex id, colour index, Lorentz index): one coupling cell of
+# a UFO vertex, shared by the loop groups (rules) of that vertex.
+Cell = tuple[str, int, int, int]
 
 
 class CountertermCompletenessError(ValueError):
@@ -655,6 +669,9 @@ class SiteClosure:
         self._bindings = {
             binding.key: binding for binding in catalogue.counterterm_sites
         }
+        self._unsupported = frozenset(
+            item.entry_key for item in catalogue.unsupported_counterterms
+        )
         self._blocks: dict[BlockCurrent, list[Block]] = defaultdict(list)
         for block in blocks.blocks:
             key = block.key
@@ -670,8 +687,61 @@ class SiteClosure:
         """Coloured external fermions: label -> all-outgoing representation."""
         return MappingProxyType(self._ends)
 
-    def terms(self, site: CountertermSite) -> tuple[SiteTerm, ...]:
-        return self.vertex_terms(site.rule.entries, site.blocks)
+    def terms(
+        self, site: CountertermSite, cancelled: Iterable[Cell] = ()
+    ) -> tuple[SiteTerm, ...]:
+        """Terms of ``site``, without the entries of its ``cancelled`` cells."""
+
+        cancelled = frozenset(cancelled)
+        entries = tuple(
+            entry for entry in site.rule.entries if entry_cell(entry) not in cancelled
+        )
+        return self.vertex_terms(entries, site.blocks)
+
+    def cancelled_cells(
+        self,
+        sites: Iterable[CountertermSite],
+        coefficient: Callable[[Any, Any, int], Any],
+        vanishes: Callable[[Any], bool],
+    ) -> dict[CountertermSite, frozenset[Cell]]:
+        """Cells without a ``ct-site`` kernel that cancel between rules.
+
+        An entry the catalogue records as unsupported (its Lorentz structure
+        does not normalise, e.g. a Levi-Civita tensor) has no kernel. The same
+        cell of the other rules of its UFO vertex closed on the same blocks
+        has the same kernel, colour and signs, so the cell contributes the
+        kernel times the sum over those rules of the number of admitted
+        alternatives times ``coefficient(rule, entry, power)`` (exact). Where
+        ``vanishes`` holds for that sum at every Laurent power, the cell is
+        cancelled on those sites (``terms(site, cancelled)``); otherwise its
+        entries stay and ``terms`` refuses them for want of a kernel.
+        """
+
+        groups: dict[tuple, list[tuple[CountertermSite, Any]]] = defaultdict(list)
+        for site in sites:
+            if site.rule.whole_rule_continuation is not None:
+                continue
+            for entry in site.rule.entries:
+                if _entry_key(entry) in self._unsupported:
+                    groups[site.blocks, entry_cell(entry)].append((site, entry))
+        out: dict[CountertermSite, set[Cell]] = defaultdict(set)
+        for (_blocks, cell), members in groups.items():
+            if all(
+                vanishes(
+                    reduce(
+                        add,
+                        (
+                            len(site.alternatives)
+                            * coefficient(site.rule, entry, power)
+                            for site, entry in members
+                        ),
+                    )
+                )
+                for power in LAURENT_POWERS
+            ):
+                for site, _entry in members:
+                    out[site].add(cell)
+        return {site: frozenset(cells) for site, cells in out.items()}
 
     def vertex_terms(
         self, entries: Iterable[Any], attachments: Sequence[BlockCurrent]
@@ -888,6 +958,48 @@ def _entry_key(entry: Any) -> tuple[str, int, int, int, int]:
     )
 
 
+def entry_cell(entry: Any) -> Cell:
+    """The UFO coupling cell of a rule entry (its key without the loop group)."""
+
+    return _entry_key(entry)[:4]
+
+
+def vanishes_identically(compiled: Any, expression: Any) -> bool:
+    """Whether ``expression`` vanishes for every value of the model's inputs.
+
+    ``expression`` is in the compiled payload's parameter symbols
+    (``UFO::{}::name``); internal parameters are replaced by their exact
+    resolved definitions (in the model's external parameters) before the
+    expansion is compared with zero. A cancellation that needs particular
+    external values is not found (the caller then keeps the terms).
+    """
+
+    from symbolica import E
+
+    from pyamplicol._internal.physics.symbols import symbols
+
+    zero = E("0")
+    value = expression.expand()
+    if value == zero:
+        return True
+    model_symbols = symbols.model(compiled.name)
+    value = model_symbols.expression(value.to_canonical_string())
+    definitions = [
+        (model_symbols.symbol(record.name), E(f"({record.resolved_expression})"))
+        for record in compiled.ir.parameters
+        if record.nature == "internal"
+    ]
+    for _ in range(len(definitions) + 1):
+        found = False
+        for symbol, definition in definitions:
+            if value.contains(symbol):
+                value = value.replace(symbol, definition)
+                found = True
+        if not found:
+            break
+    return value.expand() == zero
+
+
 # ----------------------------------------------------------------- reference values
 
 
@@ -966,6 +1078,7 @@ __all__ = [
     "LAURENT_POWERS",
     "SPECIES_MATCHED_KINDS",
     "Carrier",
+    "Cell",
     "CertifiedZero",
     "ColourOverlaps",
     "ColourVector",
@@ -979,7 +1092,9 @@ __all__ = [
     "add_colour",
     "admitted_alternatives",
     "divergent_witnesses",
+    "entry_cell",
     "generate_counterterm_sites",
     "ghost_partners",
     "ufo_colour_network",
+    "vanishes_identically",
 ]
