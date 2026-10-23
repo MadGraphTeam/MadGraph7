@@ -325,8 +325,10 @@ def _v2_process_payloads(
     process: LoopV2ProcessArtifact,
 ) -> tuple[dict[str, object], dict[str, object]]:
     # The staged plan is written from the JSON whose digest is
-    # ``plan_sha256``; the native admission of the staged validation checks
-    # the published member against it, so it is not re-read here.
+    # ``plan_sha256``, so it is not re-read here. The native admission
+    # checks the published member against that digest at every
+    # ``Runtime.load``, and also at write time when post-build
+    # validation is enabled (its staged validation loads the artifact).
     physics = {
         "schema_version": LOOP_V2_PHYSICS_SCHEMA,
         "kind": LOOP_PHYSICS_KIND,
