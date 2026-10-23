@@ -2461,6 +2461,120 @@ def _process_group_selection_summary(
     return cast(str, table.get_string())
 
 
+def _loop_inspection_rows(loop: Mapping[str, object]) -> list[tuple[str, str]]:
+    """Execution rows of one virtual process (design §12.3)."""
+
+    sectors = cast(Sequence[Sequence[object]], loop["sectors"])
+    rows = [
+        (
+            "virtual engine",
+            f"{loop['engine']} ({loop['runtime_capability']}); "
+            f"R2 {loop['r2_strategy']}; scheme {loop['scheme_status']}",
+        ),
+        (
+            "Born orders",
+            ", ".join(
+                str(order) for order in cast(Sequence[object], loop["born_orders"])
+            ),
+        ),
+        (
+            "virtual sectors",
+            "; ".join(
+                f"{sector[0]} <- "
+                + ", ".join(
+                    f"Born {pair[0]} x loop {pair[1]}"
+                    for pair in cast(Sequence[Sequence[object]], sector[1])
+                )
+                for sector in sectors
+            ),
+        ),
+        (
+            "arithmetic",
+            ", ".join(
+                str(value) for value in cast(Sequence[object], loop["arithmetic"])
+            ),
+        ),
+    ]
+    families = loop.get("families")
+    if families is not None:
+        buckets = cast(Sequence[Sequence[object]], loop["buckets"])
+        rows.append(
+            (
+                "families / buckets",
+                f"{families} families in {len(buckets)} (N, R) buckets: "
+                + ", ".join(f"({n}, {r}) x {count}" for n, r, count in buckets),
+            )
+        )
+        degrees = loop.get("color_degrees")
+        if degrees is not None:
+            rows.append(
+                (
+                    "colour degrees",
+                    "; ".join(
+                        f"{sector}: N_c^{degree}"
+                        for sector, degree in cast(Sequence[Sequence[object]], degrees)
+                    ),
+                )
+            )
+        rows.extend(
+            (
+                (
+                    "schedule / contraction",
+                    f"{loop['schedule']}; seeds {loop['color_contraction']}",
+                ),
+                (
+                    "runtime options",
+                    "pole selections "
+                    + ", ".join(
+                        str(item) for item in cast(Sequence[object], loop["poles"])
+                    )
+                    + "; stability checks "
+                    + ", ".join(
+                        str(check)
+                        for check in cast(Sequence[object], loop["stability_checks"])
+                    )
+                    + f"; escalation by the {loop['rescue_policy']}",
+                ),
+                (
+                    "observables",
+                    "colour histories "
+                    + (
+                        ", ".join(
+                            map(str, cast(Sequence[object], loop["color_correlations"]))
+                        )
+                        or "none"
+                    )
+                    + "; spin classes "
+                    + (
+                        ", ".join(
+                            "(" + ",".join(map(str, legs)) + ")"
+                            for legs in cast(
+                                Sequence[Sequence[object]], loop["spin_correlations"]
+                            )
+                        )
+                        or "none"
+                    )
+                    + f"; resolved {'yes' if loop['resolved'] else 'no'}",
+                ),
+                (
+                    "plan v4",
+                    f"sha256 {loop['plan_sha256']}; point inputs "
+                    f"{loop['point_inputs']}",
+                ),
+            )
+        )
+    else:
+        rows.append(
+            (
+                "observables",
+                f"correlations {'yes' if loop['correlations'] else 'no'}; "
+                f"resolved {'yes' if loop['resolved'] else 'no'}",
+            )
+        )
+    rows.append(("runtime payload", _byte_size(loop["runtime_bytes"])))
+    return rows
+
+
 def _artifact_inspection_summary(
     plain: Mapping[str, object],
     *,
@@ -2652,6 +2766,11 @@ def _artifact_inspection_summary(
         backend = process.get("prepared_backend")
         mode_text = mode if backend is None else f"{mode} ({backend})"
         add_execution_row((process_id, "mode / backend", mode_text))
+        loop = process.get("loop")
+        if isinstance(loop, Mapping):
+            for row in _loop_inspection_rows(loop):
+                add_execution_row((process_id, *row))
+            continue
         lc_flow_layout = process.get("lc_flow_layout")
         if lc_flow_layout is not None:
             add_execution_row((process_id, "LC flow layout", str(lc_flow_layout)))

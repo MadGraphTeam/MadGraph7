@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, TypeVar, cast
 
 from pyamplicol.api.errors import ConfigurationError
-from pyamplicol.config import ConfigResolution, EvaluatorConfig, RunConfig
+from pyamplicol.config import (
+    ConfigResolution,
+    EvaluatorConfig,
+    PoleSelection,
+    RunConfig,
+)
 from pyamplicol.reporting import (
     ProgressEnd,
     ProgressSink,
@@ -162,7 +167,10 @@ def _read_json(
 
 def _virtual_artifact_hint(path: Path) -> bool:
     """Choose CLI ingress only; the native loader checks the artifact itself."""
-    from pyamplicol._internal.versions import LOOP_RUNTIME_CAPABILITY
+    from pyamplicol._internal.versions import (
+        LOOP_RUNTIME_CAPABILITY,
+        LOOP_V2_RUNTIME_CAPABILITY,
+    )
     from pyamplicol.artifacts import MANIFEST_NAME, load_manifest
 
     path = path.expanduser().resolve(strict=False)
@@ -170,8 +178,9 @@ def _virtual_artifact_hint(path: Path) -> bool:
     if not (root / MANIFEST_NAME).is_file():
         return False
     manifest = load_manifest(root, verify_payloads=False)
-    return LOOP_RUNTIME_CAPABILITY in cast(
-        tuple[str, ...], manifest.runtime["required_runtime_capabilities"]
+    return bool(
+        {LOOP_RUNTIME_CAPABILITY, LOOP_V2_RUNTIME_CAPABILITY}
+        & set(cast(tuple[str, ...], manifest.runtime["required_runtime_capabilities"]))
     )
 
 
@@ -418,6 +427,14 @@ class DefaultCliServices:
         virtual = _virtual_artifact_hint(artifact)
         evaluation = config.evaluation
         stability = evaluation.stability.to_policy()
+        checks = evaluation.stability_checks.to_checks()
+        # Pole-selection and stability-check options exist for v2 virtuals;
+        # the defaults are omitted so other runtimes keep their signatures.
+        v2_options: dict[str, object] = {}
+        if evaluation.poles is not PoleSelection.ALL:
+            v2_options["poles"] = evaluation.poles
+        if checks is not None:
+            v2_options["stability_checks"] = checks
         requests = None
         if evaluation.correlated_requests is not None:
             from .correlated_requests import correlated_requests_from_json
@@ -435,10 +452,11 @@ class DefaultCliServices:
             or config.loop.r2_strategy != "auto"
             or stability is not None
             or evaluation.on_failure != "raise"
+            or v2_options
         ):
             raise ConfigurationError(
-                "arithmetic, mu_r2, r2_strategy, stability and on_failure options "
-                "require a virtual artifact; "
+                "arithmetic, mu_r2, r2_strategy, stability, poles, stability "
+                "checks and on_failure options require a virtual artifact; "
                 "tree precision is selected with --precision"
             )
         parameters: ModelParameters | None = None
@@ -490,6 +508,7 @@ class DefaultCliServices:
                     helicities=evaluation.helicity_ids or None,
                     mu_r2=scales,
                     on_failure=evaluation.on_failure,
+                    **v2_options,
                 )
             return runtime.evaluate_correlated_many(
                 cast("Momenta", momenta),
@@ -521,6 +540,7 @@ class DefaultCliServices:
                 color_flows=evaluation.color_flow_ids or None,
                 mu_r2=scales,
                 on_failure=evaluation.on_failure,
+                **v2_options,
             )
         return operation(
             cast("Momenta", momenta),
