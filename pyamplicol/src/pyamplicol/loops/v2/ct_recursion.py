@@ -189,18 +189,6 @@ class TreeVocabulary:
         }
         self._lorentz: dict[str, str | None] = {}
 
-    def residual_reason(self, rule: Any) -> str | None:
-        """Why ``rule`` cannot enter the tree recursion yet, or ``None``."""
-
-        reason = self.rule_reason(rule)
-        if reason is not None or rule.whole_rule_continuation is not None:
-            return reason
-        for entry in rule.entries:
-            reason = self.entry_reason(entry)
-            if reason is not None:
-                return reason
-        return None
-
     def rule_reason(self, rule: Any) -> str | None:
         """Why no entry of ``rule`` can enter the tree recursion, or ``None``."""
 
