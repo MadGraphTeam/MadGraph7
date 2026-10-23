@@ -812,3 +812,58 @@ fn particle_mass_from_map(
         .or_else(|| particle_masses.get(&anti_particle_id).copied())
         .unwrap_or(0.0)
 }
+
+/// The external wavefunctions of a runtime schema's `source_fill` for a
+/// caller outside the tree engine (the loop engine's native trees,
+/// `loop_v2::trees`): the same records, formulas and crossing phases as
+/// the tree runtime, one helicity per source.
+#[cfg(feature = "symbolica-runtime")]
+pub(crate) struct SchemaSources {
+    sources: Vec<GenericSourceRecordManifest>,
+}
+
+#[cfg(feature = "symbolica-runtime")]
+impl SchemaSources {
+    pub(crate) fn from_value(source_fill: &Value) -> RusticolResult<Self> {
+        let fill: GenericSourceFillManifest = serde_json::from_value(source_fill.clone())
+            .map_err(|error| {
+                RusticolError::invalid_argument(format!("schema source fill: {error}"))
+            })?;
+        if fill.source_count != fill.sources.len() {
+            return Err(RusticolError::invalid_argument(
+                "schema source fill count differs from its sources",
+            ));
+        }
+        Ok(Self {
+            sources: fill.sources,
+        })
+    }
+
+    /// Binary64 wavefunctions of physical momenta `point` into `row`.
+    pub(crate) fn fill_f64(
+        &self,
+        masses: &BTreeMap<i32, f64>,
+        point: &[[f64; 4]],
+        row: &mut [Complex<f64>],
+    ) -> RusticolResult<()> {
+        ExecutionRuntime::fill_sources_row(&self.sources, point.len(), masses, row, point)
+    }
+
+    pub(crate) fn fill_double_float(
+        &self,
+        masses: &BTreeMap<i32, f64>,
+        point: &[[DoubleFloat; 4]],
+        row: &mut [Complex<DoubleFloat>],
+    ) -> RusticolResult<()> {
+        ExecutionRuntime::fill_sources_row_generic(&self.sources, point.len(), masses, row, point)
+    }
+
+    pub(crate) fn fill_float(
+        &self,
+        masses: &BTreeMap<i32, f64>,
+        point: &[[Float; 4]],
+        row: &mut [Complex<Float>],
+    ) -> RusticolResult<()> {
+        ExecutionRuntime::fill_sources_row_generic(&self.sources, point.len(), masses, row, point)
+    }
+}

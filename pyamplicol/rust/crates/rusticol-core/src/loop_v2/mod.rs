@@ -26,4 +26,5 @@ pub mod plan;
 pub mod poly;
 pub mod retest;
 pub mod seeds;
+pub mod trees;
 pub mod trie;

@@ -108,6 +108,8 @@ class ExportedPlan:
     orders: tuple[Orders, ...]
     families: tuple[FamilyKey, ...]
     sectors: tuple[Orders, ...]
+    # The tree program of native per-point inputs (``native_trees``).
+    trees: Any = None
 
     def json(self) -> str:
         return json.dumps(self.program, separators=(",", ":"))
@@ -659,12 +661,20 @@ class _Exporter:
 
 
 def export_plan(
-    slice_: Any, *, forward: bool = True, merged: MergedGraph | None = None
+    slice_: Any,
+    *,
+    forward: bool = True,
+    merged: MergedGraph | None = None,
+    trees: bool = False,
+    born_squared: bool = False,
 ) -> ExportedPlan:
     """The plan v4 program of a generated slice (structure only, no numerics).
 
     ``merged`` adds schedule M's planar state graph (``merged.merged_graph``)
-    for its certified families; schedule B keeps every family.
+    for its certified families; schedule B keeps every family. ``trees``
+    exports the tree program of native per-point inputs
+    (``native_trees.export_trees``; its Born kernels join the plan's), with
+    the Born colour metric when ``born_squared``.
     """
 
     from .assemble import _BlockRows
@@ -699,6 +709,11 @@ def export_plan(
         else None
     )
     seed_classes, seeds = exporter.seed_records()
+    native_trees = None
+    if trees:
+        from .native_trees import export_trees
+
+        native_trees = export_trees(slice_, exporter, rows, born_squared=born_squared)
     legs = len(slice_.blocks.process.legs)
     program = {
         "schema": PLAN_SCHEMA,
@@ -729,6 +744,7 @@ def export_plan(
         orders=orders,
         families=tuple(keys),
         sectors=tuple(sector for sector, _pairs in slice_.sectors),
+        trees=native_trees,
     )
 
 
@@ -776,6 +792,13 @@ class NativeExecutor:
     or every step fused or split (where it can). ``merged`` adds schedule M
     (``merged.merged_graph``; True builds it with its default chunks), which
     ``schedule="M"`` runs for its certified families, and B for the others.
+
+    ``inputs="native"`` forms every point's block rows and Born components in
+    the executor (``native_trees``, WP3.1) instead of in Python: a batch then
+    hands over only parameter-dependent values. Its results hold the Born
+    (with ``born_squared``, full colour) and the ``bare`` component; the
+    counterterms and external fields join with the native counterterm
+    program (WP3.1 I5, after WP2.2), so ``virtual`` is absent until then.
     """
 
     def __init__(
@@ -788,13 +811,24 @@ class NativeExecutor:
         exported: ExportedPlan | None = None,
         forms: Literal["rule", "fused", "split"] = "rule",
         merged: MergedGraph | bool = False,
+        inputs: Literal["python", "native"] = "python",
+        born_squared: bool = False,
     ):
+        if inputs not in ("python", "native"):
+            raise ValueError(f"unknown input path {inputs!r}")
         self.slice = slice_
+        self.inputs = inputs
         if merged is True:
             merged = merged_graph(slice_)
         self.exported = exported or export_plan(
-            slice_, forward=forward, merged=merged or None
+            slice_,
+            forward=forward,
+            merged=merged or None,
+            trees=inputs == "native",
+            born_squared=born_squared,
         )
+        if inputs == "native" and self.exported.trees is None:
+            raise ValueError("native inputs need a plan exported with trees=True")
         self.lanes = lanes
         self.threads = threads
         self.forms = forms
@@ -817,6 +851,11 @@ class NativeExecutor:
         key = (arithmetic, digits, lanes)
         found = self._native.get(key)
         if found is None:
+            trees = (
+                self.exported.trees.executor_argument()
+                if self.inputs == "native" and arithmetic != "exact"
+                else None
+            )
             found = self._native[key] = self.slice.native.V2Executor(
                 self._plan_json,
                 arithmetic,
@@ -824,6 +863,7 @@ class NativeExecutor:
                 lanes=lanes,
                 threads=self.threads,
                 forms=self.forms,
+                trees=trees,
             )
         return found
 
@@ -940,6 +980,19 @@ class NativeExecutor:
             "block_rows": [],
             "born": [],
         }
+        if self.inputs == "native":
+            from .native_trees import batch_inputs
+
+            first, *rest = evaluations
+            if any(e.parameters != first.parameters for e in rest):
+                raise ValueError("the points of one batch need equal parameters")
+            with first.numbers.scope():
+                batch["constants"], batch["masses"] = shared(first)
+                batch["trees"] = batch_inputs(
+                    slice_, exported.trees, first.parameters, first.numbers, value
+                )
+            del batch["block_rows"], batch["born"]
+            return batch
         for evaluation in evaluations:
             with evaluation.numbers.scope():
                 common = shared(evaluation)
@@ -1082,8 +1135,9 @@ class NativeExecutor:
                 budgets[ROTATION.format(k)] = reference.rotation_budget(runs[index])
             if stability.reduction:
                 budgets[stability.reduction] = reference.retest_budget
+            components = reference.result.components
             estimate = StabilityEstimate.from_checks(
-                reference.result.components["virtual"],
+                components.get("virtual", components["bare"]),
                 budgets,
                 scale=reference.absolute,
                 roundoff=precision.unit_roundoff,
@@ -1094,6 +1148,32 @@ class NativeExecutor:
             raise FailedPoints(out, failures)
         return out
 
+    def native_inputs(self, points, scales, parameters=None, precision=None):
+        """The executor's native tree inputs of a batch (``inputs="native"``):
+        per point ``(block_rows, born, amplitudes, born_squared)``."""
+
+        from .assemble import Precision
+
+        precision = precision or Precision.double()
+        arithmetic, digits = self._arithmetic(precision, False)
+        evaluations = self._native_points(points, scales, parameters, precision)
+        native = self.native(arithmetic, digits, len(evaluations))
+        return native.tree_inputs(self._inputs(evaluations, arithmetic))
+
+    def _native_points(self, points, scales, parameters, precision):
+        from .assemble import _fraction, _NativePoint, _Numbers
+
+        return [
+            _NativePoint(
+                self.slice,
+                tuple(tuple(_fraction(x) for x in p) for p in point),
+                _fraction(scale),
+                dict(parameters or {}),
+                _Numbers(precision),
+            )
+            for point, scale in zip(points, scales, strict=True)
+        ]
+
     def _evaluated(
         self, points, scales, parameters, precision, poles, retest, schedule="B"
     ):
@@ -1101,11 +1181,17 @@ class NativeExecutor:
         evaluations (failed points unassembled) and the failures per point
         index."""
 
-        from .assemble import Laurent, _Numbers
+        from .assemble import Laurent, Precision, _Numbers
 
-        precision, evaluations = self._points(
-            points, scales, parameters, precision, poles
-        )
+        if self.inputs == "native":
+            precision = precision or Precision.double()
+            evaluations = self._native_points(points, scales, parameters, precision)
+            for evaluation in evaluations:
+                evaluation.poles = poles
+        else:
+            precision, evaluations = self._points(
+                points, scales, parameters, precision, poles
+            )
         arithmetic, digits = self._arithmetic(precision, False)
         native = self.native(arithmetic, digits, len(evaluations))
         output = native.evaluate(
@@ -1151,6 +1237,15 @@ class NativeExecutor:
                 )
 
             with _Numbers(precision).scope():
+                if output.get("born") is not None:
+                    evaluation.born = {
+                        order: numbers.real(Decimal(str(re)))
+                        for order, (re, _im) in zip(
+                            exported.trees.squared_orders,
+                            output["born"][index],
+                            strict=True,
+                        )
+                    }
                 evaluation.families = {
                     label(lane): laurent(values) for lane, values in lanes
                 }

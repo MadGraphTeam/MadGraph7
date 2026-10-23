@@ -8,6 +8,9 @@
 //! are a dict of exact momenta, scales and squared masses (decimal or
 //! fraction strings) and carrier values of kernel constants, block rows and
 //! Born components (float pairs in binary64, string pairs otherwise).
+//! With a tree program (`trees=`, WP3.1) the block rows and Born components
+//! are formed natively instead: the batch then carries `trees`, a dict of the
+//! parameter-only values (`model`, `masses`, `couplings`).
 use super::*;
 use pyo3::IntoPyObject;
 use pyo3::types::PyDict;
@@ -17,6 +20,9 @@ use rusticol_core::loop_execution::v2::{
 use rusticol_core::loop_v2::dress::{Carrier as V2Carrier, V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
 use rusticol_core::loop_v2::retest::ReductionCheck;
+use rusticol_core::loop_v2::trees::{TreeBatch, TreeInputs, TreeProgram, TreeRuntime};
+use std::any::Any;
+use std::sync::Mutex;
 use rusticol_loop_reduction::runtime::{TypedBatch, V2ReductionBackend};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -119,7 +125,11 @@ fn rationals(values: Vec<String>) -> PyResult<Vec<Rational>> {
 }
 
 fn batch<T: Exchanged>(inputs: &Bound<'_, PyDict>, zero: &T) -> PyResult<V2Batch<T>> {
+    let native = inputs.contains("trees")?;
     let per_point = |key: &str| -> PyResult<Vec<Vec<Complex<T>>>> {
+        if native {
+            return Ok(Vec::new());
+        }
         item(inputs, key)?
             .try_iter()?
             .map(|values| T::import(&values?, zero))
@@ -137,6 +147,64 @@ fn batch<T: Exchanged>(inputs: &Bound<'_, PyDict>, zero: &T) -> PyResult<V2Batch
         block_rows: per_point("block_rows")?,
         born: per_point("born")?,
     })
+}
+
+/// The parameter-only tree inputs of a batch (`inputs["trees"]`).
+fn tree_batch<T: Exchanged>(inputs: &Bound<'_, PyDict>, zero: &T) -> PyResult<TreeBatch<T>> {
+    let trees = item(inputs, "trees")?;
+    let trees = trees.cast::<PyDict>()?;
+    Ok(TreeBatch {
+        model: rationals(item(trees, "model")?.extract()?)?,
+        masses: item(trees, "masses")?
+            .extract::<Vec<(i32, f64)>>()?
+            .into_iter()
+            .collect(),
+        couplings: T::import(&item(trees, "couplings")?, zero)?,
+    })
+}
+
+/// The native tree program of an executor and its carrier form.
+struct Trees {
+    program: TreeProgram,
+    /// The program in the executor's carrier (a `TreeRuntime<T>`), built on
+    /// first use; the executor is shared with Python threads, hence the lock.
+    runtime: Mutex<Option<Box<dyn Any + Send>>>,
+}
+
+impl Trees {
+    /// Native block rows and Born components of a batch (filled into
+    /// `batch`); returns every input for inspection.
+    fn fill<T: Exchanged + Real>(
+        &mut self,
+        plan: &LoopProgramV4,
+        inputs: &Bound<'_, PyDict>,
+        batch: &mut V2Batch<T>,
+        zero: &T,
+    ) -> PyResult<TreeInputs<T>>
+    where
+        Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
+        TreeRuntime<T>: Send,
+    {
+        let values = tree_batch(inputs, zero)?;
+        let mut guard = self.runtime.lock().map_err(|_| error("a poisoned tree runtime"))?;
+        let fresh = !guard
+            .as_ref()
+            .is_some_and(|runtime| runtime.is::<TreeRuntime<T>>());
+        if fresh {
+            *guard = Some(Box::new(self.program.runtime(zero)));
+        }
+        let runtime = guard
+            .as_mut()
+            .and_then(|runtime| runtime.downcast_mut::<TreeRuntime<T>>())
+            .expect("a runtime of this carrier");
+        let out = self
+            .program
+            .inputs(runtime, plan, &values, &batch.momenta, &batch.constants, zero)
+            .map_err(error)?;
+        batch.block_rows = out.block_rows.clone();
+        batch.born = out.born.clone();
+        Ok(out)
+    }
 }
 
 type ExportedNumerators = Vec<Vec<(usize, usize, usize, Vec<Values>)>>;
@@ -168,6 +236,9 @@ type Lanes = Vec<((usize, usize, usize), Values)>;
 /// Python form of an evaluation.
 #[derive(IntoPyObject)]
 struct Evaluation {
+    /// |A0|² per point and squared Born order (native trees with a colour
+    /// metric), else None.
+    born: Option<Vec<Values>>,
     families: Vec<Lanes>,
     check: Option<Vec<Lanes>>,
     bare: Vec<Vec<Values>>,
@@ -186,10 +257,21 @@ struct ReportObject {
     threads: usize,
 }
 
+fn real_values<T: Exchanged + Real>(values: &[T], zero: &T, bits: u32) -> Values {
+    T::export(
+        &values
+            .iter()
+            .map(|x| Complex::new(x.clone(), zero.clone()))
+            .collect::<Vec<_>>(),
+        bits,
+    )
+}
+
 fn export_evaluation<T: Exchanged + Real>(
     results: Vec<PointResult<T>>,
     report: Report,
     bits: u32,
+    born: Option<Vec<Values>>,
 ) -> Evaluation {
     let lanes = |values: &[(rusticol_core::loop_execution::v2::LaneKey, Vec<Complex<T>>)]| {
         values
@@ -199,6 +281,7 @@ fn export_evaluation<T: Exchanged + Real>(
     };
     let checked = results.iter().any(|r| r.check.is_some());
     Evaluation {
+        born,
         families: results.iter().map(|r| lanes(&r.families)).collect(),
         check: checked.then(|| {
             results
@@ -264,6 +347,7 @@ struct V2Executor {
     executor: Executor,
     carrier: Carriers,
     backend: Option<V2ReductionBackend>,
+    trees: Option<Trees>,
 }
 
 impl V2Executor {
@@ -299,20 +383,75 @@ impl V2Executor {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn evaluate_with<T: Exchanged + Real + TypedBatch>(
     py: Python<'_>,
     executor: &Executor,
+    trees: Option<&mut Trees>,
     backend: &mut V2ReductionBackend,
     inputs: &Bound<'_, PyDict>,
     zero: T,
     bits: u32,
     options: V2Options,
-) -> PyResult<Evaluation> {
-    let batch = batch(inputs, &zero)?;
+) -> PyResult<Evaluation>
+where
+    Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
+    TreeRuntime<T>: Send,
+{
+    let mut batch = batch(inputs, &zero)?;
+    let mut born = None;
+    if inputs.contains("trees")? {
+        let trees = trees.ok_or_else(|| error("the executor has no tree program"))?;
+        let native = trees.fill(executor.plan(), inputs, &mut batch, &zero)?;
+        born = native.born_squared.map(|points| {
+            points
+                .iter()
+                .map(|values| real_values(values, &zero, bits))
+                .collect()
+        });
+    }
     let (results, report) = py
         .detach(|| executor.evaluate(&batch, &zero, backend, options))
         .map_err(error)?;
-    Ok(export_evaluation(results, report, bits))
+    Ok(export_evaluation(results, report, bits, born))
+}
+
+/// Native tree inputs of a batch: (block rows, plan Born components, every
+/// Born component, |A0|² or None) per point.
+type ExportedTreeInputs = (
+    Vec<Values>,
+    Vec<Values>,
+    Vec<Values>,
+    Option<Vec<Values>>,
+);
+
+fn tree_inputs_with<T: Exchanged + Real>(
+    executor: &Executor,
+    trees: &mut Trees,
+    inputs: &Bound<'_, PyDict>,
+    zero: T,
+    bits: u32,
+) -> PyResult<ExportedTreeInputs>
+where
+    Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
+    TreeRuntime<T>: Send,
+{
+    let mut batch = batch(inputs, &zero)?;
+    let out = trees.fill(executor.plan(), inputs, &mut batch, &zero)?;
+    let export = |points: &[Vec<Complex<T>>]| -> Vec<Values> {
+        points.iter().map(|values| T::export(values, bits)).collect()
+    };
+    Ok((
+        export(&out.block_rows),
+        export(&out.born),
+        export(&out.amplitudes),
+        out.born_squared.map(|points| {
+            points
+                .iter()
+                .map(|values| real_values(values, &zero, bits))
+                .collect()
+        }),
+    ))
 }
 
 fn numerators_with<T: Exchanged>(
@@ -332,8 +471,11 @@ fn numerators_with<T: Exchanged>(
 
 #[pymethods]
 impl V2Executor {
+    /// `trees` is a tree program (`loops/v2/native_trees.py`): its JSON
+    /// and the saved exact evaluator of each stage.
     #[new]
-    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule"))]
+    #[pyo3(signature = (plan, arithmetic="double", precision=None, *, lanes=16, threads=None, forms="rule", trees=None))]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         plan: &str,
         arithmetic: &str,
@@ -341,6 +483,7 @@ impl V2Executor {
         lanes: usize,
         threads: Option<usize>,
         forms: &str,
+        trees: Option<(String, Vec<Vec<u8>>)>,
     ) -> PyResult<Self> {
         let policy = match forms {
             "rule" => FormPolicy::Rule,
@@ -360,11 +503,45 @@ impl V2Executor {
             }
         };
         let plan = Arc::new(LoopProgramV4::load_with(plan.as_bytes(), policy).map_err(error)?);
+        let trees = trees
+            .map(|(json, stages)| {
+                TreeProgram::load(json.as_bytes(), &stages, &plan).map(|program| Trees {
+                    program,
+                    runtime: Mutex::new(None),
+                })
+            })
+            .transpose()
+            .map_err(error)?;
         Ok(Self {
             executor: Executor::new(plan, lanes, threads).map_err(error)?,
             carrier,
             backend: None,
+            trees,
         })
+    }
+
+    /// The native tree inputs of a batch (needs a tree program): per point
+    /// `(block_rows, born, amplitudes, born_squared)`, see `TreeInputs`.
+    fn tree_inputs(
+        &mut self,
+        inputs: &Bound<'_, PyDict>,
+    ) -> PyResult<ExportedTreeInputs> {
+        let bits = self.bits()?;
+        let executor = &self.executor;
+        let trees = self
+            .trees
+            .as_mut()
+            .ok_or_else(|| error("the executor has no tree program"))?;
+        match self.carrier {
+            Carriers::Double => tree_inputs_with(executor, trees, inputs, 0.0, bits),
+            Carriers::DoubleDouble => {
+                tree_inputs_with(executor, trees, inputs, DoubleFloat::from(0.0), bits)
+            }
+            Carriers::Arbitrary(_) => {
+                tree_inputs_with(executor, trees, inputs, Float::with_val(bits, 0), bits)
+            }
+            Carriers::Exact => Err(error("the exact carrier has no native trees")),
+        }
     }
 
     #[getter]
@@ -498,11 +675,13 @@ impl V2Executor {
         self.backend()?;
         let backend = self.backend.as_mut().expect("backend");
         let executor = &self.executor;
+        let trees = self.trees.as_mut();
         match carrier {
-            0 => evaluate_with(py, executor, backend, inputs, 0.0, bits, options),
+            0 => evaluate_with(py, executor, trees, backend, inputs, 0.0, bits, options),
             1 => evaluate_with(
                 py,
                 executor,
+                trees,
                 backend,
                 inputs,
                 DoubleFloat::from(0.0),
@@ -512,6 +691,7 @@ impl V2Executor {
             _ => evaluate_with(
                 py,
                 executor,
+                trees,
                 backend,
                 inputs,
                 Float::with_val(bits, 0),

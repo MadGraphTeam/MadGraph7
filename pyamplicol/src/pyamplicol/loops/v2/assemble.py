@@ -2235,6 +2235,102 @@ class _PointEvaluation:
 # --------------------------------------------------------------------- helpers
 
 
+class _NativePoint(_PointEvaluation):
+    """A point whose block rows and Born components the native executor
+    forms (``plan_export.NativeExecutor(inputs="native")``, WP3.1).
+
+    Only parameter-dependent values are prepared here (kernel constants); the
+    result holds the Born (when the executor forms |A0|^2) and the ``bare``
+    component per sector. Counterterms and external fields join with the
+    native counterterm program (WP3.1 I5).
+    """
+
+    def __init__(self, slice_, point, scale, parameters, numbers):
+        self.slice = slice_
+        self.numbers = numbers
+        self.poles = True
+        process = slice_.blocks.process
+        labels = sorted(leg.label for leg in process.legs)
+        initial = {leg.label for leg in process.legs if leg.is_initial}
+        self.incoming = [
+            [x if label in initial else -x for x in point[label - 1]]
+            for label in labels
+        ]
+        self.scale = scale
+        self.parameters = parameters
+        self.constants = rx.KernelConstants(
+            _kernel_parameters(slice_.compiled, parameters), numbers.carrier
+        )
+        self.born: dict[Orders, Any] = {}
+        self.counterterms: dict = {}
+        self.colour_contraction = "direct"
+        self.retest_families = None
+
+    def _assemble(self) -> None:
+        slice_, numbers = self.slice, self.numbers
+        width = 3 if self.poles else 1
+        zero = numbers.real(0)
+        bare = self._bare(self.families)
+        components = {
+            "bare": {
+                sector: bare.get(sector, Laurent(*[zero] * width))
+                for sector, _pairs in slice_.sectors
+            }
+        }
+        totals = [sum(self.born.values(), zero)]
+        for k in range(width):
+            totals.append(
+                sum(
+                    (
+                        laurent.coefficients[k]
+                        for laurent in components["bare"].values()
+                    ),
+                    zero,
+                )
+            )
+        self.result = PointResult(
+            dict(self.born),
+            components,
+            tuple(totals),
+            dict(self.families),
+            None,
+            colour_contraction=self.colour_contraction,
+        )
+        self.absolute = self._lane_budget(
+            {lane: value.coefficients for lane, value in self.families.items()}
+        )
+        self.retest_budget = None
+        self.family_deviations = None
+        if self.retest_families is not None:
+            self.family_deviations = {
+                lane: tuple(
+                    abs(a - b)
+                    for a, b in zip(
+                        self.families[lane].coefficients,
+                        self.retest_families[lane].coefficients,
+                        strict=True,
+                    )
+                )
+                for lane in self.families
+            }
+            self.retest_budget = self._lane_budget(self.family_deviations)
+
+    def rotation_budget(self, rotated: _PointEvaluation) -> dict[Orders, Budget]:
+        zero = Laurent(*[self.numbers.zero] * (3 if self.poles else 1))
+        lanes = {
+            lane: tuple(
+                a - b
+                for a, b in zip(
+                    rotated.families.get(lane, zero).coefficients,
+                    self.families.get(lane, zero).coefficients,
+                    strict=True,
+                )
+            )
+            for lane in self.families.keys() | rotated.families.keys()
+        }
+        return self._lane_budget(lanes)
+
+
 def _max(a: int | None, b: int | None) -> int | None:
     return b if a is None else a if b is None else max(a, b)
 
