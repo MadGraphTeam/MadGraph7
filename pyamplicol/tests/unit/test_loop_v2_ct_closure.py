@@ -678,9 +678,9 @@ def test_generation_leaves_the_program_rows_to_the_first_point(
     tree_rows = assemble.TreeRows
 
     class Recorded(tree_rows):
-        def __init__(self, dag, compiled):
+        def __init__(self, dag, compiled, **options):
             built.append(id(dag))
-            super().__init__(dag, compiled)
+            super().__init__(dag, compiled, **options)
 
     monkeypatch.setattr(assemble, "TreeRows", Recorded)
     _certify_furry_zeros(monkeypatch)
