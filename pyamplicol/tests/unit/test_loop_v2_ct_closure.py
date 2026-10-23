@@ -667,10 +667,12 @@ def test_slice_counterterms_from_recursion_equal_sites(
 def test_generation_leaves_the_program_rows_to_the_first_point(
     loop_sm_compiled_model, loop_native, monkeypatch
 ):
-    """Generation builds the CT program and its root terms but not the
-    program's Python tree rows: a native evaluation never needs them, and at
-    seven legs their evaluator would cost hours. The first point compiles
-    them, after the block rows."""
+    """Generation builds the CT program and its root terms but no Python
+    tree rows: a native evaluation never needs them, and at seven legs their
+    evaluators would cost hours. The first point compiles the block rows,
+    then the program's (the rows are lazy, RUST-MIGRATION.md §10 decision 5;
+    their rounding does not depend on the CT route,
+    ``test_lazy_block_rows_do_not_depend_on_the_counterterm_route``)."""
 
     from pyamplicol.loops.v2 import assemble
     from pyamplicol.loops.v2.assemble import LoopSlice, Precision, SliceRequest
@@ -700,7 +702,7 @@ def test_generation_leaves_the_program_rows_to_the_first_point(
     assert program is not None and program.closure.terms
     blocks = id(route.blocks.blocks_dag)
     counterterms = id(program.blocks.blocks.blocks_dag)
-    assert built == [blocks]
+    assert built == []
     route.evaluate(
         _slice_point((0,) * 4),
         SLICE_SCALE_SQUARED,
