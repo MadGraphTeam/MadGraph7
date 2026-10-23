@@ -13,10 +13,9 @@ two run identical programs:
   terms of one routing key), from which the executor runs steps in the split
   form where gate G0's rule prefers it;
 * **kernels**: every catalogue kernel as exact polynomial terms over its
-  inputs (``reference_executor.ExactKernel``), in a canonical term order
-  (monomial, then constant key: Symbolica's ``expand()`` orders terms by
-  symbol ids, which depend on the interpreter's history); the model factors
-  of its coefficients are numbered kernel constants, valued per batch. A
+  inputs (``reference_executor.ExactKernel``, in its canonical term order);
+  the model factors of its coefficients are numbered kernel constants,
+  valued per batch. A
   content whose tree reading flips the sign of its outgoing loop line's mass
   (``reference_executor.mass_flips``) binds its own copy of each kernel,
   whose constants are valued with the flipped mass;
@@ -78,15 +77,6 @@ def _fraction_text(value: Any) -> str:
 def _complex_text(value: Any) -> list[str]:
     value = rx.exact(value)
     return [_fraction_text(value.real), _fraction_text(value.imag)]
-
-
-def _term_order(term: tuple[Hashable, Any]) -> tuple[Any, str]:
-    """Canonical order of one kernel term (constant key, monomial): the
-    monomial, then the key's text (exact numbers and canonical strings only),
-    independent of Symbolica's symbol ids."""
-
-    key, monomial = term
-    return tuple(monomial), repr(key)
 
 
 def born_rows(slice_: Any) -> tuple[rx.Row, ...]:
@@ -187,7 +177,7 @@ class _Exporter:
                     self.constants.setdefault((key, flips), len(self.constants)),
                     list(monomial),
                 ]
-                for key, monomial in sorted(terms, key=_term_order)
+                for key, monomial in terms
             ]
             for terms in kernel.outputs
         ]

@@ -535,7 +535,10 @@ class ExactKernel:
     """A prepared loop kernel as exact polynomials in its kinematic inputs.
 
     Each output is a list of terms (constant key, ((input position, power),
-    ...)). Model parameters are not inputs: they are part of the constants.
+    ...)) in a canonical order (``_term_order``): Symbolica's ``expand()``
+    orders terms by symbol ids, which depend on every symbol created earlier
+    in the interpreter, and the summation order sets the carrier's rounding.
+    Model parameters are not inputs: they are part of the constants.
     """
 
     def __init__(self, spec: Any):
@@ -554,7 +557,12 @@ class ExactKernel:
             if item.role == "model-parameter"
         }
         self.outputs = tuple(
-            tuple(_kernel_terms(E(expression), positions, parameters))
+            tuple(
+                sorted(
+                    _kernel_terms(E(expression), positions, parameters),
+                    key=_term_order,
+                )
+            )
             for expression in spec.exact_expressions
         )
         self._bound: KernelConstants | None = None
@@ -580,6 +588,15 @@ class ExactKernel:
                 total = total + value
             out.append(total)
         return out
+
+
+def _term_order(term: tuple[Hashable, Any]) -> tuple[Any, str]:
+    """Canonical order of one kernel term (constant key, monomial): the
+    monomial, then the key's text (exact numbers and canonical strings only,
+    independent of Symbolica's symbol ids)."""
+
+    key, monomial = term
+    return tuple(monomial), repr(key)
 
 
 def _kernel_terms(expression: Any, positions, parameters):
