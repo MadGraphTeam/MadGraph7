@@ -437,9 +437,21 @@ def poles(args) -> dict[str, Any]:
     record["rss_after_export_gb"] = round(_status("VmRSS") / 2**30, 3)
     _progress(record, "export_with_trees_s", "plan_json_mb", "tree_program_mb")
     _progress(record, "rss_after_export_gb")
-    parameters = {"aS": args.alpha_s, "MT": "173"}
-    values = _kernel_parameters(compiled, {**parameters, **request.fixed_parameters})
     by_pdg = {int(p["pdg_code"]): p for p in slice_.data["particles"]}
+    # Coloured particles are stable, as the public path requires
+    # (``artifact.require_zero_coloured_widths``): a width in the tree
+    # propagators but not in the loop's breaks the pole structure (gg > tt~ g
+    # with WT = 1.508: double pole off by 6e-7 of the Born; 4e-12 with 0).
+    parameters = {"aS": args.alpha_s, "MT": "173"}
+    parameters.update(
+        {
+            str(p["width"]): "0"
+            for p in by_pdg.values()
+            if abs(int(p["color"])) != 1 and p.get("width") not in (None, "ZERO", "0")
+        }
+    )
+    record["parameters"] = parameters
+    values = _kernel_parameters(compiled, {**parameters, **request.fixed_parameters})
     masses, casimirs = [], Fraction(0)
     table = _LEADING_CASIMIRS if args.accuracy == "lc" else _CASIMIRS
     for leg in sorted(slice_.blocks.process.legs, key=lambda leg: leg.label):
