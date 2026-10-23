@@ -71,7 +71,7 @@ from collections.abc import Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
-from functools import cached_property
+from functools import cached_property, lru_cache
 from itertools import product
 from typing import Any, Literal
 
@@ -79,6 +79,7 @@ from pyamplicol.color.connections import (
     ColorConnection,
     ConnectedColorTensor,
     EmitGluon,
+    ExactColorCoefficient,
     TensorTerm,
     apply_color_connection,
     contract_connected_tensor_nc_terms,
@@ -107,7 +108,6 @@ from .assemble import (
 from .colour import (
     SeedTable,
     _PrimitiveCells,
-    face_count,
     literal_network,
     reduce_network,
     seed_cells,
@@ -181,6 +181,7 @@ def connect(
 
 # The internal label of an absorbed emission (``absorb``).
 _ABSORBED = ("absorbed",)
+_UNIT = ExactColorCoefficient(1)
 
 
 def absorb(tensor: ConnectedColorTensor, emission: EmitGluon) -> ConnectedColorTensor:
@@ -220,6 +221,45 @@ def absorb(tensor: ConnectedColorTensor, emission: EmitGluon) -> ConnectedColorT
     )
 
 
+@lru_cache(maxsize=1 << 16)
+def _literal(tensor: Any, legs: tuple) -> ConnectedColorTensor:
+    """A literal colour tensor as a one-term connected tensor (cached: the
+    directed overlaps of a complete family meet the same tensors often)."""
+
+    return _single(tensor, legs)
+
+
+def contract_cached(
+    left: ConnectedColorTensor, right: ConnectedColorTensor, cache: dict
+) -> dict:
+    """``contract_connected_tensor_nc_terms`` (nonzero Laurent coefficients)
+    with the overlaps of literal term structures cached in ``cache``, which
+    the directed overlaps of a slice share (the operator images of a
+    complete family's histories reuse each other's structures)."""
+
+    if left.legs != right.legs:
+        raise ValueError("bra and ket must have identical typed output legs")
+    power = left.normalization_power + right.normalization_power
+    if power % 2:
+        raise ValueError("bra/ket normalization has an odd inverse sqrt(2) power")
+    scale = Fraction(1, 2 ** (power // 2))
+    out: dict = {}
+    for x in left.terms:
+        for y in right.terms:
+            key = (x.tensor, y.tensor)
+            found = cache.get(key)
+            if found is None:
+                found = cache[key] = contract_connected_tensor_nc_terms(
+                    ConnectedColorTensor(left.legs, (TensorTerm(_UNIT, x.tensor),)),
+                    ConnectedColorTensor(left.legs, (TensorTerm(_UNIT, y.tensor),)),
+                )
+            weight = (x.coefficient.conjugate() * y.coefficient).scaled(scale)
+            for nc_power, value in found.items():
+                k = nc_power + x.nc_power + y.nc_power
+                out[k] = out[k] + weight * value if k in out else weight * value
+    return {k: value for k, value in out.items() if value}
+
+
 class DirectedColour:
     """Exact directed overlaps and seed tables of one colour history.
 
@@ -234,8 +274,10 @@ class DirectedColour:
     ket^dagger bra(b) replace the Born basis in ``colour.seed_cells``
     (primitives by integer cycle counting, relabelling caches, generic
     classes term-factored). ``cells`` shares those caches across the
-    histories of a complete family. A ket with a quark-pair splitting uses
-    the generic contraction of the connected images (``generic_table``).
+    histories of a complete family, and ``literals`` the literal structure
+    overlaps of ``overlap`` (``contract_cached``). A ket with a quark-pair
+    splitting uses the generic contraction of the connected images
+    (``generic_table``).
     """
 
     def __init__(
@@ -243,6 +285,7 @@ class DirectedColour:
         table: SeedTable,
         history: ColorCorrelator,
         cells: _PrimitiveCells | None = None,
+        literals: dict | None = None,
     ):
         legs = table.basis.legs
         self.history = history
@@ -258,6 +301,7 @@ class DirectedColour:
         self._overlaps: dict[tuple[Any, Any, bool], dict] = {}
         self._seeds = table
         self._cells = cells
+        self._literals = {} if literals is None else literals
         self.symmetric = history.bra == history.ket
         self.table = self._table(table, swapped=False)
 
@@ -326,29 +370,6 @@ class DirectedColour:
             )
         return replace(table, cells=tuple(cells))
 
-    def bound(self, left: Any, right: Any, swapped: bool = False) -> int | None:
-        """An upper bound of the N_c degree of ``overlap(left, right)`` (None
-        if it vanishes): the largest U(N_c) index-loop count (``face_count``)
-        plus N_c powers over the term pairs of the bra and ket images. The
-        SU(N_c) value expands every contracted label into its U(N_c) part and
-        -1/N_c times the label deleted; a deletion adds at most one index
-        loop, so no term exceeds the U(N_c) count."""
-
-        if self._absorbable(swapped):
-            bra = self.operator(_single(left, self._legs), swapped)
-            ket = _single(right, self._legs)
-        else:
-            bra = self._image(_single(left, self._legs), not swapped)
-            ket = self._image(_single(right, self._legs), swapped)
-        return max(
-            (
-                x.nc_power + y.nc_power + face_count(x.tensor, y.tensor)
-                for x in bra.terms
-                for y in ket.terms
-            ),
-            default=None,
-        )
-
     def overlap(self, left: Any, right: Any, swapped: bool = False) -> dict:
         """<bra(left)|ket(right)> (bra and ket exchanged when ``swapped``) of
         two literal colour tensors, exact in N_c."""
@@ -356,10 +377,10 @@ class DirectedColour:
         key = (left, right, swapped)
         found = self._overlaps.get(key)
         if found is None:
-            left, right = _single(left, self._legs), _single(right, self._legs)
+            left, right = _literal(left, self._legs), _literal(right, self._legs)
             if self._absorbable(swapped):
-                cell = contract_connected_tensor_nc_terms(
-                    self.operator(left, swapped), right
+                cell = contract_cached(
+                    self.operator(left, swapped), right, self._literals
                 )
             else:
                 cell = contract_connected_tensor_nc_terms(
@@ -673,6 +694,13 @@ class ObservableSlice:
 
         return _PrimitiveCells(self.slice.table.basis)
 
+    @cached_property
+    def _literals(self) -> dict:
+        """Literal structure overlaps shared by every directed overlap of the
+        slice (``contract_cached``)."""
+
+        return {}
+
     def directed(self, history: ColorCorrelator) -> DirectedColour:
         """The directed colour data of ``history`` (built once)."""
 
@@ -680,7 +708,7 @@ class ObservableSlice:
         found = self._directed.get(key)
         if found is None:
             found = self._directed[key] = DirectedColour(
-                self.slice.table, history, self._cells
+                self.slice.table, history, self._cells, self._literals
             )
         return found
 
@@ -719,26 +747,18 @@ class ObservableSlice:
         tables: list[SeedTable] | None = None,
     ) -> dict[str, dict]:
         """The complete-family degrees; ``tables`` collects every pair's
-        seed table (the pruning criteria). The diagonal pairs (Casimirs) come
-        first, and every pair's degrees are searched only above the family's
-        running maximum (``LoopSlice.degrees(floor=...)``), so overlaps that
-        cannot raise it are never contracted."""
+        seed table (the pruning criteria)."""
 
         slice_ = self.slice
         out: dict[str, dict] = {"born": {}, "virtual": {}}
-        pairs = sorted(product(family, repeat=2), key=lambda pair: pair[0] != pair[1])
-        for alpha, beta in pairs:
+        for alpha, beta in product(family, repeat=2):
             pair = DirectedColour(
                 slice_.table,
                 ColorCorrelator("family", alpha.emissions, beta.emissions),
                 self._cells,
+                self._literals,
             )
-            degrees = slice_.degrees(
-                overlaps=pair.overlap,
-                table=pair.table,
-                bound=pair.bound,
-                floor=out,
-            )
+            degrees = slice_.degrees(overlaps=pair.overlap, table=pair.table)
             for kind, values in degrees.items():
                 for sector, value in values.items():
                     out[kind][sector] = _max(out[kind].get(sector), value)

@@ -1032,8 +1032,11 @@ class VirtualRuntimeBackend:
         self._muted = False
 
 
-class V2VirtualRuntime:
-    """The public virtual-runtime surface over a generated v2 slice.
+class V2ObservablesRuntime:
+    """The public virtual-runtime calls over a generated v2 slice's
+    observables (the observable surface that the artifact runtime of WP2.6,
+    ``loops.v2.artifact.V2VirtualRuntime``, is to delegate its correlated,
+    resolved and member calls to).
 
     It answers ``evaluate``, ``evaluate_resolved``, ``evaluate_correlated`` and
     ``evaluate_correlated_many`` with the public result types from an

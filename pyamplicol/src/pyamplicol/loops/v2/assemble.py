@@ -1442,8 +1442,6 @@ class LoopSlice:
         self,
         overlaps: Callable[[Any, Any], Mapping[int, Any]] | None = None,
         table: SeedTable | None = None,
-        bound: Callable[[Any, Any], int | None] | None = None,
-        floor: Mapping[str, Mapping[Orders, int | None]] | None = None,
     ) -> dict[str, dict[Orders, int | None]]:
         """Leading N_c degrees P per squared-order sector (design §7.4).
 
@@ -1452,13 +1450,6 @@ class LoopSlice:
         field cells (coupling grades included). Structural: no numerics.
         ``overlaps`` and ``table`` replace the Born colour metric and the seed
         table, e.g. by those of a directed colour history (observables).
-        ``bound(left, right)`` is an upper bound of the N_c degree of
-        ``overlaps(left, right)`` (None: the overlap vanishes); with it the
-        exact overlaps are computed in decreasing order of their bounds until
-        no remaining bound exceeds the largest exact degree found, and
-        ``floor`` (per kind and sector, e.g. a colour family's running
-        maximum) starts that search: each value is then the larger of its
-        floor and its degree, and overlaps that cannot exceed it are skipped.
         """
 
         inclusive = overlaps is None and table is None
@@ -1480,32 +1471,15 @@ class LoopSlice:
                 for grade in grade_of(term)
             }
 
-        floor = floor or {}
-
-        def degree(bra: set, ket: set, offset: int = 0, best=None) -> int | None:
-            if bound is None:
-                powers = [
-                    power + p + q + offset
-                    for left, p in bra
-                    for right, q in ket
-                    for power, value in overlaps(left, right).items()
-                    if value
-                ]
-                return max(powers, default=None)
-            candidates = []
-            for left, p in bra:
-                for right, q in ket:
-                    limit = bound(left, right)
-                    if limit is not None:
-                        candidates.append((limit + p + q + offset, left, right, p + q))
-            candidates.sort(key=lambda candidate: -candidate[0])
-            for limit, left, right, shift in candidates:
-                if best is not None and limit <= best:
-                    break
-                for power, value in overlaps(left, right).items():
-                    if value:
-                        best = _max(best, power + shift + offset)
-            return best
+        def degree(bra: set, ket: set, offset: int = 0) -> int | None:
+            powers = [
+                power + p + q + offset
+                for left, p in bra
+                for right, q in ket
+                for power, value in overlaps(left, right).items()
+                if value
+            ]
+            return max(powers, default=None)
 
         born = {
             order: keys(terms, lambda t: grades(t.entry.coupling.name, (0,)))
@@ -1524,18 +1498,13 @@ class LoopSlice:
         out = {"born": {}, "virtual": {}}
         for a, b in product(born, repeat=2):
             squared = add_orders(a, b)
-            start = _max(out["born"].get(squared), floor.get("born", {}).get(squared))
-            out["born"][squared] = _max(start, degree(born[a], born[b], best=start))
+            value = degree(born[a], born[b])
+            out["born"][squared] = _max(out["born"].get(squared), value)
         born_grades = self._born_grades()
         for sector, pairs in self.sectors:
-            value = _max(
-                table.degree(pairs, born_grades),
-                floor.get("virtual", {}).get(sector),
-            )
+            value = table.degree(pairs, born_grades)
             for a, b in pairs:
-                value = _max(
-                    value, degree(born[a], counterterms.get(b, set()), best=value)
-                )
+                value = _max(value, degree(born[a], counterterms.get(b, set())))
             for insertion in self.fields:
                 if (
                     a := next((a for a, b in pairs if b == insertion.orders), None)
@@ -1543,8 +1512,7 @@ class LoopSlice:
                     continue
                 for grade in grades(self.field_names[insertion.identity]):
                     value = _max(
-                        value,
-                        degree(born[a], born[insertion.born_order], grade, best=value),
+                        value, degree(born[a], born[insertion.born_order], grade)
                     )
             out["virtual"][sector] = value
         if inclusive:
