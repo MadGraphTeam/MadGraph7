@@ -29,8 +29,11 @@ colour-basis elements on the Born (bra) side.
 * **Asymmetric Ward mode** (§8.4, oracle O10). The Born bra keeps physical
   polarisations; blocks, counterterm currents and the field insertions' Born
   amplitudes (the loop side) read epsilon_j -> p_j for one vector leg j, with
-  full kernels. The renormalised interference vanishes when UV and R2 are
-  complete and the amplitude is gauge invariant.
+  full kernels. The renormalised interference of a gauge-invariant amplitude
+  vanishes. On the QCD controls the R2 and UV counterterm parts vanish on
+  their own, so the mode checks the gauge invariance of the bare loop
+  amplitude (whose family lanes cancel across families at five legs) and of
+  each counterterm part, not the completeness of UV and R2.
 * **Resolved outputs** (§8.5). Per Born helicity row (one-hot seed columns)
   and per Born colour component, a component being one element of the tree
   engine's Born colour basis (decision 3 of §1.6: the anchor is a Born basis
