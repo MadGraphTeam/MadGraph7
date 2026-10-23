@@ -16,7 +16,9 @@ With ``multi_trace`` (the loop-request blocks of the counterterm closure,
 ``loops.v2.ct_closure``, which carry closed traces) three more forms lower:
 
 * the d-symbol ``d(a,b,c)`` on three adjoint legs, whose colour flow is both
-  orders of its legs with one sign;
+  orders of its legs with one sign, alone (a trilinear vertex) or on a
+  four-leg vertex with one colour-singlet leg (the gluon-gluon-gluon-vector
+  R2, split by the tree compiler's ``trilinear-identity`` contact);
 * a product of two adjoint trilinear tensors sharing one summed index on
   four adjoint legs (``d*d``, ``d*f``, ``f*f``): the tree compiler's contact
   split carries the summed index on a U(N) auxiliary line, so ``d*d`` gains
@@ -27,9 +29,9 @@ With ``multi_trace`` (the loop-request blocks of the counterterm closure,
   and the other two legs share one colour line.
 
 Every other form raises ``UnloweredCountertermColour``: without
-``multi_trace`` the forms above (the fixed-SU(3) four-gluon R2), a d-symbol
-on a vertex with colour-singlet legs (the gluon-gluon-gluon-vector R2), ``Tr``
-with three or more indices and any unknown tensor.
+``multi_trace`` the forms above (the fixed-SU(3) four-gluon R2 and the
+gluon-gluon-gluon-vector R2), a d-symbol on any other legs, ``Tr`` with three
+or more indices and any unknown tensor.
 
 Callers close such rules as sites (``loops.v2.ct_sites``) instead; the
 decision is per rule, never per entry, so a rule is either wholly in the

@@ -574,6 +574,8 @@ def test_public_generation_publishes_plan_v4(full_colour):
     assert info["families"] == 42
     assert sum(count for _n, _r, count in info["buckets"]) == 42
     assert info["poles"] == ["all", "none"] and not info["rescue_available"]
+    # The public path takes its counterterms from the tree recursion (WP2.2).
+    assert info["request"]["counterterms"] == "recursion"
     physics = runtime.physics
     assert [p.pdg_id for p in physics.external_particles] == [2, -2, 1, -1, 21]
 
