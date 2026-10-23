@@ -424,7 +424,24 @@ def test_new_bindings_need_no_symbolica_licence(tmp_path):
         native.overlap_degrees(legs, [[(([], [[1, 2, 3, 4]]), 0)]], [(0, 0, 0)])
         orbits = native.NativeDipoleOrbits.build(legs, basis, [[1, 2, 3, 4]])
         orbits.check_conservation()
-        native.NativeDipoleOrbits.from_json(orbits.to_json()).expand_f64()
+        loaded = native.NativeDipoleOrbits.from_json(orbits.to_json())
+        loaded.expand_f64()
+        assert loaded.digest() == orbits.digest() and loaded.expand()
+        assert native.contract_colours([(basis[0], basis[1])])
+        assert native.face_counts([(([], [[1, 2, 3, 4]]), ([], [[1, 3, 2, 4]]))])
+        copy = native.NativeCellTable.from_cells([[v for v in (values[i] for i in row)]
+                                                  for row in ids])
+        assert copy.concatenated(table).decode()[1][3:] == ids
+        assert copy.degree([[0]] * 3, [[0]] * 6, [(0, 0)]) is not None
+        keys = native.NativeAdjointOrbits([(1, 21), (2, 21), (3, 21), (4, 21)],
+                                         [[(([], [[1, 2, 3, 4]]), 0)]])
+        keys.rename(([], [[2, 1, 4, 3]]))
+        native.live_classes([(table, [None])], [[(0, 0)]], [[0]] * 6,
+                            [((0, 0), [0])], "lc", [(0, 0)])
+        native.project_records([(table, [[0]] * 3, [[0]] * 6)],
+                               [(0, [(0, 0)], None, None)],
+                               [((b, 0), [0]) for b in range(6)], "nlc", [],
+                               [([(0, "1", "0")], 0)])
         print("no licence needed", orbits.representatives)
         """
     )
