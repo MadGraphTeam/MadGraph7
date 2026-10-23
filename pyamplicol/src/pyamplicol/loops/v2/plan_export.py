@@ -283,7 +283,13 @@ class _Exporter:
 
     def seed_records(self) -> list[dict]:
         """Per seed key and column the exact weights of the Born components,
-        the projection of ``assemble.SectorSeeds`` (``SeedTable.seeds``)."""
+        the projection of ``assemble.SectorSeeds`` (``SeedTable.seeds``).
+
+        The admitted (basis, Born order) entries of each sector are indexed
+        by (class, loop order) once, in ``SeedTable.admitted`` order, and each
+        projected cell is formed once, so the records and the numbering of
+        the Born components do not depend on the number of seed keys.
+        """
 
         slice_ = self.slice_
         table = slice_.table
@@ -295,26 +301,31 @@ class _Exporter:
             degree = degrees.get(sector)
             if accuracy != "full" and degree is None:
                 degree = table.degree(pairs, born_grades)
-            sectors.append((pairs, degree))
-        admitted = {
-            (c, order)
-            for pairs, _degree in sectors
-            for c, order, _b, _a in table.admitted(pairs)
-        }
+            index: dict[tuple[int, Orders], list[tuple[int, Orders]]] = defaultdict(
+                list
+            )
+            for c, order, b, born_order in table.admitted(pairs):
+                index[(c, order)].append((b, born_order))
+            sectors.append((degree, index))
+        admitted = {key for _degree, index in sectors for key in index}
+        projected: dict[tuple[int, int, int | None, int], Any] = {}
         records = []
         for combination, order in self.seeds:
             for c, _x in combination:
                 if (c, order) not in admitted:
                     raise KeyError(f"no sector admits class {c} at {order}")
             columns = []
-            for pairs, degree in sectors:
+            for degree, index in sectors:
                 weights: dict[int, ExactColorCoefficient] = {}
                 for c, x in combination:
-                    for cc, oo, b, born_order in table.admitted(pairs):
-                        if (cc, oo) != (c, order):
-                            continue
+                    for b, born_order in index.get((c, order), ()):
                         for grade in sorted(born_grades.get((b, born_order), ())):
-                            weight = project(table.cells[c][b], degree, accuracy, grade)
+                            key = (c, b, degree, grade)
+                            weight = projected.get(key)
+                            if weight is None:
+                                weight = projected[key] = project(
+                                    table.cells[c][b], degree, accuracy, grade
+                                )
                             if not weight:
                                 continue
                             j = self.born_components.setdefault(
