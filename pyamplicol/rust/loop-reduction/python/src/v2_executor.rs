@@ -9,8 +9,11 @@
 //! fraction strings) and carrier values of kernel constants, block rows and
 //! Born components (float pairs in binary64, string pairs otherwise).
 //! With a tree program (`trees=`, WP3.1) the block rows and Born components
-//! are formed natively instead: the batch then carries `trees`, a dict of the
-//! parameter-only values (`model`, `masses`, `couplings`).
+//! are formed natively instead: the batch then carries `parameters`, per
+//! point the exact external parameter values of the program
+//! (`TreeProgram::parameter_names`), from which the kernel constants, masses,
+//! couplings and model parameters are bound natively; it has no `constants`,
+//! `masses`, `block_rows` or `born`.
 use super::*;
 use pyo3::IntoPyObject;
 use pyo3::types::PyDict;
@@ -20,7 +23,7 @@ use rusticol_core::loop_execution::v2::{
 use rusticol_core::loop_v2::dress::{Carrier as V2Carrier, V2Batch, parse_rational};
 use rusticol_core::loop_v2::plan::{FormPolicy, LoopProgramV4};
 use rusticol_core::loop_v2::retest::ReductionCheck;
-use rusticol_core::loop_v2::trees::{TreeBatch, TreeCarrier, TreeInputs, TreeProgram, TreeRuntime};
+use rusticol_core::loop_v2::trees::{TreeCarrier, TreeInputs, TreeProgram, TreeRuntime};
 use rusticol_loop_reduction::runtime::{TypedBatch, V2ReductionBackend};
 use std::any::Any;
 use std::collections::BTreeMap;
@@ -124,7 +127,7 @@ fn rationals(values: Vec<String>) -> PyResult<Vec<Rational>> {
 }
 
 fn batch<T: Exchanged>(inputs: &Bound<'_, PyDict>, zero: &T) -> PyResult<V2Batch<T>> {
-    let native = inputs.contains("trees")?;
+    let native = inputs.contains("parameters")?;
     let per_point = |key: &str| -> PyResult<Vec<Vec<Complex<T>>>> {
         if native {
             return Ok(Vec::new());
@@ -141,29 +144,19 @@ fn batch<T: Exchanged>(inputs: &Bound<'_, PyDict>, zero: &T) -> PyResult<V2Batch
             .map(rationals)
             .collect::<PyResult<_>>()?,
         scales: rationals(item(inputs, "scales")?.extract()?)?,
-        masses: rationals(item(inputs, "masses")?.extract()?)?,
-        constants: T::import(&item(inputs, "constants")?, zero)?,
+        // Bound natively from the external parameters (`Trees::fill`).
+        masses: if native {
+            Vec::new()
+        } else {
+            rationals(item(inputs, "masses")?.extract()?)?
+        },
+        constants: if native {
+            Vec::new()
+        } else {
+            T::import(&item(inputs, "constants")?, zero)?
+        },
         block_rows: per_point("block_rows")?,
         born: per_point("born")?,
-    })
-}
-
-/// The parameter-only tree inputs of a batch (`inputs["trees"]`).
-fn tree_batch<T: Exchanged>(inputs: &Bound<'_, PyDict>, zero: &T) -> PyResult<TreeBatch<T>> {
-    let trees = item(inputs, "trees")?;
-    let trees = trees.cast::<PyDict>()?;
-    Ok(TreeBatch {
-        model: item(trees, "model")?
-            .extract::<Vec<Vec<String>>>()?
-            .into_iter()
-            .map(rationals)
-            .collect::<PyResult<_>>()?,
-        masses: item(trees, "masses")?
-            .extract::<Vec<(i32, String)>>()?
-            .into_iter()
-            .map(|(pdg, mass)| Ok((pdg, parse_rational(&mass).map_err(error)?)))
-            .collect::<PyResult<_>>()?,
-        couplings: T::import(&item(trees, "couplings")?, zero)?,
     })
 }
 
@@ -189,7 +182,11 @@ impl Trees {
         Complex<T>: Real + symbolica::evaluate::EvaluationDomain,
         TreeRuntime<T>: Send,
     {
-        let values = tree_batch(inputs, zero)?;
+        let values = item(inputs, "parameters")?
+            .extract::<Vec<Vec<String>>>()?
+            .into_iter()
+            .map(rationals)
+            .collect::<PyResult<Vec<_>>>()?;
         let mut guard = self
             .runtime
             .lock()
@@ -204,12 +201,15 @@ impl Trees {
             .as_mut()
             .and_then(|runtime| runtime.downcast_mut::<TreeRuntime<T>>())
             .expect("a runtime of this carrier");
+        let bound = self.program.bind(runtime, &values, zero).map_err(error)?;
+        batch.constants = bound.constants;
+        batch.masses = bound.masses;
         let out = self
             .program
             .inputs(
                 runtime,
                 plan,
-                &values,
+                &bound.trees,
                 &batch.momenta,
                 &batch.constants,
                 zero,
@@ -420,7 +420,7 @@ where
 {
     let mut batch = batch(inputs, &zero)?;
     let mut born = None;
-    if inputs.contains("trees")? {
+    if inputs.contains("parameters")? {
         let trees = trees.ok_or_else(|| error("the executor has no tree program"))?;
         let native = trees.fill(executor.plan(), inputs, &mut batch, &zero)?;
         born = native.born_squared.map(|points| {

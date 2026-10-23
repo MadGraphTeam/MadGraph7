@@ -25,9 +25,18 @@ the same program for the native executor (``rusticol-core``
   into the components A0[b, Born order, grade]; with ``born_squared`` the
   full-colour metric of the Born basis gives |A0|^2 per squared order.
 
-Per batch only parameter-dependent values cross (``batch_inputs``): the model
-parameters, the masses of massive external particles and the couplings. The
-plan's kernel constants carry the Born kernels' model factors.
+* **parameters**: one saved exact evaluator from the external model
+  parameters to every parameter-dependent value of the native lane
+  (``_parameter_program``): the tree program's derived model parameters (the
+  model's own definitions), the Born couplings per N_c grade (the slice's
+  scalar plan, ``LoopSlice._scalar_plan``) and the plan's kernel constants
+  (``reference_executor.KernelConstants`` keys, with their mass flips),
+  plus the exact mass parameters of the external spinors and the loop
+  propagators. The plan's kernel constants carry the Born kernels' model
+  factors.
+
+Per batch only momenta, scales and per point the external parameter values
+cross (``batch_parameters``); the executor binds everything else natively.
 
 At leading and next-to-leading colour the Born metric is per Born component
 and squared Born order, keeping the N_c powers the projection keeps
@@ -67,12 +76,18 @@ class NativeTrees:
     # Every Born component (basis element, Born order, N_c grade), in the
     # order of the executor's ``amplitudes`` per Born row.
     components: tuple[tuple[int, Orders, int], ...] = ()
+    # The parameter program's saved exact evaluator.
+    parameters: bytes = b""
 
     def json(self) -> str:
         return json.dumps(self.program, separators=(",", ":"))
 
     def executor_argument(self) -> tuple[str, list[bytes]]:
-        return self.json(), list(self.kernels)
+        return self.json(), [*self.kernels, self.parameters]
+
+    @property
+    def parameter_names(self) -> tuple[str, ...]:
+        return tuple(self.program["parameters"]["names"])
 
 
 def _fraction_text(value: Fraction) -> str:
@@ -266,6 +281,9 @@ def export_trees(
                         ]
                     )
     masses = _external_masses(slice_)
+    parameters, parameter_evaluator = _parameter_program(
+        slice_, exporter, trees, tuple(couplings), masses
+    )
     program = {
         "schema": TREE_SCHEMA,
         "legs": len(labels),
@@ -291,6 +309,7 @@ def export_trees(
             "metric": metric,
             "average": str(slice_.normalisation.average),
         },
+        "parameters": parameters,
     }
     return NativeTrees(
         program,
@@ -300,7 +319,188 @@ def export_trees(
         squared_orders,
         masses,
         tuple(components),
+        parameter_evaluator,
     )
+
+
+def _parameter_program(
+    slice_: Any,
+    exporter: Any,
+    trees: Any,
+    couplings: Sequence[tuple[str, int]],
+    masses: Sequence[tuple[int, str]],
+) -> tuple[dict[str, Any], bytes]:
+    """The parameter program of the native lane: its record and its saved
+    exact evaluator (``loop_v2::trees`` binds a batch with it).
+
+    Inputs are the tree runtime schema's external model parameters (real),
+    in the schema's order. Outputs are complex: per derived model parameter
+    of the tree program its definition (``TreeRows._definitions``, as
+    ``TreeRows._model_values`` evaluates them in Decimal), per Born coupling
+    slot (name, N_c grade) its scalar-plan coefficient, per plan kernel
+    constant its key's value (coefficient, exact and irrational factors,
+    with the reading's mass flips, as ``reference_executor.KernelConstants``
+    forms it in Python) and every base a fractional power was distributed
+    over (the executor checks it positive, as ``KernelConstants`` does). The
+    evaluator is compiled on canonical symbols (``assemble._canonical_stage``):
+    its term order does not depend on the process history.
+    """
+
+    from symbolica import E, Expression, Replacement, S
+
+    from pyamplicol._internal.physics.symbols import symbols
+
+    from .assemble import LAURENT_POWERS, _canonical_stage
+
+    records = trees._records
+    names = [str(r["name"]) for r in records if r["kind"] == "external_parameter"]
+    defaults = [
+        _fraction_text(Fraction(repr(r["default"])))
+        for r in records
+        if r["kind"] == "external_parameter"
+    ]
+    inputs = [S(f"pyamplicol_v2_parameters::e{i}") for i in range(len(names))]
+    index = {name: i for i, name in enumerate(names)}
+    symbol_of = dict(zip(names, inputs, strict=True))
+    outputs: list[Any] = []
+    output_of: dict[Any, int] = {}
+
+    def output(key: Any, build) -> int:
+        found = output_of.get(key)
+        if found is None:
+            found = output_of[key] = len(outputs)
+            outputs.append(build())
+        return found
+
+    # Derived model parameters, in the model's own symbols.
+    model_symbols = symbols.model(slice_.compiled.name)
+    externals = [
+        Replacement(E(model_symbols.symbol(name).to_canonical_string()), symbol)
+        for name, symbol in symbol_of.items()
+    ]
+    model = []
+    for record in records:
+        kind = record["kind"]
+        if kind == "external_parameter":
+            model.append(["input", index[str(record["name"])], False])
+        elif kind == "derived_parameter_component":
+            name = str(record["runtime_name"])
+            o = output(
+                ("model", name),
+                lambda name=name: E(trees._definitions[name]).replace_multiple(
+                    externals
+                ),
+            )
+            model.append(["output", o, record["complex_component"] == "imag"])
+        else:
+            raise NotImplementedError(f"a tree model parameter of kind {kind!r}")
+    # Born couplings per N_c grade, from the slice's scalar plan.
+    plan, layout = slice_._scalar_plan(LAURENT_POWERS)
+    plan_inputs = []
+    for name, symbol in zip(plan.external_names, plan.input_symbols, strict=True):
+        if name not in index:
+            raise NotImplementedError(
+                f"the scalar plan reads {name!r}, which the tree program has not"
+            )
+        plan_inputs.append(Replacement(symbol, symbol_of[name]))
+    coupling_outputs = []
+    for name, grade in couplings:
+        (column,) = [c for degree, c in layout[(name, 0)] if degree == grade]
+        coupling_outputs.append(
+            output(
+                ("coupling", name, grade),
+                lambda column=column: plan.expressions[column].value.replace_multiple(
+                    plan_inputs
+                ),
+            )
+        )
+
+    # Plan kernel constants.
+    def base(factor: Any, flips: Mapping[str, int]) -> Any:
+        kind, value = factor
+        if kind == "param":
+            if value not in index:
+                raise NotImplementedError(
+                    f"a kernel constant reads {value!r}, which the tree program has not"
+                )
+            return symbol_of[value] * flips.get(value, 1)
+        if kind == "prime":
+            return Expression.num(int(value))
+        if kind == "pi":
+            return Expression.PI
+        text, pairs = value
+        return E(text).replace_multiple(
+            [
+                Replacement(E(symbol), base(("param", name), flips))
+                for symbol, name in pairs
+            ]
+        )
+
+    def power(factor: Any, exponent: Fraction, flips: Mapping[str, int]) -> Any:
+        return base(factor, flips) ** E(f"{exponent.numerator}/{exponent.denominator}")
+
+    constants, positive = [], []
+    for key, flips in exporter.constants:
+        coefficient, exact_factors, irrational, bases = key
+        signs = dict(flips)
+
+        def build(
+            coefficient=coefficient,
+            exact_factors=exact_factors,
+            irrational=irrational,
+            signs=signs,
+        ):
+            real, imag = coefficient
+            value = (
+                E(_fraction_text(Fraction(real)))
+                + E(_fraction_text(Fraction(imag))) * Expression.I
+            )
+            for factor, exponent in exact_factors:
+                value = value * power(factor, Fraction(exponent), signs)
+            for factor, exponent in irrational:
+                value = value * power(factor, Fraction(exponent), signs)
+            return value
+
+        constants.append(output(("constant", key, flips), build))
+        for factor in bases:
+            positive.append(
+                output(
+                    ("positive", factor, flips),
+                    lambda factor=factor, signs=signs: base(factor, signs),
+                )
+            )
+    # Exact masses: external spinors and loop propagators.
+    for _pdg, name in masses:
+        if name not in index:
+            raise NotImplementedError(f"the external mass {name!r} is no input")
+    plan_masses = []
+    for mass in exporter.masses:
+        if mass.massless:
+            plan_masses.append(None)
+        elif mass.mass not in index:
+            raise NotImplementedError(f"the loop mass {mass.mass!r} is no input")
+        else:
+            plan_masses.append(index[mass.mass])
+    canonical, parameters, _functions = _canonical_stage(
+        SimpleNamespace(
+            output_expressions=outputs,
+            parameter_symbols=inputs,
+            symbolica_functions=[],
+        )
+    )
+    evaluator = Expression.evaluator_multiple(canonical, parameters, jit_compile=False)
+    record = {
+        "names": names,
+        "defaults": defaults,
+        "outputs": len(outputs),
+        "model": model,
+        "couplings": coupling_outputs,
+        "constants": constants,
+        "positive": sorted(set(positive)),
+        "masses": [[int(pdg), index[name]] for pdg, name in masses],
+        "plan_masses": plan_masses,
+    }
+    return record, bytes(evaluator.save())
 
 
 def _interaction_program(trees: Any) -> tuple[dict[str, Any], tuple[bytes, ...]]:
@@ -598,44 +798,22 @@ def _external_masses(slice_: Any) -> tuple[tuple[int, str], ...]:
     return tuple(sorted(out.items()))
 
 
-def batch_inputs(
-    slice_: Any,
-    trees: NativeTrees,
-    evaluations: Sequence[Any],
-    value: Any,
-) -> dict[str, Any]:
-    """The parameter-only tree inputs of a batch (``inputs["trees"]``): per
-    point the model parameters at the carrier's digits (the scale may change
-    per point), and the batch's exact external masses and Born couplings,
-    which may not (``value`` converts a carrier complex for the executor).
-    The executor rounds the masses to its carrier, so the wavefunctions carry
-    its precision."""
+def batch_parameters(trees: NativeTrees, evaluations: Sequence[Any]) -> list[list[str]]:
+    """Per point the exact values of the tree program's external parameters
+    (``inputs["parameters"]``): the point's own values (``LoopSlice.
+    _point_parameters``: the caller's, the request's fixed parameters and the
+    renormalisation scale), else the parameter's default."""
 
-    from .assemble import _kernel_parameters
-
-    model = []
-    shared = None
+    record = trees.program["parameters"]
+    out = []
     for evaluation in evaluations:
-        numbers, parameters = evaluation.numbers, evaluation.parameters
-        digits = numbers.precision.working_digits
-        with numbers.scope():
-            model.append(
-                [str(x) for x in slice_.tree_rows._model_values(parameters, digits)]
-            )
-            scalars = slice_.scalars(parameters, numbers, True)
-            couplings = [
-                value(scalars[name, 0][grade]) for name, grade in trees.couplings
+        values = evaluation.parameters
+        out.append(
+            [
+                values.get(name, default)
+                for name, default in zip(
+                    record["names"], record["defaults"], strict=True
+                )
             ]
-        values = _kernel_parameters(slice_.compiled, parameters)
-        masses = [(pdg, _fraction_text(values[name])) for pdg, name in trees.masses]
-        common = (couplings, masses)
-        if shared is None:
-            shared = common
-        elif common != shared:
-            raise ValueError(
-                "the points of one batch need equal Born couplings and external masses"
-            )
-    if shared is None:
-        raise ValueError("a batch needs points")
-    couplings, masses = shared
-    return {"model": model, "masses": masses, "couplings": couplings}
+        )
+    return out

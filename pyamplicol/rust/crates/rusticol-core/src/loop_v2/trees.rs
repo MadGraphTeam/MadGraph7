@@ -27,9 +27,16 @@
 //! are a subset. With a colour metric (full colour), `|A0|²` per squared
 //! Born order is formed as well.
 //!
-//! Every value derives from the stored program; the per-batch inputs are the
-//! parameter-only values (model parameters, external masses, couplings and
-//! the plan's kernel constants).
+//! **Parameters.** Every parameter-dependent value derives from the external
+//! model parameters through one saved exact evaluator of the program (its
+//! last saved evaluator): the tree program's derived model parameters, the
+//! Born couplings per N_c grade and the plan's kernel constants, in the
+//! carrier; the masses (external spinors, loop propagators) are the exact
+//! mass parameters. A batch therefore hands over only momenta, scales and
+//! per point the external parameter values (`TreeProgram::bind`).
+//!
+//! Every value derives from the stored program and the external parameters:
+//! no Python per batch or point.
 
 use super::dress::{Carrier, cast, parse_rational};
 use super::plan::LoopProgramV4;
@@ -80,6 +87,34 @@ struct TreeFile {
     /// (state component start, dimension, Wick sign) per plan block row.
     block_rows: Vec<(usize, usize, i32)>,
     born: BornFile,
+    parameters: ParameterFile,
+}
+
+/// The parameter program: one saved exact evaluator (the program's last
+/// saved evaluator) from the external parameters (real, in `names` order)
+/// to complex outputs.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ParameterFile {
+    names: Vec<String>,
+    /// Exact default value per external parameter (decimal or fraction).
+    defaults: Vec<String>,
+    outputs: usize,
+    /// Per tree-program model parameter: ("input", external index, false)
+    /// or ("output", output index, imaginary part).
+    model: Vec<(String, usize, bool)>,
+    /// Output index per Born coupling slot.
+    couplings: Vec<usize>,
+    /// Output index per plan kernel constant.
+    constants: Vec<usize>,
+    /// Outputs that must be real and positive (bases a fractional power
+    /// was distributed over).
+    positive: Vec<usize>,
+    /// (PDG code, external index) of every massive external particle.
+    masses: Vec<(i32, usize)>,
+    /// Per plan mass: the external index of its mass parameter (squared),
+    /// or none (massless).
+    plan_masses: Vec<Option<usize>>,
 }
 
 #[derive(Deserialize)]
@@ -209,6 +244,26 @@ struct Term {
     contributions: Vec<(usize, usize, [Rational; 2], i32)>,
 }
 
+/// Where a tree-program model parameter comes from.
+#[derive(Clone, Copy, Debug)]
+enum ModelSource {
+    Input(usize),
+    Output { index: usize, imaginary: bool },
+}
+
+struct Parameters {
+    names: Vec<String>,
+    defaults: Vec<Rational>,
+    saved: Vec<u8>,
+    outputs: usize,
+    model: Vec<ModelSource>,
+    couplings: Vec<usize>,
+    constants: Vec<usize>,
+    positive: Vec<usize>,
+    masses: Vec<(i32, usize)>,
+    plan_masses: Vec<Option<usize>>,
+}
+
 /// A loaded tree program (one process, any carrier).
 pub struct TreeProgram {
     legs: usize,
@@ -232,17 +287,28 @@ pub struct TreeProgram {
     gram: Option<Vec<(usize, usize, [Rational; 2])>>,
     metric: Option<Vec<(usize, usize, usize, [Rational; 2])>>,
     average: Rational,
+    parameters: Parameters,
 }
 
 /// The parameter-only inputs of one batch.
 pub struct TreeBatch<T> {
-    /// Per point the model parameter values in the schema's order (real;
-    /// the renormalisation scale may change per point).
-    pub model: Vec<Vec<Rational>>,
+    /// Per point the model parameter values in the schema's order (real
+    /// carrier values; the renormalisation scale may change per point).
+    pub model: Vec<Vec<T>>,
     /// Exact masses of massive external particles by PDG code.
     pub masses: BTreeMap<i32, Rational>,
     /// Couplings per (name, N_c grade) slot.
     pub couplings: Vec<Complex<T>>,
+}
+
+/// The values a batch's external parameters bind (`TreeProgram::bind`).
+pub struct BoundParameters<T> {
+    /// The tree program's per-batch inputs.
+    pub trees: TreeBatch<T>,
+    /// The plan's kernel constants.
+    pub constants: Vec<Complex<T>>,
+    /// The plan's squared masses per mass id.
+    pub masses: Vec<Rational>,
 }
 
 /// Native inputs of a batch, per point.
@@ -259,6 +325,8 @@ pub struct TreeInputs<T> {
 
 /// The carrier form of a program: its kernel evaluators and exact weights.
 pub struct TreeRuntime<T> {
+    /// The parameter program.
+    parameters: BatchExpressionEvaluator<Complex<T>>,
     /// The interaction program's kernels and, per step and kernel group,
     /// its interactions' weights.
     kernels: Vec<BatchExpressionEvaluator<Complex<T>>>,
@@ -362,9 +430,80 @@ fn load_interactions(
     })
 }
 
+/// Validate a parameter program (`ParameterFile`) against the tree program
+/// and the plan; `saved` is its exact evaluator.
+fn load_parameters(
+    file: ParameterFile,
+    saved: &[u8],
+    model_count: usize,
+    couplings: usize,
+    plan: &LoopProgramV4,
+) -> RusticolResult<Parameters> {
+    let inputs = file.names.len();
+    require(
+        file.defaults.len() == inputs,
+        "a default per external parameter",
+    )?;
+    require(file.model.len() == model_count, "model parameter sources")?;
+    require(
+        file.couplings.len() == couplings,
+        "parameter program couplings",
+    )?;
+    require(
+        file.constants.len() == plan.constants,
+        "parameter program kernel constants",
+    )?;
+    require(
+        file.plan_masses.len() == plan.masses,
+        "parameter program plan masses",
+    )?;
+    let output = |index: usize| index < file.outputs;
+    require(
+        file.couplings
+            .iter()
+            .chain(&file.constants)
+            .chain(&file.positive)
+            .all(|&o| output(o))
+            && file.masses.iter().all(|&(_, i)| i < inputs)
+            && file.plan_masses.iter().flatten().all(|&i| i < inputs),
+        "parameter program index",
+    )?;
+    let model = file
+        .model
+        .iter()
+        .map(|(kind, index, imaginary)| match kind.as_str() {
+            "input" if *index < inputs && !imaginary => Ok(ModelSource::Input(*index)),
+            "output" if output(*index) => Ok(ModelSource::Output {
+                index: *index,
+                imaginary: *imaginary,
+            }),
+            _ => Err(invalid(format!("model parameter source {kind:?} {index}"))),
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let evaluator = crate::engine::decode_exact_evaluator_state(saved)?;
+    drop(evaluator);
+    Ok(Parameters {
+        names: file.names,
+        defaults: file
+            .defaults
+            .iter()
+            .map(|value| exact(value))
+            .collect::<RusticolResult<_>>()?,
+        saved: saved.to_vec(),
+        outputs: file.outputs,
+        model,
+        couplings: file.couplings,
+        constants: file.constants,
+        positive: file.positive,
+        masses: file.masses,
+        plan_masses: file.plan_masses,
+    })
+}
+
 impl TreeProgram {
     /// Load a program exported by `loops/v2/native_trees.py` for `plan`.
-    /// `kernels` holds the interaction program's saved exact evaluators.
+    /// `kernels` holds the interaction program's saved exact evaluators and,
+    /// last, the parameter program's.
     pub fn load(json: &[u8], kernels: &[Vec<u8>], plan: &LoopProgramV4) -> RusticolResult<Self> {
         let file: TreeFile = serde_json::from_slice(json).map_err(|e| invalid(e.to_string()))?;
         require(
@@ -386,11 +525,21 @@ impl TreeProgram {
                 "momentum slot outside the state",
             )?;
         }
+        let (parameter_evaluator, kernels) = kernels
+            .split_last()
+            .ok_or_else(|| invalid("the parameter program's evaluator is missing"))?;
         let interactions = load_interactions(
             file.interactions,
             kernels,
             file.state_size,
             file.model_count,
+        )?;
+        let parameters = load_parameters(
+            file.parameters,
+            parameter_evaluator,
+            file.model_count,
+            file.born.couplings,
+            plan,
         )?;
         require(
             file.block_rows.len() == plan.block_rows.len(),
@@ -552,6 +701,132 @@ impl TreeProgram {
             gram,
             metric,
             average: exact(&born.average)?,
+            parameters,
+        })
+    }
+
+    /// The external parameters a batch supplies per point, in order.
+    pub fn parameter_names(&self) -> &[String] {
+        &self.parameters.names
+    }
+
+    /// Exact default value per external parameter.
+    pub fn parameter_defaults(&self) -> &[Rational] {
+        &self.parameters.defaults
+    }
+
+    /// Bind a batch's external parameters (per point, in
+    /// `parameter_names` order, exact): the tree program's model parameters
+    /// per point, and the Born couplings, kernel constants and masses, which
+    /// must be equal at every point of the batch (only parameters that feed
+    /// the trees alone, such as the renormalisation scale, may vary).
+    pub fn bind<T: TreeCarrier + Real>(
+        &self,
+        runtime: &mut TreeRuntime<T>,
+        values: &[Vec<Rational>],
+        zero: &T,
+    ) -> RusticolResult<BoundParameters<T>>
+    where
+        Complex<T>: Real + EvaluationDomain,
+    {
+        let program = &self.parameters;
+        let points = values.len();
+        let width = program.names.len();
+        require(points > 0, "a batch needs points")?;
+        require(
+            values.iter().all(|point| point.len() == width),
+            "external parameter count",
+        )?;
+        let czero = Complex::new(zero.clone(), zero.clone());
+        let inputs: Vec<Complex<T>> = values
+            .iter()
+            .flatten()
+            .map(|value| Complex::new(cast(zero, value), zero.clone()))
+            .collect();
+        let mut outputs = vec![czero; points * program.outputs];
+        runtime
+            .parameters
+            .evaluate_batch(&inputs, &mut outputs, points)
+            .map_err(|e| invalid(format!("parameter program: {e}")))?;
+        let rows: Vec<&[Complex<T>]> = outputs.chunks_exact(program.outputs).collect();
+        let shared = |indices: &[usize], what: &str| -> RusticolResult<Vec<Complex<T>>> {
+            let first: Vec<Complex<T>> = indices.iter().map(|&o| rows[0][o].clone()).collect();
+            for row in &rows[1..] {
+                require(
+                    indices.iter().zip(&first).all(|(&o, value)| row[o] == *value),
+                    what,
+                )?;
+            }
+            Ok(first)
+        };
+        for row in &rows {
+            for &o in &program.positive {
+                let value = &row[o];
+                require(
+                    value.im == *zero && value.re > *zero,
+                    "a base a fractional power was distributed over is not positive",
+                )?;
+            }
+        }
+        let couplings = shared(
+            &program.couplings,
+            "the points of one batch need equal Born couplings",
+        )?;
+        let constants = shared(
+            &program.constants,
+            "the points of one batch need equal kernel constants",
+        )?;
+        let mass_inputs: Vec<usize> = program
+            .masses
+            .iter()
+            .map(|&(_, index)| index)
+            .chain(program.plan_masses.iter().flatten().copied())
+            .collect();
+        for point in &values[1..] {
+            require(
+                mass_inputs.iter().all(|&i| point[i] == values[0][i]),
+                "the points of one batch need equal masses",
+            )?;
+        }
+        let model = values
+            .iter()
+            .zip(&rows)
+            .map(|(point, row)| {
+                program
+                    .model
+                    .iter()
+                    .map(|source| match *source {
+                        ModelSource::Input(index) => cast(zero, &point[index]),
+                        ModelSource::Output { index, imaginary } => {
+                            if imaginary {
+                                row[index].im.clone()
+                            } else {
+                                row[index].re.clone()
+                            }
+                        }
+                    })
+                    .collect()
+            })
+            .collect();
+        Ok(BoundParameters {
+            trees: TreeBatch {
+                model,
+                masses: program
+                    .masses
+                    .iter()
+                    .map(|&(pdg, index)| (pdg, values[0][index].clone()))
+                    .collect(),
+                couplings,
+            },
+            constants,
+            masses: program
+                .plan_masses
+                .iter()
+                .map(|mass| match mass {
+                    Some(index) => &values[0][*index] * &values[0][*index],
+                    None => Rational::from(0),
+                })
+                .collect(),
         })
     }
 
@@ -574,6 +849,9 @@ impl TreeProgram {
         let complex = |re: &Rational, im: &Rational| Complex::new(cast(zero, re), cast(zero, im));
         let two = cast(zero, &Rational::from(2));
         let root = two.sqrt();
+        let parameters = crate::engine::decode_exact_evaluator_state(&self.parameters.saved)?
+            .map_coeff_with_prec(&|r| complex(&r.re, &r.im), zero.get_precision())
+            .into_batch_evaluator();
         let program = &self.interactions;
         let kernels = program
             .saved
@@ -638,6 +916,7 @@ impl TreeProgram {
                 .collect()
         });
         Ok(TreeRuntime {
+            parameters,
             kernels,
             edge_weights,
             weights,
@@ -725,7 +1004,7 @@ impl TreeProgram {
                 }
             }
             for (index, value) in model.iter().enumerate() {
-                state[self.model_offset + index] = Complex::new(cast(zero, value), zero.clone());
+                state[self.model_offset + index] = Complex::new(value.clone(), zero.clone());
             }
         }
         self.run_interactions(&self.interactions, runtime, &mut states, points, &czero)?;
@@ -1022,7 +1301,7 @@ impl TreeProgram {
 /// exact carrier has none, wavefunctions being irrational). The external
 /// masses are carrier values (binary64 ones in binary64, as the tree
 /// runtime's own source records).
-pub trait TreeCarrier: Carrier {
+pub trait TreeCarrier: Carrier + PartialOrd {
     fn fill_sources(
         sources: &SchemaSources,
         masses: &BTreeMap<i32, Self>,

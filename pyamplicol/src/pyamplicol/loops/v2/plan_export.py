@@ -899,11 +899,13 @@ class NativeExecutor:
 
     ``inputs="native"`` forms every point's block rows and Born components in
     the executor (``native_trees``, WP3.1) instead of in Python: a batch then
-    hands over only parameter-dependent values. Its results hold the Born
-    (with ``born_squared``, at the request's colour accuracy) and the
-    ``bare`` component; the
-    counterterms and external fields join with the native counterterm
-    program (WP3.1 I5, after WP2.2), so ``virtual`` is absent until then.
+    hands over only momenta, scales and the external model parameters, from
+    which the executor binds the kernel constants, masses, couplings and the
+    tree program's model parameters itself. Its results hold the Born (with
+    ``born_squared``, at the request's colour accuracy) and the ``bare``
+    component; the counterterms and external fields join with the native
+    counterterm program (WP3.1 I5, after WP2.2), so ``virtual`` is absent
+    until then.
     """
 
     def __init__(
@@ -1106,17 +1108,11 @@ class NativeExecutor:
             "born": [],
         }
         if self.inputs == "native":
-            from .native_trees import batch_inputs
+            from .native_trees import batch_parameters
 
-            for evaluation in evaluations:
-                with evaluation.numbers.scope():
-                    common = shared(evaluation)
-                if batch.setdefault("shared", common) != common:
-                    raise ValueError(
-                        "the points of one batch need equal kernel constants and masses"
-                    )
-            batch["constants"], batch["masses"] = batch.pop("shared")
-            batch["trees"] = batch_inputs(slice_, exported.trees, evaluations, value)
+            # The executor binds kernel constants, masses, couplings and the
+            # tree program's model parameters from the external parameters.
+            batch["parameters"] = batch_parameters(exported.trees, evaluations)
             del batch["block_rows"], batch["born"]
             return batch
         for evaluation in evaluations:
