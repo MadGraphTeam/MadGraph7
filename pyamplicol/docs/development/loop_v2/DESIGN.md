@@ -671,12 +671,12 @@ The asymptotic class is Θ(n·n!) for trees plus Θ(S_n) for the loop program pl
 
 | Process (FC) | Generation | Trees | Tries | Seeds | Export | Plan JSON | Peak |
 |---|---|---|---|---|---|---|---|
-| gg→ggg | 8.7 s | 0.8 s | 0.03 s | 0.9 s | 1.2 s | 2.5 MB | 0.2 GB |
-| uu~→dd~ss~ | 8.4 s | 0.9 s | 0.02 s | 0.7 s | 0.9 s | 0.6 MB | 0.2 GB |
-| gg→tt̄gg | 24.4 s | 2.5 s | 0.3 s | 13.7 s | 4.1 s | 8.9 MB | 0.3 GB |
-| uu~→gggg | 22.8 s | 2.2 s | 0.3 s | 12.7 s | 4.8 s | 7.8 MB | 0.3 GB |
-| gg→gggg | 38.0 s | 14.9 s | 1.1 s | 11.7 s | 13.4 s | 37.8 MB | 0.6 GB |
-| uu~→ggggg | 5.2 min | 34 s | 3.4 s | 4.2 min | 2.2 min | 156 MB | 2.4 GB |
+| gg→ggg | 8.4 s | 0.5 s | 0.03 s | 0.8 s | 1.3 s | 2.5 MB | 0.2 GB |
+| uu~→dd~ss~ | 8.2 s | 0.8 s | 0.02 s | 0.7 s | 0.9 s | 0.6 MB | 0.2 GB |
+| gg→tt̄gg | 23.8 s | 1.7 s | 0.3 s | 13.8 s | 4.5 s | 8.9 MB | 0.3 GB |
+| uu~→gggg | 22.0 s | 1.5 s | 0.2 s | 12.6 s | 4.8 s | 7.8 MB | 0.3 GB |
+| gg→gggg | 32.1 s | 9.2 s | 1.1 s | 11.6 s | 13.4 s | 37.8 MB | 0.6 GB |
+| uu~→ggggg | 5.0 min | 22 s | 3.2 s | 4.2 min | 2.3 min | 156 MB | 2.4 GB |
 | gg→ggggg | 7.4 min (4.2 GB) | 2.8 min | 15 s | 3.3 min | 6.0 min | 949 MB | 9.3 GB |
 
 The 2→2 and 2→3 rows are dominated by the model preparation and the loop-kernel catalogue (≈ 6.5 s per process). At gg→ggggg the generation meets the WP3.1 gate (< 10 min, < 8 GB) and the plan export does not: the Python lowering of the families and the JSON (949 MB, its serialisation sets the 9.3 GB peak) are I11's (Rust lowering, binary member), the seeds I10's and the trees (the Born and block DAGs) I2/I3's. uu~→e⁻e⁺dd~g, uu~→e⁻e⁺ggg and gg→tt̄e⁻e⁺g do not generate in the slice, with or without the Z: their closed-quark (A, g, g) witnesses need certified zeros (WP3.5); with the Z, the axial loop-line sign (I-AX) and R2_GGZ follow (WP3.1 PLAN §2.4).
