@@ -1530,7 +1530,30 @@ The massless arithmetic is unchanged. The massive form reproduces the provider p
 
 **Carriers and estimates.** The residue is computed in the lane's carrier (binary64, DoubleFloat, MPFR), and in the reduction check's frame (rescaled frames scale it back like the integral). Stability estimates are formed on the selected coefficients: the reduction check compares the selected lane values of both frames, and rotations re-evaluate the mode.
 
-**Cost** (`tools/loop_v2_poles_cost.py`; binary64, schedule B, one thread, 16 lanes, 16 RAMBO points, best of 3, random block rows and Born components, release cu1 thin-LTO build, shared host). COST_TABLE
+**Cost** (`tools/loop_v2_poles_cost.py`; ms per point, complete native evaluation, reduction in parentheses). Setup: binary64, schedule B, one thread pinned to one core, 16 lanes, 16 exactly light-like rational points, best of 3, random block rows, Born components and kernel constants. Release cu1 thin-LTO build `loop-native-poles-uvir-0af1e5d3`, shared host (load about 80 of 384 cores). The companion plans were exported before massless tadpoles were dropped from them (upper bounds).
+
+| Process | Families | `none` | `all` | Split columns (main plan) | Scaleless companion | `uv` / `ir` total | Generic engine, BOTH / UV masters |
+|---|---|---|---|---|---|---|---|
+| gg→ggg | 154 + 6 | 14.14 (2.51) | 14.16 (2.46) | 14.40 (2.54) | 1.76 | ≈ 16.2 (+14 %) | 36.8 (24.9) / 37.0 (25.0) |
+| uu~→e⁻e⁺gg (photon) | 69 + 3 | 3.00 (0.69) | 2.92 (0.68) | 2.94 (0.69) | 0.035 | ≈ 2.98 (+2 %) | 9.92 (7.48) / 9.91 (7.61) |
+| gg→gggg | 1100 + 7 | 294.5 (52.3) | 295.6 (55.8) | 289.9 (48.5) | 65.0 | ≈ 355 (+20 %) | 646 (412) / 653 (418) |
+
+- `"all"` and `"none"` are unchanged: same fast engine and same plan, and the companion is never run.
+- The UV residue column costs nothing measurable at gg→gggg and 0.1–0.2 ms/pt at five legs. This is after the monomial tables are built once per bucket; built per lane they cost +0.9 ms/pt at gg→ggg.
+- The companion dominates the `uv`/`ir` overhead. At gg→gggg its 7 families carry 7,560 skeleton leaves, because a quartic partner position takes every split of the other legs. Its time goes to seeds 33 ms, factors 25 ms and dressing 10 ms, all repeated outside the main plan. Folding it into the main plan v4 (families flagged and skipped unless split) would share seeds and factors; that is an open optimisation, measured here before it is done.
+- The upstream route, NinjaRS's generic engine with UV- or IR-selected masters, costs 7.4–11× the fast engine's reduction (gg→gggg 412 against 56 ms/pt). It returns one selection per reduction, so `ir` (which needs the combined poles for the field split) would also need the fast run. It would still need the companion, and its binary64 finite part is not the fast engine's bit for bit. It is therefore the oracle of the residue, not the production path: no NinjaRS fast-engine extension is needed.
+
+**Validation** (one point per process; `tests/unit/test_loop_v2_poles.py`, `rust/loop-reduction/tests/runtime_v2_reduce.rs`):
+
+- `"all"` is bitwise the result before the re-pin. Checked on g g > g g, u u~ > d d~ g and u u~ > t t~: Python path, native binary64 and DoubleFloat, finite only, and the re-test estimates.
+- The finite parts are identical in all four modes, in binary64, DoubleFloat and 32 digits.
+- UV + IR parts give the combined poles of every component, to 10⁻¹². The double pole is IR. The renormalised virtual's UV poles vanish, and its IR poles are those of `"all"`, also at LC and NLC.
+- `"ir"` equals Catani's operator on g g > g g and u u~ > g g g (massless) and on g g > t t~ and u u~ > t t~ (massive, stable top), to 10⁻¹⁰. The massive operator and the virtual reproduce the provider poles of g g > t t~ (MadLoop, Recola, OpenLoops) to 2·10⁻¹⁵.
+- −(bare_UV + uv_local) equals Σ_legs Z_i^UV·Born (Feynman gauge) on g g > g g, u u~ > g g g and g g > t t~.
+- The residue equals the generic engine's UV-selected reduction lane by lane: binary64 to 10⁻¹⁰ on synthetic lanes and 3·10⁻¹⁴ on g g > g g, DoubleFloat to 10⁻²⁶.
+- The Python reference path equals the native executor in split mode. The stability estimates exist in every mode.
+
+Found on the way (pre-existing, not a pole-selection defect, pinned by a strict xfail): at massive external legs the native executor's family integrals differ from the reference path's. At g g > t t~ (top width 0) the native virtual's double pole is −0.0666 against −0.1133. The reference path equals MadLoop to 2·10⁻¹⁵. `test_loop_v2_executor.py` has no process with massive external legs; owner WP2.1/WP3.1. A top width in the loop propagators (complex mass, no CMS counterterms: WP3.2) also moves the single pole of g g > t t~ by 10⁻³ relative to Catani's, so the IR-pole prediction is made only for stable coloured legs.
 
 **Public settings** (TOML `[loop] poles`, CLI `--poles`, Python `evaluate(..., poles=...)` and the result accessors) belong to the artifact/API package (WP2.6) and are wired after its integration; until then the option is `LoopSlice.evaluate(poles=...)` and `NativeExecutor.evaluate(poles=...)` (`True`/`False` stay accepted). The SDKs evaluate the legacy plan v3 runtime; v4 SDK evaluation waits for WP3.1 and takes the same option then.
 
@@ -1851,7 +1874,12 @@ Total ≈ 270 agent-days [I].
   - *Goal:* §12.4: the user selects `poles = "all" | "none" | "uv" | "ir"` for the one-loop matrix elements; re-pin NinjaRS 41a4c00 and oneloopmaster 5b710437.
   - *Owns:* dependency pins, `runtime/v2_poles.rs`, the pole plumbing of `runtime/v2_reduce.rs` and the bindings, `loops/v2/poles.py` and the mode logic of `loops/v2/assemble.py`; the public settings after WP2.6.
   - *Accept:* default mode bitwise unchanged after the re-pin; the four modes per §12.4 with the finite part invariant (binary64, DoubleFloat); UV + IR parts = combined poles; `"ir"` = Catani (massless and massive); bare UV + UV_local = −Σ_legs Z^UV·Born (Feynman gauge); cost measured; public settings after WP2.6.
-  - *Status:* §12.4 delivered on the slice API (`LoopSlice.evaluate`, `NativeExecutor.evaluate`); open: TOML/CLI/Python public settings and result accessors (after WP2.6), the CT recursion's slot switches (`poles.slot_switches`, after WP2.2), the v4 SDK (WP3.1).
+  - *Status:* §12.4 delivered on the slice API (`LoopSlice.evaluate`, `NativeExecutor.evaluate`), with the scaleless companion slice. Open:
+    - TOML/CLI/Python public settings and result accessors (after WP2.6);
+    - the companion plan in the plan v4 artifact (WP2.6), or folded into the main plan to share seeds and factors (the +20 % of `uv`/`ir` at gg→gggg);
+    - the CT recursion's slot switches (`poles.slot_switches`, after WP2.2);
+    - the v4 SDK (WP3.1);
+    - the native executor at massive external legs (pre-existing, WP2.1/WP3.1).
 
 **Wave 3: required set**
 
