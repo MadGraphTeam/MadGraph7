@@ -129,7 +129,7 @@ class TreeInterferenceGenerationTest(unittest.TestCase):
         import madgraph.core.diagram_generation as diagram_generation
         filtered = []
         original = diagram_generation.Amplitude.apply_user_filter
-        def record(amplitude, diag_list):
+        def record(amplitude, diag_list, diagram_filter=True):
             filtered.append(amplitude.get('process').get('required_s_channels'))
             return diag_list
         diagram_generation.Amplitude.apply_user_filter = record
@@ -140,6 +140,21 @@ class TreeInterferenceGenerationTest(unittest.TestCase):
             diagram_generation.Amplitude.apply_user_filter = original
         self.assertIn([[23]], filtered)
         self.assertIn([[22]], filtered)
+
+    def test_plugin_diagram_filter_function(self):
+        """A callable diagram_filter (--diagram_filter=PLUGINNAME) is used
+        as the remove_diag function, instead of PLUGIN/user_filter.py."""
+        import madgraph.core.diagram_generation as diagram_generation
+        seen = []
+        def remove_all(diag, model=None):
+            seen.append(diag)
+            return True
+        amp = diagram_generation.Amplitude()
+        amp.set('process', base_objects.Process())
+        diags = base_objects.DiagramList([base_objects.Diagram()])
+        res = amp.apply_user_filter(diags, remove_all)
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(len(res), 0)
 
     def test_hidden_order_does_not_leak(self):
         """Once registered by an interference process, the hidden order

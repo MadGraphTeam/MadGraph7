@@ -33,6 +33,7 @@
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
 #include "RamboSamplingKernels.h"
+#include "rambo.h" // classic RAMBO of the matrix mode
 #include "RandomNumberKernels.h"
 #include "ProcessData.h"
 #include "read_slha.h"
@@ -392,260 +393,30 @@ namespace
   }
 
   // --------------------------------------------------------------------------
-  // Classic MadGraph standalone RAMBO (RANMAR generator seeded with the fixed
-  // values 1802/9373), reproducing the exact phase-space point used by the
+  // Classic MadGraph standalone RAMBO (rambo.h, RANMAR generator seeded with the
+  // fixed values 1802/9373), reproducing the exact phase-space point used by the
   // Fortran and C++ standalone 'check' drivers at the same energy, so that
-  // matrix-mode output can be compared line by line across backends.
-  // Host-side only; ported from madgraph/iolibs/template_files/rambo.cc.
+  // matrix-mode output can be compared line by line across backends. Its own
+  // generator: the shared one (rambo::rn) feeds RamboSamplingKernelHost.
+  // Host-side only.
   // --------------------------------------------------------------------------
-  namespace classic_rambo
+  std::vector<std::vector<double>>
+  classic_rambo_momenta( int ninitial, double energy, const std::vector<double>& masses, double& wgt )
   {
-    struct Random
+    static rambo::Random random;
+    static bool seeded = false;
+    if( !seeded )
     {
-      double ranu[98];
-      double ranc, rancd, rancm;
-      int iranmr, jranmr;
-
-      // universal random number generator proposed by Marsaglia and Zaman
-      double ranmar()
-      {
-        double uni = ranu[iranmr] - ranu[jranmr];
-        if( uni < 0 ) uni = uni + 1;
-        ranu[iranmr] = uni;
-        iranmr = iranmr - 1;
-        jranmr = jranmr - 1;
-        if( iranmr == 0 ) iranmr = 97;
-        if( jranmr == 0 ) jranmr = 97;
-        ranc = ranc - rancd;
-        if( ranc < 0 ) ranc = ranc + rancm;
-        uni = uni - ranc;
-        if( uni < 0 ) uni = uni + 1;
-        return uni;
-      }
-
-      void rmarin( int ij, int kl )
-      {
-        int i = ij / 177 % 177 + 2;
-        int j = ij % 177 + 2;
-        int k = ( kl / 169 ) % 178 + 1;
-        int l = kl % 169;
-        for( int ii = 1; ii < 98; ii++ )
-        {
-          double s = 0;
-          double t = .5;
-          for( int jj = 1; jj < 25; jj++ )
-          {
-            int m = ( ( i * j % 179 ) * k ) % 179;
-            i = j;
-            j = k;
-            k = m;
-            l = ( 53 * l + 1 ) % 169;
-            if( ( l * m ) % 64 >= 32 ) s = s + t;
-            t = .5 * t;
-          }
-          ranu[ii] = s;
-        }
-        ranc = 362436. / 16777216.;
-        rancd = 7654321. / 16777216.;
-        rancm = 16777213. / 16777216.;
-        iranmr = 97;
-        jranmr = 33;
-      }
+      random.rmarin( 1802, 9373 );
+      seeded = true;
+    }
+    auto draw = []( int )
+    {
+      double r = random.ranmar();
+      while( r <= 1e-16 ) r = random.ranmar();
+      return r;
     };
-
-    inline double rn()
-    {
-      static Random rand;
-      static bool init = true;
-      if( init )
-      {
-        init = false;
-        rand.rmarin( 1802, 9373 );
-      }
-      double ran;
-      while( true )
-      {
-        ran = rand.ranmar();
-        if( ran > 1e-16 ) break;
-      }
-      return ran;
-    }
-
-    // RAMBO: democratic multi-particle phase space generator (S.D. Ellis,
-    // R. Kleiss, W.J. Stirling); weights are logarithmic.
-    inline std::vector<std::vector<double>>
-    rambo( double et, const std::vector<double>& xm, double& wt )
-    {
-      const int n = (int)xm.size();
-      std::vector<std::vector<double>> q( n, std::vector<double>( 4 ) );
-      std::vector<std::vector<double>> p( n, std::vector<double>( 4 ) );
-      std::vector<double> z( n ), r( 4 ), b( 3 ), p2( n ), xm2( n ), e( n ), v( n );
-      const double acc = 1e-14;
-      const int itmax = 6;
-      const double twopi = 8. * atan( 1. );
-      const double po2log = log( twopi / 4. );
-
-      // factorials for the phase-space weight
-      z[1] = po2log;
-      for( int k = 2; k < n; k++ ) z[k] = z[k - 1] + po2log - 2. * log( double( k - 1 ) );
-      for( int k = 2; k < n; k++ ) z[k] = z[k] - log( double( k ) );
-
-      if( n < 1 || n > 101 )
-      {
-        std::cout << "Too few or many particles: " << n << std::endl;
-        exit( -1 );
-      }
-      double xmt = 0.;
-      int nm = 0;
-      for( int i = 0; i < n; i++ )
-      {
-        if( xm[i] != 0. ) nm = nm + 1;
-        xmt = xmt + std::abs( xm[i] );
-      }
-      if( xmt > et )
-      {
-        std::cout << "Too low energy: " << et << " needed " << xmt << std::endl;
-        exit( -1 );
-      }
-
-      // generate n massless momenta in infinite phase space
-      for( int i = 0; i < n; i++ )
-      {
-        double r1 = rn();
-        double c = 2. * r1 - 1.;
-        double s = sqrt( 1. - c * c );
-        double f = twopi * rn();
-        r1 = rn();
-        double r2 = rn();
-        q[i][0] = -log( r1 * r2 );
-        q[i][3] = q[i][0] * c;
-        q[i][2] = q[i][0] * s * cos( f );
-        q[i][1] = q[i][0] * s * sin( f );
-      }
-
-      // parameters of the conformal transformation
-      for( int k = 0; k < 4; k++ ) r[k] = 0.;
-      for( int i = 0; i < n; i++ )
-        for( int k = 0; k < 4; k++ ) r[k] = r[k] + q[i][k];
-      double rmas = sqrt( pow( r[0], 2 ) - pow( r[3], 2 ) - pow( r[2], 2 ) - pow( r[1], 2 ) );
-      for( int k = 1; k < 4; k++ ) b[k - 1] = -r[k] / rmas;
-      double g = r[0] / rmas;
-      double a = 1. / ( 1. + g );
-      double x = et / rmas;
-
-      // transform the q's conformally into the p's
-      for( int i = 0; i < n; i++ )
-      {
-        double bq = b[0] * q[i][1] + b[1] * q[i][2] + b[2] * q[i][3];
-        for( int k = 1; k < 4; k++ ) p[i][k] = x * ( q[i][k] + b[k - 1] * ( q[i][0] + a * bq ) );
-        p[i][0] = x * ( g * q[i][0] + bq );
-      }
-
-      wt = po2log;
-      if( n != 2 ) wt = ( 2. * n - 4. ) * log( et ) + z[n - 1];
-
-      // massless case is done
-      if( nm == 0 ) return p;
-
-      // massive particles: rescale the momenta by a factor x
-      double xmax = sqrt( 1. - pow( xmt / et, 2 ) );
-      for( int i = 0; i < n; i++ )
-      {
-        xm2[i] = pow( xm[i], 2 );
-        p2[i] = pow( p[i][0], 2 );
-      }
-      int iter = 0;
-      x = xmax;
-      double accu = et * acc;
-      while( true )
-      {
-        double f0 = -et;
-        double g0 = 0.;
-        double x2 = x * x;
-        for( int i = 0; i < n; i++ )
-        {
-          e[i] = sqrt( xm2[i] + x2 * p2[i] );
-          f0 = f0 + e[i];
-          g0 = g0 + p2[i] / e[i];
-        }
-        if( std::abs( f0 ) <= accu ) break;
-        iter = iter + 1;
-        if( iter > itmax )
-        {
-          std::cout << "Too many iterations without desired accuracy: " << itmax << std::endl;
-          break;
-        }
-        x = x - f0 / ( x * g0 );
-      }
-      for( int i = 0; i < n; i++ )
-      {
-        v[i] = x * p[i][0];
-        for( int k = 1; k < 4; k++ ) p[i][k] = x * p[i][k];
-        p[i][0] = e[i];
-      }
-
-      double wt2 = 1.;
-      double wt3 = 0.;
-      for( int i = 0; i < n; i++ )
-      {
-        wt2 = wt2 * v[i] / e[i];
-        wt3 = wt3 + pow( v[i], 2 ) / e[i];
-      }
-      double wtm = ( 2. * n - 3. ) * log( x ) + log( wt2 / wt3 * et );
-      wt = wt + wtm;
-      return p;
-    }
-
-    // Auxiliary function changing convention between MadGraph7 and
-    // RAMBO four-momenta (same as get_momenta in the standalone_cpp driver).
-    inline std::vector<std::vector<double>>
-    get_momenta( int ninitial, double energy, const std::vector<double>& masses, double& wgt )
-    {
-      const int nexternal = (int)masses.size();
-      const int nfinal = nexternal - ninitial;
-      const double e2 = pow( energy, 2 );
-      const double m1 = masses[0];
-
-      if( ninitial == 1 )
-      {
-        std::vector<std::vector<double>> p( 1, std::vector<double>( 4, 0. ) );
-        p[0][0] = m1;
-        std::vector<double> finalmasses( masses.begin() + 1, masses.end() );
-        std::vector<std::vector<double>> p_rambo = rambo( m1, finalmasses, wgt );
-        p.insert( p.end(), p_rambo.begin(), p_rambo.end() );
-        return p;
-      }
-
-      if( ninitial != 2 )
-      {
-        std::cout << "Rambo needs 1 or 2 incoming particles" << std::endl;
-        exit( -1 );
-      }
-
-      double etot = energy;
-      if( nfinal == 1 ) etot = m1;
-      const double m2 = masses[1];
-      const double mom = sqrt( ( pow( e2, 2 ) - 2 * e2 * pow( m1, 2 ) + pow( m1, 4 ) - 2 * e2 * pow( m2, 2 ) - 2 * pow( m1, 2 ) * pow( m2, 2 ) + pow( m2, 4 ) ) / ( 4 * e2 ) );
-      const double energy1 = sqrt( pow( mom, 2 ) + pow( m1, 2 ) );
-      const double energy2 = sqrt( pow( mom, 2 ) + pow( m2, 2 ) );
-      std::vector<std::vector<double>> p( 2, std::vector<double>( 4, 0. ) );
-      p[0][0] = energy1;
-      p[0][3] = mom;
-      p[1][0] = energy2;
-      p[1][3] = -mom;
-
-      if( nfinal == 1 )
-      {
-        p.push_back( std::vector<double>( 4, 0. ) );
-        p[2][0] = etot;
-        wgt = 1;
-        return p;
-      }
-      std::vector<double> finalmasses( masses.begin() + 2, masses.end() );
-      std::vector<std::vector<double>> p_rambo = rambo( etot, finalmasses, wgt );
-      p.insert( p.end(), p_rambo.begin(), p_rambo.end() );
-      return p;
-    }
+    return rambo::get_momenta( ninitial, energy, masses, wgt, draw );
   }
 
   // --------------------------------------------------------------------------
@@ -718,7 +489,7 @@ namespace
     // NB: feed the double-precision masses to the classic RAMBO, which works in
     // double throughout: 'masses' is fptype and would not convert at FPTYPE=f.
     std::vector<std::vector<double>> point =
-      classic_rambo::get_momenta( CPPProcess::npari, (double)kEnergy, massesD, rambowgt );
+      classic_rambo_momenta( CPPProcess::npari, (double)kEnergy, massesD, rambowgt );
 
     std::vector<double> alphasVec( nevt, param_card_alpha_s() );
 #ifdef MGONGPUCPP_GPUIMPL

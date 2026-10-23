@@ -956,6 +956,24 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
         logger.info("   can still handle these.")
         self._log_interference_syntax()
+        self._log_diagram_filter_syntax()
+
+    def _log_diagram_filter_syntax(self):
+        """The diagram filter options, for 'help generate' and 'help add'."""
+        logger.info("Diagram filter syntax:",'$MG:BOLD')
+        logger.info(" o process --diagram_filter=PLUGINNAME")
+        logger.info(" o NLO process [QCD] --tree_diagram_filter=PLUGINNAME --loop_diagram_filter=PLUGINNAME")
+        logger.info(" o Example: generate u u~ > d d~ QED=2 --diagram_filter=no_photon",'$MG:color:GREEN')
+        logger.info(" > Removes the diagrams for which the function new_diagram_filter of the plugin")
+        logger.info("   PLUGINNAME (in its __init__.py) returns True. It is called as")
+        logger.info("   new_diagram_filter(diagram, model).")
+        logger.info(" > --diagram_filter applies to tree-level and MadLoop ([virt=], [noborn=])")
+        logger.info("   processes, to the Born and the loop diagrams. For NLO processes with FKS")
+        logger.info("   subtraction, --tree_diagram_filter filters the Born and real-emission")
+        logger.info("   diagrams and --loop_diagram_filter the loop diagrams of the virtual.")
+        logger.info(" > Without =PLUGINNAME, the function remove_diag of PLUGIN/user_filter.py is used.")
+        logger.info(" > Removing diagrams usually breaks gauge invariance.")
+        logger.info(" > See the 'Diagram filters' page of the documentation.")
 
     def _log_interference_syntax(self):
         """The interference syntax, for 'help generate' and 'help add'."""
@@ -1019,6 +1037,7 @@ class HelpToCmd(cmd.HelpCmd):
         logger.info("   the 'virt=' NLO mode. aMC@NLO cannot integrate these processes, but standalone MadLoop5")
         logger.info("   can still handle these.")
         self._log_interference_syntax()
+        self._log_diagram_filter_syntax()
 
         logger.info("--  merge two model to create a new one", '$MG:color:BLUE')
         logger.info("syntax:",'$MG:BOLD')
@@ -2839,10 +2858,16 @@ class CompleteForCmd(cmd.CompleteCmd):
             return
 
         if text.startswith('--'):
+            filters = ['%s=%s' % (opt, name) for name in
+                       misc.plugin_diagram_filter(self.plugin_path, None)
+                       for opt in ['--diagram_filter', '--tree_diagram_filter',
+                                   '--loop_diagram_filter']]
             return self.list_completion(text, ['--no_crossing', 
                                                '--no_warning=duplicate',
                                                '--diagram_filter',
-                                               '--standalone']) 
+                                               '--tree_diagram_filter',
+                                               '--loop_diagram_filter',
+                                               '--standalone'] + filters)
 
         try:
             return self.model_completion(text, ' '.join(args[1:]),line, formatting)
@@ -3979,6 +4004,27 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         
         return value
 
+    def extract_diagram_filter(self, args, option='--diagram_filter'):
+        """Remove the --diagram_filter[=PLUGINNAME] option from args and return
+        the filter to use: False if absent, True for the filter of
+        PLUGIN/user_filter.py (bare option, historical behaviour) or the
+        function new_diagram_filter of the plugin PLUGINNAME. The option name
+        can be changed (--tree_diagram_filter, --loop_diagram_filter)."""
+
+        diagram_filter = False
+        for arg in list(args):
+            if arg == option:
+                diagram_filter = True
+                args.remove(arg)
+            elif arg.startswith(option + '='):
+                args.remove(arg)
+                try:
+                    diagram_filter = misc.plugin_diagram_filter(
+                                      self.plugin_path, arg.split('=', 1)[1])
+                except MadGraph5Error as error:
+                    raise self.InvalidCmd(str(error))
+        return diagram_filter
+
     # Add a process to the existing multiprocess definition
     # Generate a new amplitude
     def do_add(self, line, counter=0):
@@ -4006,10 +4052,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
             warning_duplicate = False
             args.remove('--no_warning=duplicate')
 
-        diagram_filter = False
-        if '--diagram_filter' in args:
-            diagram_filter = True
-            args.remove('--diagram_filter')
+        diagram_filter = self.extract_diagram_filter(args)
         
         standalone_only = False
         if '--standalone' in args:
@@ -7057,6 +7100,17 @@ This implies that with decay chains:
             #if not isinstance(self, extended_cmd.CmdShell):
             #    raise self.InvalidCmd, "loop_filter is not allowed in web mode"
         args = [a for a in args if not a.startswith('--loop_filter=')]
+        diagram_filter = self.extract_diagram_filter(args)
+        # the options of the NLO (FKS) generation, which falls back to this
+        # mode when it finds no Born diagram: no Born diagram is generated
+        # here, the loop filter is the diagram filter of this mode
+        if self.extract_diagram_filter(args, '--tree_diagram_filter'):
+            raise self.InvalidCmd("No Born diagram for %s: it can not be "
+                "filtered with --tree_diagram_filter (in the loop-induced mode "
+                "use --diagram_filter or --loop_diagram_filter)." %
+                ' '.join(a for a in args if not a.startswith('--')))
+        diagram_filter = self.extract_diagram_filter(args,
+                                    '--loop_diagram_filter') or diagram_filter
         
         if not myprocdef:
             myprocdef = self.extract_process(' '.join(args))
@@ -7110,7 +7164,8 @@ This implies that with decay chains:
                                  collect_mirror_procs = collect_mirror_procs,
                                  ignore_six_quark_processes = ignore_six_quark_processes,
                                  optimize=optimize,
-                                 loop_filter=loop_filter)
+                                 loop_filter=loop_filter,
+                                 diagram_filter=diagram_filter)
             amplitudes = myproc.get('amplitudes')
         except diagram_generation.NoDiagramException:
             if myprocdef.get_interference_mode() != 'LIxtree':
@@ -8717,9 +8772,9 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                 plugin = sys.modules['PLUGIN.%s' % name] 
                 new_interface = plugin.new_interface
                 new_output = plugin.new_output
-                latest_validated_version = plugin.latest_validated_version
-                minimal_mg5amcnlo_version = plugin.minimal_mg5amcnlo_version
-                maximal_mg5amcnlo_version = plugin.maximal_mg5amcnlo_version
+                latest_validated_version = getattr(plugin,
+                                         'latest_validated_mg7_version',
+                                         getattr(plugin, 'latest_validated_version', ''))
             except Exception as error:
                 print(error)
                 logger.warning('Plugin not python3 compatible! It will run with python2')
@@ -8731,8 +8786,6 @@ MadGraph7 that supports quadruple precision (typically g++ based on gcc 4.6+).""
                     misc.sprint(text)
                 new_output = []
                 latest_validated_version = ''
-                minimal_mg5amcnlo_version = ''
-                maximal_mg5amcnlo_version = ''
                 misc.sprint(pyvers)
                     
             logger.info('Plugin %s correctly interfaced. Latest official validition for MadGraph7 version %s.' % (name, '.'.join(repr(i) for i in latest_validated_version)))
