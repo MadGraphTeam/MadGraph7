@@ -110,3 +110,19 @@ is in the artifact); no dependence on the build host's CPU features (SymJIT
 applications are stored as IR and recompiled at load, as the tree engine's
 storage-v4 plane kernels already are); bitwise-identical binary64 results after
 relocation with the same native build. A dedicated acceptance test covers this.
+
+## H. Generation budget at high multiplicity; checks without a provider timing (user, 2026-10-23)
+
+- For one-loop matrix-element generation at high multiplicity, generation may
+  take up to O(hours) and must stay below 150 GB of memory. This replaces the
+  earlier "g g > g g g g g full colour < 10 min and < 8 GB" target. Generation
+  and runtime must still be optimised as far as possible; the per-point speed
+  gates of section D are unchanged wherever a matched provider timing exists.
+- Order: first complete the planned 2->5 set in full, then push the limit.
+  g g > g g g g g must be pushed through. g g > 6 g (2->6, the stretch target)
+  is to be attempted if judged doable, leading colour first and full colour
+  next.
+- Where no matched provider timing exists (g g > g g g g g), the speed result
+  is reported only, without a gate. It must come with sanity checks:
+  rotational invariance, and Ward identities probed by replacing one external
+  gluon's polarisation vector by its momentum.
