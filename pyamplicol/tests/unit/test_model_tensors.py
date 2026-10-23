@@ -253,7 +253,10 @@ def test_trilinear_color_projection_does_not_trust_ufo_source_spelling() -> None
     ) == ("generic-tensor", 1.0 + 0.0j)
 
 
-def test_external_compiler_rejects_unimplemented_symmetric_color_tensor() -> None:
+def test_external_compiler_lowers_the_symmetric_color_tensor() -> None:
+    """The d-symbol (counterterm vertices, ``models.ct_color_flow``) lowers to
+    both colour orders of its inputs with one sign, unlike f."""
+
     particles = tuple(
         CompiledParticleRecord(
             name=f"adjoint_{index}",
@@ -302,8 +305,13 @@ def test_external_compiler_rejects_unimplemented_symmetric_color_tensor() -> Non
         color_expression=term.color_expression,
     )
 
-    with pytest.raises(ValueError, match="unsupported trilinear color tensor"):
-        _annotate_oriented_kernel_color_projections((kernel,), particles, (term,))
+    (annotated,) = _annotate_oriented_kernel_color_projections(
+        (kernel,), particles, (term,)
+    )
+    assert annotated.color_projection_structure == "adjoint-symmetric-invariant"
+    terms = annotated.lc_color_transition_terms
+    assert sorted(term.input_permutation for term in terms) == [(0, 1), (1, 0)]
+    assert {term.exact_factor_expression for term in terms} == {"1"}
 
 
 def test_oriented_identity_retains_the_exact_vertex_color_proof() -> None:
