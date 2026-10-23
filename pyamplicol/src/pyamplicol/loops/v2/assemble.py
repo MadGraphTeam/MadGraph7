@@ -563,7 +563,7 @@ def _field_level_families(
         incoming,
         outgoing,
         cap=selection.cap,
-        ignored_particle_ids=request.ignored_particle_ids,
+        ignored_particle_ids=request.excluded_particle_ids,
     )
     if native is not None:
         return NativeGeneration(table, catalogue, selection, native).families()
@@ -883,6 +883,9 @@ class SliceRequest:
     loop_orders: Mapping[str, int]
     corrections: tuple[str, ...] = ("QCD",)
     fixed_parameters: Mapping[str, str] = field(default_factory=dict)
+    # Particles the request excludes, in either orientation (PDG codes): no
+    # tree current, loop line, counterterm or field insertion of theirs
+    # (e.g. (6,): closed top loops off, with their decoupling counterterms).
     ignored_particle_ids: tuple[int, ...] = ()
     accuracy: ColourAccuracy = "full"
     # A source-owned formal-N_c continuation (``LoopColorDeclaration``); LC
@@ -901,6 +904,21 @@ class SliceRequest:
     # refuses a request without such orbits, "direct" never uses it. Other
     # carriers and LC always contract directly.
     colour_contraction: ContractionPolicy = "auto"
+
+    @property
+    def excluded_particle_ids(self) -> tuple[int, ...]:
+        """``ignored_particle_ids`` in both orientations, as the tree compiler
+        reads them (it drops the currents of the signed ids it is given)."""
+
+        return tuple(
+            sorted(
+                {
+                    sign * int(pdg)
+                    for pdg in self.ignored_particle_ids
+                    for sign in (1, -1)
+                }
+            )
+        )
 
 
 @dataclass
@@ -1034,7 +1052,9 @@ class LoopSlice:
             request.process, compiled.ir, color_accuracy="full"
         )
         loop_catalogue = ModelLoopCatalogue(
-            data, species_orders=structure.perturbative_species_orders
+            data,
+            species_orders=structure.perturbative_species_orders,
+            ignored_particle_ids=request.ignored_particle_ids,
         )
         native_families = "families" in generator_input.NATIVE_STAGES
 
@@ -1044,7 +1064,7 @@ class LoopSlice:
                 CompiledUFOModel(compiled),
                 born_coupling_orders=dict(request.born_orders),
                 block_coupling_orders=dict(request.loop_orders),
-                ignored_particle_ids=request.ignored_particle_ids,
+                ignored_particle_ids=request.excluded_particle_ids,
                 reachability=(
                     None
                     if reachable is None

@@ -872,6 +872,11 @@ class ModelLoopCatalogue:
     rules by the same rule as the diagram oracle (a species is perturbative in
     an order when it enters a vertex of that single order), which production
     modules may not import.
+
+    ``ignored_particle_ids`` are particles the request excludes: neither
+    orientation of them runs in a loop line (|PDG| codes, as the counterterm
+    and field rules' forbidden species), so a request that drops a particle
+    from its trees and counterterms drops its closed loops too.
     """
 
     def __init__(
@@ -879,8 +884,10 @@ class ModelLoopCatalogue:
         model: Any,
         *,
         species_orders: Mapping[int, frozenset[str]] | None = None,
+        ignored_particle_ids: Iterable[int] = (),
     ):
         data = model_data(model)
+        excluded = frozenset(abs(int(pdg)) for pdg in ignored_particle_ids)
         self._species: dict[str, LoopSpecies] = {}
         coupling_orders = {
             entry["name"]: tuple(
@@ -916,7 +923,10 @@ class ModelLoopCatalogue:
         for particle in data["particles"]:
             name = particle["name"]
             self._conjugate[name] = particle["antiname"]
-            if not particle.get("propagating", True):
+            if (
+                not particle.get("propagating", True)
+                or abs(int(particle["pdg_code"])) in excluded
+            ):
                 continue
             self._species[name] = LoopSpecies(
                 name,
