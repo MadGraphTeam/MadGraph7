@@ -278,16 +278,20 @@ def test_loop_aware_reachability_changes_no_result(
 
 
 @pytest.mark.parametrize(
-    ("name", "points"),
+    ("name", "points", "inputs"),
     [
-        pytest.param("uux_ddxg", [0], marks=pytest.mark.loop_physics),
-        pytest.param("gg_gggg", [0], marks=pytest.mark.loop_nightly),
+        pytest.param("uux_ddxg", [0], "python", marks=pytest.mark.loop_physics),
+        pytest.param("uux_ddxg", [0], "native", marks=pytest.mark.loop_physics),
+        pytest.param("gg_gggg", [0], "python", marks=pytest.mark.loop_nightly),
     ],
 )
-def test_validate_agrees_with_the_providers(loop_sm_compiled_model, name, points):
+def test_validate_agrees_with_the_providers(
+    loop_sm_compiled_model, name, points, inputs
+):
     """``tools/loop_v2_generate.py validate``: generation with the native
     stages, plan export and native evaluation against every provider of a
-    required reference (the fixture's metric and tolerance)."""
+    required reference (the fixture's metric and tolerance); with native
+    per-point trees and Born, the Born and the double pole."""
 
     import argparse
 
@@ -299,10 +303,19 @@ def test_validate_agrees_with_the_providers(loop_sm_compiled_model, name, points
             points=points,
             precision="double",
             stability=False,
+            inputs=inputs,
             model=str(loop_sm_compiled_model),
         )
     )
     assert record["passed"], record["points"]
+    compared = {
+        key for p in record["points"] for row in p["errors"].values() for key in row
+    }
+    assert compared == (
+        {"born", "double_pole"}
+        if inputs == "native"
+        else {"born", "finite", "single_pole", "double_pole"}
+    )
     assert all(p["max_error"] <= 1e-10 for p in record["points"]), record["points"]
 
 
