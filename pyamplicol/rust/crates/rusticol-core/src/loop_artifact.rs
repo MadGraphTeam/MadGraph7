@@ -342,7 +342,9 @@ pub struct LoopV2Sector {
 /// classes (one-based legs) and `resolved` that helicity/colour resolved
 /// output is served (always: observable columns are contracted directly, and
 /// `color_contraction` is "auto" or "direct" since generation refuses the
-/// forced seed FFT).
+/// forced seed FFT). `poles` lists the pole selections an evaluation may
+/// request (`PoleSelection`): every pole ("all") or the finite part only
+/// ("none"); the UV and IR selections are added with the pole split.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoopV2ExecutionMetadata {
@@ -361,7 +363,7 @@ pub struct LoopV2ExecutionMetadata {
     pub color_correlations: Vec<String>,
     pub spin_correlations: Vec<Vec<usize>>,
     pub resolved: bool,
-    pub poles: String,
+    pub poles: Vec<String>,
     pub stability_checks: Vec<String>,
     pub accuracy_retest: String,
     pub rescue_policy: String,
@@ -587,7 +589,7 @@ fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()
             && metadata.interference == ORDINARY_INTERFERENCE
             && metadata.scheme_status == "declared-not-certified"
             && metadata.schedule == "backward"
-            && metadata.poles == "runtime-optional"
+            && metadata.poles == ["all", "none"]
             && metadata.accuracy_retest == "reduction-direction"
             && metadata.rescue_policy == "caller"
             && metadata.stability_checks == ["rotation", "reduction-direction"]
@@ -607,11 +609,12 @@ fn validate_v2_metadata(metadata: &LoopV2ExecutionMetadata) -> RusticolResult<()
     histories.dedup();
     require(
         histories.len() == metadata.color_correlations.len()
-            && histories.iter().all(|id| !id.is_empty() && id.as_str() != "born")
-            && metadata
-                .spin_correlations
+            && histories
                 .iter()
-                .all(|legs| !legs.is_empty() && legs.windows(2).all(|w| w[0] < w[1]) && legs[0] > 0),
+                .all(|id| !id.is_empty() && id.as_str() != "born")
+            && metadata.spin_correlations.iter().all(|legs| {
+                !legs.is_empty() && legs.windows(2).all(|w| w[0] < w[1]) && legs[0] > 0
+            }),
         "colour histories are distinct non-Born ids; spin classes are increasing \
          one-based legs",
     )?;

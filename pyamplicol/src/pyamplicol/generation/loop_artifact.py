@@ -21,6 +21,7 @@ from pyamplicol._internal.versions import (
     LOOP_RUNTIME_CAPABILITY,
     LOOP_V2_RUNTIME_CAPABILITY,
 )
+from pyamplicol.config import PoleSelection
 from pyamplicol.loops.orders import VirtualOrderSector
 from pyamplicol.loops.physical_orders import PhysicalOrderLayout
 from pyamplicol.models.base import CouplingOrders
@@ -192,10 +193,11 @@ class LoopV2ExecutionMetadata:
     the declared spin classes (one-based legs); ``resolved`` is whether
     helicity/colour-resolved output is served: always, since observable
     columns are contracted directly (``color_contraction`` is "auto" or
-    "direct"; generation refuses the forced seed FFT). Poles are computed
-    unless an evaluation asks for the finite part only; stability estimates
-    come from the requested checks, and escalating the arithmetic is the
-    caller's decision (``rescue_policy``).
+    "direct"; generation refuses the forced seed FFT). ``poles`` lists the
+    pole selections an evaluation may request (``PoleSelection``: every pole,
+    or none for the finite part only); stability estimates come from the
+    requested checks, and escalating the arithmetic is the caller's decision
+    (``rescue_policy``).
     """
 
     scheme: LoopSchemeDeclaration
@@ -213,7 +215,7 @@ class LoopV2ExecutionMetadata:
     color_correlations: tuple[str, ...] = ()
     spin_correlations: tuple[tuple[int, ...], ...] = ()
     resolved: bool = True
-    poles: Literal["runtime-optional"] = "runtime-optional"
+    poles: tuple[str, ...] = tuple(PoleSelection)
     stability_checks: tuple[str, ...] = ("rotation", "reduction-direction")
     accuracy_retest: Literal["reduction-direction"] = "reduction-direction"
     rescue_policy: Literal["caller"] = "caller"
@@ -242,6 +244,11 @@ class LoopV2ExecutionMetadata:
         ):
             raise ValueError(
                 "v2 processes contract seed columns directly and serve resolved output"
+            )
+        if tuple(self.poles) != tuple(PoleSelection):
+            raise ValueError(
+                "v2 processes serve the pole selections "
+                f"{[item.value for item in PoleSelection]}"
             )
         if len(set(self.color_correlations)) != len(self.color_correlations) or (
             "born" in self.color_correlations

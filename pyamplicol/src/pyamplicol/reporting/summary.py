@@ -2524,7 +2524,11 @@ def _loop_inspection_rows(loop: Mapping[str, object]) -> list[tuple[str, str]]:
                 ),
                 (
                     "runtime options",
-                    f"poles {loop['poles']}; stability checks "
+                    "pole selections "
+                    + ", ".join(
+                        str(item) for item in cast(Sequence[object], loop["poles"])
+                    )
+                    + "; stability checks "
                     + ", ".join(
                         str(check)
                         for check in cast(Sequence[object], loop["stability_checks"])

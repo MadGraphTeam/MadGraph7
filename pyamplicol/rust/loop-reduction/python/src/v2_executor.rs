@@ -275,18 +275,18 @@ fn backend_of(
 ) -> PyResult<&mut V2ReductionBackend> {
     if slot.is_none() {
         let reducer = match carrier {
-                Carriers::Double => runtime::V2Reducer::new("double", None, "fast", true),
-                Carriers::DoubleDouble => {
-                    runtime::V2Reducer::new("double-double", None, "generic", true)
-                }
-                Carriers::Arbitrary(digits) => {
-                    runtime::V2Reducer::new("arbitrary", Some(digits), "generic", true)
-                }
-                Carriers::Exact => {
-                    return Err(error("the exact carrier dresses numerators only"));
-                }
+            Carriers::Double => runtime::V2Reducer::new("double", None, "fast", true),
+            Carriers::DoubleDouble => {
+                runtime::V2Reducer::new("double-double", None, "generic", true)
             }
-            .map_err(error)?;
+            Carriers::Arbitrary(digits) => {
+                runtime::V2Reducer::new("arbitrary", Some(digits), "generic", true)
+            }
+            Carriers::Exact => {
+                return Err(error("the exact carrier dresses numerators only"));
+            }
+        }
+        .map_err(error)?;
         *slot = Some(V2ReductionBackend { reducer });
     }
     Ok(slot.as_mut().expect("backend"))

@@ -127,7 +127,7 @@ class ArtifactLoopInspection:
     color_degrees: tuple[tuple[str, int | None], ...] | None = None
     color_contraction: str | None = None
     schedule: str | None = None
-    poles: str | None = None
+    poles: tuple[str, ...] = ()
     stability_checks: tuple[str, ...] = ()
     rescue_policy: str | None = None
     plan_sha256: str | None = None
@@ -3129,7 +3129,10 @@ def _loop_process_inspection(
             ),
             color_contraction=_string(metadata.get("color_contraction"), context),
             schedule=_string(metadata.get("schedule"), context),
-            poles=_string(metadata.get("poles"), context),
+            poles=tuple(
+                _string(value, f"{context}.poles")
+                for value in _sequence(metadata.get("poles"), context)
+            ),
             stability_checks=tuple(
                 str(value)
                 for value in _sequence(metadata.get("stability_checks"), context)
